@@ -35,6 +35,7 @@ import {
     flattenSchema,
     summarizeLlmPayloadForLog,
 } from '../../util.js';
+import { isRequestCancellationError } from '../../request-cancellation.js';
 import {
     convertClaudeMessages,
     convertGooglePrompt,
@@ -2450,16 +2451,7 @@ function transformResponsesApiResponse(data) {
 }
 
 function isExpectedStreamAbort(error) {
-    const name = String(error?.name ?? '');
-    const type = String(error?.type ?? '');
-    const code = String(error?.code ?? '');
-    const message = String(error?.message ?? '').toLowerCase();
-
-    return name === 'AbortError' ||
-        type === 'aborted' ||
-        code === 'ABORT_ERR' ||
-        message.includes('operation was aborted') ||
-        message.includes('aborted');
+    return isRequestCancellationError(error);
 }
 
 /**

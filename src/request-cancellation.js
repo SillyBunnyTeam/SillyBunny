@@ -4,6 +4,43 @@ export const REQUEST_CANCELLATION_ABORT_REASON = 'Client disconnected';
 const DEFAULT_ABORT_HOOK_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECTION_POLL_INTERVAL_MS = 150;
 
+function matchesCancellationError(value) {
+    if (!value) {
+        return false;
+    }
+
+    if (value === REQUEST_CANCELLATION_ABORT_REASON) {
+        return true;
+    }
+
+    const name = String(value?.name ?? '');
+    const type = String(value?.type ?? '');
+    const code = String(value?.code ?? '');
+    const message = String(value?.message ?? value).toLowerCase();
+
+    return name === 'AbortError' ||
+        type === 'aborted' ||
+        code === 'ABORT_ERR' ||
+        message.includes('client disconnected') ||
+        message.includes('operation was aborted') ||
+        message.includes('aborted');
+}
+
+/**
+ * Detects request cancellation errors across runtimes and fetch implementations.
+ * Bun can reject fetch with the raw abort reason, while Node/node-fetch usually
+ * rejects with an AbortError-shaped object.
+ * @param {any} error Error-like value from fetch, streams, or abort hooks.
+ * @returns {boolean} Whether this value is an expected client disconnect.
+ */
+export function isRequestCancellationError(error) {
+    return [
+        error,
+        error?.cause,
+        error?.reason,
+    ].some(matchesCancellationError);
+}
+
 function removeEventListener(target, event, handler) {
     if (typeof target?.removeEventListener === 'function') {
         target.removeEventListener(event, handler);
