@@ -4,6 +4,10 @@
     max-width: 100%;
 }
 
+.select2-container--open {
+    z-index: var(--sb-z-critical, 2147483000);
+}
+
 /* Customize the dropdown */
 .select2-dropdown {
     background-color: var(--SmartThemeBlurTintColor);
@@ -16,6 +20,12 @@
     z-index: var(--sb-z-critical);
     user-select: none;
     pointer-events: auto;
+}
+
+#rm_api_block .select2-container--open .select2-dropdown,
+#left-nav-panel.openDrawer .select2-container--open .select2-dropdown,
+#right-nav-panel.openDrawer .select2-container--open .select2-dropdown {
+    max-width: calc(100vw - 24px);
 }
 
 .select2-container .select2-selection.select2-selection--single.select2-selection--clearable .select2-selection__clear {

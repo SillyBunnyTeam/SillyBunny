@@ -62,6 +62,8 @@ yarn.lock
 *.code-workspace
 test-results/
 .playwright-cli/
+.playwright-mcp/
+.local-worklog/
 /output/
 /AGENTS.md
 
@@ -74,3 +76,7 @@ screenshots/layout-mobile-workspace-20260505.png
 screenshots/sillybunny-ui-polish-desktop-ooc.png
 screenshots/sillybunny-ui-polish-desktop-workspace.png
 screenshots/sillybunny-ui-polish-mobile-workspace.png
+
+# Local Agent Skills
+.agents/
+skills-lock.json
