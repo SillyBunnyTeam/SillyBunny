@@ -12,7 +12,7 @@ import {
     FEATHERLESS_KEYS,
     OPENAI_KEYS,
 } from '../../constants.js';
-import { forwardFetchResponse, trimV1, getConfigValue, pollStreamingRequestConnection, summarizeLlmPayloadForLog } from '../../util.js';
+import { abortOnRequestClose, forwardFetchResponse, trimV1, getConfigValue, pollStreamingRequestConnection, summarizeLlmPayloadForLog } from '../../util.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
 import { createHash } from 'node:crypto';
 
@@ -316,14 +316,15 @@ router.post('/generate', async function (request, response) {
         console.debug('Text completion request:', summarizeLlmPayloadForLog(request.body));
 
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', async function () {
-            // SillyBunny: KoboldCpp needs its own upstream abort endpoint; other backends use the shared fetch abort/stream destroy path.
-            if (request.body.api_type === TEXTGEN_TYPES.KOBOLDCPP && !response.writableEnded) {
-                await abortKoboldCppRequest(request, trimV1(baseUrl));
-            }
+        abortOnRequestClose(request, controller, response, {
+            onAbort: async () => {
+                // SillyBunny: KoboldCpp needs its own upstream abort endpoint; other backends use the shared fetch abort/stream destroy path.
+                if (request.body.api_type !== TEXTGEN_TYPES.KOBOLDCPP || response.writableEnded) {
+                    return;
+                }
 
-            controller.abort();
+                await abortKoboldCppRequest(request, trimV1(baseUrl));
+            },
         });
 
         let url = trimV1(baseUrl);
