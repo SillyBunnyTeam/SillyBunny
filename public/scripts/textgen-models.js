@@ -7,6 +7,7 @@ import { POPUP_TYPE, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
+import { isMobile } from './RossAscends-mods.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -20,7 +21,7 @@ let llamacppModels = [];
 export let openRouterModels = [];
 
 function shouldUseNativeApiSelects() {
-    return window.matchMedia?.('(max-width: 768px)').matches ?? false;
+    return isMobile() || (window.matchMedia?.('(max-width: 768px)').matches ?? false);
 }
 
 /**

@@ -2083,8 +2083,10 @@ function normalizeCharacterPanelTab(tabId) {
 }
 
 function getCharacterPanelSearchEntries() {
+    const panel = getCharacterPanel();
+
     return SB_CHARACTER_PANEL_TABS.map((tab) => {
-        const button = document.querySelector(`#right-nav-panel [data-sb-character-tab="${CSS.escape(tab.id)}"]`);
+        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
         const searchText = normalizeText([tab.label, tab.id, 'characters'].join(' '));
 
         return {
@@ -6746,7 +6748,7 @@ function bindCharacterEditorFullscreenToggle() {
 
 function focusCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
-    const button = document.querySelector(`#right-nav-panel [data-sb-character-tab="${CSS.escape(normalizedTabId)}"]`);
+    const button = getCharacterPanel()?.querySelector(`[data-sb-character-tab="${CSS.escape(normalizedTabId)}"]`);
 
     if (button instanceof HTMLElement) {
         button.focus({ preventScroll: true });
@@ -7020,7 +7022,7 @@ function syncCharacterShellTabs(activeTab = null) {
 
     syncCharacterHeaderCopy(normalizedTab);
 
-    document.querySelectorAll('#right-nav-panel [data-sb-character-tab]').forEach(tab => {
+    panel?.querySelectorAll('[data-sb-character-tab]').forEach(tab => {
         if (!(tab instanceof HTMLElement)) {
             return;
         }
@@ -7059,9 +7061,10 @@ function syncCharacterShellTabs(activeTab = null) {
 
 function syncCharacterHeaderCopy(activeTab = 'characters') {
     const copy = SB_CHARACTER_TAB_COPY[activeTab] ?? SB_CHARACTER_TAB_COPY.characters;
-    const title = document.querySelector('#right-nav-panel .sb-character-shell-header .sb-shell-title');
-    const subtitle = document.querySelector('#right-nav-panel .sb-character-shell-header .sb-shell-subtitle');
-    const description = document.querySelector('#right-nav-panel .sb-character-shell-header .sb-shell-description');
+    const panel = getCharacterPanel();
+    const title = panel?.querySelector('.sb-character-shell-header .sb-shell-title');
+    const subtitle = panel?.querySelector('.sb-character-shell-header .sb-shell-subtitle');
+    const description = panel?.querySelector('.sb-character-shell-header .sb-shell-description');
 
     if (title instanceof HTMLElement) {
         title.textContent = '';

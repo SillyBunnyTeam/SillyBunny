@@ -289,6 +289,8 @@ const INLINE_SELECT_PICKER_CONTROLS = [
     { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter quantizations', multiple: true },
 ];
 
+// SillyBunny: touch browsers can open Select2 search as a keyboard-only field.
+// Keep mobile OpenRouter/API selects backed by native values while rendering an inline list.
 const modelIdSearchControlState = new Map();
 let modelSelectPickerDocumentListenerBound = false;
 let inlineSelectPickerObserverBound = false;
