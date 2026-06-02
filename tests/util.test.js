@@ -3,6 +3,7 @@ import { EventEmitter, once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { Response } from 'node-fetch';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants';
+import { REQUEST_CANCELLATION_ABORT_REASON } from '../src/request-cancellation';
 import { abortOnRequestClose, flattenSchema, forwardFetchResponse } from '../src/util';
 
 function createMockExpressResponse() {
@@ -165,6 +166,19 @@ describe('forwardFetchResponse', () => {
         response.emit('close');
 
         expect(upstreamBody.destroy).toHaveBeenCalled();
+    });
+
+    test('should finish the client response when upstream streaming emits a request cancellation error', async () => {
+        const upstreamBody = new PassThrough();
+        const response = createMockExpressResponse();
+        response.socket = {};
+        const bodyPromise = collectResponseBody(response);
+
+        await forwardFetchResponse(new Response(upstreamBody), response);
+        upstreamBody.emit('error', REQUEST_CANCELLATION_ABORT_REASON);
+
+        await expect(bodyPromise).resolves.toBe('');
+        expect(response.writableEnded).toBe(true);
     });
 
     test('should log JSON error bodies and return the original body for non-2xx streaming responses', async () => {

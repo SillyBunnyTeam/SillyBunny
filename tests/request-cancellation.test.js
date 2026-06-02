@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { EventEmitter } from 'node:events';
 
-import { observeRequestCancellation } from '../src/request-cancellation.js';
+import {
+    REQUEST_CANCELLATION_ABORT_REASON,
+    isRequestCancellationError,
+    observeRequestCancellation,
+} from '../src/request-cancellation.js';
 
 function createHttpExchange() {
     const request = new EventEmitter();
@@ -131,5 +135,24 @@ describe('observeRequestCancellation', () => {
         abortedRequest.emit('close');
 
         expect(abortedController.signal.aborted).toBe(true);
+    });
+});
+
+describe('isRequestCancellationError', () => {
+    test('recognizes expected request cancellation errors', () => {
+        const errors = [
+            REQUEST_CANCELLATION_ABORT_REASON,
+            new Error(REQUEST_CANCELLATION_ABORT_REASON),
+            new DOMException(REQUEST_CANCELLATION_ABORT_REASON, 'AbortError'),
+            Object.assign(new Error('operation was aborted'), { code: 'ABORT_ERR' }),
+        ];
+
+        for (const error of errors) {
+            expect(isRequestCancellationError(error)).toBe(true);
+        }
+    });
+
+    test('does not classify unrelated failures as request cancellation', () => {
+        expect(isRequestCancellationError(new Error('upstream exploded'))).toBe(false);
     });
 });

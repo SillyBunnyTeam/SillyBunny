@@ -22,7 +22,7 @@ import { serverDirectory } from './server-directory.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
 import { pollSocketConnection } from './connection-state-checker.js';
-import { observeRequestCancellation } from './request-cancellation.js';
+import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
 import { isBunRuntime } from './runtime.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
@@ -828,8 +828,14 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
             to.end();
         });
 
-        from.body.on('error', function () {
+        from.body.on('error', function (error) {
             stopPolling();
+            if (isRequestCancellationError(error) || to.destroyed || to.writableEnded) {
+                if (!to.destroyed && !to.writableEnded) {
+                    to.end();
+                }
+                return;
+            }
         });
     } else {
         to.end();
