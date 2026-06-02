@@ -135,6 +135,7 @@ This update keeps the 1.6 series moving with safer chat lifecycle defaults, stro
 - PR #310 (2026-06-02) `fix: sync reverse proxy preset when chat completion source changes`
 - PR #311 (2026-06-02) `chore: sync Quick Image Gen v2.0.10`
 - PR #312 (2026-06-02) `fix: close release readiness blockers`
+- PR #313 (2026-06-02) `fix: Bun request cancellation propagation`
 
 ## v1.6.0
 
