@@ -211,7 +211,7 @@ describe('abortOnRequestClose', () => {
         expect(controller.signal.aborted).toBe(true);
     });
 
-    test('should replace existing socket close listeners before registering the abort handler', () => {
+    test('should preserve existing socket close listeners when registering the abort handler', () => {
         const request = createMockExpressRequest();
         const existingListener = jest.fn();
 
@@ -219,6 +219,18 @@ describe('abortOnRequestClose', () => {
         abortOnRequestClose(request, new AbortController());
         request.socket.emit('close');
 
-        expect(existingListener).not.toHaveBeenCalled();
+        expect(existingListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('should abort the upstream controller when the client response closes', () => {
+        const request = new EventEmitter();
+        request.socket = new EventEmitter();
+        const response = new EventEmitter();
+        const controller = new AbortController();
+
+        abortOnRequestClose(request, controller, response);
+        response.emit('close');
+
+        expect(controller.signal.aborted).toBe(true);
     });
 });

@@ -5,7 +5,7 @@ import fetch from 'node-fetch';
 import express from 'express';
 
 import { readSecret, SECRET_KEYS } from './secrets.js';
-import { readAllChunks, extractFileFromZipBuffer, forwardFetchResponse } from '../util.js';
+import { abortOnRequestClose, readAllChunks, extractFileFromZipBuffer, forwardFetchResponse } from '../util.js';
 
 const API_NOVELAI = 'https://api.novelai.net';
 const TEXT_NOVELAI = 'https://text.novelai.net';
@@ -175,10 +175,7 @@ router.post('/generate', async function (req, res) {
     }
 
     const controller = new AbortController();
-    req.socket.removeAllListeners('close');
-    req.socket.on('close', function () {
-        controller.abort();
-    });
+    abortOnRequestClose(req, controller, res);
 
     // Add customized bad words for Clio, Kayra, and Erato
     const badWordsList = getBadWordsList(req.body.model);
