@@ -1,4 +1,4 @@
-const SB_SW_CACHE_VERSION = 'sillybunny-cache-v20260602a';
+const SB_SW_CACHE_VERSION = 'sillybunny-cache-v20260602f';
 const SB_STATIC_CACHE = `${SB_SW_CACHE_VERSION}-static`;
 const SB_SHELL_CACHE = `${SB_SW_CACHE_VERSION}-shell`;
 const SB_FRONTEND_ASSET_PREFIX = '/frontend-assets/';

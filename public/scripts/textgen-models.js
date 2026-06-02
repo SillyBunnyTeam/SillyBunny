@@ -19,6 +19,10 @@ let tabbyModels = [];
 let llamacppModels = [];
 export let openRouterModels = [];
 
+function shouldUseNativeApiSelects() {
+    return window.matchMedia?.('(max-width: 768px)').matches ?? false;
+}
+
 /**
  * List of OpenRouter providers.
  * @type {string[]}
@@ -1363,6 +1367,10 @@ export function initTextGenModels() {
             value: provider.id,
             text: provider.label,
         }));
+    }
+
+    if (shouldUseNativeApiSelects()) {
+        return;
     }
 
     // Keep API Select2 dropdowns inside the scrolling API drawer so they move with the control.

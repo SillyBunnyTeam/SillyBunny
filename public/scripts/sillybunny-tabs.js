@@ -394,18 +394,18 @@ const SB_MESSAGE_STYLES = Object.freeze([
 const SB_CHARACTER_TAB_COPY = Object.freeze({
     characters: {
         title: 'Character Menu',
-        subtitle: 'Browse, create, and sort locally-stored character cards.',
-        description: 'Manage your personal character cards, groups, and personas here.',
+        subtitle: 'Browse, create, and tune the cast for your chats from one place.',
+        description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
     },
     groups: {
         title: 'Group Menu',
-        subtitle: 'Browse, create, and sort locally-stored group chats here, using multiple character cards.',
-        description: 'Manage your personal character cards, groups, and personas here.',
+        subtitle: 'Build and organize group casts for multi-character scenes.',
+        description: 'Sort group chats, check members, and return to character cards without losing your place.',
     },
     editor: {
         title: 'Card Editor',
-        subtitle: 'Edit or make changes to your selected character card or group chat here.',
-        description: 'Manage your personal character cards, groups, and personas here.',
+        subtitle: 'Shape the selected card details, prompts, greetings, and metadata.',
+        description: 'Use the subtabs to keep core identity, definitions, greetings, and metadata separated.',
     },
     'world-info': {
         title: 'World Info',
@@ -414,13 +414,13 @@ const SB_CHARACTER_TAB_COPY = Object.freeze({
     },
     persona: {
         title: 'Persona',
-        subtitle: 'Manage your in-chat persona details and other configuration options.',
-        description: 'Manage your personal character cards, groups, and personas here.',
+        subtitle: 'Choose how you appear in chat and connect personas to characters.',
+        description: 'Edit persona details, locks, and defaults in the same flow as your character work.',
     },
     import: {
         title: 'Import',
-        subtitle: 'Import character cards from files, search a website for uploaded character cards, or import them directly from a URL.',
-        description: 'Manage your personal character cards, groups, and personas here.',
+        subtitle: 'Add cards from files or links, then fold them into your local cast.',
+        description: 'PNG, JSON, YAML, CHARX, BYAF, and supported URL imports stay one tab away.',
     },
 });
 
@@ -695,7 +695,7 @@ const sbState = {
         quickActionSection: null,
         quickActionDivider: null,
         layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), true),
+        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), false),
         showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), true),
         showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), false),
         replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), false),
@@ -703,7 +703,7 @@ const sbState = {
     },
     desktopNav: {
         layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), true),
+        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), false),
         showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), true),
         showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions), false),
         replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions), false),
@@ -878,7 +878,7 @@ function normalizeStoredBoolean(value, fallback = false) {
 
 function normalizeMobileNavLayout(value) {
     const normalizedValue = normalizeText(value);
-    return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'vertical';
+    return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'horizontal';
 }
 
 function getNavState(mode) {
@@ -896,7 +896,7 @@ function getActiveShellRailMode() {
 function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
     return getNavState(mode).layout === 'horizontal'
         ? 'Show Workspace and Customize buttons in top bar'
-        : 'Show Workspace and Customize buttons in side rail';
+        : 'Show section shortcuts in each side rail';
 }
 
 function normalizeMobileNavReplacementTarget(value) {
@@ -1501,8 +1501,9 @@ function setMobileButtonScale(value, { persist = true } = {}) {
 
 function applyMobileNavPreferences() {
     const quickActionsShown = sbState.mobileNav.showQuickActions;
+    const useIconOnly = sbState.mobileNav.layout === 'vertical' && sbState.mobileNav.iconOnly;
     document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
-    document.documentElement.dataset.sbMobileNavMode = sbState.mobileNav.iconOnly ? 'icon-only' : 'labeled';
+    document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavReplacement = sbState.mobileNav.replaceQuickActions ? 'shown' : 'hidden';
@@ -1510,8 +1511,9 @@ function applyMobileNavPreferences() {
 
 function applyDesktopNavPreferences() {
     const quickActionsShown = sbState.desktopNav.showQuickActions;
+    const useIconOnly = sbState.desktopNav.layout === 'vertical' && sbState.desktopNav.iconOnly;
     document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
-    document.documentElement.dataset.sbDesktopNavMode = sbState.desktopNav.iconOnly ? 'icon-only' : 'labeled';
+    document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
     document.documentElement.dataset.sbDesktopNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
     document.documentElement.dataset.sbDesktopNavReplacement = sbState.desktopNav.replaceQuickActions ? 'shown' : 'hidden';
@@ -1801,7 +1803,7 @@ function syncCharacterDrawerLockButton() {
 }
 
 function syncCharacterDrawerLockPosition() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     if (!(panel instanceof HTMLElement)) {
         return;
     }
@@ -2491,7 +2493,7 @@ function syncDesktopShellSizing() {
 
     for (const shellKey of ['left', 'right', 'characters']) {
         const root = shellKey === 'characters'
-            ? document.getElementById('right-nav-panel')
+            ? getCharacterPanel()
             : document.getElementById(getShellConfig(shellKey).rootPanelId);
         if (!(root instanceof HTMLElement)) {
             continue;
@@ -2547,7 +2549,7 @@ function syncDesktopShellSizing() {
 
 function getResizableShellRoot(shellKey) {
     if (shellKey === 'characters') {
-        return document.getElementById('right-nav-panel');
+        return getCharacterPanel();
     }
 
     return document.getElementById(getShellConfig(shellKey).rootPanelId);
@@ -6012,14 +6014,53 @@ function bindChatbarEvents() {
     scheduleChatbarRefresh(0);
 }
 
-function triggerDrawerToggle(selector) {
-    const toggle = document.querySelector(selector);
+function getCanonicalTopSettingsHolder() {
+    return Array.from(document.querySelectorAll('#top-settings-holder'))
+        .find(element => element instanceof HTMLElement && element.parentElement === document.body)
+        ?? document.getElementById('top-settings-holder');
+}
+
+function getCharacterDrawerHost() {
+    const topSettingsHolder = getCanonicalTopSettingsHolder();
+    const hosts = Array.from(document.querySelectorAll('#rightNavHolder')).filter(element => element instanceof HTMLElement);
+    const host = hosts.find(element => element.classList.contains('sb-drawer-host') && element.closest('#top-settings-holder') === topSettingsHolder)
+        ?? hosts.find(element => element.classList.contains('sb-drawer-host'))
+        ?? hosts.find(element => element.closest('#top-settings-holder') === topSettingsHolder)
+        ?? document.getElementById('rightNavHolder');
+
+    if (host instanceof HTMLElement && topSettingsHolder instanceof HTMLElement && host.parentElement === topSettingsHolder && topSettingsHolder.firstElementChild !== host) {
+        topSettingsHolder.insertBefore(host, topSettingsHolder.firstElementChild);
+    }
+
+    return host instanceof HTMLElement ? host : null;
+}
+
+function getCharacterDrawerToggle() {
+    return getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle') ?? null;
+}
+
+function getCharacterPanel() {
+    const panel = getCharacterDrawerHost()?.querySelector(':scope > #right-nav-panel')
+        ?? document.querySelector('#right-nav-panel.sb-character-drawer-root')
+        ?? document.getElementById('right-nav-panel');
+
+    return panel instanceof HTMLElement ? panel : null;
+}
+
+function triggerDrawerToggle(selectorOrElement) {
+    const toggle = typeof selectorOrElement === 'string'
+        ? document.querySelector(selectorOrElement)
+        : selectorOrElement;
     if (toggle instanceof HTMLElement) {
         toggle.click();
     }
 }
 
 function getDrawerRoot(drawerRootOrId) {
+    if (drawerRootOrId === 'right-nav-panel') {
+        return getCharacterPanel();
+    }
+
     return typeof drawerRootOrId === 'string'
         ? document.getElementById(drawerRootOrId)
         : drawerRootOrId;
@@ -6082,7 +6123,7 @@ function getMobileModalRootCandidates() {
     return [
         document.getElementById(getShellConfig('left').rootPanelId),
         document.getElementById(getShellConfig('right').rootPanelId),
-        document.getElementById('right-nav-panel'),
+        getCharacterPanel(),
         document.getElementById('sb-mobile-nav'),
         chatTools,
     ].filter(element => element instanceof HTMLElement);
@@ -6348,7 +6389,7 @@ function ensureCharacterListToolbarLayout() {
     if (bulkEditButton instanceof HTMLElement && bulkEditButton.dataset.sbGroupsGuardBound !== 'true') {
         bulkEditButton.dataset.sbGroupsGuardBound = 'true';
         bulkEditButton.addEventListener('click', (event) => {
-            const panel = document.getElementById('right-nav-panel');
+            const panel = getCharacterPanel();
             if (panel instanceof HTMLElement && panel.dataset.menuType === 'groups') {
                 event.preventDefault();
                 event.stopImmediatePropagation();
@@ -6363,7 +6404,7 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const normalizedView = view === 'groups' ? 'groups' : 'characters';
     sbState.characterDrawer.lastTab = normalizedView;
 
@@ -6390,7 +6431,7 @@ async function showCharacterListView(view = 'characters') {
 }
 
 function showCharacterEditorEmptyState() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const infoPanel = document.getElementById('result_info');
     const pinAndTabs = document.getElementById('rm_PinAndTabs');
     const characterEditor = document.getElementById('rm_ch_create_block');
@@ -6447,7 +6488,7 @@ function setCharacterEditorEmptyState(visible) {
 }
 
 function syncCharacterTitlebarVisibility() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const pinAndTabs = document.getElementById('rm_PinAndTabs');
 
     if (!(panel instanceof HTMLElement) || !(pinAndTabs instanceof HTMLElement)) {
@@ -6605,7 +6646,7 @@ function setCharacterEditorSubTab(tabId, { focusButton = false } = {}) {
 }
 
 function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {}) {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
     const wasExpanded = panel instanceof HTMLElement && panel.classList.contains('sb-character-editor-fullscreen');
     const canExpand = panel instanceof HTMLElement
@@ -6653,7 +6694,7 @@ function setCharacterPanelMenuType(panel, menuType) {
 }
 
 function toggleCharacterEditorFullscreen() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     if (!(panel instanceof HTMLElement) || !panel.classList.contains('openDrawer') || !isCharacterEditorMenuType(panel.dataset.menuType)) {
         return;
     }
@@ -6662,7 +6703,7 @@ function toggleCharacterEditorFullscreen() {
 }
 
 function syncCharacterEditorFullscreenAvailability() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
     const canUseFullscreen = panel instanceof HTMLElement
         && isCharacterEditorMenuType(panel.dataset.menuType)
@@ -6686,7 +6727,7 @@ function bindCharacterEditorFullscreenToggle() {
     toggleButton.dataset.sbBound = 'true';
     toggleButton.addEventListener('click', () => toggleCharacterEditorFullscreen());
 
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     if (panel instanceof HTMLElement && panel.dataset.sbEditorFullscreenKeyBound !== 'true') {
         panel.dataset.sbEditorFullscreenKeyBound = 'true';
         panel.addEventListener('keydown', (event) => {
@@ -6805,7 +6846,7 @@ function hideCharacterMainPanels() {
 }
 
 function openCharacterWorldInfoTab() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'world-info';
 
     closeMobileNav();
@@ -6827,7 +6868,7 @@ function openCharacterWorldInfoTab() {
 }
 
 function openCharacterPersonaTab() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'persona';
 
     setCharacterPanelMenuType(panel, 'persona');
@@ -6843,7 +6884,7 @@ function openCharacterPersonaTab() {
 }
 
 function openCharacterImportTab() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'import';
 
     setCharacterPanelMenuType(panel, 'import');
@@ -6859,7 +6900,7 @@ function openCharacterImportTab() {
 }
 
 function preserveCharacterImportTab() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
 
     if (panel instanceof HTMLElement && panel.dataset.menuType !== 'import') {
         return;
@@ -6896,7 +6937,7 @@ function openCharacterPanelTab(tabId) {
     }
 
     const activateRequestedTab = () => {
-        const panel = document.getElementById('right-nav-panel');
+        const panel = getCharacterPanel();
         if (normalizedTabId === 'persona') {
             setCharacterPanelMenuType(panel, 'persona');
             openCharacterPersonaTab();
@@ -6958,7 +6999,7 @@ function openCharacterEditorTab() {
 }
 
 function syncCharacterShellTabs(activeTab = null) {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const menuType = panel?.dataset.menuType;
     const normalizedTab = activeTab
         ?? (menuType === 'persona'
@@ -7059,7 +7100,7 @@ function showActiveCharacterEditor() {
 }
 
 function resetCharacterPanelView() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     const listButton = document.getElementById('rm_button_characters');
     const selectedTitle = document.querySelector('#rm_button_selected_ch h2');
 
@@ -7106,7 +7147,7 @@ function resetCharacterPanelView() {
 }
 
 function setCharacterDrawerHostOverflow(shouldOpen) {
-    const host = document.getElementById('rightNavHolder');
+    const host = getCharacterDrawerHost();
 
     if (host instanceof HTMLElement) {
         host.style.overflow = shouldOpen ? 'visible' : '';
@@ -7114,7 +7155,7 @@ function setCharacterDrawerHostOverflow(shouldOpen) {
 }
 
 function syncCharacterDrawerStateFromDom({ force = false } = {}) {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
 
     if (!(panel instanceof HTMLElement)) {
         return;
@@ -7140,7 +7181,7 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
 }
 
 function bindCharacterDrawerStateObserver() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
 
     if (!(panel instanceof HTMLElement)) {
         return;
@@ -7168,7 +7209,7 @@ function bindCharacterDrawerStateObserver() {
 }
 
 function closeCharacterPanel() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
 
     setCharacterEditorFullscreenState(false);
 
@@ -7185,7 +7226,7 @@ function closeCharacterPanel() {
 }
 
 function ensureCharacterResizeHandle() {
-    const panel = document.getElementById('right-nav-panel');
+    const panel = getCharacterPanel();
     if (!(panel instanceof HTMLElement)) {
         return null;
     }
@@ -7231,7 +7272,7 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     // Temporarily allow overflow on the parent so the panel renders.
     setCharacterDrawerHostOverflow(true);
 
-    triggerDrawerToggle('#rightNavHolder > .drawer-toggle');
+    triggerDrawerToggle(getCharacterDrawerToggle());
 
     // Fallback: if the jQuery drawer-toggle handler didn't fire, force-open
     window.requestAnimationFrame(() => {
@@ -7686,7 +7727,7 @@ function hideHostToggles() {
         hostToggle?.classList.add('sb-hidden-toggle');
     }
 
-    const characterDrawer = document.getElementById('rightNavHolder');
+    const characterDrawer = getCharacterDrawerHost();
     characterDrawer?.classList.add('sb-drawer-host');
     characterDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-hidden-toggle');
 
@@ -10836,7 +10877,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         id: `sb-${modePrefix}-nav-show-quick-actions-input`,
         type: 'checkbox',
         value: 'show-quick-actions',
-        label: 'Show Custom Quick Actions below Customize',
+        label: 'Show Custom Quick Actions in the side rail',
         icon: 'fa-bolt',
         onChange: input => isDesktop ? setDesktopNavShowQuickActions(input.checked) : setMobileNavShowQuickActions(input.checked),
     });
@@ -12535,29 +12576,30 @@ function createMobileShellRailButton(item, actionHandler, className = '') {
     return button;
 }
 
-function createCustomizeGroup() {
-    const customizeGroup = createElement('div', {
-        className: 'sb-shell-rail-group sb-shell-rail-group-customize',
+function createRailActionGroup(actions, groupLabel, className = '') {
+    const railGroup = createElement('div', {
+        className: ['sb-shell-rail-group', className].filter(Boolean).join(' '),
         attrs: {
-            'aria-label': 'Customize',
+            'aria-label': groupLabel,
         },
     });
 
-    let previousShellKey = '';
-    for (const action of SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS) {
-        if (previousShellKey && action.shellKey !== previousShellKey) {
-            customizeGroup.appendChild(createMobileShellRailDivider('Settings'));
-        }
-
+    for (const action of actions) {
         const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-customize-action');
         if (button) {
-            customizeGroup.appendChild(button);
+            railGroup.appendChild(button);
         }
-
-        previousShellKey = action.shellKey;
     }
 
-    return customizeGroup;
+    return railGroup;
+}
+
+function getBuiltInRailActionsForShell(shellKey) {
+    return SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS.filter(action => action.shellKey === shellKey);
+}
+
+function getBuiltInRailLabelForShell(shellKey) {
+    return shellKey === 'right' ? 'Customize' : 'Workspace';
 }
 
 function syncMobileShellRailActionState(activeShellKey = '', activeTabId = '') {
@@ -12630,8 +12672,9 @@ function syncMobileShellRailActions(shellKey = null) {
             continue;
         }
 
-        const builtInRailActionKeys = showCustomize
-            ? new Set(SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS.map(getMobileQuickActionKey))
+        const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
+        const builtInRailActionKeys = builtInRailActions.length
+            ? new Set(builtInRailActions.map(getMobileQuickActionKey))
             : new Set();
         const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
             ? createNavReplacementQuickAction(navState.replacementTarget)
@@ -12666,9 +12709,14 @@ function syncMobileShellRailActions(shellKey = null) {
 
         const beforeBlock = createRailBlock('before');
 
-        if (showCustomize) {
-            beforeBlock.appendChild(createMobileShellRailDivider('Workspace'));
-            beforeBlock.appendChild(createCustomizeGroup());
+        if (builtInRailActions.length) {
+            const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
+            beforeBlock.appendChild(createMobileShellRailDivider(builtInRailLabel));
+            beforeBlock.appendChild(createRailActionGroup(
+                builtInRailActions,
+                builtInRailLabel,
+                `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
+            ));
         }
 
         if (beforeBlock.children.length > 0) {
@@ -12804,7 +12852,7 @@ function bindWorldInfoRoute() {
             event.preventDefault();
             event.stopImmediatePropagation();
 
-            const characterPanel = document.getElementById('right-nav-panel');
+            const characterPanel = getCharacterPanel();
             const worldInfoVisible = characterPanel instanceof HTMLElement
                 && characterPanel.classList.contains('openDrawer')
                 && characterPanel.dataset.menuType === 'world-info';
@@ -13115,7 +13163,7 @@ function closeMobileNav() {
 }
 
 function injectCharacterDrawerControls() {
-    document.getElementById('right-nav-panel')?.classList.add('sb-character-drawer-root');
+    getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
 
@@ -13433,7 +13481,7 @@ function getInlineDrawerPersistenceRoots() {
         document.getElementById('left-nav-panel'),
         document.getElementById('user-settings-block-content'),
         document.getElementById('WorldInfo'),
-        document.getElementById('right-nav-panel'),
+        getCharacterPanel(),
     ].filter(element => element instanceof HTMLElement);
 }
 

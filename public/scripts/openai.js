@@ -278,7 +278,20 @@ const MODEL_ID_SEARCH_CONTROLS = [
     { source: chat_completion_sources.ZAI, setting: 'zai_model', input: '#zai_model_id', select: '#model_zai_select', dynamicGroupId: 'zai_other_models' },
 ];
 
+const INLINE_SELECT_PICKER_CONTROLS = [
+    { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter model' },
+    { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter model sorting' },
+    { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter providers', multiple: true },
+    { source: 'openrouter-quantizations-chat', select: '#openrouter_quantizations_chat', label: 'OpenRouter quantizations', multiple: true },
+    { source: 'openrouter-model-text', select: '#openrouter_model', label: 'OpenRouter model' },
+    { source: 'openrouter-middleout', select: '#openrouter_middleout', label: 'OpenRouter middle-out transform' },
+    { source: 'openrouter-providers-text', select: '#openrouter_providers_text', label: 'OpenRouter providers', multiple: true },
+    { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter quantizations', multiple: true },
+];
+
 const modelIdSearchControlState = new Map();
+let modelSelectPickerDocumentListenerBound = false;
+let inlineSelectPickerObserverBound = false;
 
 const character_names_behavior = {
     NONE: -1,
@@ -2215,10 +2228,379 @@ function getPromptManagerSelect2DropdownParent() {
     return promptManagerPopup.length ? promptManagerPopup : getApiSelect2DropdownParent();
 }
 
+function closeModelSelectPickerMenus(exceptMenu = null) {
+    document.querySelectorAll('.sb-model-id-picker-menu').forEach(menu => {
+        if (menu !== exceptMenu) {
+            menu.hidden = true;
+        }
+    });
+}
+
+function bindModelSelectPickerDocumentListener() {
+    if (modelSelectPickerDocumentListenerBound) {
+        return;
+    }
+
+    document.addEventListener('click', event => {
+        if (event.target instanceof Element && event.target.closest('.sb-model-id-search-row, .sb-model-id-picker-menu, .sb-inline-select-picker-control')) {
+            return;
+        }
+
+        closeModelSelectPickerMenus();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            closeModelSelectPickerMenus();
+        }
+    });
+
+    modelSelectPickerDocumentListenerBound = true;
+}
+
+function getModelSelectPickerOptionEntries(select) {
+    const entries = [];
+
+    for (const child of select.children) {
+        if (child instanceof HTMLOptGroupElement) {
+            const groupLabel = child.label || '';
+            for (const option of child.children) {
+                if (option instanceof HTMLOptionElement && !option.disabled) {
+                    entries.push({ group: groupLabel, text: option.textContent.trim() || option.value, value: option.value });
+                }
+            }
+            continue;
+        }
+
+        if (child instanceof HTMLOptionElement && !child.disabled) {
+            entries.push({ group: '', text: child.textContent.trim() || child.value, value: child.value });
+        }
+    }
+
+    return entries.filter(entry => entry.value);
+}
+
+function openInlineModelSelectPicker(select, { input = null, source = select.id } = {}) {
+    const row = input instanceof HTMLInputElement && input.parentElement instanceof HTMLElement ? input.parentElement : null;
+    const menuParent = row?.parentElement;
+
+    if (!row || !menuParent) {
+        return false;
+    }
+
+    let menu = menuParent.querySelector(`.sb-model-id-picker-menu[data-sb-model-id-picker-menu-source="${CSS.escape(source)}"]`);
+    if (!(menu instanceof HTMLElement)) {
+        menu = document.createElement('div');
+        menu.className = 'sb-model-id-picker-menu';
+        menu.dataset.sbModelIdPickerMenuSource = source;
+        menu.hidden = true;
+        menu.setAttribute('role', 'listbox');
+        row.insertAdjacentElement('afterend', menu);
+    }
+
+    const entries = getModelSelectPickerOptionEntries(select);
+    const currentValue = select.value || input.value || '';
+    let currentGroup = null;
+
+    menu.innerHTML = '';
+    menu.setAttribute('aria-label', t`Available models`);
+
+    if (entries.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'sb-model-id-picker-empty';
+        empty.textContent = t`No models available`;
+        menu.appendChild(empty);
+    }
+
+    for (const entry of entries) {
+        if (entry.group && entry.group !== currentGroup) {
+            currentGroup = entry.group;
+            const heading = document.createElement('div');
+            heading.className = 'sb-model-id-picker-group';
+            heading.textContent = entry.group;
+            menu.appendChild(heading);
+        }
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sb-model-id-picker-option';
+        button.textContent = entry.text;
+        button.dataset.value = entry.value;
+        button.setAttribute('role', 'option');
+        button.setAttribute('aria-selected', String(entry.value === currentValue));
+        button.addEventListener('click', () => {
+            select.value = entry.value;
+            input.value = entry.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            closeModelSelectPickerMenus();
+        });
+        menu.appendChild(button);
+    }
+
+    bindModelSelectPickerDocumentListener();
+    const willOpen = menu.hidden;
+    closeModelSelectPickerMenus(menu);
+    menu.hidden = !willOpen;
+
+    if (!menu.hidden) {
+        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    return true;
+}
+
+function getInlineSelectPickerEntries(select) {
+    const entries = [];
+
+    for (const child of select.children) {
+        if (child instanceof HTMLOptGroupElement) {
+            const groupLabel = child.label || '';
+            for (const option of child.children) {
+                if (option instanceof HTMLOptionElement && !option.disabled) {
+                    entries.push({ group: groupLabel, text: option.textContent.trim() || option.value, value: option.value });
+                }
+            }
+            continue;
+        }
+
+        if (child instanceof HTMLOptionElement && !child.disabled) {
+            entries.push({ group: '', text: child.textContent.trim() || child.value, value: child.value });
+        }
+    }
+
+    return entries;
+}
+
+function getInlineSelectPickerSelectedValues(select) {
+    return new Set(Array.from(select.selectedOptions).map(option => option.value));
+}
+
+function dispatchInlineSelectPickerChange(select) {
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function toggleInlineSelectPickerOption(select, value) {
+    if (select.multiple) {
+        for (const option of select.options) {
+            if (option.value === value) {
+                option.selected = !option.selected;
+                break;
+            }
+        }
+    } else {
+        select.value = value;
+    }
+
+    dispatchInlineSelectPickerChange(select);
+}
+
+function openInlineSelectPicker(select, { source = select.id, label = select.id, multiple = select.multiple, forceOpen = false } = {}) {
+    if (!(select instanceof HTMLSelectElement) || !(select.parentElement instanceof HTMLElement) || select.disabled) {
+        return false;
+    }
+
+    const menuParent = select.parentElement;
+    let menu = menuParent.querySelector(`.sb-model-id-picker-menu[data-sb-model-id-picker-menu-source="${CSS.escape(source)}"]`);
+    if (!(menu instanceof HTMLElement)) {
+        menu = document.createElement('div');
+        menu.className = 'sb-model-id-picker-menu sb-inline-select-picker-menu';
+        menu.dataset.sbModelIdPickerMenuSource = source;
+        menu.hidden = true;
+        menu.setAttribute('role', 'listbox');
+        if (multiple) {
+            menu.setAttribute('aria-multiselectable', 'true');
+        }
+        select.insertAdjacentElement('afterend', menu);
+    }
+
+    const entries = getInlineSelectPickerEntries(select);
+    const selectedValues = getInlineSelectPickerSelectedValues(select);
+    let currentGroup = null;
+
+    menu.innerHTML = '';
+    menu.setAttribute('aria-label', label);
+    menu.toggleAttribute('data-sb-inline-select-multiple', Boolean(multiple));
+
+    if (entries.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'sb-model-id-picker-empty';
+        empty.textContent = t`No options available`;
+        menu.appendChild(empty);
+    }
+
+    for (const entry of entries) {
+        if (entry.group && entry.group !== currentGroup) {
+            currentGroup = entry.group;
+            const heading = document.createElement('div');
+            heading.className = 'sb-model-id-picker-group';
+            heading.textContent = entry.group;
+            menu.appendChild(heading);
+        }
+
+        const button = document.createElement('button');
+        const selected = selectedValues.has(entry.value);
+        button.type = 'button';
+        button.className = 'sb-model-id-picker-option sb-inline-select-picker-option';
+        button.textContent = entry.text;
+        button.dataset.value = entry.value;
+        button.setAttribute('role', 'option');
+        button.setAttribute('aria-selected', String(selected));
+        if (multiple) {
+            button.setAttribute('aria-pressed', String(selected));
+        }
+        button.addEventListener('click', () => {
+            toggleInlineSelectPickerOption(select, entry.value);
+            if (multiple) {
+                openInlineSelectPicker(select, { source, label, multiple, forceOpen: true });
+            } else {
+                closeModelSelectPickerMenus();
+            }
+        });
+        menu.appendChild(button);
+    }
+
+    bindModelSelectPickerDocumentListener();
+    const willOpen = forceOpen || menu.hidden;
+    closeModelSelectPickerMenus(menu);
+    menu.hidden = !willOpen;
+
+    if (!menu.hidden) {
+        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    return true;
+}
+
+function shouldUseInlineModelSelectPicker() {
+    return isMobile() || window.matchMedia('(max-width: 768px)').matches;
+}
+
+function bindInlineSelectPickerSelect(select, control) {
+    if (!(select instanceof HTMLSelectElement) || select.dataset.sbInlineSelectPickerBound === 'true') {
+        return;
+    }
+
+    select.dataset.sbInlineSelectPickerBound = 'true';
+    select.classList.add('sb-inline-select-picker-control');
+
+    const openPicker = event => {
+        if (!shouldUseInlineModelSelectPicker()) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        openInlineSelectPicker(select, control);
+    };
+
+    select.addEventListener('pointerdown', openPicker);
+    select.addEventListener('click', event => {
+        if (shouldUseInlineModelSelectPicker()) {
+            event.preventDefault();
+        }
+    });
+    select.addEventListener('keydown', event => {
+        if (!shouldUseInlineModelSelectPicker() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {
+            return;
+        }
+
+        openPicker(event);
+    });
+}
+
+function bindInlineSelectPickerControl(control) {
+    document.querySelectorAll(control.select).forEach(select => bindInlineSelectPickerSelect(select, control));
+}
+
+function bindInlineSelectPickerControls() {
+    INLINE_SELECT_PICKER_CONTROLS.forEach(bindInlineSelectPickerControl);
+
+    if (!inlineSelectPickerObserverBound && document.body instanceof HTMLElement) {
+        const observer = new MutationObserver(() => {
+            INLINE_SELECT_PICKER_CONTROLS.forEach(bindInlineSelectPickerControl);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        inlineSelectPickerObserverBound = true;
+    }
+}
+
+function setModelIdPickerTouchTarget(button) {
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    for (const property of ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'flex-basis']) {
+        button.style.setProperty(property, '44px', 'important');
+    }
+    button.style.setProperty('padding', '0', 'important');
+}
+
+function openModelSelectPicker(select, options = {}) {
+    if (!(select instanceof HTMLSelectElement) || select.disabled) {
+        return;
+    }
+
+    select.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+
+    if (shouldUseInlineModelSelectPicker() && openInlineModelSelectPicker(select, options)) {
+        return;
+    }
+
+    if (select.classList.contains('select2-hidden-accessible') && typeof $ === 'function') {
+        try {
+            $(select).select2('open');
+            return;
+        } catch {
+            // Fall back to the native picker below when Select2 is not ready.
+        }
+    }
+
+    select.focus({ preventScroll: true });
+
+    if (typeof select.showPicker === 'function') {
+        try {
+            select.showPicker();
+        } catch {
+            select.focus({ preventScroll: true });
+        }
+    }
+}
+
+function ensureOpenAIModelPickerButton() {
+    const input = document.querySelector('#openai_model_id');
+    const select = document.querySelector('#model_openai_select');
+
+    if (!(input instanceof HTMLInputElement) || !(select instanceof HTMLSelectElement) || !(input.parentElement instanceof HTMLElement)) {
+        return;
+    }
+
+    const row = input.parentElement;
+    row.classList.add('sb-model-id-search-row');
+    input.classList.add('sb-model-id-search-input');
+
+    let button = row.querySelector('#model_openai_picker_toggle');
+    if (!(button instanceof HTMLButtonElement)) {
+        button = document.createElement('button');
+        button.id = 'model_openai_picker_toggle';
+        button.type = 'button';
+        button.className = 'menu_button menu_button_icon sb-model-id-picker-toggle';
+        button.innerHTML = '<i class="fa-solid fa-list-ul" aria-hidden="true"></i>';
+        button.addEventListener('click', () => openModelSelectPicker(select, { input, source: chat_completion_sources.OPENAI }));
+        input.insertAdjacentElement('afterend', button);
+    }
+
+    button.title = t`Open model list`;
+    button.setAttribute('aria-label', t`Open model list`);
+    button.disabled = select.disabled || select.options.length === 0;
+    setModelIdPickerTouchTarget(button);
+}
+
 function initOpenAIModelSearch() {
     const $modelSelect = $('#model_openai_select');
+    ensureOpenAIModelPickerButton();
 
-    if (isMobile() || $modelSelect.length === 0) {
+    if (shouldUseInlineModelSelectPicker() || $modelSelect.length === 0) {
         return;
     }
 
@@ -2739,6 +3121,7 @@ function ensureModelIdSearchFavoriteButton(control) {
 
     let button = row.querySelector(`[data-sb-model-id-favorite-source="${CSS.escape(control.source)}"]`);
     if (button instanceof HTMLButtonElement) {
+        setModelIdPickerTouchTarget(button);
         return;
     }
 
@@ -2748,7 +3131,56 @@ function ensureModelIdSearchFavoriteButton(control) {
     button.dataset.sbModelIdFavoriteSource = control.source;
     button.innerHTML = '<i class="fa-solid fa-star" aria-hidden="true"></i>';
     button.addEventListener('click', () => toggleModelIdSearchFavorite(control));
-    input.insertAdjacentElement('afterend', button);
+
+    const pickerButton = row.querySelector(`[data-sb-model-id-picker-source="${CSS.escape(control.source)}"]`);
+    if (pickerButton instanceof HTMLButtonElement) {
+        pickerButton.insertAdjacentElement('afterend', button);
+    } else {
+        input.insertAdjacentElement('afterend', button);
+    }
+    setModelIdPickerTouchTarget(button);
+}
+
+function openModelIdSearchSelect(control) {
+    const input = document.querySelector(control.input);
+    const select = document.querySelector(control.select);
+
+    if (!(input instanceof HTMLInputElement) || !(select instanceof HTMLSelectElement)) {
+        return;
+    }
+
+    getModelIdSearchState(control.source).query = '';
+    rebuildModelIdSearchControl(control);
+    openModelSelectPicker(select, { input, source: control.source });
+}
+
+function ensureModelIdSearchPickerButton(control) {
+    const input = document.querySelector(control.input);
+    const select = document.querySelector(control.select);
+
+    if (!(input instanceof HTMLInputElement) || !(select instanceof HTMLSelectElement) || !(input.parentElement instanceof HTMLElement)) {
+        return;
+    }
+
+    const row = input.parentElement;
+    row.classList.add('sb-model-id-search-row');
+    input.classList.add('sb-model-id-search-input');
+
+    let button = row.querySelector(`[data-sb-model-id-picker-source="${CSS.escape(control.source)}"]`);
+    if (!(button instanceof HTMLButtonElement)) {
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'menu_button menu_button_icon sb-model-id-picker-toggle';
+        button.dataset.sbModelIdPickerSource = control.source;
+        button.innerHTML = '<i class="fa-solid fa-list-ul" aria-hidden="true"></i>';
+        button.addEventListener('click', () => openModelIdSearchSelect(control));
+        input.insertAdjacentElement('afterend', button);
+    }
+
+    button.title = t`Open model list`;
+    button.setAttribute('aria-label', t`Open model list`);
+    button.disabled = select.disabled || select.options.length === 0;
+    setModelIdPickerTouchTarget(button);
 }
 
 function initModelIdSearchControl(control) {
@@ -2760,6 +3192,7 @@ function initModelIdSearchControl(control) {
     }
 
     getModelIdSearchStaticEntries(control);
+    ensureModelIdSearchPickerButton(control);
     ensureModelIdSearchFavoriteButton(control);
 
     if (input.dataset.sbModelIdSearchBound !== 'true') {
@@ -3465,6 +3898,7 @@ function scheduleOpenAIUiRefresh() {
         updateServerChatCompletionConfigSourceVisibility();
         updateOpenAISettingsGroupVisibility();
         updateOpenAIModelFavoriteButton();
+        bindInlineSelectPickerControls();
     });
 
     window.setTimeout(() => {
@@ -3472,6 +3906,7 @@ function scheduleOpenAIUiRefresh() {
         updateServerChatCompletionConfigSourceVisibility();
         updateOpenAISettingsGroupVisibility();
         updateOpenAIModelFavoriteButton();
+        bindInlineSelectPickerControls();
     }, 200);
 }
 
@@ -9533,7 +9968,7 @@ export function initOpenAI() {
         });
     }
 
-    if (!isMobile()) {
+    if (!shouldUseInlineModelSelectPicker()) {
         $('#model_openai_select').select2({
             dropdownParent: getApiSelect2DropdownParent(),
             placeholder: t`Select a model`,
@@ -9638,6 +10073,7 @@ export function initOpenAI() {
     groupOpenAISettingsIntoDrawers();
     injectServerChatCompletionConfigCard();
     cacheOpenAIStaticModelGroups();
+    bindInlineSelectPickerControls();
     rebuildOpenAIModelSelect();
     initModelIdSearchControls();
     updateAdvancedFormattingVisibility();
