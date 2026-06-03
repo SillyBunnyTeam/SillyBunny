@@ -24,6 +24,12 @@ describe('server admin git helpers', () => {
         expect(getStatusDisplayBranch('feature/admin-git', 'origin/feature/admin-git')).toBe('feature/admin-git');
     });
 
+    test('uses the tracked remote when Git cannot report a local branch name', () => {
+        expect(getStatusDisplayBranch('HEAD', 'origin/staging')).toBe('staging');
+        expect(getStatusDisplayBranch('', 'origin/main')).toBe('main');
+        expect(getStatusDisplayBranch('HEAD', '')).toBe('HEAD');
+    });
+
     test('lists display names from remote branch summaries', () => {
         const remoteBranches = getRemoteBranchesFromSummary({
             branches: {

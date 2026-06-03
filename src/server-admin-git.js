@@ -27,7 +27,7 @@ export function getStatusDisplayBranch(branch, trackingBranch) {
     const currentBranch = String(branch ?? '').trim();
     const upstreamBranch = String(trackingBranch ?? '').trim();
 
-    if (currentBranch.startsWith(RUNTIME_BRANCH_PREFIX) && upstreamBranch) {
+    if ((!currentBranch || currentBranch === 'HEAD' || currentBranch.startsWith(RUNTIME_BRANCH_PREFIX)) && upstreamBranch) {
         return getRemoteBranchDisplayName(upstreamBranch);
     }
 
