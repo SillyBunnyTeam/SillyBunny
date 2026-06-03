@@ -74,6 +74,9 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
     ],
+    'characters:persona': [
+        { href: 'css/personas.css?v=20260603e', id: 'deferred-personas-css' },
+    ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
@@ -6861,6 +6864,7 @@ function openCharacterPersonaTab() {
     const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'persona';
 
+    preloadPanelStylesheets('characters', 'persona');
     setCharacterPanelMenuType(panel, 'persona');
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
@@ -6914,8 +6918,8 @@ function openCharacterPanelTab(tabId) {
         setCharacterEditorFullscreenState(false);
     }
 
-    if (normalizedTabId === 'world-info') {
-        preloadPanelStylesheets('characters', 'world-info');
+    if (normalizedTabId === 'world-info' || normalizedTabId === 'persona') {
+        preloadPanelStylesheets('characters', normalizedTabId);
     }
 
     if (!isCharacterPanelOpen()) {
@@ -13802,6 +13806,99 @@ async function refreshBottomChatSelect() {
     }
 }
 
+const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
+
+function getPersonaAppendicesFromContext(context, avatarId) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    const appendices = Array.isArray(descriptor?.appendices) ? descriptor.appendices : [];
+    return appendices.map((appendix, index) => ({
+        id: String(appendix?.id || `appendix-${index}`),
+        name: String(appendix?.name || `Scenario Note ${index + 1}`),
+        description: String(appendix?.description || ''),
+    }));
+}
+
+function getActivePersonaAppendixIdsFromContext(context, avatarId) {
+    const metadata = context?.chatMetadata?.[PERSONA_APPENDICES_METADATA_KEY];
+    const activeIds = Array.isArray(metadata?.[avatarId]) ? metadata[avatarId] : [];
+    const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
+    return activeIds.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+}
+
+function getActivePersonaAppendicesFromContext(context, avatarId) {
+    const activeIds = new Set(getActivePersonaAppendixIdsFromContext(context, avatarId));
+    return getPersonaAppendicesFromContext(context, avatarId).filter(appendix => activeIds.has(appendix.id));
+}
+
+function getPersonaDisplayNameWithAppendices(context, avatarId, name) {
+    const appendices = getActivePersonaAppendicesFromContext(context, avatarId);
+    if (!appendices.length) {
+        return name;
+    }
+
+    return `${name} + ${appendices.map(appendix => appendix.name).join(' + ')}`;
+}
+
+function composePersonaDescriptionFromContext(context, avatarId, activeIds = null) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    const appendices = getPersonaAppendicesFromContext(context, avatarId);
+    const activeIdSet = new Set(activeIds ?? getActivePersonaAppendixIdsFromContext(context, avatarId));
+    const chunks = [];
+    const baseDescription = String(descriptor?.description ?? '').trim();
+
+    if (baseDescription) {
+        chunks.push(baseDescription);
+    }
+
+    for (const appendix of appendices) {
+        const description = String(appendix.description ?? '').trim();
+        if (activeIdSet.has(appendix.id) && description) {
+            chunks.push(`[${appendix.name}]\n${description}`);
+        }
+    }
+
+    return chunks.join('\n\n');
+}
+
+function syncPersonaDescriptionFromContext(context, avatarId, activeIds = null) {
+    if (!context?.powerUserSettings || !avatarId) {
+        return;
+    }
+
+    const { currentAvatarId } = getCurrentPersonaSelection(context);
+    if (currentAvatarId === avatarId) {
+        context.powerUserSettings.persona_description = composePersonaDescriptionFromContext(context, avatarId, activeIds);
+    }
+}
+
+function setActivePersonaAppendixIdsFromContext(context, avatarId, ids) {
+    if (!context?.chatMetadata || !avatarId) {
+        return;
+    }
+
+    const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
+    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+
+    if (!context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY]
+        || typeof context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY] !== 'object'
+        || Array.isArray(context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY])) {
+        context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY] = {};
+    }
+
+    if (cleanIds.length) {
+        context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY][avatarId] = cleanIds;
+    } else {
+        delete context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY][avatarId];
+    }
+
+    syncPersonaDescriptionFromContext(context, avatarId, cleanIds);
+    context.saveMetadataDebounced?.();
+    const eventTypes = context.eventTypes ?? context.event_types;
+    if (context.eventSource && eventTypes?.PERSONA_UPDATED) {
+        void context.eventSource.emit(eventTypes.PERSONA_UPDATED, avatarId);
+    }
+}
+
 function updatePersonaBubble(bubble) {
     if (!(bubble instanceof HTMLElement)) {
         bubble = document.getElementById('sb-persona-bubble');
@@ -13820,7 +13917,7 @@ function updatePersonaBubble(bubble) {
     } else {
         bubble.style.backgroundImage = 'none';
     }
-    bubble.setAttribute('title', `Persona: ${currentName}`);
+    bubble.setAttribute('title', `Persona: ${getPersonaDisplayNameWithAppendices(context, currentAvatarId, currentName)}`);
 }
 
 function quoteSlashCommandArgument(value) {
@@ -13910,7 +14007,10 @@ function bindBottomChatBarEvents() {
 
     const refresh = () => scheduleBottomChatBarRefresh(0);
     const refreshPersona = () => {
-        window.requestAnimationFrame(() => updatePersonaBubble(bottomChatBarState.personaBubble));
+        window.requestAnimationFrame(() => {
+            updatePersonaBubble(bottomChatBarState.personaBubble);
+            refreshOpenPersonaPicker();
+        });
     };
     const events = [
         eventTypes.APP_READY,
@@ -13927,6 +14027,7 @@ function bindBottomChatBarEvents() {
     ].filter(Boolean);
     const personaEvents = [
         eventTypes.PERSONA_CHANGED,
+        eventTypes.PERSONA_UPDATED,
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
         eventTypes.CHAT_LOADED,
@@ -13954,6 +14055,10 @@ function togglePersonaPicker() {
         return;
     }
 
+    openPersonaPicker();
+}
+
+function openPersonaPicker({ focus = true } = {}) {
     const context = getSillyTavernContext();
     if (!context) return;
 
@@ -13962,9 +14067,22 @@ function togglePersonaPicker() {
     const picker = createElement('div', {
         id: 'sb-persona-picker',
         attrs: {
+            role: 'dialog',
+            'aria-label': 'Switch persona',
+        },
+    });
+    const optionsList = createElement('div', {
+        className: 'sb-persona-options',
+        attrs: {
             role: 'listbox',
             'aria-label': 'Choose persona',
         },
+    });
+    picker.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closePersonaPicker({ restoreFocus: true });
+        }
     });
 
     const keys = Object.keys(personas).filter(avatarId => {
@@ -13977,24 +14095,113 @@ function togglePersonaPicker() {
     if (!keys.length) {
         const empty = createElement('div', { className: 'sb-persona-option-empty' });
         empty.textContent = 'No personas defined';
-        picker.appendChild(empty);
+        optionsList.appendChild(empty);
     } else {
         for (const avatarId of keys) {
             const name = personas[avatarId] || avatarId;
             const title = personaDescriptions[avatarId]?.title || '';
             const isActive = avatarId === currentAvatarId;
-            addPersonaOption(picker, avatarId, name, title, isActive, context);
+            addPersonaOption(optionsList, avatarId, name, title, isActive, context);
         }
     }
+
+    picker.appendChild(optionsList);
+    renderPersonaPickerAppendixControls(picker, context, currentAvatarId);
 
     const bubble = document.getElementById('sb-persona-bubble');
     if (bubble instanceof HTMLElement) {
         document.body.appendChild(picker);
         positionPersonaPicker(picker, bubble);
-        const activeOption = picker.querySelector('.sb-persona-option.is-active');
-        const firstOption = picker.querySelector('.sb-persona-option');
-        (activeOption ?? firstOption)?.focus({ preventScroll: true });
+        if (focus) {
+            const activeOption = picker.querySelector('.sb-persona-option.is-active');
+            const firstOption = picker.querySelector('.sb-persona-option');
+            const firstControl = picker.querySelector('button, input');
+            (activeOption ?? firstOption ?? firstControl)?.focus({ preventScroll: true });
+        }
     }
+}
+
+function refreshOpenPersonaPicker() {
+    const existing = document.getElementById('sb-persona-picker');
+    if (!existing) {
+        return;
+    }
+
+    existing.remove();
+    openPersonaPicker({ focus: false });
+}
+
+function renderPersonaPickerAppendixControls(picker, context, avatarId) {
+    if (!avatarId) {
+        return;
+    }
+
+    const appendices = getPersonaAppendicesFromContext(context, avatarId);
+    const personas = context?.powerUserSettings?.personas ?? {};
+    const personaName = personas[avatarId] || avatarId;
+    const activeIds = new Set(getActivePersonaAppendixIdsFromContext(context, avatarId));
+    const section = createElement('section', {
+        className: 'sb-persona-picker-appendices',
+        attrs: { 'aria-label': `Scenario Notes for ${personaName}` },
+    });
+    const header = createElement('div', { className: 'sb-persona-picker-appendices-header' });
+    const title = createElement('strong', { text: 'Use with Scenario Notes' });
+    const manageButton = createElement('button', {
+        className: 'sb-persona-picker-manage menu_button menu_button_icon',
+        attrs: { type: 'button', title: 'Manage Scenario Notes' },
+    });
+    manageButton.innerHTML = '<i class="fa-solid fa-pen-to-square fa-fw" aria-hidden="true"></i><span>Manage</span>';
+    manageButton.addEventListener('click', openPersonaAppendicesManager);
+    header.append(title, manageButton);
+    section.appendChild(header);
+
+    if (!appendices.length) {
+        const empty = createElement('p', { className: 'sb-persona-picker-appendices-empty', text: 'No Scenario Notes on this persona yet.' });
+        section.appendChild(empty);
+        picker.appendChild(section);
+        return;
+    }
+
+    const controls = createElement('div', { className: 'sb-persona-picker-appendix-toggles' });
+    for (const appendix of appendices) {
+        const label = createElement('label', { className: 'sb-persona-picker-appendix-toggle' });
+        const checkbox = createElement('input', {
+            attrs: {
+                type: 'checkbox',
+                value: appendix.id,
+            },
+        });
+        checkbox.checked = activeIds.has(appendix.id);
+        checkbox.addEventListener('change', () => {
+            const nextIds = getActivePersonaAppendixIdsFromContext(context, avatarId).filter(id => id !== appendix.id);
+            if (checkbox.checked) {
+                nextIds.push(appendix.id);
+            }
+            setActivePersonaAppendixIdsFromContext(context, avatarId, nextIds);
+            updatePersonaBubble();
+        });
+
+        const labelText = createElement('span', { text: appendix.name });
+        label.append(checkbox, labelText);
+        controls.appendChild(label);
+    }
+
+    section.appendChild(controls);
+    picker.appendChild(section);
+}
+
+function openPersonaAppendicesManager() {
+    closePersonaPicker();
+    openCharacterPanelTab('persona');
+
+    window.setTimeout(() => {
+        document.getElementById('persona_workspace_tab_edit')?.click();
+        document.getElementById('persona_editor_tab_prompt')?.click();
+        const appendicesHeading = document.getElementById('persona_appendices_heading');
+        const addButton = document.getElementById('persona_appendix_add');
+        (appendicesHeading ?? addButton)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        addButton?.focus({ preventScroll: true });
+    }, 160);
 }
 
 function positionPersonaPicker(picker, bubble) {
@@ -14097,16 +14304,25 @@ function addPersonaOption(picker, avatarId, name, title, isActive, context) {
 
     const label = createElement('span', { className: 'sb-persona-option-name' });
     label.textContent = name;
+    const info = createElement('div', { className: 'sb-persona-option-info' });
+    info.appendChild(label);
 
     if (title) {
         const desc = createElement('span', { className: 'sb-persona-option-description' });
         desc.textContent = title;
-        const info = createElement('div', { className: 'sb-persona-option-info' });
-        info.append(label, desc);
-        option.append(img, info);
-    } else {
-        option.append(img, label);
+        info.appendChild(desc);
     }
+
+    const activeAppendices = getActivePersonaAppendicesFromContext(context, avatarId);
+    if (activeAppendices.length) {
+        const chips = createElement('span', { className: 'sb-persona-option-appendices' });
+        for (const appendix of activeAppendices) {
+            chips.appendChild(createElement('span', { className: 'sb-persona-appendix-chip', text: `+ ${appendix.name}` }));
+        }
+        info.appendChild(chips);
+    }
+
+    option.append(img, info);
 
     option.addEventListener('click', () => { void selectPersonaOption(option, picker, avatarId, context); });
     option.addEventListener('keydown', event => {

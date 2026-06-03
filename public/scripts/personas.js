@@ -106,6 +106,7 @@ let savePersonasPage = 0;
 const GRID_STORAGE_KEY = 'Personas_GridView';
 const DEFAULT_DEPTH = 2;
 const DEFAULT_ROLE = 0;
+const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
 
 /** @type {string} The currently selected persona (identified by its avatar) */
 export let user_avatar = '';
@@ -142,8 +143,151 @@ export function getUserAvatar(avatarImg) {
     return `${USER_AVATAR_PATH}${avatarImg}`;
 }
 
+function createPersonaAppendixId(name = 'appendix') {
+    const slug = String(name || 'appendix')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48) || 'appendix';
+    return `${slug}-${Date.now()}`;
+}
+
+function normalizePersonaAppendices(descriptor) {
+    if (!descriptor) {
+        return [];
+    }
+
+    const source = Array.isArray(descriptor.appendices) ? descriptor.appendices : [];
+    const usedIds = new Set();
+    descriptor.appendices = source.map((appendix, index) => {
+        const name = String(appendix?.name || `Scenario Note ${index + 1}`).trim() || `Scenario Note ${index + 1}`;
+        const fallbackId = `${createPersonaAppendixId(name)}-${index}`;
+        let id = String(appendix?.id || fallbackId).trim() || fallbackId;
+
+        while (usedIds.has(id)) {
+            id = `${id}-${index}`;
+        }
+
+        usedIds.add(id);
+        return {
+            id,
+            name,
+            description: String(appendix?.description ?? ''),
+        };
+    });
+
+    return descriptor.appendices;
+}
+
+function getPersonaAppendices(avatarId = user_avatar) {
+    return normalizePersonaAppendices(power_user.persona_descriptions?.[avatarId]);
+}
+
+function getPersonaAppendicesMetadata() {
+    if (!chat_metadata[PERSONA_APPENDICES_METADATA_KEY]
+        || typeof chat_metadata[PERSONA_APPENDICES_METADATA_KEY] !== 'object'
+        || Array.isArray(chat_metadata[PERSONA_APPENDICES_METADATA_KEY])) {
+        chat_metadata[PERSONA_APPENDICES_METADATA_KEY] = {};
+    }
+
+    return chat_metadata[PERSONA_APPENDICES_METADATA_KEY];
+}
+
+function getActivePersonaAppendixIds(avatarId = user_avatar) {
+    const metadata = getPersonaAppendicesMetadata();
+    const appendixIds = new Set(getPersonaAppendices(avatarId).map(appendix => appendix.id));
+    const activeIds = Array.isArray(metadata[avatarId]) ? metadata[avatarId] : [];
+    return activeIds.map(String).filter((id, index, array) => appendixIds.has(id) && array.indexOf(id) === index);
+}
+
+function getActivePersonaAppendices(avatarId = user_avatar) {
+    const activeIds = new Set(getActivePersonaAppendixIds(avatarId));
+    return getPersonaAppendices(avatarId).filter(appendix => activeIds.has(appendix.id));
+}
+
+function composePersonaDescription(avatarId = user_avatar) {
+    const descriptor = power_user.persona_descriptions?.[avatarId];
+    const chunks = [];
+    const baseDescription = String(descriptor?.description ?? '').trim();
+
+    if (baseDescription) {
+        chunks.push(baseDescription);
+    }
+
+    for (const appendix of getActivePersonaAppendices(avatarId)) {
+        const description = String(appendix.description ?? '').trim();
+        if (description) {
+            chunks.push(`[${appendix.name}]\n${description}`);
+        }
+    }
+
+    return chunks.join('\n\n');
+}
+
+function syncPersonaDescriptionFromDescriptor(avatarId = user_avatar) {
+    if (avatarId !== user_avatar) {
+        return;
+    }
+
+    power_user.persona_description = composePersonaDescription(avatarId);
+    $('#persona_effective_description_preview').text(power_user.persona_description || t`[No description]`);
+    countPersonaDescriptionTokens();
+}
+
+async function setActivePersonaAppendixIds(avatarId, ids) {
+    const metadata = getPersonaAppendicesMetadata();
+    const availableIds = new Set(getPersonaAppendices(avatarId).map(appendix => appendix.id));
+    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+
+    if (cleanIds.length) {
+        metadata[avatarId] = cleanIds;
+    } else {
+        delete metadata[avatarId];
+    }
+
+    saveMetadataDebounced();
+    syncPersonaDescriptionFromDescriptor(avatarId);
+    renderPersonaAppendices();
+    updateSelectedPersonaMasthead();
+    await eventSource.emit(event_types.PERSONA_UPDATED, avatarId);
+}
+
+function setPersonaWorkspaceTab(tab) {
+    const activeTab = tab === 'edit' ? 'edit' : 'browse';
+    $('#persona-management-block').attr('data-persona-workspace-tab', activeTab);
+    $('.persona-workspace-tabs [data-persona-workspace-tab]').each(function () {
+        const selected = $(this).attr('data-persona-workspace-tab') === activeTab;
+        $(this).toggleClass('is-active', selected).attr('aria-selected', String(selected));
+    });
+    $('.persona-workspace-panel').removeAttr('aria-hidden');
+}
+
+function setPersonaEditorTab(tab) {
+    const activeTab = ['prompt', 'connections', 'tools'].includes(tab) ? tab : 'prompt';
+    $('.persona-editor-tabs [data-persona-editor-tab]').each(function () {
+        const selected = $(this).attr('data-persona-editor-tab') === activeTab;
+        $(this).toggleClass('is-active', selected).attr('aria-selected', String(selected));
+    });
+    $('.persona-editor-panel').each(function () {
+        const selected = $(this).attr('data-persona-editor-panel') === activeTab;
+        $(this).toggleClass('is-active', selected).prop('hidden', !selected);
+    });
+}
+
+function focusAdjacentPersonaTab(tabs, current, direction) {
+    const currentIndex = tabs.index(current);
+    if (currentIndex === -1 || !tabs.length) {
+        return;
+    }
+
+    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+    tabs[nextIndex].focus({ preventScroll: true });
+    tabs[nextIndex].click();
+}
+
 export function initUserAvatar(avatar) {
     user_avatar = avatar;
+    syncPersonaDescriptionFromDescriptor();
     reloadUserAvatar();
     updatePersonaUIStates();
 }
@@ -533,6 +677,7 @@ export async function initPersona(avatarId, personaName, personaDescription, per
         role: role,
         lorebook: lorebook,
         title: personaTitle || '',
+        appendices: [],
     };
 
     saveSettingsDebounced();
@@ -736,6 +881,7 @@ export async function convertCharacterToPersona(characterId = null) {
         role: DEFAULT_ROLE,
         lorebook: '',
         title: '',
+        appendices: [],
     };
 
     // If the user is currently using this persona, update the description
@@ -760,7 +906,7 @@ export async function convertCharacterToPersona(characterId = null) {
  * Counts the number of tokens in a persona description.
  */
 const countPersonaDescriptionTokens = debounce(async () => {
-    const description = String($('#persona_description').val());
+    const description = String(power_user.persona_description ?? $('#persona_description').val());
     const count = await getTokenCountAsync(description);
     $('#persona_description_token_count').text(String(count));
 }, debounce_timeout.relaxed);
@@ -770,13 +916,15 @@ const countPersonaDescriptionTokens = debounce(async () => {
  */
 export function setPersonaDescription() {
     $('#your_name').text(name1);
+    const descriptor = power_user.persona_descriptions?.[user_avatar];
+    const baseDescription = descriptor?.description ?? power_user.persona_description ?? '';
 
     if (power_user.persona_description_position === persona_description_positions.AFTER_CHAR) {
         power_user.persona_description_position = persona_description_positions.IN_PROMPT;
     }
 
     $('#persona_depth_position_settings').toggle(power_user.persona_description_position === persona_description_positions.AT_DEPTH);
-    $('#persona_description').val(power_user.persona_description);
+    $('#persona_description').val(baseDescription);
     $('#persona_depth_value').val(power_user.persona_description_depth ?? DEFAULT_DEPTH);
     $('#persona_description_position')
         .val(power_user.persona_description_position)
@@ -787,10 +935,309 @@ export function setPersonaDescription() {
         .find(`option[value="${power_user.persona_description_role}"]`)
         .prop('selected', String(true));
     $('#persona_lore_button').toggleClass('world_set', !!power_user.persona_description_lorebook);
+    syncPersonaDescriptionFromDescriptor();
+    renderPersonaAppendices();
+    updateSelectedPersonaMasthead();
     countPersonaDescriptionTokens();
 
     updatePersonaUIStates();
     updatePersonaConnectionsAvatarList();
+}
+
+function createPersonaChip(text, className = '') {
+    const chip = document.createElement('span');
+    chip.className = `persona-state-chip${className ? ` ${className}` : ''}`;
+    chip.textContent = text;
+    return chip;
+}
+
+function updateSelectedPersonaMasthead() {
+    const name = power_user.personas?.[user_avatar] || name1 || t`[No persona]`;
+    const descriptor = power_user.persona_descriptions?.[user_avatar];
+    const title = descriptor?.title || '';
+    const avatarUrl = user_avatar ? getThumbnailUrl('persona', user_avatar, isFirefox()) : '';
+    const avatar = document.getElementById('persona_selected_avatar');
+    const chips = document.getElementById('persona_selected_chips');
+
+    $('#persona_selected_name').text(name);
+    $('#persona_selected_title').text(title).toggle(Boolean(title));
+
+    if (avatar instanceof HTMLImageElement) {
+        avatar.src = avatarUrl;
+        avatar.alt = name;
+        avatar.toggleAttribute('hidden', !avatarUrl);
+    }
+
+    if (!chips) {
+        return;
+    }
+
+    chips.replaceChildren();
+
+    if (user_avatar) {
+        const states = getPersonaStates(user_avatar);
+        if (states.default) chips.appendChild(createPersonaChip(t`Default`, 'is-lock'));
+        if (states.locked.chat) chips.appendChild(createPersonaChip(t`Chat`, 'is-lock'));
+        if (states.locked.character) chips.appendChild(createPersonaChip(t`Character`, 'is-lock'));
+        if (getPersonaTemporaryLockInfo().isTemporary) chips.appendChild(createPersonaChip(t`Temporary`, 'is-warning'));
+
+        for (const appendix of getActivePersonaAppendices(user_avatar)) {
+            chips.appendChild(createPersonaChip(`+ ${appendix.name}`, 'is-appendix'));
+        }
+    }
+
+    if (!chips.childElementCount) {
+        chips.appendChild(createPersonaChip(t`No locks`, 'is-muted'));
+    }
+}
+
+function renderPersonaAppendixChips(container, appendices) {
+    container.replaceChildren();
+
+    if (!appendices.length) {
+        const empty = document.createElement('span');
+        empty.className = 'persona-appendix-empty text_muted';
+        empty.textContent = t`No Scenario Notes active for this chat.`;
+        container.appendChild(empty);
+        return;
+    }
+
+    for (const appendix of appendices) {
+        container.appendChild(createPersonaChip(appendix.name, 'is-appendix'));
+    }
+}
+
+function renderPersonaAppendices() {
+    const list = document.getElementById('persona_appendices_list');
+    const activeChips = document.getElementById('persona_appendices_active_chips');
+
+    if (!list) {
+        return;
+    }
+
+    const appendices = getPersonaAppendices(user_avatar);
+    const activeIds = new Set(getActivePersonaAppendixIds(user_avatar));
+    const activeAppendices = appendices.filter(appendix => activeIds.has(appendix.id));
+
+    if (activeChips) {
+        renderPersonaAppendixChips(activeChips, activeAppendices);
+    }
+
+    list.replaceChildren();
+
+    if (!appendices.length) {
+        const empty = document.createElement('div');
+        empty.className = 'persona-appendices-empty text_muted';
+        empty.textContent = t`No Scenario Notes yet. Add one for things like Genshin, modern AU, or route-specific details.`;
+        list.appendChild(empty);
+        return;
+    }
+
+    for (const appendix of appendices) {
+        const card = document.createElement('article');
+        card.className = 'persona-appendix-card';
+        card.dataset.appendixId = appendix.id;
+
+        const label = document.createElement('label');
+        label.className = 'persona-appendix-toggle-row';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'persona_appendix_toggle';
+        checkbox.dataset.appendixId = appendix.id;
+        checkbox.checked = activeIds.has(appendix.id);
+
+        const name = document.createElement('span');
+        name.className = 'persona-appendix-name';
+        name.textContent = appendix.name;
+        label.append(checkbox, name);
+
+        const description = document.createElement('p');
+        description.className = 'persona-appendix-description text_muted';
+        description.textContent = appendix.description?.trim() || t`[No Scenario Note text]`;
+
+        const actions = document.createElement('div');
+        actions.className = 'persona-appendix-actions';
+
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'menu_button fa-solid fa-pencil persona_appendix_edit';
+        editButton.dataset.appendixId = appendix.id;
+        editButton.title = t`Edit Scenario Note`;
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'menu_button fa-solid fa-trash persona_appendix_delete';
+        deleteButton.dataset.appendixId = appendix.id;
+        deleteButton.title = t`Delete Scenario Note`;
+
+        actions.append(editButton, deleteButton);
+        card.append(label, description, actions);
+        list.appendChild(card);
+    }
+}
+
+async function persistPersonaAppendices(avatarId = user_avatar) {
+    saveSettingsDebounced();
+    syncPersonaDescriptionFromDescriptor(avatarId);
+    renderPersonaAppendices();
+    updateSelectedPersonaMasthead();
+    await eventSource.emit(event_types.PERSONA_UPDATED, avatarId);
+}
+
+async function showPersonaAppendixEditor(appendixId = '') {
+    const descriptor = getOrCreatePersonaDescriptor();
+    const appendices = getPersonaAppendices(user_avatar);
+    const appendix = appendices.find(item => item.id === appendixId);
+    const popup = new Popup(
+        appendix ? t`Edit Scenario Note` : t`Add Scenario Note`,
+        POPUP_TYPE.CONFIRM,
+        '',
+        {
+            okButton: t`Save`,
+            cancelButton: t`Cancel`,
+            wide: true,
+            customInputs: [
+                {
+                    id: 'persona_appendix_name_input',
+                    type: 'text',
+                    label: t`Label`,
+                    defaultState: appendix?.name ?? '',
+                    tooltip: t`Example: Genshin, modern AU, private notes`,
+                },
+                {
+                    id: 'persona_appendix_description_input',
+                    type: 'textarea',
+                    rows: 10,
+                    label: t`Scenario Note text`,
+                    defaultState: appendix?.description ?? '',
+                    tooltip: t`Additional persona details for this chat or scenario`,
+                },
+            ],
+        },
+    );
+
+    const result = await popup.show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return;
+    }
+
+    const name = String(popup.inputResults.get('persona_appendix_name_input') || '').trim();
+    const description = String(popup.inputResults.get('persona_appendix_description_input') || '').trim();
+
+    if (!name) {
+        toastr.warning(t`Scenario Note label is required.`, t`Scenario Notes`);
+        return;
+    }
+
+    if (appendix) {
+        appendix.name = name;
+        appendix.description = description;
+    } else {
+        descriptor.appendices.push({
+            id: createPersonaAppendixId(name),
+            name,
+            description,
+        });
+    }
+
+    await persistPersonaAppendices();
+}
+
+function getSuggestedImportedAppendixName(sourceAvatarId) {
+    const sourceName = String(power_user.personas?.[sourceAvatarId] || sourceAvatarId || '').trim();
+    const currentName = String(power_user.personas?.[user_avatar] || '').trim();
+
+    if (sourceName && currentName && sourceName.toLowerCase().startsWith(currentName.toLowerCase())) {
+        const stripped = sourceName.slice(currentName.length).replace(/^[\s:_-]+/, '').trim();
+        if (stripped) {
+            return stripped;
+        }
+    }
+
+    return sourceName || t`Imported scenario note`;
+}
+
+async function importPersonaAppendix() {
+    const candidates = Object.keys(power_user.personas || {}).filter(avatarId => avatarId !== user_avatar);
+    if (!candidates.length) {
+        toastr.info(t`No other personas are available to import.`, t`Scenario Notes`);
+        return;
+    }
+
+    const selectedAvatarId = await askForPersonaSelection(
+        t`Import Scenario Note`,
+        t`Select a persona to copy into the current persona as a Scenario Note. The source persona will not be deleted.`,
+        candidates,
+        { okButton: t`Cancel` },
+    );
+
+    if (!selectedAvatarId) {
+        return;
+    }
+
+    const sourceDescription = String(power_user.persona_descriptions?.[selectedAvatarId]?.description || '').trim();
+    if (!sourceDescription) {
+        toastr.warning(t`Selected persona has no base description to import.`, t`Scenario Notes`);
+        return;
+    }
+
+    const descriptor = getOrCreatePersonaDescriptor();
+    const name = getSuggestedImportedAppendixName(selectedAvatarId);
+    descriptor.appendices = getPersonaAppendices(user_avatar);
+    descriptor.appendices.push({
+        id: createPersonaAppendixId(name),
+        name,
+        description: sourceDescription,
+    });
+
+    await persistPersonaAppendices();
+    toastr.success(t`Imported Scenario Note ${name}.`, t`Scenario Notes`);
+}
+
+async function deletePersonaAppendix(appendixId) {
+    const descriptor = getOrCreatePersonaDescriptor();
+    const appendices = getPersonaAppendices(user_avatar);
+    const appendix = appendices.find(item => item.id === appendixId);
+
+    if (!appendix) {
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(t`Delete Scenario Note`, t`Delete Scenario Note "${appendix.name}" from this persona?`);
+    if (!confirmed) {
+        return;
+    }
+
+    descriptor.appendices = appendices.filter(item => item.id !== appendixId);
+    const activeIds = getActivePersonaAppendixIds(user_avatar).filter(id => id !== appendixId);
+    const metadata = getPersonaAppendicesMetadata();
+    if (activeIds.length) {
+        metadata[user_avatar] = activeIds;
+    } else {
+        delete metadata[user_avatar];
+    }
+    saveMetadataDebounced();
+    await persistPersonaAppendices();
+}
+
+async function onPersonaAppendixToggle(event) {
+    const checkbox = event.currentTarget;
+    if (!(checkbox instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const appendixId = checkbox.dataset.appendixId;
+    if (!appendixId) {
+        return;
+    }
+
+    const activeIds = getActivePersonaAppendixIds(user_avatar).filter(id => id !== appendixId);
+    if (checkbox.checked) {
+        activeIds.push(appendixId);
+    }
+
+    await setActivePersonaAppendixIds(user_avatar, activeIds);
 }
 
 /**
@@ -1055,7 +1502,6 @@ async function selectCurrentPersona({ toastPersonaNameChange = true } = {}) {
         const descriptor = power_user.persona_descriptions[user_avatar];
 
         if (descriptor) {
-            power_user.persona_description = descriptor.description ?? '';
             power_user.persona_description_position = descriptor.position ?? persona_description_positions.IN_PROMPT;
             power_user.persona_description_depth = descriptor.depth ?? DEFAULT_DEPTH;
             power_user.persona_description_role = descriptor.role ?? DEFAULT_ROLE;
@@ -1074,8 +1520,11 @@ async function selectCurrentPersona({ toastPersonaNameChange = true } = {}) {
                 lorebook: '',
                 connections: [],
                 title: '',
+                appendices: [],
             };
         }
+
+        power_user.persona_description = composePersonaDescription(user_avatar);
 
         setPersonaDescription();
 
@@ -1222,6 +1671,7 @@ async function lockPersona(type = 'chat') {
             lorebook: '',
             connections: [],
             title: '',
+            appendices: [],
         };
         await eventSource.emit(event_types.PERSONA_CREATED, { avatarId: user_avatar, name: name1, description: '', title: '' });
     }
@@ -1327,6 +1777,11 @@ async function deletePersona(avatarId, { silent = false } = {}) {
         console.log(`Deleted avatar ${avatarId}`);
         delete power_user.personas[avatarId];
         delete power_user.persona_descriptions[avatarId];
+        const appendixMetadata = getPersonaAppendicesMetadata();
+        if (appendixMetadata[avatarId]) {
+            delete appendixMetadata[avatarId];
+            saveMetadataDebounced();
+        }
 
         if (avatarId === power_user.default_persona) {
             if (!silent) toastr.warning(t`The default persona was deleted. You will need to set a new default persona.`, t`Default Persona Deleted`);
@@ -1366,30 +1821,36 @@ async function deletePersonaAvatar(avatarId) {
 }
 
 async function onPersonaDescriptionInput() {
-    power_user.persona_description = String($('#persona_description').val());
-    countPersonaDescriptionTokens();
+    const baseDescription = String($('#persona_description').val());
 
     if (power_user.personas[user_avatar]) {
         let object = power_user.persona_descriptions[user_avatar];
 
         if (!object) {
             object = {
-                description: power_user.persona_description,
+                description: baseDescription,
                 position: Number($('#persona_description_position').find(':selected').val()),
                 depth: Number($('#persona_depth_value').val()),
                 role: Number($('#persona_depth_role').find(':selected').val()),
                 lorebook: '',
                 title: '',
+                appendices: [],
             };
             power_user.persona_descriptions[user_avatar] = object;
         }
 
-        object.description = power_user.persona_description;
+        object.description = baseDescription;
+        syncPersonaDescriptionFromDescriptor();
+    } else {
+        power_user.persona_description = baseDescription;
     }
 
+    countPersonaDescriptionTokens();
+    renderPersonaAppendices();
+
     $(`.avatar-container[data-avatar-id="${user_avatar}"] .ch_description`)
-        .text(power_user.persona_description || $('#user_avatar_block').attr('no_desc_text'))
-        .toggleClass('text_muted', !power_user.persona_description);
+        .text(baseDescription || $('#user_avatar_block').attr('no_desc_text'))
+        .toggleClass('text_muted', !baseDescription);
     saveSettingsDebounced();
 
     if (power_user.personas[user_avatar]) {
@@ -1505,9 +1966,11 @@ export function getOrCreatePersonaDescriptor() {
             lorebook: power_user.persona_description_lorebook,
             connections: [],
             title: '',
+            appendices: [],
         };
         power_user.persona_descriptions[user_avatar] = object;
     }
+    normalizePersonaAppendices(object);
     return object;
 }
 
@@ -1658,6 +2121,8 @@ function updatePersonaUIStates({ navigateToCurrent = false } = {}) {
         // Clear the info block if no condition applies
         clearInfoBlock('#persona_connections_info_block');
     }
+
+    updateSelectedPersonaMasthead();
 }
 
 /**
@@ -1822,6 +2287,8 @@ async function loadPersonaForCurrentChat({ doRender = false } = {}) {
         await lockPersona('chat');
     }
 
+    syncPersonaDescriptionFromDescriptor();
+    renderPersonaAppendices();
     updatePersonaUIStates();
 
     return !!chatPersona;
@@ -2082,6 +2549,7 @@ async function duplicatePersona(avatarId, { silent = false, select = false } = {
         role: descriptor?.role ?? DEFAULT_ROLE,
         lorebook: descriptor?.lorebook ?? '',
         title: descriptor?.title ?? '',
+        appendices: getPersonaAppendices(avatarId).map(appendix => ({ ...appendix })),
     };
 
     await uploadUserAvatar(getUserAvatar(avatarId), newAvatarId);
@@ -3098,6 +3566,31 @@ export async function initPersonas() {
     $('#persona_depth_value').on('input', onPersonaDescriptionDepthValueInput);
     $('#persona_depth_role').on('input', onPersonaDescriptionDepthRoleInput);
     $('#persona_lore_button').on('click', onPersonaLoreButtonClick);
+    $('.persona-workspace-tabs [data-persona-workspace-tab]').on('click', function () {
+        setPersonaWorkspaceTab(String($(this).attr('data-persona-workspace-tab')));
+    });
+    $('.persona-editor-tabs [data-persona-editor-tab]').on('click', function () {
+        setPersonaEditorTab(String($(this).attr('data-persona-editor-tab')));
+    });
+    $('.persona-workspace-tabs, .persona-editor-tabs').on('keydown', function (event) {
+        const tabs = Array.from(this.querySelectorAll('[role="tab"]'));
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusAdjacentPersonaTab(tabs, event.target, 1);
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusAdjacentPersonaTab(tabs, event.target, -1);
+        }
+    });
+    $('#persona_appendix_add').on('click', () => showPersonaAppendixEditor());
+    $('#persona_appendix_import').on('click', importPersonaAppendix);
+    $(document).on('change', '.persona_appendix_toggle', onPersonaAppendixToggle);
+    $(document).on('click', '.persona_appendix_edit', function () {
+        void showPersonaAppendixEditor(String($(this).attr('data-appendix-id') || ''));
+    });
+    $(document).on('click', '.persona_appendix_delete', function () {
+        void deletePersonaAppendix(String($(this).attr('data-appendix-id') || ''));
+    });
     addLongPressEvent('#persona_lore_button', function () {
         onPersonaLoreButtonClick({ shiftKey: true, altKey: false });
     });
@@ -3141,6 +3634,7 @@ export async function initPersonas() {
     $(document).on('click', '#user_avatar_block .avatar-container', async function () {
         const imgfile = $(this).attr('data-avatar-id');
         await setUserAvatar(imgfile);
+        setPersonaWorkspaceTab('edit');
     });
 
     $('#persona_rename_button').on('click', () => renamePersona(user_avatar));
@@ -3186,5 +3680,21 @@ export async function initPersonas() {
     });
     eventSource.on(event_types.CHAT_CHANGED, updatePersonaUIStates);
     eventSource.on(event_types.CHAT_CHANGED, loadPersonaForCurrentChat);
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        syncPersonaDescriptionFromDescriptor();
+        renderPersonaAppendices();
+        updateSelectedPersonaMasthead();
+    });
+    eventSource.on(event_types.PERSONA_UPDATED, (avatarId) => {
+        if (!avatarId || avatarId === user_avatar) {
+            syncPersonaDescriptionFromDescriptor();
+            renderPersonaAppendices();
+            updateSelectedPersonaMasthead();
+        }
+    });
+    setPersonaWorkspaceTab('browse');
+    setPersonaEditorTab('prompt');
+    renderPersonaAppendices();
+    updateSelectedPersonaMasthead();
     switchPersonaGridView();
 }
