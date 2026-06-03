@@ -6264,48 +6264,53 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
     display: grid;
-    grid-template-columns: max-content max-content minmax(max-content, 1fr);
+    grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(var(--sb-mobile-touch-target, 44px), 1fr);
     align-items: center;
     align-self: flex-end;
     justify-content: stretch;
     column-gap: var(--sb-shell-space-sm);
     row-gap: 6px;
-    width: min(34rem, 100%);
-    margin-left: auto;
+    width: 100%;
+    margin-left: 0;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child > .checkbox_label {
     display: grid;
-    grid-template-columns: 18px max-content;
+    grid-template-columns: 18px minmax(0, max-content);
     align-items: center;
     column-gap: 8px;
+    min-width: 0;
+    white-space: normal;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule {
-    width: auto !important;
-    inline-size: auto !important;
-    min-width: max-content !important;
-    min-inline-size: max-content !important;
-    max-width: none !important;
-    max-inline-size: none !important;
-    height: 40px;
+    width: 100% !important;
+    inline-size: 100% !important;
+    min-width: 0 !important;
+    min-inline-size: 0 !important;
+    max-width: 100% !important;
+    max-inline-size: 100% !important;
+    height: auto;
     min-height: 40px;
-    max-height: 40px;
-    justify-self: end;
+    max-height: none;
+    justify-self: stretch;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding-inline: var(--sb-shell-space-lg) !important;
-    white-space: nowrap;
+    padding-inline: 12px !important;
+    text-align: center;
+    white-space: normal;
     aspect-ratio: auto !important;
     overflow: visible;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule span {
     display: inline;
-    min-width: max-content;
-    white-space: nowrap;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: var(--sb-line-compact);
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
@@ -7200,14 +7205,18 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule {
-        min-width: var(--sb-mobile-touch-target, 44px);
+        min-width: 0;
+        min-inline-size: 0;
         min-height: var(--sb-mobile-touch-target, 44px);
         padding: 0 12px;
-        gap: 0;
+        gap: 6px;
     }
 
     #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule span[data-i18n='Generate Schedule'] {
-        display: none;
+        display: inline;
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab,
