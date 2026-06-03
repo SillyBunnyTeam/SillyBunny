@@ -1,5 +1,6 @@
 const ORIGIN_REMOTE_PREFIX = 'origin/';
 const RUNTIME_BRANCH_PREFIX = 'runtime/';
+const BUN_LOCK_FILE = 'bun.lock';
 
 function uniqueSorted(values) {
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));
@@ -40,6 +41,14 @@ export function getRemoteBranchesFromSummary(branchSummary) {
     return uniqueSorted(Object.keys(branches)
         .map(branch => String(branch ?? '').trim())
         .filter(branch => branch && !branch.endsWith('/HEAD') && !branch.includes('/HEAD -> ')));
+}
+
+export function hasOnlyBunLockChange(files) {
+    const changedPaths = (Array.isArray(files) ? files : [])
+        .map(file => String(file?.path ?? file ?? '').trim().replaceAll('\\', '/'))
+        .filter(Boolean);
+
+    return changedPaths.length === 1 && changedPaths[0] === BUN_LOCK_FILE;
 }
 
 export function getBranchDisplayNames(remoteBranches) {

@@ -14,6 +14,7 @@ import {
     getBranchDisplayNames,
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
+    hasOnlyBunLockChange,
     isRuntimeBranch,
     isGitRepository,
     resolveRemoteBranchName,
@@ -356,6 +357,23 @@ async function restoreAutoStash(git, { reason = 'after update failure' } = {}) {
     }
 }
 
+async function restoreGeneratedBunLockChange(git, gitStatus) {
+    if (!hasOnlyBunLockChange(gitStatus?.files)) {
+        return gitStatus;
+    }
+
+    try {
+        await git.raw(['restore', '--staged', '--worktree', '--', 'bun.lock']);
+    } catch {
+        await git.raw(['reset', 'HEAD', '--', 'bun.lock']);
+        await git.raw(['checkout', '--', 'bun.lock']);
+    }
+
+    console.info('Restored tracked bun.lock before checking for updates.');
+
+    return await git.status();
+}
+
 async function runCommand(command, args, options = {}) {
     return await new Promise((resolve, reject) => {
         const child = spawn(command, args, {
@@ -452,7 +470,7 @@ async function getRepositoryStatus() {
     status.branch = toTrimmedString(await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => ''));
     status.currentCommit = toTrimmedString(await git.revparse(['--short', 'HEAD']).catch(() => ''));
 
-    const gitStatus = await git.status();
+    const gitStatus = await restoreGeneratedBunLockChange(git, await git.status());
     status.hasLocalChanges = !gitStatus.isClean();
     status.changedFilesCount = gitStatus.files.length;
     status.changedFiles = gitStatus.files.slice(0, 12).map(file => ({

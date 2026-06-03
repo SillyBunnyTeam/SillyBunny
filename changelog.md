@@ -11,6 +11,7 @@ This update tightens Bun/client-disconnect cancellation, mobile navigation scali
 - Streaming disconnect cleanup now treats Bun raw abort reasons as expected cancellation, keeping provider logs quieter after users stop or leave a stream.
 - Thought and reasoning token totals now use the higher of provider-reported reasoning tokens and locally counted reasoning text so counts are no longer underreported.
 - Server Admin now shows the tracked remote branch when Git reports an empty branch, `HEAD`, or a runtime branch prefix.
+- Startup and Server Admin updates now restore a lone generated `bun.lock` diff before checking Git cleanliness, so deleting or locally refreshing the lockfile no longer blocks auto-update.
 - Mobile shell rail buttons now scale down correctly with the Mobile Button Size slider instead of staying pinned to hardcoded rail dimensions.
 
 ### Added

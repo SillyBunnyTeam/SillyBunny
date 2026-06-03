@@ -23,6 +23,36 @@ finish_early() {
     exit 1
 }
 
+restore_lone_bun_lock_change() {
+    if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
+        return
+    fi
+
+    local status_output first_line
+    if ! status_output="$(git status --porcelain --untracked-files=normal)"; then
+        finish_early "could not read the repository status."
+    fi
+
+    if [[ -z "$status_output" ]]; then
+        return
+    fi
+
+    first_line="${status_output%%$'\n'*}"
+    if [[ "$status_output" != "$first_line" || "${first_line:3}" != "bun.lock" ]]; then
+        return
+    fi
+
+    echo "Restoring tracked bun.lock before self-update..."
+    if git restore --staged --worktree -- bun.lock >/dev/null 2>&1; then
+        return
+    fi
+
+    git reset HEAD -- bun.lock >/dev/null 2>&1 || true
+    if ! git checkout -- bun.lock >/dev/null 2>&1; then
+        finish_early "could not restore generated bun.lock."
+    fi
+}
+
 cd "$REPO_DIR"
 
 if ! command -v git >/dev/null 2>&1; then
@@ -42,6 +72,8 @@ upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>
 if [[ -z "$upstream_ref" ]]; then
     finish_early "branch '$current_branch' does not have an upstream configured."
 fi
+
+restore_lone_bun_lock_change
 
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
     finish_early "the working tree is not clean. Commit, stash, or remove local changes first."

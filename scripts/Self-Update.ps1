@@ -35,6 +35,40 @@ function Invoke-Git {
     }
 }
 
+function Restore-LoneBunLockChange {
+    $trackedResult = Invoke-Git ls-files --error-unmatch bun.lock
+    if ($trackedResult.ExitCode -ne 0) {
+        return
+    }
+
+    $statusResult = Invoke-Git status --porcelain --untracked-files=normal
+    if ($statusResult.ExitCode -ne 0) {
+        Finish-Early 'could not read the repository status.'
+    }
+
+    $statusLines = @($statusResult.Output | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($statusLines.Count -ne 1) {
+        return
+    }
+
+    $statusLine = $statusLines[0].ToString()
+    if ($statusLine.Length -lt 4 -or $statusLine.Substring(3) -ne 'bun.lock') {
+        return
+    }
+
+    Write-Host 'Restoring tracked bun.lock before self-update...'
+    $restoreResult = Invoke-Git restore --staged --worktree -- bun.lock
+    if ($restoreResult.ExitCode -eq 0) {
+        return
+    }
+
+    [void](Invoke-Git reset HEAD -- bun.lock)
+    $checkoutResult = Invoke-Git checkout -- bun.lock
+    if ($checkoutResult.ExitCode -ne 0) {
+        Finish-Early 'could not restore generated bun.lock.'
+    }
+}
+
 $repoDir = Split-Path -Parent $PSScriptRoot
 Set-Location $repoDir
 
@@ -58,6 +92,8 @@ $upstreamRef = ($upstreamRefResult.Output | Select-Object -First 1).ToString().T
 if ($upstreamRefResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($upstreamRef)) {
     Finish-Early "branch '$currentBranch' does not have an upstream configured."
 }
+
+Restore-LoneBunLockChange
 
 $statusResult = Invoke-Git status --porcelain --untracked-files=normal
 if ($statusResult.ExitCode -ne 0) {
