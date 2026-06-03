@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import express from 'express';
 import { AIHorde, ModelGenerationInputStableSamplers, ModelInterrogationFormTypes, HordeAsyncRequestStates } from '@zeldafan0225/ai_horde';
-import { getVersion, delay, Cache } from '../util.js';
+import { abortOnRequestClose, getVersion, delay, Cache } from '../util.js';
 import { readSecret, SECRET_KEYS } from './secrets.js';
 
 const ANONYMOUS_KEY = '0000000000';
@@ -15,7 +15,7 @@ export const router = express.Router();
  */
 async function getClientAgent() {
     const version = await getVersion();
-    return version?.agent || 'SillyBunny:1.6.1:platberlitz';
+    return version?.agent || 'SillyBunny:1.6.2:platberlitz';
 }
 
 /**
@@ -370,11 +370,13 @@ router.post('/generate-image', async (request, response) => {
         console.info('Horde image generation request:', generation);
 
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            console.warn('Horde image generation request aborted.');
-            controller.abort();
-            if (generation.id) ai_horde.deleteImageGenerationRequest(generation.id);
+        abortOnRequestClose(request, controller, response, {
+            onAbort: () => {
+                console.warn('Horde image generation request aborted.');
+                if (generation.id) {
+                    return ai_horde.deleteImageGenerationRequest(generation.id);
+                }
+            },
         });
 
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

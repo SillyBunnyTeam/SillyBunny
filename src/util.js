@@ -22,6 +22,8 @@ import { serverDirectory } from './server-directory.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
 import { pollSocketConnection } from './connection-state-checker.js';
+import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
+import { isBunRuntime } from './runtime.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
 
@@ -826,8 +828,14 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
             to.end();
         });
 
-        from.body.on('error', function () {
+        from.body.on('error', function (error) {
             stopPolling();
+            if (isRequestCancellationError(error) || to.destroyed || to.writableEnded) {
+                if (!to.destroyed && !to.writableEnded) {
+                    to.end();
+                }
+                return;
+            }
         });
     } else {
         to.end();
@@ -838,11 +846,17 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
  * Aborts an upstream request if the client connection closes early.
  * @param {import('express').Request} request The Express request to observe.
  * @param {AbortController} controller Abort controller for the upstream request.
+ * @param {import('express').Response|null} [response] The Express response to observe.
+ * @param {object} [options] Additional cancellation options.
  */
-export function abortOnRequestClose(request, controller) {
-    request.socket.removeAllListeners('close');
-    request.socket.on('close', () => {
-        controller.abort();
+export function abortOnRequestClose(request, controller, response = null, options = {}) {
+    const pollIntervalMs = getStreamingConnectionPollingInterval();
+
+    return observeRequestCancellation(request, response, {
+        controller,
+        pollConnection: Boolean(isBunRuntime() && pollIntervalMs),
+        pollIntervalMs,
+        ...options,
     });
 }
 

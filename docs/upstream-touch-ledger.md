@@ -154,6 +154,45 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-02 frontend asset and OOC settings update. |
 | Owner | Refactor integrator. |
 
+### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell and character menu. |
+| Divergence reason | SillyBunny keeps horizontal labeled menu rails as the default, supports vertical rail mode without mixing Workspace and Customize shortcuts, and routes Character Menu controls through the canonical drawer when duplicate runtime nodes exist. |
+| Target seam | `public/scripts/mobile-shell-lifecycle/` for drawer/nav state; no separate seam yet for Character Menu tab copy and canonical DOM targeting. |
+| Adapter shape | Keep shell state updates and DOM routing in `sillybunny-tabs.js`; delegate only viewport/nav open-state decisions to lifecycle helpers where they already exist. |
+| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, focused browser smoke for horizontal labels, vertical rail separation, and Character Menu drawer tabs. |
+| Validation | `node --check public/scripts/sillybunny-tabs.js`, `git diff --check`, mobile/desktop browser smoke on Character Menu horizontal labels, vertical rail behavior, and canonical drawer targeting. |
+| Rollback path | Revert the nav default/rail action filtering and Character panel helper calls independently from the shell lifecycle helpers. |
+| Last reviewed | 2026-06-02 PR #315 menu layout polish. |
+| Owner | Refactor integrator and mobile shell owner. |
+
+### `public/scripts/openai.js` and `public/scripts/textgen-models.js` - mobile OpenRouter selects
+| Field | Value |
+| --- | --- |
+| Area | Settings and mobile shell. |
+| Divergence reason | SillyBunny must avoid Select2 keyboard-only behavior on touch/mobile OpenRouter/API model and provider selects while preserving the underlying native select values and existing change handlers. |
+| Target seam | No separate seam yet; future API settings UI helpers can own reusable inline select rendering. |
+| Adapter shape | Keep the inline picker as a thin DOM adapter around existing `<select>` elements; dispatch native `change`/`input` events so current settings logic remains authoritative. |
+| Protecting tests | Existing OpenAI/textgen settings unit coverage where applicable, plus focused browser smoke for OpenRouter model, provider, and quantization menus on mobile and desktop Select2 parity. |
+| Validation | `node --check public/scripts/openai.js`, `node --check public/scripts/textgen-models.js`, `git diff --check`, mobile browser smoke opening OpenRouter model/provider/quantization menus and selecting through native-backed lists. |
+| Rollback path | Remove the inline picker binding and restore Select2/native select initialization to the previous mobile branch if dropdown behavior regresses. |
+| Last reviewed | 2026-06-02 PR #315 mobile dropdown fix. |
+| Owner | Refactor integrator and settings owner. |
+
+### `public/css/sillybunny-tabs.css`, `public/css/sillybunny-mobile-shell.css`, `public/css/select2-overrides.css`, `public/css/welcome.css`, `public/style.css`, `public/script.js`, `public/sw.js`, and `public/index.html` - menu polish assets
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell, settings, cache, and frontend boot. |
+| Divergence reason | SillyBunny UI polish needs responsive Character Menu rail sizing, mobile inline picker styling, Select2 z-layer fixes, welcome card text wrapping, and cache-busted asset references for the updated shell files. |
+| Target seam | CSS remains declarative; frontend asset/cache references stay in the existing boot files. |
+| Adapter shape | Keep CSS changes scoped to SillyBunny shell/select/menu classes and update only the affected boot/cache version strings. |
+| Protecting tests | `tests/frontend-assets.test.js`, frontend asset budget check, focused browser smoke for mobile/desktop menu layout and dropdown layering. |
+| Validation | `git diff --check`, frontend asset check in CI, browser smoke for mobile Character Menu, desktop Character Menu, and OpenRouter dropdown layering. |
+| Rollback path | Revert the cache-bust strings and scoped CSS blocks together if stale assets, menu layout, or dropdown layering regress. |
+| Last reviewed | 2026-06-02 PR #315 menu/layout polish. |
+| Owner | Refactor integrator and mobile shell owner. |
+
 ### `public/scripts/PromptManager.js` - prompt manager lifecycle
 | Field | Value |
 | --- | --- |

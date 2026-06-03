@@ -9,7 +9,7 @@ import lodash from 'lodash';
 
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { GEMINI_SAFETY, VERTEX_SAFETY } from '../constants.js';
-import { delay, getConfigValue, trimTrailingSlash } from '../util.js';
+import { abortOnRequestClose, delay, getConfigValue, trimTrailingSlash } from '../util.js';
 
 const API_MAKERSUITE = 'https://generativelanguage.googleapis.com';
 const API_VERTEX_AI = 'https://us-central1-aiplatform.googleapis.com';
@@ -536,10 +536,7 @@ router.post('/generate-image', async (request, response) => {
 router.post('/generate-video', async (request, response) => {
     try {
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            controller.abort();
-        });
+        abortOnRequestClose(request, controller, response);
 
         const model = request.body.model || 'veo-3.1-generate-preview';
         const { url, headers, apiName, baseUrl } = await getGoogleApiConfig(request, model, 'predictLongRunning');

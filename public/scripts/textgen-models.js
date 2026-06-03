@@ -7,6 +7,7 @@ import { POPUP_TYPE, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
+import { isMobile } from './RossAscends-mods.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -18,6 +19,10 @@ let featherlessModels = [];
 let tabbyModels = [];
 let llamacppModels = [];
 export let openRouterModels = [];
+
+function shouldUseNativeApiSelects() {
+    return isMobile() || (window.matchMedia?.('(max-width: 768px)').matches ?? false);
+}
 
 /**
  * List of OpenRouter providers.
@@ -1363,6 +1368,10 @@ export function initTextGenModels() {
             value: provider.id,
             text: provider.label,
         }));
+    }
+
+    if (shouldUseNativeApiSelects()) {
+        return;
     }
 
     // Keep API Select2 dropdowns inside the scrolling API drawer so they move with the control.

@@ -33,7 +33,7 @@ function getActiveSwipeExtra(message) {
  * @param {string} [options.reasoning] Reasoning text to count separately.
  * @param {number} [options.reasoningTokens] Provider-reported reasoning token count, if available.
  * @param {boolean} [options.countOutput=true] Whether to refresh the visible output token count.
- * @param {boolean} [options.countReasoning=options.countOutput] Whether to estimate reasoning tokens when the provider did not report them.
+ * @param {boolean} [options.countReasoning=options.countOutput] Whether to count reasoning text locally.
  * @returns {Promise<{outputTokens: number, reasoningTokens: number}>}
  */
 export async function updateReasoningTokenAccounting(
@@ -64,10 +64,12 @@ export async function updateReasoningTokenAccounting(
         message.extra.token_count = outputTokens;
     }
 
-    let countedReasoningTokens = getPositiveTokenCount(reasoningTokens);
+    const providerReasoningTokens = getPositiveTokenCount(reasoningTokens);
+    let countedReasoningTokens = providerReasoningTokens;
     const reasoningText = String(reasoning ?? '');
-    if (!countedReasoningTokens && reasoningText && countReasoning) {
-        countedReasoningTokens = await countTokens(reasoningText);
+    if (reasoningText && countReasoning) {
+        const localReasoningTokens = getPositiveTokenCount(await countTokens(reasoningText));
+        countedReasoningTokens = Math.max(providerReasoningTokens, localReasoningTokens);
     }
 
     message.extra.reasoning_tokens = countedReasoningTokens;

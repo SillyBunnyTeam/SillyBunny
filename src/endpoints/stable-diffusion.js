@@ -9,7 +9,7 @@ import urlJoin from 'url-join';
 import _ from 'lodash';
 import mime from 'mime-types';
 
-import { delay, getBasicAuthHeader, isValidUrl, tryParse } from '../util.js';
+import { abortOnRequestClose, delay, getBasicAuthHeader, isValidUrl, tryParse } from '../util.js';
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { AIMLAPI_HEADERS } from '../constants.js';
@@ -313,14 +313,16 @@ router.post('/generate', async (request, response) => {
         }
 
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            if (!response.writableEnded) {
+        abortOnRequestClose(request, controller, response, {
+            onAbort: () => {
+                if (response.writableEnded) {
+                    return;
+                }
+
                 const interruptUrl = new URL(request.body.url);
                 interruptUrl.pathname = '/sdapi/v1/interrupt';
-                fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': getBasicAuthHeader(request.body.auth) } });
-            }
-            controller.abort();
+                return fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': getBasicAuthHeader(request.body.auth) } });
+            },
         });
 
         console.debug('SD WebUI request:', request.body);
@@ -565,13 +567,15 @@ comfy.post('/generate', async (request, response) => {
         const url = new URL(urlJoin(request.body.url, '/prompt'));
 
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            if (!response.writableEnded && !item) {
+        abortOnRequestClose(request, controller, response, {
+            onAbort: () => {
+                if (response.writableEnded || item) {
+                    return;
+                }
+
                 const interruptUrl = new URL(urlJoin(request.body.url, '/interrupt'));
-                fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': getBasicAuthHeader(request.body.auth) } });
-            }
-            controller.abort();
+                return fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': getBasicAuthHeader(request.body.auth) } });
+            },
         });
 
         const promptResult = await fetch(url, {
@@ -678,13 +682,15 @@ comfyRunPod.post('/generate', async (request, response) => {
         const url = new URL(urlJoin(request.body.url, '/run'));
 
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            if (!response.writableEnded && !item) {
+        abortOnRequestClose(request, controller, response, {
+            onAbort: () => {
+                if (response.writableEnded || item) {
+                    return;
+                }
+
                 const interruptUrl = new URL(urlJoin(request.body.url, `/cancel/${jobId}`));
-                fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': `Bearer ${key}` } });
-            }
-            controller.abort();
+                return fetch(interruptUrl, { method: 'POST', headers: { 'Authorization': `Bearer ${key}` } });
+            },
         });
         const workflow = JSON.parse(request.body.prompt).prompt;
         const wrappedWorkflow = workflow?.input?.workflow ? workflow : ({ input: { workflow: workflow } });
@@ -1950,10 +1956,7 @@ zai.post('/generate', async (request, response) => {
 zai.post('/generate-video', async (request, response) => {
     try {
         const controller = new AbortController();
-        request.socket.removeAllListeners('close');
-        request.socket.on('close', function () {
-            controller.abort();
-        });
+        abortOnRequestClose(request, controller, response);
 
         const key = readSecret(request.user.directories, SECRET_KEYS.ZAI);
 

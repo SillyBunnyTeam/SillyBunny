@@ -3,6 +3,7 @@ import { EventEmitter, once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { Response } from 'node-fetch';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants';
+import { REQUEST_CANCELLATION_ABORT_REASON } from '../src/request-cancellation';
 import { abortOnRequestClose, flattenSchema, forwardFetchResponse } from '../src/util';
 
 function createMockExpressResponse() {
@@ -167,6 +168,19 @@ describe('forwardFetchResponse', () => {
         expect(upstreamBody.destroy).toHaveBeenCalled();
     });
 
+    test('should finish the client response when upstream streaming emits a request cancellation error', async () => {
+        const upstreamBody = new PassThrough();
+        const response = createMockExpressResponse();
+        response.socket = {};
+        const bodyPromise = collectResponseBody(response);
+
+        await forwardFetchResponse(new Response(upstreamBody), response);
+        upstreamBody.emit('error', REQUEST_CANCELLATION_ABORT_REASON);
+
+        await expect(bodyPromise).resolves.toBe('');
+        expect(response.writableEnded).toBe(true);
+    });
+
     test('should log JSON error bodies and return the original body for non-2xx streaming responses', async () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         const body = JSON.stringify({ error: { message: 'Forbidden by upstream policy' }, detail: 'policy_denied' });
@@ -211,7 +225,7 @@ describe('abortOnRequestClose', () => {
         expect(controller.signal.aborted).toBe(true);
     });
 
-    test('should replace existing socket close listeners before registering the abort handler', () => {
+    test('should preserve existing socket close listeners when registering the abort handler', () => {
         const request = createMockExpressRequest();
         const existingListener = jest.fn();
 
@@ -219,6 +233,18 @@ describe('abortOnRequestClose', () => {
         abortOnRequestClose(request, new AbortController());
         request.socket.emit('close');
 
-        expect(existingListener).not.toHaveBeenCalled();
+        expect(existingListener).toHaveBeenCalledTimes(1);
+    });
+
+    test('should abort the upstream controller when the client response closes', () => {
+        const request = new EventEmitter();
+        request.socket = new EventEmitter();
+        const response = new EventEmitter();
+        const controller = new AbortController();
+
+        abortOnRequestClose(request, controller, response);
+        response.emit('close');
+
+        expect(controller.signal.aborted).toBe(true);
     });
 });

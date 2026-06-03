@@ -1991,23 +1991,36 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     }
 
     .welcomeActionCard {
-        min-height: 72px;
+        height: auto !important;
+        min-height: 72px !important;
+        width: 100% !important;
+        max-width: none;
         padding: 10px 12px;
         gap: 10px;
         border-radius: 18px;
+        white-space: normal !important;
     }
 
     .welcomeActionMeta {
+        flex: 1 1 auto;
         gap: 4px;
+        max-width: 100%;
+        min-height: 0;
+        overflow: hidden;
+        white-space: normal;
     }
 
     .welcomeActionMeta strong {
         font-size: calc(var(--mainFontSize) * 0.86);
+        max-width: 100%;
+        overflow-wrap: anywhere;
     }
 
     .welcomeActionMeta span {
         font-size: calc(var(--mainFontSize) * 0.68);
         line-height: 1.35;
+        max-width: 100%;
+        overflow-wrap: anywhere;
     }
 
     .welcomeHeroScene {
