@@ -150,6 +150,25 @@
     z-index: calc(var(--sb-z-modal-content) + 5) !important;
 }
 
+#PersonaManagement .persona-selected-masthead {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 10px;
+    min-width: 0;
+}
+
+#PersonaManagement .persona-selected-avatar {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .zoomed_avatar > :is(.zoomed_avatar_container, .avatar_zoom_container) {
     position: relative;
     z-index: 0 !important;
@@ -5325,8 +5344,12 @@ input[type='range']::-moz-range-thumb {
 
     #PersonaManagement .persona-management-browser {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        grid-auto-rows: minmax(44px, auto);
+        gap: 6px;
         align-items: stretch;
+        width: 100%;
+        min-width: 0;
     }
 
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
@@ -5351,16 +5374,49 @@ input[type='range']::-moz-range-thumb {
         justify-self: stretch;
     }
 
-    #PersonaManagement .persona-management-browser > #persona_search_bar,
-    #PersonaManagement .persona-management-browser > #persona_pagination_container {
-        grid-column: 1 / -1;
+    #PersonaManagement .persona-management-browser > #create_dummy_persona {
+        grid-column: 1;
+        grid-row: 1;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
     }
 
-    #PersonaManagement .persona-management-browser > #persona_pagination_container,
-    #PersonaManagement .persona-management-browser > #persona_grid_toggle,
-    #PersonaManagement .persona-management-browser > #create_dummy_persona,
-    #PersonaManagement .persona-management-browser > #persona_search_bar,
-    #PersonaManagement .persona-management-browser > #persona_sort_order,
+    #PersonaManagement .persona-management-browser > #persona_search_bar {
+        grid-column: 2 / -1;
+        grid-row: 1;
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+
+    #PersonaManagement .persona-management-browser > #persona_sort_order {
+        grid-column: 1 / 3;
+        grid-row: 2;
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+
+    #PersonaManagement .persona-management-browser > #persona_grid_toggle {
+        grid-column: 3;
+        grid-row: 2;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
+    }
+
+    #PersonaManagement .persona-management-browser > #persona_pagination_container {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+    }
+
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
         flex: 0 0 auto;
@@ -5369,6 +5425,12 @@ input[type='range']::-moz-range-thumb {
 
     #persona_controls {
         grid-template-columns: 1fr;
+    }
+
+    #persona_controls > label select,
+    #persona_controls > label .text_pole,
+    #persona-management-dropdown {
+        min-height: 44px;
     }
 
     #user_avatar_block:not(.gridView) .avatar-container {
@@ -5562,12 +5624,21 @@ input[type='range']::-moz-range-thumb {
         max-height: 32px;
     }
 
-    #PersonaManagement .persona-management-actions,
-    #PersonaManagement .persona-management-browser {
+    #PersonaManagement .persona-management-actions {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 8px;
+    }
+
+    #PersonaManagement .persona-management-browser {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        grid-auto-rows: minmax(44px, auto);
+        align-items: stretch;
+        gap: 6px;
+        width: 100%;
+        min-width: 0;
     }
 
     #PersonaManagement .persona-management-actions > .menu_button,
@@ -5584,27 +5655,51 @@ input[type='range']::-moz-range-thumb {
         gap: 0;
     }
 
+    #PersonaManagement .persona-management-browser > #create_dummy_persona {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
     #PersonaManagement .persona-management-actions > .menu_button > span,
     #PersonaManagement .persona-management-browser > #create_dummy_persona > div {
         display: none;
     }
 
     #PersonaManagement .persona-management-browser > #persona_search_bar {
-        flex: 1 1 100%;
+        grid-column: 2 / -1;
+        grid-row: 1;
+        flex: 1 1 auto;
         width: 100%;
         min-width: 0;
+        min-height: 44px;
     }
 
-    #PersonaManagement .persona-management-browser > #persona_sort_order,
+    #PersonaManagement .persona-management-browser > #persona_sort_order {
+        grid-column: 1 / 3;
+        grid-row: 2;
+        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+    }
+
     #PersonaManagement .persona-management-browser > #persona_grid_toggle {
-        flex: 0 0 auto;
-        width: auto;
+        grid-column: 3;
+        grid-row: 2;
+        flex: 0 0 44px;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
     }
 
     #PersonaManagement .persona-management-browser > #persona_pagination_container {
-        flex: 1 1 120px;
+        grid-column: 1 / -1;
+        grid-row: 3;
+        display: flex;
+        flex: 1 1 auto;
         min-width: 0;
-        width: auto;
+        width: 100%;
     }
 
     #textgenerationwebui_api-presets > div > .flex-container.flexNoGap {
