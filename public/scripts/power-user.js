@@ -4484,8 +4484,8 @@ jQuery(async () => {
                 underlineColor = 'rgba(251, 191, 36, 1)';
                 break;
             case 'orange':
-                quoteColor = 'rgba(249, 115, 22, 1)';
-                underlineColor = 'rgba(251, 146, 60, 1)';
+                quoteColor = 'rgba(255, 191, 0, 1)';
+                underlineColor = 'rgba(255, 191, 0, 1)';
                 break;
             case 'red':
                 quoteColor = 'rgba(239, 68, 68, 1)';
