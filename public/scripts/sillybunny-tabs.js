@@ -600,18 +600,6 @@ const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
 const SB_DESKTOP_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
 ]);
-const SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS = Object.freeze([
-    { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
-    { type: 'tab', shellKey: 'left', tabId: 'api', icon: 'fa-plug', label: 'API' },
-    { type: 'tab', shellKey: 'left', tabId: 'sampling', icon: 'fa-wave-square', label: 'Sampling' },
-    { type: 'tab', shellKey: 'left', tabId: 'advanced-formatting', icon: 'fa-text-height', label: 'Formatting' },
-    { type: 'tab', shellKey: 'left', tabId: 'agents', icon: 'fa-robot', label: 'Agents' },
-    { type: 'tab', shellKey: 'right', tabId: 'settings', icon: 'fa-gear', label: 'Settings' },
-    { type: 'tab', shellKey: 'right', tabId: 'extensions', icon: 'fa-cubes', label: 'Extensions' },
-    { type: 'tab', shellKey: 'right', tabId: 'background', icon: 'fa-panorama', label: 'Background' },
-    { type: 'tab', shellKey: 'right', tabId: 'server', icon: 'fa-server', label: 'Server' },
-    { type: 'tab', shellKey: 'right', tabId: 'console-logs', icon: 'fa-terminal', label: 'Console Logs' },
-]);
 const SB_MOBILE_NAV_PAGE_TARGET_DEFAULT = 'left:presets';
 const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'left:presets', shellKey: 'left', tabId: 'presets', label: 'Presets', icon: 'fa-sliders' },
@@ -12598,7 +12586,22 @@ function createRailActionGroup(actions, groupLabel, className = '') {
 }
 
 function getBuiltInRailActionsForShell(shellKey) {
-    return SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS.filter(action => action.shellKey === shellKey);
+    const shellState = getShellState(shellKey);
+    if (!shellState?.tabs) {
+        return [];
+    }
+
+    const actions = [];
+    for (const tabState of shellState.tabs.values()) {
+        actions.push({
+            type: 'tab',
+            shellKey,
+            tabId: tabState.id,
+            icon: tabState.icon,
+            label: tabState.label,
+        });
+    }
+    return actions;
 }
 
 function getBuiltInRailLabelForShell(shellKey) {
@@ -12623,20 +12626,12 @@ function syncMobileShellRailActionState(activeShellKey = '', activeTabId = '') {
 }
 
 function syncMobileShellRailTabVisibility(shellState, currentShellKey, hideCustomizeTabs) {
-    const hiddenTabIds = new Set(
-        hideCustomizeTabs
-            ? SB_MOBILE_RAIL_CUSTOMIZE_ACTIONS
-                .filter(action => action.shellKey === currentShellKey)
-                .map(action => action.tabId)
-            : [],
-    );
-
     for (const tabState of shellState.tabs.values()) {
         if (!(tabState.button instanceof HTMLElement)) {
             continue;
         }
 
-        const shouldHide = hiddenTabIds.has(tabState.id);
+        const shouldHide = hideCustomizeTabs;
         const isActive = tabState.id === shellState.activeTabId;
         tabState.button.classList.toggle('sb-shell-tab-mobile-rail-hidden', shouldHide);
         tabState.button.setAttribute('aria-hidden', String(shouldHide));
