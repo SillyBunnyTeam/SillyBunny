@@ -137,6 +137,7 @@ This update keeps the 1.6 series moving with safer chat lifecycle defaults, stro
 - PR #312 (2026-06-02) `fix: close release readiness blockers`
 - PR #313 (2026-06-02) `fix: Bun request cancellation propagation`
 - PR #314 (2026-06-02) `fix: harden streaming disconnect cancellation`
+- PR #316 (2026-06-03) `fix: scale mobile shell buttons with Mobile Button Size slider`
 
 ## v1.6.0
 
