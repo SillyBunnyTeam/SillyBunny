@@ -136,4 +136,23 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
+
+    test('guided impersonate appends helper prefill blocks to the impersonate prompt', async () => {
+        extensionSettings['guided-generations'].promptImpersonate1st = 'FIRST PERSON: {{input}}';
+        extensionSettings['guided-generations'].helperPrefillMessages = `[system]
+Stay terse.
+
+[assistant]
+I | begin`;
+
+        const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
+
+        await guidedImpersonate();
+
+        expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
+        const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
+        expect(command).toContain('/impersonate await=true FIRST PERSON: aim for a colder, suspicious reply');
+        expect(command).toContain('SYSTEM:\nStay terse.');
+        expect(command).toContain('ASSISTANT:\nI \\| begin');
+    });
 });

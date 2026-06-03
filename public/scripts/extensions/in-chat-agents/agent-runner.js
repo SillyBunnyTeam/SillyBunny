@@ -37,6 +37,10 @@ import {
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { getConnectionProfileDisplayName, getConnectionProfileModelName } from './profile-utils.js';
 import {
+    appendHelperPrefillMessages,
+    parseHelperPrefillMessages,
+} from '../helper-prefill.js';
+import {
     getToolAction,
     getToolFormatter,
 } from './tool-action-registry.js';
@@ -2689,7 +2693,27 @@ function consolidateAppendPromptTransformOutputs(baseText, agents, results) {
     };
 }
 
-function getUserFinalPromptTransformMessages(promptMessages) {
+function getConfiguredHelperPrefillText() {
+    return getGlobalSettings()?.helperPrefillMessages ?? '';
+}
+
+function appendConfiguredHelperPrefillMessages(promptMessages) {
+    const helperPrefillText = getConfiguredHelperPrefillText();
+    const helperPrefillMessages = parseHelperPrefillMessages(helperPrefillText);
+    if (helperPrefillMessages.length === 0) {
+        return {
+            promptMessages,
+            allowAssistantPrefillTail: false,
+        };
+    }
+
+    return {
+        promptMessages: appendHelperPrefillMessages(promptMessages, helperPrefillText),
+        allowAssistantPrefillTail: helperPrefillMessages.at(-1)?.role === 'assistant',
+    };
+}
+
+function getUserFinalPromptTransformMessages(promptMessages, options = {}) {
     const messages = (Array.isArray(promptMessages) ? promptMessages : [])
         .filter(message => message && typeof message === 'object')
         .map(message => ({
@@ -2707,6 +2731,10 @@ function getUserFinalPromptTransformMessages(promptMessages) {
         return messages;
     }
 
+    if (options.allowAssistantPrefillTail && lastMessage.role === 'assistant') {
+        return messages;
+    }
+
     // Prompt-transform helper prompts are synthetic requests, not real chat/tool-call tails.
     // Keep providers that reject assistant-prefill tails happy by appending a tiny user turn
     // instead of role-flipping any existing assistant content.
@@ -2720,9 +2748,9 @@ function canUseMainChatCompletionHelper(context) {
     return context?.mainApi === 'openai' && typeof context?.generateRaw === 'function';
 }
 
-async function requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens) {
+async function requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options = {}) {
     const output = await context.generateRaw({
-        prompt: getUserFinalPromptTransformMessages(promptMessages),
+        prompt: getUserFinalPromptTransformMessages(promptMessages, options),
         api: 'openai',
         instructOverride: true,
         responseLength: maxTokens,
@@ -2796,7 +2824,7 @@ async function requestProfilePromptTransform(CMRS, profileId, promptMessages, ma
     };
 }
 
-async function requestPromptTransform(agent, promptMessages, maxTokens) {
+async function requestPromptTransform(agent, promptMessages, maxTokens, options = {}) {
     const profileId = resolveAgentConnectionProfile(agent);
     const modelOverride = typeof agent.modelOverride === 'string' ? agent.modelOverride.trim() : '';
     const context = getContext();
@@ -2825,7 +2853,7 @@ async function requestPromptTransform(agent, promptMessages, maxTokens) {
 
     if (canUseMainChatCompletionHelper(context)) {
         return await runAsInternalPromptTransform(async () =>
-            await requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens),
+            await requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options),
         );
     }
 
@@ -2913,13 +2941,13 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
         return result;
     }
 
-    const promptMessages = buildPromptTransformMessages(
+    const helperRequest = appendConfiguredHelperPrefillMessages(buildPromptTransformMessages(
         expandedPrompt,
         currentMessageText,
         String(message?.name ?? '').trim(),
         normalizedGenerationType,
         promptTransformMode,
-    );
+    ));
     const cancelRevision = agentGenerationCancelRevision;
     const runningToast = showNotifications
         ? showPromptTransformRunningToast(agent, promptTransformMode, profileId)
@@ -2927,7 +2955,12 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
 
     try {
         const maxTokens = normalizePromptTransformMaxTokens(agent.postProcess?.promptTransformMaxTokens);
-        const response = await requestPromptTransform(agent, promptMessages, maxTokens);
+        const response = await requestPromptTransform(
+            agent,
+            helperRequest.promptMessages,
+            maxTokens,
+            { allowAssistantPrefillTail: helperRequest.allowAssistantPrefillTail },
+        );
         const promptOutputText = unwrapAssistantResponseWrapper(response.output).trim();
 
         if (!promptOutputText) {
@@ -3831,7 +3864,9 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
         };
     }
 
-    const promptMessages = buildContextInterceptMessages(expandedPrompt, currentContextText, generationType, contextFormat, timing);
+    const helperRequest = appendConfiguredHelperPrefillMessages(
+        buildContextInterceptMessages(expandedPrompt, currentContextText, generationType, contextFormat, timing),
+    );
     const cancelRevision = agentGenerationCancelRevision;
     const runningToast = shouldShowPreInterceptNotifications(agent)
         ? showPromptTransformRunningToast(agent, applyMode, profileId, {
@@ -3843,8 +3878,9 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
     try {
         const response = await requestPromptTransform(
             agent,
-            promptMessages,
+            helperRequest.promptMessages,
             normalizePreProcessMaxTokens(agent.preProcess?.maxTokens),
+            { allowAssistantPrefillTail: helperRequest.allowAssistantPrefillTail },
         );
 
         if (agentGenerationCancelRevision !== cancelRevision) {
