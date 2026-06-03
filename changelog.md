@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.6.2
+
+Date: 2026-06-03
+
+This update tightens Bun/client-disconnect cancellation, mobile navigation scaling, mobile API/model selection, reasoning token accounting, and Server Admin branch reporting for the 1.6 line.
+
+### Fixed
+- Bun-safe request cancellation now aborts upstream generation, image, and provider requests when the request, response, or socket disconnects without reporting expected client disconnects as provider failures.
+- Streaming disconnect cleanup now treats Bun raw abort reasons as expected cancellation, keeping provider logs quieter after users stop or leave a stream.
+- Thought and reasoning token totals now use the higher of provider-reported reasoning tokens and locally counted reasoning text so counts are no longer underreported.
+- Server Admin now shows the tracked remote branch when Git reports an empty branch, `HEAD`, or a runtime branch prefix.
+- Mobile shell rail buttons now scale down correctly with the Mobile Button Size slider instead of staying pinned to hardcoded rail dimensions.
+
+### Added
+- A reusable request-cancellation observer, verification script, and regression tests for request, response, and socket disconnect paths.
+- Mobile-friendly inline and native picker controls for OpenRouter models, sorts, providers, quantizations, middle-out behavior, and searchable model ID rows on touch or narrow screens.
+- Regression coverage for request cancellation, mobile shell button scaling, reasoning token accounting, and Server Admin branch fallback behavior.
+
+### Removed
+- No user-facing features were removed in this release.
+
+### Improved
+- Touch and narrow-screen API/model dropdowns now avoid Select2 keyboard traps by preferring inline or native picker behavior where appropriate.
+- Character drawer routing, header copy, empty editor copy, and import intro text are clearer and more resilient across mobile and desktop panel layouts.
+- Mobile and desktop navigation defaults return to a labeled horizontal layout, while vertical icon-only navigation remains opt-in.
+- Side rails can derive shortcuts from all registered Workspace and Customize tabs when rail shortcuts are enabled.
+- Shell cache keys and release metadata were refreshed for the 1.6.2 assets.
+
+### Merged Staging PRs
+- PR #313 (2026-06-02) `fix: Bun request cancellation propagation`
+- PR #314 (2026-06-02) `fix: harden streaming disconnect cancellation`
+- PR #316 (2026-06-03) `fix: scale mobile shell buttons with Mobile Button Size slider`
+- PR #317 (2026-06-03) `fix: correct underreported thought token counts`
+- PR #318 (2026-06-03) `fix: show tracked branch when local branch is unresolved`
+
+### Local Staging Commits
+- 1f828ed (2026-06-03) `fix: polish menu layout and mobile dropdowns`
+
+### Release Metadata
+- Updated app, Horde client, bundled extension, package, lockfile, README mirror, release notes, Discord summary, and test metadata to 1.6.2.
+
 ## v1.6.1
 
 Date: 2026-06-02
@@ -135,12 +176,6 @@ This update keeps the 1.6 series moving with safer chat lifecycle defaults, stro
 - PR #310 (2026-06-02) `fix: sync reverse proxy preset when chat completion source changes`
 - PR #311 (2026-06-02) `chore: sync Quick Image Gen v2.0.10`
 - PR #312 (2026-06-02) `fix: close release readiness blockers`
-- PR #313 (2026-06-02) `fix: Bun request cancellation propagation`
-- PR #314 (2026-06-02) `fix: harden streaming disconnect cancellation`
-- PR #316 (2026-06-03) `fix: scale mobile shell buttons with Mobile Button Size slider`
-- PR #317 (2026-06-03) `fix: correct underreported thought token counts`
-- PR #318 (2026-06-03) `fix: show tracked branch when local branch is unresolved`
-
 ## v1.6.0
 
 Date: 2026-05-18
