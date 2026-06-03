@@ -2679,6 +2679,11 @@ const CHAT_HISTORY_NEWER_BUTTON_ID = 'show_newer_messages';
 const CHAT_HISTORY_WINDOW_CONTROL_SELECTOR = `#${CHAT_HISTORY_OLDER_BUTTON_ID}, #${CHAT_HISTORY_NEWER_BUTTON_ID}`;
 
 function getChatRenderWindowSize(requestedSize = power_user.chat_truncation) {
+    // SillyBunny: aggressive DOM unloading for low-memory devices (e.g., iPhones crashing on long streams)
+    if (power_user.aggressive_dom_unload) {
+        const aggressiveSize = power_user.aggressive_dom_window_size || 5;
+        return normalizeChatRenderWindowSize(aggressiveSize, { maxSize: aggressiveSize });
+    }
     // SillyBunny: prevent long chats from using 0/huge truncation values to render every message into the DOM.
     return normalizeChatRenderWindowSize(requestedSize);
 }
