@@ -130,11 +130,12 @@ let globalSettings = {
     connectionProfile: '',
     promptTransformShowNotifications: true,
     appendAgentsExecutionMode: 'parallel',
+    helperPrefillMessages: '',
 };
 
 /**
  * Returns the global settings.
- * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, appendAgentsExecutionMode: 'parallel'|'sequential' }}
+ * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string }}
  */
 export function getGlobalSettings() {
     return globalSettings;
@@ -152,6 +153,9 @@ export function setGlobalSettings(update) {
     Object.assign(globalSettings, update);
     globalSettings.pathfinderEnabled = globalSettings.pathfinderEnabled !== false;
     globalSettings.enabledAgentIdsByChatType = normalizeScopedEnabledAgentIds(globalSettings.enabledAgentIdsByChatType);
+    globalSettings.helperPrefillMessages = typeof globalSettings.helperPrefillMessages === 'string'
+        ? globalSettings.helperPrefillMessages
+        : '';
 
     if (!globalSettings.scopedEnabledAgentIdsInitialized) {
         const scopedSetting = update.enabledAgentIdsByChatType;

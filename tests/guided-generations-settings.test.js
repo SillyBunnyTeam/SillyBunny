@@ -101,4 +101,13 @@ describe('Guided Generations settings migration', () => {
         expect(extensionSettings['guided-generations'].presetImpersonate1st).toBe('My Custom Preset');
         expect(saveSettingsDebounced).not.toHaveBeenCalled();
     });
+
+    test('adds an empty helper prefill setting by default without forcing a save', async () => {
+        const { loadSettings } = await import('../public/scripts/extensions/guided-generations/index.js');
+
+        loadSettings();
+
+        expect(extensionSettings['guided-generations'].helperPrefillMessages).toBe('');
+        expect(saveSettingsDebounced).not.toHaveBeenCalled();
+    });
 });

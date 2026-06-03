@@ -11,6 +11,10 @@ import {
     setLastImpersonateResult,
     setPreviousImpersonateInput,
 } from './shared.js';
+import {
+    parseHelperPrefillMessages,
+    serializeHelperPrefillForPrompt,
+} from '../../helper-prefill.js';
 
 async function guidedImpersonate() {
     const textarea = document.getElementById('send_textarea');
@@ -37,7 +41,12 @@ async function guidedImpersonate() {
     const switching = await handleSwitching(profileValue, presetValue, originalProfile);
     const promptTemplate = settings.promptImpersonate1st ?? '';
     const filledPrompt = applyPromptTemplate(promptTemplate, currentInputText);
-    const fullScript = `// Impersonate guide|\n/impersonate await=true ${filledPrompt} |`;
+    const helperPrefillPrompt = serializeHelperPrefillForPrompt(parseHelperPrefillMessages(settings.helperPrefillMessages));
+    const impersonatePrompt = [filledPrompt, helperPrefillPrompt]
+        .map(value => String(value ?? '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    const fullScript = `// Impersonate guide|\n/impersonate await=true ${impersonatePrompt} |`;
 
     try {
         await switching.switch();
