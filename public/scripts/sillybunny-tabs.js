@@ -74,6 +74,9 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
     ],
+    'characters:persona': [
+        { href: 'css/personas.css?v=20260603e', id: 'deferred-personas-css' },
+    ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
@@ -6861,6 +6864,7 @@ function openCharacterPersonaTab() {
     const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'persona';
 
+    preloadPanelStylesheets('characters', 'persona');
     setCharacterPanelMenuType(panel, 'persona');
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
@@ -6914,8 +6918,8 @@ function openCharacterPanelTab(tabId) {
         setCharacterEditorFullscreenState(false);
     }
 
-    if (normalizedTabId === 'world-info') {
-        preloadPanelStylesheets('characters', 'world-info');
+    if (normalizedTabId === 'world-info' || normalizedTabId === 'persona') {
+        preloadPanelStylesheets('characters', normalizedTabId);
     }
 
     if (!isCharacterPanelOpen()) {
