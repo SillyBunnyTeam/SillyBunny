@@ -233,6 +233,7 @@ This update tightens Bun/client-disconnect cancellation, mobile API/model pickin
 * Streaming disconnect cleanup now handles Bun raw abort reasons cleanly.
 * Thought and reasoning token totals now use the higher of provider-reported and locally counted reasoning tokens.
 * Server Admin now shows the tracked branch when Git reports an unresolved local branch.
+* Startup and Server Admin updates now recover from a lone generated `bun.lock` diff before checking Git cleanliness.
 * Mobile shell rail buttons now scale with the Mobile Button Size slider.
 
 **Added**
