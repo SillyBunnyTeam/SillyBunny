@@ -56,6 +56,11 @@
     resize: vertical;
 }
 
+.guided-generations-settingslist .gg-setting-help {
+    font-size: calc(var(--mainFontSize) * 0.76);
+    opacity: 0.72;
+}
+
 .gg-profile-row {
     display: grid;
     grid-template-columns: max-content minmax(160px, 1fr) max-content minmax(160px, 1fr) max-content;

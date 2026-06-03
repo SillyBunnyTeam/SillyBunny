@@ -122,7 +122,8 @@
             </label>
             <label class="ica--profile-label ica--helper-prefill-label">
                 <span>Helper Prefill Messages</span>
-                <textarea id="ica--helperPrefillMessages" class="text_pole ica--helper-prefill-field" rows="4"></textarea>
+                <textarea id="ica--helperPrefillMessages" class="text_pole ica--helper-prefill-field" rows="4" placeholder="[assistant] Start of helper response&#10;&#10;[system] Extra instruction"></textarea>
+                <small class="ica--profile-help">Use [system], [user], or [assistant] blocks. Text before any header is treated as [assistant].</small>
             </label>
             <label class="checkbox_label" title="Keep enabled In-Chat Agents separate between Individual chats and Group chats.">
                 <input type="checkbox" id="ica--separateRecentChats" />
