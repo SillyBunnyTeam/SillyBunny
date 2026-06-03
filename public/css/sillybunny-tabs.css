@@ -104,8 +104,14 @@
     --sb-proxy-label-size: calc(var(--mainFontSize) * var(--sb-proxy-label-scale-base));
     --sb-proxy-underline-inset: var(--sb-proxy-underline-inset-base);
     --sb-proxy-underline-bottom: var(--sb-proxy-underline-bottom-base);
-    --sb-mobile-toggle-size: clamp(44px, calc(var(--sb-mobile-toggle-size-base) * var(--sb-mobile-button-scale)), 56px);
-    --sb-home-toggle-min-width: max(44px, calc(var(--sb-home-toggle-min-width-base) * var(--sb-mobile-button-scale)));
+    --sb-mobile-toggle-min-size: 34px;
+    --sb-mobile-toggle-size: clamp(var(--sb-mobile-toggle-min-size), calc(var(--sb-mobile-toggle-size-base) * var(--sb-mobile-button-scale)), 56px);
+    --sb-home-toggle-min-width: max(var(--sb-mobile-toggle-min-size), calc(var(--sb-home-toggle-min-width-base) * var(--sb-mobile-button-scale)));
+    --sb-mobile-rail-action-size: clamp(var(--sb-mobile-toggle-min-size), calc(44px * var(--sb-mobile-button-scale)), 56px);
+    --sb-mobile-rail-tab-height: clamp(36px, calc(50px * var(--sb-mobile-button-scale)), 62px);
+    --sb-mobile-rail-wrapper-width: clamp(56px, calc(78px * var(--sb-mobile-button-scale)), 96px);
+    --sb-mobile-rail-icon-wrapper-width: clamp(48px, calc(58px * var(--sb-mobile-button-scale)), 72px);
+    --sb-mobile-rail-label-size: calc(var(--mainFontSize) * 0.62 * var(--sb-mobile-button-scale));
     --sb-topbar-compact-icon-size: calc(var(--mainFontSize) * var(--sb-topbar-compact-icon-scale-base));
     --sb-topbar-primary-min-height: max(var(--sb-proxy-button-height), var(--sb-mobile-toggle-size));
     --sb-topbar-primary-height: max(calc(var(--sb-topbar-primary-height-base) * var(--sb-topbar-scale-active)), var(--sb-topbar-primary-min-height));
@@ -7253,15 +7259,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper,
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper {
-        flex: 0 0 78px;
-        width: 78px;
+        flex: 0 0 var(--sb-mobile-rail-wrapper-width);
+        width: var(--sb-mobile-rail-wrapper-width);
         height: 100%;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-left.openDrawer .sb-shell-nav-wrapper,
     :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-right.openDrawer .sb-shell-nav-wrapper {
-        flex-basis: 58px;
-        width: 58px;
+        flex-basis: var(--sb-mobile-rail-icon-wrapper-width);
+        width: var(--sb-mobile-rail-icon-wrapper-width);
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-nav,
@@ -7310,7 +7316,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         width: 100%;
         min-width: 0;
         max-width: 100%;
-        min-height: 50px;
+        min-height: var(--sb-mobile-rail-tab-height);
         flex: 0 0 auto;
         flex-direction: column;
         justify-content: center;
@@ -7334,10 +7340,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-rail-action,
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-rail-action {
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
+        width: var(--sb-mobile-rail-action-size);
+        min-width: var(--sb-mobile-rail-action-size);
+        max-width: var(--sb-mobile-rail-action-size);
+        min-height: var(--sb-mobile-rail-action-size);
         align-self: center;
         padding: 0;
         border-color: transparent;
@@ -7360,15 +7366,15 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-tab-copy strong,
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-right.openDrawer .sb-shell-tab-copy strong {
-        font-size: calc(var(--mainFontSize) * 0.62);
+        font-size: var(--sb-mobile-rail-label-size);
         white-space: normal;
         line-height: 1.1;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-left.openDrawer .sb-shell-tab,
     :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] .sb-shell-root-right.openDrawer .sb-shell-tab {
-        width: 44px;
-        min-height: 44px;
+        width: var(--sb-mobile-rail-action-size);
+        min-height: var(--sb-mobile-rail-action-size);
         align-self: center;
         padding: 0;
     }
