@@ -56,6 +56,7 @@ These screenshots show the graphical shell UI across Workspace, Customize, Agent
 * [Project Goals](#project-goals-aka-why-we-made-this-fork)
 * [Changes Compared to SillyTavern](#changes-vs-sillytavern)
 * [Latest Update](#latest-update)
+    * [v1.6.2 (2026-06-03)](#v162-2026-06-03)
     * [v1.6.1 (2026-06-02)](#v161-2026-06-02)
     * [v1.6.0 (2026-05-18)](#v160-2026-05-18)
     * [v1.5.3 (2026-05-03)](#v153-2026-05-03)
@@ -222,6 +223,31 @@ SillyBunny includes some extras by default to help you get started right away:
 ---
 
 ## Latest Update
+
+### v1.6.2 (2026-06-03)
+
+This update tightens Bun/client-disconnect cancellation, mobile API/model picking, mobile shell scaling, reasoning token accounting, and Server Admin branch reporting for the 1.6 line.
+
+**Fixed**
+* Bun-safe request cancellation now aborts upstream generation, image, and provider work when the request, response, or socket disconnects without logging expected disconnects as provider failures.
+* Streaming disconnect cleanup now handles Bun raw abort reasons cleanly.
+* Thought and reasoning token totals now use the higher of provider-reported and locally counted reasoning tokens.
+* Server Admin now shows the tracked branch when Git reports an unresolved local branch.
+* Mobile shell rail buttons now scale with the Mobile Button Size slider.
+
+**Added**
+* Mobile-friendly inline and native picker controls for OpenRouter models, sorts, providers, quantizations, middle-out behavior, and searchable model ID rows.
+* Request-cancellation verification and regression coverage for cancellation, mobile shell button scaling, reasoning token accounting, and branch fallback behavior.
+
+**Removed**
+* No user-facing features were removed in this release.
+
+**Improved**
+* Touch and narrow-screen API/model dropdowns avoid Select2 keyboard traps by using inline or native picker behavior where appropriate.
+* Character drawer routing, header copy, empty editor copy, and import intro text are clearer across mobile and desktop panel layouts.
+* Navigation defaults return to a labeled horizontal layout, while vertical icon-only navigation remains opt-in.
+* Side rails can derive shortcuts from all registered Workspace and Customize tabs when rail shortcuts are enabled.
+* Updated app, Horde client, bundled extension, package, lockfile, README mirror, release notes, Discord summary, and test metadata to 1.6.2.
 
 ### v1.6.1 (2026-06-02)
 
