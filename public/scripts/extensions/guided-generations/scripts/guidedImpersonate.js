@@ -16,6 +16,10 @@ import {
     serializeHelperPrefillForPrompt,
 } from '../../helper-prefill.js';
 
+function escapeSlashCommandDelimiters(value) {
+    return String(value ?? '').replace(/\|/g, '\\|');
+}
+
 async function guidedImpersonate() {
     const textarea = document.getElementById('send_textarea');
     if (!(textarea instanceof HTMLTextAreaElement)) {
@@ -46,7 +50,7 @@ async function guidedImpersonate() {
         .map(value => String(value ?? '').trim())
         .filter(Boolean)
         .join('\n\n');
-    const fullScript = `// Impersonate guide|\n/impersonate await=true ${impersonatePrompt} |`;
+    const fullScript = `// Impersonate guide|\n/impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |`;
 
     try {
         await switching.switch();

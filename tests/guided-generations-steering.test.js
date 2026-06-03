@@ -143,7 +143,7 @@ describe('Guided Generations steering commands', () => {
 Stay terse.
 
 [assistant]
-I`;
+I | begin`;
 
         const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
 
@@ -153,6 +153,6 @@ I`;
         const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
         expect(command).toContain('/impersonate await=true FIRST PERSON: aim for a colder, suspicious reply');
         expect(command).toContain('SYSTEM:\nStay terse.');
-        expect(command).toContain('ASSISTANT:\nI');
+        expect(command).toContain('ASSISTANT:\nI \\| begin');
     });
 });
