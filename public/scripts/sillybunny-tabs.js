@@ -896,7 +896,7 @@ function getActiveShellRailMode() {
 function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
     return getNavState(mode).layout === 'horizontal'
         ? 'Show Workspace and Customize buttons in top bar'
-        : 'Show section shortcuts in each side rail';
+        : 'Show Workspace and Customize shortcuts in each side rail';
 }
 
 function normalizeMobileNavReplacementTarget(value) {
