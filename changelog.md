@@ -34,6 +34,7 @@ This update tightens Bun/client-disconnect cancellation, mobile navigation scali
 - PR #316 (2026-06-03) `fix: scale mobile shell buttons with Mobile Button Size slider`
 - PR #317 (2026-06-03) `fix: correct underreported thought token counts`
 - PR #318 (2026-06-03) `fix: show tracked branch when local branch is unresolved`
+- PR #319 (2026-06-03) `chore: release v1.6.2`
 
 ### Local Staging Commits
 - 1f828ed (2026-06-03) `fix: polish menu layout and mobile dropdowns`
