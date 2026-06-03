@@ -96,7 +96,7 @@ Then, run the appropriate launcher for your OS, which auto-installs all dependen
 | macOS (Terminal) | `./Start.command` |
 | macOS (Finder) | Double-click `Start.command` (right-click > Open if Gatekeeper warns) |
 | Linux / WSL | `./start.sh` |
-| Docker | `docker compose -f docker/docker-compose.yml up --build`
+| Docker | `docker compose --project-directory . -f docker/docker-compose.yml up --build`
 | Android (Termux) | `bash start.sh` |
 
 If you already manage your own Bun install, run via `bun run start`. Other launch variants:
