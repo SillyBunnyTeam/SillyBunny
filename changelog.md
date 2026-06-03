@@ -139,6 +139,7 @@ This update keeps the 1.6 series moving with safer chat lifecycle defaults, stro
 - PR #314 (2026-06-02) `fix: harden streaming disconnect cancellation`
 - PR #316 (2026-06-03) `fix: scale mobile shell buttons with Mobile Button Size slider`
 - PR #317 (2026-06-03) `fix: correct underreported thought token counts`
+- PR #318 (2026-06-03) `fix: show tracked branch when local branch is unresolved`
 
 ## v1.6.0
 
