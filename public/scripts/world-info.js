@@ -3250,6 +3250,7 @@ function initCharacterFilterSelect2Helper(characterFilter) {
         $(characterFilter).select2({
             width: '100%',
             placeholder: t`Tie this entry to specific characters or characters with specific tags`,
+            dropdownCssClass: 'sb-world-info-select2-dropdown',
             allowClear: true,
             closeOnSelect: false,
         });
@@ -4012,6 +4013,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             generationTypeTriggers.select2({
                 placeholder: t`All types (default)`,
                 width: '100%',
+                dropdownCssClass: 'sb-world-info-select2-dropdown',
                 closeOnSelect: false,
                 allowClear: true,
             });
