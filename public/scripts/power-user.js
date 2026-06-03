@@ -274,6 +274,10 @@ export const power_user = {
     ios_webkit_disable_smooth_streaming: true,
     ios_webkit_disable_stream_fade_in: true,
 
+    // SillyBunny: aggressive DOM unloading for low-memory devices
+    aggressive_dom_unload: false,
+    aggressive_dom_window_size: 5,
+
     fast_ui_mode: true,
     avatar_style: avatar_styles.ROUND,
     chat_display: chat_styles.DEFAULT,
@@ -1964,6 +1968,9 @@ export async function loadPowerUserSettings(settings, data) {
     $('#ios_webkit_reduce_streaming_work').prop('checked', power_user.ios_webkit_reduce_streaming_work);
     $('#ios_webkit_disable_smooth_streaming').prop('checked', power_user.ios_webkit_disable_smooth_streaming);
     $('#ios_webkit_disable_stream_fade_in').prop('checked', power_user.ios_webkit_disable_stream_fade_in);
+    $('#aggressive_dom_unload').prop('checked', power_user.aggressive_dom_unload);
+    $('#aggressive_dom_window_size').val(power_user.aggressive_dom_window_size);
+    $('#aggressive_dom_window_size_counter').val(power_user.aggressive_dom_window_size);
 
     $('#font_scale').val(power_user.font_scale);
     $('#font_scale_counter').val(power_user.font_scale);
@@ -3792,6 +3799,18 @@ jQuery(async () => {
 
     $('#ios_webkit_disable_stream_fade_in').on('input', function () {
         power_user.ios_webkit_disable_stream_fade_in = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    // SillyBunny: aggressive DOM unloading for low-memory devices
+    $('#aggressive_dom_unload').on('input', function () {
+        power_user.aggressive_dom_unload = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#aggressive_dom_window_size').on('input', function () {
+        power_user.aggressive_dom_window_size = Number($(this).val());
+        $('#aggressive_dom_window_size_counter').val(power_user.aggressive_dom_window_size);
         saveSettingsDebounced();
     });
 

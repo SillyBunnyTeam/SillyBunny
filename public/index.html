@@ -5448,6 +5448,24 @@
                                 </label>
                             </div>
 
+                            <!-- SillyBunny: aggressive DOM unloading for low-memory devices -->
+                            <div name="AggressiveDomUnloadToggles">
+                                <h4><span data-i18n="Aggressive DOM Unloading">Aggressive DOM Unloading</span></h4>
+                                <small data-i18n="Aggressive DOM Unloading_desc">Drastically reduces rendered messages to prevent crashes on low-memory devices during long streams.</small>
+                                <label class="checkbox_label" for="aggressive_dom_unload" title="Enable aggressive DOM unloading to keep only a minimal number of messages rendered. Useful for devices that crash during long streaming generations." data-i18n="[title]Enable aggressive DOM unloading to keep only a minimal number of messages rendered. Useful for devices that crash during long streaming generations.">
+                                    <input id="aggressive_dom_unload" type="checkbox" />
+                                    <small data-i18n="Enable aggressive unloading">Enable aggressive unloading</small>
+                                </label>
+                                <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
+                                    <small>
+                                        <span data-i18n="Messages to keep">Messages to keep</span>
+                                        <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Number of messages to keep rendered when aggressive unloading is enabled. Lower values use less memory." title="Number of messages to keep rendered when aggressive unloading is enabled. Lower values use less memory."></div>
+                                    </small>
+                                    <input class="neo-range-slider" type="range" id="aggressive_dom_window_size" name="aggressive_dom_window_size" min="1" max="25" step="1">
+                                    <input class="neo-range-input" type="number" min="1" max="25" step="1" data-for="aggressive_dom_window_size" id="aggressive_dom_window_size_counter">
+                                </div>
+                            </div>
+
                             <label for="play_message_sound" class="checkbox_label" title="Play a sound when a message generation finishes." data-i18n="[title]Play a sound when a message generation finishes">
                                 <input id="play_message_sound" type="checkbox" />
                                 <audio id="audio_message_sound" src="sounds/message.mp3" hidden></audio>
