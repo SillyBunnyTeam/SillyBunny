@@ -8850,9 +8850,13 @@ function renderServerAdminStatus(data) {
         className: 'text_pole',
         attrs: { style: 'width: 100%; max-width: 200px;' },
     });
-    const currentBranch = repository?.displayBranch || repository?.branch || version?.gitBranch || 'Unknown';
-    const currentOption = createElement('option', { attrs: { value: currentBranch, selected: 'selected' } });
-    currentOption.textContent = currentBranch;
+    const currentBranch = repository?.displayBranch || repository?.branch || version?.gitBranch || '';
+    const currentOptionAttributes = { value: currentBranch, selected: 'selected' };
+    if (!currentBranch) {
+        currentOptionAttributes.disabled = 'disabled';
+    }
+    const currentOption = createElement('option', { attrs: currentOptionAttributes });
+    currentOption.textContent = currentBranch || 'Unknown';
     branchSelect.appendChild(currentOption);
     branchValue.appendChild(branchSelect);
     branchContainer.append(branchLabel, branchValue);
