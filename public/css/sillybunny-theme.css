@@ -5042,7 +5042,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 .sb-accent-preset[data-accent='orange'] {
-    --sb-accent-swatch: #f97316;
+    --sb-accent-swatch: #FFBF00;
 }
 
 .sb-accent-preset[data-accent='red'] {
