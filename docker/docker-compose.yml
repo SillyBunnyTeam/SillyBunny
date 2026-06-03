@@ -1,6 +1,9 @@
 services:
   sillybunny:
-    build: ..
+    build:
+      # Repo root; Coolify and the documented local command set this as project directory.
+      context: .
+      dockerfile: Dockerfile
     container_name: sillybunny
     hostname: sillybunny
     image: sillybunny:latest
@@ -14,10 +17,10 @@ services:
     ports:
       - "4444:4444"
     volumes:
-      - "./config:/home/bun/app/config"
-      - "./data:/home/bun/app/data"
-      - "./plugins:/home/bun/app/plugins"
-      - "./extensions:/home/bun/app/public/scripts/extensions/third-party"
+      - "./docker/config:/home/bun/app/config"
+      - "./docker/data:/home/bun/app/data"
+      - "./docker/plugins:/home/bun/app/plugins"
+      - "./docker/extensions:/home/bun/app/public/scripts/extensions/third-party"
     healthcheck:
       test: ["CMD", "bun", "src/healthcheck.js"]
       interval: 30s
