@@ -6118,8 +6118,18 @@
                             <input id="personas_restore_input" type="file" accept=".json" hidden>
                         </div>
                     </div>
-                    <div id="persona-management-block" class="flex-container wide100p flexGap10">
-                        <div class="persona_management_left_column flex1 wide100p">
+                    <div class="persona-workspace-tabs sb-shell-nav" role="tablist" aria-label="Persona workspace" aria-orientation="horizontal">
+                        <button id="persona_workspace_tab_browse" class="sb-shell-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="persona_workspace_panel_browse" data-persona-workspace-tab="browse">
+                            <i class="fa-solid fa-address-book" aria-hidden="true"></i>
+                            <span class="sb-shell-tab-copy"><strong data-i18n="Browse">Browse</strong></span>
+                        </button>
+                        <button id="persona_workspace_tab_edit" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="persona_workspace_panel_edit" data-persona-workspace-tab="edit">
+                            <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                            <span class="sb-shell-tab-copy"><strong data-i18n="Edit">Edit</strong></span>
+                        </button>
+                    </div>
+                    <div id="persona-management-block" class="flex-container wide100p flexGap10" data-persona-workspace-tab="browse">
+                        <div id="persona_workspace_panel_browse" class="persona_management_left_column persona-workspace-panel flex1 wide100p" role="tabpanel" aria-labelledby="persona_workspace_tab_browse" data-persona-workspace-panel="browse">
                             <div class="flex-container marginBot10 alignitemscenter persona-management-browser">
                                 <div id="create_dummy_persona" class="menu_button menu_button_icon" title="Create a dummy persona" data-i18n="[title]Create a dummy persona">
                                     <i class="fa-solid fa-person-circle-question fa-fw"></i>
@@ -6144,9 +6154,18 @@
                                 <input type="hidden" id="avatar_upload_overwrite" name="overwrite_name" value="">
                             </form>
                         </div>
-                        <div class="persona_management_right_column flex1">
+                        <div id="persona_workspace_panel_edit" class="persona_management_right_column persona-workspace-panel flex1" role="tabpanel" aria-labelledby="persona_workspace_tab_edit" data-persona-workspace-panel="edit">
                             <div class="persona_management_current_persona">
                                 <h4 class="standoutHeader persona-section-header" data-i18n="Current Persona">Current Persona</h4>
+
+                                <div id="persona_selected_masthead" class="persona-selected-masthead">
+                                    <img id="persona_selected_avatar" class="persona-selected-avatar" src="" alt="" loading="lazy">
+                                    <div class="persona-selected-copy">
+                                        <strong id="persona_selected_name" class="persona-selected-name">[Persona Name]</strong>
+                                        <span id="persona_selected_title" class="persona-selected-title text_muted"></span>
+                                    </div>
+                                    <div id="persona_selected_chips" class="persona-selected-chips" aria-live="polite"></div>
+                                </div>
 
                                 <div id="persona_controls" class="flex-container">
                                     <h5 id="your_name" class="persona_name">[Persona Name]</h5>
@@ -6168,15 +6187,55 @@
                                     </label>
                                 </div>
 
+                                <div class="persona-editor-tabs sb-shell-nav" role="tablist" aria-label="Persona editor sections" aria-orientation="horizontal">
+                                    <button id="persona_editor_tab_prompt" class="sb-shell-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="persona_editor_panel_prompt" data-persona-editor-tab="prompt">
+                                        <i class="fa-solid fa-scroll" aria-hidden="true"></i>
+                                        <span class="sb-shell-tab-copy"><strong data-i18n="Prompt">Prompt</strong></span>
+                                    </button>
+                                    <button id="persona_editor_tab_connections" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="persona_editor_panel_connections" data-persona-editor-tab="connections">
+                                        <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                        <span class="sb-shell-tab-copy"><strong data-i18n="Connections">Connections</strong></span>
+                                    </button>
+                                    <button id="persona_editor_tab_tools" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="persona_editor_panel_tools" data-persona-editor-tab="tools">
+                                        <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+                                        <span class="sb-shell-tab-copy"><strong data-i18n="Tools">Tools</strong></span>
+                                    </button>
+                                </div>
+
+                                <div class="persona-editor-tab-panels">
+                                    <section id="persona_editor_panel_prompt" class="persona-editor-panel is-active" role="tabpanel" aria-labelledby="persona_editor_tab_prompt" data-persona-editor-panel="prompt">
                                 <h4 class="flex-container alignItemsBaseline persona-section-header">
                                     <span data-i18n="Persona Description">Persona Description</span>
                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="persona_description" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                 </h4>
                                 <textarea id="persona_description" name="persona_description" data-macros data-i18n="[placeholder]Example: [{{user}} is a 28-year-old Romanian cat girl.]" placeholder="Example:&#10;[{{user}} is a 28-year-old Romanian cat girl.]" class="text_pole textarea_compact" value="" autocomplete="off" rows="8"></textarea>
 
+                                <section class="persona-appendices-block" aria-labelledby="persona_appendices_heading">
+                                    <div class="persona-appendices-heading-row">
+                                        <h4 id="persona_appendices_heading" class="persona-section-header" data-i18n="Scenario Notes">Scenario Notes</h4>
+                                        <div class="persona-appendices-actions">
+                                            <button id="persona_appendix_add" class="menu_button menu_button_icon" type="button" title="Add scenario note" data-i18n="[title]Add scenario note">
+                                                <i class="fa-solid fa-plus fa-fw" aria-hidden="true"></i>
+                                                <span data-i18n="Add">Add</span>
+                                            </button>
+                                            <button id="persona_appendix_import" class="menu_button menu_button_icon" type="button" title="Import another persona as a scenario note" data-i18n="[title]Import another persona as a scenario note">
+                                                <i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i>
+                                                <span data-i18n="Import">Import</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p class="persona-appendices-help text_muted" data-i18n="Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.">Scenario Notes add chat-specific details to this persona. Multiple notes can be active at once in this chat.</p>
+                                    <div id="persona_appendices_active_chips" class="persona-appendices-active-chips" aria-live="polite"></div>
+                                    <div id="persona_appendices_list" class="persona-appendices-list"></div>
+                                    <details class="persona-effective-preview">
+                                        <summary data-i18n="Preview final prompt for this chat">Preview final prompt for this chat</summary>
+                                        <pre id="persona_effective_description_preview"></pre>
+                                    </details>
+                                </section>
+
                                 <div class="flex-container justifySpaceBetween persona-section-meta">
                                     <h4 class="persona-section-header persona-section-header--inline" data-i18n="Position">Position</h4>
-                                    <div class="extension_token_counter widthFitContent">
+                                    <div class="extension_token_counter widthFitContent" title="Counts the base persona plus active Scenario Notes" data-i18n="[title]Counts the base persona plus active Scenario Notes">
                                         <span data-i18n="Tokens persona description">Tokens</span>: <span id="persona_description_token_count">0</span>
                                     </div>
                                 </div>
@@ -6205,6 +6264,8 @@
                                     </div>
                                 </div>
 
+                                    </section>
+                                    <section id="persona_editor_panel_connections" class="persona-editor-panel" role="tabpanel" aria-labelledby="persona_editor_tab_connections" data-persona-editor-panel="connections" hidden>
                                 <h4 class="persona-section-header" data-i18n="Connections">Connections</h4>
                                 <div id="persona_connections_buttons" class="flex-container">
                                     <div id="lock_persona_default" class="menu_button menu_button_icon" title="Click to select this as default persona for the new chats. Click again to remove it." data-i18n="[title]Click to select this as default persona for the new chats. Click again to remove it.">
@@ -6223,7 +6284,9 @@
                                 <div id="persona_connections_info_block"></div>
                                 <div id="persona_connections_list" class="text_muted m-b-1 avatars_inline avatars_multiline scroll-reset-container expander">
                                 </div>
-                            </div>
+
+                                    </section>
+                                    <section id="persona_editor_panel_tools" class="persona-editor-panel" role="tabpanel" aria-labelledby="persona_editor_tab_tools" data-persona-editor-panel="tools" hidden>
 
                             <div class="persona_management_global_settings">
                                 <h4 class="standoutHeader" data-i18n="Global Settings">Global Settings</h4>
@@ -6251,6 +6314,9 @@
                                             Auto-lock a chosen persona to the chat
                                         </span>
                                     </label>
+                                </div>
+                            </div>
+                                    </section>
                                 </div>
                             </div>
                         </div>
