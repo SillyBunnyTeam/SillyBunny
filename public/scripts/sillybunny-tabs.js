@@ -14,6 +14,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     rightTab: 'sb-right-tab',
     leftShellSize: 'sb-left-shell-size',
     rightShellSize: 'sb-right-shell-size',
+    desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
     characterDrawerRightLocked: 'sb-character-drawer-right-locked',
     theme: 'sb-theme',
     surfaceTransparency: 'sb-surface-transparency',
@@ -587,6 +588,8 @@ const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
 const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
 const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
+const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 180;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
@@ -666,6 +669,7 @@ const sbState = {
             left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
             right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
         },
+        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false),
         activeResize: null,
     },
     characterDrawer: {
@@ -1357,6 +1361,10 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
+        safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
+        sbState.shellSizing.snapToChatWidth,
+    );
     sbState.mobileNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout));
     sbState.mobileNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), sbState.mobileNav.iconOnly);
     sbState.mobileNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), sbState.mobileNav.showCustomize);
@@ -1778,6 +1786,19 @@ function setCompactMode(enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
+function setDesktopShellSnapToChatWidth(enabled, { persist = true } = {}) {
+    const nextEnabled = Boolean(enabled);
+    sbState.shellSizing.snapToChatWidth = nextEnabled;
+    document.documentElement.dataset.sbDesktopShellSnapToChatWidth = String(nextEnabled);
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));
+    }
+
+    syncDesktopShellSizing();
+    updateThemePickerUi();
+}
+
 function syncCharacterDrawerLockButton() {
     const button = document.getElementById('sb-character-right-lock');
     if (!(button instanceof HTMLButtonElement)) {
@@ -1999,12 +2020,43 @@ function renderSearchEmptyState(container, title, detail) {
     container.appendChild(empty);
 }
 
+function focusUniversalSearchInput(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const applyFocus = () => {
+        input.focus({ preventScroll: true });
+        input.select();
+    };
+
+    applyFocus();
+    window.requestAnimationFrame(applyFocus);
+}
+
+function requestMobileViewportReset() {
+    if (!isMobileViewport() || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+        return;
+    }
+
+    const dispatchReset = () => window.dispatchEvent(new Event('sb-mobile-viewport-reset'));
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(dispatchReset);
+    } else {
+        dispatchReset();
+    }
+
+    window.setTimeout(dispatchReset, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+}
+
 function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     const searchState = getUniversalSearchState();
     const row = searchState.row;
     const root = searchState.root;
     const input = searchState.input;
     const nextOpenState = Boolean(isOpen);
+    const wasOpen = Boolean(searchState.expanded);
 
     searchState.expanded = nextOpenState;
     row?.classList.toggle('is-open', nextOpenState);
@@ -2018,14 +2070,18 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
 
     if (!nextOpenState) {
         searchState.results?.classList.remove('is-visible');
+        if (wasOpen) {
+            requestMobileViewportReset();
+        }
     } else {
         renderUniversalSearchResults(input?.value ?? '');
     }
 
     if (focusInput && input instanceof HTMLInputElement) {
-        input.focus({ preventScroll: true });
+        focusUniversalSearchInput(input);
     }
 
+    queueMobileShellDrawerBoundsSync();
     syncShortcutButtonActiveStates();
 }
 
@@ -2213,6 +2269,113 @@ function canResizeDesktopShells() {
     return !isMobileViewport() && !isTouchOnlyDesktopViewport();
 }
 
+function readFiniteViewportNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+}
+
+function getShellViewportSize() {
+    const doc = document.documentElement;
+    const visualViewport = window.visualViewport;
+    const fallbackWidth = window.innerWidth || doc?.clientWidth || 0;
+    const fallbackHeight = window.innerHeight || doc?.clientHeight || 0;
+    const width = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.width, fallbackWidth)));
+    const height = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.height, fallbackHeight)));
+
+    return {
+        width,
+        height,
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+}
+
+function syncShellViewportBounds() {
+    const root = document.documentElement;
+    const viewportSize = getShellViewportSize();
+    const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+
+    root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
+    root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
+    root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+}
+
+function getMobileShellBoundDrawers() {
+    return Array.from(new Set([
+        ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
+        ...document.querySelectorAll('#top-settings-holder #right-nav-panel'),
+    ])).filter(drawer => drawer instanceof HTMLElement);
+}
+
+function clearMobileShellDrawerBounds(drawer) {
+    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbMobileViewportBound !== 'true') {
+        return;
+    }
+
+    drawer.style.removeProperty('top');
+    drawer.style.removeProperty('bottom');
+    drawer.style.removeProperty('height');
+    drawer.style.removeProperty('max-height');
+    drawer.style.removeProperty('box-sizing');
+    delete drawer.dataset.sbMobileViewportBound;
+}
+
+function syncMobileShellDrawerBounds() {
+    const drawers = getMobileShellBoundDrawers();
+
+    if (!drawers.length) {
+        return;
+    }
+
+    if (!isMobileViewport()) {
+        drawers.forEach(clearMobileShellDrawerBounds);
+        return;
+    }
+
+    const viewportSize = getShellViewportSize();
+    const baseTopOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+
+    for (const drawer of drawers) {
+        if (!drawer.classList.contains('openDrawer')) {
+            clearMobileShellDrawerBounds(drawer);
+            continue;
+        }
+
+        const drawerStyles = window.getComputedStyle(drawer);
+        const shellGap = Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0;
+        const topOffset = clampNumber(Math.round(baseTopOffset + shellGap), 0, viewportSize.height);
+        const availableHeight = Math.max(0, viewportSize.height - topOffset);
+
+        drawer.dataset.sbMobileViewportBound = 'true';
+        drawer.style.setProperty('top', `${topOffset}px`, 'important');
+        drawer.style.setProperty('bottom', 'auto', 'important');
+        drawer.style.setProperty('box-sizing', 'border-box', 'important');
+        drawer.style.setProperty('height', `${availableHeight}px`, 'important');
+        drawer.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    }
+}
+
+function queueMobileShellDrawerBoundsSync() {
+    if (!isMobileViewport()) {
+        return;
+    }
+
+    const sync = () => {
+        syncShellViewportBounds();
+        syncMobileShellDrawerBounds();
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(sync);
+    } else {
+        sync();
+    }
+
+    window.setTimeout(sync, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+}
+
 function isMovingUIActive() {
     return document.body?.classList.contains('movingUI') ?? false;
 }
@@ -2308,6 +2471,75 @@ function hydratePersistedShellSizes() {
     }
 }
 
+function getResolvedShellTopbarOffset() {
+    const chatShell = document.getElementById('sheld');
+    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+        const chatRect = chatShell.getBoundingClientRect();
+        if (Number.isFinite(chatRect.top) && chatRect.top > 0) {
+            return chatRect.top;
+        }
+    }
+
+    const topBar = document.getElementById('top-bar');
+    if (topBar instanceof HTMLElement && topBar.getClientRects().length > 0) {
+        const topBarRect = topBar.getBoundingClientRect();
+        if (Number.isFinite(topBarRect.bottom) && topBarRect.bottom > 0) {
+            return topBarRect.bottom;
+        }
+    }
+
+    const topbarOffset = Number.parseFloat(
+        window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
+    );
+
+    return Number.isFinite(topbarOffset) ? topbarOffset : 0;
+}
+
+function getShellViewportTop(root, viewportSize = getShellViewportSize()) {
+    let top = getResolvedShellTopbarOffset();
+
+    if (root instanceof HTMLElement && root.classList.contains('openDrawer') && root.getClientRects().length > 0) {
+        const rect = root.getBoundingClientRect();
+        if (Number.isFinite(rect.top)) {
+            top = rect.top;
+        }
+    }
+
+    return clampNumber(Math.round(top), viewportSize.top, viewportSize.bottom);
+}
+
+function getChatViewportWidth(viewportSize = getShellViewportSize()) {
+    const chatShell = document.getElementById('sheld');
+
+    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+        const rect = chatShell.getBoundingClientRect();
+        const visibleWidth = Math.min(rect.right, viewportSize.right) - Math.max(rect.left, viewportSize.left);
+
+        if (Number.isFinite(visibleWidth) && visibleWidth > 0) {
+            return Math.round(visibleWidth);
+        }
+    }
+
+    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
+    const sheldWidthValue = Number.parseFloat(sheldWidthStr);
+
+    if (!Number.isFinite(sheldWidthValue)) {
+        return viewportSize.width;
+    }
+
+    if (sheldWidthStr.endsWith('px')) {
+        return Math.round(sheldWidthValue);
+    }
+
+    return Math.round((sheldWidthValue / 100) * viewportSize.width);
+}
+
+function isShellSnapToChatWidthEnabled(shellKey) {
+    return Boolean(sbState.shellSizing.snapToChatWidth)
+        && isDesktopResizableShell(shellKey)
+        && !isMobileViewport();
+}
+
 function getShellSizeStorageKey(shellKey) {
     const sizingKey = getShellSizingKey(shellKey);
 
@@ -2323,9 +2555,23 @@ function getShellSizeStorageKey(shellKey) {
 }
 
 function getDesktopShellDimensions(shellKey = '') {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const viewportSize = getShellViewportSize();
+    const viewportWidth = viewportSize.width;
+    const viewportHeight = viewportSize.height;
     const maxShellWidth = shellKey === 'right' ? Math.min(SB_DESKTOP_SHELL_LAYOUT.maxWidth, 760) : SB_DESKTOP_SHELL_LAYOUT.maxWidth;
+
+    if (isShellSnapToChatWidthEnabled(shellKey)) {
+        const snappedWidth = clampNumber(
+            getChatViewportWidth(viewportSize),
+            Math.min(SB_DESKTOP_SHELL_LAYOUT.minWidth, viewportWidth),
+            viewportWidth,
+        );
+
+        return {
+            width: snappedWidth,
+            maxWidth: snappedWidth,
+        };
+    }
 
     if (
         ['left', 'right'].includes(shellKey)
@@ -2386,19 +2632,21 @@ function getDesktopShellDimensions(shellKey = '') {
 }
 
 function getDesktopShellResizeBounds(shellKey = '') {
-    const viewportWidth = Math.max(0, Math.round(window.innerWidth));
-    const topbarOffset = Number.parseFloat(
-        window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
-    );
-    const resolvedTopbarOffset = Number.isFinite(topbarOffset) ? topbarOffset : 0;
+    const viewportSize = getShellViewportSize();
+    const viewportWidth = Math.max(0, Math.round(viewportSize.width));
+    const viewportHeight = Math.max(0, Math.round(viewportSize.height));
+    const root = isDesktopResizableShell(shellKey) ? getResizableShellRoot(shellKey) : null;
+    const shellTop = getShellViewportTop(root, viewportSize);
     const defaultDimensions = getDesktopShellDimensions(shellKey);
-    const maxHeight = Math.max(0, Math.round(window.innerHeight - resolvedTopbarOffset - SB_DESKTOP_SHELL_RESIZE.bottomGap));
+    const defaultWidth = Math.max(0, Math.min(Math.round(defaultDimensions.width), viewportWidth));
+    const snapWidth = isShellSnapToChatWidthEnabled(shellKey) ? defaultWidth : null;
+    const maxHeight = Math.max(0, Math.round(viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap));
 
     return {
-        defaultWidth: Math.max(0, Math.round(defaultDimensions.width)),
+        defaultWidth,
         defaultHeight: maxHeight,
-        minWidth: Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
-        maxWidth: viewportWidth,
+        minWidth: snapWidth ?? Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
+        maxWidth: snapWidth ?? viewportWidth,
         minHeight: Math.min(SB_DESKTOP_SHELL_RESIZE.minHeight, maxHeight),
         maxHeight,
     };
@@ -2432,7 +2680,7 @@ function setShellSizeOverride(shellKey, size, { persist = true } = {}) {
         return null;
     }
 
-    const nextSize = clampShellSize(size);
+    const nextSize = clampShellSize(size, getDesktopShellResizeBounds(shellKey));
 
     sbState.shellSizing.overrides.left = nextSize;
     sbState.shellSizing.overrides.right = nextSize;
@@ -7201,6 +7449,8 @@ function bindCharacterDrawerStateObserver() {
 
 function closeCharacterPanel() {
     const panel = getCharacterPanel();
+    const shouldResetViewport = panel instanceof HTMLElement
+        && (panel.classList.contains('openDrawer') || (document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)));
 
     setCharacterEditorFullscreenState(false);
 
@@ -7213,7 +7463,13 @@ function closeCharacterPanel() {
     syncDrawerIconState('#WIDrawerIcon', false);
     setCharacterDrawerHostOverflow(false);
     syncChatbarVisibilityState();
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
     queueMobileModalStateSync();
+
+    if (shouldResetViewport) {
+        requestMobileViewportReset();
+    }
 }
 
 function ensureCharacterResizeHandle() {
@@ -7264,6 +7520,8 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     setCharacterDrawerHostOverflow(true);
 
     triggerDrawerToggle(getCharacterDrawerToggle());
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
 
     // Fallback: if the jQuery drawer-toggle handler didn't fire, force-open
     window.requestAnimationFrame(() => {
@@ -7274,6 +7532,8 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         restoreLastCharacterPanelView();
 
         syncChatbarVisibilityState();
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
         syncDesktopShellSizing();
         queueMobileModalStateSync();
     });
@@ -7614,7 +7874,7 @@ function buildTopBar() {
             'aria-expanded': 'false',
         },
     });
-    mobileButton.innerHTML = '<i class="fa-solid fa-bars" aria-hidden="true"></i>';
+    mobileButton.innerHTML = `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
     stopProxyPointerPropagation(mobileButton);
     mobileButton.addEventListener('click', toggleMobileNav);
 
@@ -10958,6 +11218,30 @@ function createDesktopNavLayoutSettingsGroup() {
     return createNavigationSettingsGroup('desktop');
 }
 
+function createDesktopShellSizingSettingsGroup() {
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-desktop-shell-sizing-group sb-desktop-setting',
+    });
+    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
+    const title = createElement('strong', { text: 'Panel Sizing' });
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Keep Workspace, Customize, and Characters aligned with the active chat width.',
+    });
+    const snapChoice = createMobileNavChoice({
+        id: 'sb-desktop-shell-snap-to-chat-input',
+        type: 'checkbox',
+        value: 'snap-to-chat-width',
+        label: 'Snap to chat width',
+        icon: 'fa-arrows-left-right-to-line',
+        onChange: input => setDesktopShellSnapToChatWidth(input.checked),
+    });
+
+    header.append(title, description);
+    group.append(header, snapChoice);
+    return group;
+}
+
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-frontend-icon-group',
@@ -11171,6 +11455,7 @@ function injectThemePicker() {
     });
     const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
     const desktopNavLayoutSettingsGroup = createDesktopNavLayoutSettingsGroup();
+    const desktopShellSizingSettingsGroup = createDesktopShellSizingSettingsGroup();
     const mobileNavLayoutSettingsGroup = createMobileNavLayoutSettingsGroup();
     const desktopSettingsDivider = createMobileNavDivider();
     const mobileSettingsDivider = createMobileNavDivider();
@@ -11209,6 +11494,7 @@ function injectThemePicker() {
         desktopSettingsOutlet.replaceChildren(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
+            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopQuickActionSettingsGroup,
@@ -11230,6 +11516,7 @@ function injectThemePicker() {
         card.append(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
+            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopQuickActionSettingsGroup,
@@ -11266,6 +11553,7 @@ function updateThemePickerUi() {
     const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
     const desktopNavReplaceQuickActionsInput = document.getElementById('sb-desktop-nav-replace-quick-actions-input');
     const desktopNavReplacementSelect = document.getElementById('sb-desktop-nav-replacement-select');
+    const desktopShellSnapToChatInput = document.getElementById('sb-desktop-shell-snap-to-chat-input');
     const mobileNavIconOnlyInput = document.getElementById('sb-mobile-nav-icon-only-input');
     const mobileNavShowCustomizeInput = document.getElementById('sb-mobile-nav-show-customize-input');
     const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
@@ -11414,6 +11702,12 @@ function updateThemePickerUi() {
         desktopNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.desktopNav.replacementTarget);
         desktopNavReplacementSelect.disabled = !sbState.desktopNav.replaceQuickActions;
         desktopNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.desktopNav.replaceQuickActions);
+    }
+
+    if (desktopShellSnapToChatInput instanceof HTMLInputElement) {
+        desktopShellSnapToChatInput.checked = sbState.shellSizing.snapToChatWidth;
+        const choice = desktopShellSnapToChatInput.closest('.sb-mobile-nav-choice');
+        choice?.classList.toggle('is-selected', sbState.shellSizing.snapToChatWidth);
     }
 
     if (mobileNavIconOnlyInput instanceof HTMLInputElement) {
@@ -12071,22 +12365,33 @@ function openShell(shellKey, tabId = null) {
     shellState.lastOpenedAt = performance.now();
 
     if (isDrawerActuallyOpen(shellRoot)) {
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        syncDesktopShellSizing();
         window.requestAnimationFrame(() => focusShellPanel(shellKey));
         return;
     }
 
     if (shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        syncDesktopShellSizing();
         window.requestAnimationFrame(() => focusShellPanel(shellKey));
         return;
     }
 
     if (!shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
         window.requestAnimationFrame(() => {
             if (!isDrawerActuallyOpen(shellRoot)) {
                 forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
             }
+            syncMobileShellDrawerBounds();
+            queueMobileShellDrawerBoundsSync();
+            syncDesktopShellSizing();
             focusShellPanel(shellKey);
         });
     }
@@ -12105,6 +12410,9 @@ function closeShell(shellKey) {
 
     if (!isDrawerActuallyOpen(shellRoot)) {
         forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        requestMobileViewportReset();
         return;
     }
 
@@ -12115,6 +12423,9 @@ function closeShell(shellKey) {
 
     // Managed shells do not need the legacy drawer toggle close animation.
     forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
+    requestMobileViewportReset();
     if (shouldRestoreFocus) {
         window.requestAnimationFrame(() => restoreShellFocus(shellKey));
     } else {
@@ -12350,6 +12661,7 @@ function buildShell(shellKey) {
             if (isMobileViewport()) {
                 closeMobileNav();
             }
+            syncDesktopShellSizing();
             const activeTab = shellState.tabs.get(shellState.activeTabId);
             activeTab?.onActivate?.();
             dispatchShellTabActivated(shellKey, activeTab);
@@ -12608,6 +12920,34 @@ function getBuiltInRailActionsForShell(shellKey) {
     return actions;
 }
 
+function getAllBuiltInRailActionKeys() {
+    const actionKeys = new Set();
+
+    for (const [shellKey, shellConfig] of Object.entries(SB_SHELLS)) {
+        const tabConfigs = [
+            shellConfig.baseTab,
+            ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
+            ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
+        ];
+
+        for (const tabConfig of tabConfigs) {
+            if (!tabConfig?.id) {
+                continue;
+            }
+
+            actionKeys.add(getMobileQuickActionKey({
+                type: 'tab',
+                shellKey,
+                tabId: tabConfig.id,
+                icon: tabConfig.icon,
+                label: tabConfig.label,
+            }));
+        }
+    }
+
+    return actionKeys;
+}
+
 function getBuiltInRailLabelForShell(shellKey) {
     return shellKey === 'right' ? 'Customize' : 'Workspace';
 }
@@ -12675,9 +13015,7 @@ function syncMobileShellRailActions(shellKey = null) {
         }
 
         const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
-        const builtInRailActionKeys = builtInRailActions.length
-            ? new Set(builtInRailActions.map(getMobileQuickActionKey))
-            : new Set();
+        const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
         const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
             ? createNavReplacementQuickAction(navState.replacementTarget)
             : null;
@@ -13112,10 +13450,14 @@ function setMobileNavOpenState(isOpen) {
     button.setAttribute('aria-expanded', navState.buttonExpanded);
     button.innerHTML = navState.buttonIcon === 'close'
         ? '<i class="fa-solid fa-xmark" aria-hidden="true"></i>'
-        : '<i class="fa-solid fa-bars" aria-hidden="true"></i>';
+        : `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
     updateMobileNavButtonLabel();
 
     queueMobileModalStateSync();
+
+    if (wasOpen && !navState.shouldOpen) {
+        requestMobileViewportReset();
+    }
 
     if (navState.shouldRefreshQuickActions) {
         refreshMobileNavQuickActions();
@@ -13517,9 +13859,13 @@ function applyDefaultDrawerStates() {
 }
 
 function syncMobileViewportState() {
+    syncShellViewportBounds();
+    syncMobileShellDrawerBounds();
+
     if (!isMobileViewport()) {
         closeMobileNav();
         closeMobileChatTools();
+        syncMobileShellDrawerBounds();
     }
 
     syncMobileShellRailActions();
@@ -14187,6 +14533,7 @@ function initAll() {
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
+    setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
     setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });
     setTopbarScale('desktop', sbState.topbarScale.desktop, { persist: false });
     setTopbarScale('mobile', sbState.topbarScale.mobile, { persist: false });
@@ -14220,6 +14567,10 @@ function initAll() {
 
     window.addEventListener('resize', syncMobileViewportState, { passive: true });
     window.addEventListener('orientationchange', syncMobileViewportState);
+    window.visualViewport?.addEventListener('resize', syncMobileViewportState, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncMobileViewportState, { passive: true });
+    window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).
@@ -14283,6 +14634,9 @@ function initAll() {
         },
         setCompactMode(value) {
             setCompactMode(value);
+        },
+        setDesktopShellSnapToChatWidth(value) {
+            setDesktopShellSnapToChatWidth(value);
         },
         setMessageStyle,
         openChatTools() {
