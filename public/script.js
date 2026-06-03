@@ -13923,6 +13923,7 @@ async function openCharacterWorldPopup() {
                 extrasSelect.select2({
                     width: '100%',
                     placeholder: t`No auxiliary Lorebooks set. Click here to select.`,
+                    dropdownCssClass: 'sb-world-info-select2-dropdown',
                     allowClear: true,
                     closeOnSelect: false,
                     dropdownParent: popupDialog,

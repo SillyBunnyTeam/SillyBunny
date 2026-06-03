@@ -2246,7 +2246,8 @@ input[type='range']::-moz-range-thumb {
     pointer-events: auto;
 }
 
-:is(#select2-world_info-results, #select2-world_editor_select-results) {
+:is(#select2-world_info-results, #select2-world_editor_select-results),
+.sb-world-info-select2-dropdown > .select2-results > .select2-results__options {
     display: block;
     min-height: var(--sb-field-min-height);
     max-height: min(320px, 42vh);
@@ -2256,7 +2257,8 @@ input[type='range']::-moz-range-thumb {
     background-image: linear-gradient(var(--SmartThemeBlurTintColor), var(--SmartThemeBlurTintColor));
 }
 
-:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option {
+:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
+.sb-world-info-select2-dropdown .select2-results__option {
     display: block;
     min-height: 32px;
     padding: 8px 12px 8px 30px;
@@ -2267,7 +2269,8 @@ input[type='range']::-moz-range-thumb {
     pointer-events: auto;
 }
 
-:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--selected {
+:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--selected,
+.sb-world-info-select2-dropdown .select2-results__option--selected {
     background-color: #11151c;
     background-image: linear-gradient(
         color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, var(--SmartThemeBlurTintColor) 82%),
@@ -2275,7 +2278,8 @@ input[type='range']::-moz-range-thumb {
     );
 }
 
-:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--highlighted[aria-selected] {
+:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--highlighted[aria-selected],
+.sb-world-info-select2-dropdown .select2-results__option--highlighted[aria-selected] {
     background-color: #11151c;
     background-image: linear-gradient(
         color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBlurTintColor) 72%),
