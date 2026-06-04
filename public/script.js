@@ -38,6 +38,7 @@ import {
     getStatusTextgen,
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
+import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 
 import {
     world_info,
@@ -1766,20 +1767,21 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
         return { chatName: '', created: false };
     }
 
-    const persistedChat = String(character.chat || '').trim();
+    const persistedChat = normalizeCharacterChatName(character.chat);
     if (persistedChat && allowMissingPersisted) {
         character.chat = persistedChat;
         return { chatName: persistedChat, created: true };
     }
 
-    if (persistedChat) {
-        character.chat = persistedChat;
-        return { chatName: persistedChat, created: false };
-    }
-
     const existingChats = await getExistingCharacterChats(characterId);
-    const latestChat = existingChats[0]?.file_name?.replace('.jsonl', '') || '';
-    const nextChatName = latestChat || (allowCreate ? `${character.name} - ${humanizedDateTime()}` : '');
+    // SillyBunny: avoid recreating stale character.chat filenames as new files.
+    const resolvedChat = resolveCharacterChatNameForLoad({
+        persistedChat,
+        existingChats,
+        allowCreate,
+        newChatName: allowCreate ? `${character.name} - ${humanizedDateTime()}` : '',
+    });
+    const nextChatName = resolvedChat.chatName;
 
     if (nextChatName && nextChatName !== persistedChat) {
         await updateRemoteChatName(characterId, nextChatName);
@@ -1789,7 +1791,7 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
 
     return {
         chatName: nextChatName,
-        created: Boolean(!latestChat && allowCreate && nextChatName),
+        created: resolvedChat.created,
     };
 }
 
