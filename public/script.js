@@ -4480,7 +4480,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     const messageHTML = getMessageTextHTML(mes, { messageId });
     const bookmarkLink = mes?.extra?.bookmark_link;
     const tokenCount = mes.extra?.token_count;
-    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, mes.extra?.token_count, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token);
+    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, tokenCount, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token, mes.extra?.reasoning_tokens);
 
     messageElement.attr({
         'mesid': messageId,
@@ -4703,13 +4703,14 @@ export function formatCharacterAvatar(characterAvatar) {
  * @param {number} tokenCount Number of tokens generated (0 if not available)
  * @param {number?} [reasoningDuration=null] Reasoning duration (null if no reasoning was done)
  * @param {number?} [timeToFirstToken=null] Time to first token
+ * @param {number?} [reasoningTokens=null] Number of reasoning tokens generated (0 if not available)
  * @returns {Object} Object containing the formatted timer value and title
  * @example
  * const { timerValue, timerTitle } = formatGenerationTimer(gen_started, gen_finished, tokenCount);
  * console.log(timerValue); // 1.2s
  * console.log(timerTitle); // Generation queued: 12:34:56 7 Jan 2021\nReply received: 12:34:57 7 Jan 2021\nTime to generate: 1.2 seconds\nToken rate: 5 t/s
  */
-function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null) {
+function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null, reasoningTokens = null) {
     if (!gen_started || !gen_finished) {
         return {};
     }
@@ -4718,6 +4719,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
     const start = moment(gen_started);
     const finish = moment(gen_finished);
     const seconds = finish.diff(start, 'seconds', true);
+    const totalCompletionTokens = getPositiveTokenCount(tokenCount) + getPositiveTokenCount(reasoningTokens);
     const timerValue = `${seconds.toFixed(1)}s`;
     const timerTitle = [
         `Generation queued: ${start.format(dateFormat)}`,
@@ -4725,7 +4727,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
         `Time to generate: ${seconds} seconds`,
         timeToFirstToken ? `Time to first token: ${timeToFirstToken / 1000} seconds` : '',
         reasoningDuration > 0 ? `Time to think: ${reasoningDuration / 1000} seconds` : '',
-        tokenCount > 0 ? `Token rate: ${Number(tokenCount / seconds).toFixed(3)} t/s` : '',
+        totalCompletionTokens > 0 ? `Token rate: ${Number(totalCompletionTokens / seconds).toFixed(3)} t/s` : '',
     ].filter(x => x).join('\n').trim();
 
     if (isNaN(seconds) || seconds < 0) {
@@ -5812,14 +5814,16 @@ class StreamingProcessor {
             // Token count update.
             const shouldRefreshTokenCount = isFinal && power_user.message_token_count_enabled;
             let currentTokenCount = getPositiveTokenCount(chat[messageId].extra.token_count);
+            let currentReasoningTokens = Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens));
             if (!shouldReduceIntermediateStreamingWork) {
-                const { outputTokens } = await updateMessageTokenAccounting(chat[messageId], {
+                const { outputTokens, reasoningTokens } = await updateMessageTokenAccounting(chat[messageId], {
                     reasoning: this.reasoningHandler.reasoning,
-                    reasoningTokens: Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens)),
+                    reasoningTokens: currentReasoningTokens,
                     countOutput: shouldRefreshTokenCount,
                     countReasoning: shouldRefreshTokenCount,
                 });
                 currentTokenCount = outputTokens;
+                currentReasoningTokens = reasoningTokens;
             }
             if ((this.type == 'swipe' || this.type === 'continue') && Array.isArray(chat[messageId].swipes)) {
                 chat[messageId].swipes[chat[messageId].swipe_id] = processedText;
@@ -5842,7 +5846,7 @@ class StreamingProcessor {
                 {},
                 false,
             );
-            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken);
+            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
                 write: {
