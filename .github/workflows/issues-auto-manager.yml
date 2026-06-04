@@ -3,9 +3,6 @@ name: 🛠️ Issues Manager
 on:
   issues:
     types: [opened, edited, labeled, unlabeled]
-  # Re also listen to comments, to remove stale labels right away
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: read
@@ -58,120 +55,9 @@ jobs:
           enable-versioned-regex: 0
           repo-token: ${{ steps.app.outputs.token || github.token }}
 
-  label-on-labels:
-    name: 🏷️ Label Issues by Labels
-    needs: [label-on-content]
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-      - name: Check GitHub App Configuration
-        id: app-config
-        env:
-          ST_BOT_APP_ID: ${{ vars.ST_BOT_APP_ID }}
-          ST_BOT_PRIVATE_KEY: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-        run: |
-          if [ -n "$ST_BOT_APP_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Mint App Token
-        if: steps.app-config.outputs.enabled == 'true'
-        id: app
-        # Create a GitHub App token
-        # https://github.com/marketplace/actions/create-github-app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.ST_BOT_APP_ID }}
-          private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: ✅ Add "👍 Approved" for relevant labels
-        if: contains(fromJSON('["👩‍💻 Good First Issue", "🙏 Help Wanted", "🪲 Confirmed", "⚠️ High Priority", "❕ Medium Priority", "💤 Low Priority"]'), github.event.label.name)
-        # 🤖 Issues Helper
-        # https://github.com/marketplace/actions/issues-helper
-        uses: actions-cool/issues-helper@a610082f8ac0cf03e357eb8dd0d5e2ba075e017e # v3.6.0
-        with:
-          actions: 'add-labels'
-          token: ${{ steps.app.outputs.token || github.token }}
-          labels: '👍 Approved'
-
-      - name: ❌ Remove progress labels when issue is marked done or stale
-        if: contains(fromJSON('["✅ Done", "✅ Done (staging)", "⚰️ Stale", "❌ wontfix"]'), github.event.label.name)
-        # 🤖 Issues Helper
-        # https://github.com/marketplace/actions/issues-helper
-        uses: actions-cool/issues-helper@a610082f8ac0cf03e357eb8dd0d5e2ba075e017e # v3.6.0
-        with:
-          actions: 'remove-labels'
-          token: ${{ steps.app.outputs.token || github.token }}
-          labels: '🧑‍💻 In Progress,🤔 Unsure,🤔 Under Consideration'
-
-      - name: ❌ Remove temporary labels when confirmed labels are added
-        if: contains(fromJSON('["❌ wontfix","👍 Approved","👩‍💻 Good First Issue"]'), github.event.label.name)
-        # 🤖 Issues Helper
-        # https://github.com/marketplace/actions/issues-helper
-        uses: actions-cool/issues-helper@a610082f8ac0cf03e357eb8dd0d5e2ba075e017e # v3.6.0
-        with:
-          actions: 'remove-labels'
-          token: ${{ steps.app.outputs.token || github.token }}
-          labels: '🤔 Unsure,🤔 Under Consideration'
-
-      - name: ❌ Remove no bug labels when "🪲 Confirmed" is added
-        if: github.event.label.name == '🪲 Confirmed'
-        # 🤖 Issues Helper
-        # https://github.com/marketplace/actions/issues-helper
-        uses: actions-cool/issues-helper@a610082f8ac0cf03e357eb8dd0d5e2ba075e017e # v3.6.0
-        with:
-          actions: 'remove-labels'
-          token: ${{ steps.app.outputs.token || github.token }}
-          labels: '✖️ Not Reproducible,✖️ Not A Bug'
-
-  remove-stale-label:
-    name: 🗑️ Remove Stale Label on Comment
-    needs: [label-on-content, label-on-labels]
-    runs-on: ubuntu-latest
-    # Only run this on new comments, to automatically remove the stale label
-    if: always() && (github.event_name == 'issue_comment' && github.event.sender.type != 'Bot')
-
-    steps:
-      - name: Check GitHub App Configuration
-        id: app-config
-        env:
-          ST_BOT_APP_ID: ${{ vars.ST_BOT_APP_ID }}
-          ST_BOT_PRIVATE_KEY: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-        run: |
-          if [ -n "$ST_BOT_APP_ID" ] && [ -n "$ST_BOT_PRIVATE_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Mint App Token
-        if: steps.app-config.outputs.enabled == 'true'
-        id: app
-        # Create a GitHub App token
-        # https://github.com/marketplace/actions/create-github-app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.ST_BOT_APP_ID }}
-          private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Remove Stale Label
-        # 🤖 Issues Helper
-        # https://github.com/marketplace/actions/issues-helper
-        uses: actions-cool/issues-helper@a610082f8ac0cf03e357eb8dd0d5e2ba075e017e # v3.6.0
-        with:
-          actions: 'remove-labels'
-          token: ${{ steps.app.outputs.token || github.token }}
-          issue-number: ${{ github.event.issue.number }}
-          labels: '⚰️ Stale,🕸️ Inactive,🚏 Awaiting User Response,🛑 No Response'
-
   write-auto-comments:
     name: 💬 Post Issue Comments Based on Labels
-    needs: [label-on-content, label-on-labels, remove-stale-label]
+    needs: [label-on-content]
     runs-on: ubuntu-latest
     if: always()
 

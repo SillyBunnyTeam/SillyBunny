@@ -261,12 +261,30 @@ function updateVersionBlock(block, prs) {
     return `${block.replace(/\s*$/, '\n\n')}${section}`;
 }
 
-function updateChangelog(changelog, version, prs) {
+function createVersionBlock(version, prs) {
+    const entries = mergePrLines('', prs);
+    return `## ${version}\n\n${mergedPrHeading}\n${entries.join('\n')}\n`;
+}
+
+function insertMissingVersionBlock(changelog, version, prs) {
+    const block = `${createVersionBlock(version, prs)}\n`;
+    const titleMatch = /^# Changelog\r?\n/.exec(changelog);
+
+    if (!titleMatch) {
+        return `${block}${changelog.replace(/^\s*/, '')}`;
+    }
+
+    const insertAt = titleMatch[0].length;
+    const rest = changelog.slice(insertAt).replace(/^\r?\n/, '');
+    return `${changelog.slice(0, insertAt)}\n${block}${rest}`;
+}
+
+export function updateChangelog(changelog, version, prs) {
     const versionHeadingPattern = new RegExp(`(^|\\r?\\n)## ${escapeRegExp(version)}\\r?\\n`);
     const versionHeadingMatch = versionHeadingPattern.exec(changelog);
 
     if (!versionHeadingMatch) {
-        throw new Error(`Could not find changelog section: ## ${version}`);
+        return insertMissingVersionBlock(changelog, version, prs);
     }
 
     const versionStart = versionHeadingMatch.index + versionHeadingMatch[1].length;
