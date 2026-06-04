@@ -7600,7 +7600,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             console.log(typeof generate_data.prompt === 'string' ? generate_data.prompt : JSON.stringify(generate_data.prompt));
         }
 
-        console.debug('rungenerate calling API');
+        console.log(`[rungenerate] calling API: main_api=${main_api}${main_api === 'openai' ? ` source=${oai_settings.chat_completion_source} model=${getChatCompletionModel(oai_settings)}` : ''}`);
 
         showStopButton();
 

@@ -2744,6 +2744,8 @@ router.post('/generate', async function (request, response) {
     try {
         if (!request.body) return response.status(400).send({ error: true });
 
+        console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
+
         const postProcessingType = request.body.custom_prompt_post_processing;
         if (Array.isArray(request.body.messages) && postProcessingType) {
             console.debug('Applying custom prompt post-processing of type', postProcessingType);
