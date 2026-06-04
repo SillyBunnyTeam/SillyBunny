@@ -3,9 +3,8 @@ import path from 'node:path';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
-import { ensureDirectory } from '../util.js';
+import { ensureDirectory, tryWriteFileSync } from '../util.js';
 
 export const router = express.Router();
 
@@ -89,7 +88,7 @@ router.post('/save', (request, response) => {
 
     ensureDirectory(request.user.directories.inChatAgents);
     const filename = getStorageFilename(request.user.directories.inChatAgents, String(request.body.id));
-    writeFileAtomicSync(filename, JSON.stringify(request.body, null, 4), 'utf8');
+    tryWriteFileSync(filename, JSON.stringify(request.body, null, 4));
 
     return response.sendStatus(200);
 });
@@ -129,7 +128,7 @@ router.post('/groups/save', (request, response) => {
 
     ensureDirectory(request.user.directories.inChatAgentGroups);
     const filename = getStorageFilename(request.user.directories.inChatAgentGroups, group.id);
-    writeFileAtomicSync(filename, JSON.stringify(group, null, 4), 'utf8');
+    tryWriteFileSync(filename, JSON.stringify(group, null, 4));
 
     return response.sendStatus(200);
 });

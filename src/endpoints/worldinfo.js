@@ -4,8 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import sanitize from 'sanitize-filename';
 import _ from 'lodash';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
-import { tryParse } from '../util.js';
+import { tryParse, tryWriteFileSync } from '../util.js';
 
 /**
  * Reads a World Info file and returns its contents
@@ -127,7 +126,7 @@ router.post('/import', (request, response) => {
         return response.status(400).send('World file must have a name');
     }
 
-    writeFileAtomicSync(pathToNewFile, fileContents);
+    tryWriteFileSync(pathToNewFile, fileContents);
     return response.send({ name: worldName });
 });
 
@@ -151,7 +150,7 @@ router.post('/edit', (request, response) => {
     const filename = sanitize(`${request.body.name}.json`);
     const pathToFile = path.join(request.user.directories.worlds, filename);
 
-    writeFileAtomicSync(pathToFile, JSON.stringify(request.body.data, null, 4));
+    tryWriteFileSync(pathToFile, JSON.stringify(request.body.data, null, 4));
 
     return response.send({ ok: true });
 });
