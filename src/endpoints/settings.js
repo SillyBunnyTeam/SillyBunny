@@ -3,11 +3,10 @@ import path from 'node:path';
 
 import express from 'express';
 import _ from 'lodash';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import bytes from 'bytes';
 
 import { SETTINGS_FILE } from '../constants.js';
-import { getConfigValue, generateTimestamp, removeOldBackups } from '../util.js';
+import { getConfigValue, generateTimestamp, removeOldBackups, tryWriteFileSync } from '../util.js';
 import { getAllUserHandles, getUserDirectories } from '../users.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 
@@ -217,7 +216,7 @@ export const router = express.Router();
 router.post('/save', function (request, response) {
     try {
         const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
-        writeFileAtomicSync(pathToSettings, JSON.stringify(request.body, null, 4), 'utf8');
+        tryWriteFileSync(pathToSettings, JSON.stringify(request.body, null, 4));
         triggerAutoSave(request.user.profile.handle);
         response.send({ result: 'ok' });
     } catch (err) {

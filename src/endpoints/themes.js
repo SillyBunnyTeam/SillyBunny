@@ -3,7 +3,8 @@ import fs from 'node:fs';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
+
+import { tryWriteFileSync } from '../util.js';
 
 export const router = express.Router();
 
@@ -13,7 +14,7 @@ router.post('/save', (request, response) => {
     }
 
     const filename = path.join(request.user.directories.themes, sanitize(`${request.body.name}.json`));
-    writeFileAtomicSync(filename, JSON.stringify(request.body, null, 4), 'utf8');
+    tryWriteFileSync(filename, JSON.stringify(request.body, null, 4));
 
     return response.sendStatus(200);
 });

@@ -3,8 +3,8 @@ import path from 'node:path';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
+import { tryWriteFileSync } from '../util.js';
 import {
     clearDefaultPresetDeletion,
     findDefaultPreset,
@@ -97,7 +97,7 @@ router.post('/save', function (request, response) {
         clearDefaultPresetDeletion(request.user.directories, defaultPreset);
     }
 
-    writeFileAtomicSync(fullpath, JSON.stringify(request.body.preset, null, 4), 'utf-8');
+    tryWriteFileSync(fullpath, JSON.stringify(request.body.preset, null, 4));
     return response.send({ name });
 });
 

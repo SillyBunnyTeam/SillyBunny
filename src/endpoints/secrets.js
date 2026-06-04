@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import express from 'express';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
-import { color, getConfigValue, uuidv4 } from '../util.js';
+import { color, getConfigValue, uuidv4, tryWriteFileSync } from '../util.js';
 import { encrypt, decrypt, isEncrypted, getEncryptionPassphrase } from '../encryption.js';
 
 export const SECRETS_FILE = 'secrets.json';
@@ -127,7 +126,7 @@ export class SecretManager {
      */
     _ensureSecretsFile() {
         if (!fs.existsSync(this.filePath)) {
-            writeFileAtomicSync(this.filePath, JSON.stringify(this.defaultSecrets), 'utf-8');
+            tryWriteFileSync(this.filePath, JSON.stringify(this.defaultSecrets));
         }
     }
 
@@ -169,13 +168,13 @@ export class SecretManager {
 
         if (passphrase) {
             const encrypted = encrypt(jsonString, passphrase);
-            writeFileAtomicSync(this.filePath, encrypted);
+            tryWriteFileSync(this.filePath, encrypted);
             if (this._needsEncryptionMigration) {
                 console.info(`Secrets file at ${this.filePath} has been encrypted.`);
                 this._needsEncryptionMigration = false;
             }
         } else {
-            writeFileAtomicSync(this.filePath, jsonString, 'utf-8');
+            tryWriteFileSync(this.filePath, jsonString);
         }
     }
 
