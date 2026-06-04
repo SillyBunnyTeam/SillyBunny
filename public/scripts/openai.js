@@ -5002,6 +5002,7 @@ export async function createGenerationParameters(settings, model, type, messages
     const generate_data = {
         'type': type,
         'messages': messages,
+        'log_prompts': Boolean(power_user.console_log_prompts),
         'model': model,
         'temperature': Number(settings.temp_openai),
         'frequency_penalty': Number(settings.freq_pen_openai),

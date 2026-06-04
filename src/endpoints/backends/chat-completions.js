@@ -290,7 +290,11 @@ function formatVerboseGenerationPayload(payload) {
 }
 
 function logVerboseGenerationRequest(provider, request, payload) {
-    // SillyBunny: keep full prompt payload diagnostics visible for generation routing issues.
+    if (!request.body.log_prompts) {
+        return;
+    }
+
+    // SillyBunny: keep full prompt payload diagnostics available through the existing prompt-log toggle.
     const metadata = `type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`;
     const payloadText = formatVerboseGenerationPayload(payload);
     console.log(`[ChatCompletions] ${provider} request payload: ${metadata}\n${payloadText}`);
