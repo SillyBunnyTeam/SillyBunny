@@ -3379,6 +3379,7 @@ function groupOpenAISettingsIntoDrawers() {
             title: 'Sampling',
             description: 'Temperature, penalties, probability controls, seed, and logit bias',
             selectors: [
+                '#range_block_openai > .flex-container.gap10h5v.justifyCenter:has([data-tg-samplers])',
                 '#range_block_openai > .range-block:has(#temp_openai)',
                 '#range_block_openai > .range-block:has(#claude_disable_temperature)',
                 '#range_block_openai > .range-block:has(#freq_pen_openai)',
@@ -3469,7 +3470,22 @@ function groupOpenAISettingsIntoDrawers() {
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
         const blocks = $(this).children('.inline-drawer-content').children().toArray();
-        const hasVisibleContent = blocks.some(block => getComputedStyle(block).display !== 'none');
+        const hasVisibleContent = blocks.some(block => {
+            if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
+                return false;
+            }
+
+            if (block.hasAttribute('data-source')) {
+                return true;
+            }
+
+            const sourceChildren = Array.from(block.querySelectorAll('[data-source]'));
+            if (sourceChildren.length > 0) {
+                return sourceChildren.some(child => child instanceof HTMLElement && getComputedStyle(child).display !== 'none');
+            }
+
+            return true;
+        });
         $(this).toggle(hasVisibleContent);
     });
 }
