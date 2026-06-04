@@ -88,16 +88,16 @@ git clone https://github.com/platberlitz/SillyBunny.git
 cd SillyBunny
 ```
 
-Then, run the appropriate launcher for your OS, which auto-installs all dependencies, checks for updates, and starts a server instance. You can also open `http://127.0.0.1:4444` manually in your browser.
+Then, run the appropriate launcher for your OS, which auto-installs all dependencies, checks for updates, and starts a server instance. You can also open `http://127.0.0.1:4444` manually in your browser. The default launchers choose the recommended runtime automatically; use a runtime-specific launcher if you want to force Node.js or Bun.
 
-| Platform | Command |
-|----------|---------|
-| Windows | `.\Start.bat` |
-| macOS (Terminal) | `./Start.command` |
-| macOS (Finder) | Double-click `Start.command` (right-click > Open if Gatekeeper warns) |
-| Linux / WSL | `./start.sh` |
-| Docker | `docker compose --project-directory . -f docker/docker-compose.yml up --build`
-| Android (Termux) | `bash start.sh` |
+| Platform | Default / auto | Force Node.js | Force Bun |
+|----------|----------------|---------------|-----------|
+| Windows | `.\Start.bat` | `.\Start-Node.bat` | `.\Start-Bun.bat` |
+| macOS (Terminal) | `./Start.command` | `./Start-Node.command` | `./Start-Bun.command` |
+| macOS (Finder) | Double-click `Start.command` | Double-click `Start-Node.command` | Double-click `Start-Bun.command` |
+| Linux / WSL | `./start.sh` | `./start-node.sh` | `./start-bun.sh` |
+| Android (Termux) | `bash start.sh` | `bash start-termux-node.sh` | `bash start-termux-bun.sh` |
+| Docker | `docker compose --project-directory . -f docker/docker-compose.yml up --build` | N/A | N/A |
 
 If you already manage your own Bun install, run via `bun run start`. Other launch variants:
 
@@ -110,9 +110,10 @@ bun run start:no-csrf  # disable CSRF (local dev)
 ### macOS notes
 
 - If the launcher window closes too fast, run `./Start.command` from Terminal to keep output visible
+- Finder launch: double-click a `Start*.command` file (right-click > Open if Gatekeeper warns)
 - If Git is missing, the launcher triggers `xcode-select --install` automatically
 - Quarantine metadata from ZIP downloads: `xattr -dr com.apple.quarantine /path/to/SillyBunny`
-- Stripped permissions from unzip: `chmod +x Start.command start.sh scripts/*.sh`
+- Stripped permissions from unzip: `chmod +x Start*.command start*.sh scripts/*.sh`
 
 ### Termux (Android) notes
 
@@ -121,11 +122,12 @@ pkg update && pkg upgrade -y
 pkg install -y git curl unzip
 git clone https://github.com/platberlitz/SillyBunny.git
 cd SillyBunny
-bash start.sh
+bash start-termux-node.sh
 ```
 
-- The launcher defaults to Node.js + npm on native Termux and ARM devices when Node.js is available
-- To force Bun anyway: `SILLYBUNNY_USE_BUN=1 bash start.sh`
+- `bash start.sh` also defaults to Node.js + npm on native Termux and ARM devices when Node.js is available
+- To force Node.js explicitly: `bash start-termux-node.sh`
+- To force Bun explicitly: `bash start-termux-bun.sh`
 - For shared storage access: `termux-setup-storage` once before starting
   
 ### How to Update
@@ -169,7 +171,7 @@ The original SillyTavern layout is replaced with a custom, easy-to-navigate grap
 
 ### Bun-first runtime
 
-We primarily use Bun as a runtime, instead of node.js. This results in consistently faster startups, overall performance, and automatic launcher bootstraping. Node.js is still fully functional as a legacy fallback system.
+We primarily use Bun as a runtime, instead of node.js. This results in consistently faster startups, overall performance, and automatic launcher bootstrapping. Node.js is still fully functional as a legacy fallback system.
 
 ### In-Chat Agentic Support
 
