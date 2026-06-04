@@ -667,7 +667,38 @@ export const DEFAULT_SAVE_EDIT_TIMEOUT = debounce_timeout.relaxed;
 export const DEFAULT_PRINT_TIMEOUT = debounce_timeout.quick;
 
 export const saveSettingsDebounced = debounce((loopCounter = 0) => saveSettings(loopCounter), DEFAULT_SAVE_EDIT_TIMEOUT);
-export const saveCharacterDebounced = debounce(() => $('#create_button').trigger('click'), DEFAULT_SAVE_EDIT_TIMEOUT);
+/** @type {ReturnType<typeof setTimeout> | null} */
+let pendingCharacterSaveTimer = null;
+let characterSavePromise = Promise.resolve();
+
+// SillyBunny: the custom editor shell needs to wait for autosaves before reopening stale form data.
+function queueCharacterSave() {
+    characterSavePromise = characterSavePromise
+        .catch(error => console.warn('Previous character save failed before queued save.', error))
+        .then(() => createOrEditCharacter())
+        .catch(error => console.error('Error while saving character.', error));
+
+    return characterSavePromise;
+}
+
+export function saveCharacterDebounced() {
+    clearTimeout(pendingCharacterSaveTimer);
+    pendingCharacterSaveTimer = setTimeout(() => {
+        pendingCharacterSaveTimer = null;
+        void queueCharacterSave();
+    }, DEFAULT_SAVE_EDIT_TIMEOUT);
+}
+
+export async function flushCharacterSaveDebounced() {
+    if (pendingCharacterSaveTimer) {
+        clearTimeout(pendingCharacterSaveTimer);
+        pendingCharacterSaveTimer = null;
+        await queueCharacterSave();
+        return;
+    }
+
+    await characterSavePromise;
+}
 
 /**
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.

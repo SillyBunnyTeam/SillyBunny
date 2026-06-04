@@ -5,6 +5,7 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
+import { flushCharacterSaveDebounced, getOneCharacter } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -7191,7 +7192,7 @@ function openCharacterPanelTab(tabId) {
             void showCharacterListView('groups');
         } else if (normalizedTabId === 'editor') {
             setCharacterPanelMenuType(panel, 'character_edit');
-            openCharacterEditorTab();
+            void openCharacterEditorTab();
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
@@ -7218,20 +7219,20 @@ function restoreLastCharacterPanelView() {
     } else if (lastTab === 'groups') {
         void showCharacterListView('groups');
     } else if (lastTab === 'editor') {
-        openCharacterEditorTab();
+        void openCharacterEditorTab();
     } else {
         void showCharacterListView('characters');
     }
 }
 
-function openCharacterEditorTab() {
+async function openCharacterEditorTab() {
     sbState.characterDrawer.lastTab = 'editor';
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
 
-    if (showActiveCharacterEditor()) {
+    if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
         return true;
     }
@@ -7323,7 +7324,27 @@ function syncCharacterHeaderCopy(activeTab = 'characters') {
     }
 }
 
-function showActiveCharacterEditor() {
+async function refreshActiveCharacterBeforeEditorOpen() {
+    const context = getSillyTavernContext();
+    const characterId = context?.characterId;
+    const avatar = context?.groupId ? null : context?.characters?.[characterId]?.avatar;
+
+    if (!avatar) {
+        return;
+    }
+
+    try {
+        await flushCharacterSaveDebounced();
+        const refreshedContext = getSillyTavernContext();
+        const refreshedCharacterId = refreshedContext?.characterId;
+        const refreshedAvatar = refreshedContext?.groupId ? null : refreshedContext?.characters?.[refreshedCharacterId]?.avatar;
+        await getOneCharacter(refreshedAvatar || avatar);
+    } catch (error) {
+        console.warn('Failed to refresh character before opening editor.', error);
+    }
+}
+
+async function showActiveCharacterEditor() {
     if (!hasActiveCharacterChat()) {
         return false;
     }
@@ -7333,6 +7354,7 @@ function showActiveCharacterEditor() {
         return false;
     }
 
+    await refreshActiveCharacterBeforeEditorOpen();
     selectedCharacterButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
@@ -13536,7 +13558,7 @@ function injectCharacterDrawerControls() {
     const editorTab = document.getElementById('sb_character_tab_editor');
     if (editorTab instanceof HTMLButtonElement && editorTab.dataset.sbBound !== 'true') {
         editorTab.dataset.sbBound = 'true';
-        editorTab.addEventListener('click', () => openCharacterEditorTab());
+        editorTab.addEventListener('click', () => { void openCharacterEditorTab(); });
     }
 
     const personaTab = document.getElementById('sb_character_tab_persona');
