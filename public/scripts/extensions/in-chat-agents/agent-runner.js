@@ -4218,12 +4218,13 @@ async function onChatCompletionPromptReady(eventData) {
     const result = await runPreGenerationInterceptorsOnChat(originalChat, currentMainGenerationType);
     const nextChat = result.chat;
     pendingPreGenerationInterceptRuns.push(...result.runs);
-    if (nextChat === originalChat) {
+    if (nextChat === originalChat || !result.runs.some(run => run.changed)) {
         return;
     }
 
     originalChat.splice(0, originalChat.length, ...nextChat);
     eventData.chat = originalChat;
+    eventData.chatChanged = true;
 }
 
 async function onGenerationOutputBufferingDecision(eventData) {

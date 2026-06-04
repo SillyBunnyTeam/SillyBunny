@@ -885,6 +885,7 @@ describe('in-chat agent post-processing runner', () => {
             { role: 'system', content: 'rewritten system prompt' },
             { role: 'user', content: 'rewritten user prompt' },
         ]);
+        expect(eventData.chatChanged).toBe(true);
     });
 
     test('leaves chat completion prompts unchanged when intercept output has invalid messages', async () => {
@@ -913,6 +914,7 @@ describe('in-chat agent post-processing runner', () => {
 
                 expect(eventData.chat).toBe(originalChat);
                 expect(eventData.chat).toEqual([originalMessage]);
+                expect(eventData.chatChanged).toBeUndefined();
                 expect(warnSpy).toHaveBeenCalledWith(
                     expect.stringContaining('Leaving chat context unchanged'),
                     expect.any(Error),
@@ -967,6 +969,7 @@ describe('in-chat agent post-processing runner', () => {
             { role: 'user', content: '<patch>\npatch note\n</patch>' },
             originalMessage,
         ]);
+        expect(eventData.chatChanged).toBe(true);
 
         chat.push({
             name: 'Assistant',
