@@ -70,7 +70,7 @@ import {
     textValueMatcher,
     uuidv4,
 } from './utils.js';
-import { countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
+import { countChatCompletionPayloadTokensOpenAIAsync, countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
 import { isMobile } from './RossAscends-mods.js';
 import { saveLogprobsForActiveMessage } from './logprobs.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -85,7 +85,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
-import { checkPostInterceptChatBudget } from './openai-prompt-budget.js';
+import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import { buildChatCompletionPresetForSave, buildReverseProxyPresetForSave, normalizeReverseProxyPreset } from './openai-preset-utils.js';
 
 export {
@@ -1785,7 +1785,9 @@ export async function prepareOpenAIMessages({
 
     let chat = chatCompletion.getChat();
 
-    const eventData = { chat, dryRun };
+    // SillyBunny: only prompt-ready listeners that mutate the finalized chat should
+    // trigger the post-mutation budget recount.
+    const eventData = { chat, dryRun, chatChanged: false };
     await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, eventData);
     if (!Array.isArray(eventData.chat)) {
         chatCompletion.log('Pre-generation intercepts produced an invalid chat payload.');
@@ -1794,8 +1796,8 @@ export async function prepareOpenAIMessages({
 
     chat = eventData.chat;
 
-    if (!dryRun) {
-        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countTokensOpenAIAsync);
+    if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
+        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
         if (exceeded) {
             toastr.error(t`Pre-generation intercepts exceed the context size.`);
             chatCompletion.log(`Pre-generation intercepts exceed the context size. Tokens: ${promptTokens}. Budget: ${promptTokenBudget}.`);
@@ -3377,6 +3379,7 @@ function groupOpenAISettingsIntoDrawers() {
             title: 'Sampling',
             description: 'Temperature, penalties, probability controls, seed, and logit bias',
             selectors: [
+                '#range_block_openai > .flex-container.gap10h5v.justifyCenter:has([data-tg-samplers])',
                 '#range_block_openai > .range-block:has(#temp_openai)',
                 '#range_block_openai > .range-block:has(#claude_disable_temperature)',
                 '#range_block_openai > .range-block:has(#freq_pen_openai)',
@@ -3467,7 +3470,22 @@ function groupOpenAISettingsIntoDrawers() {
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
         const blocks = $(this).children('.inline-drawer-content').children().toArray();
-        const hasVisibleContent = blocks.some(block => getComputedStyle(block).display !== 'none');
+        const hasVisibleContent = blocks.some(block => {
+            if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
+                return false;
+            }
+
+            if (block.hasAttribute('data-source')) {
+                return true;
+            }
+
+            const sourceChildren = Array.from(block.querySelectorAll('[data-source]'));
+            if (sourceChildren.length > 0) {
+                return sourceChildren.some(child => child instanceof HTMLElement && getComputedStyle(child).display !== 'none');
+            }
+
+            return true;
+        });
         $(this).toggle(hasVisibleContent);
     });
 }
@@ -4984,6 +5002,7 @@ export async function createGenerationParameters(settings, model, type, messages
     const generate_data = {
         'type': type,
         'messages': messages,
+        'log_prompts': Boolean(power_user.console_log_prompts),
         'model': model,
         'temperature': Number(settings.temp_openai),
         'frequency_penalty': Number(settings.freq_pen_openai),
@@ -5300,6 +5319,8 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
     const model = getChatCompletionModel(oai_settings);
     const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
+
+    console.log(`[OpenAI frontend] sendOpenAIRequest: type=${type} source=${generate_data.chat_completion_source} model=${generate_data.model} stream=${generate_data.stream}`);
 
     const generate_url = '/api/backends/chat-completions/generate';
     const response = await fetch(generate_url, {

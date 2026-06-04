@@ -5,7 +5,6 @@ import { spawn } from 'node:child_process';
 
 import express from 'express';
 import yaml from 'yaml';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { sync as commandExistsSync } from 'command-exists';
 import simpleGit from 'simple-git';
 
@@ -22,7 +21,7 @@ import {
 import { getServerLogSnapshot } from '../server-log-buffer.js';
 import { serverDirectory } from '../server-directory.js';
 import { requireAdminMiddleware } from '../users.js';
-import { getConfigValue, getVersion, isPathUnderParent } from '../util.js';
+import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
 import { getThumbnailDimensions, setThumbnailDimensions } from './image-metadata.js';
 import { getThumbnailRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
 
@@ -155,7 +154,7 @@ function ensureExpectedConfigMtime(stat, expectedLastModifiedMs) {
 function writeConfigDocument(configPath, document) {
     const nextContent = document.toString();
     const serializedContent = nextContent.endsWith('\n') ? nextContent : `${nextContent}\n`;
-    writeFileAtomicSync(configPath, serializedContent, 'utf8');
+    tryWriteFileSync(configPath, serializedContent);
     return fs.statSync(configPath);
 }
 
@@ -570,7 +569,7 @@ router.post('/config/save', requireAdminMiddleware, async (request, response) =>
         }
 
         const nextContent = content.endsWith('\n') ? content : `${content}\n`;
-        writeFileAtomicSync(configPath, nextContent, 'utf8');
+        tryWriteFileSync(configPath, nextContent);
         const nextStat = fs.statSync(configPath);
 
         if (restart) {

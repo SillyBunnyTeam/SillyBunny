@@ -14393,6 +14393,7 @@ function onChatCompletionPromptReady(eventData) {
         }
 
         const injectMsg = { role: "system", content: promptText };
+        let injected = false;
 
         if (position === "afterScenario") {
             // Insert after the first system message (scenario)
@@ -14402,11 +14403,13 @@ function onChatCompletionPromptReady(eventData) {
             } else {
                 prompts.push(injectMsg);
             }
+            injected = true;
         } else if (position === "inUser") {
             // Insert as system message before the last user message
             for (let i = prompts.length - 1; i >= 0; i--) {
                 if (prompts[i].role === "user") {
                     prompts.splice(i, 0, injectMsg);
+                    injected = true;
                     break;
                 }
             }
@@ -14414,9 +14417,15 @@ function onChatCompletionPromptReady(eventData) {
             // Insert at specific depth from the end
             const insertIdx = Math.max(0, prompts.length - depth);
             prompts.splice(insertIdx, 0, injectMsg);
+            injected = true;
         }
 
-        log(`Inject: Injected prompt at position '${position}'${position === "atDepth" ? ` depth ${depth}` : ""}`);
+        if (injected) {
+            if (eventData && !Array.isArray(eventData)) {
+                eventData.chatChanged = true;
+            }
+            log(`Inject: Injected prompt at position '${position}'${position === "atDepth" ? ` depth ${depth}` : ""}`);
+        }
     } catch (e) {
         log(`Inject: Error injecting prompt: ${e.message}`);
     }

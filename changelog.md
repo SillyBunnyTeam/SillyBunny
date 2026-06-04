@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.6.3
+
+### Merged Staging PRs
+- PR #334 (2026-06-04) `fix: budget mutated chat prompts as full payloads`
+- PR #335 (2026-06-04) `fix: stabilize connection profile saves`
+- PR #336 (2026-06-04) `fix: handle Windows EPERM errors on atomic file writes`
+- PR #337 (2026-06-04) `fix: preserve ZAI sampler controls`
+- PR #338 (2026-06-04) `feat: add INFO-level dispatch logging for prompt routing`
+- PR #339 (2026-06-04) `fix: handle Windows EPERM character card saves`
+- PR #341 (2026-06-04) `fix: refresh character editor reopen data`
+- PR #342 (2026-06-04) `feat: expand generation console logging`
+- PR #343 (2026-06-04) `fix: prevent stale character chat cloning`
+- PR #344 (2026-06-04) `fix: correct reasoning token rate tooltip`
+- PR #345 (2026-06-04) `feat: add explicit runtime launchers`
+- PR #346 (2026-06-04) `chore: fix PR checks and changelog sync`
+
 ## v1.6.2
 
 Date: 2026-06-03

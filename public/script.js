@@ -38,6 +38,7 @@ import {
     getStatusTextgen,
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
+import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 
 import {
     world_info,
@@ -505,7 +506,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.2';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.3';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -548,7 +549,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.2:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.6.3:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -667,7 +668,38 @@ export const DEFAULT_SAVE_EDIT_TIMEOUT = debounce_timeout.relaxed;
 export const DEFAULT_PRINT_TIMEOUT = debounce_timeout.quick;
 
 export const saveSettingsDebounced = debounce((loopCounter = 0) => saveSettings(loopCounter), DEFAULT_SAVE_EDIT_TIMEOUT);
-export const saveCharacterDebounced = debounce(() => $('#create_button').trigger('click'), DEFAULT_SAVE_EDIT_TIMEOUT);
+/** @type {ReturnType<typeof setTimeout> | null} */
+let pendingCharacterSaveTimer = null;
+let characterSavePromise = Promise.resolve();
+
+// SillyBunny: the custom editor shell needs to wait for autosaves before reopening stale form data.
+function queueCharacterSave() {
+    characterSavePromise = characterSavePromise
+        .catch(error => console.warn('Previous character save failed before queued save.', error))
+        .then(() => createOrEditCharacter())
+        .catch(error => console.error('Error while saving character.', error));
+
+    return characterSavePromise;
+}
+
+export function saveCharacterDebounced() {
+    clearTimeout(pendingCharacterSaveTimer);
+    pendingCharacterSaveTimer = setTimeout(() => {
+        pendingCharacterSaveTimer = null;
+        void queueCharacterSave();
+    }, DEFAULT_SAVE_EDIT_TIMEOUT);
+}
+
+export async function flushCharacterSaveDebounced() {
+    if (pendingCharacterSaveTimer) {
+        clearTimeout(pendingCharacterSaveTimer);
+        pendingCharacterSaveTimer = null;
+        await queueCharacterSave();
+        return;
+    }
+
+    await characterSavePromise;
+}
 
 /**
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
@@ -1735,20 +1767,21 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
         return { chatName: '', created: false };
     }
 
-    const persistedChat = String(character.chat || '').trim();
+    const persistedChat = normalizeCharacterChatName(character.chat);
     if (persistedChat && allowMissingPersisted) {
         character.chat = persistedChat;
         return { chatName: persistedChat, created: true };
     }
 
-    if (persistedChat) {
-        character.chat = persistedChat;
-        return { chatName: persistedChat, created: false };
-    }
-
     const existingChats = await getExistingCharacterChats(characterId);
-    const latestChat = existingChats[0]?.file_name?.replace('.jsonl', '') || '';
-    const nextChatName = latestChat || (allowCreate ? `${character.name} - ${humanizedDateTime()}` : '');
+    // SillyBunny: avoid recreating stale character.chat filenames as new files.
+    const resolvedChat = resolveCharacterChatNameForLoad({
+        persistedChat,
+        existingChats,
+        allowCreate,
+        newChatName: allowCreate ? `${character.name} - ${humanizedDateTime()}` : '',
+    });
+    const nextChatName = resolvedChat.chatName;
 
     if (nextChatName && nextChatName !== persistedChat) {
         await updateRemoteChatName(characterId, nextChatName);
@@ -1758,7 +1791,7 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
 
     return {
         chatName: nextChatName,
-        created: Boolean(!latestChat && allowCreate && nextChatName),
+        created: resolvedChat.created,
     };
 }
 
@@ -4442,7 +4475,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     const messageHTML = getMessageTextHTML(mes, { messageId });
     const bookmarkLink = mes?.extra?.bookmark_link;
     const tokenCount = mes.extra?.token_count;
-    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, mes.extra?.token_count, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token);
+    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, tokenCount, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token, mes.extra?.reasoning_tokens);
 
     messageElement.attr({
         'mesid': messageId,
@@ -4665,13 +4698,14 @@ export function formatCharacterAvatar(characterAvatar) {
  * @param {number} tokenCount Number of tokens generated (0 if not available)
  * @param {number?} [reasoningDuration=null] Reasoning duration (null if no reasoning was done)
  * @param {number?} [timeToFirstToken=null] Time to first token
+ * @param {number?} [reasoningTokens=null] Number of reasoning tokens generated (0 if not available)
  * @returns {Object} Object containing the formatted timer value and title
  * @example
  * const { timerValue, timerTitle } = formatGenerationTimer(gen_started, gen_finished, tokenCount);
  * console.log(timerValue); // 1.2s
  * console.log(timerTitle); // Generation queued: 12:34:56 7 Jan 2021\nReply received: 12:34:57 7 Jan 2021\nTime to generate: 1.2 seconds\nToken rate: 5 t/s
  */
-function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null) {
+function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null, reasoningTokens = null) {
     if (!gen_started || !gen_finished) {
         return {};
     }
@@ -4680,6 +4714,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
     const start = moment(gen_started);
     const finish = moment(gen_finished);
     const seconds = finish.diff(start, 'seconds', true);
+    const totalCompletionTokens = getPositiveTokenCount(tokenCount) + getPositiveTokenCount(reasoningTokens);
     const timerValue = `${seconds.toFixed(1)}s`;
     const timerTitle = [
         `Generation queued: ${start.format(dateFormat)}`,
@@ -4687,7 +4722,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
         `Time to generate: ${seconds} seconds`,
         timeToFirstToken ? `Time to first token: ${timeToFirstToken / 1000} seconds` : '',
         reasoningDuration > 0 ? `Time to think: ${reasoningDuration / 1000} seconds` : '',
-        tokenCount > 0 ? `Token rate: ${Number(tokenCount / seconds).toFixed(3)} t/s` : '',
+        totalCompletionTokens > 0 ? `Token rate: ${Number(totalCompletionTokens / seconds).toFixed(3)} t/s` : '',
     ].filter(x => x).join('\n').trim();
 
     if (isNaN(seconds) || seconds < 0) {
@@ -5774,14 +5809,16 @@ class StreamingProcessor {
             // Token count update.
             const shouldRefreshTokenCount = isFinal && power_user.message_token_count_enabled;
             let currentTokenCount = getPositiveTokenCount(chat[messageId].extra.token_count);
+            let currentReasoningTokens = Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens));
             if (!shouldReduceIntermediateStreamingWork) {
-                const { outputTokens } = await updateMessageTokenAccounting(chat[messageId], {
+                const { outputTokens, reasoningTokens } = await updateMessageTokenAccounting(chat[messageId], {
                     reasoning: this.reasoningHandler.reasoning,
-                    reasoningTokens: Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens)),
+                    reasoningTokens: currentReasoningTokens,
                     countOutput: shouldRefreshTokenCount,
                     countReasoning: shouldRefreshTokenCount,
                 });
                 currentTokenCount = outputTokens;
+                currentReasoningTokens = reasoningTokens;
             }
             if ((this.type == 'swipe' || this.type === 'continue') && Array.isArray(chat[messageId].swipes)) {
                 chat[messageId].swipes[chat[messageId].swipe_id] = processedText;
@@ -5804,7 +5841,7 @@ class StreamingProcessor {
                 {},
                 false,
             );
-            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken);
+            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
                 write: {
@@ -7595,7 +7632,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             console.log(typeof generate_data.prompt === 'string' ? generate_data.prompt : JSON.stringify(generate_data.prompt));
         }
 
-        console.debug('rungenerate calling API');
+        console.log(`[rungenerate] calling API: main_api=${main_api}${main_api === 'openai' ? ` source=${oai_settings.chat_completion_source} model=${getChatCompletionModel(oai_settings)}` : ''}`);
 
         showStopButton();
 

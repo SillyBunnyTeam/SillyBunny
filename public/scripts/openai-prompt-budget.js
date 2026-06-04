@@ -1,4 +1,14 @@
 /**
+ * Determines whether a prompt-ready chat payload needs a post-mutation budget recount.
+ *
+ * @param {object} eventData CHAT_COMPLETION_PROMPT_READY event payload.
+ * @returns {boolean}
+ */
+export function shouldCheckPostInterceptChatBudget(eventData) {
+    return eventData?.chatChanged === true;
+}
+
+/**
  * Recounts a finalized chat-completion payload against the prompt budget.
  *
  * @param {object[]} chat Final chat-completion messages.

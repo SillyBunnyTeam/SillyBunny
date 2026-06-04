@@ -59,6 +59,9 @@ These screenshots show the graphical shell UI across Workspace, Customize, Agent
     * [v1.6.2 (2026-06-03)](#v162-2026-06-03)
     * [v1.6.1 (2026-06-02)](#v161-2026-06-02)
     * [v1.6.0 (2026-05-18)](#v160-2026-05-18)
+    * [v1.5.3 (2026-05-03)](#v153-2026-05-03)
+    * [v1.5.2 (2026-04-30)](#v152-2026-04-30)
+    * [v1.5.1 (2026-04-29)](#v151-2026-04-29)
 * [Upstream Information](#upstream-information)
 * [Contributors](#contributors)
 ***
@@ -87,16 +90,16 @@ git clone https://github.com/platberlitz/SillyBunny.git
 cd SillyBunny
 ```
 
-Then, run the appropriate launcher for your OS, which auto-installs all dependencies, checks for updates, and starts a server instance. You can also open `http://127.0.0.1:4444` manually in your browser.
+Then, run the appropriate launcher for your OS, which auto-installs all dependencies, checks for updates, and starts a server instance. You can also open `http://127.0.0.1:4444` manually in your browser. The default launchers choose the recommended runtime automatically; use a runtime-specific launcher if you want to force Node.js or Bun.
 
-| Platform | Command |
-|----------|---------|
-| Windows | `.\Start.bat` |
-| macOS (Terminal) | `./Start.command` |
-| macOS (Finder) | Double-click `Start.command` (right-click > Open if Gatekeeper warns) |
-| Linux / WSL | `./start.sh` |
-| Docker | `docker compose -f docker/docker-compose.yml up --build`
-| Android (Termux) | `bash start.sh` |
+| Platform | Default / auto | Force Node.js | Force Bun |
+|----------|----------------|---------------|-----------|
+| Windows | `.\Start.bat` | `.\Start-Node.bat` | `.\Start-Bun.bat` |
+| macOS (Terminal) | `./Start.command` | `./Start-Node.command` | `./Start-Bun.command` |
+| macOS (Finder) | Double-click `Start.command` | Double-click `Start-Node.command` | Double-click `Start-Bun.command` |
+| Linux / WSL | `./start.sh` | `./start-node.sh` | `./start-bun.sh` |
+| Android (Termux) | `bash start.sh` | `bash start-termux-node.sh` | `bash start-termux-bun.sh` |
+| Docker | `docker compose --project-directory . -f docker/docker-compose.yml up --build` | N/A | N/A |
 
 If you already manage your own Bun install, run via `bun run start`. Other launch variants:
 
@@ -109,9 +112,10 @@ bun run start:no-csrf  # disable CSRF (local dev)
 ### macOS notes
 
 - If the launcher window closes too fast, run `./Start.command` from Terminal to keep output visible
+- Finder launch: double-click a `Start*.command` file (right-click > Open if Gatekeeper warns)
 - If Git is missing, the launcher triggers `xcode-select --install` automatically
 - Quarantine metadata from ZIP downloads: `xattr -dr com.apple.quarantine /path/to/SillyBunny`
-- Stripped permissions from unzip: `chmod +x Start.command start.sh scripts/*.sh`
+- Stripped permissions from unzip: `chmod +x Start*.command start*.sh scripts/*.sh`
 
 ### Termux (Android) notes
 
@@ -120,11 +124,12 @@ pkg update && pkg upgrade -y
 pkg install -y git curl unzip
 git clone https://github.com/platberlitz/SillyBunny.git
 cd SillyBunny
-bash start.sh
+bash start-termux-node.sh
 ```
 
-- The launcher defaults to Node.js + npm on native Termux and ARM devices when Node.js is available
-- To force Bun anyway: `SILLYBUNNY_USE_BUN=1 bash start.sh`
+- `bash start.sh` also defaults to Node.js + npm on native Termux and ARM devices when Node.js is available
+- To force Node.js explicitly: `bash start-termux-node.sh`
+- To force Bun explicitly: `bash start-termux-bun.sh`
 - For shared storage access: `termux-setup-storage` once before starting
   
 ### How to Update
@@ -168,7 +173,7 @@ The original SillyTavern layout is replaced with a custom, easy-to-navigate grap
 
 ### Bun-first runtime
 
-We primarily use Bun as a runtime, instead of node.js. This results in consistently faster startups, overall performance, and automatic launcher bootstraping. Node.js is still fully functional as a legacy fallback system.
+We primarily use Bun as a runtime, instead of node.js. This results in consistently faster startups, overall performance, and automatic launcher bootstrapping. Node.js is still fully functional as a legacy fallback system.
 
 ### In-Chat Agentic Support
 
@@ -196,14 +201,14 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 
 * **Trackers:** Achievements, CYOA Choices, Direction Menu, Event, Item, NPC Profiles, Parallel Off-Screen, Relationship, Reputation, Scene, Secrets, Status, Time, and World Detail.
 * **Randomizers:** Chaos Mode, Combined Director's Cut, Dead Dove Escalation, Genre, Grounded Complication, Intimacy & Kink, Scene Driving Force, and Scene Pressure Cocktail.
-* **Content:** Difficulty Increase, Don't Write for User, Friction Mode, Grounded Prose, HTML Toggle, NPC Motivator by Sheep, and Write for User.
+* **Content:** Difficulty Increase, Don't Write for User, Friction Mode, Grounded Prose, HTML Toggle, and Write for User.
 * **Post Generation Editors:** Prose Polisher
 * **Additional Agents:** Pathfinder (an agentic lorebook navigator with 8 tools for retrieval, memory maintenance, and tree building).
 
 **Agent Behaviors and Settings**
 * Agentic prompts feature inline run-order editing, click-to-edit functionality, and fullscreen prompt editors.
 * Agents use the main connection profile by default with an 8192 max token limit. Separate connection profile support is available when explicitly selected.
-* Pre-Generation Intercepts can replace the outgoing context, wrap or append helper output, or add tagged patches before the main model replies. Multiple interceptors run in agent order, and NPC Motivator by Sheep is bundled as a starter intercept template.
+* Pre-generation interceptors can replace the outgoing context, wrap or append helper output, or add tagged patches. Multiple interceptors run in agent order.
 * Bundled trackers, including CYOA Choices, are configured for pre-generation. The main model emits clickable options directly in the response.
 * All bundled tracker and menu agents default to the User injection role to maintain compatibility with models that deprioritize System injections.
 * Built-in groups are available for the full preset, trackers only, and randomizers only.
@@ -212,8 +217,7 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 ### Bundled Goodies & Tutorials
 SillyBunny includes some extras by default to help you get started right away:
 * A tutorial that guides you through the SillyBunny interface.
-* Pre-bundled roleplay presets from purachina and Geechan, including Pura's Director Preset V13.1, Geechan's Universal Roleplay V5.2, and Geechan's Universal Online Chat V1.0.
-* Pre-bundled workflow extensions including Guided Generations, Input History, Quick Image Gen, and Prompt Inspector.
+* Pre-bundled roleplay presets from purachina and Geechan.
 * A character card conversion preset from TLD to help you generate character cards from scratch, or convert from existing cards to a better format.
 * A friendly quick-start guide with bundled workflow helpers plus optional recommended extensions such as Summary Sharder, Dialogue Colours, and CSS Snippets.
 * Two custom assistants to help you get started - Bunny Guide, and Assistant Nahida.
@@ -258,6 +262,13 @@ This update carries the post-v1.6.0 staging line forward with safer chat renderi
 * OpenAI TTS now supports explicit audio format selection.
 * Current-chat files access, Quick Action icon picking, compact Pathfinder mode controls, and Pathfinder submodule toggles expand the utility surface without crowding first-run defaults.
 
+**Changed**
+* Updated app, Horde client, bundled extension, package, lockfile, and test metadata to 1.6.1.
+* Chat rendering now routes bottom scroll, redisplay, show-more, message updates, streaming, swipe replacement, media resize, and mobile viewport handling through lifecycle helpers with proven routes enabled by default.
+* Mobile shell, preset/API sync, generation, extension boot, Prompt Manager, and tooling hydration behavior now sit behind smaller lifecycle seams for easier future syncs and safer bug fixes.
+* Pura Director and bundled tracker templates were refreshed and versioned so installed agents can be manually updated from the version pill.
+* Release notes were refreshed so merged staging work is easier to review.
+
 **Fixed**
 * Connection profiles and presets now persist more reliably, including immediate connection-profile preset saves, prompt-order reset from the selected preset, reverse-proxy backend binding, and current chat-completion model fetching.
 * Quick Reply loading, active-set rendering, API listing, auto-execute, settings selectors, and context menus now dedupe duplicate set names without dropping saved chat or character links.
@@ -265,32 +276,19 @@ This update carries the post-v1.6.0 staging line forward with safer chat renderi
 * Sampler visibility startup now avoids overwriting saved selections when browser storage is slow to respond.
 * Character avatar refresh, imported character selection, desktop Prompt Manager scroll, chat shell wheel routing, shell resize handles, Select2 dropdowns, native chat style headers, bounded rendered messages, and wand message screenshots were tightened.
 * Duplicate agent runner initialization, text-completion close handlers, local generation aborts, LCPP status restore, text-completion reasoning leaks, Guided Generations steering, post-agent provider-error handling, and Pathfinder swipe/settings reuse were hardened.
-
-**Removed**
-* Redundant fork update/start launcher entry points and obsolete publish/open-handler workflows were removed now that the maintained launchers own update flow.
-* Stale bundled-template and release-readiness artifacts were cleaned out so the shipped template catalog and release notes match the active 1.6.1 surface.
-
-**Improved**
-* Updated app, Horde client, bundled extension, package, lockfile, and test metadata to 1.6.1.
-* Chat rendering now routes bottom scroll, redisplay, show-more, message updates, streaming, swipe replacement, media resize, and mobile viewport handling through lifecycle helpers with proven routes enabled by default.
-* Mobile shell, preset/API sync, generation, extension boot, Prompt Manager, and tooling hydration behavior now sit behind smaller lifecycle seams for easier future syncs and safer bug fixes.
-* Pura Director and bundled tracker templates were refreshed and versioned so installed agents can be manually updated from the version pill.
-* Release notes, frontend asset handling, compatibility tracking, and merged staging coverage were cleaned up for easier review.
+* Release notes, frontend asset handling, and compatibility tracking were cleaned up.
 
 ### v1.6.0 (2026-05-18)
 
 This update turns the staging line after v1.5.3 into the v1.6.0 release, with new prompt tools, steadier profile and preset saves, cleaner mobile chat controls, and safer runtime updates.
 
 **Added**
-* Pre-Generation Intercepts are a new In-Chat Agents feature for running agents before the main reply, with mutation preservation, validation hardening, visible intercept history, and NPC Motivator by Sheep bundled as a starter intercept template.
-* Guided Generations, Input History, Quick Image Gen, and Prompt Inspector are now pre-bundled.
-* Chat Completion Tabs are bundled for provider-specific chat completion controls.
+* Pre-Generation Agents now support Pre-Generation Intercepts with mutation preservation, validation hardening, and visible intercept history.
+* Chat Completion Tabs are bundled for provider-specific chat completion controls, alongside the new bundled Prompt Inspector for reviewing and editing chat completion and text completion prompts before sending.
 * Guided Generations now includes Guided Correction, and Prompt Manager adds a prompt preview before use.
-* Prose Polisher now supports Guided Generations impersonation polishing through its bundled opt-in prompt-pass update.
-* Pura's Director Preset is updated to V13.1, Geechan's Universal Roleplay presets are updated to V5.2, and Geechan's Universal Online Chat V1.0 is now bundled.
 * OOC and HTML context-depth controls now make those context windows adjustable from the UI.
 * Echo, Whisper, Hush, Ripple, and Tide chat styles are bundled natively.
-* Reasoning options now include `xhigh`, with `auto` renamed to `None`.
+* Reasoning options now include `xhigh`, with `auto` renamed to a blank label.
 
 **Changed**
 * Connection Profiles now serialize changes in order, cancel superseded applications, await OpenAI preset updates, preserve profile secret IDs, and show expanded summaries.

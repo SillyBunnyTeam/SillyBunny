@@ -4,9 +4,9 @@ import path from 'node:path';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync, default as writeFileAtomic } from 'write-file-atomic';
+import { default as writeFileAtomic } from 'write-file-atomic';
 
-import { color, tryParse } from '../util.js';
+import { color, tryParse, tryWriteFileSync } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 
 export const router = express.Router();
@@ -211,7 +211,7 @@ router.post('/create', (request, response) => {
         fs.mkdirSync(request.user.directories.groups);
     }
 
-    writeFileAtomicSync(pathToFile, fileData);
+    tryWriteFileSync(pathToFile, fileData);
     return response.send(groupMetadata);
 });
 
@@ -224,7 +224,7 @@ router.post('/edit', getFileNameValidationFunction('id'), (request, response) =>
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));
     const fileData = JSON.stringify(request.body, null, 4);
 
-    writeFileAtomicSync(pathToFile, fileData);
+    tryWriteFileSync(pathToFile, fileData);
     return response.send({ ok: true });
 });
 
