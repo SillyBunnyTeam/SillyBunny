@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.3
+
+### Merged Staging PRs
+- PR #346 (2026-06-04) `chore: fix PR checks and changelog sync`
+
 ## v1.6.2
 
 Date: 2026-06-03
