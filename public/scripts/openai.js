@@ -70,7 +70,7 @@ import {
     textValueMatcher,
     uuidv4,
 } from './utils.js';
-import { countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
+import { countChatCompletionPayloadTokensOpenAIAsync, countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
 import { isMobile } from './RossAscends-mods.js';
 import { saveLogprobsForActiveMessage } from './logprobs.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -85,7 +85,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
-import { checkPostInterceptChatBudget } from './openai-prompt-budget.js';
+import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import { buildChatCompletionPresetForSave, buildReverseProxyPresetForSave, normalizeReverseProxyPreset } from './openai-preset-utils.js';
 
 export {
@@ -1785,7 +1785,9 @@ export async function prepareOpenAIMessages({
 
     let chat = chatCompletion.getChat();
 
-    const eventData = { chat, dryRun };
+    // SillyBunny: only prompt-ready listeners that mutate the finalized chat should
+    // trigger the post-mutation budget recount.
+    const eventData = { chat, dryRun, chatChanged: false };
     await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, eventData);
     if (!Array.isArray(eventData.chat)) {
         chatCompletion.log('Pre-generation intercepts produced an invalid chat payload.');
@@ -1794,8 +1796,8 @@ export async function prepareOpenAIMessages({
 
     chat = eventData.chat;
 
-    if (!dryRun) {
-        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countTokensOpenAIAsync);
+    if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
+        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
         if (exceeded) {
             toastr.error(t`Pre-generation intercepts exceed the context size.`);
             chatCompletion.log(`Pre-generation intercepts exceed the context size. Tokens: ${promptTokens}. Budget: ${promptTokenBudget}.`);

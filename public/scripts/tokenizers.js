@@ -887,6 +887,28 @@ export async function countTokensOpenAIAsync(messages, full = false) {
 }
 
 /**
+ * Returns the token count for a finalized chat completion payload using the OpenAI tokenizer.
+ * @param {object[]} messages Final chat-completion messages.
+ * @returns {Promise<number>} Token count.
+ */
+export async function countChatCompletionPayloadTokensOpenAIAsync(messages) {
+    const tokenizerEndpoint = `/api/tokenizers/openai/count?model=${getTokenizerModel()}`;
+
+    // SillyBunny: count post-intercept payloads in one request so backend-specific
+    // per-payload padding is applied once instead of once per message.
+    const data = await jQuery.ajax({
+        async: true,
+        type: 'POST', //
+        url: tokenizerEndpoint,
+        data: JSON.stringify(messages),
+        dataType: 'json',
+        contentType: 'application/json',
+    });
+
+    return Number(data.token_count);
+}
+
+/**
  * Gets the token cache object for the current chat.
  * @returns {Object} Token cache object for the current chat.
  */
@@ -1228,4 +1250,3 @@ export async function initTokenizers() {
     await loadTokenCache();
     registerDebugFunction('resetTokenCache', 'Reset token cache', 'Purges the calculated token counts. Use this if you want to force a full re-tokenization of all chats or suspect the token counts are wrong.', resetTokenCache);
 }
-

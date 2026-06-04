@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { checkPostInterceptChatBudget } from '../public/scripts/openai-prompt-budget.js';
+import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from '../public/scripts/openai-prompt-budget.js';
 
 describe('OpenAI post-intercept prompt budget', () => {
     test('recounts chat payloads after pre-generation intercepts', async () => {
@@ -33,5 +33,12 @@ describe('OpenAI post-intercept prompt budget', () => {
             openai_max_context: 150,
             openai_max_tokens: 40,
         }, async () => 0)).rejects.toThrow('Post-intercept chat payload must be an array.');
+    });
+
+    test('checks budget only when the prompt-ready chat changed', () => {
+        expect(shouldCheckPostInterceptChatBudget({ chatChanged: true })).toBe(true);
+        expect(shouldCheckPostInterceptChatBudget({ chatChanged: false })).toBe(false);
+        expect(shouldCheckPostInterceptChatBudget({})).toBe(false);
+        expect(shouldCheckPostInterceptChatBudget(null)).toBe(false);
     });
 });

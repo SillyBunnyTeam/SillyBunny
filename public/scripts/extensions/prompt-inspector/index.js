@@ -91,6 +91,7 @@ eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, async (data) => {
         // Chat is passed by reference, so we can modify it directly
         if (Array.isArray(chat) && Array.isArray(data.chat)) {
             data.chat.splice(0, data.chat.length, ...chat);
+            data.chatChanged = true;
         }
 
         console.debug('Prompt Inspector: Prompt updated');
