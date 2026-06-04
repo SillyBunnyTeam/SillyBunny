@@ -1,5 +1,6 @@
 /* eslint-disable dot-notation */
 import process from 'node:process';
+import nodeUtil from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
 import urlJoin from 'url-join';
@@ -278,6 +279,23 @@ function applyLocalPromptCacheScope(bodyParams, requestBody) {
     bodyParams.cache_prompt = getLocalPromptCacheValue(requestBody.cacheScope);
 }
 
+function formatVerboseGenerationPayload(payload) {
+    const fullPayload = summarizeLlmPayloadForLog(payload, { includeText: true });
+
+    try {
+        return JSON.stringify(fullPayload, null, 2);
+    } catch {
+        return nodeUtil.inspect(fullPayload, { depth: null, colors: true, maxArrayLength: null, maxStringLength: null });
+    }
+}
+
+function logVerboseGenerationRequest(provider, request, payload) {
+    // SillyBunny: keep full prompt payload diagnostics visible for generation routing issues.
+    const metadata = `type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`;
+    const payloadText = formatVerboseGenerationPayload(payload);
+    console.log(`[ChatCompletions] ${provider} request payload: ${metadata}\n${payloadText}`);
+}
+
 /**
  * Hacky way to use JSON schema only if json_object format is supported.
  * @param {object} bodyParams Additional body parameters
@@ -455,7 +473,7 @@ async function sendClaudeRequest(request, response) {
             additionalHeaders['anthropic-beta'] = betaHeaders.join(',');
         }
 
-        console.debug('Claude request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('Claude', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/messages', {
             method: 'POST',
@@ -712,7 +730,7 @@ async function sendMakerSuiteRequest(request, response) {
     }
 
     const body = getGeminiBody();
-    console.debug(`${apiName} request:`, summarizeLlmPayloadForLog(body));
+    logVerboseGenerationRequest(apiName, request, body);
 
     try {
         const controller = new AbortController();
@@ -887,7 +905,7 @@ async function sendAI21Request(request, response) {
         signal: controller.signal,
     };
 
-    console.debug('AI21 request:', summarizeLlmPayloadForLog(body));
+    logVerboseGenerationRequest('AI21', request, body);
 
     try {
         const generateResponse = await fetch(API_AI21 + '/chat/completions', options);
@@ -975,7 +993,7 @@ async function sendMistralAIRequest(request, response) {
             timeout: 0,
         };
 
-        console.debug('MisralAI request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('MistralAI', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
         if (request.body.stream) {
@@ -1058,7 +1076,7 @@ async function sendCohereRequest(request, response) {
             };
         }
 
-        console.debug('Cohere request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('Cohere', request, requestBody);
 
         const config = {
             method: 'POST',
@@ -1185,7 +1203,7 @@ async function sendDeepSeekRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('DeepSeek request:', summarizeLlmPayloadForLog(requestBody, { includeText: true }));
+        logVerboseGenerationRequest('DeepSeek', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1290,7 +1308,7 @@ async function sendXaiRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('xAI request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('xAI', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1392,7 +1410,7 @@ async function sendAimlapiRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('AI/ML API request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('AI/ML API', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1501,7 +1519,7 @@ async function sendElectronHubRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('Electron Hub request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('Electron Hub', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1599,7 +1617,7 @@ async function sendChutesRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('Chutes request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('Chutes', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1676,7 +1694,7 @@ async function sendMinimaxRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('MiniMax request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('MiniMax', request, requestBody);
 
         const generateResponse = await fetch(apiUrl + '/chat/completions', config);
 
@@ -1771,7 +1789,7 @@ async function sendAzureOpenAIRequest(request, response) {
     };
 
     console.info(`Sending request to Azure OpenAI: ${endpointUrl}`);
-    console.debug('Azure OpenAI Request Body:', summarizeLlmPayloadForLog(apiRequestBody));
+    logVerboseGenerationRequest('Azure OpenAI', request, apiRequestBody);
     try {
         const fetchResponse = await fetch(endpointUrl, config);
 
@@ -2702,7 +2720,7 @@ async function sendOpenAIResponsesRequest(request, response) {
             signal: controller.signal,
         };
 
-        console.debug('OpenAI Responses API request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('OpenAI Responses API', request, requestBody);
 
         const fetchResponse = await fetch(endpointUrl, config);
 
@@ -3158,7 +3176,7 @@ router.post('/generate', async function (request, response) {
             signal: controller.signal,
         };
 
-        console.debug('Chat Completion request:', summarizeLlmPayloadForLog(requestBody));
+        logVerboseGenerationRequest('Chat Completion', request, requestBody);
 
         const fetchResponse = await fetch(endpointUrl, config);
 
