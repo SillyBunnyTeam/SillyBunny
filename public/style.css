@@ -3772,6 +3772,28 @@ grammarly-extension {
     padding-left: 5px;
 }
 
+.alternate_greeting_header {
+    align-items: flex-start;
+    width: 100%;
+}
+
+.alternate_greeting_header details {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.alternate_greeting_actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+}
+
+.alternate_greeting_actions :is(.menu_button, .right_menu_button) {
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    touch-action: manipulation;
+}
+
 .alternate_greeting textarea {
     field-sizing: content;
     max-height: 50dvh;

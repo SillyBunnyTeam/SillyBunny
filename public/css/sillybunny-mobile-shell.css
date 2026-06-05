@@ -897,6 +897,16 @@
     #right-nav-panel .delete_alternate_greeting {
         padding-inline: 8px !important;
     }
+
+    #right-nav-panel .alternate_greeting_actions {
+        gap: 4px !important;
+    }
+
+    #right-nav-panel .alternate_greeting_actions :is(.menu_button, .right_menu_button) {
+        min-width: 40px !important;
+        min-height: 40px !important;
+        touch-action: manipulation;
+    }
 }
 
 @media screen and (max-width: 768px) {
