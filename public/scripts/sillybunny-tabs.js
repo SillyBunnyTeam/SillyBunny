@@ -5,7 +5,7 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
-import { flushCharacterSaveDebounced, getOneCharacter } from '../script.js';
+import { flushCharacterSaveDebounced, getOneCharacter, saveSettingsDebounced } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -14175,6 +14175,38 @@ async function refreshBottomChatSelect() {
 }
 
 const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
+const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
+const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
+
+function getPersonaAppendixScopeKeyFromContext(context) {
+    return String(context?.groupId || context?.characters?.[context?.characterId]?.avatar || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function normalizePersonaAppendixSelectionsFromContext(context, avatarId) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    if (!descriptor || typeof descriptor !== 'object') {
+        return {};
+    }
+
+    const source = descriptor[PERSONA_APPENDICES_SELECTIONS_KEY];
+    const normalized = {};
+
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+        for (const [scopeKey, activeIds] of Object.entries(source)) {
+            if (!Array.isArray(activeIds)) {
+                continue;
+            }
+
+            const cleanScopeKey = String(scopeKey || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+            normalized[cleanScopeKey] = activeIds
+                .map(String)
+                .filter((id, index, array) => id && array.indexOf(id) === index);
+        }
+    }
+
+    descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = normalized;
+    return normalized;
+}
 
 function getPersonaAppendicesFromContext(context, avatarId) {
     const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
@@ -14187,8 +14219,11 @@ function getPersonaAppendicesFromContext(context, avatarId) {
 }
 
 function getActivePersonaAppendixIdsFromContext(context, avatarId) {
+    const selections = normalizePersonaAppendixSelectionsFromContext(context, avatarId);
+    const scopeKey = getPersonaAppendixScopeKeyFromContext(context);
     const metadata = context?.chatMetadata?.[PERSONA_APPENDICES_METADATA_KEY];
-    const activeIds = Array.isArray(metadata?.[avatarId]) ? metadata[avatarId] : [];
+    const legacyActiveIds = Array.isArray(metadata?.[avatarId]) ? metadata[avatarId] : [];
+    const activeIds = Object.prototype.hasOwnProperty.call(selections, scopeKey) ? selections[scopeKey] : legacyActiveIds;
     const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
     return activeIds.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
 }
@@ -14240,27 +14275,17 @@ function syncPersonaDescriptionFromContext(context, avatarId, activeIds = null) 
 }
 
 function setActivePersonaAppendixIdsFromContext(context, avatarId, ids) {
-    if (!context?.chatMetadata || !avatarId) {
+    if (!context?.powerUserSettings?.persona_descriptions?.[avatarId] || !avatarId) {
         return;
     }
 
     const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
     const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
-
-    if (!context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY]
-        || typeof context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY] !== 'object'
-        || Array.isArray(context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY])) {
-        context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY] = {};
-    }
-
-    if (cleanIds.length) {
-        context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY][avatarId] = cleanIds;
-    } else {
-        delete context.chatMetadata[PERSONA_APPENDICES_METADATA_KEY][avatarId];
-    }
+    const selections = normalizePersonaAppendixSelectionsFromContext(context, avatarId);
+    selections[getPersonaAppendixScopeKeyFromContext(context)] = cleanIds;
 
     syncPersonaDescriptionFromContext(context, avatarId, cleanIds);
-    context.saveMetadataDebounced?.();
+    saveSettingsDebounced();
     const eventTypes = context.eventTypes ?? context.event_types;
     if (context.eventSource && eventTypes?.PERSONA_UPDATED) {
         void context.eventSource.emit(eventTypes.PERSONA_UPDATED, avatarId);

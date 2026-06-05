@@ -107,6 +107,8 @@ const GRID_STORAGE_KEY = 'Personas_GridView';
 const DEFAULT_DEPTH = 2;
 const DEFAULT_ROLE = 0;
 const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
+const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
+const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 /** @type {string} The currently selected persona (identified by its avatar) */
 export let user_avatar = '';
@@ -152,6 +154,35 @@ function createPersonaAppendixId(name = 'appendix') {
     return `${slug}-${Date.now()}`;
 }
 
+function getPersonaAppendixScopeKey() {
+    return String(selected_group || characters[Number(this_chid)]?.avatar || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function normalizePersonaAppendixSelections(descriptor) {
+    if (!descriptor || typeof descriptor !== 'object') {
+        return {};
+    }
+
+    const source = descriptor[PERSONA_APPENDICES_SELECTIONS_KEY];
+    const normalized = {};
+
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+        for (const [scopeKey, activeIds] of Object.entries(source)) {
+            if (!Array.isArray(activeIds)) {
+                continue;
+            }
+
+            const cleanScopeKey = String(scopeKey || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+            normalized[cleanScopeKey] = activeIds
+                .map(String)
+                .filter((id, index, array) => id && array.indexOf(id) === index);
+        }
+    }
+
+    descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = normalized;
+    return normalized;
+}
+
 function normalizePersonaAppendices(descriptor) {
     if (!descriptor) {
         return [];
@@ -176,6 +207,12 @@ function normalizePersonaAppendices(descriptor) {
         };
     });
 
+    const appendixIds = new Set(descriptor.appendices.map(appendix => appendix.id));
+    const selections = normalizePersonaAppendixSelections(descriptor);
+    for (const [scopeKey, activeIds] of Object.entries(selections)) {
+        selections[scopeKey] = activeIds.filter(id => appendixIds.has(id));
+    }
+
     return descriptor.appendices;
 }
 
@@ -183,20 +220,25 @@ function getPersonaAppendices(avatarId = user_avatar) {
     return normalizePersonaAppendices(power_user.persona_descriptions?.[avatarId]);
 }
 
-function getPersonaAppendicesMetadata() {
-    if (!chat_metadata[PERSONA_APPENDICES_METADATA_KEY]
-        || typeof chat_metadata[PERSONA_APPENDICES_METADATA_KEY] !== 'object'
-        || Array.isArray(chat_metadata[PERSONA_APPENDICES_METADATA_KEY])) {
-        chat_metadata[PERSONA_APPENDICES_METADATA_KEY] = {};
+function getLegacyPersonaAppendicesMetadata() {
+    const metadata = chat_metadata[PERSONA_APPENDICES_METADATA_KEY];
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return {};
     }
 
-    return chat_metadata[PERSONA_APPENDICES_METADATA_KEY];
+    return metadata;
 }
 
 function getActivePersonaAppendixIds(avatarId = user_avatar) {
-    const metadata = getPersonaAppendicesMetadata();
-    const appendixIds = new Set(getPersonaAppendices(avatarId).map(appendix => appendix.id));
-    const activeIds = Array.isArray(metadata[avatarId]) ? metadata[avatarId] : [];
+    const descriptor = power_user.persona_descriptions?.[avatarId];
+    const appendices = getPersonaAppendices(avatarId);
+    const appendixIds = new Set(appendices.map(appendix => appendix.id));
+    const selections = normalizePersonaAppendixSelections(descriptor);
+    const scopeKey = getPersonaAppendixScopeKey();
+    const legacyMetadata = getLegacyPersonaAppendicesMetadata();
+    const activeIds = Object.prototype.hasOwnProperty.call(selections, scopeKey)
+        ? selections[scopeKey]
+        : (Array.isArray(legacyMetadata[avatarId]) ? legacyMetadata[avatarId] : []);
     return activeIds.map(String).filter((id, index, array) => appendixIds.has(id) && array.indexOf(id) === index);
 }
 
@@ -235,17 +277,17 @@ function syncPersonaDescriptionFromDescriptor(avatarId = user_avatar) {
 }
 
 async function setActivePersonaAppendixIds(avatarId, ids) {
-    const metadata = getPersonaAppendicesMetadata();
-    const availableIds = new Set(getPersonaAppendices(avatarId).map(appendix => appendix.id));
-    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
-
-    if (cleanIds.length) {
-        metadata[avatarId] = cleanIds;
-    } else {
-        delete metadata[avatarId];
+    const descriptor = avatarId === user_avatar ? getOrCreatePersonaDescriptor() : power_user.persona_descriptions?.[avatarId];
+    if (!descriptor) {
+        return;
     }
 
-    saveMetadataDebounced();
+    const availableIds = new Set(getPersonaAppendices(avatarId).map(appendix => appendix.id));
+    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+    const selections = normalizePersonaAppendixSelections(descriptor);
+    selections[getPersonaAppendixScopeKey()] = cleanIds;
+
+    saveSettingsDebounced();
     syncPersonaDescriptionFromDescriptor(avatarId);
     renderPersonaAppendices();
     updateSelectedPersonaMasthead();
@@ -678,6 +720,7 @@ export async function initPersona(avatarId, personaName, personaDescription, per
         lorebook: lorebook,
         title: personaTitle || '',
         appendices: [],
+        activeAppendices: {},
     };
 
     saveSettingsDebounced();
@@ -882,6 +925,7 @@ export async function convertCharacterToPersona(characterId = null) {
         lorebook: '',
         title: '',
         appendices: [],
+        activeAppendices: {},
     };
 
     // If the user is currently using this persona, update the description
@@ -1210,14 +1254,22 @@ async function deletePersonaAppendix(appendixId) {
     }
 
     descriptor.appendices = appendices.filter(item => item.id !== appendixId);
-    const activeIds = getActivePersonaAppendixIds(user_avatar).filter(id => id !== appendixId);
-    const metadata = getPersonaAppendicesMetadata();
-    if (activeIds.length) {
-        metadata[user_avatar] = activeIds;
-    } else {
-        delete metadata[user_avatar];
+    const selections = normalizePersonaAppendixSelections(descriptor);
+    for (const [scopeKey, activeIds] of Object.entries(selections)) {
+        selections[scopeKey] = activeIds.filter(id => id !== appendixId);
     }
-    saveMetadataDebounced();
+
+    const legacyMetadata = getLegacyPersonaAppendicesMetadata();
+    if (Array.isArray(legacyMetadata[user_avatar])) {
+        const activeIds = legacyMetadata[user_avatar].map(String).filter(id => id !== appendixId);
+        if (activeIds.length) {
+            legacyMetadata[user_avatar] = activeIds;
+        } else {
+            delete legacyMetadata[user_avatar];
+        }
+        saveMetadataDebounced();
+    }
+
     await persistPersonaAppendices();
 }
 
@@ -1521,6 +1573,7 @@ async function selectCurrentPersona({ toastPersonaNameChange = true } = {}) {
                 connections: [],
                 title: '',
                 appendices: [],
+                activeAppendices: {},
             };
         }
 
@@ -1672,6 +1725,7 @@ async function lockPersona(type = 'chat') {
             connections: [],
             title: '',
             appendices: [],
+            activeAppendices: {},
         };
         await eventSource.emit(event_types.PERSONA_CREATED, { avatarId: user_avatar, name: name1, description: '', title: '' });
     }
@@ -1777,7 +1831,7 @@ async function deletePersona(avatarId, { silent = false } = {}) {
         console.log(`Deleted avatar ${avatarId}`);
         delete power_user.personas[avatarId];
         delete power_user.persona_descriptions[avatarId];
-        const appendixMetadata = getPersonaAppendicesMetadata();
+        const appendixMetadata = getLegacyPersonaAppendicesMetadata();
         if (appendixMetadata[avatarId]) {
             delete appendixMetadata[avatarId];
             saveMetadataDebounced();
@@ -1835,6 +1889,7 @@ async function onPersonaDescriptionInput() {
                 lorebook: '',
                 title: '',
                 appendices: [],
+                activeAppendices: {},
             };
             power_user.persona_descriptions[user_avatar] = object;
         }
@@ -1967,6 +2022,7 @@ export function getOrCreatePersonaDescriptor() {
             connections: [],
             title: '',
             appendices: [],
+            activeAppendices: {},
         };
         power_user.persona_descriptions[user_avatar] = object;
     }
