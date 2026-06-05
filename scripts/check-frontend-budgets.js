@@ -23,6 +23,7 @@ const optionalPublicAssets = new Set([
 ]);
 
 const indexHtml = fs.readFileSync(indexPath, 'utf8');
+const normalizedTextAssetExtensions = new Set(['.css', '.html', '.js', '.json', '.map', '.mjs', '.svg', '.txt']);
 
 function stripQuery(value) {
     return String(value).split(/[?#]/)[0];
@@ -50,6 +51,11 @@ function getPublicFileSize(url) {
 
         fail(`Referenced asset is missing: ${url}`);
         return 0;
+    }
+
+    if (normalizedTextAssetExtensions.has(path.extname(filePath).toLowerCase())) {
+        const source = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
+        return Buffer.byteLength(source, 'utf8');
     }
 
     return fs.statSync(filePath).size;
