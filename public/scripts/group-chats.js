@@ -58,6 +58,7 @@ import {
     sendMessageAsUser,
     getBiasStrings,
     saveChatConditional,
+    flushPendingChatSavesForNavigation,
     deactivateSendButtons,
     activateSendButtons,
     eventSource,
@@ -3352,6 +3353,10 @@ export async function openGroupById(groupId, { switchMenu = true } = {}) {
         return true;
     }
 
+    if (!await flushPendingChatSavesForNavigation()) {
+        return false;
+    }
+
     groupChatQueueOrder = new Map();
     setCharacterId(undefined);
     setCharacterName('');
@@ -3543,6 +3548,10 @@ export async function createNewGroupChat(groupId) {
         return;
     }
 
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     await clearChat({ clearData: true });
     const newChatName = humanizedDateTime();
     group.chats.push(newChatName);
@@ -3597,6 +3606,10 @@ export async function openGroupChat(groupId, chatId) {
     const group = groups.find(x => x.id === groupId);
 
     if (!group || !group.chats.includes(chatId)) {
+        return;
+    }
+
+    if (!await flushPendingChatSavesForNavigation()) {
         return;
     }
 

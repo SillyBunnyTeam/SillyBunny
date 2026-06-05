@@ -1259,6 +1259,10 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             return false;
         }
 
+        if (!await flushPendingChatSavesForNavigation()) {
+            return false;
+        }
+
         setCharacterId(undefined);
         setCharacterName('');
         resetSelectedGroup();
@@ -1865,6 +1869,10 @@ export async function deleteCharacterChatByName(characterId, fileName) {
 }
 
 export async function replaceCurrentChat() {
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     await clearChat({ clearData: true });
 
     const chatsResponse = await fetch('/api/characters/chats', {
@@ -9962,6 +9970,19 @@ function hasPendingChatSave() {
     return chatSaveTimeout !== null || chatSavePromise !== null;
 }
 
+export async function flushPendingChatSavesForNavigation() {
+    if (!hasPendingChatSave()) {
+        return true;
+    }
+
+    // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
+    const didFlush = await flushPendingChatSaves();
+    if (!didFlush) {
+        toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
+    }
+    return didFlush;
+}
+
 /**
  * Flushes any pending chat save, waits for in-flight saves, and saves the current chat immediately.
  * @returns {Promise<boolean>} Whether the chat save completed successfully.
@@ -10508,6 +10529,10 @@ function getFirstMessage() {
 }
 
 export async function openCharacterChat(file_name) {
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
     characters[this_chid].chat = file_name;
@@ -14901,6 +14926,10 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         return;
     }
 
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     //Fix it; New chat doesn't create while open create character menu
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
@@ -15035,6 +15064,10 @@ export async function renameChat(oldFileName, newName) {
  */
 export async function closeCurrentChat() {
     if (is_send_press == false) {
+        if (!await flushPendingChatSavesForNavigation()) {
+            return false;
+        }
+
         await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
         await clearChat({ clearData: true });
         resetSelectedGroup();

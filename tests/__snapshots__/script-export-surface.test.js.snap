@@ -83,6 +83,7 @@ exports[`public/script.js named export surface matches the parser-derived export
   "firstRun",
   "flushCharacterSaveDebounced",
   "flushPendingChatSaves",
+  "flushPendingChatSavesForNavigation",
   "formatCharacterAvatar",
   "generateQuietPrompt",
   "generateRaw",
