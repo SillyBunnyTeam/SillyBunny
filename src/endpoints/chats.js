@@ -9,6 +9,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import _ from 'lodash';
 
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
+import { renameChatFile } from '../chat-rename.js';
 import {
     getConfigValue,
     humanizedDateTime,
@@ -591,9 +592,9 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
             return response.status(400).send({ error: true });
         }
 
-        fs.copyFileSync(pathToOriginalFile, pathToRenamedFile);
-        fs.unlinkSync(pathToOriginalFile);
-        console.info('Successfully renamed chat file.');
+        // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
+        const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
+        console.info(`Successfully renamed chat file (${renameResult.method}).`);
         return response.send({ ok: true, sanitizedFileName });
     } catch (error) {
         console.error('Error renaming chat file:', error);
