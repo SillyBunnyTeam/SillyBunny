@@ -39,6 +39,7 @@ import {
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
+import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
 
 import {
     world_info,
@@ -9924,19 +9925,25 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
 export function saveChatDebounced() {
     const chid = this_chid;
     const selectedGroup = selected_group;
+    const chatId = getCurrentChatId();
 
     cancelDebouncedChatSave();
 
     chatSaveTimeout = setTimeout(async () => {
         chatSaveTimeout = null;
 
-        if (selectedGroup !== selected_group) {
-            console.warn('Chat save timeout triggered, but group changed. Aborting.');
-            return;
-        }
+        // SillyBunny: keep debounced saves bound to the file they were scheduled for.
+        const abortReason = getDebouncedChatSaveAbortReason({
+            scheduledGroupId: selectedGroup,
+            currentGroupId: selected_group,
+            scheduledCharacterId: chid,
+            currentCharacterId: this_chid,
+            scheduledChatId: chatId,
+            currentChatId: getCurrentChatId(),
+        });
 
-        if (chid !== this_chid) {
-            console.warn('Chat save timeout triggered, but chid changed. Aborting.');
+        if (abortReason) {
+            console.warn(`Chat save timeout triggered, but ${abortReason} changed. Aborting.`);
             return;
         }
 
@@ -14956,6 +14963,14 @@ export async function renameGroupOrCharacterChat({ characterId, groupId, oldFile
     }) : null;
 
     try {
+        const currentChatBaseName = getChatBaseName(currentChatId);
+        if (currentChatBaseName && currentChatBaseName === getChatBaseName(oldFileName)) {
+            const didFlush = await flushPendingChatSaves();
+            if (!didFlush) {
+                throw new Error('Could not save the current chat before renaming.');
+            }
+        }
+
         const response = await fetch('/api/chats/rename', {
             method: 'POST',
             body: JSON.stringify(body),
