@@ -1653,6 +1653,10 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     box-shadow: none;
 }
 
+#chat .mes_edit_buttons :is(.mes_edit_up, .mes_edit_down).menu_button:is(.disabled, .is-disabled, [disabled]) {
+    display: none;
+}
+
 #chat .mes .swipeRightBlock {
     inline-size: 44px;
     align-items: center;
