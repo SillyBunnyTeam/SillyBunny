@@ -12969,7 +12969,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.delete_alternate_greeting').on('click', async function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             const confirm = await callGenericPopup(t`Are you sure you want to delete this alternate greeting?`, POPUP_TYPE.CONFIRM);
             if (!confirm) {
@@ -12986,7 +12986,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.move_up_alternate_greeting').on('click', function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             if (index <= 0) {
                 return;
@@ -13004,7 +13004,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.move_down_alternate_greeting').on('click', function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             if (index >= greetings.length - 1) {
                 return;
