@@ -7,6 +7,7 @@
 - PR #348 (2026-06-05) `fix: gate verbose prompt payload logging`
 - PR #349 (2026-06-05) `fix: prevent chat cloning races`
 - PR #350 (2026-06-05) `fix: preserve pending swipe saves before chat switches`
+- PR #352 (2026-06-05) `fix: isolate mobile alternate greeting controls`
 
 ## v1.6.2
 
