@@ -4,6 +4,7 @@
 
 ### Merged Staging PRs
 - PR #346 (2026-06-04) `chore: fix PR checks and changelog sync`
+- PR #348 (2026-06-05) `fix: gate verbose prompt payload logging`
 
 ## v1.6.2
 
