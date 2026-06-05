@@ -6,6 +6,7 @@
 - PR #346 (2026-06-04) `chore: fix PR checks and changelog sync`
 - PR #348 (2026-06-05) `fix: gate verbose prompt payload logging`
 - PR #349 (2026-06-05) `fix: prevent chat cloning races`
+- PR #350 (2026-06-05) `fix: preserve pending swipe saves before chat switches`
 
 ## v1.6.2
 
