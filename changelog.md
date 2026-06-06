@@ -14,6 +14,7 @@
 - PR #357 (2026-06-06) `fix: paint message-block transparency in core without Moonlit Echoes`
 - PR #358 (2026-06-06) `fix: stabilize mobile viewport on search close and auto-focus search input`
 - PR #359 (2026-06-06) `fix: keep impersonate first-person on chat-completion backends`
+- PR #360 (2026-06-06) `fix: ignore generation event payloads in agent UI refresh`
 
 ## v1.6.2
 
