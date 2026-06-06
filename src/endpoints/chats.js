@@ -31,6 +31,7 @@ const throttleInterval = Number(getConfigValue('backups.chat.throttleInterval', 
 const checkIntegrity = !!getConfigValue('backups.chat.checkIntegrity', true, 'boolean');
 
 export const CHAT_BACKUPS_PREFIX = 'chat_';
+const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
 
 /**
  * Saves a chat to the backups directory.
@@ -500,7 +501,7 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     if (skipIntegrityCheck && fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
         if (currentChatData) {
-            backupChat(backupDirectory, cardName, currentChatData);
+            backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX);
         }
     }
 

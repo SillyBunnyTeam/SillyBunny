@@ -74,6 +74,35 @@ describe('chat integrity rotation', () => {
         )).rejects.toThrow(/integrity/i);
     });
 
+    test('keeps forced-overwrite safety backup distinct from the same-second post-save backup', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-force-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('old-integrity', 'original disk chat').map(JSON.stringify).join('\n'));
+        await trySaveChat(
+            chatWithIntegrity('ignored-forced-integrity', 'forced overwrite chat'),
+            chatFile,
+            true,
+            'forced-overwrite-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const backupFiles = await fs.readdir(backupDir);
+        const forcedBackup = backupFiles.find(fileName => fileName.startsWith('chat_forced_overwrite_test_card_'));
+        const postSaveBackup = backupFiles.find(fileName => fileName.startsWith('chat_test_card_'));
+
+        expect(backupFiles).toHaveLength(2);
+        expect(forcedBackup).toEqual(expect.any(String));
+        expect(postSaveBackup).toEqual(expect.any(String));
+        await expect(fs.readFile(path.join(backupDir, forcedBackup), 'utf8')).resolves.toContain('original disk chat');
+        await expect(fs.readFile(path.join(backupDir, postSaveBackup), 'utf8')).resolves.toContain('forced overwrite chat');
+    });
+
     test('adopts returned integrity only for the active chat file', async () => {
         const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
 
