@@ -125,6 +125,7 @@ let sbStorageFlushTimer = 0;
 let sbStorageFlushEventsBound = false;
 let sbMessageActionEventsBound = false;
 let sbPendingBottomChatScrollCancel = null;
+let sbSearchShortcutPreFocusAt = 0;
 const sbStorageCache = new Map();
 const sbStoragePendingWrites = new Map();
 const SB_EXTENSION_ALIASES = {
@@ -173,6 +174,12 @@ function activateShortcutTarget(target) {
         const searchState = getUniversalSearchState();
 
         if (searchState.expanded) {
+            if (performance.now() - sbSearchShortcutPreFocusAt < SB_MOBILE_ACTION_DEBOUNCE_MS * 2) {
+                sbSearchShortcutPreFocusAt = 0;
+                focusUniversalSearchInput(searchState.input);
+                return;
+            }
+
             setUniversalSearchOpenState(false);
 
             if (searchState.input instanceof HTMLInputElement && document.activeElement === searchState.input) {
@@ -593,7 +600,7 @@ const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
 const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
-const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 180;
+const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
@@ -3977,6 +3984,30 @@ function createProxyButton({ id, icon, label, title, className = '' }, onClick) 
     button.addEventListener('click', debounceAction(onClick));
 
     return button;
+}
+
+function bindSearchShortcutPreFocus(button, targetGetter) {
+    if (!(button instanceof HTMLElement) || typeof targetGetter !== 'function') {
+        return;
+    }
+
+    const openAndFocusSearch = () => {
+        if (!isSearchShortcutTarget(targetGetter())) {
+            return;
+        }
+
+        const searchState = getUniversalSearchState();
+        if (searchState.expanded) {
+            return;
+        }
+
+        closeAllDropdowns({ except: 'search' });
+        setUniversalSearchOpenState(true, { focusInput: true });
+        sbSearchShortcutPreFocusAt = performance.now();
+    };
+
+    button.addEventListener('pointerdown', openAndFocusSearch, { passive: true });
+    button.addEventListener('touchstart', openAndFocusSearch, { passive: true });
 }
 
 function createTopBarIconButton({ id = '', icon, title, className = '', label = '' }, onClick) {
@@ -7958,6 +7989,7 @@ function buildTopBar() {
         },
         () => activateShortcutTarget(getShortcutTarget('left')),
     );
+    bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget('left'));
 
     const rightShortcutConfig = getShortcutConfig(getShortcutTarget('right'));
     const rightShortcut = createProxyButton(
@@ -7970,6 +8002,7 @@ function buildTopBar() {
         },
         () => activateShortcutTarget(getShortcutTarget('right')),
     );
+    bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
     centerGroup.innerHTML = `
         <div id="sb-topbar-title" class="sb-brand-title">${SB_IDLE_BRAND_LABEL}</div>
