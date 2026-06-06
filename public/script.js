@@ -10059,7 +10059,9 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
     }
 
     const metadata = { ...chat_metadata, ...(withMetadata || {}) };
-    const fileName = chatName ?? characters[this_chid]?.chat;
+    const activeChatName = characters[this_chid]?.chat;
+    const fileName = chatName ?? activeChatName;
+    const isActiveChatSave = fileName === activeChatName;
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -10102,6 +10104,10 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
+            const responseData = await result.json().catch(() => ({}));
+            if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
+                chat_metadata.integrity = responseData.integrity;
+            }
             return true;
         }
 
