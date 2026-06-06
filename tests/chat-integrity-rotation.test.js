@@ -73,4 +73,12 @@ describe('chat integrity rotation', () => {
             backupDir,
         )).rejects.toThrow(/integrity/i);
     });
+
+    test('adopts returned integrity only for the active chat file', async () => {
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+
+        expect(scriptSource).toContain('const activeChatName = characters[this_chid]?.chat;');
+        expect(scriptSource).toContain('const isActiveChatSave = fileName === activeChatName;');
+        expect(scriptSource).toContain('if (isActiveChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
+    });
 });
