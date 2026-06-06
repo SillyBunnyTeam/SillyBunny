@@ -22,6 +22,7 @@ import {
     tryDeleteFile,
     readFirstLine,
     isPathUnderParent,
+    uuidv4,
 } from '../util.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
@@ -481,16 +482,31 @@ class IntegrityMismatchError extends Error {
  * @param {string} backupDirectory Passed to backupChat.
  */
 export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory) {
-    const jsonlData = chatData?.map(m => JSON.stringify(m)).join('\n');
-
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;
 
     if (chatIntegritySlug && !await checkChatIntegrity(filePath, chatIntegritySlug)) {
         throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
     }
+
+    const nextIntegrity = uuidv4();
+    const savedChatData = Array.isArray(chatData)
+        ? chatData.map((message, index) => index === 0
+            ? { ...message, chat_metadata: { ...(message?.chat_metadata || {}), integrity: nextIntegrity } }
+            : message)
+        : chatData;
+    const jsonlData = savedChatData?.map(m => JSON.stringify(m)).join('\n');
+
+    if (skipIntegrityCheck && fs.existsSync(filePath)) {
+        const currentChatData = tryReadFileSync(filePath);
+        if (currentChatData) {
+            backupChat(backupDirectory, cardName, currentChatData);
+        }
+    }
+
     tryWriteFileSync(filePath, jsonlData);
     getBackupFunction(handle)(backupDirectory, cardName, jsonlData);
+    return { integrity: nextIntegrity };
 }
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {
@@ -505,8 +521,8 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         }
 
         if (Array.isArray(chatData)) {
-            await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
-            return response.send({ ok: true });
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
+            return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
         }
@@ -886,8 +902,8 @@ router.post('/group/save', async function (request, response) {
         const chatData = request.body.chat;
 
         if (Array.isArray(chatData)) {
-            await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);
-            return response.send({ ok: true });
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);
+            return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
         }

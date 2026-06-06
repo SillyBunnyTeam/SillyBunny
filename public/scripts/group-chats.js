@@ -1616,6 +1616,11 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnErr
         return await saveGroupChat(groupId, shouldSaveGroup, true, throwOnError);
     }
 
+    const responseData = await response.json().catch(() => ({}));
+    if (typeof responseData?.integrity === 'string' && responseData.integrity) {
+        chat_metadata.integrity = responseData.integrity;
+    }
+
     if (shouldSaveGroup) {
         await editGroup(groupId, false, false);
     }

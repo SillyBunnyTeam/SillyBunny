@@ -10102,6 +10102,10 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
+            const responseData = await result.json().catch(() => ({}));
+            if (typeof responseData?.integrity === 'string' && responseData.integrity) {
+                chat_metadata.integrity = responseData.integrity;
+            }
             return true;
         }
 
