@@ -8,6 +8,7 @@ const readSource = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'ut
 describe('core message transparency wiring', () => {
     const chatStylesSource = readSource('public', 'css', 'sillybunny-chat-styles.css');
     const backgroundsSource = readSource('public', 'css', 'backgrounds.css');
+    const styleSource = readSource('public', 'style.css');
     const powerUserSource = readSource('public', 'scripts', 'power-user.js');
     const indexSource = readSource('public', 'index.html');
 
@@ -34,12 +35,19 @@ describe('core message transparency wiring', () => {
         expect(chatStylesSource).toContain('backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));');
         expect(backgroundsSource).toContain('opacity: var(--customCSS-bg-opacity, 1);');
         expect(backgroundsSource).toContain('filter: blur(calc(var(--customCSS-bg-blur, 0) * 1px));');
+        expect(styleSource).toContain('@import url(css/backgrounds.css?v=20260606a);');
     });
 
     test('persists and applies the three core visual sliders', () => {
         expect(indexSource).toContain('id="background_blur"');
+        expect(indexSource).toContain('aria-label="Background blur"');
+        expect(indexSource).toContain('aria-label="Background blur value"');
         expect(indexSource).toContain('id="background_opacity"');
+        expect(indexSource).toContain('aria-label="Background opacity"');
+        expect(indexSource).toContain('aria-label="Background opacity value"');
         expect(indexSource).toContain('id="sheld_blur_strength"');
+        expect(indexSource).toContain('aria-label="Chat field blur"');
+        expect(indexSource).toContain('aria-label="Chat field blur value"');
         expect(powerUserSource).toContain('const THEME_EFFECT_PROPERTIES = Object.freeze([');
         expect(powerUserSource).toContain("{ key: 'customCSS-bg-blur', selector: '#background_blur'");
         expect(powerUserSource).toContain("{ key: 'customCSS-bg-opacity', selector: '#background_opacity'");
