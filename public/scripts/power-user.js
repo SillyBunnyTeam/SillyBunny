@@ -174,8 +174,7 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
 const THEME_EFFECT_PROPERTIES = Object.freeze([
     { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10 },
     { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
-    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', defaultValue: 0, min: 0, max: 10 },
-    { key: 'mobileSheldBlurStrength', cssVar: '--mobileSheldBlurStrength', defaultValue: 0, min: 0, max: 10 },
+    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', linkedCssVars: ['--mobileSheldBlurStrength'], defaultValue: 0, min: 0, max: 10 },
     { key: 'sheldBackgroundColor', cssVar: '--sheldBackgroundColor', defaultValue: 'transparent' },
 ]);
 
@@ -1590,6 +1589,9 @@ function applyThemeEffects() {
         const value = normalizeThemeEffectValue(property);
         power_user[property.key] = value;
         document.documentElement.style.setProperty(property.cssVar, String(value));
+        for (const cssVar of property.linkedCssVars || []) {
+            document.documentElement.style.setProperty(cssVar, String(value));
+        }
 
         if (property.selector) {
             $(property.selector).val(value);

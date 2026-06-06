@@ -49,7 +49,7 @@
     --customCSS-bg-blur: 0;
     --sheldBackgroundColor: transparent;
     --sheldBlurStrength: 0;
-    --mobileSheldBlurStrength: 0;
+    --mobileSheldBlurStrength: var(--sheldBlurStrength, 0);
 }
 
 #sheld::before {

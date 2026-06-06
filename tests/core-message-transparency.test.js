@@ -30,7 +30,7 @@ describe('core message transparency wiring', () => {
         expect(chatStylesSource).toContain('--customCSS-bg-blur: 0;');
         expect(chatStylesSource).toContain('--sheldBackgroundColor: transparent;');
         expect(chatStylesSource).toContain('--sheldBlurStrength: 0;');
-        expect(chatStylesSource).toContain('--mobileSheldBlurStrength: 0;');
+        expect(chatStylesSource).toContain('--mobileSheldBlurStrength: var(--sheldBlurStrength, 0);');
         expect(chatStylesSource).toContain('#sheld::before');
         expect(chatStylesSource).toContain('backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));');
         expect(backgroundsSource).toContain('opacity: var(--customCSS-bg-opacity, 1);');
@@ -52,7 +52,10 @@ describe('core message transparency wiring', () => {
         expect(powerUserSource).toContain("{ key: 'customCSS-bg-blur', selector: '#background_blur'");
         expect(powerUserSource).toContain("{ key: 'customCSS-bg-opacity', selector: '#background_opacity'");
         expect(powerUserSource).toContain("{ key: 'sheldBlurStrength', selector: '#sheld_blur_strength'");
+        expect(powerUserSource).toContain("linkedCssVars: ['--mobileSheldBlurStrength']");
+        expect(powerUserSource).not.toContain("key: 'mobileSheldBlurStrength'");
         expect(powerUserSource).toContain('function applyThemeEffects()');
+        expect(powerUserSource).toContain('for (const cssVar of property.linkedCssVars || [])');
         expect(powerUserSource).toContain('theme[key] = power_user[key];');
         expect(powerUserSource).toContain('applyThemeEffects();');
     });
