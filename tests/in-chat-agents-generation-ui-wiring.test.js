@@ -46,4 +46,12 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain("$(document).on('click', '#mes_stop'");
         expect(indexSource).toContain('cancelAgentGeneration();');
     });
+
+    test('refreshes generation UI from core events without forwarding payloads', () => {
+        expect(indexSource).toContain('event_types.GENERATION_STARTED');
+        expect(indexSource).toContain('event_types.GENERATION_ENDED');
+        expect(indexSource).toContain('event_types.GENERATION_STOPPED');
+        expect(indexSource).toContain('eventSource.on(eventName, () => refreshGenerationUi());');
+        expect(indexSource).not.toContain('eventSource.on(eventName, refreshGenerationUi);');
+    });
 });

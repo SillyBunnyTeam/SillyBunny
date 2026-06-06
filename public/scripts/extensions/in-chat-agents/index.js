@@ -4249,7 +4249,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         event_types.GENERATION_ENDED,
         event_types.GENERATION_STOPPED,
     ]) {
-        eventSource.on(eventName, refreshGenerationUi);
+        eventSource.on(eventName, () => refreshGenerationUi());
     }
 
     // Listen for Prompt Manager "Send to Agents" events
