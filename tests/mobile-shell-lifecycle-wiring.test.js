@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+const browserFixesSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'browser-fixes.js'), 'utf8');
 const tabsCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
 const mobileShellCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
 
@@ -121,10 +122,23 @@ describe('mobile shell lifecycle wiring', () => {
         const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
 
         expect(tabsSource).toContain('function requestMobileViewportReset(');
-        expect(searchOpenStateSource).toContain('requestMobileViewportReset();');
+        expect(tabsSource).toContain('detail: { restoreScroll: Boolean(restoreScroll) },');
+        expect(tabsSource).toContain('const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;');
+        expect(searchOpenStateSource).toContain('requestMobileViewportReset({ restoreScroll: true });');
         expect(closeShellSource).toContain('requestMobileViewportReset();');
         expect(closeCharacterPanelSource).toContain('requestMobileViewportReset();');
         expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
+    });
+
+    test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
+        expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
+        expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });');
+        expect(browserFixesSource).toContain('window.scrollTo(0, 0);');
+        expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll });');
+        expect(browserFixesSource).toContain('if (!force && viewportResetScheduled) {');
+        expect(browserFixesSource).toContain('}, viewportResetSettleMs);');
     });
 
     test('dedupes rail quick actions against all built-in rail actions', () => {
@@ -194,6 +208,10 @@ describe('mobile shell lifecycle wiring', () => {
         const buildUniversalSearchRowSource = getFunctionSource('buildUniversalSearchRow');
 
         expect(tabsSource).toContain('function focusUniversalSearchInput(');
+        expect(tabsSource).toContain('function bindSearchShortcutPreFocus(');
+        expect(tabsSource).toContain('sbSearchShortcutPreFocusAt = performance.now();');
+        expect(tabsSource).toContain('bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget(\'left\'));');
+        expect(tabsSource).toContain('bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget(\'right\'));');
         expect(setUniversalSearchOpenStateSource).toContain('focusUniversalSearchInput(input);');
         expect(buildUniversalSearchRowSource).toContain('setUniversalSearchOpenState(true, { focusInput: true });');
         expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);

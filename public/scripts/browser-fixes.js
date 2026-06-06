@@ -116,6 +116,7 @@ function applyBrowserFixes() {
     if (isMobile()) {
         const viewport = window.visualViewport;
         const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const viewportResetSettleMs = 360;
         let viewportFixScheduled = false;
         let viewportResetScheduled = false;
         let lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
@@ -126,7 +127,7 @@ function applyBrowserFixes() {
             lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
         };
 
-        const resetTransientViewportPosition = () => {
+        const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {
             document.documentElement.style.position = '';
             document.documentElement.style.top = '';
             document.documentElement.style.left = '';
@@ -138,9 +139,13 @@ function applyBrowserFixes() {
             document.body.style.right = '';
             document.body.style.bottom = '';
             document.body.style.transform = '';
+
+            if (restoreScroll && (document.scrollingElement?.scrollTop || 0) > 0) {
+                window.scrollTo(0, 0);
+            }
         };
 
-        const scheduleViewportReset = () => {
+        const scheduleViewportReset = ({ restoreScroll = false } = {}) => {
             if (viewportResetScheduled) {
                 return;
             }
@@ -148,19 +153,27 @@ function applyBrowserFixes() {
             viewportResetScheduled = true;
 
             requestAnimationFrame(() => {
-                resetTransientViewportPosition();
+                resetTransientViewportPosition({ restoreScroll });
                 updateViewportBaseline();
 
                 window.setTimeout(() => {
-                    resetTransientViewportPosition();
+                    resetTransientViewportPosition({ restoreScroll });
                     updateViewportBaseline();
                     viewportResetScheduled = false;
-                }, 80);
+                }, viewportResetSettleMs);
             });
+        };
+
+        const handleMobileViewportReset = (event) => {
+            scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });
         };
 
         const applyPositionFix = ({ force = false } = {}) => {
             updateViewportBaseline();
+
+            if (!force && viewportResetScheduled) {
+                return;
+            }
 
             // SillyBunny: do not force the viewport fix while the mobile shell is
             // actively editing an input; that can disrupt IME composition and text fixes.
@@ -244,7 +257,7 @@ function applyBrowserFixes() {
                 scheduleViewportReset();
             }
         }, true);
-        window.addEventListener('sb-mobile-viewport-reset', scheduleViewportReset);
+        window.addEventListener('sb-mobile-viewport-reset', handleMobileViewportReset);
     }
 
     addMacOSPatch();
