@@ -122,8 +122,9 @@ describe('mobile shell lifecycle wiring', () => {
         const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
 
         expect(tabsSource).toContain('function requestMobileViewportReset(');
+        expect(tabsSource).toContain('detail: { restoreScroll: Boolean(restoreScroll) },');
         expect(tabsSource).toContain('const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;');
-        expect(searchOpenStateSource).toContain('requestMobileViewportReset();');
+        expect(searchOpenStateSource).toContain('requestMobileViewportReset({ restoreScroll: true });');
         expect(closeShellSource).toContain('requestMobileViewportReset();');
         expect(closeCharacterPanelSource).toContain('requestMobileViewportReset();');
         expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
@@ -132,8 +133,10 @@ describe('mobile shell lifecycle wiring', () => {
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });');
         expect(browserFixesSource).toContain('window.scrollTo(0, 0);');
-        expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll: true });');
+        expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll });');
         expect(browserFixesSource).toContain('if (!force && viewportResetScheduled) {');
         expect(browserFixesSource).toContain('}, viewportResetSettleMs);');
     });

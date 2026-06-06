@@ -145,7 +145,7 @@ function applyBrowserFixes() {
             }
         };
 
-        const scheduleViewportReset = () => {
+        const scheduleViewportReset = ({ restoreScroll = false } = {}) => {
             if (viewportResetScheduled) {
                 return;
             }
@@ -153,15 +153,19 @@ function applyBrowserFixes() {
             viewportResetScheduled = true;
 
             requestAnimationFrame(() => {
-                resetTransientViewportPosition({ restoreScroll: true });
+                resetTransientViewportPosition({ restoreScroll });
                 updateViewportBaseline();
 
                 window.setTimeout(() => {
-                    resetTransientViewportPosition({ restoreScroll: true });
+                    resetTransientViewportPosition({ restoreScroll });
                     updateViewportBaseline();
                     viewportResetScheduled = false;
                 }, viewportResetSettleMs);
             });
+        };
+
+        const handleMobileViewportReset = (event) => {
+            scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });
         };
 
         const applyPositionFix = ({ force = false } = {}) => {
@@ -253,7 +257,7 @@ function applyBrowserFixes() {
                 scheduleViewportReset();
             }
         }, true);
-        window.addEventListener('sb-mobile-viewport-reset', scheduleViewportReset);
+        window.addEventListener('sb-mobile-viewport-reset', handleMobileViewportReset);
     }
 
     addMacOSPatch();

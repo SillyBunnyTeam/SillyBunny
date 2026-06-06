@@ -2045,12 +2045,14 @@ function focusUniversalSearchInput(input) {
     window.requestAnimationFrame(applyFocus);
 }
 
-function requestMobileViewportReset() {
+function requestMobileViewportReset({ restoreScroll = false } = {}) {
     if (!isMobileViewport() || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
         return;
     }
 
-    const dispatchReset = () => window.dispatchEvent(new Event('sb-mobile-viewport-reset'));
+    const dispatchReset = () => window.dispatchEvent(new CustomEvent('sb-mobile-viewport-reset', {
+        detail: { restoreScroll: Boolean(restoreScroll) },
+    }));
 
     if (typeof window.requestAnimationFrame === 'function') {
         window.requestAnimationFrame(dispatchReset);
@@ -2082,7 +2084,7 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     if (!nextOpenState) {
         searchState.results?.classList.remove('is-visible');
         if (wasOpen) {
-            requestMobileViewportReset();
+            requestMobileViewportReset({ restoreScroll: true });
         }
     } else {
         renderUniversalSearchResults(input?.value ?? '');
