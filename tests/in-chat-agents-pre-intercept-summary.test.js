@@ -49,12 +49,19 @@ beforeAll(async () => {
 
     await jest.unstable_mockModule('../public/script.js', () => ({
         CLIENT_VERSION: 'test',
+        activateSendButtons: jest.fn(),
         chat: [],
+        deactivateSendButtons: jest.fn(),
         getRequestHeaders: jest.fn(() => ({})),
         generateQuietPrompt: jest.fn(),
+        is_send_press: false,
         normalizeContentText: jest.fn(value => String(value ?? '')),
         saveSettingsDebounced: jest.fn(),
         substituteParams: jest.fn(value => String(value ?? '')),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({
+        is_group_generating: false,
     }));
 
     await jest.unstable_mockModule('../public/scripts/events.js', () => ({

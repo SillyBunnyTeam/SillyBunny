@@ -2,8 +2,9 @@ import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
 import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../../utils.js';
-import { CLIENT_VERSION, chat, getRequestHeaders, generateQuietPrompt, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
+import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
+import { is_group_generating } from '../../group-chats.js';
 import {
     areAgentsGloballyEnabled,
     getAgents,
@@ -189,6 +190,22 @@ function getLastAssistantMessageIndex() {
 
 function updateCancelGenerationButton() {
     $('#ica--cancelGeneration').toggle(isAgentGenerationActive());
+}
+
+function updateAgentGenerationSendControls(active = isAgentGenerationActive()) {
+    if (active) {
+        deactivateSendButtons();
+        return;
+    }
+
+    if (!is_send_press && !is_group_generating) {
+        activateSendButtons();
+    }
+}
+
+function refreshGenerationUi(active = isAgentGenerationActive()) {
+    updateCancelGenerationButton();
+    updateAgentGenerationSendControls(active);
 }
 
 function updateGlobalAgentToggle() {
@@ -4218,8 +4235,15 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         eventSource.on(eventName, refreshProfileUi);
     }
 
-    const refreshGenerationUi = () => updateCancelGenerationButton();
     onAgentGenerationStateChanged(refreshGenerationUi);
+    $(document).on('click', '#mes_stop', () => {
+        if (!isAgentGenerationActive()) {
+            return;
+        }
+
+        cancelAgentGeneration();
+        refreshGenerationUi();
+    });
     for (const eventName of [
         event_types.GENERATION_STARTED,
         event_types.GENERATION_ENDED,
