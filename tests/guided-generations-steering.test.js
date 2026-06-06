@@ -137,7 +137,7 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
 
-    test('guided impersonate appends helper prefill blocks to the impersonate prompt', async () => {
+    test('guided impersonate frames first-person voice and appends helper prefill blocks', async () => {
         extensionSettings['guided-generations'].promptImpersonate1st = 'FIRST PERSON: {{input}}';
         extensionSettings['guided-generations'].helperPrefillMessages = `[system]
 Stay terse.
@@ -151,8 +151,10 @@ I | begin`;
 
         expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
         const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
+        expect(command).toContain('/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system Guided Impersonate: write only as {{user}} in first person.');
         expect(command).toContain('/impersonate await=true FIRST PERSON: aim for a colder, suspicious reply');
         expect(command).toContain('SYSTEM:\nStay terse.');
         expect(command).toContain('ASSISTANT:\nI \\| begin');
+        expect(command).toContain('/flushinject gg-impersonate-voice |');
     });
 });
