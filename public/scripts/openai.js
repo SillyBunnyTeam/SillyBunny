@@ -87,6 +87,7 @@ import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } fro
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import { buildChatCompletionPresetForSave, buildReverseProxyPresetForSave, normalizeReverseProxyPreset } from './openai-preset-utils.js';
+import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 
 export {
     openai_messages_count,
@@ -501,6 +502,7 @@ export const settingsToUpdate = {
     continue_prefill: ['#continue_prefill', 'continue_prefill', true, false],
     continue_postfix: ['#continue_postfix', 'continue_postfix', false, false],
     function_calling: ['#openai_function_calling', 'function_calling', true, false],
+    tool_call_recurse_limit: ['#tool_call_recurse_limit', 'tool_call_recurse_limit', false, false],
     show_thoughts: ['#openai_show_thoughts', 'show_thoughts', true, false],
     auto_append_reasoning_tags: ['#openai_auto_append_reasoning_tags', 'auto_append_reasoning_tags', true, false],
     auto_append_reasoning_tag_style: ['#openai_reasoning_tag_style', 'auto_append_reasoning_tag_style', false, false],
@@ -615,6 +617,7 @@ const default_settings = {
     bypass_status_check: false,
     continue_prefill: false,
     function_calling: false,
+    tool_call_recurse_limit: TOOL_CALL_RECURSE_LIMIT_DEFAULT,
     names_behavior: character_names_behavior.DEFAULT,
     continue_postfix: continue_postfix_types.SPACE,
     custom_prompt_post_processing: custom_prompt_post_processing_types.NONE,
@@ -674,6 +677,15 @@ export let selected_proxy = proxies[0];
 
 export let openai_setting_names;
 export let openai_settings;
+
+function applyToolCallRecurseLimit(value = oai_settings.tool_call_recurse_limit) {
+    const recurseLimit = normalizeToolCallRecurseLimit(value);
+    oai_settings.tool_call_recurse_limit = recurseLimit;
+    ToolManager.RECURSE_LIMIT = recurseLimit;
+    $('#tool_call_recurse_limit').val(recurseLimit);
+    $('#tool_call_recurse_limit_counter').val(recurseLimit);
+    return recurseLimit;
+}
 
 /** @type {import('./PromptManager.js').PromptManager} */
 export let promptManager = null;
@@ -6547,6 +6559,7 @@ function loadOpenAISettings(data, settings) {
         }
     }
 
+    applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);
     syncMaxContextUnlockedControl(oai_settings);
 
     $(`#settings_preset_openai option[value="${openai_setting_names[oai_settings.preset_settings_openai]}"]`).prop('selected', true);
@@ -9768,6 +9781,11 @@ export function initOpenAI() {
     $('#openai_function_calling').on('input', function () {
         oai_settings.function_calling = !!$(this).prop('checked');
         updateFeatureSupportFlags();
+        saveSettingsDebounced();
+    });
+
+    $('#tool_call_recurse_limit').on('input', function () {
+        applyToolCallRecurseLimit($(this).val());
         saveSettingsDebounced();
     });
 
