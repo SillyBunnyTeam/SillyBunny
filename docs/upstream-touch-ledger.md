@@ -41,13 +41,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Generation lifecycle. |
-| Divergence reason | SillyBunny generation flow needs explicit UI lock, stop, and unblock decisions while preserving provider calls, prompt assembly, token accounting, and persistence in the existing generation path. |
+| Divergence reason | SillyBunny generation flow needs explicit UI lock, stop, agent-generation, and unblock decisions while preserving provider calls, prompt assembly, token accounting, and persistence in the existing generation path. |
 | Target seam | `public/scripts/generation-lifecycle/`. |
 | Adapter shape | Keep exported generation functions in `public/script.js`; delegate send-button lock state, stop-generation request state, and unblock cleanup decisions to the lifecycle module. |
-| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, existing export-surface coverage. |
-| Validation | `npm run test:unit --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, existing export-surface coverage. |
+| Validation | `npm run test:unit --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
 | Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. |
-| Last reviewed | 2026-05-28 generation lifecycle wiring. |
+| Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
 
 ### `public/style.css` - message containment and scroll anchoring
