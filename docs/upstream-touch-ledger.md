@@ -145,13 +145,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Settings and frontend boot. |
-| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL and keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior. |
-| Target seam | `public/scripts/ooc-blocks.js` for retention behavior; no separate seam for the HTML boot URL. |
+| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. |
+| Target seam | `public/scripts/ooc-blocks.js` for retention behavior; `public/css/sillybunny-chat-styles.css` and `public/scripts/power-user.js` for core transparency behavior. |
 | Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. |
-| Protecting tests | `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- frontend-assets.test.js ooc-blocks.test.js`, `npm run build:frontend`, browser smoke check. |
-| Rollback path | Restore versioned `script.js` references and previous settings copy if cache behavior or settings semantics regress. |
-| Last reviewed | 2026-06-02 frontend asset and OOC settings update. |
+| Protecting tests | `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
+| Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
+| Last reviewed | 2026-06-06 Bug 1 transparency migration. |
+| Owner | Refactor integrator. |
+
+### `public/css/backgrounds.css` - background image transparency
+| Field | Value |
+| --- | --- |
+| Area | Settings and frontend boot. |
+| Divergence reason | SillyBunny background-image opacity and blur must work without the Moonlit Echoes extension enabled. |
+| Target seam | `public/scripts/power-user.js` owns the persisted theme effect values; CSS remains declarative. |
+| Adapter shape | Consume `--customCSS-bg-opacity` and `--customCSS-bg-blur` on the background image elements. |
+| Protecting tests | `tests/core-message-transparency.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `node --check public/scripts/power-user.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the two CSS variable consumers and leave existing background image selection untouched. |
+| Last reviewed | 2026-06-06 Bug 1 transparency migration. |
 | Owner | Refactor integrator. |
 
 ### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer

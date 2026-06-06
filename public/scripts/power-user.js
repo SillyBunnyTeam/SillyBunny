@@ -171,6 +171,14 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'border_color', selector: '#border-color-picker', type: 'border' },
 ]);
 
+const THEME_EFFECT_PROPERTIES = Object.freeze([
+    { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10 },
+    { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
+    { key: 'sheldBlurStrength', selector: '#sheld_blur_strength', counterSelector: '#sheld_blur_strength_counter', cssVar: '--sheldBlurStrength', defaultValue: 0, min: 0, max: 10 },
+    { key: 'mobileSheldBlurStrength', cssVar: '--mobileSheldBlurStrength', defaultValue: 0, min: 0, max: 10 },
+    { key: 'sheldBackgroundColor', cssVar: '--sheldBackgroundColor', defaultValue: 'transparent' },
+]);
+
 const avatar_styles = {
     ROUND: 0,
     RECTANGULAR: 1,
@@ -202,15 +210,8 @@ const CHAT_STYLE_BODY_CLASSES = Object.freeze({
 });
 
 const LEGACY_CHAT_STYLE_BODY_CLASSES = Object.freeze([]);
-const NATIVE_CHAT_STYLE_VALUES = new Set([
-    chat_styles.ECHO,
-    chat_styles.WHISPER,
-    chat_styles.HUSH,
-    chat_styles.RIPPLE,
-    chat_styles.TIDE,
-]);
 const NATIVE_CHAT_STYLE_STYLESHEET_ID = 'sillybunny-native-chat-styles';
-const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20260513b';
+const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20260606a';
 
 function ensureNativeChatStyleStylesheet() {
     if (document.getElementById(NATIVE_CHAT_STYLE_STYLESHEET_ID)) {
@@ -296,6 +297,11 @@ export const power_user = {
     font_scale: 1,
     blur_strength: 10,
     shadow_width: 2,
+    'customCSS-bg-blur': 0,
+    'customCSS-bg-opacity': 1,
+    sheldBlurStrength: 0,
+    mobileSheldBlurStrength: 0,
+    sheldBackgroundColor: 'transparent',
 
     main_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBodyColor').trim()}`,
     italics_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeEmColor').trim()}`,
@@ -1254,9 +1260,7 @@ function applyChatDisplay() {
     const nextClass = CHAT_STYLE_BODY_CLASSES[power_user.chat_display] ?? CHAT_STYLE_BODY_CLASSES[chat_styles.DEFAULT];
     const allClasses = [...Object.values(CHAT_STYLE_BODY_CLASSES), ...LEGACY_CHAT_STYLE_BODY_CLASSES].join(' ');
 
-    if (NATIVE_CHAT_STYLE_VALUES.has(power_user.chat_display)) {
-        ensureNativeChatStyleStylesheet();
-    }
+    ensureNativeChatStyleStylesheet();
 
     console.debug(`applying ${nextClass}`);
     $('body').removeClass(allClasses);
@@ -1566,6 +1570,37 @@ function applyShadowWidth() {
     $('#shadow_width').val(power_user.shadow_width);
 }
 
+function normalizeThemeEffectValue(property) {
+    const value = power_user[property.key] ?? property.defaultValue;
+
+    if (typeof property.min === 'number' && typeof property.max === 'number') {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return property.defaultValue;
+        }
+        return Math.min(property.max, Math.max(property.min, numericValue));
+    }
+
+    const stringValue = String(value ?? '').trim();
+    return stringValue || property.defaultValue;
+}
+
+function applyThemeEffects() {
+    for (const property of THEME_EFFECT_PROPERTIES) {
+        const value = normalizeThemeEffectValue(property);
+        power_user[property.key] = value;
+        document.documentElement.style.setProperty(property.cssVar, String(value));
+
+        if (property.selector) {
+            $(property.selector).val(value);
+        }
+
+        if (property.counterSelector) {
+            $(property.counterSelector).val(value);
+        }
+    }
+}
+
 function applyFontScale(type) {
     //this is to allow forced setting on page load, theme swap, etc
     if (type === 'forced') {
@@ -1624,6 +1659,13 @@ function applyTheme(name) {
         }
     }
 
+    for (const { key } of THEME_EFFECT_PROPERTIES) {
+        if (theme[key] !== undefined) {
+            power_user[key] = theme[key];
+        }
+    }
+    applyThemeEffects();
+
     console.log('theme applied: ' + name);
 }
 
@@ -1666,6 +1708,7 @@ export function applyPowerUserSettings() {
     applyChatWidth('forced');
     applyAvatarStyle();
     applyBlurStrength();
+    applyThemeEffects();
     applyLandingContrastPalette();
     applyShadowWidth();
     applyCustomCSS();
@@ -1980,6 +2023,7 @@ export async function loadPowerUserSettings(settings, data) {
 
     $('#shadow_width').val(power_user.shadow_width);
     $('#shadow_width_counter').val(power_user.shadow_width);
+    applyThemeEffects();
 
     syncThemeColorPickersFromState();
     $('#reduced_motion').prop('checked', power_user.reduced_motion);
@@ -2887,6 +2931,10 @@ export function getThemeObject(name) {
     const theme = { name };
 
     for (const { key } of THEME_COLOR_PROPERTIES) {
+        theme[key] = power_user[key];
+    }
+
+    for (const { key } of THEME_EFFECT_PROPERTIES) {
         theme[key] = power_user[key];
     }
 
@@ -3835,6 +3883,14 @@ jQuery(async () => {
         applyShadowWidth();
         saveSettingsDebounced();
     });
+
+    for (const property of THEME_EFFECT_PROPERTIES.filter(property => property.selector)) {
+        $(property.selector).on('input', function () {
+            power_user[property.key] = Number($(this).val());
+            applyThemeEffects();
+            saveSettingsDebounced();
+        });
+    }
 
     $('#main-text-color-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.main_text_color = evt.detail.rgba;

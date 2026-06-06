@@ -45,6 +45,37 @@
     --moonlit-sb-swipe-inline-offset: 24px;
     --moonlit-sb-user-message-bg: color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
     --moonlit-sb-bot-message-bg: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
+    --customCSS-bg-opacity: 1;
+    --customCSS-bg-blur: 0;
+    --sheldBackgroundColor: transparent;
+    --sheldBlurStrength: 0;
+    --mobileSheldBlurStrength: 0;
+}
+
+#sheld::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--sheldBackgroundColor, transparent);
+    backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
+    -webkit-backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
+    z-index: -1 !important;
+    pointer-events: none;
+}
+
+body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes:not(.smallSysMes) .mes_block {
+    background-color: var(--SmartThemeBotMesBlurTintColor);
+}
+
+body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes[is_user="true"]:not(.smallSysMes) .mes_block {
+    background-color: var(--SmartThemeUserMesBlurTintColor);
+}
+
+@media screen and (max-width: 1000px) {
+    #sheld::before {
+        backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
+        -webkit-backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
+    }
 }
 body.hideChatAvatars.echostyle #chat,
 body.hideChatAvatars.whisperstyle #chat,
