@@ -9,6 +9,7 @@
 - PR #350 (2026-06-05) `fix: preserve pending swipe saves before chat switches`
 - PR #352 (2026-06-05) `fix: isolate mobile alternate greeting controls`
 - PR #353 (2026-06-05) `fix: persist persona Scenario Notes selection per character card`
+- PR #356 (2026-06-06) `fix: show stop button during in-chat agent generation`
 - PR #357 (2026-06-06) `fix: paint message-block transparency in core without Moonlit Echoes`
 - PR #358 (2026-06-06) `fix: stabilize mobile viewport on search close and auto-focus search input`
 - PR #359 (2026-06-06) `fix: keep impersonate first-person on chat-completion backends`
