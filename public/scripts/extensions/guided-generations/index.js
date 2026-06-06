@@ -27,7 +27,7 @@ const defaultSettings = {
     promptGuidedResponse: '[Take the following into special consideration for your next message: {{input}}]',
     promptGuidedSwipe: '[Take the following into special consideration for your next message: {{input}}]',
     promptGuidedCorrection: '[Apply the following correction to your previous message: {{input}}]',
-    promptImpersonate1st: 'Write in first Person perspective from {{user}}. {{input}}',
+    promptImpersonate1st: 'Write the next message in first person as {{user}}, not {{char}}. Keep the response in {{user}}\'s own words and actions. {{input}}',
     helperPrefillMessages: '',
     depthPromptGuidedResponse: 0,
     depthPromptGuidedSwipe: 0,

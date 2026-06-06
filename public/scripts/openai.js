@@ -108,6 +108,7 @@ const default_main_prompt = 'Write {{char}}\'s next reply in a fictional chat be
 const default_nsfw_prompt = '';
 const default_jailbreak_prompt = '';
 const default_impersonation_prompt = '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]';
+const default_assistant_impersonation = '{{user}}:';
 const default_enhance_definitions_prompt = 'If you have more knowledge of {{char}}, add to the character\'s lore and personality to enhance them but keep the Character Sheet\'s definitions absolute.';
 const default_wi_format = '{0}';
 const default_new_chat_prompt = '[Start a new Chat]';
@@ -604,7 +605,7 @@ const default_settings = {
     show_external_models: false,
     proxy_password: '',
     assistant_prefill: '',
-    assistant_impersonation: '',
+    assistant_impersonation: default_assistant_impersonation,
     use_sysprompt: false,
     vertexai_auth_mode: 'express',
     vertexai_region: 'us-central1',
@@ -888,6 +889,16 @@ function setupChatCompletionPromptManager(openAiSettings) {
     promptManager.render(false);
 
     return promptManager;
+}
+
+function getEffectiveImpersonationPrompt() {
+    const prompt = String(oai_settings.impersonation_prompt ?? '').trim() || default_impersonation_prompt;
+    return substituteParams(prompt);
+}
+
+function getEffectiveAssistantImpersonationPrefill(settings) {
+    const prefill = String(settings?.assistant_impersonation ?? '').trim() || default_assistant_impersonation;
+    return substituteParams(prefill);
 }
 
 /**
@@ -1392,7 +1403,9 @@ async function populateChatCompletion(prompts, chatCompletion, { bias, quietProm
     const controlPrompts = new MessageCollection('controlPrompts');
 
     const impersonateMessage = await Message.fromPromptAsync(prompts.get('impersonate')) ?? null;
-    if (type === 'impersonate') controlPrompts.add(impersonateMessage);
+    if (type === 'impersonate' && !promptManager.isPromptDisabledForActiveCharacter('impersonate')) {
+        controlPrompts.add(impersonateMessage);
+    }
 
     // Add quiet prompt to control prompts
     // This should always be last, even in control prompts. Add all further control prompts BEFORE this prompt
@@ -1538,7 +1551,7 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
     const scenarioText = scenario && oai_settings.scenario_format ? substituteParams(oai_settings.scenario_format) : (scenario || '');
     const charPersonalityText = charPersonality && oai_settings.personality_format ? substituteParams(oai_settings.personality_format) : (charPersonality || '');
     const groupNudge = substituteParams(oai_settings.group_nudge_prompt);
-    const impersonationPrompt = oai_settings.impersonation_prompt ? substituteParams(oai_settings.impersonation_prompt) : '';
+    const impersonationPrompt = getEffectiveImpersonationPrompt();
 
     // Create entries for system prompts
     const systemPrompts = [
@@ -5077,7 +5090,7 @@ export async function createGenerationParameters(settings, model, type, messages
         // Don't add a prefill on quiet gens (summarization) and when using continue prefill.
         if (type !== 'quiet' && !(type === 'continue' && settings.continue_prefill)) {
             generate_data.assistant_prefill = type === 'impersonate'
-                ? substituteParams(settings.assistant_impersonation)
+                ? getEffectiveAssistantImpersonationPrefill(settings)
                 : substituteParams(settings.assistant_prefill);
         }
     }
