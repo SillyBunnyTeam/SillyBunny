@@ -201,7 +201,7 @@ function activateShortcutTarget(target) {
             void setCharacterListEntityView('characters');
         }
         preloadPanelStylesheets('characters', tab);
-        openCharacterPanelTab(tab);
+        toggleShellPanel(shell, tab);
         return;
     }
 
@@ -6560,6 +6560,24 @@ function isCharacterPanelOpen() {
     return isDrawerActuallyOpen('right-nav-panel');
 }
 
+function getActiveCharacterPanelTab() {
+    const menuType = getCharacterPanel()?.dataset.menuType;
+
+    if (['persona', 'import', 'world-info', 'groups'].includes(menuType)) {
+        return menuType;
+    }
+
+    if (['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType)) {
+        return 'editor';
+    }
+
+    return 'characters';
+}
+
+function isCharacterPanelTabOpen(tabId) {
+    return isCharacterPanelOpen() && getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId);
+}
+
 function hasActiveCharacterChat(context = getSillyTavernContext()) {
     if (context?.groupId) {
         return true;
@@ -7613,6 +7631,11 @@ function closeAllDropdowns({ except = '' } = {}) {
 
 function toggleShellPanel(shellKey, tabId = null) {
     if (shellKey === 'characters') {
+        if (isCharacterPanelTabOpen(tabId)) {
+            closeCharacterPanel();
+            return;
+        }
+
         openCharacterPanelTab(tabId);
         return;
     }

@@ -218,6 +218,21 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
     });
 
+    test('routes character top-bar shortcuts through toggle-close behavior', () => {
+        const buildTopBarSource = getFunctionSource('buildTopBar');
+        const activateShortcutTargetSource = getFunctionSource('activateShortcutTarget');
+        const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
+        const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
+
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'right\'))');
+        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab);');
+        expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
+        expect(toggleShellPanelSource).toContain('isCharacterPanelTabOpen(tabId)');
+        expect(toggleShellPanelSource).toContain('closeCharacterPanel();');
+        expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
+    });
+
     test('routes hamburger toggle intent through the lifecycle seam', () => {
         const toggleMobileNavSource = getFunctionSource('toggleMobileNav');
 
