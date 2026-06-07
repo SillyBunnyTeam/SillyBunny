@@ -99,6 +99,19 @@
     --color-warning: #facc15;
     --color-shadow: var(--SmartThemeShadowColor);
     --color-focus-ring: color-mix(in srgb, var(--color-primary) 72%, transparent);
+    --toast-surface-color: color-mix(in srgb, var(--color-surface-strong, var(--SmartThemeBlurTintColor)) 92%, var(--SmartThemeBodyColor) 8%);
+    --toast-text-color: var(--SmartThemeBodyColor);
+    --toast-link-color: color-mix(in srgb, var(--toast-text-color) 86%, var(--SmartThemeQuoteColor) 14%);
+    --toast-border-color: color-mix(in srgb, var(--toast-text-color) 14%, transparent);
+    --toast-shadow-color: color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 32%, transparent);
+    --toast-success-accent: var(--sb-color-success, var(--color-success, var(--SmartThemeQuoteColor)));
+    --toast-error-accent: var(--sb-color-error, var(--color-danger, var(--SmartThemeUnderlineColor)));
+    --toast-info-accent: var(--sb-color-info, var(--color-primary, var(--SmartThemeQuoteColor)));
+    --toast-warning-accent: var(--sb-color-warning, var(--color-warning, var(--SmartThemeQuoteColor)));
+    --toast-success-bg: color-mix(in srgb, var(--toast-success-accent) 26%, var(--toast-surface-color) 74%);
+    --toast-error-bg: color-mix(in srgb, var(--toast-error-accent) 28%, var(--toast-surface-color) 72%);
+    --toast-info-bg: color-mix(in srgb, var(--toast-info-accent) 26%, var(--toast-surface-color) 74%);
+    --toast-warning-bg: color-mix(in srgb, var(--toast-warning-accent) 30%, var(--toast-surface-color) 70%);
     --sb-scrollbar-track: color-mix(in srgb, var(--color-background, var(--SmartThemeBlurTintColor)) 86%, transparent);
     --sb-scrollbar-track-hover: color-mix(in srgb, var(--color-background, var(--SmartThemeBlurTintColor)) 70%, transparent);
     --sb-scrollbar-thumb: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 34%, transparent);
@@ -4358,6 +4371,25 @@ body #toast-container>div {
     padding: 10px 10px 10px 50px;
     font-size: calc(var(--mainFontSize) * 0.95);
     width: 300px;
+    color: var(--toast-text-color);
+    border: 1px solid var(--toast-border-color);
+    box-shadow: 0 16px 36px var(--toast-shadow-color);
+}
+
+body #toast-container .toast-message a,
+body #toast-container .toast-message label {
+    color: var(--toast-link-color);
+}
+
+body #toast-container .toast-close-button {
+    color: var(--toast-text-color);
+    text-shadow: none;
+}
+
+body #toast-container .toast-close-button:focus,
+body #toast-container .toast-close-button:hover {
+    color: var(--toast-text-color);
+    opacity: 0.7;
 }
 
 body #toast-container .toast.toast-non-interactable {
@@ -4365,19 +4397,19 @@ body #toast-container .toast.toast-non-interactable {
 }
 
 body #toast-container .toast-success {
-    background-color: #5d9e5d;
+    background-color: var(--toast-success-bg);
 }
 
 body #toast-container .toast-error {
-    background-color: #a83c36;
+    background-color: var(--toast-error-bg);
 }
 
 body #toast-container .toast-info {
-    background-color: #4092aa;
+    background-color: var(--toast-info-bg);
 }
 
 body #toast-container .toast-warning {
-    background-color: #e29325;
+    background-color: var(--toast-warning-bg);
 }
 
 button.toast-close-button {
