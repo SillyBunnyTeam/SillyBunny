@@ -102,6 +102,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset. |
 | Owner | Refactor integrator and mobile shell owner. |
 
+### `public/scripts/openai.js` and `public/index.html` - tool recursion limit setting
+| Field | Value |
+| --- | --- |
+| Area | Settings and tool calling. |
+| Divergence reason | SillyBunny exposes a tool-call recursion limit control that must persist and drive the actual runtime cap instead of showing the browser range midpoint. |
+| Target seam | `public/scripts/tool-call-recurse-limit.js`. |
+| Adapter shape | Keep `openai.js` limited to settings map/default wiring, load/change synchronization, and assigning `ToolManager.RECURSE_LIMIT`; keep `index.html` default values aligned with the runtime default. |
+| Protecting tests | `tests/tool-call-recurse-limit.test.js`, `tests/tool-call-recurse-limit-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- tool-call-recurse-limit.test.js tool-call-recurse-limit-wiring.test.js`, `node --check public/scripts/openai.js`, `node --check public/scripts/tool-call-recurse-limit.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the setting map/default and input handler, leaving `ToolManager.RECURSE_LIMIT` at its static default. |
+| Last reviewed | 2026-06-06 tool recursion limit fix. |
+| Owner | Bugfix integrator. |
+
 ### `public/scripts/mobile-streaming.js` - platform streaming policy
 | Field | Value |
 | --- | --- |
