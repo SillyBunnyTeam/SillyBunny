@@ -17,6 +17,7 @@
 - PR #359 (2026-06-06) `fix: keep impersonate first-person on chat-completion backends`
 - PR #360 (2026-06-06) `fix: ignore generation event payloads in agent UI refresh`
 - PR #361 (2026-06-07) `fix: correct mobile persona action spacing`
+- PR #362 (2026-06-07) `fix: make toast colors theme-aware`
 
 ## v1.6.2
 
