@@ -64,7 +64,8 @@ describe('generation lifecycle wiring', () => {
     test('routes send-button deactivation through lifecycle lock state', () => {
         const deactivateSource = getFunctionSource('deactivateSendButtons', { exported: true });
 
-        expect(deactivateSource).toContain('resolveGenerationUiLockState({ isGenerating: true })');
+        expect(deactivateSource).toContain('markBodyGenerating = true');
+        expect(deactivateSource).toContain('resolveGenerationUiLockState({ isGenerating: true, markBodyGenerating })');
         expect(deactivateSource).toContain('lockState.shouldShowStopButton');
         expect(deactivateSource).toContain('lockState.shouldHideSwipeButtons');
         expect(deactivateSource).toContain('lockState.bodyGeneratingValue');

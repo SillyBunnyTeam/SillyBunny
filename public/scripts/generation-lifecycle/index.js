@@ -16,10 +16,12 @@ function normalizeGenerationType(type) {
  * Resolves generation UI lock state for send controls.
  * @param {object} options Options.
  * @param {boolean} [options.isGenerating=false] Whether generation controls should lock.
+ * @param {boolean} [options.markBodyGenerating=isGenerating] Whether to mark the document as actively generating.
  * @returns {{state: string, shouldShowStopButton: boolean, shouldHideSwipeButtons: boolean, bodyGeneratingValue: string|null}}
  */
 export function resolveGenerationUiLockState({
     isGenerating = false,
+    markBodyGenerating = isGenerating,
 } = {}) {
     if (!isGenerating) {
         return {
@@ -34,7 +36,7 @@ export function resolveGenerationUiLockState({
         state: GENERATION_LIFECYCLE_UI_STATE.GENERATING,
         shouldShowStopButton: true,
         shouldHideSwipeButtons: true,
-        bodyGeneratingValue: 'true',
+        bodyGeneratingValue: markBodyGenerating ? 'true' : null,
     };
 }
 

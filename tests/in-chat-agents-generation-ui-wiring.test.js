@@ -36,14 +36,14 @@ describe('in-chat agents generation UI wiring', () => {
 
         expect(indexSource).toContain('activateSendButtons');
         expect(indexSource).toContain('deactivateSendButtons');
-        expect(updateSource).toContain('deactivateSendButtons();');
+        expect(updateSource).toContain('deactivateSendButtons({ markBodyGenerating: false });');
         expect(updateSource).toContain('if (!is_send_press && !is_group_generating)');
         expect(updateSource).toContain('activateSendButtons();');
     });
 
     test('subscribes agent state changes and routes send-bar stop clicks to agent cancel', () => {
         expect(indexSource).toContain('onAgentGenerationStateChanged(refreshGenerationUi);');
-        expect(indexSource).toContain("$(document).on('click', '#mes_stop'");
+        expect(indexSource).toContain('$(document).on(\'click\', \'#mes_stop\'');
         expect(indexSource).toContain('cancelAgentGeneration();');
     });
 
