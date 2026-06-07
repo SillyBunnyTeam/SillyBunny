@@ -3785,8 +3785,11 @@ grammarly-extension {
     padding-left: 5px;
 }
 
-.alternate_greeting_header {
-    align-items: flex-start;
+.alternate_greeting .alternate_greeting_header.title_restorable {
+    /* SillyBunny: keep Alternate Greeting actions above the textarea instead of inheriting title_restorable's row layout. */
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     width: 100%;
 }
 
@@ -3795,9 +3798,12 @@ grammarly-extension {
     min-width: 0;
 }
 
-.alternate_greeting_actions {
+.alternate_greeting .alternate_greeting_actions {
     flex: 0 0 auto;
     flex-wrap: nowrap;
+    order: -1;
+    align-self: flex-end;
+    justify-content: flex-end;
 }
 
 .alternate_greeting_actions :is(.menu_button, .right_menu_button) {

@@ -5638,10 +5638,13 @@ input[type='range']::-moz-range-thumb {
     }
 
     #PersonaManagement .persona-management-actions {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
+        /* SillyBunny: keep the icon-only action row evenly distributed on narrow shells. */
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 6px;
+        width: 100%;
+        min-width: 0;
     }
 
     #PersonaManagement .persona-management-browser {
@@ -5654,7 +5657,17 @@ input[type='range']::-moz-range-thumb {
         min-width: 0;
     }
 
-    #PersonaManagement .persona-management-actions > .menu_button,
+    #PersonaManagement .persona-management-actions > .menu_button {
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        min-height: 44px;
+        max-height: 44px;
+        padding: 0;
+        justify-content: center;
+        gap: 0;
+    }
+
     #PersonaManagement .persona-management-browser > #create_dummy_persona {
         flex: 0 0 44px;
         width: 44px;

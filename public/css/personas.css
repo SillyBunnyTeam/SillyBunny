@@ -321,6 +321,18 @@
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
 }
 
+/* SillyBunny: equalize Persona editor tab tracks when labels collapse to icon-only/mobile controls. */
+:root[data-sb-desktop-nav-mode='icon-only'] #PersonaManagement .persona-editor-tabs,
+:root[data-sb-mobile-nav-mode='icon-only'] #PersonaManagement .persona-editor-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media screen and (max-width: 760px) {
+    #PersonaManagement .persona-editor-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 #PersonaManagement .persona-editor-tabs .sb-shell-tab {
     width: 100%;
     padding-inline: 10px;
