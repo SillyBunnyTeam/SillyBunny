@@ -18,6 +18,7 @@
 - PR #360 (2026-06-06) `fix: ignore generation event payloads in agent UI refresh`
 - PR #361 (2026-06-07) `fix: correct mobile persona action spacing`
 - PR #362 (2026-06-07) `fix: make toast colors theme-aware`
+- PR #363 (2026-06-07) `fix: align persona icon actions and alt greetings`
 
 ## v1.6.2
 
