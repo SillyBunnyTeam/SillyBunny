@@ -9636,8 +9636,8 @@ export function activateSendButtons({ emitGenerationEnded = true } = {}) {
 /**
  * A function mainly used to switch 'generating' state - setting it to true and deactivating the buttons
  */
-export function deactivateSendButtons() {
-    const lockState = resolveGenerationUiLockState({ isGenerating: true });
+export function deactivateSendButtons({ markBodyGenerating = true } = {}) {
+    const lockState = resolveGenerationUiLockState({ isGenerating: true, markBodyGenerating });
     if (lockState.shouldShowStopButton) {
         showStopButton();
     }

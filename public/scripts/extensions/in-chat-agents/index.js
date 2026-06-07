@@ -194,7 +194,8 @@ function updateCancelGenerationButton() {
 
 function updateAgentGenerationSendControls(active = isAgentGenerationActive()) {
     if (active) {
-        deactivateSendButtons();
+        // Agent post-processing should lock send controls without hiding the visible message actions.
+        deactivateSendButtons({ markBodyGenerating: false });
         return;
     }
 
