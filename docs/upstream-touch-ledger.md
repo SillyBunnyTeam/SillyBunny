@@ -41,14 +41,27 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Generation lifecycle. |
-| Divergence reason | SillyBunny generation flow needs explicit UI lock, stop, and unblock decisions while preserving provider calls, prompt assembly, token accounting, and persistence in the existing generation path. |
+| Divergence reason | SillyBunny generation flow needs explicit UI lock, stop, agent-generation, and unblock decisions while preserving provider calls, prompt assembly, token accounting, and persistence in the existing generation path. |
 | Target seam | `public/scripts/generation-lifecycle/`. |
 | Adapter shape | Keep exported generation functions in `public/script.js`; delegate send-button lock state, stop-generation request state, and unblock cleanup decisions to the lifecycle module. |
-| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, existing export-surface coverage. |
-| Validation | `npm run test:unit --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, existing export-surface coverage. |
+| Validation | `npm run test:unit --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
 | Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. |
-| Last reviewed | 2026-05-28 generation lifecycle wiring. |
+| Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
+
+### `src/endpoints/chats.js`, `public/script.js`, and `public/scripts/group-chats.js` - chat save integrity
+| Field | Value |
+| --- | --- |
+| Area | Chat persistence and data-loss prevention. |
+| Divergence reason | SillyBunny must reject stale cross-device chat saves instead of allowing last-write-wins overwrites that destroy newer messages. |
+| Target seam | None yet; keep the save-contract adapter minimal until chat persistence has a dedicated fork seam. |
+| Adapter shape | Rotate chat metadata integrity in `trySaveChat()`, return the new token from normal and group save routes, and store the returned token in the active client metadata after successful saves. |
+| Protecting tests | `tests/chat-integrity-rotation.test.js`; manual two-instance stale-save smoke before release. |
+| Validation | `npm run test:unit --prefix tests -- chat-integrity-rotation.test.js`, `node --check src/endpoints/chats.js`, `node --check public/script.js`, `node --check public/scripts/group-chats.js`, `npm run lint`, Node/Bun server smoke. |
+| Rollback path | Revert the integrity rotation response contract and client adoption to the prior per-load integrity behavior. |
+| Last reviewed | 2026-06-06 chat integrity rotation fix. |
+| Owner | Bugfix integrator. |
 
 ### `public/style.css` - message containment and scroll anchoring
 | Field | Value |
@@ -67,14 +80,40 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Mobile shell, chat navigation, and preset/API sync. |
-| Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, and mirrored connection-profile controls that interact with chat and API state. |
+| Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, search shortcut focus, viewport-reset dispatches, and mirrored connection-profile controls that interact with chat and API state. |
 | Target seam | `public/scripts/chat-render-lifecycle/` for chat scroll requests; `public/scripts/mobile-shell-lifecycle/` for drawer/nav/viewport behavior; `public/scripts/preset-api-sync-lifecycle/` for active API and connection-profile mirror decisions. |
-| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for nav drag, page scroll, overlay open/close, auto-close, modal inert policy, active API connect-button lookup, and connection-profile mirror state. |
+| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, and connection-profile mirror state. |
 | Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
-| Validation | `npm run test:unit --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run test:unit --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Validation | `npm run test:unit --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run test:unit --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `npm run check:frontend-budgets`. |
 | Rollback path | Keep shell calls narrow so a bad adapter route can be reverted without removing shell UI. |
-| Last reviewed | 2026-05-28 preset/API sync lifecycle wiring. |
+| Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset and focus. |
 | Owner | Refactor integrator and mobile shell owner. |
+
+### `public/scripts/browser-fixes.js` - mobile viewport reset guard
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell. |
+| Divergence reason | SillyBunny must restore scroll and avoid re-pinning the root while mobile keyboard close/reset events are still settling. |
+| Target seam | No separate seam yet; this file owns browser-specific viewport patches. |
+| Adapter shape | Keep reset scheduling, transient fixed-position cleanup, scroll restoration, and reapply suppression in the mobile browser fix helper. |
+| Protecting tests | `tests/mobile-shell-lifecycle-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- mobile-shell-lifecycle-wiring.test.js`, `node --check public/scripts/browser-fixes.js`, `node --check public/scripts/sillybunny-tabs.js`, mobile smoke for search close/focus. |
+| Rollback path | Restore the prior reset timeout and remove scroll restoration/reapply suppression if mobile viewport behavior regresses. |
+| Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset. |
+| Owner | Refactor integrator and mobile shell owner. |
+
+### `public/scripts/openai.js` and `public/index.html` - tool recursion limit setting
+| Field | Value |
+| --- | --- |
+| Area | Settings and tool calling. |
+| Divergence reason | SillyBunny exposes a tool-call recursion limit control that must persist and drive the actual runtime cap instead of showing the browser range midpoint. |
+| Target seam | `public/scripts/tool-call-recurse-limit.js`. |
+| Adapter shape | Keep `openai.js` limited to settings map/default wiring, load/change synchronization, and assigning `ToolManager.RECURSE_LIMIT`; keep `index.html` default values aligned with the runtime default. |
+| Protecting tests | `tests/tool-call-recurse-limit.test.js`, `tests/tool-call-recurse-limit-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- tool-call-recurse-limit.test.js tool-call-recurse-limit-wiring.test.js`, `node --check public/scripts/openai.js`, `node --check public/scripts/tool-call-recurse-limit.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the setting map/default and input handler, leaving `ToolManager.RECURSE_LIMIT` at its static default. |
+| Last reviewed | 2026-06-06 tool recursion limit fix. |
+| Owner | Bugfix integrator. |
 
 ### `public/scripts/mobile-streaming.js` - platform streaming policy
 | Field | Value |
@@ -145,13 +184,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Settings and frontend boot. |
-| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL and keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior. |
-| Target seam | `public/scripts/ooc-blocks.js` for retention behavior; no separate seam for the HTML boot URL. |
+| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. |
+| Target seam | `public/scripts/ooc-blocks.js` for retention behavior; `public/css/sillybunny-chat-styles.css` and `public/scripts/power-user.js` for core transparency behavior. |
 | Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. |
-| Protecting tests | `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- frontend-assets.test.js ooc-blocks.test.js`, `npm run build:frontend`, browser smoke check. |
-| Rollback path | Restore versioned `script.js` references and previous settings copy if cache behavior or settings semantics regress. |
-| Last reviewed | 2026-06-02 frontend asset and OOC settings update. |
+| Protecting tests | `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
+| Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
+| Last reviewed | 2026-06-06 Bug 1 transparency migration. |
+| Owner | Refactor integrator. |
+
+### `public/css/backgrounds.css` - background image transparency
+| Field | Value |
+| --- | --- |
+| Area | Settings and frontend boot. |
+| Divergence reason | SillyBunny background-image opacity and blur must work without the Moonlit Echoes extension enabled. |
+| Target seam | `public/scripts/power-user.js` owns the persisted theme effect values; CSS remains declarative. |
+| Adapter shape | Consume `--customCSS-bg-opacity` and `--customCSS-bg-blur` on the background image elements. |
+| Protecting tests | `tests/core-message-transparency.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `node --check public/scripts/power-user.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the two CSS variable consumers and leave existing background image selection untouched. |
+| Last reviewed | 2026-06-06 Bug 1 transparency migration. |
 | Owner | Refactor integrator. |
 
 ### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer
@@ -178,6 +230,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | `node --check public/scripts/openai.js`, `node --check public/scripts/textgen-models.js`, `git diff --check`, mobile browser smoke opening OpenRouter model/provider/quantization menus and selecting through native-backed lists. |
 | Rollback path | Remove the inline picker binding and restore Select2/native select initialization to the previous mobile branch if dropdown behavior regresses. |
 | Last reviewed | 2026-06-02 PR #315 mobile dropdown fix. |
+| Owner | Refactor integrator and settings owner. |
+
+### `public/scripts/openai.js` - impersonate first-person defaults
+| Field | Value |
+| --- | --- |
+| Area | Generation lifecycle and settings. |
+| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. |
+| Target seam | Core chat-completion prompt preparation in `public/scripts/openai.js`; Guided Generations adds its own fork-side system frame. |
+| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. |
+| Protecting tests | `tests/openai-impersonate-defaults.test.js`, `tests/guided-generations-steering.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- openai-impersonate-defaults.test.js guided-generations-steering.test.js`, `node --check public/scripts/openai.js`, live chat-completion impersonate smoke when API access is available. |
+| Rollback path | Restore empty-string behavior for impersonation prompt/prefill and remove the prompt-manager guard if provider behavior regresses. |
+| Last reviewed | 2026-06-06 Bug 6 impersonate first-person defaults. |
 | Owner | Refactor integrator and settings owner. |
 
 ### `public/css/sillybunny-tabs.css`, `public/css/sillybunny-mobile-shell.css`, `public/css/select2-overrides.css`, `public/css/welcome.css`, `public/style.css`, `public/script.js`, `public/sw.js`, and `public/index.html` - menu polish assets

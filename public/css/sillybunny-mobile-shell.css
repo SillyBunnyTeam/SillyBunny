@@ -897,6 +897,16 @@
     #right-nav-panel .delete_alternate_greeting {
         padding-inline: 8px !important;
     }
+
+    #right-nav-panel .alternate_greeting_actions {
+        gap: 4px !important;
+    }
+
+    #right-nav-panel .alternate_greeting_actions :is(.menu_button, .right_menu_button) {
+        min-width: 40px !important;
+        min-height: 40px !important;
+        touch-action: manipulation;
+    }
 }
 
 @media screen and (max-width: 768px) {
@@ -1270,9 +1280,10 @@
         max-width: calc(100vw - 16px) !important;
         left: 8px !important;
         right: 8px !important;
-        top: calc(var(--sb-topbar-layout-offset) + var(--sb-mobile-shell-gap)) !important;
-        height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-mobile-shell-gap)) !important;
-        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-mobile-shell-gap)) !important;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap)) !important;
+        bottom: env(safe-area-inset-bottom, 0px) !important;
+        height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+        max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
         min-width: 0 !important;
         margin-top: 0 !important;
         border-radius: 22px 22px 0 0 !important;
@@ -2558,5 +2569,22 @@
         border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 36%, var(--sb-shell-border) 64%);
         background: var(--sb-shell-tab-active-bg);
         font-weight: var(--sb-weight-title);
+    }
+}
+
+@media screen and (max-width: 768px) {
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer,
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
+        bottom: auto !important;
+        box-sizing: border-box !important;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
     }
 }

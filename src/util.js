@@ -2070,9 +2070,10 @@ export function flattenSchema(schema, api) {
 /**
  * Writes to a file, creating it's parent directories if needed.
  * @param {string} filePath
- * @param {string} data
+ * @param {string|Buffer} data
+ * @param {import('node:fs').WriteFileOptions} [options]
  */
-export function tryWriteFileSync(filePath, data) {
+export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     const directory = path.dirname(filePath);
@@ -2086,7 +2087,7 @@ export function tryWriteFileSync(filePath, data) {
 
     for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
         try {
-            writeFileAtomicSync(filePath, data, 'utf8');
+            writeFileAtomicSync(filePath, data, options);
             return;
         } catch (error) {
             if (!isRetryableWindowsWriteError(error)) {
@@ -2103,7 +2104,7 @@ export function tryWriteFileSync(filePath, data) {
     if (lastError) {
         console.debug(`Atomic write failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
     }
-    fs.writeFileSync(filePath, data, 'utf8');
+    fs.writeFileSync(filePath, data, options);
 }
 
 /**

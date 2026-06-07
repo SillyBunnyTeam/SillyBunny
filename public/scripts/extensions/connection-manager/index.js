@@ -1,6 +1,6 @@
 import { DOMPurify, Fuse } from '../../../lib.js';
 
-import { activateSendButtons, deactivateSendButtons, event_types, eventSource, main_api, online_status, saveSettings } from '../../../script.js';
+import { activateSendButtons, deactivateSendButtons, event_types, eventSource, main_api, online_status, saveSettings, saveSettingsDebounced } from '../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -12,7 +12,7 @@ import { enumTypes, SlashCommandEnumValue } from '../../slash-commands/SlashComm
 import { SlashCommandClosure } from '../../slash-commands/SlashCommandClosure.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommandScope } from '../../slash-commands/SlashCommandScope.js';
-import { collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
+import { cancelDebounce, collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
 import { t } from '../../i18n.js';
 import { getSecretLabelById } from '../../secrets.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
@@ -41,6 +41,11 @@ const ALLOW_EMPTY = [
     'custom-reasoning-param-name',
     'custom-reasoning-enabled-value',
     'custom-reasoning-disabled-value',
+];
+
+const CLEAR_ON_EMPTY_RESULT = [
+    'api-url',
+    'secret-id',
 ];
 
 const CC_COMMANDS = [
@@ -607,6 +612,10 @@ async function readProfileFromCommands(mode, profile, cleanUp = false) {
                 profile[command] = result;
                 continue;
             }
+
+            if (cleanUp && CLEAR_ON_EMPTY_RESULT.includes(command)) {
+                delete profile[command];
+            }
         } catch (error) {
             console.error(`Failed to execute command: ${command}`, error);
         }
@@ -949,7 +958,15 @@ async function applyConnectionProfile(profile) {
             }
             try {
                 const args = getNamedArguments(allowEmpty ? { force: 'true' } : {});
-                await SlashCommandParser.commands[command].callback(args, argument);
+                const commandPromise = SlashCommandParser.commands[command].callback(args, argument);
+                // SillyBunny: profile application triggers UI handlers that queue partial settings saves.
+                // Keep persistence centralized in the explicit save after the full profile is applied.
+                cancelDebounce(saveSettingsDebounced);
+                try {
+                    await commandPromise;
+                } finally {
+                    cancelDebounce(saveSettingsDebounced);
+                }
             } catch (error) {
                 if (spinner.isAborted()) {
                     throw new Error(PROFILE_APPLICATION_ABORTED);

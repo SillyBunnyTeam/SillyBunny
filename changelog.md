@@ -1,5 +1,56 @@
 # Changelog
 
+## v1.6.3
+
+Date: 2026-06-07
+
+This update focuses on safer chat switching and cloning, steadier mobile and persona controls, clearer runtime launchers, theme-aware UI polish, and tighter in-chat agent behavior for the 1.6 line.
+
+### Improved
+- Runtime launcher documentation and scripts now make automatic, Node.js, Bun, macOS, Linux, Windows, and Termux startup paths explicit.
+- Mobile search, persona controls, alternate greetings, top-bar shortcuts, message actions, and shell spacing were polished to stay stable on narrow screens.
+- Theme surfaces now respect toast colors and core message-block transparency without depending on Moonlit Echoes.
+- In-chat agent refresh behavior, generation controls, and tool-call recursion cap handling are more predictable during active generations.
+- Prompt logging and release changelog automation were tightened so verbose payloads and merged staging history are easier to audit.
+
+### Fixed
+- Verbose prompt payload logging now stays gated behind the prompt log preference.
+- Chat cloning, pending swipe saves, and integrity-token rotation now avoid stale writes, cross-device history loss, and chat-switch races.
+- Persona Scenario Notes selection, mobile alternate greeting controls, persona action spacing, and persona icon alignment now persist and render per character card.
+- In-chat agent generation keeps the stop button and message actions visible while ignoring unrelated generation event payloads during UI refresh.
+- Search close handling stabilizes the mobile viewport and auto-focuses search input without pulling the page out of position.
+- Impersonation keeps first-person behavior on chat-completion backends.
+- Top-bar character shortcut buttons now toggle closed instead of staying open.
+
+### Added
+- Runtime-specific launchers for forcing Bun or Node.js across Windows, macOS, Linux/WSL, and Termux.
+- Runtime wiring for the tool-call recursion limit slider.
+- Helper prefill role controls for Guided Generations and In-Chat Agents.
+- Regression coverage for chat cloning, swipe saves, persona notes, integrity tokens, mobile controls, agent generation, transparency, theme-aware toasts, and launcher/changelog sync behavior.
+
+### Removed
+- No user-facing features were removed in this release.
+
+### Merged Staging PRs
+- PR #346 (2026-06-04) `chore: fix PR checks and changelog sync`
+- PR #348 (2026-06-05) `fix: gate verbose prompt payload logging`
+- PR #349 (2026-06-05) `fix: prevent chat cloning races`
+- PR #350 (2026-06-05) `fix: preserve pending swipe saves before chat switches`
+- PR #352 (2026-06-05) `fix: isolate mobile alternate greeting controls`
+- PR #353 (2026-06-05) `fix: persist persona Scenario Notes selection per character card`
+- PR #354 (2026-06-06) `fix: rotate chat integrity token on save to prevent cross-device history loss`
+- PR #355 (2026-06-07) `fix: wire tool call recursion limit slider to runtime cap`
+- PR #356 (2026-06-06) `fix: show stop button during in-chat agent generation`
+- PR #357 (2026-06-06) `fix: paint message-block transparency in core without Moonlit Echoes`
+- PR #358 (2026-06-06) `fix: stabilize mobile viewport on search close and auto-focus search input`
+- PR #359 (2026-06-06) `fix: keep impersonate first-person on chat-completion backends`
+- PR #360 (2026-06-06) `fix: ignore generation event payloads in agent UI refresh`
+- PR #361 (2026-06-07) `fix: correct mobile persona action spacing`
+- PR #362 (2026-06-07) `fix: make toast colors theme-aware`
+- PR #363 (2026-06-07) `fix: align persona icon actions and alt greetings`
+- PR #364 (2026-06-07) `fix: keep message actions visible during agent generation`
+- PR #365 (2026-06-07) `fix: toggle top-bar character shortcuts closed`
+
 ## v1.6.2
 
 Date: 2026-06-03

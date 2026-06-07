@@ -5,6 +5,9 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+const browserFixesSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'browser-fixes.js'), 'utf8');
+const tabsCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
+const mobileShellCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -12,7 +15,26 @@ function getFunctionSource(name) {
 
     expect(start).toBeGreaterThanOrEqual(0);
 
-    const bodyStart = tabsSource.indexOf('{', start);
+    const paramsStart = tabsSource.indexOf('(', start);
+    let parenDepth = 0;
+    let paramsEnd = -1;
+
+    for (let index = paramsStart; index < tabsSource.length; index++) {
+        const char = tabsSource[index];
+        if (char === '(') {
+            parenDepth++;
+        } else if (char === ')') {
+            parenDepth--;
+            if (parenDepth === 0) {
+                paramsEnd = index;
+                break;
+            }
+        }
+    }
+
+    expect(paramsEnd).toBeGreaterThan(paramsStart);
+
+    const bodyStart = tabsSource.indexOf('{', paramsEnd);
     let depth = 0;
 
     for (let index = bodyStart; index < tabsSource.length; index++) {
@@ -81,6 +103,134 @@ describe('mobile shell lifecycle wiring', () => {
         expect(setMobileNavOpenStateSource).toContain('overlay.setAttribute(\'aria-hidden\', navState.overlayAriaHidden);');
         expect(setMobileNavOpenStateSource).toContain('button.setAttribute(\'aria-expanded\', navState.buttonExpanded);');
         expect(setMobileNavOpenStateSource).toContain('navState.shouldRestoreButtonFocus');
+    });
+
+    test('uses a distinct closed mobile nav icon from the Workspace proxy', () => {
+        const buildTopBarSource = getFunctionSource('buildTopBar');
+        const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
+
+        expect(tabsSource).toContain('const SB_MOBILE_NAV_CLOSED_ICON = \'fa-compass\';');
+        expect(buildTopBarSource).toContain('SB_MOBILE_NAV_CLOSED_ICON');
+        expect(setMobileNavOpenStateSource).toContain('SB_MOBILE_NAV_CLOSED_ICON');
+        expect(setMobileNavOpenStateSource).not.toContain('fa-solid fa-bars');
+    });
+
+    test('requests a mobile viewport reset when search and mobile panels close', () => {
+        const searchOpenStateSource = getFunctionSource('setUniversalSearchOpenState');
+        const closeShellSource = getFunctionSource('closeShell');
+        const closeCharacterPanelSource = getFunctionSource('closeCharacterPanel');
+        const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
+
+        expect(tabsSource).toContain('function requestMobileViewportReset(');
+        expect(tabsSource).toContain('detail: { restoreScroll: Boolean(restoreScroll) },');
+        expect(tabsSource).toContain('const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;');
+        expect(searchOpenStateSource).toContain('requestMobileViewportReset({ restoreScroll: true });');
+        expect(closeShellSource).toContain('requestMobileViewportReset();');
+        expect(closeCharacterPanelSource).toContain('requestMobileViewportReset();');
+        expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
+    });
+
+    test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
+        expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
+        expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
+        expect(browserFixesSource).toContain('scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });');
+        expect(browserFixesSource).toContain('window.scrollTo(0, 0);');
+        expect(browserFixesSource).toContain('resetTransientViewportPosition({ restoreScroll });');
+        expect(browserFixesSource).toContain('if (!force && viewportResetScheduled) {');
+        expect(browserFixesSource).toContain('}, viewportResetSettleMs);');
+    });
+
+    test('dedupes rail quick actions against all built-in rail actions', () => {
+        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
+
+        expect(tabsSource).toContain('function getAllBuiltInRailActionKeys(');
+        expect(syncMobileShellRailActionsSource).toContain('getAllBuiltInRailActionKeys()');
+        expect(syncMobileShellRailActionsSource).not.toContain('builtInRailActions.map(getMobileQuickActionKey)');
+    });
+
+    test('clamps resizable shell panels against the visual viewport and panel top', () => {
+        const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
+        const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
+        const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
+        const openShellSource = getFunctionSource('openShell');
+        const closeShellSource = getFunctionSource('closeShell');
+        const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+
+        expect(tabsSource).toContain('function getShellViewportSize(');
+        expect(tabsSource).toContain('function syncShellViewportBounds(');
+        expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
+        expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
+        expect(tabsSource).toContain('root.style.setProperty(\'--sb-shell-available-height\'');
+        expect(tabsSource).toContain('drawer.style.setProperty(\'height\', `${availableHeight}px`, \'important\')');
+        expect(tabsSource).toContain('window.visualViewport');
+        expect(tabsSource).toContain('function getShellViewportTop(');
+        expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'sheld\')');
+        expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'top-bar\')');
+        expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportSize()');
+        expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportTop(root, viewportSize)');
+        expect(getDesktopShellResizeBoundsSource).toContain('viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap');
+        expect(setShellSizeOverrideSource).toContain('clampShellSize(size, getDesktopShellResizeBounds(shellKey))');
+        expect(openShellSource).toContain('syncDesktopShellSizing();');
+        expect(openShellSource).toContain('syncMobileShellDrawerBounds();');
+        expect(openShellSource).toContain('queueMobileShellDrawerBoundsSync();');
+        expect(closeShellSource).toContain('syncMobileShellDrawerBounds();');
+        expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
+        expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncMobileViewportState, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncMobileViewportState, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
+        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
+        expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
+            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
+        );
+    });
+
+    test('offers snap-to-chat-width as a persistent desktop shell sizing mode', () => {
+        const getDesktopShellDimensionsSource = getFunctionSource('getDesktopShellDimensions');
+        const createDesktopShellSizingSettingsGroupSource = getFunctionSource('createDesktopShellSizingSettingsGroup');
+        const updateThemePickerUiSource = getFunctionSource('updateThemePickerUi');
+
+        expect(tabsSource).toContain('desktopShellSnapToChatWidth: \'sb-desktop-shell-snap-to-chat-width\'');
+        expect(tabsSource).toContain('snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false)');
+        expect(tabsSource).toContain('function setDesktopShellSnapToChatWidth(');
+        expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));');
+        expect(getDesktopShellDimensionsSource).toContain('isShellSnapToChatWidthEnabled(shellKey)');
+        expect(getDesktopShellDimensionsSource).toContain('getChatViewportWidth(viewportSize)');
+        expect(createDesktopShellSizingSettingsGroupSource).toContain('Snap to chat width');
+        expect(createDesktopShellSizingSettingsGroupSource).toContain('setDesktopShellSnapToChatWidth(input.checked)');
+        expect(updateThemePickerUiSource).toContain('sb-desktop-shell-snap-to-chat-input');
+    });
+
+    test('opens global search as a focused readable command surface', () => {
+        const setUniversalSearchOpenStateSource = getFunctionSource('setUniversalSearchOpenState');
+        const buildUniversalSearchRowSource = getFunctionSource('buildUniversalSearchRow');
+
+        expect(tabsSource).toContain('function focusUniversalSearchInput(');
+        expect(tabsSource).toContain('function bindSearchShortcutPreFocus(');
+        expect(tabsSource).toContain('sbSearchShortcutPreFocusAt = performance.now();');
+        expect(tabsSource).toContain('bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget(\'left\'));');
+        expect(tabsSource).toContain('bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget(\'right\'));');
+        expect(setUniversalSearchOpenStateSource).toContain('focusUniversalSearchInput(input);');
+        expect(buildUniversalSearchRowSource).toContain('setUniversalSearchOpenState(true, { focusInput: true });');
+        expect(tabsCssSource).toMatch(/\.sb-search-results\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
+        expect(tabsCssSource).toMatch(/\.sb-search-result,\s*\n\.sb-search-empty\s*\{[\s\S]*position:\s*relative;[\s\S]*isolation:\s*isolate;[\s\S]*background-color:\s*var\(--SmartThemeBlurTintColor\)/);
+    });
+
+    test('routes character top-bar shortcuts through toggle-close behavior', () => {
+        const buildTopBarSource = getFunctionSource('buildTopBar');
+        const activateShortcutTargetSource = getFunctionSource('activateShortcutTarget');
+        const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
+        const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
+
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'right\'))');
+        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab);');
+        expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
+        expect(toggleShellPanelSource).toContain('isCharacterPanelTabOpen(tabId)');
+        expect(toggleShellPanelSource).toContain('closeCharacterPanel();');
+        expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
     });
 
     test('routes hamburger toggle intent through the lifecycle seam', () => {

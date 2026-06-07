@@ -107,7 +107,7 @@ if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
     if !errorlevel! equ 0 (
         echo.
         echo [SillyBunny] ARM64 detected. Bun may use excessive CPU on this platform.
-        echo [SillyBunny] Switching to Node.js automatically. Use Start.bat with SILLYBUNNY_USE_BUN=1 to override.
+        echo [SillyBunny] Switching to Node.js automatically. Use Start-Bun.bat or Start.bat with SILLYBUNNY_USE_BUN=1 to override.
         echo.
         if /I not "!SILLYBUNNY_USE_BUN!"=="1" set "_server_runtime=node"
     )

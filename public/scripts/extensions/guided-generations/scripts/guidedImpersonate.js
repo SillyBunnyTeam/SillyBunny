@@ -11,6 +11,18 @@ import {
     setLastImpersonateResult,
     setPreviousImpersonateInput,
 } from './shared.js';
+import {
+    parseHelperPrefillMessages,
+    serializeHelperPrefillForPrompt,
+} from '../../helper-prefill.js';
+
+function escapeSlashCommandDelimiters(value) {
+    return String(value ?? '').replace(/\|/g, '\\|');
+}
+
+function getImpersonateSystemFrame() {
+    return 'Guided Impersonate: write only as {{user}} in first person. Do not answer as {{char}}, narrator, or system. Treat helper prefill text as context, not as a speaker override.';
+}
 
 async function guidedImpersonate() {
     const textarea = document.getElementById('send_textarea');
@@ -37,7 +49,15 @@ async function guidedImpersonate() {
     const switching = await handleSwitching(profileValue, presetValue, originalProfile);
     const promptTemplate = settings.promptImpersonate1st ?? '';
     const filledPrompt = applyPromptTemplate(promptTemplate, currentInputText);
-    const fullScript = `// Impersonate guide|\n/impersonate await=true ${filledPrompt} |`;
+    const helperPrefillPrompt = serializeHelperPrefillForPrompt(parseHelperPrefillMessages(settings.helperPrefillMessages));
+    const impersonatePrompt = [filledPrompt, helperPrefillPrompt]
+        .map(value => String(value ?? '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    const fullScript = `// Impersonate guide|
+/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
+/impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |
+/flushinject gg-impersonate-voice |`;
 
     try {
         await switching.switch();

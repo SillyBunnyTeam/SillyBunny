@@ -779,6 +779,7 @@ describe('in-chat agent post-processing runner', () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { applyMode: 'replace', maxTokens: 123 },
         })];
+        globalSettings.helperPrefillMessages = '[system]\nUse the helper prefill.';
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         initAgentRunner();
@@ -799,6 +800,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
         expect(generateQuietPrompt.mock.calls[0][0].quietPrompt).toContain('Outgoing context:');
         expect(generateQuietPrompt.mock.calls[0][0].quietPrompt).toContain('Original outgoing prompt');
+        expect(generateQuietPrompt.mock.calls[0][0].quietPrompt).toContain('SYSTEM:\nUse the helper prefill.');
         expect(eventData.prompt).toBe('quiet result');
 
         chat.push({
@@ -883,6 +885,7 @@ describe('in-chat agent post-processing runner', () => {
             { role: 'system', content: 'rewritten system prompt' },
             { role: 'user', content: 'rewritten user prompt' },
         ]);
+        expect(eventData.chatChanged).toBe(true);
     });
 
     test('leaves chat completion prompts unchanged when intercept output has invalid messages', async () => {
@@ -911,6 +914,7 @@ describe('in-chat agent post-processing runner', () => {
 
                 expect(eventData.chat).toBe(originalChat);
                 expect(eventData.chat).toEqual([originalMessage]);
+                expect(eventData.chatChanged).toBeUndefined();
                 expect(warnSpy).toHaveBeenCalledWith(
                     expect.stringContaining('Leaving chat context unchanged'),
                     expect.any(Error),
@@ -965,6 +969,7 @@ describe('in-chat agent post-processing runner', () => {
             { role: 'user', content: '<patch>\npatch note\n</patch>' },
             originalMessage,
         ]);
+        expect(eventData.chatChanged).toBe(true);
 
         chat.push({
             name: 'Assistant',
@@ -1691,6 +1696,67 @@ describe('in-chat agent post-processing runner', () => {
             8192,
             expect.objectContaining({ extractData: true, stream: false }),
         );
+    });
+
+    test('appends global helper prefill messages to profile prompt-transform requests', async () => {
+        usePromptTransformPostAgent();
+        enabledAgents[0].connectionProfile = 'profile-cc';
+        globalSettings.helperPrefillMessages = `[system]
+Helper rule.
+
+[user]
+Helper context.`;
+        connectionManagerRequestService = {
+            getProfile: jest.fn(() => ({ name: 'Agent profile', model: 'helper-model' })),
+            sendRequest: jest.fn(async () => ({ content: 'Profile rewrite' })),
+        };
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Needs rewrite',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+
+        const sentMessages = connectionManagerRequestService.sendRequest.mock.calls[0][1];
+        expect(sentMessages.slice(-2)).toEqual([
+            { role: 'system', content: 'Helper rule.' },
+            { role: 'user', content: 'Helper context.' },
+        ]);
+        expect(chat[0].mes).toBe('Profile rewrite');
+    });
+
+    test('preserves configured assistant helper prefill as the final direct chat helper message', async () => {
+        usePromptTransformPostAgent();
+        mainApi = 'openai';
+        globalSettings.helperPrefillMessages = '[assistant]\nBegin here';
+        generateRaw.mockResolvedValue('Direct rewrite');
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Needs rewrite',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+
+        const sentPrompt = generateRaw.mock.calls[0][0].prompt;
+        expect(sentPrompt.at(-1)).toEqual({ role: 'assistant', content: 'Begin here' });
+        expect(sentPrompt).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({ content: 'Return only the requested transformed text.' }),
+        ]));
+        expect(chat[0].mes).toBe('Direct rewrite');
     });
 
     test('keeps text-completion profile reasoning out of post-transform replacements', async () => {

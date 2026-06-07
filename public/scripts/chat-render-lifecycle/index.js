@@ -28,6 +28,7 @@ import {
 import {
     CHAT_RENDER_WINDOW_DEFAULT,
     CHAT_RENDER_WINDOW_MAX,
+    CHAT_RENDER_WINDOW_AGGRESSIVE_DEFAULT,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
     normalizeChatRenderWindowSize,
@@ -52,6 +53,7 @@ export {
     CHAT_RENDER_LIFECYCLE_ROUTE_DEFAULTS,
     CHAT_RENDER_WINDOW_DEFAULT,
     CHAT_RENDER_WINDOW_MAX,
+    CHAT_RENDER_WINDOW_AGGRESSIVE_DEFAULT,
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
     captureVisibleMessageAnchor,

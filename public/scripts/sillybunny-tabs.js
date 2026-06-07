@@ -5,6 +5,7 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
+import { flushCharacterSaveDebounced, getOneCharacter, saveSettingsDebounced } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -14,6 +15,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     rightTab: 'sb-right-tab',
     leftShellSize: 'sb-left-shell-size',
     rightShellSize: 'sb-right-shell-size',
+    desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
     characterDrawerRightLocked: 'sb-character-drawer-right-locked',
     theme: 'sb-theme',
     surfaceTransparency: 'sb-surface-transparency',
@@ -74,6 +76,9 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
     ],
+    'characters:persona': [
+        { href: 'css/personas.css?v=20260603e', id: 'deferred-personas-css' },
+    ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
@@ -120,6 +125,7 @@ let sbStorageFlushTimer = 0;
 let sbStorageFlushEventsBound = false;
 let sbMessageActionEventsBound = false;
 let sbPendingBottomChatScrollCancel = null;
+let sbSearchShortcutPreFocusAt = 0;
 const sbStorageCache = new Map();
 const sbStoragePendingWrites = new Map();
 const SB_EXTENSION_ALIASES = {
@@ -168,6 +174,12 @@ function activateShortcutTarget(target) {
         const searchState = getUniversalSearchState();
 
         if (searchState.expanded) {
+            if (performance.now() - sbSearchShortcutPreFocusAt < SB_MOBILE_ACTION_DEBOUNCE_MS * 2) {
+                sbSearchShortcutPreFocusAt = 0;
+                focusUniversalSearchInput(searchState.input);
+                return;
+            }
+
             setUniversalSearchOpenState(false);
 
             if (searchState.input instanceof HTMLInputElement && document.activeElement === searchState.input) {
@@ -189,7 +201,7 @@ function activateShortcutTarget(target) {
             void setCharacterListEntityView('characters');
         }
         preloadPanelStylesheets('characters', tab);
-        openCharacterPanelTab(tab);
+        toggleShellPanel(shell, tab);
         return;
     }
 
@@ -587,6 +599,8 @@ const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
 const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
 const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
+const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
@@ -666,6 +680,7 @@ const sbState = {
             left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
             right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
         },
+        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false),
         activeResize: null,
     },
     characterDrawer: {
@@ -1357,6 +1372,10 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
+        safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
+        sbState.shellSizing.snapToChatWidth,
+    );
     sbState.mobileNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout));
     sbState.mobileNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), sbState.mobileNav.iconOnly);
     sbState.mobileNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), sbState.mobileNav.showCustomize);
@@ -1778,6 +1797,19 @@ function setCompactMode(enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
+function setDesktopShellSnapToChatWidth(enabled, { persist = true } = {}) {
+    const nextEnabled = Boolean(enabled);
+    sbState.shellSizing.snapToChatWidth = nextEnabled;
+    document.documentElement.dataset.sbDesktopShellSnapToChatWidth = String(nextEnabled);
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));
+    }
+
+    syncDesktopShellSizing();
+    updateThemePickerUi();
+}
+
 function syncCharacterDrawerLockButton() {
     const button = document.getElementById('sb-character-right-lock');
     if (!(button instanceof HTMLButtonElement)) {
@@ -1999,12 +2031,45 @@ function renderSearchEmptyState(container, title, detail) {
     container.appendChild(empty);
 }
 
+function focusUniversalSearchInput(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const applyFocus = () => {
+        input.focus({ preventScroll: true });
+        input.select();
+    };
+
+    applyFocus();
+    window.requestAnimationFrame(applyFocus);
+}
+
+function requestMobileViewportReset({ restoreScroll = false } = {}) {
+    if (!isMobileViewport() || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+        return;
+    }
+
+    const dispatchReset = () => window.dispatchEvent(new CustomEvent('sb-mobile-viewport-reset', {
+        detail: { restoreScroll: Boolean(restoreScroll) },
+    }));
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(dispatchReset);
+    } else {
+        dispatchReset();
+    }
+
+    window.setTimeout(dispatchReset, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+}
+
 function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     const searchState = getUniversalSearchState();
     const row = searchState.row;
     const root = searchState.root;
     const input = searchState.input;
     const nextOpenState = Boolean(isOpen);
+    const wasOpen = Boolean(searchState.expanded);
 
     searchState.expanded = nextOpenState;
     row?.classList.toggle('is-open', nextOpenState);
@@ -2018,14 +2083,18 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
 
     if (!nextOpenState) {
         searchState.results?.classList.remove('is-visible');
+        if (wasOpen) {
+            requestMobileViewportReset({ restoreScroll: true });
+        }
     } else {
         renderUniversalSearchResults(input?.value ?? '');
     }
 
     if (focusInput && input instanceof HTMLInputElement) {
-        input.focus({ preventScroll: true });
+        focusUniversalSearchInput(input);
     }
 
+    queueMobileShellDrawerBoundsSync();
     syncShortcutButtonActiveStates();
 }
 
@@ -2213,6 +2282,113 @@ function canResizeDesktopShells() {
     return !isMobileViewport() && !isTouchOnlyDesktopViewport();
 }
 
+function readFiniteViewportNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+}
+
+function getShellViewportSize() {
+    const doc = document.documentElement;
+    const visualViewport = window.visualViewport;
+    const fallbackWidth = window.innerWidth || doc?.clientWidth || 0;
+    const fallbackHeight = window.innerHeight || doc?.clientHeight || 0;
+    const width = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.width, fallbackWidth)));
+    const height = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.height, fallbackHeight)));
+
+    return {
+        width,
+        height,
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+}
+
+function syncShellViewportBounds() {
+    const root = document.documentElement;
+    const viewportSize = getShellViewportSize();
+    const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+
+    root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
+    root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
+    root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+}
+
+function getMobileShellBoundDrawers() {
+    return Array.from(new Set([
+        ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
+        ...document.querySelectorAll('#top-settings-holder #right-nav-panel'),
+    ])).filter(drawer => drawer instanceof HTMLElement);
+}
+
+function clearMobileShellDrawerBounds(drawer) {
+    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbMobileViewportBound !== 'true') {
+        return;
+    }
+
+    drawer.style.removeProperty('top');
+    drawer.style.removeProperty('bottom');
+    drawer.style.removeProperty('height');
+    drawer.style.removeProperty('max-height');
+    drawer.style.removeProperty('box-sizing');
+    delete drawer.dataset.sbMobileViewportBound;
+}
+
+function syncMobileShellDrawerBounds() {
+    const drawers = getMobileShellBoundDrawers();
+
+    if (!drawers.length) {
+        return;
+    }
+
+    if (!isMobileViewport()) {
+        drawers.forEach(clearMobileShellDrawerBounds);
+        return;
+    }
+
+    const viewportSize = getShellViewportSize();
+    const baseTopOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+
+    for (const drawer of drawers) {
+        if (!drawer.classList.contains('openDrawer')) {
+            clearMobileShellDrawerBounds(drawer);
+            continue;
+        }
+
+        const drawerStyles = window.getComputedStyle(drawer);
+        const shellGap = Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0;
+        const topOffset = clampNumber(Math.round(baseTopOffset + shellGap), 0, viewportSize.height);
+        const availableHeight = Math.max(0, viewportSize.height - topOffset);
+
+        drawer.dataset.sbMobileViewportBound = 'true';
+        drawer.style.setProperty('top', `${topOffset}px`, 'important');
+        drawer.style.setProperty('bottom', 'auto', 'important');
+        drawer.style.setProperty('box-sizing', 'border-box', 'important');
+        drawer.style.setProperty('height', `${availableHeight}px`, 'important');
+        drawer.style.setProperty('max-height', `${availableHeight}px`, 'important');
+    }
+}
+
+function queueMobileShellDrawerBoundsSync() {
+    if (!isMobileViewport()) {
+        return;
+    }
+
+    const sync = () => {
+        syncShellViewportBounds();
+        syncMobileShellDrawerBounds();
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(sync);
+    } else {
+        sync();
+    }
+
+    window.setTimeout(sync, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+}
+
 function isMovingUIActive() {
     return document.body?.classList.contains('movingUI') ?? false;
 }
@@ -2308,6 +2484,75 @@ function hydratePersistedShellSizes() {
     }
 }
 
+function getResolvedShellTopbarOffset() {
+    const chatShell = document.getElementById('sheld');
+    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+        const chatRect = chatShell.getBoundingClientRect();
+        if (Number.isFinite(chatRect.top) && chatRect.top > 0) {
+            return chatRect.top;
+        }
+    }
+
+    const topBar = document.getElementById('top-bar');
+    if (topBar instanceof HTMLElement && topBar.getClientRects().length > 0) {
+        const topBarRect = topBar.getBoundingClientRect();
+        if (Number.isFinite(topBarRect.bottom) && topBarRect.bottom > 0) {
+            return topBarRect.bottom;
+        }
+    }
+
+    const topbarOffset = Number.parseFloat(
+        window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
+    );
+
+    return Number.isFinite(topbarOffset) ? topbarOffset : 0;
+}
+
+function getShellViewportTop(root, viewportSize = getShellViewportSize()) {
+    let top = getResolvedShellTopbarOffset();
+
+    if (root instanceof HTMLElement && root.classList.contains('openDrawer') && root.getClientRects().length > 0) {
+        const rect = root.getBoundingClientRect();
+        if (Number.isFinite(rect.top)) {
+            top = rect.top;
+        }
+    }
+
+    return clampNumber(Math.round(top), viewportSize.top, viewportSize.bottom);
+}
+
+function getChatViewportWidth(viewportSize = getShellViewportSize()) {
+    const chatShell = document.getElementById('sheld');
+
+    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+        const rect = chatShell.getBoundingClientRect();
+        const visibleWidth = Math.min(rect.right, viewportSize.right) - Math.max(rect.left, viewportSize.left);
+
+        if (Number.isFinite(visibleWidth) && visibleWidth > 0) {
+            return Math.round(visibleWidth);
+        }
+    }
+
+    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
+    const sheldWidthValue = Number.parseFloat(sheldWidthStr);
+
+    if (!Number.isFinite(sheldWidthValue)) {
+        return viewportSize.width;
+    }
+
+    if (sheldWidthStr.endsWith('px')) {
+        return Math.round(sheldWidthValue);
+    }
+
+    return Math.round((sheldWidthValue / 100) * viewportSize.width);
+}
+
+function isShellSnapToChatWidthEnabled(shellKey) {
+    return Boolean(sbState.shellSizing.snapToChatWidth)
+        && isDesktopResizableShell(shellKey)
+        && !isMobileViewport();
+}
+
 function getShellSizeStorageKey(shellKey) {
     const sizingKey = getShellSizingKey(shellKey);
 
@@ -2323,9 +2568,23 @@ function getShellSizeStorageKey(shellKey) {
 }
 
 function getDesktopShellDimensions(shellKey = '') {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const viewportSize = getShellViewportSize();
+    const viewportWidth = viewportSize.width;
+    const viewportHeight = viewportSize.height;
     const maxShellWidth = shellKey === 'right' ? Math.min(SB_DESKTOP_SHELL_LAYOUT.maxWidth, 760) : SB_DESKTOP_SHELL_LAYOUT.maxWidth;
+
+    if (isShellSnapToChatWidthEnabled(shellKey)) {
+        const snappedWidth = clampNumber(
+            getChatViewportWidth(viewportSize),
+            Math.min(SB_DESKTOP_SHELL_LAYOUT.minWidth, viewportWidth),
+            viewportWidth,
+        );
+
+        return {
+            width: snappedWidth,
+            maxWidth: snappedWidth,
+        };
+    }
 
     if (
         ['left', 'right'].includes(shellKey)
@@ -2386,19 +2645,21 @@ function getDesktopShellDimensions(shellKey = '') {
 }
 
 function getDesktopShellResizeBounds(shellKey = '') {
-    const viewportWidth = Math.max(0, Math.round(window.innerWidth));
-    const topbarOffset = Number.parseFloat(
-        window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
-    );
-    const resolvedTopbarOffset = Number.isFinite(topbarOffset) ? topbarOffset : 0;
+    const viewportSize = getShellViewportSize();
+    const viewportWidth = Math.max(0, Math.round(viewportSize.width));
+    const viewportHeight = Math.max(0, Math.round(viewportSize.height));
+    const root = isDesktopResizableShell(shellKey) ? getResizableShellRoot(shellKey) : null;
+    const shellTop = getShellViewportTop(root, viewportSize);
     const defaultDimensions = getDesktopShellDimensions(shellKey);
-    const maxHeight = Math.max(0, Math.round(window.innerHeight - resolvedTopbarOffset - SB_DESKTOP_SHELL_RESIZE.bottomGap));
+    const defaultWidth = Math.max(0, Math.min(Math.round(defaultDimensions.width), viewportWidth));
+    const snapWidth = isShellSnapToChatWidthEnabled(shellKey) ? defaultWidth : null;
+    const maxHeight = Math.max(0, Math.round(viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap));
 
     return {
-        defaultWidth: Math.max(0, Math.round(defaultDimensions.width)),
+        defaultWidth,
         defaultHeight: maxHeight,
-        minWidth: Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
-        maxWidth: viewportWidth,
+        minWidth: snapWidth ?? Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
+        maxWidth: snapWidth ?? viewportWidth,
         minHeight: Math.min(SB_DESKTOP_SHELL_RESIZE.minHeight, maxHeight),
         maxHeight,
     };
@@ -2432,7 +2693,7 @@ function setShellSizeOverride(shellKey, size, { persist = true } = {}) {
         return null;
     }
 
-    const nextSize = clampShellSize(size);
+    const nextSize = clampShellSize(size, getDesktopShellResizeBounds(shellKey));
 
     sbState.shellSizing.overrides.left = nextSize;
     sbState.shellSizing.overrides.right = nextSize;
@@ -3725,6 +3986,30 @@ function createProxyButton({ id, icon, label, title, className = '' }, onClick) 
     button.addEventListener('click', debounceAction(onClick));
 
     return button;
+}
+
+function bindSearchShortcutPreFocus(button, targetGetter) {
+    if (!(button instanceof HTMLElement) || typeof targetGetter !== 'function') {
+        return;
+    }
+
+    const openAndFocusSearch = () => {
+        if (!isSearchShortcutTarget(targetGetter())) {
+            return;
+        }
+
+        const searchState = getUniversalSearchState();
+        if (searchState.expanded) {
+            return;
+        }
+
+        closeAllDropdowns({ except: 'search' });
+        setUniversalSearchOpenState(true, { focusInput: true });
+        sbSearchShortcutPreFocusAt = performance.now();
+    };
+
+    button.addEventListener('pointerdown', openAndFocusSearch, { passive: true });
+    button.addEventListener('touchstart', openAndFocusSearch, { passive: true });
 }
 
 function createTopBarIconButton({ id = '', icon, title, className = '', label = '' }, onClick) {
@@ -6275,6 +6560,24 @@ function isCharacterPanelOpen() {
     return isDrawerActuallyOpen('right-nav-panel');
 }
 
+function getActiveCharacterPanelTab() {
+    const menuType = getCharacterPanel()?.dataset.menuType;
+
+    if (['persona', 'import', 'world-info', 'groups'].includes(menuType)) {
+        return menuType;
+    }
+
+    if (['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType)) {
+        return 'editor';
+    }
+
+    return 'characters';
+}
+
+function isCharacterPanelTabOpen(tabId) {
+    return isCharacterPanelOpen() && getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId);
+}
+
 function hasActiveCharacterChat(context = getSillyTavernContext()) {
     if (context?.groupId) {
         return true;
@@ -6861,6 +7164,7 @@ function openCharacterPersonaTab() {
     const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'persona';
 
+    preloadPanelStylesheets('characters', 'persona');
     setCharacterPanelMenuType(panel, 'persona');
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
@@ -6914,8 +7218,8 @@ function openCharacterPanelTab(tabId) {
         setCharacterEditorFullscreenState(false);
     }
 
-    if (normalizedTabId === 'world-info') {
-        preloadPanelStylesheets('characters', 'world-info');
+    if (normalizedTabId === 'world-info' || normalizedTabId === 'persona') {
+        preloadPanelStylesheets('characters', normalizedTabId);
     }
 
     if (!isCharacterPanelOpen()) {
@@ -6939,7 +7243,7 @@ function openCharacterPanelTab(tabId) {
             void showCharacterListView('groups');
         } else if (normalizedTabId === 'editor') {
             setCharacterPanelMenuType(panel, 'character_edit');
-            openCharacterEditorTab();
+            void openCharacterEditorTab();
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
@@ -6966,20 +7270,20 @@ function restoreLastCharacterPanelView() {
     } else if (lastTab === 'groups') {
         void showCharacterListView('groups');
     } else if (lastTab === 'editor') {
-        openCharacterEditorTab();
+        void openCharacterEditorTab();
     } else {
         void showCharacterListView('characters');
     }
 }
 
-function openCharacterEditorTab() {
+async function openCharacterEditorTab() {
     sbState.characterDrawer.lastTab = 'editor';
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
 
-    if (showActiveCharacterEditor()) {
+    if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
         return true;
     }
@@ -7071,7 +7375,27 @@ function syncCharacterHeaderCopy(activeTab = 'characters') {
     }
 }
 
-function showActiveCharacterEditor() {
+async function refreshActiveCharacterBeforeEditorOpen() {
+    const context = getSillyTavernContext();
+    const characterId = context?.characterId;
+    const avatar = context?.groupId ? null : context?.characters?.[characterId]?.avatar;
+
+    if (!avatar) {
+        return;
+    }
+
+    try {
+        await flushCharacterSaveDebounced();
+        const refreshedContext = getSillyTavernContext();
+        const refreshedCharacterId = refreshedContext?.characterId;
+        const refreshedAvatar = refreshedContext?.groupId ? null : refreshedContext?.characters?.[refreshedCharacterId]?.avatar;
+        await getOneCharacter(refreshedAvatar || avatar);
+    } catch (error) {
+        console.warn('Failed to refresh character before opening editor.', error);
+    }
+}
+
+async function showActiveCharacterEditor() {
     if (!hasActiveCharacterChat()) {
         return false;
     }
@@ -7081,6 +7405,7 @@ function showActiveCharacterEditor() {
         return false;
     }
 
+    await refreshActiveCharacterBeforeEditorOpen();
     selectedCharacterButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
@@ -7201,6 +7526,8 @@ function bindCharacterDrawerStateObserver() {
 
 function closeCharacterPanel() {
     const panel = getCharacterPanel();
+    const shouldResetViewport = panel instanceof HTMLElement
+        && (panel.classList.contains('openDrawer') || (document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)));
 
     setCharacterEditorFullscreenState(false);
 
@@ -7213,7 +7540,13 @@ function closeCharacterPanel() {
     syncDrawerIconState('#WIDrawerIcon', false);
     setCharacterDrawerHostOverflow(false);
     syncChatbarVisibilityState();
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
     queueMobileModalStateSync();
+
+    if (shouldResetViewport) {
+        requestMobileViewportReset();
+    }
 }
 
 function ensureCharacterResizeHandle() {
@@ -7264,6 +7597,8 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     setCharacterDrawerHostOverflow(true);
 
     triggerDrawerToggle(getCharacterDrawerToggle());
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
 
     // Fallback: if the jQuery drawer-toggle handler didn't fire, force-open
     window.requestAnimationFrame(() => {
@@ -7274,6 +7609,8 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         restoreLastCharacterPanelView();
 
         syncChatbarVisibilityState();
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
         syncDesktopShellSizing();
         queueMobileModalStateSync();
     });
@@ -7294,6 +7631,11 @@ function closeAllDropdowns({ except = '' } = {}) {
 
 function toggleShellPanel(shellKey, tabId = null) {
     if (shellKey === 'characters') {
+        if (isCharacterPanelTabOpen(tabId)) {
+            closeCharacterPanel();
+            return;
+        }
+
         openCharacterPanelTab(tabId);
         return;
     }
@@ -7614,7 +7956,7 @@ function buildTopBar() {
             'aria-expanded': 'false',
         },
     });
-    mobileButton.innerHTML = '<i class="fa-solid fa-bars" aria-hidden="true"></i>';
+    mobileButton.innerHTML = `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
     stopProxyPointerPropagation(mobileButton);
     mobileButton.addEventListener('click', toggleMobileNav);
 
@@ -7672,6 +8014,7 @@ function buildTopBar() {
         },
         () => activateShortcutTarget(getShortcutTarget('left')),
     );
+    bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget('left'));
 
     const rightShortcutConfig = getShortcutConfig(getShortcutTarget('right'));
     const rightShortcut = createProxyButton(
@@ -7684,6 +8027,7 @@ function buildTopBar() {
         },
         () => activateShortcutTarget(getShortcutTarget('right')),
     );
+    bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
     centerGroup.innerHTML = `
         <div id="sb-topbar-title" class="sb-brand-title">${SB_IDLE_BRAND_LABEL}</div>
@@ -10958,6 +11302,30 @@ function createDesktopNavLayoutSettingsGroup() {
     return createNavigationSettingsGroup('desktop');
 }
 
+function createDesktopShellSizingSettingsGroup() {
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-desktop-shell-sizing-group sb-desktop-setting',
+    });
+    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
+    const title = createElement('strong', { text: 'Panel Sizing' });
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Keep Workspace, Customize, and Characters aligned with the active chat width.',
+    });
+    const snapChoice = createMobileNavChoice({
+        id: 'sb-desktop-shell-snap-to-chat-input',
+        type: 'checkbox',
+        value: 'snap-to-chat-width',
+        label: 'Snap to chat width',
+        icon: 'fa-arrows-left-right-to-line',
+        onChange: input => setDesktopShellSnapToChatWidth(input.checked),
+    });
+
+    header.append(title, description);
+    group.append(header, snapChoice);
+    return group;
+}
+
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-frontend-icon-group',
@@ -11171,6 +11539,7 @@ function injectThemePicker() {
     });
     const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
     const desktopNavLayoutSettingsGroup = createDesktopNavLayoutSettingsGroup();
+    const desktopShellSizingSettingsGroup = createDesktopShellSizingSettingsGroup();
     const mobileNavLayoutSettingsGroup = createMobileNavLayoutSettingsGroup();
     const desktopSettingsDivider = createMobileNavDivider();
     const mobileSettingsDivider = createMobileNavDivider();
@@ -11209,6 +11578,7 @@ function injectThemePicker() {
         desktopSettingsOutlet.replaceChildren(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
+            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopQuickActionSettingsGroup,
@@ -11230,6 +11600,7 @@ function injectThemePicker() {
         card.append(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
+            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopQuickActionSettingsGroup,
@@ -11266,6 +11637,7 @@ function updateThemePickerUi() {
     const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
     const desktopNavReplaceQuickActionsInput = document.getElementById('sb-desktop-nav-replace-quick-actions-input');
     const desktopNavReplacementSelect = document.getElementById('sb-desktop-nav-replacement-select');
+    const desktopShellSnapToChatInput = document.getElementById('sb-desktop-shell-snap-to-chat-input');
     const mobileNavIconOnlyInput = document.getElementById('sb-mobile-nav-icon-only-input');
     const mobileNavShowCustomizeInput = document.getElementById('sb-mobile-nav-show-customize-input');
     const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
@@ -11414,6 +11786,12 @@ function updateThemePickerUi() {
         desktopNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.desktopNav.replacementTarget);
         desktopNavReplacementSelect.disabled = !sbState.desktopNav.replaceQuickActions;
         desktopNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.desktopNav.replaceQuickActions);
+    }
+
+    if (desktopShellSnapToChatInput instanceof HTMLInputElement) {
+        desktopShellSnapToChatInput.checked = sbState.shellSizing.snapToChatWidth;
+        const choice = desktopShellSnapToChatInput.closest('.sb-mobile-nav-choice');
+        choice?.classList.toggle('is-selected', sbState.shellSizing.snapToChatWidth);
     }
 
     if (mobileNavIconOnlyInput instanceof HTMLInputElement) {
@@ -12071,22 +12449,33 @@ function openShell(shellKey, tabId = null) {
     shellState.lastOpenedAt = performance.now();
 
     if (isDrawerActuallyOpen(shellRoot)) {
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        syncDesktopShellSizing();
         window.requestAnimationFrame(() => focusShellPanel(shellKey));
         return;
     }
 
     if (shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        syncDesktopShellSizing();
         window.requestAnimationFrame(() => focusShellPanel(shellKey));
         return;
     }
 
     if (!shellRoot.classList.contains('openDrawer')) {
         forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
         window.requestAnimationFrame(() => {
             if (!isDrawerActuallyOpen(shellRoot)) {
                 forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
             }
+            syncMobileShellDrawerBounds();
+            queueMobileShellDrawerBoundsSync();
+            syncDesktopShellSizing();
             focusShellPanel(shellKey);
         });
     }
@@ -12105,6 +12494,9 @@ function closeShell(shellKey) {
 
     if (!isDrawerActuallyOpen(shellRoot)) {
         forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+        syncMobileShellDrawerBounds();
+        queueMobileShellDrawerBoundsSync();
+        requestMobileViewportReset();
         return;
     }
 
@@ -12115,6 +12507,9 @@ function closeShell(shellKey) {
 
     // Managed shells do not need the legacy drawer toggle close animation.
     forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
+    syncMobileShellDrawerBounds();
+    queueMobileShellDrawerBoundsSync();
+    requestMobileViewportReset();
     if (shouldRestoreFocus) {
         window.requestAnimationFrame(() => restoreShellFocus(shellKey));
     } else {
@@ -12350,6 +12745,7 @@ function buildShell(shellKey) {
             if (isMobileViewport()) {
                 closeMobileNav();
             }
+            syncDesktopShellSizing();
             const activeTab = shellState.tabs.get(shellState.activeTabId);
             activeTab?.onActivate?.();
             dispatchShellTabActivated(shellKey, activeTab);
@@ -12608,6 +13004,34 @@ function getBuiltInRailActionsForShell(shellKey) {
     return actions;
 }
 
+function getAllBuiltInRailActionKeys() {
+    const actionKeys = new Set();
+
+    for (const [shellKey, shellConfig] of Object.entries(SB_SHELLS)) {
+        const tabConfigs = [
+            shellConfig.baseTab,
+            ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
+            ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
+        ];
+
+        for (const tabConfig of tabConfigs) {
+            if (!tabConfig?.id) {
+                continue;
+            }
+
+            actionKeys.add(getMobileQuickActionKey({
+                type: 'tab',
+                shellKey,
+                tabId: tabConfig.id,
+                icon: tabConfig.icon,
+                label: tabConfig.label,
+            }));
+        }
+    }
+
+    return actionKeys;
+}
+
 function getBuiltInRailLabelForShell(shellKey) {
     return shellKey === 'right' ? 'Customize' : 'Workspace';
 }
@@ -12675,9 +13099,7 @@ function syncMobileShellRailActions(shellKey = null) {
         }
 
         const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
-        const builtInRailActionKeys = builtInRailActions.length
-            ? new Set(builtInRailActions.map(getMobileQuickActionKey))
-            : new Set();
+        const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
         const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
             ? createNavReplacementQuickAction(navState.replacementTarget)
             : null;
@@ -13112,10 +13534,14 @@ function setMobileNavOpenState(isOpen) {
     button.setAttribute('aria-expanded', navState.buttonExpanded);
     button.innerHTML = navState.buttonIcon === 'close'
         ? '<i class="fa-solid fa-xmark" aria-hidden="true"></i>'
-        : '<i class="fa-solid fa-bars" aria-hidden="true"></i>';
+        : `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
     updateMobileNavButtonLabel();
 
     queueMobileModalStateSync();
+
+    if (wasOpen && !navState.shouldOpen) {
+        requestMobileViewportReset();
+    }
 
     if (navState.shouldRefreshQuickActions) {
         refreshMobileNavQuickActions();
@@ -13190,7 +13616,7 @@ function injectCharacterDrawerControls() {
     const editorTab = document.getElementById('sb_character_tab_editor');
     if (editorTab instanceof HTMLButtonElement && editorTab.dataset.sbBound !== 'true') {
         editorTab.dataset.sbBound = 'true';
-        editorTab.addEventListener('click', () => openCharacterEditorTab());
+        editorTab.addEventListener('click', () => { void openCharacterEditorTab(); });
     }
 
     const personaTab = document.getElementById('sb_character_tab_persona');
@@ -13517,9 +13943,13 @@ function applyDefaultDrawerStates() {
 }
 
 function syncMobileViewportState() {
+    syncShellViewportBounds();
+    syncMobileShellDrawerBounds();
+
     if (!isMobileViewport()) {
         closeMobileNav();
         closeMobileChatTools();
+        syncMobileShellDrawerBounds();
     }
 
     syncMobileShellRailActions();
@@ -13802,6 +14232,124 @@ async function refreshBottomChatSelect() {
     }
 }
 
+const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
+const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
+const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
+
+function getPersonaAppendixScopeKeyFromContext(context) {
+    return String(context?.groupId || context?.characters?.[context?.characterId]?.avatar || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function normalizePersonaAppendixSelectionsFromContext(context, avatarId) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    if (!descriptor || typeof descriptor !== 'object') {
+        return {};
+    }
+
+    const source = descriptor[PERSONA_APPENDICES_SELECTIONS_KEY];
+    const normalized = {};
+
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+        for (const [scopeKey, activeIds] of Object.entries(source)) {
+            if (!Array.isArray(activeIds)) {
+                continue;
+            }
+
+            const cleanScopeKey = String(scopeKey || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+            normalized[cleanScopeKey] = activeIds
+                .map(String)
+                .filter((id, index, array) => id && array.indexOf(id) === index);
+        }
+    }
+
+    descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = normalized;
+    return normalized;
+}
+
+function getPersonaAppendicesFromContext(context, avatarId) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    const appendices = Array.isArray(descriptor?.appendices) ? descriptor.appendices : [];
+    return appendices.map((appendix, index) => ({
+        id: String(appendix?.id || `appendix-${index}`),
+        name: String(appendix?.name || `Scenario Note ${index + 1}`),
+        description: String(appendix?.description || ''),
+    }));
+}
+
+function getActivePersonaAppendixIdsFromContext(context, avatarId) {
+    const selections = normalizePersonaAppendixSelectionsFromContext(context, avatarId);
+    const scopeKey = getPersonaAppendixScopeKeyFromContext(context);
+    const metadata = context?.chatMetadata?.[PERSONA_APPENDICES_METADATA_KEY];
+    const legacyActiveIds = Array.isArray(metadata?.[avatarId]) ? metadata[avatarId] : [];
+    const activeIds = Object.prototype.hasOwnProperty.call(selections, scopeKey) ? selections[scopeKey] : legacyActiveIds;
+    const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
+    return activeIds.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+}
+
+function getActivePersonaAppendicesFromContext(context, avatarId) {
+    const activeIds = new Set(getActivePersonaAppendixIdsFromContext(context, avatarId));
+    return getPersonaAppendicesFromContext(context, avatarId).filter(appendix => activeIds.has(appendix.id));
+}
+
+function getPersonaDisplayNameWithAppendices(context, avatarId, name) {
+    const appendices = getActivePersonaAppendicesFromContext(context, avatarId);
+    if (!appendices.length) {
+        return name;
+    }
+
+    return `${name} + ${appendices.map(appendix => appendix.name).join(' + ')}`;
+}
+
+function composePersonaDescriptionFromContext(context, avatarId, activeIds = null) {
+    const descriptor = context?.powerUserSettings?.persona_descriptions?.[avatarId];
+    const appendices = getPersonaAppendicesFromContext(context, avatarId);
+    const activeIdSet = new Set(activeIds ?? getActivePersonaAppendixIdsFromContext(context, avatarId));
+    const chunks = [];
+    const baseDescription = String(descriptor?.description ?? '').trim();
+
+    if (baseDescription) {
+        chunks.push(baseDescription);
+    }
+
+    for (const appendix of appendices) {
+        const description = String(appendix.description ?? '').trim();
+        if (activeIdSet.has(appendix.id) && description) {
+            chunks.push(`[${appendix.name}]\n${description}`);
+        }
+    }
+
+    return chunks.join('\n\n');
+}
+
+function syncPersonaDescriptionFromContext(context, avatarId, activeIds = null) {
+    if (!context?.powerUserSettings || !avatarId) {
+        return;
+    }
+
+    const { currentAvatarId } = getCurrentPersonaSelection(context);
+    if (currentAvatarId === avatarId) {
+        context.powerUserSettings.persona_description = composePersonaDescriptionFromContext(context, avatarId, activeIds);
+    }
+}
+
+function setActivePersonaAppendixIdsFromContext(context, avatarId, ids) {
+    if (!context?.powerUserSettings?.persona_descriptions?.[avatarId] || !avatarId) {
+        return;
+    }
+
+    const availableIds = new Set(getPersonaAppendicesFromContext(context, avatarId).map(appendix => appendix.id));
+    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+    const selections = normalizePersonaAppendixSelectionsFromContext(context, avatarId);
+    selections[getPersonaAppendixScopeKeyFromContext(context)] = cleanIds;
+
+    syncPersonaDescriptionFromContext(context, avatarId, cleanIds);
+    saveSettingsDebounced();
+    const eventTypes = context.eventTypes ?? context.event_types;
+    if (context.eventSource && eventTypes?.PERSONA_UPDATED) {
+        void context.eventSource.emit(eventTypes.PERSONA_UPDATED, avatarId);
+    }
+}
+
 function updatePersonaBubble(bubble) {
     if (!(bubble instanceof HTMLElement)) {
         bubble = document.getElementById('sb-persona-bubble');
@@ -13820,7 +14368,7 @@ function updatePersonaBubble(bubble) {
     } else {
         bubble.style.backgroundImage = 'none';
     }
-    bubble.setAttribute('title', `Persona: ${currentName}`);
+    bubble.setAttribute('title', `Persona: ${getPersonaDisplayNameWithAppendices(context, currentAvatarId, currentName)}`);
 }
 
 function quoteSlashCommandArgument(value) {
@@ -13910,7 +14458,10 @@ function bindBottomChatBarEvents() {
 
     const refresh = () => scheduleBottomChatBarRefresh(0);
     const refreshPersona = () => {
-        window.requestAnimationFrame(() => updatePersonaBubble(bottomChatBarState.personaBubble));
+        window.requestAnimationFrame(() => {
+            updatePersonaBubble(bottomChatBarState.personaBubble);
+            refreshOpenPersonaPicker();
+        });
     };
     const events = [
         eventTypes.APP_READY,
@@ -13927,6 +14478,7 @@ function bindBottomChatBarEvents() {
     ].filter(Boolean);
     const personaEvents = [
         eventTypes.PERSONA_CHANGED,
+        eventTypes.PERSONA_UPDATED,
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
         eventTypes.CHAT_LOADED,
@@ -13954,6 +14506,10 @@ function togglePersonaPicker() {
         return;
     }
 
+    openPersonaPicker();
+}
+
+function openPersonaPicker({ focus = true } = {}) {
     const context = getSillyTavernContext();
     if (!context) return;
 
@@ -13962,9 +14518,22 @@ function togglePersonaPicker() {
     const picker = createElement('div', {
         id: 'sb-persona-picker',
         attrs: {
+            role: 'dialog',
+            'aria-label': 'Switch persona',
+        },
+    });
+    const optionsList = createElement('div', {
+        className: 'sb-persona-options',
+        attrs: {
             role: 'listbox',
             'aria-label': 'Choose persona',
         },
+    });
+    picker.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closePersonaPicker({ restoreFocus: true });
+        }
     });
 
     const keys = Object.keys(personas).filter(avatarId => {
@@ -13977,24 +14546,113 @@ function togglePersonaPicker() {
     if (!keys.length) {
         const empty = createElement('div', { className: 'sb-persona-option-empty' });
         empty.textContent = 'No personas defined';
-        picker.appendChild(empty);
+        optionsList.appendChild(empty);
     } else {
         for (const avatarId of keys) {
             const name = personas[avatarId] || avatarId;
             const title = personaDescriptions[avatarId]?.title || '';
             const isActive = avatarId === currentAvatarId;
-            addPersonaOption(picker, avatarId, name, title, isActive, context);
+            addPersonaOption(optionsList, avatarId, name, title, isActive, context);
         }
     }
+
+    picker.appendChild(optionsList);
+    renderPersonaPickerAppendixControls(picker, context, currentAvatarId);
 
     const bubble = document.getElementById('sb-persona-bubble');
     if (bubble instanceof HTMLElement) {
         document.body.appendChild(picker);
         positionPersonaPicker(picker, bubble);
-        const activeOption = picker.querySelector('.sb-persona-option.is-active');
-        const firstOption = picker.querySelector('.sb-persona-option');
-        (activeOption ?? firstOption)?.focus({ preventScroll: true });
+        if (focus) {
+            const activeOption = picker.querySelector('.sb-persona-option.is-active');
+            const firstOption = picker.querySelector('.sb-persona-option');
+            const firstControl = picker.querySelector('button, input');
+            (activeOption ?? firstOption ?? firstControl)?.focus({ preventScroll: true });
+        }
     }
+}
+
+function refreshOpenPersonaPicker() {
+    const existing = document.getElementById('sb-persona-picker');
+    if (!existing) {
+        return;
+    }
+
+    existing.remove();
+    openPersonaPicker({ focus: false });
+}
+
+function renderPersonaPickerAppendixControls(picker, context, avatarId) {
+    if (!avatarId) {
+        return;
+    }
+
+    const appendices = getPersonaAppendicesFromContext(context, avatarId);
+    const personas = context?.powerUserSettings?.personas ?? {};
+    const personaName = personas[avatarId] || avatarId;
+    const activeIds = new Set(getActivePersonaAppendixIdsFromContext(context, avatarId));
+    const section = createElement('section', {
+        className: 'sb-persona-picker-appendices',
+        attrs: { 'aria-label': `Scenario Notes for ${personaName}` },
+    });
+    const header = createElement('div', { className: 'sb-persona-picker-appendices-header' });
+    const title = createElement('strong', { text: 'Use with Scenario Notes' });
+    const manageButton = createElement('button', {
+        className: 'sb-persona-picker-manage menu_button menu_button_icon',
+        attrs: { type: 'button', title: 'Manage Scenario Notes' },
+    });
+    manageButton.innerHTML = '<i class="fa-solid fa-pen-to-square fa-fw" aria-hidden="true"></i><span>Manage</span>';
+    manageButton.addEventListener('click', openPersonaAppendicesManager);
+    header.append(title, manageButton);
+    section.appendChild(header);
+
+    if (!appendices.length) {
+        const empty = createElement('p', { className: 'sb-persona-picker-appendices-empty', text: 'No Scenario Notes on this persona yet.' });
+        section.appendChild(empty);
+        picker.appendChild(section);
+        return;
+    }
+
+    const controls = createElement('div', { className: 'sb-persona-picker-appendix-toggles' });
+    for (const appendix of appendices) {
+        const label = createElement('label', { className: 'sb-persona-picker-appendix-toggle' });
+        const checkbox = createElement('input', {
+            attrs: {
+                type: 'checkbox',
+                value: appendix.id,
+            },
+        });
+        checkbox.checked = activeIds.has(appendix.id);
+        checkbox.addEventListener('change', () => {
+            const nextIds = getActivePersonaAppendixIdsFromContext(context, avatarId).filter(id => id !== appendix.id);
+            if (checkbox.checked) {
+                nextIds.push(appendix.id);
+            }
+            setActivePersonaAppendixIdsFromContext(context, avatarId, nextIds);
+            updatePersonaBubble();
+        });
+
+        const labelText = createElement('span', { text: appendix.name });
+        label.append(checkbox, labelText);
+        controls.appendChild(label);
+    }
+
+    section.appendChild(controls);
+    picker.appendChild(section);
+}
+
+function openPersonaAppendicesManager() {
+    closePersonaPicker();
+    openCharacterPanelTab('persona');
+
+    window.setTimeout(() => {
+        document.getElementById('persona_workspace_tab_edit')?.click();
+        document.getElementById('persona_editor_tab_prompt')?.click();
+        const appendicesHeading = document.getElementById('persona_appendices_heading');
+        const addButton = document.getElementById('persona_appendix_add');
+        (appendicesHeading ?? addButton)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        addButton?.focus({ preventScroll: true });
+    }, 160);
 }
 
 function positionPersonaPicker(picker, bubble) {
@@ -14097,16 +14755,25 @@ function addPersonaOption(picker, avatarId, name, title, isActive, context) {
 
     const label = createElement('span', { className: 'sb-persona-option-name' });
     label.textContent = name;
+    const info = createElement('div', { className: 'sb-persona-option-info' });
+    info.appendChild(label);
 
     if (title) {
         const desc = createElement('span', { className: 'sb-persona-option-description' });
         desc.textContent = title;
-        const info = createElement('div', { className: 'sb-persona-option-info' });
-        info.append(label, desc);
-        option.append(img, info);
-    } else {
-        option.append(img, label);
+        info.appendChild(desc);
     }
+
+    const activeAppendices = getActivePersonaAppendicesFromContext(context, avatarId);
+    if (activeAppendices.length) {
+        const chips = createElement('span', { className: 'sb-persona-option-appendices' });
+        for (const appendix of activeAppendices) {
+            chips.appendChild(createElement('span', { className: 'sb-persona-appendix-chip', text: `+ ${appendix.name}` }));
+        }
+        info.appendChild(chips);
+    }
+
+    option.append(img, info);
 
     option.addEventListener('click', () => { void selectPersonaOption(option, picker, avatarId, context); });
     option.addEventListener('keydown', event => {
@@ -14187,6 +14854,7 @@ function initAll() {
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
+    setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
     setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });
     setTopbarScale('desktop', sbState.topbarScale.desktop, { persist: false });
     setTopbarScale('mobile', sbState.topbarScale.mobile, { persist: false });
@@ -14220,6 +14888,10 @@ function initAll() {
 
     window.addEventListener('resize', syncMobileViewportState, { passive: true });
     window.addEventListener('orientationchange', syncMobileViewportState);
+    window.visualViewport?.addEventListener('resize', syncMobileViewportState, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncMobileViewportState, { passive: true });
+    window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).
@@ -14283,6 +14955,9 @@ function initAll() {
         },
         setCompactMode(value) {
             setCompactMode(value);
+        },
+        setDesktopShellSnapToChatWidth(value) {
+            setDesktopShellSnapToChatWidth(value);
         },
         setMessageStyle,
         openChatTools() {

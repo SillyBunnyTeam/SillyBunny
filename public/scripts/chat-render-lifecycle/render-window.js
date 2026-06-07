@@ -1,5 +1,7 @@
 export const CHAT_RENDER_WINDOW_DEFAULT = 100;
 export const CHAT_RENDER_WINDOW_MAX = 200;
+// SillyBunny: aggressive DOM unloading for low-memory devices (e.g., iPhones crashing on long streams)
+export const CHAT_RENDER_WINDOW_AGGRESSIVE_DEFAULT = 5;
 
 /**
  * Keeps chat DOM windows bounded even when older settings used 0 as "render everything".

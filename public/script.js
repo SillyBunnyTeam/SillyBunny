@@ -38,6 +38,8 @@ import {
     getStatusTextgen,
 } from './scripts/textgen-settings.js';
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
+import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
+import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
 
 import {
     world_info,
@@ -505,7 +507,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.2';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.3';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -548,7 +550,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.2:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.6.3:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -667,7 +669,38 @@ export const DEFAULT_SAVE_EDIT_TIMEOUT = debounce_timeout.relaxed;
 export const DEFAULT_PRINT_TIMEOUT = debounce_timeout.quick;
 
 export const saveSettingsDebounced = debounce((loopCounter = 0) => saveSettings(loopCounter), DEFAULT_SAVE_EDIT_TIMEOUT);
-export const saveCharacterDebounced = debounce(() => $('#create_button').trigger('click'), DEFAULT_SAVE_EDIT_TIMEOUT);
+/** @type {ReturnType<typeof setTimeout> | null} */
+let pendingCharacterSaveTimer = null;
+let characterSavePromise = Promise.resolve();
+
+// SillyBunny: the custom editor shell needs to wait for autosaves before reopening stale form data.
+function queueCharacterSave() {
+    characterSavePromise = characterSavePromise
+        .catch(error => console.warn('Previous character save failed before queued save.', error))
+        .then(() => createOrEditCharacter())
+        .catch(error => console.error('Error while saving character.', error));
+
+    return characterSavePromise;
+}
+
+export function saveCharacterDebounced() {
+    clearTimeout(pendingCharacterSaveTimer);
+    pendingCharacterSaveTimer = setTimeout(() => {
+        pendingCharacterSaveTimer = null;
+        void queueCharacterSave();
+    }, DEFAULT_SAVE_EDIT_TIMEOUT);
+}
+
+export async function flushCharacterSaveDebounced() {
+    if (pendingCharacterSaveTimer) {
+        clearTimeout(pendingCharacterSaveTimer);
+        pendingCharacterSaveTimer = null;
+        await queueCharacterSave();
+        return;
+    }
+
+    await characterSavePromise;
+}
 
 /**
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
@@ -950,7 +983,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260602f', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260603e', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -1223,6 +1256,10 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
     if (selected_group || String(this_chid) !== String(id)) {
         //if clicked on a different character from what was currently selected
         if (is_send_press) {
+            return false;
+        }
+
+        if (!await flushPendingChatSavesForNavigation()) {
             return false;
         }
 
@@ -1735,20 +1772,21 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
         return { chatName: '', created: false };
     }
 
-    const persistedChat = String(character.chat || '').trim();
+    const persistedChat = normalizeCharacterChatName(character.chat);
     if (persistedChat && allowMissingPersisted) {
         character.chat = persistedChat;
         return { chatName: persistedChat, created: true };
     }
 
-    if (persistedChat) {
-        character.chat = persistedChat;
-        return { chatName: persistedChat, created: false };
-    }
-
     const existingChats = await getExistingCharacterChats(characterId);
-    const latestChat = existingChats[0]?.file_name?.replace('.jsonl', '') || '';
-    const nextChatName = latestChat || (allowCreate ? `${character.name} - ${humanizedDateTime()}` : '');
+    // SillyBunny: avoid recreating stale character.chat filenames as new files.
+    const resolvedChat = resolveCharacterChatNameForLoad({
+        persistedChat,
+        existingChats,
+        allowCreate,
+        newChatName: allowCreate ? `${character.name} - ${humanizedDateTime()}` : '',
+    });
+    const nextChatName = resolvedChat.chatName;
 
     if (nextChatName && nextChatName !== persistedChat) {
         await updateRemoteChatName(characterId, nextChatName);
@@ -1758,7 +1796,7 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
 
     return {
         chatName: nextChatName,
-        created: Boolean(!latestChat && allowCreate && nextChatName),
+        created: resolvedChat.created,
     };
 }
 
@@ -1831,6 +1869,10 @@ export async function deleteCharacterChatByName(characterId, fileName) {
 }
 
 export async function replaceCurrentChat() {
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     await clearChat({ clearData: true });
 
     const chatsResponse = await fetch('/api/characters/chats', {
@@ -2679,6 +2721,11 @@ const CHAT_HISTORY_NEWER_BUTTON_ID = 'show_newer_messages';
 const CHAT_HISTORY_WINDOW_CONTROL_SELECTOR = `#${CHAT_HISTORY_OLDER_BUTTON_ID}, #${CHAT_HISTORY_NEWER_BUTTON_ID}`;
 
 function getChatRenderWindowSize(requestedSize = power_user.chat_truncation) {
+    // SillyBunny: aggressive DOM unloading for low-memory devices (e.g., iPhones crashing on long streams)
+    if (power_user.aggressive_dom_unload) {
+        const aggressiveSize = power_user.aggressive_dom_window_size || 5;
+        return normalizeChatRenderWindowSize(aggressiveSize, { maxSize: aggressiveSize });
+    }
     // SillyBunny: prevent long chats from using 0/huge truncation values to render every message into the DOM.
     return normalizeChatRenderWindowSize(requestedSize);
 }
@@ -4442,7 +4489,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     const messageHTML = getMessageTextHTML(mes, { messageId });
     const bookmarkLink = mes?.extra?.bookmark_link;
     const tokenCount = mes.extra?.token_count;
-    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, mes.extra?.token_count, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token);
+    const { timerValue, timerTitle } = formatGenerationTimer(mes.gen_started, mes.gen_finished, tokenCount, mes.extra?.reasoning_duration, mes.extra?.time_to_first_token, mes.extra?.reasoning_tokens);
 
     messageElement.attr({
         'mesid': messageId,
@@ -4665,13 +4712,14 @@ export function formatCharacterAvatar(characterAvatar) {
  * @param {number} tokenCount Number of tokens generated (0 if not available)
  * @param {number?} [reasoningDuration=null] Reasoning duration (null if no reasoning was done)
  * @param {number?} [timeToFirstToken=null] Time to first token
+ * @param {number?} [reasoningTokens=null] Number of reasoning tokens generated (0 if not available)
  * @returns {Object} Object containing the formatted timer value and title
  * @example
  * const { timerValue, timerTitle } = formatGenerationTimer(gen_started, gen_finished, tokenCount);
  * console.log(timerValue); // 1.2s
  * console.log(timerTitle); // Generation queued: 12:34:56 7 Jan 2021\nReply received: 12:34:57 7 Jan 2021\nTime to generate: 1.2 seconds\nToken rate: 5 t/s
  */
-function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null) {
+function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null, reasoningTokens = null) {
     if (!gen_started || !gen_finished) {
         return {};
     }
@@ -4680,6 +4728,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
     const start = moment(gen_started);
     const finish = moment(gen_finished);
     const seconds = finish.diff(start, 'seconds', true);
+    const totalCompletionTokens = getPositiveTokenCount(tokenCount) + getPositiveTokenCount(reasoningTokens);
     const timerValue = `${seconds.toFixed(1)}s`;
     const timerTitle = [
         `Generation queued: ${start.format(dateFormat)}`,
@@ -4687,7 +4736,7 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
         `Time to generate: ${seconds} seconds`,
         timeToFirstToken ? `Time to first token: ${timeToFirstToken / 1000} seconds` : '',
         reasoningDuration > 0 ? `Time to think: ${reasoningDuration / 1000} seconds` : '',
-        tokenCount > 0 ? `Token rate: ${Number(tokenCount / seconds).toFixed(3)} t/s` : '',
+        totalCompletionTokens > 0 ? `Token rate: ${Number(totalCompletionTokens / seconds).toFixed(3)} t/s` : '',
     ].filter(x => x).join('\n').trim();
 
     if (isNaN(seconds) || seconds < 0) {
@@ -5774,14 +5823,16 @@ class StreamingProcessor {
             // Token count update.
             const shouldRefreshTokenCount = isFinal && power_user.message_token_count_enabled;
             let currentTokenCount = getPositiveTokenCount(chat[messageId].extra.token_count);
+            let currentReasoningTokens = Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens));
             if (!shouldReduceIntermediateStreamingWork) {
-                const { outputTokens } = await updateMessageTokenAccounting(chat[messageId], {
+                const { outputTokens, reasoningTokens } = await updateMessageTokenAccounting(chat[messageId], {
                     reasoning: this.reasoningHandler.reasoning,
-                    reasoningTokens: Math.max(getPositiveTokenCount(this.reasoningTokens), getPositiveTokenCount(chat[messageId].extra.reasoning_tokens)),
+                    reasoningTokens: currentReasoningTokens,
                     countOutput: shouldRefreshTokenCount,
                     countReasoning: shouldRefreshTokenCount,
                 });
                 currentTokenCount = outputTokens;
+                currentReasoningTokens = reasoningTokens;
             }
             if ((this.type == 'swipe' || this.type === 'continue') && Array.isArray(chat[messageId].swipes)) {
                 chat[messageId].swipes[chat[messageId].swipe_id] = processedText;
@@ -5804,7 +5855,7 @@ class StreamingProcessor {
                 {},
                 false,
             );
-            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken);
+            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
                 write: {
@@ -7595,7 +7646,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             console.log(typeof generate_data.prompt === 'string' ? generate_data.prompt : JSON.stringify(generate_data.prompt));
         }
 
-        console.debug('rungenerate calling API');
+        console.log(`[rungenerate] calling API: main_api=${main_api}${main_api === 'openai' ? ` source=${oai_settings.chat_completion_source} model=${getChatCompletionModel(oai_settings)}` : ''}`);
 
         showStopButton();
 
@@ -9585,8 +9636,8 @@ export function activateSendButtons({ emitGenerationEnded = true } = {}) {
 /**
  * A function mainly used to switch 'generating' state - setting it to true and deactivating the buttons
  */
-export function deactivateSendButtons() {
-    const lockState = resolveGenerationUiLockState({ isGenerating: true });
+export function deactivateSendButtons({ markBodyGenerating = true } = {}) {
+    const lockState = resolveGenerationUiLockState({ isGenerating: true, markBodyGenerating });
     if (lockState.shouldShowStopButton) {
         showStopButton();
     }
@@ -9882,19 +9933,25 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
 export function saveChatDebounced() {
     const chid = this_chid;
     const selectedGroup = selected_group;
+    const chatId = getCurrentChatId();
 
     cancelDebouncedChatSave();
 
     chatSaveTimeout = setTimeout(async () => {
         chatSaveTimeout = null;
 
-        if (selectedGroup !== selected_group) {
-            console.warn('Chat save timeout triggered, but group changed. Aborting.');
-            return;
-        }
+        // SillyBunny: keep debounced saves bound to the file they were scheduled for.
+        const abortReason = getDebouncedChatSaveAbortReason({
+            scheduledGroupId: selectedGroup,
+            currentGroupId: selected_group,
+            scheduledCharacterId: chid,
+            currentCharacterId: this_chid,
+            scheduledChatId: chatId,
+            currentChatId: getCurrentChatId(),
+        });
 
-        if (chid !== this_chid) {
-            console.warn('Chat save timeout triggered, but chid changed. Aborting.');
+        if (abortReason) {
+            console.warn(`Chat save timeout triggered, but ${abortReason} changed. Aborting.`);
             return;
         }
 
@@ -9911,6 +9968,19 @@ export function saveChatDebounced() {
 
 function hasPendingChatSave() {
     return chatSaveTimeout !== null || chatSavePromise !== null;
+}
+
+export async function flushPendingChatSavesForNavigation() {
+    if (!hasPendingChatSave()) {
+        return true;
+    }
+
+    // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
+    const didFlush = await flushPendingChatSaves();
+    if (!didFlush) {
+        toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
+    }
+    return didFlush;
 }
 
 /**
@@ -9989,7 +10059,9 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
     }
 
     const metadata = { ...chat_metadata, ...(withMetadata || {}) };
-    const fileName = chatName ?? characters[this_chid]?.chat;
+    const activeChatName = characters[this_chid]?.chat;
+    const fileName = chatName ?? activeChatName;
+    const isActiveChatSave = fileName === activeChatName;
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -10032,6 +10104,10 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
+            const responseData = await result.json().catch(() => ({}));
+            if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
+                chat_metadata.integrity = responseData.integrity;
+            }
             return true;
         }
 
@@ -10459,6 +10535,10 @@ function getFirstMessage() {
 }
 
 export async function openCharacterChat(file_name) {
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
     characters[this_chid].chat = file_name;
@@ -12895,7 +12975,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.delete_alternate_greeting').on('click', async function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             const confirm = await callGenericPopup(t`Are you sure you want to delete this alternate greeting?`, POPUP_TYPE.CONFIRM);
             if (!confirm) {
@@ -12912,7 +12992,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.move_up_alternate_greeting').on('click', function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             if (index <= 0) {
                 return;
@@ -12930,7 +13010,7 @@ function syncAlternateGreetingsEditor() {
 
         greetingBlock.find('.move_down_alternate_greeting').on('click', function (event) {
             event.preventDefault();
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
             if (index >= greetings.length - 1) {
                 return;
@@ -13923,6 +14003,7 @@ async function openCharacterWorldPopup() {
                 extrasSelect.select2({
                     width: '100%',
                     placeholder: t`No auxiliary Lorebooks set. Click here to select.`,
+                    dropdownCssClass: 'sb-world-info-select2-dropdown',
                     allowClear: true,
                     closeOnSelect: false,
                     dropdownParent: popupDialog,
@@ -14851,6 +14932,10 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         return;
     }
 
+    if (!await flushPendingChatSavesForNavigation()) {
+        return;
+    }
+
     //Fix it; New chat doesn't create while open create character menu
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
@@ -14913,6 +14998,14 @@ export async function renameGroupOrCharacterChat({ characterId, groupId, oldFile
     }) : null;
 
     try {
+        const currentChatBaseName = getChatBaseName(currentChatId);
+        if (currentChatBaseName && currentChatBaseName === getChatBaseName(oldFileName)) {
+            const didFlush = await flushPendingChatSaves();
+            if (!didFlush) {
+                throw new Error('Could not save the current chat before renaming.');
+            }
+        }
+
         const response = await fetch('/api/chats/rename', {
             method: 'POST',
             body: JSON.stringify(body),
@@ -14977,6 +15070,10 @@ export async function renameChat(oldFileName, newName) {
  */
 export async function closeCurrentChat() {
     if (is_send_press == false) {
+        if (!await flushPendingChatSavesForNavigation()) {
+            return false;
+        }
+
         await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
         await clearChat({ clearData: true });
         resetSelectedGroup();

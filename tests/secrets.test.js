@@ -15,6 +15,7 @@ async function importSecrets() {
             red: value => value,
         },
         getConfigValue: jest.fn(() => false),
+        tryWriteFileSync: jest.fn((filePath, data) => fs.writeFileSync(filePath, data)),
         uuidv4: jest.fn(() => `secret-id-${++idCounter}`),
     }));
 

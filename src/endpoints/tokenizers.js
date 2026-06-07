@@ -526,10 +526,13 @@ async function countSentencepieceTokens(tokenizer, text) {
  * @returns {Promise<number>} Number of tokens
  */
 async function countSentencepieceArrayTokens(tokenizer, array) {
-    const jsonBody = array.flatMap(x => Object.values(x)).join('\n\n');
-    const result = await countSentencepieceTokens(tokenizer, jsonBody);
-    const num_tokens = result.count;
-    return num_tokens;
+    // SillyBunny: Use convertClaudePrompt for consistent token counting across all tokenizers.
+    // The previous implementation using Object.values().join('\n\n') overcounted tokens by
+    // including metadata (role, name, tool_calls) and adding separators between every value.
+    // This caused false "Pre-generation intercepts exceed context" errors at large context sizes.
+    const convertedPrompt = convertClaudePrompt(array, false, '', false, false, '', false);
+    const result = await countSentencepieceTokens(tokenizer, convertedPrompt);
+    return result.count;
 }
 
 async function getTiktokenChunks(tokenizer, ids) {

@@ -29,6 +29,15 @@ describe('generation lifecycle helper', () => {
         });
     });
 
+    test('allows generation UI lock state without marking the body as generating', () => {
+        expect(resolveGenerationUiLockState({ isGenerating: true, markBodyGenerating: false })).toEqual({
+            state: GENERATION_LIFECYCLE_UI_STATE.GENERATING,
+            shouldShowStopButton: true,
+            shouldHideSwipeButtons: true,
+            bodyGeneratingValue: null,
+        });
+    });
+
     test('keeps quiet generation blocked while its stream is still active', () => {
         expect(resolveGenerationUnblockState({
             type: 'quiet',

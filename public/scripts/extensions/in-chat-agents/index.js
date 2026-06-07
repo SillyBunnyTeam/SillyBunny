@@ -2,8 +2,9 @@ import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
 import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../../utils.js';
-import { CLIENT_VERSION, chat, getRequestHeaders, generateQuietPrompt, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
+import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
+import { is_group_generating } from '../../group-chats.js';
 import {
     areAgentsGloballyEnabled,
     getAgents,
@@ -68,6 +69,7 @@ import { initPathfinder, teardownPathfinder } from './pathfinder-init.js';
 import { openPathfinderSettings, isPathfinderAgent } from './pathfinder-settings-ui.js';
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
+import { appendHelperPrefillMessages } from '../helper-prefill.js';
 import {
     buildConnectionProfileNameMap,
     getConnectionManagerRequestService,
@@ -188,6 +190,23 @@ function getLastAssistantMessageIndex() {
 
 function updateCancelGenerationButton() {
     $('#ica--cancelGeneration').toggle(isAgentGenerationActive());
+}
+
+function updateAgentGenerationSendControls(active = isAgentGenerationActive()) {
+    if (active) {
+        // Agent post-processing should lock send controls without hiding the visible message actions.
+        deactivateSendButtons({ markBodyGenerating: false });
+        return;
+    }
+
+    if (!is_send_press && !is_group_generating) {
+        activateSendButtons();
+    }
+}
+
+function refreshGenerationUi(active = isAgentGenerationActive()) {
+    updateCancelGenerationButton();
+    updateAgentGenerationSendControls(active);
 }
 
 function updateGlobalAgentToggle() {
@@ -3557,6 +3576,10 @@ function populateGlobalExecutionModeDropdown() {
     $('#ica--appendAgentsExecutionMode').val(mode);
 }
 
+function populateGlobalHelperPrefillField() {
+    $('#ica--helperPrefillMessages').val(getGlobalSettings().helperPrefillMessages || '');
+}
+
 /**
  * Makes an LLM call for prompt refinement, using CMRS if a profile is selected.
  * @param {string} systemPrompt
@@ -3565,10 +3588,14 @@ function populateGlobalExecutionModeDropdown() {
  */
 async function refineLLMCall(systemPrompt, userPrompt, connectionProfile = '') {
     const profileId = resolveConnectionProfile(connectionProfile);
+    const messages = appendHelperPrefillMessages([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+    ], getGlobalSettings().helperPrefillMessages);
 
     if (!profileId) {
         return await generateQuietPrompt({
-            quietPrompt: systemPrompt + '\n\n' + userPrompt,
+            quietPrompt: buildFallbackPromptText(messages),
             skipWIAN: true,
         });
     }
@@ -3577,15 +3604,10 @@ async function refineLLMCall(systemPrompt, userPrompt, connectionProfile = '') {
 
     if (!CMRS) {
         return await generateQuietPrompt({
-            quietPrompt: systemPrompt + '\n\n' + userPrompt,
+            quietPrompt: buildFallbackPromptText(messages),
             skipWIAN: true,
         });
     }
-
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-    ];
 
     try {
         const response = await CMRS.sendRequest(profileId, messages, DEFAULT_AGENT_MAX_TOKENS, {
@@ -4085,6 +4107,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     populateProfileDropdown();
     populateGlobalNotificationToggle();
     populateGlobalExecutionModeDropdown();
+    populateGlobalHelperPrefillField();
     $('#ica--connectionProfile').on('change', function () {
         setGlobalSettings({ connectionProfile: this.value });
         persistExtensionState();
@@ -4138,6 +4161,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     $('#ica--appendAgentsExecutionMode').on('change', function () {
         setGlobalSettings({ appendAgentsExecutionMode: this.value });
+        persistExtensionState();
+    });
+    $('#ica--helperPrefillMessages').on('input', function () {
+        setGlobalSettings({ helperPrefillMessages: this.value });
         persistExtensionState();
     });
     $('#ica--resetDefaults').on('click', async () => {
@@ -4209,14 +4236,21 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         eventSource.on(eventName, refreshProfileUi);
     }
 
-    const refreshGenerationUi = () => updateCancelGenerationButton();
     onAgentGenerationStateChanged(refreshGenerationUi);
+    $(document).on('click', '#mes_stop', () => {
+        if (!isAgentGenerationActive()) {
+            return;
+        }
+
+        cancelAgentGeneration();
+        refreshGenerationUi();
+    });
     for (const eventName of [
         event_types.GENERATION_STARTED,
         event_types.GENERATION_ENDED,
         event_types.GENERATION_STOPPED,
     ]) {
-        eventSource.on(eventName, refreshGenerationUi);
+        eventSource.on(eventName, () => refreshGenerationUi());
     }
 
     // Listen for Prompt Manager "Send to Agents" events

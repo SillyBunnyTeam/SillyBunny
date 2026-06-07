@@ -70,7 +70,7 @@ import {
     textValueMatcher,
     uuidv4,
 } from './utils.js';
-import { countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
+import { countChatCompletionPayloadTokensOpenAIAsync, countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
 import { isMobile } from './RossAscends-mods.js';
 import { saveLogprobsForActiveMessage } from './logprobs.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -85,8 +85,9 @@ import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
-import { checkPostInterceptChatBudget } from './openai-prompt-budget.js';
+import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import { buildChatCompletionPresetForSave, buildReverseProxyPresetForSave, normalizeReverseProxyPreset } from './openai-preset-utils.js';
+import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 
 export {
     openai_messages_count,
@@ -108,6 +109,7 @@ const default_main_prompt = 'Write {{char}}\'s next reply in a fictional chat be
 const default_nsfw_prompt = '';
 const default_jailbreak_prompt = '';
 const default_impersonation_prompt = '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]';
+const default_assistant_impersonation = '{{user}}:';
 const default_enhance_definitions_prompt = 'If you have more knowledge of {{char}}, add to the character\'s lore and personality to enhance them but keep the Character Sheet\'s definitions absolute.';
 const default_wi_format = '{0}';
 const default_new_chat_prompt = '[Start a new Chat]';
@@ -501,6 +503,7 @@ export const settingsToUpdate = {
     continue_prefill: ['#continue_prefill', 'continue_prefill', true, false],
     continue_postfix: ['#continue_postfix', 'continue_postfix', false, false],
     function_calling: ['#openai_function_calling', 'function_calling', true, false],
+    tool_call_recurse_limit: ['#tool_call_recurse_limit', 'tool_call_recurse_limit', false, false],
     show_thoughts: ['#openai_show_thoughts', 'show_thoughts', true, false],
     auto_append_reasoning_tags: ['#openai_auto_append_reasoning_tags', 'auto_append_reasoning_tags', true, false],
     auto_append_reasoning_tag_style: ['#openai_reasoning_tag_style', 'auto_append_reasoning_tag_style', false, false],
@@ -604,7 +607,7 @@ const default_settings = {
     show_external_models: false,
     proxy_password: '',
     assistant_prefill: '',
-    assistant_impersonation: '',
+    assistant_impersonation: default_assistant_impersonation,
     use_sysprompt: false,
     vertexai_auth_mode: 'express',
     vertexai_region: 'us-central1',
@@ -615,6 +618,7 @@ const default_settings = {
     bypass_status_check: false,
     continue_prefill: false,
     function_calling: false,
+    tool_call_recurse_limit: TOOL_CALL_RECURSE_LIMIT_DEFAULT,
     names_behavior: character_names_behavior.DEFAULT,
     continue_postfix: continue_postfix_types.SPACE,
     custom_prompt_post_processing: custom_prompt_post_processing_types.NONE,
@@ -674,6 +678,15 @@ export let selected_proxy = proxies[0];
 
 export let openai_setting_names;
 export let openai_settings;
+
+function applyToolCallRecurseLimit(value = oai_settings.tool_call_recurse_limit) {
+    const recurseLimit = normalizeToolCallRecurseLimit(value);
+    oai_settings.tool_call_recurse_limit = recurseLimit;
+    ToolManager.RECURSE_LIMIT = recurseLimit;
+    $('#tool_call_recurse_limit').val(recurseLimit);
+    $('#tool_call_recurse_limit_counter').val(recurseLimit);
+    return recurseLimit;
+}
 
 /** @type {import('./PromptManager.js').PromptManager} */
 export let promptManager = null;
@@ -888,6 +901,16 @@ function setupChatCompletionPromptManager(openAiSettings) {
     promptManager.render(false);
 
     return promptManager;
+}
+
+function getEffectiveImpersonationPrompt() {
+    const prompt = String(oai_settings.impersonation_prompt ?? '').trim() || default_impersonation_prompt;
+    return substituteParams(prompt);
+}
+
+function getEffectiveAssistantImpersonationPrefill(settings) {
+    const prefill = String(settings?.assistant_impersonation ?? '').trim() || default_assistant_impersonation;
+    return substituteParams(prefill);
 }
 
 /**
@@ -1392,7 +1415,9 @@ async function populateChatCompletion(prompts, chatCompletion, { bias, quietProm
     const controlPrompts = new MessageCollection('controlPrompts');
 
     const impersonateMessage = await Message.fromPromptAsync(prompts.get('impersonate')) ?? null;
-    if (type === 'impersonate') controlPrompts.add(impersonateMessage);
+    if (type === 'impersonate' && !promptManager.isPromptDisabledForActiveCharacter('impersonate')) {
+        controlPrompts.add(impersonateMessage);
+    }
 
     // Add quiet prompt to control prompts
     // This should always be last, even in control prompts. Add all further control prompts BEFORE this prompt
@@ -1538,7 +1563,7 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
     const scenarioText = scenario && oai_settings.scenario_format ? substituteParams(oai_settings.scenario_format) : (scenario || '');
     const charPersonalityText = charPersonality && oai_settings.personality_format ? substituteParams(oai_settings.personality_format) : (charPersonality || '');
     const groupNudge = substituteParams(oai_settings.group_nudge_prompt);
-    const impersonationPrompt = oai_settings.impersonation_prompt ? substituteParams(oai_settings.impersonation_prompt) : '';
+    const impersonationPrompt = getEffectiveImpersonationPrompt();
 
     // Create entries for system prompts
     const systemPrompts = [
@@ -1785,7 +1810,9 @@ export async function prepareOpenAIMessages({
 
     let chat = chatCompletion.getChat();
 
-    const eventData = { chat, dryRun };
+    // SillyBunny: only prompt-ready listeners that mutate the finalized chat should
+    // trigger the post-mutation budget recount.
+    const eventData = { chat, dryRun, chatChanged: false };
     await eventSource.emit(event_types.CHAT_COMPLETION_PROMPT_READY, eventData);
     if (!Array.isArray(eventData.chat)) {
         chatCompletion.log('Pre-generation intercepts produced an invalid chat payload.');
@@ -1794,8 +1821,8 @@ export async function prepareOpenAIMessages({
 
     chat = eventData.chat;
 
-    if (!dryRun) {
-        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countTokensOpenAIAsync);
+    if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
+        const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
         if (exceeded) {
             toastr.error(t`Pre-generation intercepts exceed the context size.`);
             chatCompletion.log(`Pre-generation intercepts exceed the context size. Tokens: ${promptTokens}. Budget: ${promptTokenBudget}.`);
@@ -3377,6 +3404,7 @@ function groupOpenAISettingsIntoDrawers() {
             title: 'Sampling',
             description: 'Temperature, penalties, probability controls, seed, and logit bias',
             selectors: [
+                '#range_block_openai > .flex-container.gap10h5v.justifyCenter:has([data-tg-samplers])',
                 '#range_block_openai > .range-block:has(#temp_openai)',
                 '#range_block_openai > .range-block:has(#claude_disable_temperature)',
                 '#range_block_openai > .range-block:has(#freq_pen_openai)',
@@ -3467,7 +3495,22 @@ function groupOpenAISettingsIntoDrawers() {
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
         const blocks = $(this).children('.inline-drawer-content').children().toArray();
-        const hasVisibleContent = blocks.some(block => getComputedStyle(block).display !== 'none');
+        const hasVisibleContent = blocks.some(block => {
+            if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
+                return false;
+            }
+
+            if (block.hasAttribute('data-source')) {
+                return true;
+            }
+
+            const sourceChildren = Array.from(block.querySelectorAll('[data-source]'));
+            if (sourceChildren.length > 0) {
+                return sourceChildren.some(child => child instanceof HTMLElement && getComputedStyle(child).display !== 'none');
+            }
+
+            return true;
+        });
         $(this).toggle(hasVisibleContent);
     });
 }
@@ -4984,6 +5027,7 @@ export async function createGenerationParameters(settings, model, type, messages
     const generate_data = {
         'type': type,
         'messages': messages,
+        'log_prompts': Boolean(power_user.console_log_prompts),
         'model': model,
         'temperature': Number(settings.temp_openai),
         'frequency_penalty': Number(settings.freq_pen_openai),
@@ -5058,7 +5102,7 @@ export async function createGenerationParameters(settings, model, type, messages
         // Don't add a prefill on quiet gens (summarization) and when using continue prefill.
         if (type !== 'quiet' && !(type === 'continue' && settings.continue_prefill)) {
             generate_data.assistant_prefill = type === 'impersonate'
-                ? substituteParams(settings.assistant_impersonation)
+                ? getEffectiveAssistantImpersonationPrefill(settings)
                 : substituteParams(settings.assistant_prefill);
         }
     }
@@ -5300,6 +5344,8 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
     const model = getChatCompletionModel(oai_settings);
     const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
+
+    console.log(`[OpenAI frontend] sendOpenAIRequest: type=${type} source=${generate_data.chat_completion_source} model=${generate_data.model} stream=${generate_data.stream}`);
 
     const generate_url = '/api/backends/chat-completions/generate';
     const response = await fetch(generate_url, {
@@ -6526,6 +6572,7 @@ function loadOpenAISettings(data, settings) {
         }
     }
 
+    applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);
     syncMaxContextUnlockedControl(oai_settings);
 
     $(`#settings_preset_openai option[value="${openai_setting_names[oai_settings.preset_settings_openai]}"]`).prop('selected', true);
@@ -9747,6 +9794,11 @@ export function initOpenAI() {
     $('#openai_function_calling').on('input', function () {
         oai_settings.function_calling = !!$(this).prop('checked');
         updateFeatureSupportFlags();
+        saveSettingsDebounced();
+    });
+
+    $('#tool_call_recurse_limit').on('input', function () {
+        applyToolCallRecurseLimit($(this).val());
         saveSettingsDebounced();
     });
 

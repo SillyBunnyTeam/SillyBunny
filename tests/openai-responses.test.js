@@ -167,6 +167,61 @@ describe('OpenAI Responses integration', () => {
         });
     });
 
+    test('logs full Responses payloads only when prompt logging is enabled', async () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        try {
+            const quietResponse = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES,
+                    reverse_proxy: 'http://127.0.0.1:3001/v1/',
+                    proxy_password: 'test-key',
+                    model: 'gpt-5.4',
+                    stream: false,
+                    temperature: 1,
+                    max_tokens: 32,
+                    top_p: 1,
+                    messages: [
+                        { role: 'user', content: 'Hidden backend prompt text.' },
+                    ],
+                }),
+            });
+
+            expect(quietResponse.status).toBe(200);
+            expect(logSpy.mock.calls.flat().join('\n')).not.toContain('Hidden backend prompt text.');
+
+            logSpy.mockClear();
+
+            const verboseResponse = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES,
+                    reverse_proxy: 'http://127.0.0.1:3001/v1/',
+                    proxy_password: 'test-key',
+                    model: 'gpt-5.4',
+                    stream: false,
+                    temperature: 1,
+                    max_tokens: 32,
+                    top_p: 1,
+                    log_prompts: true,
+                    messages: [
+                        { role: 'user', content: 'Visible backend prompt text.' },
+                    ],
+                }),
+            });
+
+            expect(verboseResponse.status).toBe(200);
+            const logText = logSpy.mock.calls.flat().join('\n');
+            expect(logText).toContain('[ChatCompletions] OpenAI Responses API request payload:');
+            expect(logText).toContain('Visible backend prompt text.');
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
     test('generate resolves OpenAI Responses profile secrets by secret_id', async () => {
         const manager = new SecretManager(userDirectories);
         const profileSecretId = manager.writeSecret(SECRET_KEYS.OPENAI, 'profile-openai-key', 'Profile OpenAI');

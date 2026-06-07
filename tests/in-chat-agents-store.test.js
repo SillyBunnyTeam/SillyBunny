@@ -94,6 +94,12 @@ describe('in-chat agent scoped enabled state', () => {
         expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
+    test('exposes an empty helper prefill global setting by default', async () => {
+        const store = await importStore();
+
+        expect(store.getGlobalSettings().helperPrefillMessages).toBe('');
+    });
+
     test('recovers legacy enabled agents missing from initialized scoped settings', async () => {
         const store = await importStore();
         store.setGlobalSettings({
