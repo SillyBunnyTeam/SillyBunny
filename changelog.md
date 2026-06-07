@@ -10,6 +10,7 @@
 - PR #352 (2026-06-05) `fix: isolate mobile alternate greeting controls`
 - PR #353 (2026-06-05) `fix: persist persona Scenario Notes selection per character card`
 - PR #354 (2026-06-06) `fix: rotate chat integrity token on save to prevent cross-device history loss`
+- PR #355 (2026-06-07) `fix: wire tool call recursion limit slider to runtime cap`
 - PR #356 (2026-06-06) `fix: show stop button during in-chat agent generation`
 - PR #357 (2026-06-06) `fix: paint message-block transparency in core without Moonlit Echoes`
 - PR #358 (2026-06-06) `fix: stabilize mobile viewport on search close and auto-focus search input`
