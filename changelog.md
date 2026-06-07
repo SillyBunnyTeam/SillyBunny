@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.6.4
+
+Date: 2026-06-07
+
+This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Horde client fallback, bundled extension metadata, release notes, and mirrored README documentation after the 1.6.3 release.
+
+### Improved
+- The UI version label, Horde client identifier, and Horde server fallback now consistently advertise SillyBunny 1.6.4.
+- Package metadata, root package-lock entries, and bundled extension manifests now align with the 1.6.4 release line.
+- Release documentation now has 1.6.4 README, changelog, GitHub mirror, and Discord-ready summary copy.
+
+### Fixed
+- No targeted bug fixes were included in this release-readiness pass.
+
+### Added
+- A 1.6.4 Discord release post is available under `releases/` for announcement publishing.
+- Regression expectations were refreshed so release automation coverage tracks the current package version.
+
+### Removed
+- No user-facing features were removed in this release.
+
+### Merged Staging PRs
+- No merged staging PRs landed after v1.6.3 before this release-prep pass.
+
 ## v1.6.3
 
 Date: 2026-06-07

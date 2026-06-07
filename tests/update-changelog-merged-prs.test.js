@@ -30,8 +30,8 @@ describe('update changelog merged PR entries', () => {
     test('creates a missing package version section at the top of the changelog', () => {
         const changelog = '# Changelog\n\n## v1.6.2\n\n### Fixed\n- Existing entry.\n';
 
-        expect(updateChangelog(changelog, 'v1.6.3', [mergedPr])).toBe(
-            '# Changelog\n\n## v1.6.3\n\n### Merged Staging PRs\n- PR #321 (2026-06-04) `fix: unblock changelog sync`\n\n## v1.6.2\n\n### Fixed\n- Existing entry.\n',
+        expect(updateChangelog(changelog, 'v1.6.4', [mergedPr])).toBe(
+            '# Changelog\n\n## v1.6.4\n\n### Merged Staging PRs\n- PR #321 (2026-06-04) `fix: unblock changelog sync`\n\n## v1.6.2\n\n### Fixed\n- Existing entry.\n',
         );
     });
 });

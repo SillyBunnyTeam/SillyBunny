@@ -114,7 +114,7 @@
         "type": "git",
         "url": "https://github.com/platberlitz/SillyBunny.git"
     },
-    "version": "1.6.3",
+    "version": "1.6.4",
     "scripts": {
         "start": "bun server.js",
         "start:node": "node --no-warnings server.js",
