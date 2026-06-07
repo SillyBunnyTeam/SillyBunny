@@ -22,7 +22,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - No user-facing features were removed in this release.
 
 ### Merged Staging PRs
-- No merged staging PRs landed after v1.6.3 before this release-prep pass.
+- PR #366 (2026-06-07) `chore: prepare v1.6.4`
 
 ## v1.6.3
 
