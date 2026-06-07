@@ -956,9 +956,10 @@
 
     #persona_controls .persona_controls_buttons_block > .menu_button,
     #persona_controls .persona-controls-actions > .menu_button {
-        flex: 1 1 44px;
-        width: auto;
+        flex: 0 0 44px;
+        width: 44px;
         min-width: 44px;
+        max-width: 44px;
         height: 44px;
         min-height: 44px;
     }
@@ -991,9 +992,10 @@
 
     #persona_controls .persona_controls_buttons_block > .menu_button,
     #persona_controls .persona-controls-actions > .menu_button {
-        flex-basis: 44px;
-        width: auto;
+        flex: 0 0 44px;
+        width: 44px;
         min-width: 44px;
+        max-width: 44px;
         height: 44px;
         min-height: 44px;
     }

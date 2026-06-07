@@ -5458,12 +5458,17 @@ input[type='range']::-moz-range-thumb {
         grid-template-columns: 1fr;
     }
 
-    #persona_connections_buttons {
-        flex-direction: column;
+    #PersonaManagement #persona_connections_buttons {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
     }
 
-    #persona_connections_buttons > .menu_button {
+    #PersonaManagement #persona_connections_buttons > .menu_button {
         width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        justify-content: center;
     }
 
     #persona_description {
