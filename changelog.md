@@ -20,6 +20,7 @@
 - PR #362 (2026-06-07) `fix: make toast colors theme-aware`
 - PR #363 (2026-06-07) `fix: align persona icon actions and alt greetings`
 - PR #364 (2026-06-07) `fix: keep message actions visible during agent generation`
+- PR #365 (2026-06-07) `fix: toggle top-bar character shortcuts closed`
 
 ## v1.6.2
 
