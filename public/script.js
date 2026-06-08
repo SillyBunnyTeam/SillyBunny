@@ -245,6 +245,7 @@ import { NOTE_MODULE_NAME, initAuthorsNote, metadata_keys, setFloatingPrompt, sh
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
+import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -3546,9 +3547,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         const usableMessages = chat.map((x, index) => ({ message: x, index: index })).filter(x => !x.message.is_system);
         const indexOf = usableMessages.findIndex(x => x.index === resolvedMessageId);
         const depth = resolvedMessageId >= 0 && indexOf !== -1 ? (usableMessages.length - indexOf - 1) : undefined;
-        const agentRegexScripts = Array.isArray(chatMessage?.extra?.inChatAgents?.regexScripts)
-            ? chatMessage.extra.inChatAgents.regexScripts
-            : [];
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
         if (!isUser && !isReasoning && agentRegexScripts.length > 0) {
             mes = applyRegexScriptList(mes, agentRegexScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {

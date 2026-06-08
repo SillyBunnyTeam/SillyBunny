@@ -494,6 +494,22 @@ describe('in-chat agent post-processing runner', () => {
         }];
     }
 
+    function expectCompactRegexSnapshot(snapshot, { generationType = 'normal', edited = false } = {}) {
+        expect(snapshot).toEqual({
+            activeAgentIds: ['agent-regex-only'],
+            generationType,
+            regexScriptRefs: [{
+                agentId: 'agent-regex-only',
+                scriptId: 'regex-script-1',
+                revision: expect.any(String),
+            }],
+            edited,
+        });
+        expect(snapshot.regexScripts).toBeUndefined();
+        expect(JSON.stringify(snapshot)).not.toContain(enabledAgents[0].regexScripts[0].findRegex);
+        expect(JSON.stringify(snapshot)).not.toContain(enabledAgents[0].regexScripts[0].replaceString);
+    }
+
     function useImpersonateTransformAgent({ runOnImpersonate = false } = {}) {
         enabledAgents = [{
             id: 'agent-impersonate-transform',
@@ -1349,12 +1365,7 @@ describe('in-chat agent post-processing runner', () => {
         await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
 
         expect(chat[0].mes).toBe('[STATUS|ready]');
-        expect(chat[0].extra.inChatAgents).toEqual({
-            activeAgentIds: ['agent-regex-only'],
-            generationType: 'normal',
-            regexScripts: enabledAgents[0].regexScripts,
-            edited: false,
-        });
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
 
         await eventSource.emit(eventTypes.CHARACTER_MESSAGE_RENDERED, 0, 'normal');
@@ -1364,7 +1375,7 @@ describe('in-chat agent post-processing runner', () => {
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
         await new Promise(resolve => setTimeout(resolve, 75));
 
-        expect(chat[0].extra.inChatAgents.regexScripts).toEqual(enabledAgents[0].regexScripts);
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
     });
 
@@ -1372,7 +1383,13 @@ describe('in-chat agent post-processing runner', () => {
         useRegexOnlyAgent();
 
         const { initAgentRunner, refreshRegexSnapshotsForAgent } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const { buildRegexScriptRefsForAgent } = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
         initAgentRunner();
+        const oldScript = {
+            ...enabledAgents[0].regexScripts[0],
+            replaceString: '<div class="status old">$1</div>',
+        };
+        const oldRevision = buildRegexScriptRefsForAgent('agent-regex-only', [oldScript])[0].revision;
 
         chat.push({
             name: 'Assistant',
@@ -1383,10 +1400,7 @@ describe('in-chat agent post-processing runner', () => {
                 inChatAgents: {
                     activeAgentIds: ['agent-regex-only'],
                     generationType: 'normal',
-                    regexScripts: [{
-                        ...enabledAgents[0].regexScripts[0],
-                        replaceString: '<div class="status old">$1</div>',
-                    }],
+                    regexScripts: [oldScript],
                     edited: false,
                 },
             },
@@ -1399,8 +1413,9 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(refreshRegexSnapshotsForAgent('agent-regex-only')).toBe(1);
 
-        expect(chat[0].extra.inChatAgents.regexScripts[0].replaceString).toBe('<div class="status new">$1</div>');
-        expect(chat[0].swipe_info[0].extra.inChatAgents.regexScripts[0].replaceString).toBe('<div class="status new">$1</div>');
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
+        expectCompactRegexSnapshot(chat[0].swipe_info[0].extra.inChatAgents);
+        expect(chat[0].extra.inChatAgents.regexScriptRefs[0].revision).not.toBe(oldRevision);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
 
         await new Promise(resolve => setTimeout(resolve, 5));
@@ -1424,12 +1439,7 @@ describe('in-chat agent post-processing runner', () => {
         const result = await runAgentOnMessage('agent-regex-only', 0);
 
         expect(result.status).toBe('skipped-empty-prompt');
-        expect(chat[0].extra.inChatAgents).toEqual({
-            activeAgentIds: ['agent-regex-only'],
-            generationType: 'normal',
-            regexScripts: enabledAgents[0].regexScripts,
-            edited: false,
-        });
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
         expect(saveChatDebounced).toHaveBeenCalled();
 
         await new Promise(resolve => setTimeout(resolve, 5));
@@ -1461,12 +1471,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await eventSource.emit(eventTypes.STREAM_TOKEN_RECEIVED, '[STATUS|ready]');
 
-        expect(chat[0].extra.inChatAgents).toEqual({
-            activeAgentIds: ['agent-regex-only'],
-            generationType: 'normal',
-            regexScripts: enabledAgents[0].regexScripts,
-            edited: false,
-        });
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
         expect(saveChatDebounced).not.toHaveBeenCalled();
         await new Promise(resolve => setTimeout(resolve, 5));
         expect(saveChat).not.toHaveBeenCalled();
@@ -1965,14 +1970,15 @@ Helper context.`;
 
         await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
 
-        expect(chat[0].swipe_info[0].extra.inChatAgents.regexScripts).toEqual(enabledAgents[0].regexScripts);
+        expect(chat[0].swipe_info[0].extra.inChatAgents.regexScriptRefs).toHaveLength(1);
+        expectCompactRegexSnapshot(chat[0].swipe_info[0].extra.inChatAgents);
 
         chat[0].extra = {};
         switchToSwipe(chat[0], 0);
 
-        expect(chat[0].extra.inChatAgents.regexScripts).toEqual(enabledAgents[0].regexScripts);
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
         await eventSource.emit(eventTypes.CHARACTER_MESSAGE_RENDERED, 0, 'normal');
-        expect(chat[0].extra.inChatAgents.regexScripts).toEqual(enabledAgents[0].regexScripts);
+        expectCompactRegexSnapshot(chat[0].extra.inChatAgents);
     });
 
     test('ignores impersonate post-processing without clearing existing regex metadata', async () => {
