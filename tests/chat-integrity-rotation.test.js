@@ -103,11 +103,52 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackup), 'utf8')).resolves.toContain('forced overwrite chat');
     });
 
+    test('rejects invalid save payloads without overwriting an existing chat', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-invalid-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const originalContent = chatWithIntegrity('valid-integrity', 'original disk chat').map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, originalContent);
+
+        await expect(trySaveChat(
+            [],
+            chatFile,
+            false,
+            'test-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/invalid chat save payload/i);
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+
+        await expect(trySaveChat(
+            [{ user_name: 'unused', character_name: 'unused' }],
+            chatFile,
+            false,
+            'test-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/invalid chat save payload/i);
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
+    });
+
     test('adopts returned integrity only for the active chat file', async () => {
         const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
 
         expect(scriptSource).toContain('const activeChatName = characters[this_chid]?.chat;');
         expect(scriptSource).toContain('const isActiveChatSave = fileName === activeChatName;');
         expect(scriptSource).toContain('if (isActiveChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
+    });
+
+    test('queues chat saves and keeps forced overwrites inside the active queue task', async () => {
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+
+        expect(scriptSource).toContain('let chatSaveQueue = Promise.resolve();');
+        expect(scriptSource).toContain('export function saveChat(...saveChatArguments)');
+        expect(scriptSource).toContain('.then(() => saveChatImmediately(...saveChatArguments));');
+        expect(scriptSource).toContain('async function saveChatImmediately');
+        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, mesId, force: true, chatData, throwOnError });');
     });
 });

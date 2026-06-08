@@ -502,6 +502,7 @@ export let chat = [];
 export let swipeState = SWIPE_STATE.NONE;
 let chatSaveTimeout = null;
 let chatSavePromise = null;
+let chatSaveQueue = Promise.resolve();
 let importFlashTimeout;
 export let isChatSaving = false;
 export let firstRun = false;
@@ -10047,7 +10048,16 @@ export async function flushPendingChatSaves() {
  *
  * @returns {Promise<boolean>}
  */
-export async function saveChat({ chatName, withMetadata, mesId, force = false, chatData = undefined, throwOnError = false } = {}) {
+export function saveChat(...saveChatArguments) {
+    const saveTask = chatSaveQueue
+        .catch(error => console.warn('Previous chat save failed before queued save.', error))
+        .then(() => saveChatImmediately(...saveChatArguments));
+
+    chatSaveQueue = saveTask.catch(() => {});
+    return saveTask;
+}
+
+async function saveChatImmediately({ chatName, withMetadata, mesId, force = false, chatData = undefined, throwOnError = false } = {}) {
     if (selected_group) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
@@ -10134,7 +10144,7 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
             return false;
         }
 
-        return await saveChat({ chatName, withMetadata, mesId, force: true, chatData, throwOnError });
+        return await saveChatImmediately({ chatName, withMetadata, mesId, force: true, chatData, throwOnError });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
