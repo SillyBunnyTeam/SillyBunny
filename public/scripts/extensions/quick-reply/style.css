@@ -26,6 +26,7 @@
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   order: 1;
   position: relative;
 }
@@ -34,14 +35,20 @@
   right: 0.25em;
   top: 0;
 }
+#qr--bar.popoutVisible {
+  box-sizing: border-box;
+  min-height: var(--sb-control-min-height, 2em);
+  padding-inline: 2.5em;
+}
 /*hide QR popout for mobile*/
 @media screen and (max-width: 1000px) {
   #qr--bar > #qr--popoutTrigger {
     display: none;
   }
-}
-#qr--bar.popoutVisible {
-  padding-right: 2.5em;
+  #qr--bar.popoutVisible {
+    min-height: 0;
+    padding-inline: 0;
+  }
 }
 #qr--popout {
   display: flex;
