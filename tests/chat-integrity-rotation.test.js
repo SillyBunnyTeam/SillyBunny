@@ -146,6 +146,47 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, preWriteBackup), 'utf8')).resolves.toBe(originalContent);
     });
 
+    test('keeps distinct pre-write backups for rapid overwrites in the same second', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-rapid-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'original disk chat').map(JSON.stringify).join('\n'));
+        const firstResult = await trySaveChat(
+            chatWithIntegrity('valid-integrity', 'first replacement'),
+            chatFile,
+            false,
+            'test-user',
+            'Test Card',
+            backupDir,
+        );
+        const secondResult = await trySaveChat(
+            chatWithIntegrity(firstResult.integrity, 'second replacement'),
+            chatFile,
+            false,
+            'test-user',
+            'Test Card',
+            backupDir,
+        );
+        await trySaveChat(
+            chatWithIntegrity(secondResult.integrity, 'third replacement'),
+            chatFile,
+            false,
+            'test-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const backupFiles = await fs.readdir(backupDir);
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        expect(new Set(preWriteBackups).size).toBe(3);
+        expect(preWriteBackups).toHaveLength(3);
+    });
+
     test('warns on suspicious shrink but still preserves the existing chat', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-shrink-'));
@@ -221,7 +262,8 @@ describe('chat integrity rotation', () => {
 
         expect(scriptSource).toContain('let chatSaveQueue = Promise.resolve();');
         expect(scriptSource).toContain('export function saveChat(...saveChatArguments)');
-        expect(scriptSource).toContain('const metadataSnapshot = { ...chat_metadata, ...(options.withMetadata || {}) };');
+        expect(scriptSource).toContain('const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });');
+        expect(scriptSource).toContain('const chatData = cloneChatSavePayload(sourceChatData);');
         expect(scriptSource).toContain('activeChatName: activeCharacter?.chat');
         expect(scriptSource).toContain('characterName: activeCharacter?.name');
         expect(scriptSource).toContain('avatarUrl: activeCharacter?.avatar');
@@ -230,6 +272,8 @@ describe('chat integrity rotation', () => {
         expect(scriptSource).toContain('.then(() => saveChatImmediately(...queuedSaveArguments))');
         expect(scriptSource).toContain('.finally(() => setChatSaveActive(false));');
         expect(scriptSource).toContain('async function saveChatImmediately');
+        expect(scriptSource).toContain('applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);');
+        expect(scriptSource).toContain('rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);');
         expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, activeChatName, characterName, avatarUrl, wasGroupChat });');
     });
 
@@ -265,10 +309,12 @@ describe('chat integrity rotation', () => {
 
         expect(groupChatSource).toContain('let groupChatSaveQueue = Promise.resolve();');
         expect(groupChatSource).toContain('function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false)');
-        expect(groupChatSource).toContain('const chatSnapshot = chat.slice();');
-        expect(groupChatSource).toContain('const metadataSnapshot = { ...chat_metadata };');
+        expect(groupChatSource).toContain('const chatSnapshot = cloneGroupChatSavePayload(chat);');
+        expect(groupChatSource).toContain('const metadataSnapshot = structuredClone(chat_metadata);');
         expect(groupChatSource).toContain('.then(() => saveGroupChatImmediately({');
-        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata });');
+        expect(groupChatSource).toContain('applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);');
+        expect(groupChatSource).toContain('rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);');
+        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave });');
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });

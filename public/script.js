@@ -503,6 +503,7 @@ export let swipeState = SWIPE_STATE.NONE;
 let chatSaveTimeout = null;
 let chatSavePromise = null;
 let chatSaveQueue = Promise.resolve();
+const queuedChatIntegrityByFile = new Map();
 let chatGeneration = 0;
 let chatSaveActivityCount = 0;
 let importFlashTimeout;
@@ -3262,6 +3263,36 @@ function setChatSaveActive(isActive) {
     chatSaveActivityCount += isActive ? 1 : -1;
     chatSaveActivityCount = Math.max(0, chatSaveActivityCount);
     isChatSaving = chatSaveActivityCount > 0;
+}
+
+function getQueuedChatIntegrityKey(avatarUrl, chatName) {
+    if (!avatarUrl || !chatName) {
+        return '';
+    }
+
+    return `${avatarUrl}\0${chatName}`;
+}
+
+function cloneChatSavePayload(chatData) {
+    return structuredClone(chatData);
+}
+
+function applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave) {
+    if (isActiveChatSave && typeof chat_metadata.integrity === 'string' && chat_metadata.integrity) {
+        metadata.integrity = chat_metadata.integrity;
+        return;
+    }
+
+    const queuedIntegrity = integrityKey ? queuedChatIntegrityByFile.get(integrityKey) : undefined;
+    if (typeof queuedIntegrity === 'string' && queuedIntegrity) {
+        metadata.integrity = queuedIntegrity;
+    }
+}
+
+function rememberQueuedChatIntegrity(integrityKey, integrity) {
+    if (integrityKey && typeof integrity === 'string' && integrity) {
+        queuedChatIntegrityByFile.set(integrityKey, integrity);
+    }
 }
 
 /**
@@ -10071,12 +10102,13 @@ export function saveChat(...saveChatArguments) {
 
     if (options) {
         const mesId = options.mesId;
-        const chatData = Array.isArray(options.chatData)
+        const sourceChatData = Array.isArray(options.chatData)
             ? options.chatData
             : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
                 ? chat.slice(0, Number(mesId) + 1)
                 : chat.slice();
-        const metadataSnapshot = { ...chat_metadata, ...(options.withMetadata || {}) };
+        const chatData = cloneChatSavePayload(sourceChatData);
+        const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });
         const activeCharacter = characters[this_chid];
         queuedSaveArguments = [{
             ...options,
@@ -10110,10 +10142,14 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
         [chatName, withMetadata, mesId, force, throwOnError] = arguments;
     }
 
-    const metadata = metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) };
+    const metadata = structuredClone(metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) });
     const fileName = chatName ?? activeChatName;
     const currentActiveChatName = characters[this_chid]?.chat;
     const isActiveChatSave = fileName === currentActiveChatName;
+    const fallbackCharacter = characters[this_chid] || {};
+    const resolvedCharacterName = characterName || fallbackCharacter.name;
+    const resolvedAvatarUrl = avatarUrl || fallbackCharacter.avatar;
+    const integrityKey = getQueuedChatIntegrityKey(resolvedAvatarUrl, fileName);
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -10125,7 +10161,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
         return false;
     }
 
-    const activeCharacter = characters.find(character => character?.avatar === avatarUrl) || characters[this_chid];
+    const activeCharacter = characters.find(character => character?.avatar === resolvedAvatarUrl) || characters[this_chid];
     if (activeCharacter) {
         activeCharacter.date_last_chat = Date.now();
     }
@@ -10133,8 +10169,9 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
     const trimmedChat = Array.isArray(chatData)
         ? chatData
         : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
-            ? chat.slice(0, Number(mesId) + 1)
-            : chat.slice();
+            ? cloneChatSavePayload(chat.slice(0, Number(mesId) + 1))
+            : cloneChatSavePayload(chat);
+    applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);
 
     /** @type {ChatHeader} */
     const chatHeader = {
@@ -10149,10 +10186,10 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             cache: 'no-cache',
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                ch_name: characterName || characters[this_chid].name,
+                ch_name: resolvedCharacterName,
                 file_name: fileName,
                 chat: [chatHeader, ...trimmedChat],
-                avatar_url: avatarUrl || characters[this_chid].avatar,
+                avatar_url: resolvedAvatarUrl,
                 force: force,
             }),
         });
@@ -10160,6 +10197,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
 
         if (result.ok) {
             const responseData = await result.json().catch(() => ({}));
+            rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);
             if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
                 chat_metadata.integrity = responseData.integrity;
             }

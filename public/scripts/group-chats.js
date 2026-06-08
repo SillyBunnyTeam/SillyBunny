@@ -128,6 +128,7 @@ let fav_grp_checked = false;
 let openGroupId = null;
 let newGroupMembers = [];
 let groupChatSaveQueue = Promise.resolve();
+const queuedGroupChatIntegrityByFile = new Map();
 
 const GROUP_MEMBER_MODELS_KEY = 'member_models';
 const GROUP_AUTO_MODE_KEY = 'SillyBunny.groupAutoModeEnabled';
@@ -1556,6 +1557,28 @@ function resetSelectedGroup() {
     is_group_generating = false;
 }
 
+function cloneGroupChatSavePayload(chatData) {
+    return structuredClone(chatData);
+}
+
+function applyQueuedGroupChatIntegrity(metadata, chatId, isActiveGroupChatSave) {
+    if (isActiveGroupChatSave && typeof chat_metadata.integrity === 'string' && chat_metadata.integrity) {
+        metadata.integrity = chat_metadata.integrity;
+        return;
+    }
+
+    const queuedIntegrity = chatId ? queuedGroupChatIntegrityByFile.get(chatId) : undefined;
+    if (typeof queuedIntegrity === 'string' && queuedIntegrity) {
+        metadata.integrity = queuedIntegrity;
+    }
+}
+
+function rememberQueuedGroupChatIntegrity(chatId, integrity) {
+    if (chatId && typeof integrity === 'string' && integrity) {
+        queuedGroupChatIntegrityByFile.set(chatId, integrity);
+    }
+}
+
 /**
  * Saves a group chat to the server.
  * @param {string} groupId Group ID
@@ -1571,8 +1594,8 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
         return Promise.resolve(false);
     }
 
-    const chatSnapshot = chat.slice();
-    const metadataSnapshot = { ...chat_metadata };
+    const chatSnapshot = cloneGroupChatSavePayload(chat);
+    const metadataSnapshot = structuredClone(chat_metadata);
     const chatIdSnapshot = group.chat_id;
     const saveTask = groupChatSaveQueue
         .catch(error => console.warn('Previous group chat save failed before queued save.', error))
@@ -1602,13 +1625,16 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
         shouldSaveGroup = true;
     }
     group.date_last_chat = Date.now();
+    const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;
+    const metadataForSave = structuredClone(metadata || chat_metadata);
+    applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);
     /** @type {ChatHeader} */
     const chatHeader = {
-        chat_metadata: metadata,
+        chat_metadata: metadataForSave,
         user_name: 'unused',
         character_name: 'unused',
     };
-    const chatMessages = Array.isArray(chatData) ? chatData : chat;
+    const chatMessages = Array.isArray(chatData) ? chatData : cloneGroupChatSavePayload(chat);
     const saveGroupChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
@@ -1644,11 +1670,11 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
             return false;
         }
 
-        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata });
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave });
     }
 
     const responseData = await response.json().catch(() => ({}));
-    const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;
+    rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);
     if (isActiveGroupChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
         chat_metadata.integrity = responseData.integrity;
     }

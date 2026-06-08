@@ -67,9 +67,19 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
 
 function backupChatPreWrite(directory, name, data) {
     try {
-        backupChat(directory, name, data, CHAT_PRE_WRITE_BACKUPS_PREFIX);
+        if (!isBackupEnabled) { return; }
+        if (!fs.existsSync(directory)) {
+            console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+        }
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
+
+        tryWriteFileSync(backupFile, data);
         removeOldBackups(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, PRE_WRITE_BACKUP_RING_SIZE);
+        if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
+            return;
+        }
+        removeOldBackups(directory, CHAT_PRE_WRITE_BACKUPS_PREFIX, maxTotalChatBackups);
     } catch (err) {
         console.error(`Could not create pre-write chat backup for ${name}`, err);
     }
