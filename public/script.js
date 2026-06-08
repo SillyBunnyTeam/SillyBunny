@@ -503,6 +503,9 @@ export let swipeState = SWIPE_STATE.NONE;
 let chatSaveTimeout = null;
 let chatSavePromise = null;
 let chatSaveQueue = Promise.resolve();
+const queuedChatIntegrityByFile = new Map();
+let chatGeneration = 0;
+let chatSaveActivityCount = 0;
 let importFlashTimeout;
 export let isChatSaving = false;
 export let firstRun = false;
@@ -3252,6 +3255,46 @@ export function cancelDebouncedChatSave() {
     }
 }
 
+export function incrementChatGeneration() {
+    chatGeneration++;
+}
+
+function setChatSaveActive(isActive) {
+    chatSaveActivityCount += isActive ? 1 : -1;
+    chatSaveActivityCount = Math.max(0, chatSaveActivityCount);
+    isChatSaving = chatSaveActivityCount > 0;
+}
+
+function getQueuedChatIntegrityKey(avatarUrl, chatName) {
+    if (!avatarUrl || !chatName) {
+        return '';
+    }
+
+    return `${avatarUrl}\0${chatName}`;
+}
+
+function cloneChatSavePayload(chatData) {
+    return structuredClone(chatData);
+}
+
+function applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave) {
+    if (isActiveChatSave && typeof chat_metadata.integrity === 'string' && chat_metadata.integrity) {
+        metadata.integrity = chat_metadata.integrity;
+        return;
+    }
+
+    const queuedIntegrity = integrityKey ? queuedChatIntegrityByFile.get(integrityKey) : undefined;
+    if (typeof queuedIntegrity === 'string' && queuedIntegrity) {
+        metadata.integrity = queuedIntegrity;
+    }
+}
+
+function rememberQueuedChatIntegrity(integrityKey, integrity) {
+    if (integrityKey && typeof integrity === 'string' && integrity) {
+        queuedChatIntegrityByFile.set(integrityKey, integrity);
+    }
+}
+
 /**
  * Visually removes all chat message elements.
  * @param {object} [options] Options
@@ -3278,7 +3321,10 @@ export async function clearChat({ clearData = false } = {}) {
     await saveItemizedPrompts(getCurrentChatId());
     itemizedPrompts.length = 0;
 
-    if (clearData) chat.length = 0;
+    if (clearData) {
+        chat.length = 0;
+        incrementChatGeneration();
+    }
 }
 
 export async function deleteLastMessage() {
@@ -9935,6 +9981,7 @@ export function saveChatDebounced() {
     const chid = this_chid;
     const selectedGroup = selected_group;
     const chatId = getCurrentChatId();
+    const generation = chatGeneration;
 
     cancelDebouncedChatSave();
 
@@ -9949,6 +9996,8 @@ export function saveChatDebounced() {
             currentCharacterId: this_chid,
             scheduledChatId: chatId,
             currentChatId: getCurrentChatId(),
+            scheduledGeneration: generation,
+            currentGeneration: chatGeneration,
         });
 
         if (abortReason) {
@@ -10005,16 +10054,10 @@ export async function flushPendingChatSaves() {
         }
     }
 
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 100, { rejectOnTimeout: false });
-    if (isChatSaving) {
-        toastr.error(t`The current chat is still saving. Try again in a moment.`, t`Chat save still in progress`);
-        return false;
-    }
-
     toastr.info(t`Saving chat...`, t`Saving chat`);
 
     try {
-        isChatSaving = true;
+        setChatSaveActive(true);
 
         const didSave = selected_group
             ? await saveGroupChat(selected_group, true, false, true)
@@ -10032,7 +10075,7 @@ export async function flushPendingChatSaves() {
         console.error('Error flushing pending chat saves', error);
         return false;
     } finally {
-        isChatSaving = false;
+        setChatSaveActive(false);
     }
 }
 
@@ -10049,16 +10092,47 @@ export async function flushPendingChatSaves() {
  * @returns {Promise<boolean>}
  */
 export function saveChat(...saveChatArguments) {
+    const [firstArgument] = saveChatArguments;
+    const options = firstArgument && typeof firstArgument === 'object'
+        ? firstArgument
+        : saveChatArguments.length === 0
+            ? {}
+            : undefined;
+    let queuedSaveArguments = saveChatArguments;
+
+    if (options) {
+        const mesId = options.mesId;
+        const sourceChatData = Array.isArray(options.chatData)
+            ? options.chatData
+            : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
+                ? chat.slice(0, Number(mesId) + 1)
+                : chat.slice();
+        const chatData = cloneChatSavePayload(sourceChatData);
+        const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });
+        const activeCharacter = characters[this_chid];
+        queuedSaveArguments = [{
+            ...options,
+            chatData,
+            metadataSnapshot,
+            activeChatName: activeCharacter?.chat,
+            characterName: activeCharacter?.name,
+            avatarUrl: activeCharacter?.avatar,
+            wasGroupChat: Boolean(selected_group),
+        }];
+    }
+
+    setChatSaveActive(true);
     const saveTask = chatSaveQueue
         .catch(error => console.warn('Previous chat save failed before queued save.', error))
-        .then(() => saveChatImmediately(...saveChatArguments));
+        .then(() => saveChatImmediately(...queuedSaveArguments))
+        .finally(() => setChatSaveActive(false));
 
     chatSaveQueue = saveTask.catch(() => {});
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, mesId, force = false, chatData = undefined, throwOnError = false } = {}) {
-    if (selected_group) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+    if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
     }
@@ -10068,10 +10142,14 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
         [chatName, withMetadata, mesId, force, throwOnError] = arguments;
     }
 
-    const metadata = { ...chat_metadata, ...(withMetadata || {}) };
-    const activeChatName = characters[this_chid]?.chat;
+    const metadata = structuredClone(metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) });
     const fileName = chatName ?? activeChatName;
-    const isActiveChatSave = fileName === activeChatName;
+    const currentActiveChatName = characters[this_chid]?.chat;
+    const isActiveChatSave = fileName === currentActiveChatName;
+    const fallbackCharacter = characters[this_chid] || {};
+    const resolvedCharacterName = characterName || fallbackCharacter.name;
+    const resolvedAvatarUrl = avatarUrl || fallbackCharacter.avatar;
+    const integrityKey = getQueuedChatIntegrityKey(resolvedAvatarUrl, fileName);
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -10083,13 +10161,17 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
         return false;
     }
 
-    characters[this_chid].date_last_chat = Date.now();
+    const activeCharacter = characters.find(character => character?.avatar === resolvedAvatarUrl) || characters[this_chid];
+    if (activeCharacter) {
+        activeCharacter.date_last_chat = Date.now();
+    }
 
     const trimmedChat = Array.isArray(chatData)
         ? chatData
         : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
-            ? chat.slice(0, Number(mesId) + 1)
-            : chat.slice();
+            ? cloneChatSavePayload(chat.slice(0, Number(mesId) + 1))
+            : cloneChatSavePayload(chat);
+    applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);
 
     /** @type {ChatHeader} */
     const chatHeader = {
@@ -10104,10 +10186,10 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
             cache: 'no-cache',
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                ch_name: characters[this_chid].name,
+                ch_name: resolvedCharacterName,
                 file_name: fileName,
                 chat: [chatHeader, ...trimmedChat],
-                avatar_url: characters[this_chid].avatar,
+                avatar_url: resolvedAvatarUrl,
                 force: force,
             }),
         });
@@ -10115,6 +10197,7 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
 
         if (result.ok) {
             const responseData = await result.json().catch(() => ({}));
+            rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);
             if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
                 chat_metadata.integrity = responseData.integrity;
             }
@@ -10144,7 +10227,7 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, mesId, force: true, chatData, throwOnError });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -10435,6 +10518,7 @@ export async function unshallowCharacter(characterId) {
 
 export async function getChat({ allowMissingPersisted = false, switchMenu = true } = {}) {
     try {
+        incrementChatGeneration();
         await unshallowCharacter(this_chid);
         const resolvedChat = await resolveCharacterChatForLoad(this_chid, { allowCreate: true, allowMissingPersisted });
 
@@ -13816,16 +13900,9 @@ export async function saveMetadata() {
 
 export async function saveChatConditional() {
     try {
-        await waitUntilCondition(() => !isChatSaving, DEFAULT_SAVE_EDIT_TIMEOUT, 100);
-    } catch {
-        console.warn('Timeout waiting for chat to save');
-        return;
-    }
-
-    try {
         cancelDebouncedChatSave();
 
-        isChatSaving = true;
+        setChatSaveActive(true);
 
         if (selected_group) {
             await saveGroupChat(selected_group, true);
@@ -13839,7 +13916,7 @@ export async function saveChatConditional() {
     } catch (error) {
         console.error('Error saving chat', error);
     } finally {
-        isChatSaving = false;
+        setChatSaveActive(false);
     }
 }
 

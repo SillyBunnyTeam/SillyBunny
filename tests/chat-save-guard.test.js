@@ -45,4 +45,17 @@ describe('getDebouncedChatSaveAbortReason', () => {
             currentChatId: 'Chat B',
         })).toBe('chat');
     });
+
+    test('aborts when the active chat generation changes for the same chat file', () => {
+        expect(getDebouncedChatSaveAbortReason({
+            scheduledGroupId: null,
+            currentGroupId: null,
+            scheduledCharacterId: 1,
+            currentCharacterId: 1,
+            scheduledChatId: 'Chat A',
+            currentChatId: 'Chat A',
+            scheduledGeneration: 1,
+            currentGeneration: 2,
+        })).toBe('chat generation');
+    });
 });
