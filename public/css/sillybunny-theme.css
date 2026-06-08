@@ -2822,12 +2822,16 @@ input[type='range']::-moz-range-thumb {
     font-size: 0.86rem;
 }
 
-/* Mobile/touch: keep slider thumbs away from card edges and let vertical drags scroll. */
+/* Mobile/touch: keep dense controls scroll-friendly during vertical drags. */
 @media (pointer: coarse) {
     .sb-sampling-control-card input[type='range'].neo-range-slider {
         display: block;
         max-width: min(420px, calc(100% - 48px));
         margin-inline: auto;
+        touch-action: pan-y;
+    }
+
+    select[data-preset-manager-for] {
         touch-action: pan-y;
     }
 
