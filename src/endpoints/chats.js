@@ -473,6 +473,28 @@ class IntegrityMismatchError extends Error {
     }
 }
 
+class InvalidChatDataError extends Error {
+    constructor(...params) {
+        super(...params);
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, InvalidChatDataError);
+        }
+        this.date = new Date();
+    }
+}
+
+function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isValidChatSavePayload(chatData) {
+    return Array.isArray(chatData)
+        && chatData.length > 0
+        && isPlainObject(chatData[0])
+        && isPlainObject(chatData[0].chat_metadata)
+        && chatData.every(isPlainObject);
+}
+
 /**
  * Tries to save the chat data to a file, performing an integrity check if required.
  * @param {Array} chatData The chat array to save.
@@ -483,6 +505,10 @@ class IntegrityMismatchError extends Error {
  * @param {string} backupDirectory Passed to backupChat.
  */
 export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory) {
+    if (!isValidChatSavePayload(chatData)) {
+        throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
+    }
+
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;
 
@@ -531,6 +557,10 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
             return response.status(400).send({ error: 'integrity' });
+        }
+        if (error instanceof InvalidChatDataError) {
+            console.error(error.message);
+            return response.status(400).send({ error: error.message });
         }
         console.error(error);
         return response.status(500).send({ error: 'An error has occurred, see the console logs for more information.' });
@@ -912,6 +942,10 @@ router.post('/group/save', async function (request, response) {
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
             return response.status(400).send({ error: 'integrity' });
+        }
+        if (error instanceof InvalidChatDataError) {
+            console.error(error.message);
+            return response.status(400).send({ error: error.message });
         }
         console.error(error);
         return response.status(500).send({ error: 'An error has occurred, see the console logs for more information.' });
