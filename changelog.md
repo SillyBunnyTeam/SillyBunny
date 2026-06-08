@@ -24,6 +24,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 ### Merged Staging PRs
 - PR #366 (2026-06-07) `chore: prepare v1.6.4`
 - PR #371 (2026-06-08) `fix: restore iOS mobile main screen layout`
+- PR #372 (2026-06-08) `fix(mobile): guard preset dropdown scroll taps`
 
 ## v1.6.3
 
