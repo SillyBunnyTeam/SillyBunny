@@ -83,6 +83,7 @@ import {
     chatElement,
     ensureMessageMediaIsArray,
     syncCharacterMenuActiveEntity,
+    incrementChatGeneration,
 } from '../script.js';
 import { printTagList, createTagMapFromList, applyTagsOnCharacterSelect, tag_map, applyTagsOnGroupSelect, printTagFilters, tag_filter_type } from './tags.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
@@ -126,6 +127,7 @@ let group_generation_id = null;
 let fav_grp_checked = false;
 let openGroupId = null;
 let newGroupMembers = [];
+let groupChatSaveQueue = Promise.resolve();
 
 const GROUP_MEMBER_MODELS_KEY = 'member_models';
 const GROUP_AUTO_MODE_KEY = 'SillyBunny.groupAutoModeEnabled';
@@ -1234,6 +1236,8 @@ async function validateGroup(group) {
  * @returns {Promise<void>} A promise that resolves when the chat messages have been loaded.
  */
 export async function getGroupChat(groupId, reload = false, { switchMenu = true } = {}) {
+    incrementChatGeneration();
+
     const group = groups.find((x) => x.id === groupId);
     if (!group) {
         console.warn('Group not found', groupId);
@@ -1560,13 +1564,39 @@ function resetSelectedGroup() {
  * @param {boolean} throwOnError Rethrow save errors after notifying the user
  * @returns {Promise<boolean>} A promise that resolves when the group chat has been saved.
  */
-async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false) {
+function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false) {
+    const group = groups.find(x => x.id == groupId);
+    if (!group) {
+        console.warn('Group not found', groupId);
+        return Promise.resolve(false);
+    }
+
+    const chatSnapshot = chat.slice();
+    const metadataSnapshot = { ...chat_metadata };
+    const chatIdSnapshot = group.chat_id;
+    const saveTask = groupChatSaveQueue
+        .catch(error => console.warn('Previous group chat save failed before queued save.', error))
+        .then(() => saveGroupChatImmediately({
+            groupId,
+            shouldSaveGroup,
+            force,
+            throwOnError,
+            chatId: chatIdSnapshot,
+            chatData: chatSnapshot,
+            metadata: metadataSnapshot,
+        }));
+
+    groupChatSaveQueue = saveTask.catch(() => {});
+    return saveTask;
+}
+
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
         return false;
     }
-    const chatId = group.chat_id;
+
     if (chatId && Array.isArray(group.chats) && !group.chats.includes(chatId)) {
         group.chats.push(chatId);
         shouldSaveGroup = true;
@@ -1574,14 +1604,15 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnErr
     group.date_last_chat = Date.now();
     /** @type {ChatHeader} */
     const chatHeader = {
-        chat_metadata: { ...chat_metadata },
+        chat_metadata: metadata,
         user_name: 'unused',
         character_name: 'unused',
     };
+    const chatMessages = Array.isArray(chatData) ? chatData : chat;
     const saveGroupChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chat], force: force }),
+        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force }),
     });
     const response = await fetch('/api/chats/group/save', saveGroupChatRequest);
 
@@ -1613,11 +1644,12 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnErr
             return false;
         }
 
-        return await saveGroupChat(groupId, shouldSaveGroup, true, throwOnError);
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata });
     }
 
     const responseData = await response.json().catch(() => ({}));
-    if (typeof responseData?.integrity === 'string' && responseData.integrity) {
+    const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;
+    if (isActiveGroupChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
         chat_metadata.integrity = responseData.integrity;
     }
 

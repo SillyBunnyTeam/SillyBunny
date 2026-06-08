@@ -32,6 +32,8 @@ const checkIntegrity = !!getConfigValue('backups.chat.checkIntegrity', true, 'bo
 
 export const CHAT_BACKUPS_PREFIX = 'chat_';
 const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
+const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
+const PRE_WRITE_BACKUP_RING_SIZE = 3;
 
 /**
  * Saves a chat to the backups directory.
@@ -61,6 +63,33 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
     } catch (err) {
         console.error(`Could not backup chat for ${name}`, err);
     }
+}
+
+function backupChatPreWrite(directory, name, data) {
+    try {
+        backupChat(directory, name, data, CHAT_PRE_WRITE_BACKUPS_PREFIX);
+        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        removeOldBackups(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, PRE_WRITE_BACKUP_RING_SIZE);
+    } catch (err) {
+        console.error(`Could not create pre-write chat backup for ${name}`, err);
+    }
+}
+
+function countSerializedChatLines(serializedChat) {
+    if (!serializedChat) {
+        return 0;
+    }
+
+    return String(serializedChat).split('\n').filter(line => line.trim()).length;
+}
+
+function isSuspiciousChatShrink(newData, existingSerializedChat) {
+    const existingLines = countSerializedChatLines(existingSerializedChat);
+    if (existingLines <= 5) {
+        return false;
+    }
+
+    return Array.isArray(newData) && newData.length < existingLines * 0.5;
 }
 
 /**
@@ -524,10 +553,18 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
         : chatData;
     const jsonlData = savedChatData?.map(m => JSON.stringify(m)).join('\n');
 
-    if (skipIntegrityCheck && fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
         if (currentChatData) {
-            backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX);
+            backupChatPreWrite(backupDirectory, cardName, currentChatData);
+
+            if (isSuspiciousChatShrink(savedChatData, currentChatData)) {
+                console.warn(`Suspicious chat shrink while saving "${cardName}": incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
+            }
+
+            if (skipIntegrityCheck) {
+                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX);
+            }
         }
     }
 
