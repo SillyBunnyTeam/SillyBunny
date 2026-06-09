@@ -23,7 +23,7 @@ import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
-import { normalizeCharacterBookPosition } from './world-info-character-book.js';
+import { normalizeCharacterBookPosition, normalizeWorldInfoPosition } from './world-info-character-book.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -4839,6 +4839,13 @@ export async function getSortedEntries() {
         }).map((entry) => {
             const hash = getStringHash(JSON.stringify(entry));
             return { ...entry, hash };
+        }).map((entry) => {
+            // SillyBunny: worlds saved before import-time position normalization (#162) can still
+            // carry string positions like 'before_char' or '0'. The prompt builder matches numeric
+            // positions strictly and silently drops anything else, so normalize at scan time.
+            // Runs after hashing to keep existing timed-effect entry hashes stable.
+            const position = normalizeWorldInfoPosition(entry.position, world_info_position) ?? world_info_position.before;
+            return { ...entry, position };
         });
 
         console.debug(`[WI] Found ${entries.length} world lore entries. Sorted by strategy`, Object.entries(world_info_insertion_strategy).find((x) => x[1] === world_info_character_strategy));
