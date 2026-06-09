@@ -4394,6 +4394,28 @@ function formatChatPreview(value) {
     return clampText(String(value ?? '').replace(/\s+/g, ' ').trim() || 'No preview yet.', 120);
 }
 
+function formatChatTokenEstimate(value) {
+    const tokens = Math.round(Number(value) || 0);
+    if (tokens <= 0) {
+        return '';
+    }
+
+    if (tokens >= 1_000_000) {
+        return `~${(tokens / 1_000_000).toFixed(tokens < 10_000_000 ? 1 : 0).replace(/\.0$/, '')}m tokens`;
+    }
+
+    if (tokens >= 1_000) {
+        return `~${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0).replace(/\.0$/, '')}k tokens`;
+    }
+
+    return `~${tokens} tokens`;
+}
+
+function formatChatSelectorLabel(fileName, tokenEstimate = 0) {
+    const tokenLabel = formatChatTokenEstimate(tokenEstimate);
+    return tokenLabel ? `${fileName} (${tokenLabel})` : fileName;
+}
+
 function normalizeChatInfo(chatInfo) {
     const rawFileName = chatInfo?.file_name ?? chatInfo?.id ?? chatInfo?.chat_id ?? chatInfo ?? '';
     const fileName = normalizeChatFileName(rawFileName);
@@ -4404,6 +4426,7 @@ function normalizeChatInfo(chatInfo) {
         lastMessage: chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? '',
         sortTimestamp: getChatSortTimestamp(chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? ''),
         chatItems: Number(chatInfo?.chat_items ?? chatInfo?.message_count ?? 0) || 0,
+        tokenEstimate: Number(chatInfo?.token_estimate ?? chatInfo?.tokenEstimate ?? 0) || 0,
         fileSize: String(chatInfo?.file_size ?? '').trim(),
     };
 }
@@ -4998,17 +5021,27 @@ function countRegexMatches(value, regex) {
     return Array.from(text.matchAll(regex)).length;
 }
 
-function populateChatSelector(select, chatNames, chatContext, placeholder) {
+function populateChatSelector(select, chatFiles, chatContext, placeholder) {
     if (!(select instanceof HTMLSelectElement)) {
         return;
     }
 
     const currentValue = String(chatContext.chatId ?? '').trim();
-    const uniqueNames = Array.from(new Set(chatNames.map(name => String(name ?? '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+    const uniqueChats = Array.from(chatFiles.reduce((map, chatFile) => {
+        const fileName = String(chatFile?.fileName ?? chatFile ?? '').trim();
+        if (fileName && !map.has(fileName)) {
+            map.set(fileName, {
+                fileName,
+                tokenEstimate: Number(chatFile?.tokenEstimate ?? 0) || 0,
+            });
+        }
+
+        return map;
+    }, new Map()).values()).sort((left, right) => left.fileName.localeCompare(right.fileName));
 
     select.replaceChildren();
 
-    if (!uniqueNames.length) {
+    if (!uniqueChats.length) {
         const option = createElement('option', { text: placeholder });
         option.value = '';
         option.selected = true;
@@ -5017,14 +5050,15 @@ function populateChatSelector(select, chatNames, chatContext, placeholder) {
         return;
     }
 
-    for (const chatName of uniqueNames) {
-        const option = createElement('option', { text: chatName });
+    for (const chat of uniqueChats) {
+        const chatName = chat.fileName;
+        const option = createElement('option', { text: formatChatSelectorLabel(chatName, chat.tokenEstimate) });
         option.value = chatName;
         option.selected = chatName === currentValue;
         select.appendChild(option);
     }
 
-    if (currentValue && !uniqueNames.includes(currentValue)) {
+    if (currentValue && !uniqueChats.some(chat => chat.fileName === currentValue)) {
         const option = createElement('option', { text: currentValue });
         option.value = currentValue;
         option.selected = true;
@@ -5032,7 +5066,7 @@ function populateChatSelector(select, chatNames, chatContext, placeholder) {
     }
 
     select.disabled = false;
-    select.value = currentValue || uniqueNames[0];
+    select.value = currentValue || uniqueChats[0].fileName;
 }
 
 function createChatFileButton(chatFile, currentChatId, onSelect, { compact = false } = {}) {
@@ -6092,11 +6126,11 @@ async function refreshChatbarState() {
     const chatNames = files.map(chat => chat.fileName);
 
     if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        chatNames.unshift(chatContext.chatId);
+        files.unshift({ fileName: chatContext.chatId, tokenEstimate: 0 });
     }
 
-    populateChatSelector(desktopRefs?.chatSelect, chatNames, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
-    populateChatSelector(mobileRefs?.chatSelect, chatNames, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
+    populateChatSelector(desktopRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
+    populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
 
     if (desktopRefs) {
         setButtonDisabled(desktopRefs.managerButton, !chatContext.canBrowseChats);
@@ -14292,20 +14326,22 @@ async function refreshBottomChatSelect() {
     }
 
     try {
-        const chats = (await getChatFilesForContext(chatContext)).map(chat => chat.fileName);
+        const chats = await getChatFilesForContext(chatContext);
+        const chatNames = chats.map(chat => chat.fileName);
 
         chatSelect.replaceChildren();
 
-        for (const chatName of chats) {
+        for (const chat of chats) {
+            const chatName = chat.fileName;
             if (!chatName) continue;
             const option = document.createElement('option');
             option.value = chatName;
-            option.textContent = chatName;
+            option.textContent = formatChatSelectorLabel(chatName, chat.tokenEstimate);
             option.selected = chatName === currentChatName;
             chatSelect.appendChild(option);
         }
 
-        if (!chats.includes(currentChatName)) {
+        if (!chatNames.includes(currentChatName)) {
             const fallback = document.createElement('option');
             fallback.value = '';
             fallback.textContent = currentChatName || 'No chat selected';
