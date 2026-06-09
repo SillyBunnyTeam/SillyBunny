@@ -1310,7 +1310,8 @@ body .panelControlBar {
     align-items: flex-start;
     contain: layout paint style;
     contain-intrinsic-size: auto 180px;
-    padding: 12px 14px 4px 14px;
+    /* SillyBunny: keep chat text denser without collapsing message breathing room. */
+    padding: 8px 10px 3px 10px;
     margin-top: 0;
     width: 100%;
     color: var(--SmartThemeBodyColor);
@@ -1640,7 +1641,8 @@ img[src*="sillybunny-pixel-logo"] {
 
 .mes_block {
     padding-top: 0;
-    padding-left: 10px;
+    /* SillyBunny: reduce the avatar-to-text gutter for denser chat styles. */
+    padding-left: 8px;
     width: 100%;
     overflow-x: hidden;
     overflow-y: clip;
@@ -1661,7 +1663,8 @@ img[src*="sillybunny-pixel-logo"] {
 }
 
 .mes_text {
-    padding: 5px var(--mes-right-spacing) 5px 0;
+    /* SillyBunny: let rendered chat text occupy more horizontal space. */
+    padding: 3px calc(var(--mes-right-spacing) - 6px) 3px 0;
 }
 
 .mes_text hr {
