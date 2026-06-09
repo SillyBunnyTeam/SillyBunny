@@ -2612,12 +2612,12 @@
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
-        --sb-topbar-primary-height-base: 36px;
+        --sb-topbar-primary-height-base: 30px;
         --sb-topbar-padding-x-base: 6px;
         --sb-topbar-stack-gap-base: 3px;
         --sb-topbar-bottom-padding-base: 2px;
         --sb-topbar-inline-gap-base: 4px;
-        --sb-topbar-search-row-height-base: 32px;
+        --sb-topbar-search-row-height-base: 28px;
         --sb-topbar-group-gap-base: 3px;
         --sb-chatbar-height-base: 34px;
         --sb-chatbar-gap-base: 4px;
