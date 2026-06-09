@@ -1,0 +1,430 @@
+/* global document, window */
+import { expect, test } from '@playwright/test';
+import { openReadyChat, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+
+// Mobile shell smoke pack: pins the current open/close contracts of the
+// SillyBunny mobile shell (drawers, hamburger nav, chat tools, character
+// panel) so the Phase 1 decomposition of sillybunny-tabs.js has a net.
+// Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test mobile-shell-smoke.e2e.js
+
+test.describe.configure({ mode: 'serial' });
+
+const IPHONE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+function getOverlayStateSnapshot(page) {
+    return page.evaluate(() => {
+        const isDrawerOpen = id => document.getElementById(id)?.classList.contains('openDrawer') === true;
+        const isOverlayOpen = (id, openClass) => {
+            const overlay = document.getElementById(id);
+
+            return Boolean(overlay
+                && !overlay.hidden
+                && overlay.classList.contains(openClass)
+                && overlay.getAttribute('aria-hidden') === 'false');
+        };
+
+        // The connection strip is a desktop-chatbar surface; on mobile the
+        // exclusion cascades close it via setConnectionStripOpenState(false),
+        // which has no observable mobile DOM, so it is not snapshotted here.
+        return {
+            navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
+            chatToolsOpen: isOverlayOpen('sb-mobile-chat-tools', 'sb-chat-tools-open'),
+            leftShellOpen: isDrawerOpen('left-nav-panel'),
+            rightShellOpen: isDrawerOpen('user-settings-block'),
+            characterPanelOpen: isDrawerOpen('right-nav-panel'),
+        };
+    });
+}
+
+function getDrawerBoundsSnapshot(page, drawerId) {
+    return page.evaluate((id) => {
+        const drawer = document.getElementById(id);
+
+        if (!drawer) {
+            return null;
+        }
+
+        return {
+            isOpen: drawer.classList.contains('openDrawer'),
+            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
+            top: drawer.style.top,
+            bottom: drawer.style.bottom,
+            height: drawer.style.height,
+            maxHeight: drawer.style.maxHeight,
+            boxSizing: drawer.style.boxSizing,
+        };
+    }, drawerId);
+}
+
+function getComposerViewportFit(page) {
+    return page.evaluate(() => {
+        const composer = document.getElementById('form_sheld');
+        const rect = composer?.getBoundingClientRect();
+
+        if (!rect) {
+            return null;
+        }
+
+        return {
+            top: rect.top,
+            bottom: rect.bottom,
+            viewportHeight: window.innerHeight,
+        };
+    });
+}
+
+function getHorizontalOverflow(page) {
+    return page.evaluate(() => {
+        const root = document.documentElement;
+
+        return root.scrollWidth - root.clientWidth;
+    });
+}
+
+function openLeftShell(page) {
+    return page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
+}
+
+// While any drawer or overlay is open, the mobile modal policy marks the page
+// chrome (topbar included) inert, so a trusted pointer click cannot reach the
+// hamburger. Synthetic .click() still runs the toggle cascade under test.
+function clickHamburgerProgrammatically(page) {
+    return page.evaluate(() => document.getElementById('sb-hamburger').click());
+}
+
+async function closeLeftShellThroughUi(page) {
+    const closeButton = page.locator('#left-nav-panel .sb-shell-close');
+
+    if (await closeButton.isVisible().catch(() => false)) {
+        await closeButton.click();
+        return;
+    }
+
+    // Escape routes through closeFocusedShell on the shell root keydown handler.
+    await page.keyboard.press('Escape');
+}
+
+async function captureCheckpoint(page, testInfo, name) {
+    const screenshotPath = testInfo.outputPath(`${name}.png`);
+
+    await page.screenshot({ path: screenshotPath });
+    await testInfo.attach(name, { path: screenshotPath, contentType: 'image/png' });
+}
+
+test.describe('mobile shell smoke at iPhone 390x844', () => {
+    test.use({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: IPHONE_USER_AGENT,
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await openReadyChat(page, { selectCharacter: false });
+    });
+
+    test('left drawer open and close honor the mobile viewport bound contract', async ({ page }, testInfo) => {
+        await openLeftShell(page);
+
+        // syncMobileShellDrawerBounds binds open drawers to the visual viewport
+        // with inline !important top/height and a dataset marker.
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
+            isOpen: true,
+            isViewportBound: true,
+            bottom: 'auto',
+            boxSizing: 'border-box',
+        });
+
+        const openBounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
+
+        expect(openBounds.top).toMatch(/^\d+px$/);
+        expect(Number.parseFloat(openBounds.height)).toBeGreaterThan(0);
+        expect(Number.parseFloat(openBounds.height)).toBeLessThanOrEqual(844);
+        expect(openBounds.maxHeight).toBe(openBounds.height);
+
+        await captureCheckpoint(page, testInfo, 'left-drawer');
+
+        await closeLeftShellThroughUi(page);
+
+        // clearMobileShellDrawerBounds removes every bound property and the
+        // dataset marker once the drawer is no longer open.
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toEqual({
+            isOpen: false,
+            isViewportBound: false,
+            top: '',
+            bottom: '',
+            height: '',
+            maxHeight: '',
+            boxSizing: '',
+        });
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+
+    test('hamburger nav keeps hidden, aria-hidden, and inert in agreement', async ({ page }, testInfo) => {
+        const getNavAgreementSnapshot = () => page.evaluate(() => {
+            const overlay = document.getElementById('sb-mobile-nav');
+            const button = document.getElementById('sb-hamburger');
+
+            return {
+                hidden: overlay?.hidden ?? null,
+                ariaHidden: overlay?.getAttribute('aria-hidden') ?? null,
+                inert: overlay?.inert === true,
+                openClass: overlay?.classList.contains('sb-nav-open') === true,
+                buttonExpanded: button?.getAttribute('aria-expanded') ?? null,
+                buttonOpenClass: button?.classList.contains('is-open') === true,
+            };
+        });
+
+        await page.locator('#sb-hamburger').click();
+
+        await expect.poll(getNavAgreementSnapshot).toEqual({
+            hidden: false,
+            ariaHidden: 'false',
+            inert: false,
+            openClass: true,
+            buttonExpanded: 'true',
+            buttonOpenClass: true,
+        });
+
+        await captureCheckpoint(page, testInfo, 'nav-open');
+
+        await page.locator('#sb-hamburger').click();
+
+        await expect.poll(getNavAgreementSnapshot).toEqual({
+            hidden: true,
+            ariaHidden: 'true',
+            inert: true,
+            openClass: false,
+            buttonExpanded: 'false',
+            buttonOpenClass: false,
+        });
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+
+    test('opening each overlay closes competing mobile surfaces', async ({ page }, testInfo) => {
+        await openLeftShell(page);
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ leftShellOpen: true });
+
+        // toggleMobileNav closes shells, the character panel, and chat tools.
+        await clickHamburgerProgrammatically(page);
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: true,
+            chatToolsOpen: false,
+            leftShellOpen: false,
+            rightShellOpen: false,
+            characterPanelOpen: false,
+        });
+
+        // openMobileChatTools closes the nav, both shells, and the character panel.
+        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: false,
+            chatToolsOpen: true,
+            leftShellOpen: false,
+            rightShellOpen: false,
+            characterPanelOpen: false,
+        });
+
+        await captureCheckpoint(page, testInfo, 'chat-tools');
+
+        // toggleCharacterPanel routes through closeAllDropdowns({ except: 'characters' }).
+        await page.evaluate(() => window.SillyBunnyShell.openCharacters());
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
+            navOpen: false,
+            chatToolsOpen: false,
+            leftShellOpen: false,
+            rightShellOpen: false,
+            characterPanelOpen: true,
+        });
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+
+    test('keyboard-style viewport shrink re-syncs open drawer bounds and recovers', async ({ page }) => {
+        await openLeftShell(page);
+
+        // After a resize the inline height can be handed off to a stylesheet
+        // rule driven by --sb-shell-viewport-height, so this asserts the
+        // rendered geometry (the actual contract), not the inline styles.
+        const getRenderedDrawerFit = () => page.evaluate(() => {
+            const drawer = document.getElementById('left-nav-panel');
+            const rect = drawer.getBoundingClientRect();
+
+            return {
+                isOpen: drawer.classList.contains('openDrawer'),
+                isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
+                top: Math.round(rect.top),
+                bottom: Math.round(rect.bottom),
+                viewportHeight: window.innerHeight,
+            };
+        });
+
+        await expect.poll(async () => {
+            const fit = await getRenderedDrawerFit();
+
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
+        }).toBe(true);
+
+        // Viewport shrink stands in for the on-screen keyboard: the resize
+        // listener re-runs syncMobileViewportState and rebinds open drawers.
+        await page.setViewportSize({ width: 390, height: 500 });
+
+        await expect.poll(async () => {
+            const fit = await getRenderedDrawerFit();
+
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 500) <= 2;
+        }).toBe(true);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+
+        await expect.poll(async () => {
+            const fit = await getRenderedDrawerFit();
+
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
+        }).toBe(true);
+
+        await closeLeftShellThroughUi(page);
+
+        await expect.poll(async () => {
+            const bounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
+
+            return bounds?.isOpen === false && bounds?.isViewportBound === false;
+        }).toBe(true);
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+
+    test('composer stays on screen through keyboard-style viewport shrink', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 390, height: 500 });
+
+        await expect.poll(async () => {
+            const fit = await getComposerViewportFit(page);
+
+            return fit !== null && fit.bottom <= fit.viewportHeight + 1;
+        }).toBe(true);
+
+        await expect(page.locator('#send_textarea')).toBeVisible();
+
+        await captureCheckpoint(page, testInfo, 'composer-short-viewport');
+
+        await page.setViewportSize({ width: 390, height: 844 });
+
+        await expect.poll(async () => {
+            const fit = await getComposerViewportFit(page);
+
+            return fit !== null && fit.bottom <= fit.viewportHeight + 1;
+        }).toBe(true);
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+});
+
+test.describe('mobile shell smoke at narrow 320x568', () => {
+    test.use({
+        viewport: { width: 320, height: 568 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: IPHONE_USER_AGENT,
+    });
+
+    test('composer fits and the send target keeps its current floor', async ({ page }) => {
+        await openReadyChat(page, { selectCharacter: false });
+
+        // Compact mode and connection state come from the linked user profile;
+        // normalize both so this measures the stylesheet contract, not the
+        // profile. The displayNone class on #send_but is only a connection
+        // visibility gate (RossAscends-mods.js), not a sizing rule.
+        await page.evaluate(() => {
+            document.documentElement.setAttribute('data-sb-compact-mode', 'false');
+            document.getElementById('send_but')?.classList.remove('displayNone');
+        });
+        await waitForAnimationFrames(page, 2);
+
+        const sendButtonBox = await page.locator('#send_but').boundingBox();
+
+        // Ratchet floor: today's composer renders the send target at
+        // --sb-composer-action-size (26px tall at this width). The mobile UX
+        // redesign raises this floor to 44px; until then this only guards
+        // against shrinking below the current shipped size.
+        expect(sendButtonBox).not.toBeNull();
+        expect(Math.min(sendButtonBox.width, sendButtonBox.height)).toBeGreaterThanOrEqual(24);
+
+        const composerBox = await page.locator('#form_sheld').boundingBox();
+
+        expect(composerBox).not.toBeNull();
+        expect(composerBox.x).toBeGreaterThanOrEqual(-1);
+        expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(321);
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+});
+
+test.describe('mobile shell smoke at tablet 768x1024', () => {
+    test.use({
+        viewport: { width: 768, height: 1024 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: IPAD_USER_AGENT,
+    });
+
+    test('mobile shell stays active at the 768px boundary', async ({ page }) => {
+        await openReadyChat(page, { selectCharacter: false });
+
+        expect(await page.evaluate(() => window.SillyBunnyShell.isMobileViewport())).toBe(true);
+
+        await openLeftShell(page);
+
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
+            isOpen: true,
+            isViewportBound: true,
+        });
+
+        await clickHamburgerProgrammatically(page);
+
+        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({
+            navOpen: true,
+            leftShellOpen: false,
+        });
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+});
+
+test.describe('compact desktop smoke at 820x1180', () => {
+    test.use({
+        viewport: { width: 820, height: 1180 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: IPAD_USER_AGENT,
+    });
+
+    test('mobile chrome stays dormant in the 769-1000px band', async ({ page }) => {
+        await openReadyChat(page, { selectCharacter: false });
+
+        expect(await page.evaluate(() => window.SillyBunnyShell.isMobileViewport())).toBe(false);
+
+        // Shells open as pinned desktop panels without the mobile bound contract.
+        await openLeftShell(page);
+
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
+            isOpen: true,
+            isViewportBound: false,
+        });
+
+        // openChatTools routes to the desktop chat sidebar above 768px; the
+        // mobile chat tools overlay must stay closed.
+        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
+        await waitForAnimationFrames(page, 2);
+
+        expect((await getOverlayStateSnapshot(page)).chatToolsOpen).toBe(false);
+
+        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+    });
+});
