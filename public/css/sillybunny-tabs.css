@@ -41,14 +41,14 @@
     --sb-connection-strip-padding-x-base: 10px;
     --sb-connection-strip-radius-base: 14px;
     --sb-proxy-button-padding-x-base: 15px;
-    --sb-proxy-button-height-base: 40px;
+    --sb-proxy-button-height-base: 36px;
     --sb-proxy-button-min-width-base: 104px;
     --sb-proxy-button-gap-base: 8px;
     --sb-proxy-icon-scale-base: 0.92;
     --sb-proxy-label-scale-base: 0.76;
     --sb-proxy-underline-inset-base: 12px;
     --sb-proxy-underline-bottom-base: 5px;
-    --sb-mobile-toggle-size-base: 44px;
+    --sb-mobile-toggle-size-base: 40px;
     --sb-home-toggle-min-width-base: 92px;
     --sb-topbar-compact-icon-scale-base: 0.84;
     --sb-mobile-tools-padding-top-base: 10px;

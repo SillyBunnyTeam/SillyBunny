@@ -306,8 +306,9 @@ body.big-avatars .collage_4 .img_4 {
 
 /*bubble chat style*/
 
+/* SillyBunny: denser chat-style spacing so message text has more room. */
 body.bubblechat .mes {
-    padding: 10px;
+    padding: 8px;
     border-radius: 10px;
     background-color: var(--SmartThemeBotMesBlurTintColor);
     margin-bottom: 5px;
@@ -323,7 +324,7 @@ body.bubblechat .mes[is_user="true"] {
 /* Document Style */
 
 body.documentstyle #chat .mes:not(.last_mes) {
-    padding: 5px 10px 0px 10px;
+    padding: 4px 8px 0px 8px;
 }
 
 body.documentstyle .last_mes {
@@ -335,15 +336,15 @@ body.documentstyle #chat .mes .mes_text {
 }
 
 body.documentstyle #chat .mes .mes_block {
-    margin-right: 30px;
+    margin-right: 24px;
 }
 
 body.documentstyle #chat .mes .mes_text {
-    margin-left: 20px;
+    margin-left: 16px;
 }
 
 body.documentstyle #chat .last_mes .mes_text {
-    margin-left: 20px;
+    margin-left: 16px;
     min-height: 70px;
 }
 

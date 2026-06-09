@@ -25,9 +25,9 @@
     --messageLineHeight: calc(var(--mainFontSize) + .5rem);
     --messageTextLetterSpacing: inherit;
     --customlastInContext: 1px solid var(--customThemeColor);
-    --custom-EchoAvatarWidth: 25%;
+    --custom-EchoAvatarWidth: 22%;
     --custom-EchoAvatarHeight: 300px;
-    --custom-EchoAvatarMobileWidth: 25%;
+    --custom-EchoAvatarMobileWidth: 22%;
     --custom-EchoAvatarMobileHeight: 250px;
     --customWhisperAvatarWidth: 50%;
     --customWhisperAvatarAlign: center;
@@ -231,11 +231,11 @@ body.echostyle #chat {
 
             .mes_text,
             .last_mes .mes_text {
-                padding: 10px 20px 10px var(--custom-EchoAvatarWidth, 25%) !important;
+                padding: 8px 14px 8px var(--custom-EchoAvatarWidth, 22%) !important;
                 background-color: var(--moonlit-sb-user-message-bg);
 
                 @media screen and (max-width: 1000px) {
-                    padding: 10px 20px 10px var(--custom-EchoAvatarMobileWidth, 25%) !important;
+                    padding: 8px 14px 8px var(--custom-EchoAvatarMobileWidth, 22%) !important;
                 }
             }
         }
@@ -278,10 +278,10 @@ body.echostyle #chat {
             }
             .mes_text,
             .last_mes .mes_text {
-                padding: 10px var(--custom-EchoAvatarWidth, 25%) 10px 20px !important;
+                padding: 8px var(--custom-EchoAvatarWidth, 22%) 8px 14px !important;
 
                 @media screen and (max-width: 1000px) {
-                    padding: 10px var(--custom-EchoAvatarMobileWidth, 25%) 10px 20px !important;
+                    padding: 8px var(--custom-EchoAvatarMobileWidth, 22%) 8px 14px !important;
                 }
             }
         }
@@ -376,8 +376,8 @@ body.whisperstyle #chat {
         width: 100%;
         color: var(--SmartThemeBodyColor);
         position: relative;
-        padding: 1em;
-        padding-top: 45px !important;
+        padding: 0.8em;
+        padding-top: 40px !important;
         border-radius: 15px;
 
         &::before {
@@ -570,7 +570,7 @@ body.hushstyle #chat {
         width: 100%;
         color: var(--SmartThemeBodyColor);
         position: relative;
-        padding: 1.3em 1.2em;
+        padding: 1em;
         border-radius: 15px;
 
         &.last_mes::before {
@@ -779,9 +779,9 @@ body.ripplestyle #chat {
             border: none !important;
             box-shadow: none !important;
             box-sizing: border-box;
-            padding-top: 20px;
-            padding-left: 12px;
-            padding-right: 24px;
+            padding-top: 16px;
+            padding-left: 10px;
+            padding-right: 18px;
 
             .ch_name::after {
                 content: "";
@@ -894,10 +894,10 @@ body.ripplestyle.big-avatars #chat .mes {
 /* --- Chat Style: Tide 聊天風格：「潮汐」 --- */
 
 body.tidestyle #chat {
-    padding: 0 15px;
+    padding: 0 12px;
 
     @media screen and (max-width: 1000px) {
-        padding: 0 1em;
+        padding: 0 0.8em;
     }
 
     .mes {
@@ -933,9 +933,9 @@ body.tidestyle #chat {
             display: inline-block;
             overflow: hidden;
             border-radius: 0;
-            padding-top: 10px;
+            padding-top: 8px;
             padding-bottom: 0 !important;
-            max-width: 70%;
+            max-width: 74%;
 
             p {
                 display: block;
@@ -943,12 +943,12 @@ body.tidestyle #chat {
                 margin: 0;
                 margin-bottom: 8px !important;
                 background: var(--moonlit-sb-bot-message-bg);
-                padding: 6px 14px !important;
+                padding: 5px 11px !important;
                 border-radius: 18px;
             }
 
             @media screen and (max-width: 1000px) {
-                max-width: 90%;
+                max-width: 92%;
             }
         }
 
