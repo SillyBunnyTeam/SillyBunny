@@ -35,6 +35,55 @@ const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
 const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
 const PRE_WRITE_BACKUP_RING_SIZE = 3;
 
+function normalizeSerializedChatForBackupComparison(data) {
+    const serialized = String(data ?? '');
+    const lines = serialized.split('\n');
+
+    if (!lines[0]) {
+        return serialized;
+    }
+
+    try {
+        const header = JSON.parse(lines[0]);
+        if (!isPlainObject(header?.chat_metadata)) {
+            return serialized;
+        }
+
+        const chatMetadata = { ...header.chat_metadata };
+        delete chatMetadata.integrity;
+        lines[0] = JSON.stringify({ ...header, chat_metadata: chatMetadata });
+        return lines.join('\n');
+    } catch {
+        return serialized;
+    }
+}
+
+function getLatestBackupFilePath(directory, prefix) {
+    const backupFiles = fs.readdirSync(directory)
+        .filter(fileName => fileName.startsWith(prefix))
+        .map(fileName => ({
+            fileName,
+            filePath: path.join(directory, fileName),
+        }))
+        .sort((a, b) => {
+            const mtimeDifference = fs.statSync(b.filePath).mtimeMs - fs.statSync(a.filePath).mtimeMs;
+            return mtimeDifference || b.fileName.localeCompare(a.fileName);
+        });
+
+    return backupFiles[0]?.filePath ?? null;
+}
+
+function isDuplicateRegularChatBackup(directory, backupPrefix, data) {
+    const latestBackupFile = getLatestBackupFilePath(directory, backupPrefix);
+    if (!latestBackupFile) {
+        return false;
+    }
+
+    const latestBackupData = tryReadFileSync(latestBackupFile);
+    return Boolean(latestBackupData)
+        && normalizeSerializedChatForBackupComparison(latestBackupData) === normalizeSerializedChatForBackupComparison(data);
+}
+
 /**
  * Saves a chat to the backups directory.
  * @param {string} directory The user's backup directory.
@@ -48,14 +97,20 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
         if (!isBackupEnabled) { return; }
         if (!fs.existsSync(directory)) {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+            return;
         }
         // replace non-alphanumeric characters with underscores
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const prefix = `${backupPrefix}${name}_`;
+
+        if (backupPrefix === CHAT_BACKUPS_PREFIX && isDuplicateRegularChatBackup(directory, prefix, data)) {
+            return;
+        }
 
         const backupFile = path.join(directory, `${backupPrefix}${name}_${generateTimestamp()}.jsonl`);
 
         tryWriteFileSync(backupFile, data);
-        removeOldBackups(directory, `${backupPrefix}${name}_`);
+        removeOldBackups(directory, prefix);
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
             return;
         }

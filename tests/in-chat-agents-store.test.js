@@ -100,6 +100,27 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getGlobalSettings().helperPrefillMessages).toBe('');
     });
 
+    test('resolves compact regex snapshots from runtime cache', async () => {
+        const store = await importStore();
+        const snapshotStore = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
+        const regexScript = {
+            id: 'script-1',
+            findRegex: '/foo/g',
+            replaceString: '<div>bar</div>',
+        };
+
+        store.loadAgents([{
+            id: 'agent-1',
+            name: 'Regex Agent',
+            regexScripts: [regexScript],
+        }]);
+
+        const refs = snapshotStore.buildRegexScriptRefsForAgent('agent-1', store.getAgentById('agent-1').regexScripts);
+        expect(snapshotStore.resolveRegexScriptsForSnapshot({ regexScriptRefs: refs })).toEqual(store.getAgentById('agent-1').regexScripts);
+        expect(JSON.stringify({ regexScriptRefs: refs })).not.toContain(regexScript.replaceString);
+        expect(snapshotStore.resolveRegexScriptsForSnapshot({ regexScripts: [regexScript] })).toEqual([regexScript]);
+    });
+
     test('recovers legacy enabled agents missing from initialized scoped settings', async () => {
         const store = await importStore();
         store.setGlobalSettings({

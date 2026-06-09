@@ -146,6 +146,41 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, preWriteBackup), 'utf8')).resolves.toBe(originalContent);
     });
 
+    test('skips duplicate post-save backups when only chat integrity changes', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-duplicate-backup-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'same chat').map(JSON.stringify).join('\n'));
+        const firstResult = await trySaveChat(
+            chatWithIntegrity('valid-integrity', 'same chat'),
+            chatFile,
+            false,
+            'duplicate-backup-user',
+            'Test Card',
+            backupDir,
+        );
+        await trySaveChat(
+            chatWithIntegrity(firstResult.integrity, 'same chat'),
+            chatFile,
+            false,
+            'duplicate-backup-user',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const postSaveBackups = backupFiles.filter(fileName => fileName.startsWith('chat_test_card_'));
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(2);
+    });
+
     test('keeps distinct pre-write backups for rapid overwrites in the same second', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-rapid-'));

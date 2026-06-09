@@ -52,6 +52,7 @@ import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
 import { markAutoSummaryComplete, shouldAutoSummarize } from './pathfinder/auto-summary.js';
+import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts } from './regex-snapshot-store.js';
 
 const PROMPT_KEY_PREFIX = 'inchat_agent_';
 const PATHFINDER_AUTO_SUMMARY_PROMPT_KEY = 'pathfinder_zz_auto_summary';
@@ -1785,9 +1786,13 @@ export function buildPromptDynamicMacros(messageText = '', message = null, agent
 
 function updateMessageRegexSnapshot(message, activeAgents, generationType) {
     message.extra ??= {};
-    const regexScripts = activeAgents.flatMap(agent => getAgentRegexScripts(agent));
+    const regexScriptRefs = activeAgents.flatMap(agent => {
+        const scripts = getAgentRegexScripts(agent);
+        cacheAgentRegexScripts(agent?.id, scripts);
+        return buildRegexScriptRefsForAgent(agent?.id, scripts);
+    });
 
-    if (regexScripts.length === 0) {
+    if (regexScriptRefs.length === 0) {
         if (hasAgentExtraValue(message, MESSAGE_EXTRA_KEY)) {
             deleteAgentExtraValue(message, MESSAGE_EXTRA_KEY);
             return true;
@@ -1800,7 +1805,7 @@ function updateMessageRegexSnapshot(message, activeAgents, generationType) {
     const nextSnapshot = {
         activeAgentIds: activeAgents.map(agent => agent.id),
         generationType: normalizeGenerationType(generationType),
-        regexScripts: structuredClone(regexScripts),
+        regexScriptRefs,
         edited: Boolean(previousSnapshot?.edited),
     };
 
@@ -1808,7 +1813,7 @@ function updateMessageRegexSnapshot(message, activeAgents, generationType) {
         ? {
             activeAgentIds: previousSnapshot.activeAgentIds,
             generationType: previousSnapshot.generationType,
-            regexScripts: previousSnapshot.regexScripts,
+            regexScriptRefs: previousSnapshot.regexScriptRefs,
             edited: Boolean(previousSnapshot.edited),
         }
         : null;

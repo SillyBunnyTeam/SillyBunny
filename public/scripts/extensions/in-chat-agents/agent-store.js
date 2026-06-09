@@ -6,6 +6,11 @@ import {
     AGENT_REGEX_SUBSTITUTE,
     normalizeRegexScript,
 } from './regex-scripts.js';
+import {
+    cacheAgentRegexScripts,
+    clearCachedAgentRegexScripts,
+    deleteCachedAgentRegexScripts,
+} from './regex-snapshot-store.js';
 
 /**
  * @typedef {object} AgentInjection
@@ -769,6 +774,17 @@ export function getAgentRegexScripts(rawAgent = {}) {
     return legacyScript ? [legacyScript] : [];
 }
 
+function cacheAgentRegexScriptsForAgent(agent) {
+    cacheAgentRegexScripts(agent?.id, getAgentRegexScripts(agent));
+}
+
+function refreshAgentRegexScriptCache() {
+    clearCachedAgentRegexScripts();
+    for (const agent of agents) {
+        cacheAgentRegexScriptsForAgent(agent);
+    }
+}
+
 /**
  * Creates a new agent with default values.
  * @returns {InChatAgent}
@@ -1040,6 +1056,7 @@ export function isToolAgent(agent) {
 export function loadAgents(data) {
     if (Array.isArray(data)) {
         agents = data.map(normalizeAgent);
+        refreshAgentRegexScriptCache();
     }
 }
 
@@ -1056,6 +1073,7 @@ export async function saveAgent(agent) {
     } else {
         agents.push(normalizedAgent);
     }
+    cacheAgentRegexScriptsForAgent(normalizedAgent);
 
     const response = await fetch('/api/in-chat-agents/save', {
         method: 'POST',
@@ -1074,6 +1092,7 @@ export async function saveAgent(agent) {
  */
 export async function deleteAgent(id) {
     agents = agents.filter(agent => agent.id !== id);
+    deleteCachedAgentRegexScripts(id);
     const scopedStateChanged = removeAgentIdFromScopedEnabledAgentIds(id);
 
     const response = await fetch('/api/in-chat-agents/delete', {
