@@ -228,6 +228,24 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
     });
 
+    test('exposes default-off backup diagnostic logging for chat and settings backups', async () => {
+        const configSource = await fs.readFile(fileURLToPath(new URL('../default/config.yaml', import.meta.url)), 'utf8');
+        const chatsSource = await fs.readFile(fileURLToPath(new URL('../src/endpoints/chats.js', import.meta.url)), 'utf8');
+        const settingsSource = await fs.readFile(fileURLToPath(new URL('../src/endpoints/settings.js', import.meta.url)), 'utf8');
+
+        expect(configSource).toContain('logging: false');
+        expect(chatsSource).toContain('const isBackupLoggingEnabled = !!getConfigValue(\'backups.chat.logging\', false, \'boolean\');');
+        expect(chatsSource).toContain('console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : \'\'}`));');
+        expect(chatsSource).toContain('chat-backup-written');
+        expect(chatsSource).toContain('chat-backup-skipped');
+        expect(chatsSource).toContain('reason: \'deferred\'');
+        expect(chatsSource).toContain('reason: \'duplicate\'');
+        expect(settingsSource).toContain('settings-autosave-requested');
+        expect(settingsSource).toContain('settings-autosave-fired');
+        expect(settingsSource).toContain('settings-backup-written');
+        expect(settingsSource).toContain('settings-backup-skipped');
+    });
+
     test('keeps distinct pre-write backups for rapid overwrites in the same second', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-rapid-'));

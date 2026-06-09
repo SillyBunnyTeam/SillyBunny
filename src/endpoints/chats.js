@@ -17,6 +17,7 @@ import {
     generateTimestamp,
     removeOldBackups,
     formatBytes,
+    color,
     tryWriteFileSync,
     tryReadFileSync,
     tryDeleteFile,
@@ -29,11 +30,44 @@ const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean'
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
 const throttleInterval = Number(getConfigValue('backups.chat.throttleInterval', 10_000, 'number'));
 const checkIntegrity = !!getConfigValue('backups.chat.checkIntegrity', true, 'boolean');
+const isBackupLoggingEnabled = !!getConfigValue('backups.chat.logging', false, 'boolean');
 
 export const CHAT_BACKUPS_PREFIX = 'chat_';
 const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
 const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
 const PRE_WRITE_BACKUP_RING_SIZE = 3;
+
+function logBackupEvent(action, details = {}) {
+    if (!isBackupLoggingEnabled) {
+        return;
+    }
+
+    const fields = Object.entries(details)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(' ');
+    console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : ''}`));
+}
+
+function getSerializedBackupSizeDetails(data) {
+    const sizeBytes = Buffer.byteLength(String(data ?? ''), 'utf8');
+    return {
+        bytes: sizeBytes,
+        size: formatBytes(sizeBytes),
+    };
+}
+
+function getChatBackupType(backupPrefix) {
+    if (backupPrefix === CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX) {
+        return 'forced-overwrite';
+    }
+
+    if (backupPrefix === CHAT_PRE_WRITE_BACKUPS_PREFIX) {
+        return 'pre-write';
+    }
+
+    return 'regular';
+}
 
 function normalizeSerializedChatForBackupComparison(data) {
     const serialized = String(data ?? '');
@@ -90,26 +124,50 @@ function isDuplicateRegularChatBackup(directory, backupPrefix, data) {
  * @param {string} name The name of the chat.
  * @param {string} data The serialized chat to save.
  * @param {string} backupPrefix The file prefix. Typically CHAT_BACKUPS_PREFIX.
+ * @param {string} handle User handle for diagnostic logging.
  * @returns
  */
-function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
+function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, handle = '') {
+    const originalName = name;
+    const backupType = getChatBackupType(backupPrefix);
     try {
-        if (!isBackupEnabled) { return; }
+        if (!isBackupEnabled) {
+            logBackupEvent('chat-backup-skipped', { type: backupType, handle, chat: originalName, reason: 'disabled' });
+            return;
+        }
         if (!fs.existsSync(directory)) {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+            logBackupEvent('chat-backup-skipped', { type: backupType, handle, chat: originalName, reason: 'missing-directory' });
             return;
         }
         // replace non-alphanumeric characters with underscores
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const prefix = `${backupPrefix}${name}_`;
+        const sizeDetails = getSerializedBackupSizeDetails(data);
 
         if (backupPrefix === CHAT_BACKUPS_PREFIX && isDuplicateRegularChatBackup(directory, prefix, data)) {
+            logBackupEvent('chat-backup-skipped', {
+                type: backupType,
+                handle,
+                chat: originalName,
+                sanitizedName: name,
+                reason: 'duplicate',
+                ...sizeDetails,
+            });
             return;
         }
 
         const backupFile = path.join(directory, `${backupPrefix}${name}_${generateTimestamp()}.jsonl`);
 
         tryWriteFileSync(backupFile, data);
+        logBackupEvent('chat-backup-written', {
+            type: backupType,
+            handle,
+            chat: originalName,
+            sanitizedName: name,
+            file: path.basename(backupFile),
+            ...sizeDetails,
+        });
         removeOldBackups(directory, prefix);
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
             return;
@@ -120,16 +178,30 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
     }
 }
 
-function backupChatPreWrite(directory, name, data) {
+function backupChatPreWrite(directory, name, data, handle = '') {
+    const originalName = name;
     try {
-        if (!isBackupEnabled) { return; }
+        if (!isBackupEnabled) {
+            logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'disabled' });
+            return;
+        }
         if (!fs.existsSync(directory)) {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+            logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'missing-directory' });
         }
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
+        const sizeDetails = getSerializedBackupSizeDetails(data);
 
         tryWriteFileSync(backupFile, data);
+        logBackupEvent('chat-backup-written', {
+            type: 'pre-write',
+            handle,
+            chat: originalName,
+            sanitizedName: name,
+            file: path.basename(backupFile),
+            ...sizeDetails,
+        });
         removeOldBackups(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, PRE_WRITE_BACKUP_RING_SIZE);
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
             return;
@@ -619,25 +691,36 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
             : message)
         : chatData;
     const jsonlData = savedChatData?.map(m => JSON.stringify(m)).join('\n');
+    const savedChatSizeDetails = getSerializedBackupSizeDetails(jsonlData);
+    logBackupEvent('chat-save', {
+        handle,
+        chat: cardName,
+        rows: Array.isArray(savedChatData) ? savedChatData.length : undefined,
+        force: Boolean(skipIntegrityCheck),
+        deferBackup: Boolean(deferBackup),
+        ...savedChatSizeDetails,
+    });
 
     if (fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
         if (currentChatData) {
-            backupChatPreWrite(backupDirectory, cardName, currentChatData);
+            backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
 
             if (isSuspiciousChatShrink(savedChatData, currentChatData)) {
                 console.warn(`Suspicious chat shrink while saving "${cardName}": incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
             }
 
             if (skipIntegrityCheck) {
-                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX);
+                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
             }
         }
     }
 
     tryWriteFileSync(filePath, jsonlData);
     if (!deferBackup) {
-        getBackupFunction(handle)(backupDirectory, cardName, jsonlData);
+        getBackupFunction(handle)(backupDirectory, cardName, jsonlData, CHAT_BACKUPS_PREFIX, handle);
+    } else {
+        logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
     return { integrity: nextIntegrity };
 }

@@ -15,6 +15,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - Older in-chat agent regex snapshots now compact on load when they can be safely resolved, and interim agent saves can defer regular chat backups until the final post-processed save.
 
 ### Added
+- Optional backup diagnostic logging can be enabled with `backups.chat.logging` to trace chat and settings backup writes, skips, and autosave triggers while investigating backup frequency.
 - A 1.6.4 Discord release post is available under `releases/` for announcement publishing.
 - Regression expectations were refreshed so release automation coverage tracks the current package version.
 
