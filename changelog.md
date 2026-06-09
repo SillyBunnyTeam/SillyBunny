@@ -35,6 +35,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #381 (2026-06-09) `fix: remove floating edit indicator pill from message edit UI`
 - PR #382 (2026-06-09) `feat: show approximate token estimate in chat selector`
 - PR #383 (2026-06-09) `fix: respect reverse proxies for agent profile requests`
+- PR #384 (2026-06-09) `chore: narrow top bar height and reduce message text padding`
 
 ## v1.6.3
 
