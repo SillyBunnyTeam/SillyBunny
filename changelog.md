@@ -12,7 +12,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - Release documentation now has 1.6.4 README, changelog, GitHub mirror, and Discord-ready summary copy.
 
 ### Fixed
-- No targeted bug fixes were included in this release-readiness pass.
+- Older in-chat agent regex snapshots now compact on load when they can be safely resolved, and interim agent saves can defer regular chat backups until the final post-processed save.
 
 ### Added
 - A 1.6.4 Discord release post is available under `releases/` for announcement publishing.

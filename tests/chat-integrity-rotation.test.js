@@ -181,6 +181,53 @@ describe('chat integrity rotation', () => {
         expect(preWriteBackups).toHaveLength(2);
     });
 
+    test('defers regular chat backups until a final non-deferred save', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-defer-backup-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'original disk chat').map(JSON.stringify).join('\n'));
+        const firstResult = await trySaveChat(
+            chatWithIntegrity('valid-integrity', 'agent pass one'),
+            chatFile,
+            false,
+            'deferred-backup-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true },
+        );
+        const secondResult = await trySaveChat(
+            chatWithIntegrity(firstResult.integrity, 'agent pass two'),
+            chatFile,
+            false,
+            'deferred-backup-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true },
+        );
+        const finalResult = await trySaveChat(
+            chatWithIntegrity(secondResult.integrity, 'final post-processed chat'),
+            chatFile,
+            false,
+            'deferred-backup-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(finalResult?.integrity).toEqual(expect.any(String));
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const postSaveBackups = backupFiles.filter(fileName => fileName.startsWith('chat_test_card_'));
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
+        expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(3);
+        await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
+    });
+
     test('keeps distinct pre-write backups for rapid overwrites in the same second', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-rapid-'));
@@ -309,7 +356,8 @@ describe('chat integrity rotation', () => {
         expect(scriptSource).toContain('async function saveChatImmediately');
         expect(scriptSource).toContain('applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);');
         expect(scriptSource).toContain('rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);');
-        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, activeChatName, characterName, avatarUrl, wasGroupChat });');
+        expect(scriptSource).toContain('deferBackup: Boolean(deferBackup)');
+        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, activeChatName, characterName, avatarUrl, wasGroupChat });');
     });
 
     test('debounced chat saves abort after the active chat generation changes', async () => {
@@ -327,13 +375,13 @@ describe('chat integrity rotation', () => {
     test('saveChatConditional delegates ordering to the save queues instead of dropping slow saves', async () => {
         const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
         const saveConditionalBody = scriptSource.slice(
-            scriptSource.indexOf('export async function saveChatConditional()'),
-            scriptSource.indexOf('export async function importCharacterChat', scriptSource.indexOf('export async function saveChatConditional()')),
+            scriptSource.indexOf('export async function saveChatConditional(options = {})'),
+            scriptSource.indexOf('export async function importCharacterChat', scriptSource.indexOf('export async function saveChatConditional(options = {})')),
         );
 
         expect(saveConditionalBody).not.toContain('waitUntilCondition(() => !isChatSaving');
-        expect(saveConditionalBody).toContain('await saveChat();');
-        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true);');
+        expect(saveConditionalBody).toContain('await saveChat(options);');
+        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, false, options);');
         expect(scriptSource).toContain('let chatSaveActivityCount = 0;');
         expect(scriptSource).toContain('function setChatSaveActive(isActive)');
         expect(scriptSource).toContain('isChatSaving = chatSaveActivityCount > 0;');
@@ -343,13 +391,14 @@ describe('chat integrity rotation', () => {
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
 
         expect(groupChatSource).toContain('let groupChatSaveQueue = Promise.resolve();');
-        expect(groupChatSource).toContain('function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false)');
+        expect(groupChatSource).toContain('function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false, options = {})');
         expect(groupChatSource).toContain('const chatSnapshot = cloneGroupChatSavePayload(chat);');
         expect(groupChatSource).toContain('const metadataSnapshot = structuredClone(chat_metadata);');
         expect(groupChatSource).toContain('.then(() => saveGroupChatImmediately({');
         expect(groupChatSource).toContain('applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);');
         expect(groupChatSource).toContain('rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);');
-        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave });');
+        expect(groupChatSource).toContain('deferBackup: Boolean(options.deferBackup)');
+        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup });');
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });

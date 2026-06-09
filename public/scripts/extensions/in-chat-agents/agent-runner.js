@@ -52,7 +52,7 @@ import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
 import { markAutoSummaryComplete, shouldAutoSummarize } from './pathfinder/auto-summary.js';
-import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts } from './regex-snapshot-store.js';
+import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
 
 const PROMPT_KEY_PREFIX = 'inchat_agent_';
 const PATHFINDER_AUTO_SUMMARY_PROMPT_KEY = 'pathfinder_zz_auto_summary';
@@ -67,6 +67,7 @@ const MAX_PATHFINDER_RETRIEVAL_CACHE = 6;
 const PATHFINDER_RETRIEVAL_CONTEXT_MESSAGE_LIMIT = 10;
 const pendingRefreshTimeouts = new Map();
 const pendingRegexSnapshotSaves = new WeakSet();
+const migratedLegacyRegexSnapshotChatIds = new Set();
 const GREETING_GENERATION_TYPE = 'first_message';
 const IMPERSONATE_GENERATION_TYPE = 'impersonate';
 const PREPEND_PROMPT_TRANSFORM_TEMPLATE_IDS = new Set([
@@ -125,6 +126,35 @@ let swipeNavigationPending = false;
 const activePathfinderRetrievalAbortControllers = new Set();
 let activePathfinderRetrievalToast = null;
 let activeInitialGenerationToast = null;
+
+function shouldDeferAgentRegularBackup() {
+    return Boolean(isGenerationInProgress || internalPromptTransformDepth > 0 || isMainGenerationStillActive());
+}
+
+function saveChatDebouncedForAgent({ deferBackup = shouldDeferAgentRegularBackup() } = {}) {
+    saveChatDebounced({ deferBackup: Boolean(deferBackup) });
+}
+
+async function saveChatForAgent(context, { deferBackup = shouldDeferAgentRegularBackup() } = {}) {
+    if (typeof context?.saveChat !== 'function') {
+        return;
+    }
+
+    await context.saveChat({ deferBackup: Boolean(deferBackup) });
+}
+
+function migrateLegacyRegexSnapshotsForCurrentChat(chatId = getCurrentChatId()) {
+    const migrationKey = String(chatId ?? '');
+    if (!migrationKey || migratedLegacyRegexSnapshotChatIds.has(migrationKey) || chat.length === 0) {
+        return;
+    }
+
+    migratedLegacyRegexSnapshotChatIds.add(migrationKey);
+    const migrated = migrateLegacyRegexSnapshotsInMessages(chat, MESSAGE_EXTRA_KEY);
+    if (migrated > 0) {
+        saveChatDebounced();
+    }
+}
 
 /** Track which tool names were registered by the agent system so we can cleanly unregister only our own. */
 const agentRegisteredToolNames = new Set();
@@ -1176,7 +1206,7 @@ function storePathfinderRetrievalCache(message, signature) {
     caches.push(cacheEntry);
 
     setAgentExtraValue(message, PATHFINDER_RETRIEVAL_CACHE_EXTRA_KEY, caches.slice(-MAX_PATHFINDER_RETRIEVAL_CACHE));
-    saveChatDebounced();
+    saveChatDebouncedForAgent();
 }
 
 function hasProcessedPostProcessingRun(message, runKey, messageIndex = null, indexRunKey = '') {
@@ -1850,7 +1880,7 @@ function ensureMessageRegexSnapshot(messageIndex, generationType, activationSnap
     if (!updateMessageRegexSnapshot(message, activeAgents, generationType)) {
         if (save && pendingRegexSnapshotSaves.has(message)) {
             pendingRegexSnapshotSaves.delete(message);
-            saveChatDebounced();
+            saveChatDebouncedForAgent();
         }
 
         return false;
@@ -1858,13 +1888,13 @@ function ensureMessageRegexSnapshot(messageIndex, generationType, activationSnap
 
     if (save) {
         pendingRegexSnapshotSaves.delete(message);
-        saveChatDebounced();
+        saveChatDebouncedForAgent();
     } else {
         pendingRegexSnapshotSaves.add(message);
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message);
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
     }
 
     return true;
@@ -1946,13 +1976,13 @@ function refreshRegexSnapshotForAgentOnMessage(agentId, messageIndex, options = 
 
     if (save) {
         pendingRegexSnapshotSaves.delete(message);
-        saveChatDebounced();
+        saveChatDebouncedForAgent();
     } else if (markPendingSave) {
         pendingRegexSnapshotSaves.add(message);
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message);
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
     }
 
     return true;
@@ -1971,7 +2001,7 @@ export function refreshRegexSnapshotsForAgent(agentId, { generationType = 'norma
     }
 
     if (refreshed > 0) {
-        saveChatDebounced();
+        saveChatDebouncedForAgent();
     }
 
     return refreshed;
@@ -3140,7 +3170,7 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
     };
 }
 
-async function refreshMessageAfterMutation(messageIndex, message) {
+async function refreshMessageAfterMutation(messageIndex, message, { deferBackup = false } = {}) {
     const context = getContext();
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
 
@@ -3154,9 +3184,7 @@ async function refreshMessageAfterMutation(messageIndex, message) {
         return;
     }
 
-    if (typeof context?.saveChat === 'function') {
-        await context.saveChat();
-    }
+    await saveChatForAgent(context, { deferBackup });
 
     if (typeof context?.reloadCurrentChat === 'function') {
         await context.reloadCurrentChat();
@@ -3173,7 +3201,7 @@ async function refreshMessageAfterMutation(messageIndex, message) {
     }
 }
 
-function scheduleMessageRefresh(messageIndex, expectedMessage) {
+function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = false } = {}) {
     const existingTimeout = pendingRefreshTimeouts.get(messageIndex);
     if (existingTimeout) {
         clearTimeout(existingTimeout);
@@ -3187,7 +3215,7 @@ function scheduleMessageRefresh(messageIndex, expectedMessage) {
             return;
         }
 
-        await refreshMessageAfterMutation(messageIndex, liveMessage);
+        await refreshMessageAfterMutation(messageIndex, liveMessage, { deferBackup });
     }, 0);
 
     pendingRefreshTimeouts.set(messageIndex, timeoutId);
@@ -3631,11 +3659,11 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
 
         if (chatStateChanged) {
             syncAssistantMessageStateToSwipe(message, messageIndex);
-            saveChatDebounced();
+            saveChatDebouncedForAgent({ deferBackup: false });
         }
 
         if (messageDisplayChanged) {
-            scheduleMessageRefresh(messageIndex, message);
+            scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
         }
     } finally {
         postProcessingInFlightKeys.delete(inFlightKey);
@@ -3763,7 +3791,7 @@ function onMessageEdited(messageIndex) {
 
     snapshot.edited = true;
     setAgentExtraValue(message, MESSAGE_EXTRA_KEY, snapshot);
-    saveChatDebounced();
+    saveChatDebouncedForAgent();
 }
 
 async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType) {
@@ -4445,7 +4473,7 @@ export async function undoPromptTransform(messageIndex) {
     const lastEntry = history[history.length - 1];
     message.mes = lastEntry.beforeText;
     await syncPromptTransformMessageStateAsync(message, messageIndex);
-    saveChatDebounced();
+    saveChatDebouncedForAgent();
     scheduleMessageRefresh(messageIndex, message);
     return true;
 }
@@ -4465,7 +4493,7 @@ export async function redoPromptTransform(messageIndex) {
     const lastEntry = history[history.length - 1];
     message.mes = lastEntry.afterText;
     await syncPromptTransformMessageStateAsync(message, messageIndex);
-    saveChatDebounced();
+    saveChatDebouncedForAgent();
     scheduleMessageRefresh(messageIndex, message);
     return true;
 }
@@ -4533,12 +4561,15 @@ export function initAgentRunner() {
     }
 
     if (event_types.CHAT_CHANGED) {
+        eventSource.on(event_types.CHAT_CHANGED, migrateLegacyRegexSnapshotsForCurrentChat);
         eventSource.on(event_types.CHAT_CHANGED, onChatChangedToolSync);
     }
 
     if (event_types.WORLDINFO_UPDATED) {
         eventSource.on(event_types.WORLDINFO_UPDATED, onWorldInfoUpdatedToolSync);
     }
+
+    migrateLegacyRegexSnapshotsForCurrentChat();
 }
 
 async function executeManualAgentRun(agentId, messageIndex, cancelRevision = agentGenerationCancelRevision) {
@@ -4577,13 +4608,13 @@ async function executeManualAgentRun(agentId, messageIndex, cancelRevision = age
 
     const promptTransformRunsChanged = updatePromptTransformRuns(message, [result]);
     if (regexSnapshotChanged || promptTransformRunsChanged) {
-        saveChatDebounced();
+        saveChatDebouncedForAgent();
     }
 
     const historyChanged = updatePromptTransformHistory(message, result);
     if (historyChanged) {
         syncAssistantMessageStateToSwipe(message, messageIndex);
-        saveChatDebounced();
+        saveChatDebouncedForAgent();
     }
 
     if (result.changed || regexSnapshotChanged) {
