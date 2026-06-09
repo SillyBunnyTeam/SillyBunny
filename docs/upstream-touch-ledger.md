@@ -63,6 +63,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 chat integrity rotation fix. |
 | Owner | Bugfix integrator. |
 
+### `public/script.js` and `public/scripts/group-chats.js` - group chat branch creation
+| Field | Value |
+| --- | --- |
+| Area | Chat lifecycle. |
+| Divergence reason | SillyBunny's Start new chat menu path already flushes pending saves and clears the active chat before delegating to group chat creation, so the group branch creator must not run a second navigation-save guard that can abort and repaint the current chat. |
+| Target seam | None yet; group chat branch creation still lives in the upstream-origin chat modules. |
+| Adapter shape | Keep `doNewChat()` as the stock menu adapter and pass a narrow `chatAlreadyPrepared` option; keep standalone group creation guarded, and tell `getGroupChat()` when the chat id was freshly created so empty group branches are initialized consistently. |
+| Protecting tests | Future focused group-chat new-branch coverage; current protection is static validation. |
+| Validation | `node --check public/script.js`, `node --check public/scripts/group-chats.js`, `npm run lint`, `git diff --check`. |
+| Rollback path | Revert the option plumbing and newly-created load hint to restore the previous `createNewGroupChat(groupId)` path. |
+| Last reviewed | 2026-06-09 group chat Start new chat fix. |
+| Owner | Bugfix integrator. |
+
 ### `public/style.css` - message containment and scroll anchoring
 | Field | Value |
 | --- | --- |
