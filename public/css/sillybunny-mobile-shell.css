@@ -405,8 +405,10 @@
         display: none !important;
     }
 
+    /* SillyBunny: was top: -42px, floating above the panel and invisible to the user;
+       changed to 8px to keep the close button inside the header and reachable on mobile */
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
-        top: -42px !important;
+        top: 8px !important;
         right: 8px !important;
         width: 36px !important;
         min-width: 36px !important;
