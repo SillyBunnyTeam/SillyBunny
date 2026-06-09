@@ -1234,9 +1234,10 @@ async function validateGroup(group) {
  * @param {boolean} reload - Whether to reload the group chat after loading.
  * @param {object} options - Load options.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the group editor.
+ * @param {boolean} [options.newlyCreated=false] Whether the active group chat was created before loading.
  * @returns {Promise<void>} A promise that resolves when the chat messages have been loaded.
  */
-export async function getGroupChat(groupId, reload = false, { switchMenu = true } = {}) {
+export async function getGroupChat(groupId, reload = false, { switchMenu = true, newlyCreated = false } = {}) {
     incrementChatGeneration();
 
     const group = groups.find((x) => x.id === groupId);
@@ -1249,7 +1250,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true 
     await validateGroup(group);
     await unshallowGroupMembers(groupId);
 
-    let createdChat = false;
+    let createdChat = newlyCreated;
 
     if (!group.chat_id) {
         const freshChatId = humanizedDateTime();
@@ -3605,27 +3606,33 @@ async function createGroup() {
 /**
  * Creates a new group chat within the specified group.
  * @param {string} groupId Group ID
+ * @param {object} [options] Creation options
+ * @param {boolean} [options.chatAlreadyPrepared=false] Whether the caller already flushed saves and cleared the current chat.
  * @returns {Promise<void>} Promise that resolves when the new group chat is created
  */
-export async function createNewGroupChat(groupId) {
+export async function createNewGroupChat(groupId, { chatAlreadyPrepared = false } = {}) {
     const group = groups.find(x => x.id === groupId);
 
     if (!group) {
         return;
     }
 
-    if (!await flushPendingChatSavesForNavigation()) {
-        return;
+    if (!chatAlreadyPrepared) {
+        if (!await flushPendingChatSavesForNavigation()) {
+            return;
+        }
+
+        await clearChat({ clearData: true });
     }
 
-    await clearChat({ clearData: true });
     const newChatName = humanizedDateTime();
+    group.chats = Array.isArray(group.chats) ? group.chats : [];
     group.chats.push(newChatName);
     group.chat_id = newChatName;
     updateChatMetadata({}, true);
 
     await editGroup(group.id, true, false);
-    await getGroupChat(group.id);
+    await getGroupChat(group.id, false, { newlyCreated: true });
     syncGroupAutoModeToggle();
 }
 
