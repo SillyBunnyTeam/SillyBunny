@@ -38,6 +38,36 @@ export function getChatCompletionProfileRequestOverrides(profile, overridePayloa
     return { overrides, profileFieldNames };
 }
 
+function getReverseProxyRequestFields(proxyPreset) {
+    if (!proxyPreset?.url) {
+        return {};
+    }
+
+    return {
+        reverse_proxy: proxyPreset.url,
+        proxy_password: proxyPreset.password,
+    };
+}
+
+export function getChatCompletionProfileReverseProxy(profile, chatCompletionSource) {
+    const profileProxy = proxies.find((preset) => preset.name === profile?.proxy);
+    const profileProxyFields = getReverseProxyRequestFields(profileProxy);
+    if (profileProxyFields.reverse_proxy) {
+        return profileProxyFields;
+    }
+
+    const sourceProxy = proxies.find((preset) => preset.name !== 'None' && preset.source === chatCompletionSource && preset.url);
+    const sourceProxyFields = getReverseProxyRequestFields(sourceProxy);
+    if (sourceProxyFields.reverse_proxy) {
+        return sourceProxyFields;
+    }
+
+    return getReverseProxyRequestFields({
+        url: oai_settings.reverse_proxy,
+        password: oai_settings.proxy_password,
+    });
+}
+
 /**
  * Generates a caption for an image using a multimodal model.
  * @param {string} base64Img Base64 encoded image
@@ -468,7 +498,7 @@ export class ConnectionManagerRequestService {
                         throw new Error(`API type ${selectedApiMap.selected} does not support chat completions`);
                     }
 
-                    const proxyPreset = proxies.find((p) => p.name === profile.proxy);
+                    const reverseProxyFields = getChatCompletionProfileReverseProxy(profile, selectedApiMap.source);
 
                     const model = typeof modelOverride === 'string' && modelOverride.trim()
                         ? modelOverride.trim()
@@ -481,8 +511,9 @@ export class ConnectionManagerRequestService {
                         model,
                         chat_completion_source: selectedApiMap.source,
                         secret_id: profile['secret-id'],
-                        reverse_proxy: proxyPreset?.url,
-                        proxy_password: proxyPreset?.password,
+                        // SillyBunny: direct profile requests do not run the profile's slash commands,
+                        // so recover reverse proxy fields from the profile preset or current proxy state.
+                        ...reverseProxyFields,
                         custom_prompt_post_processing: profile['prompt-post-processing'],
                         // SillyBunny: persist profile-scoped reasoning and image request settings through the shared request path.
                         ...profileRequestOverrides.overrides,
