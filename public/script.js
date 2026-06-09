@@ -988,7 +988,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260603e', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260609a', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -11035,7 +11035,7 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
     if (!skipConfirmation) {
         const confirmation = await Popup.show.confirm(
             t`Clear all cache?`,
-            t`This removes browser cache, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact.`,
+            t`This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact.`,
             {
                 okButton: t`Clear cache`,
                 cancelButton: t`Cancel`,
@@ -11077,6 +11077,16 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
             await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
         } catch (error) {
             console.error('Failed to clear Cache Storage', error);
+            cacheErrors.push(error);
+        }
+    }
+
+    if (globalThis.navigator?.serviceWorker && typeof globalThis.navigator.serviceWorker.getRegistrations === 'function') {
+        try {
+            const registrations = await globalThis.navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(registration => registration.unregister()));
+        } catch (error) {
+            console.error('Failed to unregister service workers', error);
             cacheErrors.push(error);
         }
     }

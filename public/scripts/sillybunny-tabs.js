@@ -77,7 +77,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
     ],
     'characters:persona': [
-        { href: 'css/personas.css?v=20260603e', id: 'deferred-personas-css' },
+        { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
