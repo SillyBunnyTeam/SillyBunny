@@ -32,7 +32,19 @@ intentionally, or move them out of the way before pulling the update.
 
 ZIP installs
 
-ZIP updates require copying your user data into a fresh download.
+The preferred ZIP update method is the in-app updater.
+
+1. Start SillyBunny normally.
+2. Open Customize > Server.
+3. Click Check for updates.
+4. If a release ZIP update is available, click Update & Restart.
+
+The updater downloads the latest GitHub release ZIP, replaces app files in place,
+backs up replaced files under backups/zip-update-*, keeps your data folder, and
+restarts SillyBunny automatically.
+
+If the in-app updater is unavailable, use the manual fallback. Manual ZIP updates
+require copying your user data into a fresh download.
 
 1. Download the new SillyBunny release ZIP.
 2. Extract it into a new folder, outside your current SillyBunny install.

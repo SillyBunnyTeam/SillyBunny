@@ -20,6 +20,7 @@ import {
     resolveRemoteBranchName,
 } from '../server-admin-git.js';
 import { getServerLogSnapshot } from '../server-log-buffer.js';
+import { getLatestZipReleaseStatus, stageZipReleaseUpdate } from '../server-admin-zip-update.js';
 import { serverDirectory } from '../server-directory.js';
 import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
@@ -305,6 +306,22 @@ function getRestartPayload() {
     return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }
 
+function getZipUpdatePayload(stagedUpdate) {
+    const payload = {
+        parentPid: process.pid,
+        installDir: serverDirectory,
+        stagingRoot: stagedUpdate.stagingRoot,
+        releaseRoot: stagedUpdate.releaseRoot,
+        version: stagedUpdate.version,
+        assetName: stagedUpdate.assetName,
+        command: [process.argv[0], ...process.argv.slice(1)],
+        envPatch: { SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' },
+        visibleRelaunch: process.platform === 'win32',
+    };
+
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+}
+
 function isLauncherManagedRestart() {
     return process.env[RESTART_LAUNCHER_ENV] === '1';
 }
@@ -341,6 +358,29 @@ function scheduleRestart(response) {
             } catch (error) {
                 console.error('Failed to stop current process during restart.', error);
             }
+        }, RESTART_RESPONSE_DELAY_MS);
+    });
+}
+
+function scheduleZipUpdate(response, stagedUpdate) {
+    const helperScriptPath = path.join(serverDirectory, 'src', 'zip-update-helper.js');
+    const helper = spawn(process.argv[0], [helperScriptPath, getZipUpdatePayload(stagedUpdate)], {
+        cwd: serverDirectory,
+        detached: true,
+        stdio: process.platform === 'win32' ? ['ignore', 'inherit', 'inherit'] : 'ignore',
+        env: process.env,
+        windowsHide: false,
+    });
+
+    helper.once('error', (error) => {
+        console.error('Failed to start ZIP update helper.', error);
+    });
+    helper.unref();
+
+    response.once('finish', () => {
+        setTimeout(() => {
+            console.info('ZIP update staged; exiting current server so the helper can replace files safely.');
+            process.exit(0);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -522,11 +562,13 @@ router.post('/status', requireAdminMiddleware, async (_request, response) => {
     try {
         const version = await getVersion();
         const repository = await getRepositoryStatus();
+        const release = repository.isRepo ? null : await getLatestZipReleaseStatus(version.pkgVersion);
         response.json({
             runtime: formatRuntimeLabel(),
             configPath: getConfigFilePath(),
             version,
             repository,
+            release,
         });
     } catch (error) {
         console.error('Failed to get server admin status.', error);
@@ -745,6 +787,59 @@ router.post('/restart', requireAdminMiddleware, async (_request, response) => {
     } catch (error) {
         console.error('Failed to restart server.', error);
         response.status(500).json({ error: error.message || 'Failed to restart server.' });
+    }
+});
+
+router.post('/zip-update', requireAdminMiddleware, async (_request, response) => {
+    let stagedUpdate = null;
+
+    try {
+        const version = await getVersion();
+        const repository = await getRepositoryStatus();
+
+        if (repository.isRepo) {
+            return response.status(400).json({ error: 'This install is a Git checkout. Use the Git update path instead.', repository });
+        }
+
+        const release = await getLatestZipReleaseStatus(version.pkgVersion);
+
+        if (!release.checked) {
+            return response.status(502).json({ error: release.message || 'Failed to check GitHub releases.', release });
+        }
+
+        if (!release.canUpdate) {
+            return response.json({
+                updated: false,
+                restarting: false,
+                message: release.message || 'Already up to date.',
+                version,
+                repository,
+                release,
+            });
+        }
+
+        stagedUpdate = await stageZipReleaseUpdate(release);
+        scheduleZipUpdate(response, stagedUpdate);
+
+        response.status(202).json({
+            updated: true,
+            restarting: true,
+            message: `ZIP release v${release.latestVersion} downloaded. Restarting SillyBunny to replace app files safely.`,
+            version,
+            repository,
+            release: {
+                ...release,
+                staged: true,
+            },
+        });
+
+        stagedUpdate = null;
+    } catch (error) {
+        if (stagedUpdate?.stagingRoot) {
+            fs.rmSync(stagedUpdate.stagingRoot, { recursive: true, force: true });
+        }
+        console.error('Failed to start ZIP update.', error);
+        response.status(500).json({ error: error.message || 'Failed to start ZIP update.' });
     }
 });
 
