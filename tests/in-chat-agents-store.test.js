@@ -121,6 +121,117 @@ describe('in-chat agent scoped enabled state', () => {
         expect(snapshotStore.resolveRegexScriptsForSnapshot({ regexScripts: [regexScript] })).toEqual([regexScript]);
     });
 
+    test('migrates legacy regex snapshots in messages and swipe metadata when refs are resolvable', async () => {
+        const store = await importStore();
+        const snapshotStore = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
+        const regexScript = {
+            id: 'script-1',
+            findRegex: '/foo/g',
+            replaceString: 'bar',
+        };
+
+        store.loadAgents([{
+            id: 'agent-1',
+            name: 'Regex Agent',
+            regexScripts: [regexScript],
+        }]);
+
+        const storedRegexScript = store.getAgentById('agent-1').regexScripts[0];
+        const legacySnapshot = {
+            activeAgentIds: ['agent-1'],
+            generationType: 'normal',
+            regexScripts: [structuredClone(storedRegexScript)],
+            edited: true,
+            extraField: 'preserved',
+        };
+        const message = {
+            extra: { inChatAgents: structuredClone(legacySnapshot) },
+            swipe_info: [{ extra: { inChatAgents: structuredClone(legacySnapshot) } }],
+        };
+
+        expect(snapshotStore.migrateLegacyRegexSnapshotsInMessages([message])).toBe(2);
+
+        const expectedRefs = snapshotStore.buildRegexScriptRefsForAgent('agent-1', store.getAgentById('agent-1').regexScripts);
+        expect(message.extra.inChatAgents).toMatchObject({
+            activeAgentIds: ['agent-1'],
+            generationType: 'normal',
+            edited: true,
+            extraField: 'preserved',
+            regexScriptRefs: expectedRefs,
+        });
+        expect(message.extra.inChatAgents.regexScripts).toBeUndefined();
+        expect(message.swipe_info[0].extra.inChatAgents.regexScriptRefs).toEqual(expectedRefs);
+        expect(message.swipe_info[0].extra.inChatAgents.regexScripts).toBeUndefined();
+        expect(snapshotStore.resolveRegexScriptsForSnapshot(message.extra.inChatAgents)).toEqual(store.getAgentById('agent-1').regexScripts);
+    });
+
+    test('leaves legacy regex snapshots inline when refs are missing, changed, or ambiguous', async () => {
+        const store = await importStore();
+        const snapshotStore = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
+        const legacyScript = {
+            id: 'script-1',
+            findRegex: '/foo/g',
+            replaceString: 'old',
+        };
+        store.loadAgents([
+            {
+                id: 'agent-1',
+                name: 'Changed Regex Agent',
+                regexScripts: [{ ...legacyScript, replaceString: 'new' }],
+            },
+            {
+                id: 'agent-2',
+                name: 'Ambiguous Regex Agent A',
+                regexScripts: [legacyScript],
+            },
+            {
+                id: 'agent-3',
+                name: 'Ambiguous Regex Agent B',
+                regexScripts: [legacyScript],
+            },
+        ]);
+        const mismatchedLegacyScript = {
+            ...structuredClone(store.getAgentById('agent-1').regexScripts[0]),
+            replaceString: 'old',
+        };
+        const ambiguousLegacyScript = structuredClone(store.getAgentById('agent-2').regexScripts[0]);
+        const mismatchMessage = {
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['agent-1'],
+                    generationType: 'normal',
+                    regexScripts: [structuredClone(mismatchedLegacyScript)],
+                },
+            },
+        };
+        const ambiguousMessage = {
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['agent-2', 'agent-3'],
+                    generationType: 'normal',
+                    regexScripts: [structuredClone(ambiguousLegacyScript)],
+                },
+            },
+        };
+        const missingMessage = {
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['missing-agent'],
+                    generationType: 'normal',
+                    regexScripts: [structuredClone(ambiguousLegacyScript)],
+                },
+            },
+        };
+
+        expect(snapshotStore.migrateLegacyRegexSnapshotsInMessages([mismatchMessage, ambiguousMessage, missingMessage])).toBe(0);
+        expect(mismatchMessage.extra.inChatAgents.regexScripts).toEqual([mismatchedLegacyScript]);
+        expect(mismatchMessage.extra.inChatAgents.regexScriptRefs).toBeUndefined();
+        expect(ambiguousMessage.extra.inChatAgents.regexScripts).toEqual([ambiguousLegacyScript]);
+        expect(ambiguousMessage.extra.inChatAgents.regexScriptRefs).toBeUndefined();
+        expect(missingMessage.extra.inChatAgents.regexScripts).toEqual([ambiguousLegacyScript]);
+        expect(missingMessage.extra.inChatAgents.regexScriptRefs).toBeUndefined();
+    });
+
     test('recovers legacy enabled agents missing from initialized scoped settings', async () => {
         const store = await importStore();
         store.setGlobalSettings({

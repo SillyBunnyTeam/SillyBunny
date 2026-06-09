@@ -1585,9 +1585,11 @@ function rememberQueuedGroupChatIntegrity(chatId, integrity) {
  * @param {boolean} shouldSaveGroup Whether to save the group after saving the chat
  * @param {boolean} force Force the saving on integrity error
  * @param {boolean} throwOnError Rethrow save errors after notifying the user
+ * @param {object} [options] Additional save options
+ * @param {boolean} [options.deferBackup] Save chat data without creating a regular chat backup yet
  * @returns {Promise<boolean>} A promise that resolves when the group chat has been saved.
  */
-function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false) {
+function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false, options = {}) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
@@ -1607,13 +1609,14 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
             chatId: chatIdSnapshot,
             chatData: chatSnapshot,
             metadata: metadataSnapshot,
+            deferBackup: Boolean(options.deferBackup),
         }));
 
     groupChatSaveQueue = saveTask.catch(() => {});
     return saveTask;
 }
 
-async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata }) {
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
@@ -1638,7 +1641,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
     const saveGroupChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force }),
+        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup) }),
     });
     const response = await fetch('/api/chats/group/save', saveGroupChatRequest);
 
@@ -1670,7 +1673,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
             return false;
         }
 
-        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave });
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup });
     }
 
     const responseData = await response.json().catch(() => ({}));

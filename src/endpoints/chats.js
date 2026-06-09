@@ -597,8 +597,10 @@ function isValidChatSavePayload(chatData) {
  * @param {string} handle The users handle, passed to getBackupFunction.
  * @param {string} cardName Passed to backupChat.
  * @param {string} backupDirectory Passed to backupChat.
+ * @param {object} [options] Additional save options.
+ * @param {boolean} [options.deferBackup] Skip the regular chat backup for this save.
  */
-export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory) {
+export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false } = {}) {
     if (!isValidChatSavePayload(chatData)) {
         throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
     }
@@ -634,7 +636,9 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     }
 
     tryWriteFileSync(filePath, jsonlData);
-    getBackupFunction(handle)(backupDirectory, cardName, jsonlData);
+    if (!deferBackup) {
+        getBackupFunction(handle)(backupDirectory, cardName, jsonlData);
+    }
     return { integrity: nextIntegrity };
 }
 
@@ -650,7 +654,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         }
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
@@ -1035,7 +1039,7 @@ router.post('/group/save', async function (request, response) {
         const chatData = request.body.chat;
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });

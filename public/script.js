@@ -9976,7 +9976,7 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
     }
 }
 
-export function saveChatDebounced() {
+export function saveChatDebounced(options = {}) {
     const chid = this_chid;
     const selectedGroup = selected_group;
     const chatId = getCurrentChatId();
@@ -10005,7 +10005,7 @@ export function saveChatDebounced() {
         }
 
         console.debug('Chat save timeout triggered');
-        chatSavePromise = saveChatConditional();
+        chatSavePromise = saveChatConditional(options);
         try {
             await chatSavePromise;
             console.debug('Chat saved');
@@ -10087,6 +10087,7 @@ export async function flushPendingChatSaves() {
  * @param {boolean} [options.force] Force the saving despite the integrity check result
  * @param {ChatMessage[]} [options.chatData] Chat snapshot to save instead of the current in-memory chat
  * @param {boolean} [options.throwOnError] Rethrow save errors after notifying the user
+ * @param {boolean} [options.deferBackup] Save chat data without creating a regular chat backup yet
  *
  * @returns {Promise<boolean>}
  */
@@ -10130,7 +10131,7 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
@@ -10190,6 +10191,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
                 chat: [chatHeader, ...trimmedChat],
                 avatar_url: resolvedAvatarUrl,
                 force: force,
+                deferBackup: Boolean(deferBackup),
             }),
         });
         const result = await fetch('/api/chats/save', saveChatRequest);
@@ -10226,7 +10228,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -13897,16 +13899,16 @@ export async function saveMetadata() {
     return await saveChatConditional();
 }
 
-export async function saveChatConditional() {
+export async function saveChatConditional(options = {}) {
     try {
         cancelDebouncedChatSave();
 
         setChatSaveActive(true);
 
         if (selected_group) {
-            await saveGroupChat(selected_group, true);
+            await saveGroupChat(selected_group, true, false, false, options);
         } else {
-            await saveChat();
+            await saveChat(options);
         }
 
         // Save token and prompts cache to IndexedDB storage
