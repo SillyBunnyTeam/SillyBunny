@@ -509,6 +509,7 @@ async function checkChatIntegrity(filePath, integritySlug) {
  * @property {string} [file_name] - The name of the chat file (with extension)
  * @property {string} [file_size] - The size of the chat file in a human-readable format
  * @property {number} [chat_items] - The number of chat items in the file
+ * @property {number} [token_estimate] - The approximate number of tokens in the chat
  * @property {string} [mes] - The last message in the chat
  * @property {number|string} [last_mes] - The timestamp of the last message
  * @property {object} [chat_metadata] - Additional chat metadata
@@ -537,6 +538,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             file_name: parsedPath.base,
             file_size: formatBytes(stats.size),
             chat_items: 0,
+            token_estimate: 0,
             mes: '[The chat is empty]',
             last_mes: stats.mtimeMs,
             ...additionalData,
@@ -557,6 +559,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             let itemCounter = 0;
             let hasAnyMatch = false;
             let matchBuffer = [];
+            let messageCharacters = 0;
             const previewMessages = [];
             const previewLimit = Math.max(0, Number(previewMessageLimit) || 0);
 
@@ -564,16 +567,22 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             rl.once('error', rej);
 
             rl.on('line', (line) => {
-                if (withMetadata && itemCounter === 0) {
-                    const jsonData = tryParse(line);
+                const isMessageLine = itemCounter > 0;
+                let jsonData = null;
+
+                if (withMetadata && !isMessageLine) {
+                    jsonData = tryParse(line);
                     if (jsonData && _.isObjectLike(jsonData.chat_metadata)) {
                         chatData.chat_metadata = jsonData.chat_metadata;
                     }
                 }
-                // Skip matching if any match was already found
-                if ((hasMatcher && !hasAnyMatch && itemCounter > 0) || (previewLimit > 0 && itemCounter > 0)) {
-                    const jsonData = tryParse(line);
+
+                if (isMessageLine) {
+                    jsonData = tryParse(line);
                     if (jsonData) {
+                        messageCharacters += String(jsonData.mes ?? '').length;
+
+                        // Skip matching if any match was already found
                         if (hasMatcher && !hasAnyMatch) {
                             matchBuffer.push(jsonData.mes || '');
                             if (matcher(matchBuffer)) {
@@ -604,6 +613,8 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 const jsonData = tryParse(lastLine);
                 if (jsonData && (jsonData.name || jsonData.character_name || jsonData.chat_metadata)) {
                     chatData.chat_items = (itemCounter - 1);
+                    // SillyBunny: expose a cheap chat length indicator for chat selectors.
+                    chatData.token_estimate = Math.round(messageCharacters / 4);
                     chatData.mes = jsonData.mes || '[The message is empty]';
                     chatData.last_mes = jsonData.send_date || new Date(Math.round(stats.mtimeMs)).toISOString();
                     chatData.match = hasMatcher ? hasAnyMatch : true;
@@ -1196,6 +1207,7 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
          * @property {string} [file_name] - The name of the chat file
          * @property {string} [file_size] - The size of the chat file in a human-readable format
          * @property {number} [message_count] - The number of messages in the chat
+         * @property {number} [token_estimate] - The approximate number of tokens in the chat
          * @property {number|string} [last_mes] - The timestamp of the last message
          * @property {string} [preview_message] - A preview of the last message
          */
@@ -1233,6 +1245,7 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
                     file_name: chatInfo.file_id,
                     file_size: chatInfo.file_size,
                     message_count: chatInfo.chat_items,
+                    token_estimate: chatInfo.token_estimate,
                     last_mes: chatInfo.last_mes,
                     preview_message: getPreviewMessage(chatInfo.mes),
                 });
