@@ -5,6 +5,7 @@ import {
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
     hasOnlyBunLockChange,
+    NON_GIT_REPOSITORY_MESSAGE,
     isGitRepository,
     isRuntimeBranch,
     resolveRemoteBranchName,
@@ -62,5 +63,10 @@ describe('server admin git helpers', () => {
         expect(hasOnlyBunLockChange([{ path: 'bun.lock', index: ' ', working_dir: 'M' }])).toBe(true);
         expect(hasOnlyBunLockChange([{ path: 'bun.lock' }, { path: 'package.json' }])).toBe(false);
         expect(hasOnlyBunLockChange([{ path: 'package-lock.json' }])).toBe(false);
+    });
+
+    test('explains how non-Git installs update', () => {
+        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('Git repository');
+        expect(NON_GIT_REPOSITORY_MESSAGE).toContain('release ZIP');
     });
 });

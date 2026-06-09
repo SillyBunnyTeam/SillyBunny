@@ -127,6 +127,8 @@ bash start-termux-node.sh
   
 ### How to Update
 
+Built-in and launcher updates require a Git checkout. ZIP/release folders do not self-update; download and extract the latest release ZIP instead.
+
 | What you want | Command |
 |---------------|---------|
 | Update from the running app | Open Customize > Server and use the built-in updater |
