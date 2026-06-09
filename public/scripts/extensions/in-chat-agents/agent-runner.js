@@ -123,6 +123,7 @@ let lastMainGenerationEndedAt = 0;
 let currentMainGenerationType = 'normal';
 let postProcessingGenerationRunId = 0;
 let swipeNavigationPending = false;
+const activeAgentRequestAbortControllers = new Set();
 const activePathfinderRetrievalAbortControllers = new Set();
 let activePathfinderRetrievalToast = null;
 let activeInitialGenerationToast = null;
@@ -255,6 +256,7 @@ export function cancelAgentGeneration() {
     clearAllPromptTransformRunningToasts();
     clearInitialGenerationToast();
     clearPathfinderRetrievalToast();
+    abortActiveAgentRequests('Agent generation cancelled by user.');
     abortActivePathfinderRetrieval('Pathfinder retrieval cancelled by user.');
 
     const stopped = internalPromptTransformDepth > 0 || activeManualAgentRun ? stopGeneration() : false;
@@ -267,6 +269,20 @@ export function cancelAgentGeneration() {
 
     toastr.info('No agent generation is currently running.');
     return false;
+}
+
+function abortActiveAgentRequests(reason = 'Agent generation cancelled.') {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+
+    for (const controller of activeAgentRequestAbortControllers) {
+        controller.abort(error);
+    }
+
+    activeAgentRequestAbortControllers.clear();
+}
+
+function isAbortSignalTriggered(error, signal = null) {
+    return Boolean(signal?.aborted || error?.name === 'AbortError');
 }
 
 function abortActivePathfinderRetrieval(reason = 'Pathfinder retrieval cancelled.') {
@@ -2783,13 +2799,14 @@ function canUseMainChatCompletionHelper(context) {
     return context?.mainApi === 'openai' && typeof context?.generateRaw === 'function';
 }
 
-async function requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options = {}) {
+async function requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options = {}, signal = null) {
     const output = await context.generateRaw({
         prompt: getUserFinalPromptTransformMessages(promptMessages, options),
         api: 'openai',
         instructOverride: true,
         responseLength: maxTokens,
         trimNames: false,
+        signal,
         cacheScope: 'auxiliary',
     });
 
@@ -2800,12 +2817,13 @@ async function requestMainChatCompletionPromptTransform(context, promptMessages,
     };
 }
 
-async function requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride = '') {
+async function requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride = '', signal = null) {
     const requestOptions = {
         extractData: true,
         includePreset: true,
         includeInstruct: true,
         stream: false,
+        signal,
     };
 
     if (modelOverride && modelOverride.trim()) {
@@ -2823,6 +2841,10 @@ async function requestProfilePromptTransform(CMRS, profileId, promptMessages, ma
             };
         }
     } catch (error) {
+        if (isAbortSignalTriggered(error, signal)) {
+            throw error;
+        }
+
         console.warn(`[InChatAgents] Primary prompt transform request via ${describePromptTransformTarget(profileId, 'profile')} failed, retrying with fallback prompt formatting.`, error);
     }
 
@@ -2844,6 +2866,7 @@ async function requestProfilePromptTransform(CMRS, profileId, promptMessages, ma
         includePreset: true,
         includeInstruct: false,
         stream: false,
+        signal,
     };
 
     if (modelOverride && modelOverride.trim()) {
@@ -2864,6 +2887,7 @@ async function requestPromptTransform(agent, promptMessages, maxTokens, options 
     const modelOverride = typeof agent.modelOverride === 'string' ? agent.modelOverride.trim() : '';
     const context = getContext();
     const CMRS = context?.ConnectionManagerRequestService;
+    const requestAbortController = new AbortController();
     const runAsInternalPromptTransform = async (requestFn) => {
         internalPromptTransformDepth++;
         notifyAgentGenerationStateChanged();
@@ -2876,48 +2900,55 @@ async function requestPromptTransform(agent, promptMessages, maxTokens, options 
         }
     };
 
-    if (profileId) {
-        if (!CMRS || typeof CMRS.sendRequest !== 'function') {
-            throw new Error(`${describePromptTransformTarget(profileId, 'profile')} is set, but Connection Manager is unavailable.`);
-        }
-
-        return await runAsInternalPromptTransform(async () =>
-            await requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride),
-        );
-    }
-
-    if (canUseMainChatCompletionHelper(context)) {
-        return await runAsInternalPromptTransform(async () =>
-            await requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options),
-        );
-    }
-
-    const quietPrompt = promptMessages
-        .map(message => `${message.role.toUpperCase()}:\n${normalizeContentText(message?.content)}`)
-        .join('\n\n');
-    const preservedPrompts = Object.entries(extension_prompts)
-        .filter(([key]) => key.startsWith(PROMPT_KEY_PREFIX));
-
-    for (const [key] of preservedPrompts) {
-        delete extension_prompts[key];
-    }
+    activeAgentRequestAbortControllers.add(requestAbortController);
 
     try {
-        return await runAsInternalPromptTransform(async () => ({
-            output: await generateQuietPrompt({
-                quietPrompt,
-                quietName: 'In-Chat Agent',
-                skipWIAN: true,
-                responseLength: maxTokens,
-                removeReasoning: true,
-            }),
-            runner: 'main',
-            profileId: '',
-        }));
-    } finally {
-        for (const [key, value] of preservedPrompts) {
-            extension_prompts[key] = value;
+        if (profileId) {
+            if (!CMRS || typeof CMRS.sendRequest !== 'function') {
+                throw new Error(`${describePromptTransformTarget(profileId, 'profile')} is set, but Connection Manager is unavailable.`);
+            }
+
+            return await runAsInternalPromptTransform(async () =>
+                await requestProfilePromptTransform(CMRS, profileId, promptMessages, maxTokens, modelOverride, requestAbortController.signal),
+            );
         }
+
+        if (canUseMainChatCompletionHelper(context)) {
+            return await runAsInternalPromptTransform(async () =>
+                await requestMainChatCompletionPromptTransform(context, promptMessages, maxTokens, options, requestAbortController.signal),
+            );
+        }
+
+        const quietPrompt = promptMessages
+            .map(message => `${message.role.toUpperCase()}:\n${normalizeContentText(message?.content)}`)
+            .join('\n\n');
+        const preservedPrompts = Object.entries(extension_prompts)
+            .filter(([key]) => key.startsWith(PROMPT_KEY_PREFIX));
+
+        for (const [key] of preservedPrompts) {
+            delete extension_prompts[key];
+        }
+
+        try {
+            return await runAsInternalPromptTransform(async () => ({
+                output: await generateQuietPrompt({
+                    quietPrompt,
+                    quietName: 'In-Chat Agent',
+                    skipWIAN: true,
+                    responseLength: maxTokens,
+                    removeReasoning: true,
+                    signal: requestAbortController.signal,
+                }),
+                runner: 'main',
+                profileId: '',
+            }));
+        } finally {
+            for (const [key, value] of preservedPrompts) {
+                extension_prompts[key] = value;
+            }
+        }
+    } finally {
+        activeAgentRequestAbortControllers.delete(requestAbortController);
     }
 }
 
@@ -3071,6 +3102,23 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
 
         return result;
     } catch (error) {
+        if (agentGenerationCancelRevision !== cancelRevision || generationStopRequested || isAbortSignalTriggered(error)) {
+            return {
+                agentId: agent.id,
+                agentName: agent.name,
+                changed: false,
+                status: 'cancelled',
+                mode: promptTransformMode,
+                profileId,
+                ...runMetadata,
+                runner: 'cancelled',
+                timestamp: new Date().toISOString(),
+                outputText: '',
+                nextMessageText: currentMessageText,
+                beforeText: currentMessageText,
+            };
+        }
+
         console.warn(`[InChatAgents] ${describePromptTransformMode(promptTransformMode)} failed in agent "${agent.name}":`, error);
         const result = {
             agentId: agent.id,
@@ -3945,6 +3993,17 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
             profileId: response.profileId,
             runner: response.runner,
         };
+    } catch (error) {
+        if (agentGenerationCancelRevision !== cancelRevision || generationStopRequested || isAbortSignalTriggered(error)) {
+            return {
+                ...baseResult,
+                status: 'cancelled',
+                profileId,
+                runner: 'cancelled',
+            };
+        }
+
+        throw error;
     } finally {
         clearPromptTransformRunningToast(runningToast);
     }

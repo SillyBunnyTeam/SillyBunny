@@ -5169,18 +5169,33 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @prop {object} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {boolean} [removeReasoning] Parses and removes the reasoning block according to reasoning format preferences
  * @prop {boolean} [trimToSentence] Whether to trim the response to the last complete sentence
+ * @prop {AbortSignal} [signal] Optional signal to abort the request.
  * @prop {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @param {GenerateQuietPromptParams} params Parameters for the quiet prompt generation
  * @returns {Promise<string>} Generated text. If using structured output, will contain a serialized JSON object.
  */
-export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, cacheScope = 'auxiliary' } = {}) {
+export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary' } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateQuietPrompt called with positional arguments. Please use an object instead.');
         [quietPrompt, quietToLoud, skipWIAN, quietImage, quietName, responseLength, forceChId, jsonSchema] = arguments;
     }
 
     const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    const externalSignal = signal instanceof AbortSignal ? signal : null;
+    const quietAbortController = externalSignal ? new AbortController() : null;
+    const abortFromExternalSignal = quietAbortController
+        ? () => quietAbortController.abort(externalSignal.reason ?? new Error('Cancelled by external signal'))
+        : null;
     let eventHook = () => { };
+
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            abortFromExternalSignal();
+        } else {
+            externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+        }
+    }
+
     try {
         /** @type {GenerateOptions} */
         const generateOptions = {
@@ -5192,17 +5207,24 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             quietName: quietName ?? null,
             force_chid: forceChId ?? null,
             jsonSchema: jsonSchema ?? null,
+            signal: quietAbortController?.signal ?? null,
             cacheScope,
         };
         if (responseLengthCustomized) {
             TempResponseLength.save(main_api, responseLength);
             eventHook = TempResponseLength.setupEventHook(main_api);
         }
+        if (quietAbortController) {
+            abortController = quietAbortController;
+        }
         let result = await Generate('quiet', generateOptions);
         result = trimToSentence ? trimToEndSentence(result) : result;
         result = removeReasoning ? removeReasoningFromString(result) : result;
         return result;
     } finally {
+        if (externalSignal && abortFromExternalSignal) {
+            externalSignal.removeEventListener('abort', abortFromExternalSignal);
+        }
         if (responseLengthCustomized && TempResponseLength.isCustomized()) {
             TempResponseLength.restore(main_api);
             TempResponseLength.removeEventHook(main_api, eventHook);
