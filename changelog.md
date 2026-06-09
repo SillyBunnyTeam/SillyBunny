@@ -29,6 +29,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #374 (2026-06-09) `fix: reduce chat backup bloat`
 - PR #375 (2026-06-09) `fix: clarify Windows ZIP update guidance`
 - PR #376 (2026-06-09) `fix: compact agent snapshots and defer interim backups`
+- PR #378 (2026-06-09) `fix: revalidate default frontend assets on iOS`
 
 ## v1.6.3
 
