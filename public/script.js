@@ -8080,7 +8080,7 @@ export function stopGeneration() {
     }
 
     if (stopState.shouldStop) {
-        unblockGeneration(stopState.unblockType, { emitGenerationEnded: false });
+        unblockGeneration(stopState.unblockType, { emitGenerationEnded: false, force: true });
     }
 
     return stopState.shouldStop;
@@ -8156,12 +8156,17 @@ function flushWIInjections() {
 /**
  * Unblocks the UI after a generation is complete.
  * @param {string} [type] Generation type (optional)
+ * @param {object} [options] Options.
+ * @param {boolean} [options.emitGenerationEnded=true] Whether to emit generation-ended UI events.
+ * @param {boolean} [options.force=false] Whether to bypass stream-wait guards.
  */
-function unblockGeneration(type, { emitGenerationEnded = true } = {}) {
+function unblockGeneration(type, { emitGenerationEnded = true, force = false } = {}) {
     const unblockState = resolveGenerationUnblockState({
         type,
         hasStreamingProcessor: Boolean(streamingProcessor),
         isStreamingFinished: Boolean(streamingProcessor?.isFinished),
+        // SillyBunny: explicit Stop must always release the UI lock so users can retry.
+        forceUnblock: force,
     });
 
     if (!unblockState.shouldUnblock) {

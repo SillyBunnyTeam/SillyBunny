@@ -82,7 +82,7 @@ describe('generation lifecycle wiring', () => {
         expect(stopSource).toContain('streamingType: activeStreamingProcessor?.type');
         expect(stopSource).toContain('activeStreamingProcessor.onStopStreaming();');
         expect(stopSource).toContain('abortController.abort(stopState.abortReason);');
-        expect(stopSource).toContain('unblockGeneration(stopState.unblockType, { emitGenerationEnded: false });');
+        expect(stopSource).toContain('unblockGeneration(stopState.unblockType, { emitGenerationEnded: false, force: true });');
         expect(stopSource).not.toContain('Clicked stop button');
     });
 
@@ -93,6 +93,7 @@ describe('generation lifecycle wiring', () => {
         expect(unblockSource).toContain('type');
         expect(unblockSource).toContain('hasStreamingProcessor: Boolean(streamingProcessor)');
         expect(unblockSource).toContain('isStreamingFinished: Boolean(streamingProcessor?.isFinished)');
+        expect(unblockSource).toContain('forceUnblock: force');
         expect(unblockSource).toContain('unblockState.shouldActivateSendButtons');
         expect(unblockSource).toContain('unblockState.shouldResetProgress');
         expect(unblockSource).toContain('unblockState.shouldFlushEphemeralState');

@@ -46,15 +46,18 @@ export function resolveGenerationUiLockState({
  * @param {string|null} [options.type=null] Generation type being unblocked.
  * @param {boolean} [options.hasStreamingProcessor=false] Whether a stream exists.
  * @param {boolean} [options.isStreamingFinished=false] Whether that stream is finished.
+ * @param {boolean} [options.forceUnblock=false] Whether to bypass stream-wait guards.
  * @returns {{shouldUnblock: boolean, shouldActivateSendButtons: boolean, shouldResetProgress: boolean, shouldFlushEphemeralState: boolean}}
  */
 export function resolveGenerationUnblockState({
     type = null,
     hasStreamingProcessor = false,
     isStreamingFinished = false,
+    forceUnblock = false,
 } = {}) {
     const generationType = normalizeGenerationType(type);
-    const shouldWaitForQuietStream = generationType === 'quiet'
+    const shouldWaitForQuietStream = !forceUnblock
+        && generationType === 'quiet'
         && Boolean(hasStreamingProcessor)
         && !isStreamingFinished;
 
