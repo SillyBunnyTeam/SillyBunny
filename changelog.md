@@ -37,6 +37,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #383 (2026-06-09) `fix: respect reverse proxies for agent profile requests`
 - PR #384 (2026-06-09) `chore: narrow top bar height and reduce message text padding`
 - PR #385 (2026-06-09) `fix: abort agent generation requests on cancel`
+- PR #387 (2026-06-09) `fix: create new group chat branches reliably`
 - PR #388 (2026-06-09) `fix: release generation lock when aborting generation`
 - PR #389 (2026-06-09) `chore: tighten mobile chat density for phone layout`
 
