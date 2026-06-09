@@ -42,6 +42,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #389 (2026-06-09) `chore: tighten mobile chat density for phone layout`
 - PR #391 (2026-06-09) `fix: mobile character panel close button floating above header`
 - PR #392 (2026-06-09) `test: add mobile shell smoke pack and mobile css ratchet budgets`
+- PR #393 (2026-06-09) `fix: normalize legacy World Info positions at scan time`
 
 ## v1.6.3
 
