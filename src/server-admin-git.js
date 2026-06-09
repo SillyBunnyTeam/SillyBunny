@@ -2,7 +2,7 @@ const ORIGIN_REMOTE_PREFIX = 'origin/';
 const RUNTIME_BRANCH_PREFIX = 'runtime/';
 const BUN_LOCK_FILE = 'bun.lock';
 
-export const NON_GIT_REPOSITORY_MESSAGE = 'This install is not running from a Git repository. Built-in updates require a Git checkout; release ZIP installs need to download and extract the latest release.';
+export const NON_GIT_REPOSITORY_MESSAGE = 'This install is not running from a Git repository. Use Customize > Server to check for a release ZIP update, or install with git clone for Git updates.';
 
 function uniqueSorted(values) {
     return [...new Set(values)].sort((a, b) => a.localeCompare(b));
