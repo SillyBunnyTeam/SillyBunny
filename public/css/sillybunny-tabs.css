@@ -5610,9 +5610,31 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     margin: 0;
 }
 
-#right-nav-panel #result_info #creators_note_styles_button,
-#right-nav-panel #result_info #spoiler_free_desc_button,
-#right-nav-panel #result_info #character_open_media_overrides {
+/* SillyBunny: WebKit keeps flex children at min-width:auto in this sticky header; keep the token text shrinkable and every action icon in a fixed touch target. */
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch,
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info,
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
+    min-width: 0;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info {
+    flex: 0 1 auto;
+    max-width: 100%;
+    justify-content: flex-end;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
+    overflow: hidden;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info > .right_menu_button {
+    flex: 0 0 34px;
     width: 34px;
     min-width: 34px;
     max-width: 34px;
