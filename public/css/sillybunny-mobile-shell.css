@@ -2608,3 +2608,218 @@
         max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
     }
 }
+
+/* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
+@media screen and (max-width: 768px) {
+    :root {
+        --sb-topbar-primary-height-base: 30px;
+        --sb-topbar-padding-x-base: 6px;
+        --sb-topbar-stack-gap-base: 3px;
+        --sb-topbar-bottom-padding-base: 2px;
+        --sb-topbar-inline-gap-base: 4px;
+        --sb-topbar-search-row-height-base: 28px;
+        --sb-topbar-group-gap-base: 3px;
+        --sb-chatbar-height-base: 34px;
+        --sb-chatbar-gap-base: 4px;
+        --sb-chatbar-padding-y-base: 2px;
+        --sb-chatbar-padding-x-base: 4px;
+        --sb-chatbar-button-size-base: 24px;
+        --sb-chatbar-field-height-base: 24px;
+        --sb-chatbar-field-padding-x-base: 6px;
+        --sb-chatbar-input-font-scale-base: 0.64;
+        --sb-mobile-toggle-size-base: 36px;
+        --sb-home-toggle-min-width-base: 36px;
+        --sb-proxy-underline-inset-base: 7px;
+        --sb-proxy-underline-bottom-base: 3px;
+        --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
+    }
+
+    :root[data-sb-compact-mode='true'] {
+        --sb-topbar-primary-height-base: 32px;
+        --sb-topbar-padding-x-base: 5px;
+        --sb-topbar-inline-gap-base: 3px;
+        --sb-topbar-search-row-height-base: 30px;
+        --sb-chatbar-height-base: 32px;
+        --sb-chatbar-button-size-base: 22px;
+        --sb-chatbar-field-height-base: 22px;
+        --sb-chatbar-field-padding-x-base: 5px;
+        --sb-mobile-toggle-size-base: 34px;
+        --sb-home-toggle-min-width-base: 34px;
+        --sb-mobile-tools-min-size: 34px;
+        --sb-message-icon-size: clamp(22px, calc(var(--bottomFormBlockSize, 36px) * 0.56), 28px);
+    }
+
+    #sb-topbar-primary .sb-proxy-button i,
+    #sb-topbar-primary .sb-chatbar-button > i,
+    #sb-hamburger i,
+    #sb-api-toggle i,
+    #sb-home-toggle i,
+    #sb-left-shell-toggle i,
+    #sb-right-shell-toggle i,
+    #sb-character-toggle i,
+    #sb-chatbar-visibility-toggle i {
+        font-size: calc(var(--sb-mobile-toggle-size) * 0.44) !important;
+    }
+
+    #sb-bottom-chat-bar {
+        --sb-bottom-chat-mobile-gutter: max(6px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+        --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
+        --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
+        --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
+        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
+    }
+
+    #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
+        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
+        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
+        --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
+        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        gap: 0 3px !important;
+        min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
+        padding: 1px 4px !important;
+    }
+
+    #send_textarea {
+        padding: 4px 6px !important;
+        line-height: 1.15 !important;
+    }
+
+    #leftSendForm,
+    #rightSendForm {
+        gap: 2px !important;
+    }
+
+    #chat .mes:not(.smallSysMes) {
+        --avatar-base-width: 42px;
+        --avatar-base-height: 42px;
+        padding: 6px 8px 2px;
+    }
+
+    #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
+        gap: 2px;
+    }
+
+    #chat .mes .mesAvatarWrapper > :is(.mesIDDisplay, .mes_timer, .tokenCounterDisplay) {
+        min-block-size: calc(var(--mainFontSize) * 1.04);
+        padding-inline: 1px;
+        font-size: calc(var(--mainFontSize) * 0.74);
+        line-height: 1.08;
+    }
+
+    #chat .mes:not(.smallSysMes) .mes_block {
+        padding-left: 6px;
+    }
+
+    #chat .mes_text,
+    #chat .mes_reasoning {
+        line-height: calc(var(--mainFontSize) + 0.35rem);
+    }
+
+    #chat .mes_text {
+        padding: 2px max(18px, calc(var(--mes-right-spacing) - 10px)) 2px 0;
+    }
+
+    #chat .mes_text p,
+    #chat .mes_reasoning p {
+        margin-bottom: 7px;
+    }
+
+    #chat .mes_text :is(ol, ul),
+    #chat .mes_reasoning :is(ol, ul) {
+        margin-top: 4px;
+        margin-bottom: 4px;
+    }
+
+    #chat .mes .mes_buttons,
+    #chat .mes .extraMesButtons {
+        gap: 2px;
+        min-block-size: var(--sb-message-icon-size);
+    }
+
+    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
+        --moonlit-sb-avatar-column-width: max(var(--custom-ChatAvatar, 40px), 50px);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --mesParagraphSpacingTop: 0.28em;
+        --mesParagraphSpacingBottom: 0.42em;
+        column-gap: 6px;
+    }
+
+    body.ripplestyle #chat .mes:not(.smallSysMes) {
+        --moonlit-sb-ripple-avatar-mobile-width: min(var(--customRippleAvatarMobileWidth, 100px), 86px);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --mesParagraphSpacingTop: 0.28em;
+        --mesParagraphSpacingBottom: 0.42em;
+        column-gap: 6px;
+    }
+
+    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes:not(.smallSysMes) .ch_name {
+        margin-bottom: 4px !important;
+    }
+
+    body.ripplestyle #chat .mes:not(.smallSysMes) .mes_block {
+        padding: 8px 16px 28px 12px !important;
+    }
+}
+
+/* SillyBunny: streaming display (generation toast) density pass for phone. */
+@media screen and (max-width: 768px) {
+    .streaming-display {
+        padding: 10px;
+        gap: 7px;
+        right: 10px;
+        width: calc(100vw - 20px);
+        max-height: 50vh;
+    }
+
+    .streaming-display-minimized.streaming-display {
+        padding: 8px 10px;
+    }
+
+    .streaming-display-label {
+        font-size: 0.85em;
+        gap: 6px;
+    }
+
+    .streaming-display-content {
+        gap: 7px;
+    }
+
+    .streaming-display-reasoning {
+        padding: 6px 8px;
+    }
+
+    .streaming-display-reasoning-label {
+        font-size: 0.75em;
+        margin-bottom: 3px;
+    }
+
+    .streaming-display-reasoning-content {
+        font-size: 0.77em;
+        max-height: 15vh;
+    }
+
+    .streaming-display-text {
+        padding-top: 6px;
+    }
+
+    .streaming-display-text-content {
+        font-size: 0.82em;
+        max-height: 20vh;
+    }
+
+    .streaming-display-btn {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+    }
+
+    .streaming-display button {
+        font-size: 0.82em;
+        padding: 6px 10px;
+    }
+}
