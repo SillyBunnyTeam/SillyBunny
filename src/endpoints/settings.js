@@ -6,7 +6,14 @@ import _ from 'lodash';
 import bytes from 'bytes';
 
 import { SETTINGS_FILE } from '../constants.js';
-import { getConfigValue, generateTimestamp, removeOldBackups, tryWriteFileSync } from '../util.js';
+import {
+    getConfigValue,
+    generateTimestamp,
+    removeOldBackups,
+    tryWriteFileSync,
+    formatBytes,
+    color,
+} from '../util.js';
 import { getAllUserHandles, getUserDirectories } from '../users.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 
@@ -17,6 +24,7 @@ const ENABLE_REQUEST_COMPRESSION = !!getConfigValue('performance.requestCompress
 const REQUEST_COMPRESSION_MIN = bytes.parse(getConfigValue('performance.requestCompression.minPayloadSize', '256kb'));
 const REQUEST_COMPRESSION_MAX = bytes.parse(getConfigValue('performance.requestCompression.maxPayloadSize', '8mb'));
 const REQUEST_COMPRESSION_TIMEOUT = Number(getConfigValue('performance.requestCompression.timeout', 3000, 'number'));
+const isBackupLoggingEnabled = !!getConfigValue('backups.chat.logging', false, 'boolean');
 
 // 10 minutes
 const AUTOSAVE_INTERVAL = 10 * 60 * 1000;
@@ -27,6 +35,26 @@ const AUTOSAVE_INTERVAL = 10 * 60 * 1000;
  */
 const AUTOSAVE_FUNCTIONS = new Map();
 
+function logBackupEvent(action, details = {}) {
+    if (!isBackupLoggingEnabled) {
+        return;
+    }
+
+    const fields = Object.entries(details)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(' ');
+    console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : ''}`));
+}
+
+function getSettingsBackupSizeDetails(sourceFile) {
+    const sizeBytes = fs.statSync(sourceFile).size;
+    return {
+        bytes: sizeBytes,
+        size: formatBytes(sizeBytes),
+    };
+}
+
 /**
  * Triggers autosave for a user every 10 minutes.
  * @param {string} handle User handle
@@ -34,12 +62,16 @@ const AUTOSAVE_FUNCTIONS = new Map();
  */
 function triggerAutoSave(handle) {
     if (!AUTOSAVE_FUNCTIONS.has(handle)) {
-        const throttledAutoSave = _.throttle(() => backupUserSettings(handle, true), AUTOSAVE_INTERVAL);
+        const throttledAutoSave = _.throttle(() => {
+            logBackupEvent('settings-autosave-fired', { handle });
+            backupUserSettings(handle, true);
+        }, AUTOSAVE_INTERVAL);
         AUTOSAVE_FUNCTIONS.set(handle, throttledAutoSave);
     }
 
     const functionToCall = AUTOSAVE_FUNCTIONS.get(handle);
     if (functionToCall && typeof functionToCall === 'function') {
+        logBackupEvent('settings-autosave-requested', { handle });
         functionToCall();
     }
 }
@@ -147,6 +179,7 @@ function backupUserSettings(handle, preventDuplicates) {
     const userDirectories = getUserDirectories(handle);
 
     if (!fs.existsSync(userDirectories.root)) {
+        logBackupEvent('settings-backup-skipped', { handle, reason: 'missing-user-root' });
         return;
     }
 
@@ -154,14 +187,22 @@ function backupUserSettings(handle, preventDuplicates) {
     const sourceFile = path.join(userDirectories.root, SETTINGS_FILE);
 
     if (preventDuplicates && isDuplicateBackup(handle, sourceFile)) {
+        logBackupEvent('settings-backup-skipped', {
+            handle,
+            reason: 'duplicate',
+            ...getSettingsBackupSizeDetails(sourceFile),
+        });
         return;
     }
 
     if (!fs.existsSync(sourceFile)) {
+        logBackupEvent('settings-backup-skipped', { handle, reason: 'missing-source' });
         return;
     }
 
+    const sizeDetails = getSettingsBackupSizeDetails(sourceFile);
     fs.copyFileSync(sourceFile, backupFile);
+    logBackupEvent('settings-backup-written', { handle, file: path.basename(backupFile), ...sizeDetails });
     removeOldBackups(userDirectories.backups, `settings_${handle}`);
 }
 
