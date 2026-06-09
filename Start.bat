@@ -51,6 +51,12 @@ if "%_need_git%"=="1" if "%_auto_update%"=="1" (
     if !errorlevel! neq 0 goto end
 )
 
+if "%_need_git%"=="0" if "%_auto_update%"=="1" (
+    echo [SillyBunny] Self-update skipped: this folder is not a Git checkout.
+    echo [SillyBunny] Download the latest release ZIP, or install with git clone to enable automatic updates.
+    echo.
+)
+
 set NODE_ENV=production
 set NODE_NO_WARNINGS=1
 set SILLYBUNNY_LAUNCHER=1

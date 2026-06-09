@@ -14,6 +14,7 @@ import {
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
     hasOnlyBunLockChange,
+    NON_GIT_REPOSITORY_MESSAGE,
     isRuntimeBranch,
     isGitRepository,
     resolveRemoteBranchName,
@@ -461,7 +462,7 @@ async function getRepositoryStatus() {
     const isRepo = await isGitRepository(git);
 
     if (!isRepo) {
-        status.message = 'This install is not running from a Git repository.';
+        status.message = NON_GIT_REPOSITORY_MESSAGE;
         return status;
     }
 
@@ -758,7 +759,7 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
         }
 
         if (!repository.isRepo) {
-            return response.status(400).json({ error: repository.message || 'This install is not running from a Git repository.' });
+            return response.status(400).json({ error: repository.message || NON_GIT_REPOSITORY_MESSAGE });
         }
 
         if (!repository.trackingBranch) {
@@ -870,7 +871,7 @@ router.post('/branches', requireAdminMiddleware, async (_request, response) => {
         const isRepo = await isGitRepository(git);
 
         if (!isRepo) {
-            return response.status(400).json({ error: 'This install is not running from a Git repository.' });
+            return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });
         }
 
         // Get current branch
@@ -911,7 +912,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         const isRepo = await isGitRepository(git);
 
         if (!isRepo) {
-            return response.status(400).json({ error: 'This install is not running from a Git repository.' });
+            return response.status(400).json({ error: NON_GIT_REPOSITORY_MESSAGE });
         }
 
         // Check for local changes
