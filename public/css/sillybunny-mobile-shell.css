@@ -2765,3 +2765,61 @@
         padding: 8px 16px 28px 12px !important;
     }
 }
+
+/* SillyBunny: streaming display (generation toast) density pass for phone. */
+@media screen and (max-width: 768px) {
+    .streaming-display {
+        padding: 10px;
+        gap: 7px;
+        right: 10px;
+        width: calc(100vw - 20px);
+        max-height: 50vh;
+    }
+
+    .streaming-display-minimized.streaming-display {
+        padding: 8px 10px;
+    }
+
+    .streaming-display-label {
+        font-size: 0.85em;
+        gap: 6px;
+    }
+
+    .streaming-display-content {
+        gap: 7px;
+    }
+
+    .streaming-display-reasoning {
+        padding: 6px 8px;
+    }
+
+    .streaming-display-reasoning-label {
+        font-size: 0.75em;
+        margin-bottom: 3px;
+    }
+
+    .streaming-display-reasoning-content {
+        font-size: 0.77em;
+        max-height: 15vh;
+    }
+
+    .streaming-display-text {
+        padding-top: 6px;
+    }
+
+    .streaming-display-text-content {
+        font-size: 0.82em;
+        max-height: 20vh;
+    }
+
+    .streaming-display-btn {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+    }
+
+    .streaming-display button {
+        font-size: 0.82em;
+        padding: 6px 10px;
+    }
+}
