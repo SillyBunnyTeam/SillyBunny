@@ -599,6 +599,7 @@ const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
 const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
 const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
@@ -2306,6 +2307,10 @@ function getShellViewportSize() {
 }
 
 function syncShellViewportBounds() {
+    if (sbIsSyncingRailActions) {
+        return;
+    }
+
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
@@ -2738,6 +2743,10 @@ function clearDesktopShellSize(root) {
 }
 
 function syncDesktopShellSizing() {
+    if (sbIsSyncingRailActions) {
+        return;
+    }
+
     hydratePersistedShellSizes();
 
     const resizingEnabled = canResizeDesktopShells();
@@ -13208,93 +13217,114 @@ function syncMobileShellRailActions(shellKey = null) {
     const hasVerticalRail = navState.layout === 'vertical';
     const railQuickActionState = getQuickActionState(railMode);
 
-    for (const currentShellKey of shellKeys) {
-        const shellState = getShellState(currentShellKey);
-        if (!(shellState?.nav instanceof HTMLElement)) {
-            continue;
-        }
+    const prevSyncingRail = sbIsSyncingRailActions;
+    sbIsSyncingRailActions = true;
 
-        shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
-        const showCustomize = hasVerticalRail && navState.showCustomize;
-        const shouldHideCustomizeTabs = showCustomize;
-        syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
+    try {
+        for (const currentShellKey of shellKeys) {
+            const shellState = getShellState(currentShellKey);
+            if (!(shellState?.nav instanceof HTMLElement)) {
+                continue;
+            }
 
-        const createRailBlock = (position) => createElement('div', {
-            className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
-            attrs: {
-                'aria-hidden': 'false',
-            },
-        });
+            const showCustomize = hasVerticalRail && navState.showCustomize;
+            const shouldHideCustomizeTabs = showCustomize;
 
-        if (!hasVerticalRail) {
-            shellState.updateNavScrollIndicators?.();
-            continue;
-        }
-
-        const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
-        const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
-        const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
-            ? createNavReplacementQuickAction(navState.replacementTarget)
-            : null;
-        const railQuickActions = replacementAction
-            ? [replacementAction]
-            : railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)));
-        const createQuickActionsGroup = () => {
-            const quickActionsGroup = createElement('div', {
-                className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
+            const createRailBlock = (position) => createElement('div', {
+                className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
                 attrs: {
-                    'aria-label': 'Quick Actions',
+                    'aria-hidden': 'false',
                 },
             });
 
-            if (railQuickActions.length) {
-                for (const action of railQuickActions) {
-                    const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
-                    if (button) {
-                        quickActionsGroup.appendChild(button);
+            let beforeBlock = null;
+            let afterBlock = null;
+
+            if (hasVerticalRail) {
+                const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
+                const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
+                const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
+                    ? createNavReplacementQuickAction(navState.replacementTarget)
+                    : null;
+                const railQuickActions = replacementAction
+                    ? [replacementAction]
+                    : railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)));
+                const createQuickActionsGroup = () => {
+                    const quickActionsGroup = createElement('div', {
+                        className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
+                        attrs: {
+                            'aria-label': 'Quick Actions',
+                        },
+                    });
+
+                    if (railQuickActions.length) {
+                        for (const action of railQuickActions) {
+                            const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
+                            if (button) {
+                                quickActionsGroup.appendChild(button);
+                            }
+                        }
+                    } else {
+                        quickActionsGroup.appendChild(createElement('div', {
+                            className: 'sb-shell-rail-empty',
+                            text: 'No Quick Actions',
+                        }));
                     }
+
+                    return quickActionsGroup;
+                };
+
+                const pendingBefore = createRailBlock('before');
+
+                if (builtInRailActions.length) {
+                    const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
+                    pendingBefore.appendChild(createMobileShellRailDivider(builtInRailLabel));
+                    pendingBefore.appendChild(createRailActionGroup(
+                        builtInRailActions,
+                        builtInRailLabel,
+                        `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
+                    ));
                 }
-            } else {
-                quickActionsGroup.appendChild(createElement('div', {
-                    className: 'sb-shell-rail-empty',
-                    text: 'No Quick Actions',
-                }));
+
+                if (pendingBefore.children.length > 0) {
+                    beforeBlock = pendingBefore;
+                }
+
+                if (navState.showQuickActions && railQuickActions.length > 0) {
+                    const pendingAfter = createRailBlock('after');
+                    pendingAfter.append(
+                        createMobileShellRailDivider('Quick Actions'),
+                        createQuickActionsGroup(),
+                    );
+                    afterBlock = pendingAfter;
+                }
             }
 
-            return quickActionsGroup;
-        };
+            shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
+            syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
 
-        const beforeBlock = createRailBlock('before');
+            if (beforeBlock) {
+                shellState.nav.prepend(beforeBlock);
+            }
+            if (afterBlock) {
+                shellState.nav.appendChild(afterBlock);
+            }
 
-        if (builtInRailActions.length) {
-            const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
-            beforeBlock.appendChild(createMobileShellRailDivider(builtInRailLabel));
-            beforeBlock.appendChild(createRailActionGroup(
-                builtInRailActions,
-                builtInRailLabel,
-                `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
-            ));
+            shellState.updateNavScrollIndicators?.();
         }
 
-        if (beforeBlock.children.length > 0) {
-            shellState.nav.prepend(beforeBlock);
+        const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
+        const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
+        syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
+    } finally {
+        if (!prevSyncingRail) {
+            requestAnimationFrame(() => {
+                sbIsSyncingRailActions = false;
+            });
+        } else {
+            sbIsSyncingRailActions = prevSyncingRail;
         }
-
-        if (navState.showQuickActions && railQuickActions.length > 0) {
-            const afterBlock = createRailBlock('after');
-            afterBlock.append(
-                createMobileShellRailDivider('Quick Actions'),
-                createQuickActionsGroup(),
-            );
-            shellState.nav.appendChild(afterBlock);
-        }
-
-        shellState.updateNavScrollIndicators?.();
     }
-
-    const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
-    const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
-    syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
 }
 
 function routeDrawerTarget(targetId) {
