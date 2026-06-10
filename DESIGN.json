@@ -159,6 +159,10 @@
       {
         "name": "narrow-mobile",
         "value": "620px"
+      },
+      {
+        "name": "small-mobile",
+        "value": "420px"
       }
     ]
   },

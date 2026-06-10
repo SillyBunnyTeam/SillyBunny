@@ -206,6 +206,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 Bug 1 transparency migration. |
 | Owner | Refactor integrator. |
 
+### `public/index.html` - mobile stylesheet media gates
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell and frontend boot. |
+| Divergence reason | SillyBunny keeps upstream `mobile-styles.css` and the fork mobile shell stylesheet gated to `max-width: 768px` so compact desktop widths use desktop chrome while still receiving upstream 1000px layout rules. |
+| Target seam | None; this is static boot markup. |
+| Adapter shape | Keep the `css/mobile-styles.css` and `css/sillybunny-mobile-shell.css` stylesheet links on `media="(max-width: 768px)"`, loaded after upstream `style.css` and before `css/user.css`. |
+| Protecting tests | `tests/mobile-css-budgets.test.js` (`mobile sheets keep their (max-width: 768px) media gates`, `fork sheets load after upstream styles and before user.css`) and the 820x1180 compact desktop smoke checkpoint in `tests/mobile-shell-smoke.e2e.js`. |
+| Validation | `npm run test:unit --prefix tests -- mobile-css-budgets.test.js`, mobile smoke pack before CSS consolidation PRs. |
+| Rollback path | Restore prior stylesheet link gates and load order if compact desktop or mobile shell boot behavior regresses. |
+| Last reviewed | 2026-06-11 PR 2.1 mobile breakpoint ledger. |
+| Owner | Refactor integrator and mobile shell owner. |
+
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
 | --- | --- |
