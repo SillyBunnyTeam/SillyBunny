@@ -46,6 +46,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #394 (2026-06-10) `fix: preserve new group chat id during validation`
 - PR #395 (2026-06-10) `fix(mobile): strengthen preset select touch guard`
 - PR #396 (2026-06-10) `chore: route mobile drawer bounds through mobile-shell-lifecycle`
+- PR #397 (2026-06-10) `chore: route mobile viewport sync plan through mobile-shell-lifecycle`
 
 ## v1.6.3
 
