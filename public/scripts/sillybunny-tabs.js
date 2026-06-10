@@ -13406,6 +13406,15 @@ function dispatchShellTabActivated(shellKey, tabState) {
     }));
 }
 
+function getInlineDrawerAutoCloseId(drawer, index = 0) {
+    if (!(drawer instanceof HTMLElement)) {
+        return '';
+    }
+
+    const drawerId = String(drawer.id || '').trim();
+    return drawerId ? `id:${drawerId}:index:${index}` : `index:${index}`;
+}
+
 function interceptDrawerOpeners() {
     document.addEventListener('click', event => {
         const opener = event.target instanceof Element ? event.target.closest('.drawer-opener') : null;
@@ -13439,11 +13448,31 @@ function interceptDrawerOpeners() {
         const parent = thisDrawer.parentElement;
         if (!parent) return;
 
-        parent.querySelectorAll(':scope > .inline-drawer').forEach(sibling => {
-            if (sibling === thisDrawer) return;
+        const siblingDrawers = Array.from(parent.children)
+            .filter(element => element instanceof HTMLElement && element.classList.contains('inline-drawer'));
+        const drawerById = new Map(siblingDrawers.map((drawer, index) => [getInlineDrawerAutoCloseId(drawer, index), drawer]));
+        const openedDrawerId = getInlineDrawerAutoCloseId(thisDrawer, siblingDrawers.indexOf(thisDrawer));
+        const openDrawerIds = siblingDrawers
+            .map((drawer, index) => {
+                const siblingIcon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
+                return siblingIcon?.classList.contains('fa-circle-chevron-up')
+                    ? getInlineDrawerAutoCloseId(drawer, index)
+                    : '';
+            })
+            .filter(Boolean);
+        const autoClosePlan = sbMobileShellLifecycle.inlineDrawers.resolveAutoCloseSiblings({
+            openedDrawerId,
+            openDrawerIds,
+            isMobileViewport: isMobileViewport(),
+        });
+
+        for (const closeId of autoClosePlan.closeIds) {
+            const sibling = drawerById.get(closeId);
+            if (!(sibling instanceof HTMLElement)) continue;
+
             const siblingIcon = sibling.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
             const siblingContent = sibling.querySelector(':scope > .inline-drawer-content');
-            if (!siblingIcon?.classList.contains('fa-circle-chevron-up')) return;
+            if (!siblingIcon?.classList.contains('fa-circle-chevron-up')) continue;
 
             // Close it — mirror what ST's handler does
             siblingIcon.classList.replace('fa-circle-chevron-up', 'fa-circle-chevron-down');
@@ -13453,7 +13482,7 @@ function interceptDrawerOpeners() {
             } else {
                 siblingContent?.style.setProperty('display', 'none');
             }
-        });
+        }
     }, true);
 }
 
@@ -14022,17 +14051,21 @@ function getInlineDrawerStorageKey(drawer) {
         return null;
     }
 
-    if (drawer.id) {
-        return `${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join('/')}:drawer-id:${sanitizeInlineDrawerStorageSegment(drawer.id)}`;
-    }
-
     const siblingInlineDrawers = drawer.parentElement
         ? Array.from(drawer.parentElement.children).filter(element => element instanceof HTMLElement && element.classList.contains('inline-drawer'))
         : [];
     const drawerIndex = Math.max(0, siblingInlineDrawers.indexOf(drawer));
     const drawerLabel = sanitizeInlineDrawerStorageSegment(getInlineDrawerHeaderText(drawer));
 
-    return `${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join('/')}:drawer:${drawerLabel}:${drawerIndex}`;
+    return sbMobileShellLifecycle.inlineDrawers.derivePersistenceKey({
+        drawerId: drawer.id ? sanitizeInlineDrawerStorageSegment(drawer.id) : '',
+        context: {
+            storagePrefix: SB_STORAGE_KEYS.settingsDrawerStatePrefix,
+            contextSegments,
+            drawerLabel,
+            drawerIndex,
+        },
+    }) || null;
 }
 
 function getStoredInlineDrawerExpanded(drawer) {

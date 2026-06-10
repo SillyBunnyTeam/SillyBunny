@@ -172,6 +172,24 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
     });
 
+    test('routes inline drawer decisions through the lifecycle seam', () => {
+        const interceptDrawerOpenersSource = getFunctionSource('interceptDrawerOpeners');
+        const getInlineDrawerStorageKeySource = getFunctionSource('getInlineDrawerStorageKey');
+
+        expect(tabsSource).toContain('function getInlineDrawerAutoCloseId(');
+        expect(interceptDrawerOpenersSource).toContain('sbMobileShellLifecycle.inlineDrawers.resolveAutoCloseSiblings({');
+        expect(interceptDrawerOpenersSource).toContain('openedDrawerId,');
+        expect(interceptDrawerOpenersSource).toContain('openDrawerIds,');
+        expect(interceptDrawerOpenersSource).toContain('isMobileViewport: isMobileViewport(),');
+        expect(interceptDrawerOpenersSource).toContain('for (const closeId of autoClosePlan.closeIds)');
+        expect(interceptDrawerOpenersSource).not.toContain('parent.querySelectorAll(\':scope > .inline-drawer\').forEach');
+        expect(getInlineDrawerStorageKeySource).toContain('sbMobileShellLifecycle.inlineDrawers.derivePersistenceKey({');
+        expect(getInlineDrawerStorageKeySource).toContain('storagePrefix: SB_STORAGE_KEYS.settingsDrawerStatePrefix,');
+        expect(getInlineDrawerStorageKeySource).toContain('contextSegments,');
+        expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer-id:');
+        expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
+    });
+
     test('clamps resizable shell panels against the visual viewport and panel top', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
