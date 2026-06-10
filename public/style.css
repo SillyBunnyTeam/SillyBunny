@@ -200,6 +200,11 @@ html {
     -webkit-transform: translateZ(0);
     -webkit-backface-visibility: hidden;
     -webkit-perspective: 1000;
+    /* SillyBunny: `clip` (unlike `hidden`) blocks programmatic viewport
+       scrolling too, so scrollIntoView on search results can't shift the
+       fixed-layout app and strand a black bar at the bottom. */
+    overflow: hidden;
+    overflow: clip;
 }
 
 body {
@@ -218,6 +223,7 @@ body {
     line-height: 1.6;
     color: var(--SmartThemeBodyColor);
     overflow: hidden;
+    overflow: clip;
     color-scheme: only light;
 }
 
