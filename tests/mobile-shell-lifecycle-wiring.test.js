@@ -151,6 +151,27 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileShellRailActionsSource).not.toContain('builtInRailActions.map(getMobileQuickActionKey)');
     });
 
+    test('routes mobile rail model decisions through the lifecycle seam', () => {
+        const getMobileQuickActionContextSource = getFunctionSource('getMobileQuickActionContext');
+        const normalizeMobileQuickActionSource = getFunctionSource('normalizeMobileQuickAction');
+        const getMobileQuickActionKeySource = getFunctionSource('getMobileQuickActionKey');
+        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
+
+        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;');
+        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;');
+        expect(getMobileQuickActionContextSource).toContain('sbMobileShellLifecycle.railModel.resolveQuickActionRoute(value);');
+        expect(normalizeMobileQuickActionSource).toContain('sbMobileShellLifecycle.railModel.normalizeQuickAction({');
+        expect(normalizeMobileQuickActionSource).toContain('limits: sbMobileShellLifecycle.railModel.limits,');
+        expect(getMobileQuickActionKeySource).toContain('sbMobileShellLifecycle.railModel.getQuickActionKey(normalizedAction);');
+        expect(syncMobileShellRailActionsSource).toContain('sbMobileShellLifecycle.railModel.resolveActionVisibility({');
+        expect(syncMobileShellRailActionsSource).toContain('builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),');
+        expect(syncMobileShellRailActionsSource).toContain('shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;');
+        expect(syncMobileShellRailActionsSource).toContain('for (const group of railActionPlan.beforeGroups)');
+        expect(syncMobileShellRailActionsSource).toContain('if (railActionPlan.afterGroups.length > 0)');
+        expect(syncMobileShellRailActionsSource).not.toContain('const shouldHideCustomizeTabs = showCustomize;');
+        expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
+    });
+
     test('clamps resizable shell panels against the visual viewport and panel top', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');

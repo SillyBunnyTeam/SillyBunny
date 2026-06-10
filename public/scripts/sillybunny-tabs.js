@@ -596,9 +596,8 @@ const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search all settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
 const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term or a different setting name.';
 const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
-const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
-const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
-const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;
+const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
 let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
@@ -1023,60 +1022,22 @@ function normalizeFontAwesomeIcon(value, fallback = SB_MOBILE_QUICK_ACTION_ICON_
     return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
-function normalizeMobileQuickAction(value) {
-    if (!value || typeof value !== 'object') {
-        return null;
-    }
-
-    // SillyBunny: parse historical left/world-info quick actions as the
-    // relocated Characters tab before validating the shell/tab pair.
-    const legacyShellKey = normalizeText(value.shellKey || value.shell);
-    const legacyTabId = normalizeText(value.tabId || value.tab);
-    const shellKey = legacyShellKey === 'left' && legacyTabId === 'world-info' ? 'characters' : legacyShellKey;
-    const tabId = legacyShellKey === 'left' && legacyTabId === 'world-info' ? 'world-info' : legacyTabId;
-    const requestedType = normalizeText(value.type);
-    const isShellAction = requestedType === 'shell';
-
-    if ((isShellAction ? !shellKey : !tabId) || (shellKey !== 'characters' && !getShellConfig(shellKey))) {
-        return null;
-    }
-
-    const tabConfig = isShellAction ? null : getMobileQuickActionTabConfig(shellKey, tabId);
-    const dedupeKey = clampText(value.dedupeKey, 160);
-    const type = dedupeKey ? 'custom' : isShellAction ? 'shell' : 'tab';
-    const displayText = clampText(value.displayText, 80);
-    const sectionLabel = clampText(value.sectionLabel, 80);
-    const fallbackLabel = type === 'custom'
-        ? displayText || sectionLabel
-        : type === 'shell'
-            ? getShellConfig(shellKey)?.title || shellKey
-            : tabConfig?.label || tabId;
-    const label = clampText(value.label || fallbackLabel, SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH);
-
-    if (!label) {
-        return null;
-    }
-
-    const fallbackIcon = type === 'custom'
-        ? SB_MOBILE_QUICK_ACTION_ICON_FALLBACK
-        : type === 'shell'
-            ? getShellConfig(shellKey)?.proxyIcon || 'fa-bars'
-            : tabConfig?.icon || 'fa-bars';
-    const action = {
-        type,
-        shellKey,
-        tabId,
-        icon: normalizeFontAwesomeIcon(value.icon, fallbackIcon),
-        label,
+function getMobileQuickActionContext(value) {
+    const route = sbMobileShellLifecycle.railModel.resolveQuickActionRoute(value);
+    return {
+        shellConfig: route.shellKey === 'characters' ? null : getShellConfig(route.shellKey),
+        tabConfig: route.tabId ? getMobileQuickActionTabConfig(route.shellKey, route.tabId) : null,
     };
+}
 
-    if (type === 'custom') {
-        action.sectionLabel = sectionLabel;
-        action.displayText = displayText || label;
-        action.dedupeKey = dedupeKey;
-    }
-
-    return action;
+function normalizeMobileQuickAction(value) {
+    const { shellConfig, tabConfig } = getMobileQuickActionContext(value);
+    return sbMobileShellLifecycle.railModel.normalizeQuickAction({
+        action: value,
+        shellConfig,
+        tabConfig,
+        limits: sbMobileShellLifecycle.railModel.limits,
+    });
 }
 
 function normalizeMobileQuickActionList(actions) {
@@ -1191,16 +1152,7 @@ function saveDesktopQuickActions() {
 
 function getMobileQuickActionKey(action) {
     const normalizedAction = normalizeMobileQuickAction(action);
-    if (!normalizedAction) {
-        return '';
-    }
-
-    return [
-        normalizedAction.type,
-        normalizedAction.shellKey,
-        normalizedAction.tabId,
-        normalizedAction.dedupeKey,
-    ].filter(Boolean).join('::');
+    return sbMobileShellLifecycle.railModel.getQuickActionKey(normalizedAction);
 }
 
 function createMobileQuickActionFromMatch(match) {
@@ -13316,8 +13268,7 @@ function syncMobileShellRailActions(shellKey = null) {
                 continue;
             }
 
-            const showCustomize = hasVerticalRail && navState.showCustomize;
-            const shouldHideCustomizeTabs = showCustomize;
+            let shouldHideCustomizeTabs = false;
 
             const createRailBlock = (position) => createElement('div', {
                 className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
@@ -13330,15 +13281,23 @@ function syncMobileShellRailActions(shellKey = null) {
             let afterBlock = null;
 
             if (hasVerticalRail) {
-                const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
-                const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
+                const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
                 const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
                     ? createNavReplacementQuickAction(navState.replacementTarget)
                     : null;
-                const railQuickActions = replacementAction
-                    ? [replacementAction]
-                    : railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)));
-                const createQuickActionsGroup = () => {
+                const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
+                    hasVerticalRail,
+                    showCustomize: navState.showCustomize,
+                    showQuickActions: navState.showQuickActions,
+                    builtInActions: getBuiltInRailActionsForShell(currentShellKey),
+                    builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
+                    quickActions: railQuickActionState,
+                    replacementAction,
+                    builtInGroupLabel: builtInRailLabel,
+                });
+                shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;
+
+                const createQuickActionsGroup = (actions) => {
                     const quickActionsGroup = createElement('div', {
                         className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
                         attrs: {
@@ -13346,8 +13305,8 @@ function syncMobileShellRailActions(shellKey = null) {
                         },
                     });
 
-                    if (railQuickActions.length) {
-                        for (const action of railQuickActions) {
+                    if (actions.length) {
+                        for (const action of actions) {
                             const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
                             if (button) {
                                 quickActionsGroup.appendChild(button);
@@ -13365,13 +13324,12 @@ function syncMobileShellRailActions(shellKey = null) {
 
                 const pendingBefore = createRailBlock('before');
 
-                if (builtInRailActions.length) {
-                    const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
-                    pendingBefore.appendChild(createMobileShellRailDivider(builtInRailLabel));
+                for (const group of railActionPlan.beforeGroups) {
+                    pendingBefore.appendChild(createMobileShellRailDivider(group.label));
                     pendingBefore.appendChild(createRailActionGroup(
-                        builtInRailActions,
-                        builtInRailLabel,
-                        `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
+                        group.actions,
+                        group.label,
+                        `sb-shell-rail-group-${group.label.toLowerCase()}`,
                     ));
                 }
 
@@ -13379,12 +13337,14 @@ function syncMobileShellRailActions(shellKey = null) {
                     beforeBlock = pendingBefore;
                 }
 
-                if (navState.showQuickActions && railQuickActions.length > 0) {
+                if (railActionPlan.afterGroups.length > 0) {
                     const pendingAfter = createRailBlock('after');
-                    pendingAfter.append(
-                        createMobileShellRailDivider('Quick Actions'),
-                        createQuickActionsGroup(),
-                    );
+                    for (const group of railActionPlan.afterGroups) {
+                        pendingAfter.append(
+                            createMobileShellRailDivider(group.label),
+                            createQuickActionsGroup(group.actions),
+                        );
+                    }
                     afterBlock = pendingAfter;
                 }
             }
