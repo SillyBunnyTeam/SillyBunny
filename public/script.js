@@ -245,6 +245,7 @@ import { NOTE_MODULE_NAME, initAuthorsNote, metadata_keys, setFloatingPrompt, sh
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
+import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -503,12 +504,15 @@ export let swipeState = SWIPE_STATE.NONE;
 let chatSaveTimeout = null;
 let chatSavePromise = null;
 let chatSaveQueue = Promise.resolve();
+const queuedChatIntegrityByFile = new Map();
+let chatGeneration = 0;
+let chatSaveActivityCount = 0;
 let importFlashTimeout;
 export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.3';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.4';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -551,7 +555,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.3:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.6.4:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -984,7 +988,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260603e', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260609d', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -3252,6 +3256,46 @@ export function cancelDebouncedChatSave() {
     }
 }
 
+export function incrementChatGeneration() {
+    chatGeneration++;
+}
+
+function setChatSaveActive(isActive) {
+    chatSaveActivityCount += isActive ? 1 : -1;
+    chatSaveActivityCount = Math.max(0, chatSaveActivityCount);
+    isChatSaving = chatSaveActivityCount > 0;
+}
+
+function getQueuedChatIntegrityKey(avatarUrl, chatName) {
+    if (!avatarUrl || !chatName) {
+        return '';
+    }
+
+    return `${avatarUrl}\0${chatName}`;
+}
+
+function cloneChatSavePayload(chatData) {
+    return structuredClone(chatData);
+}
+
+function applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave) {
+    if (isActiveChatSave && typeof chat_metadata.integrity === 'string' && chat_metadata.integrity) {
+        metadata.integrity = chat_metadata.integrity;
+        return;
+    }
+
+    const queuedIntegrity = integrityKey ? queuedChatIntegrityByFile.get(integrityKey) : undefined;
+    if (typeof queuedIntegrity === 'string' && queuedIntegrity) {
+        metadata.integrity = queuedIntegrity;
+    }
+}
+
+function rememberQueuedChatIntegrity(integrityKey, integrity) {
+    if (integrityKey && typeof integrity === 'string' && integrity) {
+        queuedChatIntegrityByFile.set(integrityKey, integrity);
+    }
+}
+
 /**
  * Visually removes all chat message elements.
  * @param {object} [options] Options
@@ -3278,7 +3322,10 @@ export async function clearChat({ clearData = false } = {}) {
     await saveItemizedPrompts(getCurrentChatId());
     itemizedPrompts.length = 0;
 
-    if (clearData) chat.length = 0;
+    if (clearData) {
+        chat.length = 0;
+        incrementChatGeneration();
+    }
 }
 
 export async function deleteLastMessage() {
@@ -3500,9 +3547,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         const usableMessages = chat.map((x, index) => ({ message: x, index: index })).filter(x => !x.message.is_system);
         const indexOf = usableMessages.findIndex(x => x.index === resolvedMessageId);
         const depth = resolvedMessageId >= 0 && indexOf !== -1 ? (usableMessages.length - indexOf - 1) : undefined;
-        const agentRegexScripts = Array.isArray(chatMessage?.extra?.inChatAgents?.regexScripts)
-            ? chatMessage.extra.inChatAgents.regexScripts
-            : [];
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
         if (!isUser && !isReasoning && agentRegexScripts.length > 0) {
             mes = applyRegexScriptList(mes, agentRegexScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
@@ -5124,18 +5169,33 @@ export function getStoppingStrings(isImpersonate, isContinue, api = main_api) {
  * @prop {object} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {boolean} [removeReasoning] Parses and removes the reasoning block according to reasoning format preferences
  * @prop {boolean} [trimToSentence] Whether to trim the response to the last complete sentence
+ * @prop {AbortSignal} [signal] Optional signal to abort the request.
  * @prop {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @param {GenerateQuietPromptParams} params Parameters for the quiet prompt generation
  * @returns {Promise<string>} Generated text. If using structured output, will contain a serialized JSON object.
  */
-export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, cacheScope = 'auxiliary' } = {}) {
+export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = false, skipWIAN = false, quietImage = null, quietName = null, responseLength = null, forceChId = null, jsonSchema = null, removeReasoning = true, trimToSentence = false, signal = null, cacheScope = 'auxiliary' } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateQuietPrompt called with positional arguments. Please use an object instead.');
         [quietPrompt, quietToLoud, skipWIAN, quietImage, quietName, responseLength, forceChId, jsonSchema] = arguments;
     }
 
     const responseLengthCustomized = typeof responseLength === 'number' && responseLength > 0;
+    const externalSignal = signal instanceof AbortSignal ? signal : null;
+    const quietAbortController = externalSignal ? new AbortController() : null;
+    const abortFromExternalSignal = quietAbortController
+        ? () => quietAbortController.abort(externalSignal.reason ?? new Error('Cancelled by external signal'))
+        : null;
     let eventHook = () => { };
+
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            abortFromExternalSignal();
+        } else {
+            externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+        }
+    }
+
     try {
         /** @type {GenerateOptions} */
         const generateOptions = {
@@ -5147,17 +5207,24 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             quietName: quietName ?? null,
             force_chid: forceChId ?? null,
             jsonSchema: jsonSchema ?? null,
+            signal: quietAbortController?.signal ?? null,
             cacheScope,
         };
         if (responseLengthCustomized) {
             TempResponseLength.save(main_api, responseLength);
             eventHook = TempResponseLength.setupEventHook(main_api);
         }
+        if (quietAbortController) {
+            abortController = quietAbortController;
+        }
         let result = await Generate('quiet', generateOptions);
         result = trimToSentence ? trimToEndSentence(result) : result;
         result = removeReasoning ? removeReasoningFromString(result) : result;
         return result;
     } finally {
+        if (externalSignal && abortFromExternalSignal) {
+            externalSignal.removeEventListener('abort', abortFromExternalSignal);
+        }
         if (responseLengthCustomized && TempResponseLength.isCustomized()) {
             TempResponseLength.restore(main_api);
             TempResponseLength.removeEventHook(main_api, eventHook);
@@ -8035,7 +8102,7 @@ export function stopGeneration() {
     }
 
     if (stopState.shouldStop) {
-        unblockGeneration(stopState.unblockType, { emitGenerationEnded: false });
+        unblockGeneration(stopState.unblockType, { emitGenerationEnded: false, force: true });
     }
 
     return stopState.shouldStop;
@@ -8111,12 +8178,17 @@ function flushWIInjections() {
 /**
  * Unblocks the UI after a generation is complete.
  * @param {string} [type] Generation type (optional)
+ * @param {object} [options] Options.
+ * @param {boolean} [options.emitGenerationEnded=true] Whether to emit generation-ended UI events.
+ * @param {boolean} [options.force=false] Whether to bypass stream-wait guards.
  */
-function unblockGeneration(type, { emitGenerationEnded = true } = {}) {
+function unblockGeneration(type, { emitGenerationEnded = true, force = false } = {}) {
     const unblockState = resolveGenerationUnblockState({
         type,
         hasStreamingProcessor: Boolean(streamingProcessor),
         isStreamingFinished: Boolean(streamingProcessor?.isFinished),
+        // SillyBunny: explicit Stop must always release the UI lock so users can retry.
+        forceUnblock: force,
     });
 
     if (!unblockState.shouldUnblock) {
@@ -9931,10 +10003,11 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
     }
 }
 
-export function saveChatDebounced() {
+export function saveChatDebounced(options = {}) {
     const chid = this_chid;
     const selectedGroup = selected_group;
     const chatId = getCurrentChatId();
+    const generation = chatGeneration;
 
     cancelDebouncedChatSave();
 
@@ -9949,6 +10022,8 @@ export function saveChatDebounced() {
             currentCharacterId: this_chid,
             scheduledChatId: chatId,
             currentChatId: getCurrentChatId(),
+            scheduledGeneration: generation,
+            currentGeneration: chatGeneration,
         });
 
         if (abortReason) {
@@ -9957,7 +10032,7 @@ export function saveChatDebounced() {
         }
 
         console.debug('Chat save timeout triggered');
-        chatSavePromise = saveChatConditional();
+        chatSavePromise = saveChatConditional(options);
         try {
             await chatSavePromise;
             console.debug('Chat saved');
@@ -10005,16 +10080,10 @@ export async function flushPendingChatSaves() {
         }
     }
 
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 100, { rejectOnTimeout: false });
-    if (isChatSaving) {
-        toastr.error(t`The current chat is still saving. Try again in a moment.`, t`Chat save still in progress`);
-        return false;
-    }
-
     toastr.info(t`Saving chat...`, t`Saving chat`);
 
     try {
-        isChatSaving = true;
+        setChatSaveActive(true);
 
         const didSave = selected_group
             ? await saveGroupChat(selected_group, true, false, true)
@@ -10032,7 +10101,7 @@ export async function flushPendingChatSaves() {
         console.error('Error flushing pending chat saves', error);
         return false;
     } finally {
-        isChatSaving = false;
+        setChatSaveActive(false);
     }
 }
 
@@ -10045,20 +10114,52 @@ export async function flushPendingChatSaves() {
  * @param {boolean} [options.force] Force the saving despite the integrity check result
  * @param {ChatMessage[]} [options.chatData] Chat snapshot to save instead of the current in-memory chat
  * @param {boolean} [options.throwOnError] Rethrow save errors after notifying the user
+ * @param {boolean} [options.deferBackup] Save chat data without creating a regular chat backup yet
  *
  * @returns {Promise<boolean>}
  */
 export function saveChat(...saveChatArguments) {
+    const [firstArgument] = saveChatArguments;
+    const options = firstArgument && typeof firstArgument === 'object'
+        ? firstArgument
+        : saveChatArguments.length === 0
+            ? {}
+            : undefined;
+    let queuedSaveArguments = saveChatArguments;
+
+    if (options) {
+        const mesId = options.mesId;
+        const sourceChatData = Array.isArray(options.chatData)
+            ? options.chatData
+            : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
+                ? chat.slice(0, Number(mesId) + 1)
+                : chat.slice();
+        const chatData = cloneChatSavePayload(sourceChatData);
+        const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });
+        const activeCharacter = characters[this_chid];
+        queuedSaveArguments = [{
+            ...options,
+            chatData,
+            metadataSnapshot,
+            activeChatName: activeCharacter?.chat,
+            characterName: activeCharacter?.name,
+            avatarUrl: activeCharacter?.avatar,
+            wasGroupChat: Boolean(selected_group),
+        }];
+    }
+
+    setChatSaveActive(true);
     const saveTask = chatSaveQueue
         .catch(error => console.warn('Previous chat save failed before queued save.', error))
-        .then(() => saveChatImmediately(...saveChatArguments));
+        .then(() => saveChatImmediately(...queuedSaveArguments))
+        .finally(() => setChatSaveActive(false));
 
     chatSaveQueue = saveTask.catch(() => {});
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, mesId, force = false, chatData = undefined, throwOnError = false } = {}) {
-    if (selected_group) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+    if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
     }
@@ -10068,10 +10169,14 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
         [chatName, withMetadata, mesId, force, throwOnError] = arguments;
     }
 
-    const metadata = { ...chat_metadata, ...(withMetadata || {}) };
-    const activeChatName = characters[this_chid]?.chat;
+    const metadata = structuredClone(metadataSnapshot || { ...chat_metadata, ...(withMetadata || {}) });
     const fileName = chatName ?? activeChatName;
-    const isActiveChatSave = fileName === activeChatName;
+    const currentActiveChatName = characters[this_chid]?.chat;
+    const isActiveChatSave = fileName === currentActiveChatName;
+    const fallbackCharacter = characters[this_chid] || {};
+    const resolvedCharacterName = characterName || fallbackCharacter.name;
+    const resolvedAvatarUrl = avatarUrl || fallbackCharacter.avatar;
+    const integrityKey = getQueuedChatIntegrityKey(resolvedAvatarUrl, fileName);
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -10083,13 +10188,17 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
         return false;
     }
 
-    characters[this_chid].date_last_chat = Date.now();
+    const activeCharacter = characters.find(character => character?.avatar === resolvedAvatarUrl) || characters[this_chid];
+    if (activeCharacter) {
+        activeCharacter.date_last_chat = Date.now();
+    }
 
     const trimmedChat = Array.isArray(chatData)
         ? chatData
         : (mesId !== undefined && mesId >= 0 && mesId < chat.length)
-            ? chat.slice(0, Number(mesId) + 1)
-            : chat.slice();
+            ? cloneChatSavePayload(chat.slice(0, Number(mesId) + 1))
+            : cloneChatSavePayload(chat);
+    applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);
 
     /** @type {ChatHeader} */
     const chatHeader = {
@@ -10104,17 +10213,19 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
             cache: 'no-cache',
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                ch_name: characters[this_chid].name,
+                ch_name: resolvedCharacterName,
                 file_name: fileName,
                 chat: [chatHeader, ...trimmedChat],
-                avatar_url: characters[this_chid].avatar,
+                avatar_url: resolvedAvatarUrl,
                 force: force,
+                deferBackup: Boolean(deferBackup),
             }),
         });
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
             const responseData = await result.json().catch(() => ({}));
+            rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);
             if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
                 chat_metadata.integrity = responseData.integrity;
             }
@@ -10144,7 +10255,7 @@ async function saveChatImmediately({ chatName, withMetadata, mesId, force = fals
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, mesId, force: true, chatData, throwOnError });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -10435,6 +10546,7 @@ export async function unshallowCharacter(characterId) {
 
 export async function getChat({ allowMissingPersisted = false, switchMenu = true } = {}) {
     try {
+        incrementChatGeneration();
         await unshallowCharacter(this_chid);
         const resolvedChat = await resolveCharacterChatForLoad(this_chid, { allowCreate: true, allowMissingPersisted });
 
@@ -10950,7 +11062,7 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
     if (!skipConfirmation) {
         const confirmation = await Popup.show.confirm(
             t`Clear all cache?`,
-            t`This removes browser cache, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact.`,
+            t`This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact.`,
             {
                 okButton: t`Clear cache`,
                 cancelButton: t`Cancel`,
@@ -10992,6 +11104,16 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
             await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
         } catch (error) {
             console.error('Failed to clear Cache Storage', error);
+            cacheErrors.push(error);
+        }
+    }
+
+    if (globalThis.navigator?.serviceWorker && typeof globalThis.navigator.serviceWorker.getRegistrations === 'function') {
+        try {
+            const registrations = await globalThis.navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(registration => registration.unregister()));
+        } catch (error) {
+            console.error('Failed to unregister service workers', error);
             cacheErrors.push(error);
         }
     }
@@ -11150,6 +11272,13 @@ function sanitizeMessageElementForScreenshot(messageElement) {
     messageElement.classList.remove('selected', 'slide', 'fade');
     messageElement.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
     messageElement.querySelectorAll(removableSelector).forEach(element => element.remove());
+    messageElement.querySelectorAll('details:not([open])').forEach(details => {
+        Array.from(details.children).forEach(child => {
+            if (child.tagName !== 'SUMMARY') {
+                child.remove();
+            }
+        });
+    });
 }
 
 function buildMessageScreenshotElements(startId, endId) {
@@ -13814,23 +13943,16 @@ export async function saveMetadata() {
     return await saveChatConditional();
 }
 
-export async function saveChatConditional() {
-    try {
-        await waitUntilCondition(() => !isChatSaving, DEFAULT_SAVE_EDIT_TIMEOUT, 100);
-    } catch {
-        console.warn('Timeout waiting for chat to save');
-        return;
-    }
-
+export async function saveChatConditional(options = {}) {
     try {
         cancelDebouncedChatSave();
 
-        isChatSaving = true;
+        setChatSaveActive(true);
 
         if (selected_group) {
-            await saveGroupChat(selected_group, true);
+            await saveGroupChat(selected_group, true, false, false, options);
         } else {
-            await saveChat();
+            await saveChat(options);
         }
 
         // Save token and prompts cache to IndexedDB storage
@@ -13839,7 +13961,7 @@ export async function saveChatConditional() {
     } catch (error) {
         console.error('Error saving chat', error);
     } finally {
-        isChatSaving = false;
+        setChatSaveActive(false);
     }
 }
 
@@ -14958,7 +15080,7 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
     }
 
     if (selected_group) {
-        await createNewGroupChat(selected_group);
+        await createNewGroupChat(selected_group, { chatAlreadyPrepared: true });
         if (deleteCurrentChat) await deleteGroupChat(selected_group, chat_file_for_del, { jumpToNewChat: false }); // don't jump, new chat was already created and jumped to above
     } else {
         //RossAscends: added character name to new chat filenames and replaced Date.now() with humanizedDateTime;

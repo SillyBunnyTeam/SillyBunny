@@ -119,7 +119,6 @@
     --sb-state-busy-border: color-mix(in srgb, var(--sb-color-warning) 48%, var(--sb-shell-border));
     --sb-editing-bg: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 7%, transparent);
     --sb-editing-border: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 48%, var(--sb-shell-border));
-    --sb-editing-chip-bg: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 22%, var(--SmartThemeBlurTintColor));
     --sb-on-accent: rgb(0, 0, 0);
     --sb-on-solid-accent: var(--sb-on-accent);
     --sb-warning-fg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 72%, var(--SmartThemeBodyColor) 28%);
@@ -1535,36 +1534,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, var(--SmartThemeUserMesBlurTintColor));
 }
 
-#chat .mes:has(.edit_textarea) .mes_block,
-#chat .mes:has(.reasoning_edit_textarea) .mes_block {
-    position: relative;
-    overflow: visible;
-}
-
-#chat .mes:has(.edit_textarea) .mes_block::before,
-#chat .mes:has(.reasoning_edit_textarea) .mes_block::before {
-    content: '';
-    position: absolute;
-    top: 7px;
-    right: max(8px, var(--mes-right-spacing, 0px));
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    inline-size: 34px;
-    block-size: 6px;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 44%, var(--sb-shell-border));
-    border-radius: 999px;
-    background: var(--sb-editing-chip-bg);
-    box-shadow: 0 8px 16px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
-    pointer-events: none;
-}
-
-#chat .mes:has(.edit_textarea) .mes_text,
-#chat .mes:has(.reasoning_edit_textarea) .mes_reasoning_details {
-    padding-top: 22px;
-}
-
 #chat .edit_textarea,
 #chat .reasoning_edit_textarea {
     width: 100%;
@@ -2822,12 +2791,16 @@ input[type='range']::-moz-range-thumb {
     font-size: 0.86rem;
 }
 
-/* Mobile/touch: keep slider thumbs away from card edges and let vertical drags scroll. */
+/* Mobile/touch: keep dense controls scroll-friendly during vertical drags. */
 @media (pointer: coarse) {
     .sb-sampling-control-card input[type='range'].neo-range-slider {
         display: block;
         max-width: min(420px, calc(100% - 48px));
         margin-inline: auto;
+        touch-action: pan-y;
+    }
+
+    select[data-preset-manager-for] {
         touch-action: pan-y;
     }
 

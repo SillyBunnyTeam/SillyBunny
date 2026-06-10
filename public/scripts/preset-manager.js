@@ -26,6 +26,12 @@ import { convertNovelPreset } from './nai-settings.js';
 import { getChatCompletionPreset, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
+import {
+    createPresetSelectTouchGuardState,
+    resolvePresetSelectTouchGuardEnd,
+    resolvePresetSelectTouchGuardMove,
+    shouldSuppressPresetSelectTouchClick,
+} from './preset-select-touch-guard.js';
 import { reasoning_templates } from './reasoning.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from './slash-commands/SlashCommandArgument.js';
@@ -198,9 +204,17 @@ class PresetManager {
         this._snapshotTimer = null;
         this._isApplyingPresetChange = false;
         this._allowPresetSelectChange = false;
+        this._presetSelectTouchGuardState = null;
+        this._presetSelectTouchSuppressClick = false;
         this._textInputHandler = () => this._checkDirty();
         this._selectChangeHandler = (event) => this._handleSelectChange(event);
         this._capturePreviousSelectValueHandler = () => this._capturePreviousSelectValue();
+        this._presetSelectPointerDownHandler = (event) => this._handlePresetSelectPointerDown(event);
+        this._presetSelectPointerMoveHandler = (event) => this._handlePresetSelectPointerMove(event);
+        this._presetSelectPointerEndHandler = (event) => this._handlePresetSelectPointerEnd(event);
+        this._presetSelectPointerCancelHandler = (event) => this._handlePresetSelectPointerCancel(event);
+        this._presetSelectPointerLeaveHandler = (event) => this._handlePresetSelectPointerLeave(event);
+        this._presetSelectClickHandler = (event) => this._handlePresetSelectClick(event);
         // SillyBunny: snapshot and guard all connected text fields before preset
         // changes so unsaved changes in fork-specific drawers can still warn.
         this._bindDirtyGuard();
@@ -506,6 +520,87 @@ class PresetManager {
         selectElement.addEventListener('pointerdown', this._capturePreviousSelectValueHandler, true);
         selectElement.addEventListener('keydown', this._capturePreviousSelectValueHandler, true);
         selectElement.addEventListener('change', this._selectChangeHandler, true);
+        selectElement.addEventListener('pointerdown', this._presetSelectPointerDownHandler, true);
+        selectElement.addEventListener('pointermove', this._presetSelectPointerMoveHandler, true);
+        selectElement.addEventListener('pointerup', this._presetSelectPointerEndHandler, true);
+        selectElement.addEventListener('pointercancel', this._presetSelectPointerCancelHandler, true);
+        selectElement.addEventListener('pointerleave', this._presetSelectPointerLeaveHandler, true);
+        selectElement.addEventListener('click', this._presetSelectClickHandler, true);
+    }
+
+    _isMobilePresetSelectTouchGuardEnabled() {
+        return globalThis.SillyBunnyShell?.isMobileViewport?.()
+            ?? Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches);
+    }
+
+    _handlePresetSelectPointerDown(event) {
+        this._presetSelectTouchSuppressClick = false;
+        this._presetSelectTouchGuardState = createPresetSelectTouchGuardState({
+            isMobileViewport: this._isMobilePresetSelectTouchGuardEnabled(),
+            pointerType: event.pointerType,
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
+    }
+
+    _handlePresetSelectPointerMove(event) {
+        this._presetSelectTouchGuardState = resolvePresetSelectTouchGuardMove({
+            touchGuardState: this._presetSelectTouchGuardState,
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
+    }
+
+    _handlePresetSelectPointerEnd(event) {
+        const touchGuardResult = resolvePresetSelectTouchGuardEnd({
+            touchGuardState: this._presetSelectTouchGuardState,
+            pointerId: event.pointerId,
+        });
+
+        this._presetSelectTouchGuardState = touchGuardResult.touchGuardState;
+        this._presetSelectTouchSuppressClick = touchGuardResult.shouldSuppressClick;
+
+        if (touchGuardResult.shouldSuppressClick) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }
+
+    _handlePresetSelectPointerCancel(event) {
+        const touchGuardResult = resolvePresetSelectTouchGuardEnd({
+            touchGuardState: this._presetSelectTouchGuardState,
+            pointerId: event.pointerId,
+            forceSuppress: true,
+        });
+
+        this._presetSelectTouchGuardState = touchGuardResult.touchGuardState;
+        this._presetSelectTouchSuppressClick = touchGuardResult.shouldSuppressClick;
+    }
+
+    _handlePresetSelectPointerLeave(event) {
+        const touchGuardResult = resolvePresetSelectTouchGuardEnd({
+            touchGuardState: this._presetSelectTouchGuardState,
+            pointerId: event.pointerId,
+            forceSuppress: true,
+        });
+
+        this._presetSelectTouchGuardState = touchGuardResult.touchGuardState;
+        this._presetSelectTouchSuppressClick = touchGuardResult.shouldSuppressClick;
+    }
+
+    _handlePresetSelectClick(event) {
+        if (!shouldSuppressPresetSelectTouchClick({
+            isMobileViewport: this._isMobilePresetSelectTouchGuardEnabled(),
+            suppressClick: this._presetSelectTouchSuppressClick,
+        })) {
+            return;
+        }
+
+        this._presetSelectTouchSuppressClick = false;
+        event.preventDefault();
+        event.stopImmediatePropagation();
     }
 
     _capturePreviousSelectValue() {

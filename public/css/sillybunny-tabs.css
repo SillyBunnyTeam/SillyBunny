@@ -41,14 +41,14 @@
     --sb-connection-strip-padding-x-base: 10px;
     --sb-connection-strip-radius-base: 14px;
     --sb-proxy-button-padding-x-base: 15px;
-    --sb-proxy-button-height-base: 40px;
+    --sb-proxy-button-height-base: 36px;
     --sb-proxy-button-min-width-base: 104px;
     --sb-proxy-button-gap-base: 8px;
     --sb-proxy-icon-scale-base: 0.92;
     --sb-proxy-label-scale-base: 0.76;
     --sb-proxy-underline-inset-base: 12px;
     --sb-proxy-underline-bottom-base: 5px;
-    --sb-mobile-toggle-size-base: 44px;
+    --sb-mobile-toggle-size-base: 40px;
     --sb-home-toggle-min-width-base: 92px;
     --sb-topbar-compact-icon-scale-base: 0.84;
     --sb-mobile-tools-padding-top-base: 10px;
@@ -5610,9 +5610,31 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     margin: 0;
 }
 
-#right-nav-panel #result_info #creators_note_styles_button,
-#right-nav-panel #result_info #spoiler_free_desc_button,
-#right-nav-panel #result_info #character_open_media_overrides {
+/* SillyBunny: WebKit keeps flex children at min-width:auto in this sticky header; keep the token text shrinkable and every action icon in a fixed touch target. */
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch,
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info,
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
+    min-width: 0;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info {
+    flex: 0 1 auto;
+    max-width: 100%;
+    justify-content: flex-end;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
+    overflow: hidden;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info > .right_menu_button {
+    flex: 0 0 34px;
     width: 34px;
     min-width: 34px;
     max-width: 34px;

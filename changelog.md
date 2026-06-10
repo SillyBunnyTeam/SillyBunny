@@ -1,5 +1,57 @@
 # Changelog
 
+## v1.6.4
+
+Date: 2026-06-07
+
+This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Horde client fallback, bundled extension metadata, release notes, and mirrored README documentation after the 1.6.3 release.
+
+### Improved
+- The UI version label, Horde client identifier, and Horde server fallback now consistently advertise SillyBunny 1.6.4.
+- Package metadata, root package-lock entries, and bundled extension manifests now align with the 1.6.4 release line.
+- Release documentation now has 1.6.4 README, changelog, GitHub mirror, and Discord-ready summary copy.
+
+### Fixed
+- Older in-chat agent regex snapshots now compact on load when they can be safely resolved, and interim agent saves can defer regular chat backups until the final post-processed save.
+
+### Added
+- Optional backup diagnostic logging can be enabled with `backups.chat.logging` to trace chat and settings backup writes, skips, and autosave triggers while investigating backup frequency.
+- A 1.6.4 Discord release post is available under `releases/` for announcement publishing.
+- Regression expectations were refreshed so release automation coverage tracks the current package version.
+
+### Removed
+- No user-facing features were removed in this release.
+
+### Merged Staging PRs
+- PR #366 (2026-06-07) `chore: prepare v1.6.4`
+- PR #371 (2026-06-08) `fix: restore iOS mobile main screen layout`
+- PR #372 (2026-06-08) `fix(mobile): guard preset dropdown scroll taps`
+- PR #374 (2026-06-09) `fix: reduce chat backup bloat`
+- PR #375 (2026-06-09) `fix: clarify Windows ZIP update guidance`
+- PR #376 (2026-06-09) `fix: compact agent snapshots and defer interim backups`
+- PR #378 (2026-06-09) `fix: revalidate default frontend assets on iOS`
+- PR #379 (2026-06-09) `feat: in-app ZIP auto-update for non-git installs`
+- PR #380 (2026-06-09) `fix: refresh stale iOS service worker cache`
+- PR #381 (2026-06-09) `fix: remove floating edit indicator pill from message edit UI`
+- PR #382 (2026-06-09) `feat: show approximate token estimate in chat selector`
+- PR #383 (2026-06-09) `fix: respect reverse proxies for agent profile requests`
+- PR #384 (2026-06-09) `chore: narrow top bar height and reduce message text padding`
+- PR #385 (2026-06-09) `fix: abort agent generation requests on cancel`
+- PR #387 (2026-06-09) `fix: create new group chat branches reliably`
+- PR #388 (2026-06-09) `fix: release generation lock when aborting generation`
+- PR #389 (2026-06-09) `chore: tighten mobile chat density for phone layout`
+- PR #391 (2026-06-09) `fix: mobile character panel close button floating above header`
+- PR #392 (2026-06-09) `test: add mobile shell smoke pack and mobile css ratchet budgets`
+- PR #393 (2026-06-09) `fix: normalize legacy World Info positions at scan time`
+- PR #394 (2026-06-10) `fix: preserve new group chat id during validation`
+- PR #395 (2026-06-10) `fix(mobile): strengthen preset select touch guard`
+- PR #396 (2026-06-10) `chore: route mobile drawer bounds through mobile-shell-lifecycle`
+- PR #397 (2026-06-10) `chore: route mobile viewport sync plan through mobile-shell-lifecycle`
+- PR #398 (2026-06-10) `fix: strip hidden content from closed details in screenshots`
+- PR #399 (2026-06-10) `chore: centralize mobile overlay exclusivity in mobile-shell-lifecycle`
+- PR #400 (2026-06-10) `chore: use distinct icon for Settings tab`
+- PR #401 (2026-06-10) `fix: clip root overflow so search jumps can't shift the fixed viewport`
+
 ## v1.6.3
 
 Date: 2026-06-07

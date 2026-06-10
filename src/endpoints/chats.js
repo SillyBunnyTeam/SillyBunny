@@ -17,6 +17,7 @@ import {
     generateTimestamp,
     removeOldBackups,
     formatBytes,
+    color,
     tryWriteFileSync,
     tryReadFileSync,
     tryDeleteFile,
@@ -29,9 +30,93 @@ const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean'
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
 const throttleInterval = Number(getConfigValue('backups.chat.throttleInterval', 10_000, 'number'));
 const checkIntegrity = !!getConfigValue('backups.chat.checkIntegrity', true, 'boolean');
+const isBackupLoggingEnabled = !!getConfigValue('backups.chat.logging', false, 'boolean');
 
 export const CHAT_BACKUPS_PREFIX = 'chat_';
 const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
+const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
+const PRE_WRITE_BACKUP_RING_SIZE = 3;
+
+function logBackupEvent(action, details = {}) {
+    if (!isBackupLoggingEnabled) {
+        return;
+    }
+
+    const fields = Object.entries(details)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(' ');
+    console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : ''}`));
+}
+
+function getSerializedBackupSizeDetails(data) {
+    const sizeBytes = Buffer.byteLength(String(data ?? ''), 'utf8');
+    return {
+        bytes: sizeBytes,
+        size: formatBytes(sizeBytes),
+    };
+}
+
+function getChatBackupType(backupPrefix) {
+    if (backupPrefix === CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX) {
+        return 'forced-overwrite';
+    }
+
+    if (backupPrefix === CHAT_PRE_WRITE_BACKUPS_PREFIX) {
+        return 'pre-write';
+    }
+
+    return 'regular';
+}
+
+function normalizeSerializedChatForBackupComparison(data) {
+    const serialized = String(data ?? '');
+    const lines = serialized.split('\n');
+
+    if (!lines[0]) {
+        return serialized;
+    }
+
+    try {
+        const header = JSON.parse(lines[0]);
+        if (!isPlainObject(header?.chat_metadata)) {
+            return serialized;
+        }
+
+        const chatMetadata = { ...header.chat_metadata };
+        delete chatMetadata.integrity;
+        lines[0] = JSON.stringify({ ...header, chat_metadata: chatMetadata });
+        return lines.join('\n');
+    } catch {
+        return serialized;
+    }
+}
+
+function getLatestBackupFilePath(directory, prefix) {
+    const backupFiles = fs.readdirSync(directory)
+        .filter(fileName => fileName.startsWith(prefix))
+        .map(fileName => ({
+            fileName,
+            filePath: path.join(directory, fileName),
+        }))
+        .sort((a, b) => {
+            const mtimeDifference = fs.statSync(b.filePath).mtimeMs - fs.statSync(a.filePath).mtimeMs;
+            return mtimeDifference || b.fileName.localeCompare(a.fileName);
+        });
+
+    return backupFiles[0]?.filePath ?? null;
+}
+
+function isDuplicateRegularChatBackup(directory, backupPrefix, data) {
+    const latestBackupFile = getLatestBackupFilePath(directory, backupPrefix);
+    if (!latestBackupFile) {
+        return false;
+    }
+
+    const latestBackupData = tryReadFileSync(latestBackupFile);
+    return Boolean(latestBackupData)
+        && normalizeSerializedChatForBackupComparison(latestBackupData) === normalizeSerializedChatForBackupComparison(data);
+}
 
 /**
  * Saves a chat to the backups directory.
@@ -39,21 +124,51 @@ const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
  * @param {string} name The name of the chat.
  * @param {string} data The serialized chat to save.
  * @param {string} backupPrefix The file prefix. Typically CHAT_BACKUPS_PREFIX.
+ * @param {string} handle User handle for diagnostic logging.
  * @returns
  */
-function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
+function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, handle = '') {
+    const originalName = name;
+    const backupType = getChatBackupType(backupPrefix);
     try {
-        if (!isBackupEnabled) { return; }
+        if (!isBackupEnabled) {
+            logBackupEvent('chat-backup-skipped', { type: backupType, handle, chat: originalName, reason: 'disabled' });
+            return;
+        }
         if (!fs.existsSync(directory)) {
             console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+            logBackupEvent('chat-backup-skipped', { type: backupType, handle, chat: originalName, reason: 'missing-directory' });
+            return;
         }
         // replace non-alphanumeric characters with underscores
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const prefix = `${backupPrefix}${name}_`;
+        const sizeDetails = getSerializedBackupSizeDetails(data);
+
+        if (backupPrefix === CHAT_BACKUPS_PREFIX && isDuplicateRegularChatBackup(directory, prefix, data)) {
+            logBackupEvent('chat-backup-skipped', {
+                type: backupType,
+                handle,
+                chat: originalName,
+                sanitizedName: name,
+                reason: 'duplicate',
+                ...sizeDetails,
+            });
+            return;
+        }
 
         const backupFile = path.join(directory, `${backupPrefix}${name}_${generateTimestamp()}.jsonl`);
 
         tryWriteFileSync(backupFile, data);
-        removeOldBackups(directory, `${backupPrefix}${name}_`);
+        logBackupEvent('chat-backup-written', {
+            type: backupType,
+            handle,
+            chat: originalName,
+            sanitizedName: name,
+            file: path.basename(backupFile),
+            ...sizeDetails,
+        });
+        removeOldBackups(directory, prefix);
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
             return;
         }
@@ -61,6 +176,57 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX) {
     } catch (err) {
         console.error(`Could not backup chat for ${name}`, err);
     }
+}
+
+function backupChatPreWrite(directory, name, data, handle = '') {
+    const originalName = name;
+    try {
+        if (!isBackupEnabled) {
+            logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'disabled' });
+            return;
+        }
+        if (!fs.existsSync(directory)) {
+            console.error(`The chat couldn't be backed up because no directory exists at ${directory}!`);
+            logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'missing-directory' });
+        }
+        name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
+        const sizeDetails = getSerializedBackupSizeDetails(data);
+
+        tryWriteFileSync(backupFile, data);
+        logBackupEvent('chat-backup-written', {
+            type: 'pre-write',
+            handle,
+            chat: originalName,
+            sanitizedName: name,
+            file: path.basename(backupFile),
+            ...sizeDetails,
+        });
+        removeOldBackups(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, PRE_WRITE_BACKUP_RING_SIZE);
+        if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
+            return;
+        }
+        removeOldBackups(directory, CHAT_PRE_WRITE_BACKUPS_PREFIX, maxTotalChatBackups);
+    } catch (err) {
+        console.error(`Could not create pre-write chat backup for ${name}`, err);
+    }
+}
+
+function countSerializedChatLines(serializedChat) {
+    if (!serializedChat) {
+        return 0;
+    }
+
+    return String(serializedChat).split('\n').filter(line => line.trim()).length;
+}
+
+function isSuspiciousChatShrink(newData, existingSerializedChat) {
+    const existingLines = countSerializedChatLines(existingSerializedChat);
+    if (existingLines <= 5) {
+        return false;
+    }
+
+    return Array.isArray(newData) && newData.length < existingLines * 0.5;
 }
 
 /**
@@ -343,6 +509,7 @@ async function checkChatIntegrity(filePath, integritySlug) {
  * @property {string} [file_name] - The name of the chat file (with extension)
  * @property {string} [file_size] - The size of the chat file in a human-readable format
  * @property {number} [chat_items] - The number of chat items in the file
+ * @property {number} [token_estimate] - The approximate number of tokens in the chat
  * @property {string} [mes] - The last message in the chat
  * @property {number|string} [last_mes] - The timestamp of the last message
  * @property {object} [chat_metadata] - Additional chat metadata
@@ -371,6 +538,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             file_name: parsedPath.base,
             file_size: formatBytes(stats.size),
             chat_items: 0,
+            token_estimate: 0,
             mes: '[The chat is empty]',
             last_mes: stats.mtimeMs,
             ...additionalData,
@@ -391,6 +559,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             let itemCounter = 0;
             let hasAnyMatch = false;
             let matchBuffer = [];
+            let messageCharacters = 0;
             const previewMessages = [];
             const previewLimit = Math.max(0, Number(previewMessageLimit) || 0);
 
@@ -398,16 +567,22 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             rl.once('error', rej);
 
             rl.on('line', (line) => {
-                if (withMetadata && itemCounter === 0) {
-                    const jsonData = tryParse(line);
+                const isMessageLine = itemCounter > 0;
+                let jsonData = null;
+
+                if (withMetadata && !isMessageLine) {
+                    jsonData = tryParse(line);
                     if (jsonData && _.isObjectLike(jsonData.chat_metadata)) {
                         chatData.chat_metadata = jsonData.chat_metadata;
                     }
                 }
-                // Skip matching if any match was already found
-                if ((hasMatcher && !hasAnyMatch && itemCounter > 0) || (previewLimit > 0 && itemCounter > 0)) {
-                    const jsonData = tryParse(line);
+
+                if (isMessageLine) {
+                    jsonData = tryParse(line);
                     if (jsonData) {
+                        messageCharacters += String(jsonData.mes ?? '').length;
+
+                        // Skip matching if any match was already found
                         if (hasMatcher && !hasAnyMatch) {
                             matchBuffer.push(jsonData.mes || '');
                             if (matcher(matchBuffer)) {
@@ -438,6 +613,8 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 const jsonData = tryParse(lastLine);
                 if (jsonData && (jsonData.name || jsonData.character_name || jsonData.chat_metadata)) {
                     chatData.chat_items = (itemCounter - 1);
+                    // SillyBunny: expose a cheap chat length indicator for chat selectors.
+                    chatData.token_estimate = Math.round(messageCharacters / 4);
                     chatData.mes = jsonData.mes || '[The message is empty]';
                     chatData.last_mes = jsonData.send_date || new Date(Math.round(stats.mtimeMs)).toISOString();
                     chatData.match = hasMatcher ? hasAnyMatch : true;
@@ -503,8 +680,10 @@ function isValidChatSavePayload(chatData) {
  * @param {string} handle The users handle, passed to getBackupFunction.
  * @param {string} cardName Passed to backupChat.
  * @param {string} backupDirectory Passed to backupChat.
+ * @param {object} [options] Additional save options.
+ * @param {boolean} [options.deferBackup] Skip the regular chat backup for this save.
  */
-export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory) {
+export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false } = {}) {
     if (!isValidChatSavePayload(chatData)) {
         throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
     }
@@ -523,16 +702,37 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
             : message)
         : chatData;
     const jsonlData = savedChatData?.map(m => JSON.stringify(m)).join('\n');
+    const savedChatSizeDetails = getSerializedBackupSizeDetails(jsonlData);
+    logBackupEvent('chat-save', {
+        handle,
+        chat: cardName,
+        rows: Array.isArray(savedChatData) ? savedChatData.length : undefined,
+        force: Boolean(skipIntegrityCheck),
+        deferBackup: Boolean(deferBackup),
+        ...savedChatSizeDetails,
+    });
 
-    if (skipIntegrityCheck && fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
         if (currentChatData) {
-            backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX);
+            backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
+
+            if (isSuspiciousChatShrink(savedChatData, currentChatData)) {
+                console.warn(`Suspicious chat shrink while saving "${cardName}": incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
+            }
+
+            if (skipIntegrityCheck) {
+                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
+            }
         }
     }
 
     tryWriteFileSync(filePath, jsonlData);
-    getBackupFunction(handle)(backupDirectory, cardName, jsonlData);
+    if (!deferBackup) {
+        getBackupFunction(handle)(backupDirectory, cardName, jsonlData, CHAT_BACKUPS_PREFIX, handle);
+    } else {
+        logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
+    }
     return { integrity: nextIntegrity };
 }
 
@@ -548,7 +748,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         }
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
@@ -933,7 +1133,7 @@ router.post('/group/save', async function (request, response) {
         const chatData = request.body.chat;
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
@@ -1007,6 +1207,7 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
          * @property {string} [file_name] - The name of the chat file
          * @property {string} [file_size] - The size of the chat file in a human-readable format
          * @property {number} [message_count] - The number of messages in the chat
+         * @property {number} [token_estimate] - The approximate number of tokens in the chat
          * @property {number|string} [last_mes] - The timestamp of the last message
          * @property {string} [preview_message] - A preview of the last message
          */
@@ -1044,6 +1245,7 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
                     file_name: chatInfo.file_id,
                     file_size: chatInfo.file_size,
                     message_count: chatInfo.chat_items,
+                    token_estimate: chatInfo.token_estimate,
                     last_mes: chatInfo.last_mes,
                     preview_message: getPreviewMessage(chatInfo.mes),
                 });

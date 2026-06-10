@@ -62,7 +62,7 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
     { value: 'characters:world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { value: 'left:agents', label: 'Agents', icon: 'fa-robot' },
     { value: 'action:search', label: 'Search', icon: 'fa-magnifying-glass' },
-    { value: 'right:settings', label: 'Settings', icon: 'fa-sliders' },
+    { value: 'right:settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
     { value: 'right:extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'characters:persona', label: 'Persona', icon: 'fa-face-smile' },
     { value: 'right:background', label: 'Background', icon: 'fa-panorama' },
@@ -77,7 +77,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/world-info.css?v=20260425b', id: 'deferred-world-info-css' },
     ],
     'characters:persona': [
-        { href: 'css/personas.css?v=20260603e', id: 'deferred-personas-css' },
+        { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
@@ -522,7 +522,7 @@ const SB_SHELLS = Object.freeze({
         baseTab: {
             id: 'settings',
             label: 'Settings',
-            icon: 'fa-sliders',
+            icon: 'fa-screwdriver-wrench',
             searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
             searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
         },
@@ -599,6 +599,7 @@ const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
 const SB_MOBILE_QUICK_ACTION_LIMIT = 12;
 const SB_MOBILE_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
@@ -622,7 +623,7 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting', label: 'Formatting', icon: 'fa-text-height' },
     { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { value: 'left:agents', shellKey: 'left', tabId: 'agents', label: 'Agents', icon: 'fa-robot' },
-    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-sliders' },
+    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
     { value: 'right:extensions', shellKey: 'right', tabId: 'extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'right:background', shellKey: 'right', tabId: 'background', label: 'Background', icon: 'fa-panorama' },
     { value: 'right:server', shellKey: 'right', tabId: 'server', label: 'Server', icon: 'fa-server' },
@@ -2306,6 +2307,10 @@ function getShellViewportSize() {
 }
 
 function syncShellViewportBounds() {
+    if (sbIsSyncingRailActions) {
+        return;
+    }
+
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
@@ -2322,17 +2327,24 @@ function getMobileShellBoundDrawers() {
     ])).filter(drawer => drawer instanceof HTMLElement);
 }
 
-function clearMobileShellDrawerBounds(drawer) {
-    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbMobileViewportBound !== 'true') {
+function applyMobileDrawerBoundsDecision(drawer, decision) {
+    if (!(drawer instanceof HTMLElement) || !decision) {
         return;
     }
 
-    drawer.style.removeProperty('top');
-    drawer.style.removeProperty('bottom');
-    drawer.style.removeProperty('height');
-    drawer.style.removeProperty('max-height');
-    drawer.style.removeProperty('box-sizing');
-    delete drawer.dataset.sbMobileViewportBound;
+    if (decision.action === sbMobileShellLifecycle.drawerBounds.action.BIND) {
+        drawer.dataset.sbMobileViewportBound = 'true';
+    } else if (decision.action === sbMobileShellLifecycle.drawerBounds.action.CLEAR) {
+        delete drawer.dataset.sbMobileViewportBound;
+    }
+
+    for (const property of decision.styleRemovals) {
+        drawer.style.removeProperty(property);
+    }
+
+    for (const { property, value, priority } of decision.styleWrites) {
+        drawer.style.setProperty(property, value, priority);
+    }
 }
 
 function syncMobileShellDrawerBounds() {
@@ -2342,36 +2354,33 @@ function syncMobileShellDrawerBounds() {
         return;
     }
 
-    if (!isMobileViewport()) {
-        drawers.forEach(clearMobileShellDrawerBounds);
-        return;
-    }
-
-    const viewportSize = getShellViewportSize();
-    const baseTopOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+    const mobileViewport = isMobileViewport();
+    const viewportSize = mobileViewport ? getShellViewportSize() : null;
+    const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
 
     for (const drawer of drawers) {
-        if (!drawer.classList.contains('openDrawer')) {
-            clearMobileShellDrawerBounds(drawer);
-            continue;
-        }
+        const isOpen = drawer.classList.contains('openDrawer');
+        const drawerStyles = mobileViewport && isOpen ? window.getComputedStyle(drawer) : null;
 
-        const drawerStyles = window.getComputedStyle(drawer);
-        const shellGap = Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0;
-        const topOffset = clampNumber(Math.round(baseTopOffset + shellGap), 0, viewportSize.height);
-        const availableHeight = Math.max(0, viewportSize.height - topOffset);
-
-        drawer.dataset.sbMobileViewportBound = 'true';
-        drawer.style.setProperty('top', `${topOffset}px`, 'important');
-        drawer.style.setProperty('bottom', 'auto', 'important');
-        drawer.style.setProperty('box-sizing', 'border-box', 'important');
-        drawer.style.setProperty('height', `${availableHeight}px`, 'important');
-        drawer.style.setProperty('max-height', `${availableHeight}px`, 'important');
+        applyMobileDrawerBoundsDecision(drawer, sbMobileShellLifecycle.drawerBounds.resolveBounds({
+            isMobileViewport: mobileViewport,
+            isOpen,
+            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
+            viewportHeight: viewportSize?.height ?? 0,
+            baseTopOffset,
+            shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
+        }));
     }
 }
 
 function queueMobileShellDrawerBoundsSync() {
-    if (!isMobileViewport()) {
+    const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
+        isMobileViewport: isMobileViewport(),
+        hasAnimationFrame: typeof window.requestAnimationFrame === 'function',
+        followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,
+    });
+
+    if (!schedule.shouldSchedule) {
         return;
     }
 
@@ -2380,13 +2389,13 @@ function queueMobileShellDrawerBoundsSync() {
         syncMobileShellDrawerBounds();
     };
 
-    if (typeof window.requestAnimationFrame === 'function') {
+    if (schedule.useAnimationFrame) {
         window.requestAnimationFrame(sync);
     } else {
         sync();
     }
 
-    window.setTimeout(sync, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+    window.setTimeout(sync, schedule.followupDelayMs);
 }
 
 function isMovingUIActive() {
@@ -2738,6 +2747,10 @@ function clearDesktopShellSize(root) {
 }
 
 function syncDesktopShellSizing() {
+    if (sbIsSyncingRailActions) {
+        return;
+    }
+
     hydratePersistedShellSizes();
 
     const resizingEnabled = canResizeDesktopShells();
@@ -4394,6 +4407,28 @@ function formatChatPreview(value) {
     return clampText(String(value ?? '').replace(/\s+/g, ' ').trim() || 'No preview yet.', 120);
 }
 
+function formatChatTokenEstimate(value) {
+    const tokens = Math.round(Number(value) || 0);
+    if (tokens <= 0) {
+        return '';
+    }
+
+    if (tokens >= 1_000_000) {
+        return `~${(tokens / 1_000_000).toFixed(tokens < 10_000_000 ? 1 : 0).replace(/\.0$/, '')}m tokens`;
+    }
+
+    if (tokens >= 1_000) {
+        return `~${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0).replace(/\.0$/, '')}k tokens`;
+    }
+
+    return `~${tokens} tokens`;
+}
+
+function formatChatSelectorLabel(fileName, tokenEstimate = 0) {
+    const tokenLabel = formatChatTokenEstimate(tokenEstimate);
+    return tokenLabel ? `${fileName} (${tokenLabel})` : fileName;
+}
+
 function normalizeChatInfo(chatInfo) {
     const rawFileName = chatInfo?.file_name ?? chatInfo?.id ?? chatInfo?.chat_id ?? chatInfo ?? '';
     const fileName = normalizeChatFileName(rawFileName);
@@ -4404,6 +4439,7 @@ function normalizeChatInfo(chatInfo) {
         lastMessage: chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? '',
         sortTimestamp: getChatSortTimestamp(chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? ''),
         chatItems: Number(chatInfo?.chat_items ?? chatInfo?.message_count ?? 0) || 0,
+        tokenEstimate: Number(chatInfo?.token_estimate ?? chatInfo?.tokenEstimate ?? 0) || 0,
         fileSize: String(chatInfo?.file_size ?? '').trim(),
     };
 }
@@ -4998,17 +5034,27 @@ function countRegexMatches(value, regex) {
     return Array.from(text.matchAll(regex)).length;
 }
 
-function populateChatSelector(select, chatNames, chatContext, placeholder) {
+function populateChatSelector(select, chatFiles, chatContext, placeholder) {
     if (!(select instanceof HTMLSelectElement)) {
         return;
     }
 
     const currentValue = String(chatContext.chatId ?? '').trim();
-    const uniqueNames = Array.from(new Set(chatNames.map(name => String(name ?? '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+    const uniqueChats = Array.from(chatFiles.reduce((map, chatFile) => {
+        const fileName = String(chatFile?.fileName ?? chatFile ?? '').trim();
+        if (fileName && !map.has(fileName)) {
+            map.set(fileName, {
+                fileName,
+                tokenEstimate: Number(chatFile?.tokenEstimate ?? 0) || 0,
+            });
+        }
+
+        return map;
+    }, new Map()).values()).sort((left, right) => left.fileName.localeCompare(right.fileName));
 
     select.replaceChildren();
 
-    if (!uniqueNames.length) {
+    if (!uniqueChats.length) {
         const option = createElement('option', { text: placeholder });
         option.value = '';
         option.selected = true;
@@ -5017,14 +5063,15 @@ function populateChatSelector(select, chatNames, chatContext, placeholder) {
         return;
     }
 
-    for (const chatName of uniqueNames) {
-        const option = createElement('option', { text: chatName });
+    for (const chat of uniqueChats) {
+        const chatName = chat.fileName;
+        const option = createElement('option', { text: formatChatSelectorLabel(chatName, chat.tokenEstimate) });
         option.value = chatName;
         option.selected = chatName === currentValue;
         select.appendChild(option);
     }
 
-    if (currentValue && !uniqueNames.includes(currentValue)) {
+    if (currentValue && !uniqueChats.some(chat => chat.fileName === currentValue)) {
         const option = createElement('option', { text: currentValue });
         option.value = currentValue;
         option.selected = true;
@@ -5032,7 +5079,7 @@ function populateChatSelector(select, chatNames, chatContext, placeholder) {
     }
 
     select.disabled = false;
-    select.value = currentValue || uniqueNames[0];
+    select.value = currentValue || uniqueChats[0].fileName;
 }
 
 function createChatFileButton(chatFile, currentChatId, onSelect, { compact = false } = {}) {
@@ -5324,11 +5371,10 @@ function openMobileChatTools() {
         return;
     }
 
-    closeMobileNav();
-    closeShell('left');
-    closeShell('right');
-    closeCharacterPanel();
-    setConnectionStripOpenState(false);
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
+        isMobileViewport: isMobileViewport(),
+    }));
     setMobileChatToolsOpenState(true);
 }
 
@@ -5336,8 +5382,58 @@ function closeMobileChatTools() {
     setMobileChatToolsOpenState(false);
 }
 
+function getMobileShellSurfaceForShell(shellKey) {
+    if (shellKey === 'left') {
+        return sbMobileShellLifecycle.overlays.surface.LEFT_SHELL;
+    }
+
+    if (shellKey === 'right') {
+        return sbMobileShellLifecycle.overlays.surface.RIGHT_SHELL;
+    }
+
+    if (shellKey === 'characters') {
+        return sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL;
+    }
+
+    return '';
+}
+
+function applyMobileSurfaceExclusivity(decision) {
+    if (!decision || !Array.isArray(decision.closeSurfaces)) {
+        return;
+    }
+
+    const surface = sbMobileShellLifecycle.overlays.surface;
+    const closeSurface = {
+        [surface.NAV]: () => closeMobileNav(),
+        [surface.LEFT_SHELL]: () => closeShell('left'),
+        [surface.RIGHT_SHELL]: () => closeShell('right'),
+        [surface.CHARACTER_PANEL]: () => closeCharacterPanel(),
+        [surface.CHAT_TOOLS]: () => closeMobileChatTools(),
+        [surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),
+    };
+
+    for (const closeSurfaceKey of decision.closeSurfaces) {
+        const close = closeSurface[closeSurfaceKey];
+        if (typeof close !== 'function') {
+            throw new Error(`Unknown mobile shell surface: ${closeSurfaceKey}`);
+        }
+
+        close();
+    }
+}
+
 function toggleMobileChatTools() {
-    setMobileChatToolsOpenState(!getChatbarState().mobileToolsOpen);
+    const shouldOpen = !getChatbarState().mobileToolsOpen;
+
+    if (shouldOpen) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
+            isMobileViewport: isMobileViewport(),
+        }));
+    }
+
+    setMobileChatToolsOpenState(shouldOpen);
 }
 
 function syncConnectionProfileSelection(value) {
@@ -5369,6 +5465,13 @@ function setConnectionStripOpenState(shouldOpen) {
 
     if (!desktopRefs?.connectionStrip) {
         return;
+    }
+
+    if (nextState) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     getChatbarState().connectionStripOpen = nextState;
@@ -6092,11 +6195,11 @@ async function refreshChatbarState() {
     const chatNames = files.map(chat => chat.fileName);
 
     if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        chatNames.unshift(chatContext.chatId);
+        files.unshift({ fileName: chatContext.chatId, tokenEstimate: 0 });
     }
 
-    populateChatSelector(desktopRefs?.chatSelect, chatNames, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
-    populateChatSelector(mobileRefs?.chatSelect, chatNames, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
+    populateChatSelector(desktopRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
+    populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
 
     if (desktopRefs) {
         setButtonDisabled(desktopRefs.managerButton, !chatContext.canBrowseChats);
@@ -7142,9 +7245,10 @@ function openCharacterWorldInfoTab() {
     const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'world-info';
 
-    closeMobileNav();
-    closeShell('left');
-    closeShell('right');
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+        isMobileViewport: isMobileViewport(),
+    }));
     setCharacterPanelMenuType(panel, 'world-info');
     preloadPanelStylesheets('characters', 'world-info');
     setCharacterEditorEmptyState(false);
@@ -7225,9 +7329,10 @@ function openCharacterPanelTab(tabId) {
     if (!isCharacterPanelOpen()) {
         toggleCharacterPanel({ preferredTab: normalizedTabId });
     } else {
-        closeMobileNav();
-        closeShell('left');
-        closeShell('right');
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     const activateRequestedTab = () => {
@@ -7586,11 +7691,12 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         sbState.characterDrawer.lastTab = normalizedPreferredTab;
     }
 
-    closeAllDropdowns({ except: 'characters' });
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+        isMobileViewport: isMobileViewport(),
+    }));
+    closeAllDropdowns({ except: 'characters', closeSurfaces: false });
     restoreLastCharacterPanelView();
-
-    closeShell('left');
-    closeShell('right');
 
     // iOS Safari clips position:fixed inside overflow:hidden ancestors.
     // Temporarily allow overflow on the parent so the panel renders.
@@ -7616,14 +7722,23 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     });
 }
 
-function closeAllDropdowns({ except = '' } = {}) {
-    if (except !== 'left') closeShell('left');
-    if (except !== 'right') closeShell('right');
-    if (except !== 'characters') closeCharacterPanel();
+function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
+    if (closeSurfaces) {
+        const exemptSurface = getMobileShellSurfaceForShell(except);
+
+        if (exemptSurface) {
+            applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+                surface: exemptSurface,
+                isMobileViewport: isMobileViewport(),
+            }));
+        } else {
+            applyMobileSurfaceExclusivity({
+                closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,
+            });
+        }
+    }
+
     if (except !== 'search') setUniversalSearchOpenState(false);
-    closeMobileNav();
-    closeMobileChatTools();
-    setConnectionStripOpenState(false);
 
     // Close persona picker
     document.getElementById('sb-persona-picker')?.remove();
@@ -7663,7 +7778,16 @@ function toggleShellPanel(shellKey, tabId = null) {
     }
 
     rememberShellFocusOrigin(shellKey);
-    closeAllDropdowns({ except: shellKey });
+    const shellSurface = getMobileShellSurfaceForShell(shellKey);
+    if (shellSurface) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: shellSurface,
+            isMobileViewport: isMobileViewport(),
+        }));
+        closeAllDropdowns({ except: shellKey, closeSurfaces: false });
+    } else {
+        closeAllDropdowns({ except: shellKey });
+    }
     window.requestAnimationFrame(() => openShell(shellKey, tabId));
 }
 
@@ -9177,7 +9301,9 @@ function renderServerAdminStatus(data) {
     }
 
     const repository = data?.repository ?? {};
+    const release = data?.release ?? null;
     const version = data?.version ?? {};
+    const isGitInstall = Boolean(repository?.supported && repository?.isRepo);
     const statusGrid = refs.statusGrid;
     statusGrid.replaceChildren();
 
@@ -9187,16 +9313,17 @@ function renderServerAdminStatus(data) {
     // Branch selector instead of static text
     const branchContainer = createElement('div', { className: 'sb-server-stat' });
     const branchLabel = createElement('div', { className: 'sb-server-stat-label' });
-    branchLabel.textContent = 'Branch';
+    branchLabel.textContent = isGitInstall ? 'Branch' : 'Install';
     const branchValue = createElement('div', { className: 'sb-server-stat-value' });
     const branchSelect = createElement('select', {
         id: 'sb-branch-select',
         className: 'text_pole',
         attrs: { style: 'width: 100%; max-width: 200px;' },
     });
-    const currentBranch = repository?.displayBranch || repository?.branch || version?.gitBranch || '';
+    branchSelect.disabled = !isGitInstall;
+    const currentBranch = isGitInstall ? (repository?.displayBranch || repository?.branch || version?.gitBranch || '') : 'Release ZIP';
     const currentOptionAttributes = { value: currentBranch, selected: 'selected' };
-    if (!currentBranch) {
+    if (!currentBranch || !isGitInstall) {
         currentOptionAttributes.disabled = 'disabled';
     }
     const currentOption = createElement('option', { attrs: currentOptionAttributes });
@@ -9207,7 +9334,7 @@ function renderServerAdminStatus(data) {
     statusGrid.appendChild(branchContainer);
 
     // Load available branches
-    if (repository?.supported && repository?.isRepo) {
+    if (isGitInstall) {
         loadServerAdminBranches(branchSelect, currentBranch);
     }
 
@@ -9215,6 +9342,9 @@ function renderServerAdminStatus(data) {
     appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
     appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
     appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
+    if (release) {
+        appendServerAdminStat(statusGrid, 'Latest ZIP', release?.latestVersion ? `v${release.latestVersion}` : 'Unknown');
+    }
     appendServerAdminStat(statusGrid, 'Config', data?.configPath || 'Unknown');
 
     state.lastStatusData = {
@@ -9222,12 +9352,13 @@ function renderServerAdminStatus(data) {
         configPath: data?.configPath || '',
         version,
         repository,
+        release,
     };
 
     let pillLabel = 'Unavailable';
     let pillTone = 'neutral';
 
-    if (repository?.supported && repository?.isRepo) {
+    if (isGitInstall) {
         if (repository?.hasLocalChanges && !repository?.autoStash) {
             pillLabel = 'Update Blocked';
             pillTone = 'danger';
@@ -9244,12 +9375,29 @@ function renderServerAdminStatus(data) {
             pillLabel = 'Up To Date';
             pillTone = 'good';
         }
+    } else if (release?.canUpdate) {
+        pillLabel = release?.latestVersion ? `Update Available (v${release.latestVersion})` : 'Update Available';
+        pillTone = 'warn';
+    } else if (release?.checked && release?.assetAvailable && release?.latestVersion === release?.currentVersion) {
+        pillLabel = 'Up To Date';
+        pillTone = 'good';
+    } else if (release?.checked && release?.assetAvailable) {
+        pillLabel = 'ZIP Install';
+        pillTone = 'neutral';
+    } else if (release?.checked && !release?.assetAvailable) {
+        pillLabel = 'ZIP Unavailable';
+        pillTone = 'warn';
+    } else if (release?.supported && !release?.checked) {
+        pillLabel = 'Check Failed';
+        pillTone = 'warn';
     }
 
     setServerAdminPill(refs.statusPill, pillLabel, pillTone);
-    refs.updateButton.dataset.sbCanUpdate = String(Boolean(repository?.canUpdate));
+    const updateMode = repository?.canUpdate ? 'git' : release?.canUpdate ? 'zip' : '';
+    refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
+    refs.updateButton.dataset.sbUpdateMode = updateMode;
 
-    const noteParts = [String(repository?.message ?? '').trim()].filter(Boolean);
+    const noteParts = [String((isGitInstall ? repository?.message : release?.message || repository?.message) ?? '').trim()].filter(Boolean);
 
     if ((repository?.changedFilesCount ?? 0) > 0) {
         const changedPreview = Array.isArray(repository?.changedFiles)
@@ -9262,6 +9410,7 @@ function renderServerAdminStatus(data) {
 
     if (refs.autoStashCheckbox) {
         refs.autoStashCheckbox.checked = Boolean(repository?.autoStash);
+        refs.autoStashCheckbox.disabled = !isGitInstall;
     }
     updateServerAdminInteractivity();
 }
@@ -9300,7 +9449,7 @@ function renderServerThumbnailSettings(data) {
     setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
 }
 
-async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false } = {}) {
+async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, expectedVersion = '' } = {}) {
     let sawOffline = false;
 
     async function reloadAfterOptionalCacheClear() {
@@ -9321,8 +9470,14 @@ async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeRelo
 
             const version = await response.json().catch(() => ({}));
             const revision = String(version?.gitRevision ?? '').trim();
+            const pkgVersion = String(version?.pkgVersion ?? '').trim();
 
             if (expectedRevision && revision === expectedRevision) {
+                await reloadAfterOptionalCacheClear();
+                return true;
+            }
+
+            if (expectedVersion && pkgVersion === expectedVersion) {
                 await reloadAfterOptionalCacheClear();
                 return true;
             }
@@ -9650,6 +9805,11 @@ async function handleServerAdminUpdate() {
         return;
     }
 
+    if (refs.updateButton?.dataset.sbUpdateMode === 'zip') {
+        await handleServerAdminZipUpdate();
+        return;
+    }
+
     state.busy = true;
     updateServerAdminInteractivity();
     setServerAdminButtonLabel(refs.updateButton, true, 'Updating…');
@@ -9717,6 +9877,69 @@ async function handleServerAdminUpdate() {
         }
         setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
         toastr.error(error.message || 'Failed to update SillyBunny.', 'Server update');
+    } finally {
+        setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
+
+        if (!state.restarting) {
+            state.busy = false;
+            updateServerAdminInteractivity();
+        }
+    }
+}
+
+async function handleServerAdminZipUpdate() {
+    const state = getServerAdminState();
+    const refs = getServerAdminRefs();
+
+    if (!refs || state.busy || state.restarting) {
+        return;
+    }
+
+    state.busy = true;
+    updateServerAdminInteractivity();
+    setServerAdminButtonLabel(refs.updateButton, true, 'Updating…');
+    setServerAdminMessage(refs.updateNote, 'Downloading the latest GitHub release ZIP and preparing a safe restart…');
+    refs.updateOutput.hidden = true;
+    refs.updateOutput.textContent = '';
+
+    try {
+        const result = await requestServerAdmin('/api/server-admin/zip-update');
+        const nextStatus = {
+            ...(state.lastStatusData ?? {}),
+            configPath: refs.configPath?.textContent || state.lastStatusData?.configPath || '',
+            version: result?.version ?? state.lastStatusData?.version ?? {},
+            repository: result?.repository ?? state.lastStatusData?.repository ?? {},
+            release: result?.release ?? state.lastStatusData?.release ?? null,
+        };
+
+        if (!result?.updated) {
+            renderServerAdminStatus(nextStatus);
+            setServerAdminMessage(refs.updateNote, result?.message || 'Already up to date.', 'good');
+            toastr.success(result?.message || 'Already up to date.', 'Server update');
+            return;
+        }
+
+        renderServerAdminStatus(nextStatus);
+        state.busy = false;
+        state.restarting = true;
+        updateServerAdminInteractivity();
+        setServerAdminMessage(refs.updateNote, result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'warn');
+        toastr.info(result?.message || 'ZIP update downloaded. Restarting SillyBunny…', 'Server update');
+
+        const expectedVersion = String(result?.release?.latestVersion ?? '').trim();
+        const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
+        const restarted = await waitForServerReturn('', { clearCacheBeforeReload: autoClearCacheEnabled, expectedVersion });
+
+        if (!restarted) {
+            state.restarting = false;
+            setServerAdminMessage(refs.updateNote, 'ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
+            toastr.warning('ZIP update started, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+        }
+    } catch (error) {
+        console.error('Failed to update SillyBunny from release ZIP.', error);
+        state.busy = false;
+        setServerAdminMessage(refs.updateNote, error.message || 'Failed to update SillyBunny from release ZIP.', 'danger');
+        toastr.error(error.message || 'Failed to update SillyBunny from release ZIP.', 'Server update');
     } finally {
         setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
 
@@ -9836,7 +10059,7 @@ function buildServerAdminPanel() {
     const callout = createElement('div', { className: 'sb-shell-callout' });
     callout.innerHTML = `
         <strong>Server Tools</strong>
-        <p>Edit <code>config.yaml</code>, check for Git updates, and restart the app from inside Customize. Auto-update only runs when the repository can fast-forward cleanly.</p>
+        <p>Edit <code>config.yaml</code>, check for Git or release ZIP updates, and restart the app from inside Customize. Git auto-update only runs when the repository can fast-forward cleanly.</p>
     `;
 
     const statusCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
@@ -9860,7 +10083,7 @@ function buildServerAdminPanel() {
     const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
     const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
     const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-    const updateNote = createElement('div', { className: 'sb-server-note', text: 'Fast-forward updates restart automatically after the pull finishes.' });
+    const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates and release ZIP updates restart automatically after preparation finishes.' });
     const autoStashLabel = createElement('label', { className: 'checkbox_label' });
     const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull' } });
     const autoStashText = createElement('small', { text: 'Auto-stash local changes before pulling' });
@@ -11209,7 +11432,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         type: 'checkbox',
         value: 'show-customize',
         label: getMobileNavCustomizeLocationLabel(mode),
-        icon: 'fa-sliders',
+        icon: 'fa-screwdriver-wrench',
         onChange: input => isDesktop ? setDesktopNavShowCustomize(input.checked) : setMobileNavShowCustomize(input.checked),
     });
     const showQuickActionsChoice = createMobileNavChoice({
@@ -12439,7 +12662,15 @@ function openShell(shellKey, tabId = null) {
         return;
     }
 
-    closeMobileNav();
+    const shellSurface = getMobileShellSurfaceForShell(shellKey);
+    if (shellSurface) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: shellSurface,
+            isMobileViewport: isMobileViewport(),
+        }));
+    } else {
+        closeMobileNav();
+    }
     rememberShellFocusOrigin(shellKey);
 
     if (tabId) {
@@ -13075,93 +13306,114 @@ function syncMobileShellRailActions(shellKey = null) {
     const hasVerticalRail = navState.layout === 'vertical';
     const railQuickActionState = getQuickActionState(railMode);
 
-    for (const currentShellKey of shellKeys) {
-        const shellState = getShellState(currentShellKey);
-        if (!(shellState?.nav instanceof HTMLElement)) {
-            continue;
-        }
+    const prevSyncingRail = sbIsSyncingRailActions;
+    sbIsSyncingRailActions = true;
 
-        shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
-        const showCustomize = hasVerticalRail && navState.showCustomize;
-        const shouldHideCustomizeTabs = showCustomize;
-        syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
+    try {
+        for (const currentShellKey of shellKeys) {
+            const shellState = getShellState(currentShellKey);
+            if (!(shellState?.nav instanceof HTMLElement)) {
+                continue;
+            }
 
-        const createRailBlock = (position) => createElement('div', {
-            className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
-            attrs: {
-                'aria-hidden': 'false',
-            },
-        });
+            const showCustomize = hasVerticalRail && navState.showCustomize;
+            const shouldHideCustomizeTabs = showCustomize;
 
-        if (!hasVerticalRail) {
-            shellState.updateNavScrollIndicators?.();
-            continue;
-        }
-
-        const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
-        const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
-        const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
-            ? createNavReplacementQuickAction(navState.replacementTarget)
-            : null;
-        const railQuickActions = replacementAction
-            ? [replacementAction]
-            : railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)));
-        const createQuickActionsGroup = () => {
-            const quickActionsGroup = createElement('div', {
-                className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
+            const createRailBlock = (position) => createElement('div', {
+                className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
                 attrs: {
-                    'aria-label': 'Quick Actions',
+                    'aria-hidden': 'false',
                 },
             });
 
-            if (railQuickActions.length) {
-                for (const action of railQuickActions) {
-                    const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
-                    if (button) {
-                        quickActionsGroup.appendChild(button);
+            let beforeBlock = null;
+            let afterBlock = null;
+
+            if (hasVerticalRail) {
+                const builtInRailActions = showCustomize ? getBuiltInRailActionsForShell(currentShellKey) : [];
+                const builtInRailActionKeys = showCustomize ? getAllBuiltInRailActionKeys() : new Set();
+                const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
+                    ? createNavReplacementQuickAction(navState.replacementTarget)
+                    : null;
+                const railQuickActions = replacementAction
+                    ? [replacementAction]
+                    : railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)));
+                const createQuickActionsGroup = () => {
+                    const quickActionsGroup = createElement('div', {
+                        className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
+                        attrs: {
+                            'aria-label': 'Quick Actions',
+                        },
+                    });
+
+                    if (railQuickActions.length) {
+                        for (const action of railQuickActions) {
+                            const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
+                            if (button) {
+                                quickActionsGroup.appendChild(button);
+                            }
+                        }
+                    } else {
+                        quickActionsGroup.appendChild(createElement('div', {
+                            className: 'sb-shell-rail-empty',
+                            text: 'No Quick Actions',
+                        }));
                     }
+
+                    return quickActionsGroup;
+                };
+
+                const pendingBefore = createRailBlock('before');
+
+                if (builtInRailActions.length) {
+                    const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
+                    pendingBefore.appendChild(createMobileShellRailDivider(builtInRailLabel));
+                    pendingBefore.appendChild(createRailActionGroup(
+                        builtInRailActions,
+                        builtInRailLabel,
+                        `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
+                    ));
                 }
-            } else {
-                quickActionsGroup.appendChild(createElement('div', {
-                    className: 'sb-shell-rail-empty',
-                    text: 'No Quick Actions',
-                }));
+
+                if (pendingBefore.children.length > 0) {
+                    beforeBlock = pendingBefore;
+                }
+
+                if (navState.showQuickActions && railQuickActions.length > 0) {
+                    const pendingAfter = createRailBlock('after');
+                    pendingAfter.append(
+                        createMobileShellRailDivider('Quick Actions'),
+                        createQuickActionsGroup(),
+                    );
+                    afterBlock = pendingAfter;
+                }
             }
 
-            return quickActionsGroup;
-        };
+            shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
+            syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
 
-        const beforeBlock = createRailBlock('before');
+            if (beforeBlock) {
+                shellState.nav.prepend(beforeBlock);
+            }
+            if (afterBlock) {
+                shellState.nav.appendChild(afterBlock);
+            }
 
-        if (builtInRailActions.length) {
-            const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
-            beforeBlock.appendChild(createMobileShellRailDivider(builtInRailLabel));
-            beforeBlock.appendChild(createRailActionGroup(
-                builtInRailActions,
-                builtInRailLabel,
-                `sb-shell-rail-group-${builtInRailLabel.toLowerCase()}`,
-            ));
+            shellState.updateNavScrollIndicators?.();
         }
 
-        if (beforeBlock.children.length > 0) {
-            shellState.nav.prepend(beforeBlock);
+        const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
+        const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
+        syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
+    } finally {
+        if (!prevSyncingRail) {
+            requestAnimationFrame(() => {
+                sbIsSyncingRailActions = false;
+            });
+        } else {
+            sbIsSyncingRailActions = prevSyncingRail;
         }
-
-        if (navState.showQuickActions && railQuickActions.length > 0) {
-            const afterBlock = createRailBlock('after');
-            afterBlock.append(
-                createMobileShellRailDivider('Quick Actions'),
-                createQuickActionsGroup(),
-            );
-            shellState.nav.appendChild(afterBlock);
-        }
-
-        shellState.updateNavScrollIndicators?.();
     }
-
-    const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
-    const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
-    syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
 }
 
 function routeDrawerTarget(targetId) {
@@ -13576,11 +13828,10 @@ function toggleMobileNav() {
     }
 
     if (toggleIntent.shouldCloseCompetingPanels) {
-        closeShell('left');
-        closeShell('right');
-        closeCharacterPanel();
-        closeMobileChatTools();
-        setConnectionStripOpenState(false);
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.NAV,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);
@@ -13943,22 +14194,34 @@ function applyDefaultDrawerStates() {
 }
 
 function syncMobileViewportState() {
-    syncShellViewportBounds();
-    syncMobileShellDrawerBounds();
+    const viewportSyncStep = sbMobileShellLifecycle.viewportSync.step;
+    const syncPlan = sbMobileShellLifecycle.viewportSync.resolveSyncPlan({
+        isMobileViewport: isMobileViewport(),
+    });
+    const stepHandlers = {
+        [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
+        [viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {
+            syncMobileShellDrawerBounds();
+        },
+        [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
+        [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
+        [viewportSyncStep.SYNC_MOBILE_SHELL_RAIL_ACTIONS]: () => syncMobileShellRailActions(),
+        [viewportSyncStep.SYNC_DESKTOP_SHELL_SIZING]: () => syncDesktopShellSizing(),
+        [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
+        [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
+        [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
+        [viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),
+        [viewportSyncStep.SYNC_MOBILE_MODAL_STATE]: () => syncMobileModalState(),
+    };
 
-    if (!isMobileViewport()) {
-        closeMobileNav();
-        closeMobileChatTools();
-        syncMobileShellDrawerBounds();
+    for (const step of syncPlan.steps) {
+        const handler = stepHandlers[step];
+        if (typeof handler !== 'function') {
+            throw new Error(`Unknown mobile viewport sync step: ${step}`);
+        }
+
+        handler();
     }
-
-    syncMobileShellRailActions();
-    syncDesktopShellSizing();
-    applyTopbarOffset();
-    syncChatbarVisibilityState();
-    updateTopBarBrand();
-    scheduleTopbarContextRefresh(0);
-    syncMobileModalState();
 }
 
 function reinitSelect2AfterShell() {
@@ -14193,20 +14456,22 @@ async function refreshBottomChatSelect() {
     }
 
     try {
-        const chats = (await getChatFilesForContext(chatContext)).map(chat => chat.fileName);
+        const chats = await getChatFilesForContext(chatContext);
+        const chatNames = chats.map(chat => chat.fileName);
 
         chatSelect.replaceChildren();
 
-        for (const chatName of chats) {
+        for (const chat of chats) {
+            const chatName = chat.fileName;
             if (!chatName) continue;
             const option = document.createElement('option');
             option.value = chatName;
-            option.textContent = chatName;
+            option.textContent = formatChatSelectorLabel(chatName, chat.tokenEstimate);
             option.selected = chatName === currentChatName;
             chatSelect.appendChild(option);
         }
 
-        if (!chats.includes(currentChatName)) {
+        if (!chatNames.includes(currentChatName)) {
             const fallback = document.createElement('option');
             fallback.value = '';
             fallback.textContent = currentChatName || 'No chat selected';

@@ -83,6 +83,7 @@ import {
     chatElement,
     ensureMessageMediaIsArray,
     syncCharacterMenuActiveEntity,
+    incrementChatGeneration,
 } from '../script.js';
 import { printTagList, createTagMapFromList, applyTagsOnCharacterSelect, tag_map, applyTagsOnGroupSelect, printTagFilters, tag_filter_type } from './tags.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
@@ -126,6 +127,8 @@ let group_generation_id = null;
 let fav_grp_checked = false;
 let openGroupId = null;
 let newGroupMembers = [];
+let groupChatSaveQueue = Promise.resolve();
+const queuedGroupChatIntegrityByFile = new Map();
 
 const GROUP_MEMBER_MODELS_KEY = 'member_models';
 const GROUP_AUTO_MODE_KEY = 'SillyBunny.groupAutoModeEnabled';
@@ -1149,9 +1152,11 @@ async function groupChatExists(chatId) {
 /**
  * Validates a group by checking if all members exist and removing duplicates.
  * @param {Group} group Group to validate
+ * @param {object} [options] Validation options
+ * @param {boolean} [options.trustActiveChat=false] Whether to keep the active chat id even before its JSONL exists
  * @returns {Promise<void>}
  */
-async function validateGroup(group) {
+async function validateGroup(group, { trustActiveChat = false } = {}) {
     if (!group) return;
 
     // Validate that all members exist as characters
@@ -1209,7 +1214,8 @@ async function validateGroup(group) {
             dirty = true;
         }
 
-        if (presentChats.length && !presentChats.includes(String(group.chat_id ?? ''))) {
+        // SillyBunny: a newly-created group chat has no JSONL yet, so keep its active branch id.
+        if (!trustActiveChat && presentChats.length && !presentChats.includes(String(group.chat_id ?? ''))) {
             group.chat_id = presentChats[presentChats.length - 1];
             dirty = true;
         }
@@ -1231,9 +1237,12 @@ async function validateGroup(group) {
  * @param {boolean} reload - Whether to reload the group chat after loading.
  * @param {object} options - Load options.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the group editor.
+ * @param {boolean} [options.newlyCreated=false] Whether the active group chat was created before loading.
  * @returns {Promise<void>} A promise that resolves when the chat messages have been loaded.
  */
-export async function getGroupChat(groupId, reload = false, { switchMenu = true } = {}) {
+export async function getGroupChat(groupId, reload = false, { switchMenu = true, newlyCreated = false } = {}) {
+    incrementChatGeneration();
+
     const group = groups.find((x) => x.id === groupId);
     if (!group) {
         console.warn('Group not found', groupId);
@@ -1241,10 +1250,10 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true 
     }
 
     // Run validation before any loading
-    await validateGroup(group);
+    await validateGroup(group, { trustActiveChat: newlyCreated });
     await unshallowGroupMembers(groupId);
 
-    let createdChat = false;
+    let createdChat = newlyCreated;
 
     if (!group.chat_id) {
         const freshChatId = humanizedDateTime();
@@ -1552,36 +1561,91 @@ function resetSelectedGroup() {
     is_group_generating = false;
 }
 
+function cloneGroupChatSavePayload(chatData) {
+    return structuredClone(chatData);
+}
+
+function applyQueuedGroupChatIntegrity(metadata, chatId, isActiveGroupChatSave) {
+    if (isActiveGroupChatSave && typeof chat_metadata.integrity === 'string' && chat_metadata.integrity) {
+        metadata.integrity = chat_metadata.integrity;
+        return;
+    }
+
+    const queuedIntegrity = chatId ? queuedGroupChatIntegrityByFile.get(chatId) : undefined;
+    if (typeof queuedIntegrity === 'string' && queuedIntegrity) {
+        metadata.integrity = queuedIntegrity;
+    }
+}
+
+function rememberQueuedGroupChatIntegrity(chatId, integrity) {
+    if (chatId && typeof integrity === 'string' && integrity) {
+        queuedGroupChatIntegrityByFile.set(chatId, integrity);
+    }
+}
+
 /**
  * Saves a group chat to the server.
  * @param {string} groupId Group ID
  * @param {boolean} shouldSaveGroup Whether to save the group after saving the chat
  * @param {boolean} force Force the saving on integrity error
  * @param {boolean} throwOnError Rethrow save errors after notifying the user
+ * @param {object} [options] Additional save options
+ * @param {boolean} [options.deferBackup] Save chat data without creating a regular chat backup yet
  * @returns {Promise<boolean>} A promise that resolves when the group chat has been saved.
  */
-async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false) {
+function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false, options = {}) {
+    const group = groups.find(x => x.id == groupId);
+    if (!group) {
+        console.warn('Group not found', groupId);
+        return Promise.resolve(false);
+    }
+
+    const chatSnapshot = cloneGroupChatSavePayload(chat);
+    const metadataSnapshot = structuredClone(chat_metadata);
+    const chatIdSnapshot = group.chat_id;
+    const saveTask = groupChatSaveQueue
+        .catch(error => console.warn('Previous group chat save failed before queued save.', error))
+        .then(() => saveGroupChatImmediately({
+            groupId,
+            shouldSaveGroup,
+            force,
+            throwOnError,
+            chatId: chatIdSnapshot,
+            chatData: chatSnapshot,
+            metadata: metadataSnapshot,
+            deferBackup: Boolean(options.deferBackup),
+        }));
+
+    groupChatSaveQueue = saveTask.catch(() => {});
+    return saveTask;
+}
+
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
         return false;
     }
-    const chatId = group.chat_id;
+
     if (chatId && Array.isArray(group.chats) && !group.chats.includes(chatId)) {
         group.chats.push(chatId);
         shouldSaveGroup = true;
     }
     group.date_last_chat = Date.now();
+    const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;
+    const metadataForSave = structuredClone(metadata || chat_metadata);
+    applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);
     /** @type {ChatHeader} */
     const chatHeader = {
-        chat_metadata: { ...chat_metadata },
+        chat_metadata: metadataForSave,
         user_name: 'unused',
         character_name: 'unused',
     };
+    const chatMessages = Array.isArray(chatData) ? chatData : cloneGroupChatSavePayload(chat);
     const saveGroupChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chat], force: force }),
+        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup) }),
     });
     const response = await fetch('/api/chats/group/save', saveGroupChatRequest);
 
@@ -1613,11 +1677,12 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnErr
             return false;
         }
 
-        return await saveGroupChat(groupId, shouldSaveGroup, true, throwOnError);
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup });
     }
 
     const responseData = await response.json().catch(() => ({}));
-    if (typeof responseData?.integrity === 'string' && responseData.integrity) {
+    rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);
+    if (isActiveGroupChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
         chat_metadata.integrity = responseData.integrity;
     }
 
@@ -3544,27 +3609,33 @@ async function createGroup() {
 /**
  * Creates a new group chat within the specified group.
  * @param {string} groupId Group ID
+ * @param {object} [options] Creation options
+ * @param {boolean} [options.chatAlreadyPrepared=false] Whether the caller already flushed saves and cleared the current chat.
  * @returns {Promise<void>} Promise that resolves when the new group chat is created
  */
-export async function createNewGroupChat(groupId) {
+export async function createNewGroupChat(groupId, { chatAlreadyPrepared = false } = {}) {
     const group = groups.find(x => x.id === groupId);
 
     if (!group) {
         return;
     }
 
-    if (!await flushPendingChatSavesForNavigation()) {
-        return;
+    if (!chatAlreadyPrepared) {
+        if (!await flushPendingChatSavesForNavigation()) {
+            return;
+        }
+
+        await clearChat({ clearData: true });
     }
 
-    await clearChat({ clearData: true });
     const newChatName = humanizedDateTime();
+    group.chats = Array.isArray(group.chats) ? group.chats : [];
     group.chats.push(newChatName);
     group.chat_id = newChatName;
     updateChatMetadata({}, true);
 
     await editGroup(group.id, true, false);
-    await getGroupChat(group.id);
+    await getGroupChat(group.id, false, { newlyCreated: true });
     syncGroupAutoModeToggle();
 }
 

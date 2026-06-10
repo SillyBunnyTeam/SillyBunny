@@ -227,6 +227,8 @@ backups:
     maxTotalBackups: -1
     # Interval in milliseconds to throttle chat backups per user
     throttleInterval: 10000
+    # Log chat and settings backup writes/skips for diagnosing backup frequency
+    logging: false
 
 # THUMBNAILING CONFIGURATION
 thumbnails:

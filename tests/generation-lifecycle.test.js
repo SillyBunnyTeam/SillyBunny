@@ -51,6 +51,20 @@ describe('generation lifecycle helper', () => {
         });
     });
 
+    test('allows forced quiet generation unblock while its stream is still active', () => {
+        expect(resolveGenerationUnblockState({
+            type: 'quiet',
+            hasStreamingProcessor: true,
+            isStreamingFinished: false,
+            forceUnblock: true,
+        })).toEqual({
+            shouldUnblock: true,
+            shouldActivateSendButtons: true,
+            shouldResetProgress: true,
+            shouldFlushEphemeralState: true,
+        });
+    });
+
     test('allows normal and finished quiet generation unblock cleanup', () => {
         expect(resolveGenerationUnblockState({
             type: 'normal',

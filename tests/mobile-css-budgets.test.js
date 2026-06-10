@@ -1,0 +1,103 @@
+import { describe, expect, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function readPublicFile(...segments) {
+    return readFileSync(path.join(repoRoot, 'public', ...segments), 'utf8');
+}
+
+function countImportant(cssSource) {
+    return (cssSource.match(/!important/g) ?? []).length;
+}
+
+function getMediaQueryPxValues(cssSource) {
+    const pxValues = new Set();
+
+    for (const mediaMatch of cssSource.matchAll(/@media[^{]*/g)) {
+        for (const pxMatch of mediaMatch[0].matchAll(/([0-9]+(?:\.[0-9]+)?)px/g)) {
+            pxValues.add(pxMatch[1]);
+        }
+    }
+
+    return pxValues;
+}
+
+// Ratchet budgets: ceilings match the measured state of staging when this
+// test landed. Lower them as cleanup PRs land; never raise them without a
+// review note explaining the regression.
+const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
+    'sillybunny-mobile-shell.css': 664,
+    'sillybunny-tabs.css': 386,
+    'sillybunny-chat-styles.css': 225,
+    'sillybunny-theme.css': 158,
+});
+
+const FORK_DISTINCT_BREAKPOINT_BUDGET = 20;
+
+const forkSheetSources = Object.fromEntries(
+    Object.keys(FORK_SHEET_IMPORTANT_BUDGETS).map(sheetName => [sheetName, readPublicFile('css', sheetName)]),
+);
+
+describe('mobile css ratchet budgets', () => {
+    describe.each(Object.entries(FORK_SHEET_IMPORTANT_BUDGETS))('%s', (sheetName, importantBudget) => {
+        test(`uses at most ${importantBudget} !important declarations`, () => {
+            const importantCount = countImportant(forkSheetSources[sheetName]);
+
+            expect(importantCount).toBeLessThanOrEqual(importantBudget);
+        });
+    });
+
+    test(`fork sheets declare at most ${FORK_DISTINCT_BREAKPOINT_BUDGET} distinct media-query px values`, () => {
+        const pxValues = new Set();
+
+        for (const cssSource of Object.values(forkSheetSources)) {
+            for (const pxValue of getMediaQueryPxValues(cssSource)) {
+                pxValues.add(pxValue);
+            }
+        }
+
+        const sortedPxValues = [...pxValues].sort((left, right) => Number(left) - Number(right));
+
+        expect(sortedPxValues.length).toBeLessThanOrEqual(FORK_DISTINCT_BREAKPOINT_BUDGET);
+    });
+});
+
+describe('index.html mobile stylesheet gates', () => {
+    const indexHtml = readPublicFile('index.html');
+    const stylesheetTags = [...indexHtml.matchAll(/<link\s[^>]*rel="stylesheet"[^>]*>/g)].map(match => match[0]);
+
+    function findStylesheetTag(href) {
+        return stylesheetTags.find(tag => tag.includes(`href="${href}?`) || tag.includes(`href="${href}"`));
+    }
+
+    test('mobile sheets keep their (max-width: 768px) media gates', () => {
+        for (const href of ['css/mobile-styles.css', 'css/sillybunny-mobile-shell.css']) {
+            const tag = findStylesheetTag(href);
+
+            expect(tag).toBeDefined();
+            expect(tag).toContain('media="(max-width: 768px)"');
+        }
+    });
+
+    test('fork sheets load after upstream styles and before user.css', () => {
+        const loadOrder = [
+            'style.css',
+            'css/mobile-styles.css',
+            'css/sillybunny-theme.css',
+            'css/sillybunny-tabs.css',
+            'css/sillybunny-mobile-shell.css',
+            'css/user.css',
+        ].map(href => {
+            const tag = findStylesheetTag(href);
+
+            expect(tag).toBeDefined();
+
+            return indexHtml.indexOf(tag);
+        });
+
+        expect(loadOrder).toEqual([...loadOrder].sort((left, right) => left - right));
+    });
+});

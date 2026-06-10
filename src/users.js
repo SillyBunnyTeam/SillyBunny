@@ -1074,6 +1074,7 @@ export async function loginPageMiddleware(request, response) {
         console.error('Error during auto-login:', error);
     }
 
+    response.set('Cache-Control', 'no-cache');
     return response.sendFile('login.html', { root: path.join(serverDirectory, 'public') });
 }
 

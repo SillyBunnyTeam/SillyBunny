@@ -5,6 +5,8 @@ export function getDebouncedChatSaveAbortReason({
     currentCharacterId,
     scheduledChatId,
     currentChatId,
+    scheduledGeneration,
+    currentGeneration,
 } = {}) {
     if (scheduledGroupId !== currentGroupId) {
         return 'group';
@@ -16,6 +18,10 @@ export function getDebouncedChatSaveAbortReason({
 
     if (scheduledChatId !== currentChatId) {
         return 'chat';
+    }
+
+    if (scheduledGeneration !== currentGeneration) {
+        return 'chat generation';
     }
 
     return '';

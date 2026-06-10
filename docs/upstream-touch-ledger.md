@@ -63,6 +63,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 chat integrity rotation fix. |
 | Owner | Bugfix integrator. |
 
+### `public/script.js` and `public/scripts/group-chats.js` - group chat branch creation
+| Field | Value |
+| --- | --- |
+| Area | Chat lifecycle. |
+| Divergence reason | SillyBunny's Start new chat menu path already flushes pending saves and clears the active chat before delegating to group chat creation, so the group branch creator must not run a second navigation-save guard that can abort and repaint the current chat. |
+| Target seam | None yet; group chat branch creation still lives in the upstream-origin chat modules. |
+| Adapter shape | Keep `doNewChat()` as the stock menu adapter and pass a narrow `chatAlreadyPrepared` option; keep standalone group creation guarded, and tell `getGroupChat()` when the chat id was freshly created so validation trusts the active empty branch until its JSONL exists. |
+| Protecting tests | Future focused group-chat new-branch coverage; current protection is static validation. |
+| Validation | `node --check public/script.js`, `node --check public/scripts/group-chats.js`, `npm run lint`, `git diff --check`. |
+| Rollback path | Revert the option plumbing and newly-created load hint to restore the previous `createNewGroupChat(groupId)` path. |
+| Last reviewed | 2026-06-10 group chat Start new chat validation fix. |
+| Owner | Bugfix integrator. |
+
 ### `public/style.css` - message containment and scroll anchoring
 | Field | Value |
 | --- | --- |
@@ -82,11 +95,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Mobile shell, chat navigation, and preset/API sync. |
 | Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, search shortcut focus, viewport-reset dispatches, and mirrored connection-profile controls that interact with chat and API state. |
 | Target seam | `public/scripts/chat-render-lifecycle/` for chat scroll requests; `public/scripts/mobile-shell-lifecycle/` for drawer/nav/viewport behavior; `public/scripts/preset-api-sync-lifecycle/` for active API and connection-profile mirror decisions. |
-| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, and connection-profile mirror state. |
-| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
-| Validation | `npm run test:unit --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- mobile-shell-lifecycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run test:unit --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `npm run lint --prefix tests -- preset-api-sync-lifecycle.test.js preset-api-sync-lifecycle-wiring.test.js`, `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for drawer bounds, viewport sync order, drawer-bound scheduling, overlay exclusivity, nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, and connection-profile mirror state. |
+| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-drawer-bounds.test.js`, `tests/mobile-shell-lifecycle-viewport-sync.test.js`, `tests/mobile-shell-lifecycle-overlay-exclusion.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
+| Validation | `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json mobile-shell-lifecycle-drawer-bounds.test.js mobile-shell-lifecycle-viewport-sync.test.js mobile-shell-lifecycle-overlay-exclusion.test.js mobile-shell-lifecycle-wiring.test.js mobile-shell-lifecycle.test.js` from `tests/`, full `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json` from `tests/`, `npm run check:frontend-budgets`, `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4567 npm run test:e2e -- mobile-shell-smoke.e2e.js` from `tests/`. |
 | Rollback path | Keep shell calls narrow so a bad adapter route can be reverted without removing shell UI. |
-| Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset and focus. |
+| Last reviewed | 2026-06-10 overlay exclusivity lifecycle seam. |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/scripts/browser-fixes.js` - mobile viewport reset guard
