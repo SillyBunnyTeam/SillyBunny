@@ -43,6 +43,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #391 (2026-06-09) `fix: mobile character panel close button floating above header`
 - PR #392 (2026-06-09) `test: add mobile shell smoke pack and mobile css ratchet budgets`
 - PR #393 (2026-06-09) `fix: normalize legacy World Info positions at scan time`
+- PR #394 (2026-06-10) `fix: preserve new group chat id during validation`
 
 ## v1.6.3
 
