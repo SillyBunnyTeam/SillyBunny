@@ -76,6 +76,7 @@ Include a Discord-friendly update summary for non-hotfix releases so the changes
 
 When a new, stable upstream SillyTavern version releases:
 
+- Follow the upstream sync runbook in `docs/upstream-sync.md` before preparing a sync PR.
 - Prioritize synchronizing to `staging` over new features and bug fixes.
 - Check for code compatibility with the new version release.
 - Remove and migrate any SillyBunny features or patches if they have been properly implemented upstream.
