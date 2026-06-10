@@ -5,6 +5,7 @@
 ### Merged Staging PRs
 - PR #402 (2026-06-10) `chore: bump version to 1.6.5`
 - PR #404 (2026-06-10) `chore: route mobile rail and quick-action models through mobile-shell-lifecycle`
+- PR #407 (2026-06-10) `docs: ledger the mobile-styles media gate and canonical breakpoints`
 
 ## v1.6.4
 
