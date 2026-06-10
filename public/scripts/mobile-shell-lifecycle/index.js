@@ -559,6 +559,81 @@ export function resolveMobileShellRailActionVisibility({
 }
 
 /**
+ * Resolves which open inline drawer siblings should close when a drawer opens.
+ * The current shell behavior is viewport-agnostic; callers still pass viewport
+ * state so the decision seam owns the policy if it becomes mobile-specific.
+ * @param {object} [options={}] Options.
+ * @param {string} [options.openedDrawerId=''] Stable id for the drawer being opened.
+ * @param {string[]} [options.openDrawerIds=[]] Stable ids for currently open sibling drawers.
+ * @param {boolean} [options.isMobileViewport=false] Current viewport state.
+ * @returns {{closeIds: string[]}}
+ */
+export function resolveInlineDrawerAutoCloseSiblings(options = {}) {
+    const openedDrawerId = String(options.openedDrawerId ?? '').trim();
+    const openDrawerIds = Array.isArray(options.openDrawerIds) ? options.openDrawerIds : [];
+
+    if (!openedDrawerId) {
+        return { closeIds: [] };
+    }
+
+    const seenIds = new Set([openedDrawerId]);
+    const closeIds = [];
+
+    for (const drawerId of openDrawerIds) {
+        const normalizedDrawerId = String(drawerId ?? '').trim();
+        if (!normalizedDrawerId || seenIds.has(normalizedDrawerId)) {
+            continue;
+        }
+
+        seenIds.add(normalizedDrawerId);
+        closeIds.push(normalizedDrawerId);
+    }
+
+    return { closeIds };
+}
+
+/**
+ * Derives the persistent storage key for an inline drawer from DOM-free context.
+ * Adapter code owns DOM reads and segment sanitization; this helper owns the
+ * key format so user drawer-state preferences keep their exact storage shape.
+ * @param {object} [options={}] Options.
+ * @param {string} [options.drawerId=''] Sanitized drawer id segment, when present.
+ * @param {object} [options.context={}] Sanitized drawer context.
+ * @param {string} [options.context.storagePrefix='sb-settings-inline-drawer'] Storage key prefix.
+ * @param {string[]} [options.context.contextSegments=[]] Sanitized ancestor context segments.
+ * @param {string} [options.context.drawerLabel=''] Sanitized drawer label segment for id-less drawers.
+ * @param {number} [options.context.drawerIndex=0] Sibling index for id-less drawers.
+ * @returns {string}
+ */
+export function deriveInlineDrawerPersistenceKey({
+    drawerId = '',
+    context = {},
+} = {}) {
+    const storagePrefix = String(context.storagePrefix ?? 'sb-settings-inline-drawer').trim();
+    const contextSegments = Array.isArray(context.contextSegments)
+        ? context.contextSegments.map(segment => String(segment ?? '').trim()).filter(Boolean)
+        : [];
+
+    if (!storagePrefix || contextSegments.length === 0) {
+        return '';
+    }
+
+    const contextPath = contextSegments.join('/');
+    const normalizedDrawerId = String(drawerId ?? '').trim();
+    if (normalizedDrawerId) {
+        return `${storagePrefix}:${contextPath}:drawer-id:${normalizedDrawerId}`;
+    }
+
+    const drawerLabel = String(context.drawerLabel ?? '').trim();
+    if (!drawerLabel) {
+        return '';
+    }
+
+    const drawerIndex = Math.max(0, Math.round(normalizeNumber(context.drawerIndex, 0)));
+    return `${storagePrefix}:${contextPath}:drawer:${drawerLabel}:${drawerIndex}`;
+}
+
+/**
  * Resolves mobile navigation overlay state for DOM adapters.
  * @param {object} options Options.
  * @param {boolean} [options.requestedOpen=false] Requested open state.
@@ -813,6 +888,10 @@ export function createMobileShellLifecycle() {
             normalizeQuickAction: normalizeMobileShellQuickAction,
             getQuickActionKey: getMobileShellQuickActionKey,
             resolveActionVisibility: resolveMobileShellRailActionVisibility,
+        },
+        inlineDrawers: {
+            resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
+            derivePersistenceKey: deriveInlineDrawerPersistenceKey,
         },
         drawerBounds: {
             action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
