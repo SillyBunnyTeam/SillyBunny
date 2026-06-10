@@ -213,6 +213,7 @@ class PresetManager {
         this._presetSelectPointerMoveHandler = (event) => this._handlePresetSelectPointerMove(event);
         this._presetSelectPointerEndHandler = (event) => this._handlePresetSelectPointerEnd(event);
         this._presetSelectPointerCancelHandler = (event) => this._handlePresetSelectPointerCancel(event);
+        this._presetSelectPointerLeaveHandler = (event) => this._handlePresetSelectPointerLeave(event);
         this._presetSelectClickHandler = (event) => this._handlePresetSelectClick(event);
         // SillyBunny: snapshot and guard all connected text fields before preset
         // changes so unsaved changes in fork-specific drawers can still warn.
@@ -523,6 +524,7 @@ class PresetManager {
         selectElement.addEventListener('pointermove', this._presetSelectPointerMoveHandler, true);
         selectElement.addEventListener('pointerup', this._presetSelectPointerEndHandler, true);
         selectElement.addEventListener('pointercancel', this._presetSelectPointerCancelHandler, true);
+        selectElement.addEventListener('pointerleave', this._presetSelectPointerLeaveHandler, true);
         selectElement.addEventListener('click', this._presetSelectClickHandler, true);
     }
 
@@ -567,6 +569,17 @@ class PresetManager {
     }
 
     _handlePresetSelectPointerCancel(event) {
+        const touchGuardResult = resolvePresetSelectTouchGuardEnd({
+            touchGuardState: this._presetSelectTouchGuardState,
+            pointerId: event.pointerId,
+            forceSuppress: true,
+        });
+
+        this._presetSelectTouchGuardState = touchGuardResult.touchGuardState;
+        this._presetSelectTouchSuppressClick = touchGuardResult.shouldSuppressClick;
+    }
+
+    _handlePresetSelectPointerLeave(event) {
         const touchGuardResult = resolvePresetSelectTouchGuardEnd({
             touchGuardState: this._presetSelectTouchGuardState,
             pointerId: event.pointerId,

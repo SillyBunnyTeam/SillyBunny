@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     createPresetSelectTouchGuardState,
+    markPresetSelectTouchGuardDragging,
     PRESET_SELECT_TOUCH_GUARD_DRAG_THRESHOLD_PX,
     resolvePresetSelectTouchGuardEnd,
     resolvePresetSelectTouchGuardMove,
@@ -10,7 +11,7 @@ import {
 
 describe('preset select touch guard helper', () => {
     test('keeps the mobile drag threshold explicit', () => {
-        expect(PRESET_SELECT_TOUCH_GUARD_DRAG_THRESHOLD_PX).toBe(6);
+        expect(PRESET_SELECT_TOUCH_GUARD_DRAG_THRESHOLD_PX).toBe(4);
     });
 
     test('captures state only for mobile touch or pen input', () => {
@@ -71,7 +72,7 @@ describe('preset select touch guard helper', () => {
             touchGuardState,
             pointerId: 7,
             clientX: 104,
-            clientY: 105,
+            clientY: 103,
         });
 
         expect(movedState).toEqual({
@@ -123,7 +124,52 @@ describe('preset select touch guard helper', () => {
         })).toBe(false);
     });
 
+    test('can mark active mobile guard state as dragging', () => {
+        const touchGuardState = createPresetSelectTouchGuardState({
+            isMobileViewport: true,
+            pointerType: 'touch',
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+        });
+        const movedState = markPresetSelectTouchGuardDragging({
+            touchGuardState,
+            pointerId: 7,
+        });
+
+        expect(movedState).toEqual({
+            ...touchGuardState,
+            dragging: true,
+        });
+        expect(resolvePresetSelectTouchGuardEnd({
+            touchGuardState: movedState,
+            pointerId: 7,
+        })).toEqual({
+            touchGuardState: null,
+            shouldSuppressClick: true,
+        });
+    });
+
     test('suppresses the next click when mobile panning cancels the pointer stream', () => {
+        const touchGuardState = createPresetSelectTouchGuardState({
+            isMobileViewport: true,
+            pointerType: 'touch',
+            pointerId: 7,
+            clientX: 100,
+            clientY: 100,
+        });
+
+        expect(resolvePresetSelectTouchGuardEnd({
+            touchGuardState,
+            pointerId: 7,
+            forceSuppress: true,
+        })).toEqual({
+            touchGuardState: null,
+            shouldSuppressClick: true,
+        });
+    });
+
+    test('suppresses the next click when mobile panning leaves the select', () => {
         const touchGuardState = createPresetSelectTouchGuardState({
             isMobileViewport: true,
             pointerType: 'touch',
