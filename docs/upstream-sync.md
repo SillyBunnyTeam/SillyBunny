@@ -15,7 +15,9 @@ and restores the unrelated-history failure.
 
 The anchor records upstream `SillyTavern/SillyTavern` `release` at commit
 `51ad27fb86d39a3daca3adaa970375c9670c12df` as already ported into SillyBunny.
-The anchor merge must not change the working tree.
+The anchor merge must not import upstream runtime or application-code changes.
+Any same-PR documentation changes should be explicit and reviewable in the file
+diff.
 
 ## Refresh Upstream Refs
 
