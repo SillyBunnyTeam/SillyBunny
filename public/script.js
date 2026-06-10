@@ -11272,6 +11272,13 @@ function sanitizeMessageElementForScreenshot(messageElement) {
     messageElement.classList.remove('selected', 'slide', 'fade');
     messageElement.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
     messageElement.querySelectorAll(removableSelector).forEach(element => element.remove());
+    messageElement.querySelectorAll('details:not([open])').forEach(details => {
+        Array.from(details.children).forEach(child => {
+            if (child.tagName !== 'SUMMARY') {
+                child.remove();
+            }
+        });
+    });
 }
 
 function buildMessageScreenshotElements(startId, endId) {
