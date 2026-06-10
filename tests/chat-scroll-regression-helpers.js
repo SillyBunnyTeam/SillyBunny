@@ -83,37 +83,75 @@ export async function selectSampleCharacter(page) {
     await page.locator('#send_textarea').waitFor({ state: 'visible', timeout: 10000 });
 }
 
-async function waitForChatRenderIdle(page) {
+async function waitForChatRenderIdle(page, { idleMs = 750, timeoutMs = 30000, waitForImages = true } = {}) {
     await page.waitForFunction(() => {
         return typeof window.SillyTavern?.getContext === 'function'
             && document.querySelector('#chat') instanceof HTMLElement;
     }, { timeout: 10000 });
 
-    await page.evaluate(async () => {
-        await new Promise(resolve => {
+    await page.evaluate(async ({ idleMs: stableIdleMs, timeoutMs: stableTimeoutMs, waitForImages: shouldWaitForImages }) => {
+        await new Promise((resolve, reject) => {
             let previousState = '';
-            let stableFrames = 0;
+            let stableSince = performance.now();
+            let settled = false;
+            const timeoutId = window.setTimeout(() => {
+                settled = true;
+                reject(new Error('Chat render did not settle before timeout.'));
+            }, stableTimeoutMs);
 
             const readState = () => {
                 const context = window.SillyTavern.getContext();
                 const chat = document.querySelector('#chat');
                 const messages = Array.from(chat.querySelectorAll('.mes[mesid]'));
+                const lastMessage = messages.at(-1);
+                const lastMessageRect = lastMessage?.getBoundingClientRect();
+                const streamingProcessor = context.streamingProcessor;
+                const isStreamActive = Boolean(streamingProcessor && streamingProcessor.isFinished !== true);
+                const isGenerationActive = document.body.dataset.generating === 'true';
+                const pendingImageCount = shouldWaitForImages
+                    ? Array.from(chat.querySelectorAll('img'))
+                        .filter(image => !image.complete)
+                        .length
+                    : 0;
 
                 return JSON.stringify({
                     chatLength: context.chat.length,
                     messageCount: messages.length,
                     firstMesId: messages.at(0)?.getAttribute('mesid') ?? null,
                     lastMesId: messages.at(-1)?.getAttribute('mesid') ?? null,
+                    lastMessageTextLength: lastMessage?.textContent?.length ?? 0,
+                    lastMessageHeight: lastMessageRect ? Math.round(lastMessageRect.height) : null,
+                    chatScrollHeight: chat.scrollHeight,
+                    chatClientHeight: chat.clientHeight,
+                    isStreamActive,
+                    isGenerationActive,
+                    pendingImageCount,
                     busyShowMore: chat.querySelector('#show_more_messages[aria-busy="true"]') !== null,
                 });
             };
 
             const checkNextFrame = () => {
+                if (settled) {
+                    return;
+                }
+
+                const now = performance.now();
                 const nextState = readState();
-                stableFrames = nextState === previousState ? stableFrames + 1 : 0;
+                const state = JSON.parse(nextState);
+
+                if (nextState !== previousState
+                    || state.isStreamActive
+                    || state.isGenerationActive
+                    || state.pendingImageCount > 0
+                    || state.busyShowMore) {
+                    stableSince = now;
+                }
+
                 previousState = nextState;
 
-                if (stableFrames >= 6) {
+                if (now - stableSince >= stableIdleMs) {
+                    settled = true;
+                    window.clearTimeout(timeoutId);
                     resolve();
                     return;
                 }
@@ -123,7 +161,7 @@ async function waitForChatRenderIdle(page) {
 
             checkNextFrame();
         });
-    });
+    }, { idleMs, timeoutMs, waitForImages });
 }
 
 export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter = true } = {}) {
@@ -144,6 +182,52 @@ export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter
     }
     await dismissOpenDialogIfPresent(page);
     await waitForChatRenderIdle(page);
+}
+
+async function quietChatForSmoke(page) {
+    await page.evaluate(async () => {
+        const context = window.SillyTavern.getContext();
+
+        context.stopGeneration?.();
+
+        try {
+            const agentRunner = await import('/scripts/extensions/in-chat-agents/agent-runner.js');
+
+            agentRunner.cancelAgentGeneration?.();
+        } catch {
+            // In-chat agents are optional in smoke profiles.
+        }
+
+        const textarea = document.getElementById('send_textarea');
+        if (textarea instanceof HTMLElement) {
+            textarea.value = '';
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    });
+}
+
+export async function openQuietChatForSmoke(page, options = {}) {
+    const { chatSaveDelayMs = 0, selectCharacter = true } = options;
+
+    await page.route('**/api/chats/save', async route => {
+        if (chatSaveDelayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, chatSaveDelayMs));
+        }
+
+        await route.fulfill({ status: 200, json: {} });
+    });
+
+    await page.goto(APP_URL);
+    await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+    await quietChatForSmoke(page);
+    await dismissOnboardingIfPresent(page);
+    await dismissOpenDialogIfPresent(page);
+    if (selectCharacter) {
+        await selectSampleCharacter(page);
+    }
+    await dismissOpenDialogIfPresent(page);
+    await quietChatForSmoke(page);
+    await waitForChatRenderIdle(page, { idleMs: 500, timeoutMs: 10000, waitForImages: false });
 }
 
 export async function waitForAnimationFrames(page, frameCount = 2) {

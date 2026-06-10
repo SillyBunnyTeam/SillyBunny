@@ -13,6 +13,123 @@ export const MOBILE_SHELL_NAV_SCROLL_BEHAVIOR = Object.freeze({
     SMOOTH: 'smooth',
 });
 
+export const MOBILE_SHELL_SURFACE = Object.freeze({
+    NAV: 'mobile-nav',
+    LEFT_SHELL: 'left-shell',
+    RIGHT_SHELL: 'right-shell',
+    CHARACTER_PANEL: 'character-panel',
+    CHAT_TOOLS: 'chat-tools',
+    CONNECTION_STRIP: 'connection-strip',
+});
+
+export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
+    MOBILE_SHELL_SURFACE.LEFT_SHELL,
+    MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+    MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+    MOBILE_SHELL_SURFACE.NAV,
+    MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+    MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+]);
+
+const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
+    [MOBILE_SHELL_SURFACE.NAV]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+    }),
+    [MOBILE_SHELL_SURFACE.LEFT_SHELL]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+    }),
+    [MOBILE_SHELL_SURFACE.RIGHT_SHELL]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+    }),
+    [MOBILE_SHELL_SURFACE.CHARACTER_PANEL]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+    }),
+    [MOBILE_SHELL_SURFACE.CHAT_TOOLS]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
+        ]),
+    }),
+    [MOBILE_SHELL_SURFACE.CONNECTION_STRIP]: Object.freeze({
+        mobile: Object.freeze([
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+        ]),
+        desktop: Object.freeze([
+            MOBILE_SHELL_SURFACE.NAV,
+            MOBILE_SHELL_SURFACE.LEFT_SHELL,
+            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
+            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
+            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
+        ]),
+    }),
+});
+
 function normalizeNumber(value, fallback = 0) {
     const numberValue = Number(value);
     return Number.isFinite(numberValue) ? numberValue : fallback;
@@ -221,6 +338,27 @@ export function resolveMobileNavToggleIntent({
     return {
         action: MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV,
         shouldCloseCompetingPanels: true,
+    };
+}
+
+/**
+ * Resolves the surfaces that must close when one shell surface opens.
+ * @param {object} options Options.
+ * @param {string} [options.surface=''] Surface being opened.
+ * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
+ * @returns {{closeSurfaces: string[]}}
+ */
+export function resolveMobileShellExclusiveOpen({
+    surface = '',
+    isMobileViewport = false,
+} = {}) {
+    const tableEntry = MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE[surface];
+    if (!tableEntry) {
+        return { closeSurfaces: [] };
+    }
+
+    return {
+        closeSurfaces: [...(isMobileViewport ? tableEntry.mobile : tableEntry.desktop)],
     };
 }
 
@@ -463,6 +601,11 @@ export function createMobileShellLifecycle() {
         },
         modal: {
             resolveA11yState: resolveMobileModalA11yState,
+        },
+        overlays: {
+            surface: MOBILE_SHELL_SURFACE,
+            closeAllSurfaces: MOBILE_SHELL_CLOSE_ALL_SURFACES,
+            resolveExclusiveOpen: resolveMobileShellExclusiveOpen,
         },
         drawerBounds: {
             action: MOBILE_SHELL_DRAWER_BOUND_ACTION,

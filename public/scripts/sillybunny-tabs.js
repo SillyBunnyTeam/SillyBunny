@@ -5371,11 +5371,10 @@ function openMobileChatTools() {
         return;
     }
 
-    closeMobileNav();
-    closeShell('left');
-    closeShell('right');
-    closeCharacterPanel();
-    setConnectionStripOpenState(false);
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
+        isMobileViewport: isMobileViewport(),
+    }));
     setMobileChatToolsOpenState(true);
 }
 
@@ -5383,8 +5382,58 @@ function closeMobileChatTools() {
     setMobileChatToolsOpenState(false);
 }
 
+function getMobileShellSurfaceForShell(shellKey) {
+    if (shellKey === 'left') {
+        return sbMobileShellLifecycle.overlays.surface.LEFT_SHELL;
+    }
+
+    if (shellKey === 'right') {
+        return sbMobileShellLifecycle.overlays.surface.RIGHT_SHELL;
+    }
+
+    if (shellKey === 'characters') {
+        return sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL;
+    }
+
+    return '';
+}
+
+function applyMobileSurfaceExclusivity(decision) {
+    if (!decision || !Array.isArray(decision.closeSurfaces)) {
+        return;
+    }
+
+    const surface = sbMobileShellLifecycle.overlays.surface;
+    const closeSurface = {
+        [surface.NAV]: () => closeMobileNav(),
+        [surface.LEFT_SHELL]: () => closeShell('left'),
+        [surface.RIGHT_SHELL]: () => closeShell('right'),
+        [surface.CHARACTER_PANEL]: () => closeCharacterPanel(),
+        [surface.CHAT_TOOLS]: () => closeMobileChatTools(),
+        [surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),
+    };
+
+    for (const closeSurfaceKey of decision.closeSurfaces) {
+        const close = closeSurface[closeSurfaceKey];
+        if (typeof close !== 'function') {
+            throw new Error(`Unknown mobile shell surface: ${closeSurfaceKey}`);
+        }
+
+        close();
+    }
+}
+
 function toggleMobileChatTools() {
-    setMobileChatToolsOpenState(!getChatbarState().mobileToolsOpen);
+    const shouldOpen = !getChatbarState().mobileToolsOpen;
+
+    if (shouldOpen) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
+            isMobileViewport: isMobileViewport(),
+        }));
+    }
+
+    setMobileChatToolsOpenState(shouldOpen);
 }
 
 function syncConnectionProfileSelection(value) {
@@ -5416,6 +5465,13 @@ function setConnectionStripOpenState(shouldOpen) {
 
     if (!desktopRefs?.connectionStrip) {
         return;
+    }
+
+    if (nextState) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     getChatbarState().connectionStripOpen = nextState;
@@ -7189,9 +7245,10 @@ function openCharacterWorldInfoTab() {
     const panel = getCharacterPanel();
     sbState.characterDrawer.lastTab = 'world-info';
 
-    closeMobileNav();
-    closeShell('left');
-    closeShell('right');
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+        isMobileViewport: isMobileViewport(),
+    }));
     setCharacterPanelMenuType(panel, 'world-info');
     preloadPanelStylesheets('characters', 'world-info');
     setCharacterEditorEmptyState(false);
@@ -7272,9 +7329,10 @@ function openCharacterPanelTab(tabId) {
     if (!isCharacterPanelOpen()) {
         toggleCharacterPanel({ preferredTab: normalizedTabId });
     } else {
-        closeMobileNav();
-        closeShell('left');
-        closeShell('right');
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     const activateRequestedTab = () => {
@@ -7633,11 +7691,12 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
         sbState.characterDrawer.lastTab = normalizedPreferredTab;
     }
 
-    closeAllDropdowns({ except: 'characters' });
+    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
+        isMobileViewport: isMobileViewport(),
+    }));
+    closeAllDropdowns({ except: 'characters', closeSurfaces: false });
     restoreLastCharacterPanelView();
-
-    closeShell('left');
-    closeShell('right');
 
     // iOS Safari clips position:fixed inside overflow:hidden ancestors.
     // Temporarily allow overflow on the parent so the panel renders.
@@ -7663,14 +7722,23 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     });
 }
 
-function closeAllDropdowns({ except = '' } = {}) {
-    if (except !== 'left') closeShell('left');
-    if (except !== 'right') closeShell('right');
-    if (except !== 'characters') closeCharacterPanel();
+function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
+    if (closeSurfaces) {
+        const exemptSurface = getMobileShellSurfaceForShell(except);
+
+        if (exemptSurface) {
+            applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+                surface: exemptSurface,
+                isMobileViewport: isMobileViewport(),
+            }));
+        } else {
+            applyMobileSurfaceExclusivity({
+                closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,
+            });
+        }
+    }
+
     if (except !== 'search') setUniversalSearchOpenState(false);
-    closeMobileNav();
-    closeMobileChatTools();
-    setConnectionStripOpenState(false);
 
     // Close persona picker
     document.getElementById('sb-persona-picker')?.remove();
@@ -7710,7 +7778,16 @@ function toggleShellPanel(shellKey, tabId = null) {
     }
 
     rememberShellFocusOrigin(shellKey);
-    closeAllDropdowns({ except: shellKey });
+    const shellSurface = getMobileShellSurfaceForShell(shellKey);
+    if (shellSurface) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: shellSurface,
+            isMobileViewport: isMobileViewport(),
+        }));
+        closeAllDropdowns({ except: shellKey, closeSurfaces: false });
+    } else {
+        closeAllDropdowns({ except: shellKey });
+    }
     window.requestAnimationFrame(() => openShell(shellKey, tabId));
 }
 
@@ -12585,7 +12662,15 @@ function openShell(shellKey, tabId = null) {
         return;
     }
 
-    closeMobileNav();
+    const shellSurface = getMobileShellSurfaceForShell(shellKey);
+    if (shellSurface) {
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: shellSurface,
+            isMobileViewport: isMobileViewport(),
+        }));
+    } else {
+        closeMobileNav();
+    }
     rememberShellFocusOrigin(shellKey);
 
     if (tabId) {
@@ -13743,11 +13828,10 @@ function toggleMobileNav() {
     }
 
     if (toggleIntent.shouldCloseCompetingPanels) {
-        closeShell('left');
-        closeShell('right');
-        closeCharacterPanel();
-        closeMobileChatTools();
-        setConnectionStripOpenState(false);
+        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+            surface: sbMobileShellLifecycle.overlays.surface.NAV,
+            isMobileViewport: isMobileViewport(),
+        }));
     }
 
     setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);

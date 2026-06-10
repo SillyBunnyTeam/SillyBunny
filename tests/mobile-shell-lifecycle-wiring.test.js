@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { MOBILE_SHELL_VIEWPORT_SYNC_STEP } from '../public/scripts/mobile-shell-lifecycle/index.js';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 const browserFixesSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'browser-fixes.js'), 'utf8');
@@ -203,6 +205,14 @@ describe('mobile shell lifecycle wiring', () => {
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
     });
 
+    test('pins every mobile viewport sync step to a dispatch handler', () => {
+        const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+
+        for (const stepKey of Object.keys(MOBILE_SHELL_VIEWPORT_SYNC_STEP)) {
+            expect(syncMobileViewportStateSource).toContain(`[viewportSyncStep.${stepKey}]:`);
+        }
+    });
+
     test('offers snap-to-chat-width as a persistent desktop shell sizing mode', () => {
         const getDesktopShellDimensionsSource = getFunctionSource('getDesktopShellDimensions');
         const createDesktopShellSizingSettingsGroupSource = getFunctionSource('createDesktopShellSizingSettingsGroup');
@@ -256,6 +266,64 @@ describe('mobile shell lifecycle wiring', () => {
         expect(toggleMobileNavSource).toContain('toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET');
         expect(toggleMobileNavSource).toContain('toggleIntent.shouldCloseCompetingPanels');
         expect(toggleMobileNavSource).toContain('setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);');
+    });
+
+    test('routes mobile overlay exclusivity through the lifecycle seam', () => {
+        const applyExclusivitySource = getFunctionSource('applyMobileSurfaceExclusivity');
+        const openMobileChatToolsSource = getFunctionSource('openMobileChatTools');
+        const toggleMobileChatToolsSource = getFunctionSource('toggleMobileChatTools');
+        const toggleMobileNavSource = getFunctionSource('toggleMobileNav');
+        const toggleCharacterPanelSource = getFunctionSource('toggleCharacterPanel');
+        const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
+        const openCharacterWorldInfoTabSource = getFunctionSource('openCharacterWorldInfoTab');
+        const openCharacterPanelTabSource = getFunctionSource('openCharacterPanelTab');
+        const openShellSource = getFunctionSource('openShell');
+        const closeAllDropdownsSource = getFunctionSource('closeAllDropdowns');
+        const setConnectionStripOpenStateSource = getFunctionSource('setConnectionStripOpenState');
+
+        expect(applyExclusivitySource).toContain('[surface.NAV]: () => closeMobileNav(),');
+        expect(applyExclusivitySource).toContain('[surface.LEFT_SHELL]: () => closeShell(\'left\'),');
+        expect(applyExclusivitySource).toContain('[surface.RIGHT_SHELL]: () => closeShell(\'right\'),');
+        expect(applyExclusivitySource).toContain('[surface.CHARACTER_PANEL]: () => closeCharacterPanel(),');
+        expect(applyExclusivitySource).toContain('[surface.CHAT_TOOLS]: () => closeMobileChatTools(),');
+        expect(applyExclusivitySource).toContain('[surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),');
+        expect(applyExclusivitySource).toContain('throw new Error(`Unknown mobile shell surface: ${closeSurfaceKey}`);');
+
+        for (const source of [
+            openMobileChatToolsSource,
+            toggleMobileChatToolsSource,
+            toggleMobileNavSource,
+            toggleCharacterPanelSource,
+            toggleShellPanelSource,
+            openCharacterWorldInfoTabSource,
+            openCharacterPanelTabSource,
+            openShellSource,
+            closeAllDropdownsSource,
+            setConnectionStripOpenStateSource,
+        ]) {
+            expect(source).toContain('applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({');
+        }
+
+        expect(openMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
+        expect(toggleMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
+        expect(toggleMobileNavSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.NAV,');
+        expect(toggleCharacterPanelSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
+        expect(toggleShellPanelSource).toContain('surface: shellSurface,');
+        expect(openCharacterWorldInfoTabSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
+        expect(openCharacterPanelTabSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
+        expect(openShellSource).toContain('surface: shellSurface,');
+        expect(closeAllDropdownsSource).toContain('const exemptSurface = getMobileShellSurfaceForShell(except);');
+        expect(closeAllDropdownsSource).toContain('surface: exemptSurface,');
+        expect(closeAllDropdownsSource).toContain('closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,');
+        expect(closeAllDropdownsSource).not.toContain('const surfaceByException = {');
+        expect(setConnectionStripOpenStateSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,');
+
+        expect(openMobileChatToolsSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');');
+        expect(toggleMobileNavSource).not.toContain('closeShell(\'left\');\n        closeShell(\'right\');\n        closeCharacterPanel();\n        closeMobileChatTools();');
+        expect(toggleCharacterPanelSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');
+        expect(openCharacterWorldInfoTabSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');\n    closeShell(\'right\');');
+        expect(openCharacterPanelTabSource).not.toContain('closeMobileNav();\n        closeShell(\'left\');\n        closeShell(\'right\');');
+        expect(openShellSource).not.toContain('closeMobileNav();\n    rememberShellFocusOrigin');
     });
 
     test('routes mobile drawer bound decisions through the lifecycle seam', () => {

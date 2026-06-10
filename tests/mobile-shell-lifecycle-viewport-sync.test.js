@@ -63,6 +63,12 @@ describe('mobile shell viewport sync lifecycle', () => {
         });
     });
 
+    test('defaults viewport sync planning to the desktop close sequence', () => {
+        expect(resolveMobileViewportSyncPlan()).toEqual({
+            steps: DESKTOP_VIEWPORT_SYNC_STEPS,
+        });
+    });
+
     test('resolves drawer bounds sync scheduling for every mobile and rAF state', () => {
         const cases = [
             {
@@ -89,6 +95,26 @@ describe('mobile shell viewport sync lifecycle', () => {
                 followupDelayMs: 123,
             })).toEqual(expected);
         }
+    });
+
+    test('defaults drawer bounds sync scheduling to skipped with the standard follow-up delay', () => {
+        expect(resolveDrawerBoundsSyncSchedule()).toEqual({
+            shouldSchedule: false,
+            useAnimationFrame: false,
+            followupDelayMs: 350,
+        });
+    });
+
+    test('normalizes invalid drawer bounds follow-up delays to the standard delay', () => {
+        expect(resolveDrawerBoundsSyncSchedule({
+            isMobileViewport: true,
+            hasAnimationFrame: true,
+            followupDelayMs: 'not-a-delay',
+        })).toEqual({
+            shouldSchedule: true,
+            useAnimationFrame: true,
+            followupDelayMs: 350,
+        });
     });
 
     test('exposes viewport sync decisions through the lifecycle seam', () => {

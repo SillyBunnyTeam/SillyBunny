@@ -1,6 +1,6 @@
 /* global document, window */
 import { expect, test } from '@playwright/test';
-import { openReadyChat, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
 // Mobile shell smoke pack: pins the current open/close contracts of the
 // SillyBunny mobile shell (drawers, hamburger nav, chat tools, character
@@ -11,6 +11,7 @@ test.describe.configure({ mode: 'serial' });
 
 const IPHONE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const MOBILE_SHELL_NAV_OPEN_GRACE_MS = 450;
 
 function getOverlayStateSnapshot(page) {
     return page.evaluate(() => {
@@ -82,6 +83,19 @@ function getHorizontalOverflow(page) {
     });
 }
 
+function getIsMobileShellViewport(page) {
+    return page.evaluate(() => window.SillyBunnyShell.isMobileViewport());
+}
+
+async function expectNoHorizontalOverflow(page) {
+    await expect.poll(() => getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+}
+
+async function waitForNavOpenGrace(page) {
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- The mobile nav contract has a 450 ms open grace before cross-opening.
+    await page.waitForTimeout(MOBILE_SHELL_NAV_OPEN_GRACE_MS);
+}
+
 function openLeftShell(page) {
     return page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
 }
@@ -95,6 +109,8 @@ function clickHamburgerProgrammatically(page) {
 
 async function closeLeftShellThroughUi(page) {
     const closeButton = page.locator('#left-nav-panel .sb-shell-close');
+
+    await closeButton.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
 
     if (await closeButton.isVisible().catch(() => false)) {
         await closeButton.click();
@@ -121,7 +137,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     });
 
     test.beforeEach(async ({ page }) => {
-        await openReadyChat(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await waitForAnimationFrames(page, 3);
     });
 
     test('left drawer open and close honor the mobile viewport bound contract', async ({ page }, testInfo) => {
@@ -136,19 +153,29 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             boxSizing: 'border-box',
         });
 
-        const openBounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
+        await expect.poll(async () => {
+            const openBounds = await getDrawerBoundsSnapshot(page, 'left-nav-panel');
+            const height = Number.parseFloat(openBounds?.height ?? '');
 
-        expect(openBounds.top).toMatch(/^\d+px$/);
-        expect(Number.parseFloat(openBounds.height)).toBeGreaterThan(0);
-        expect(Number.parseFloat(openBounds.height)).toBeLessThanOrEqual(844);
-        expect(openBounds.maxHeight).toBe(openBounds.height);
+            return {
+                topIsPixels: /^\d+px$/.test(openBounds?.top ?? ''),
+                heightPositive: height > 0,
+                heightWithinViewport: height <= 844,
+                maxHeightMatchesHeight: openBounds?.maxHeight === openBounds?.height,
+            };
+        }).toEqual({
+            topIsPixels: true,
+            heightPositive: true,
+            heightWithinViewport: true,
+            maxHeightMatchesHeight: true,
+        });
 
         await captureCheckpoint(page, testInfo, 'left-drawer');
 
         await closeLeftShellThroughUi(page);
 
-        // clearMobileShellDrawerBounds removes every bound property and the
-        // dataset marker once the drawer is no longer open.
+        // applyMobileDrawerBoundsDecision removes every bound property and
+        // the dataset marker once the drawer is no longer open.
         await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toEqual({
             isOpen: false,
             isViewportBound: false,
@@ -159,7 +186,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             boxSizing: '',
         });
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 
     test('hamburger nav keeps hidden, aria-hidden, and inert in agreement', async ({ page }, testInfo) => {
@@ -190,6 +217,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await captureCheckpoint(page, testInfo, 'nav-open');
 
+        await waitForNavOpenGrace(page);
+
         await page.locator('#sb-hamburger').click();
 
         await expect.poll(getNavAgreementSnapshot).toEqual({
@@ -201,7 +230,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             buttonOpenClass: false,
         });
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 
     test('opening each overlay closes competing mobile surfaces', async ({ page }, testInfo) => {
@@ -219,6 +248,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             rightShellOpen: false,
             characterPanelOpen: false,
         });
+
+        await waitForNavOpenGrace(page);
 
         // openMobileChatTools closes the nav, both shells, and the character panel.
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
@@ -244,7 +275,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             characterPanelOpen: true,
         });
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 
     test('keyboard-style viewport shrink re-syncs open drawer bounds and recovers', async ({ page }) => {
@@ -298,7 +329,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             return bounds?.isOpen === false && bounds?.isViewportBound === false;
         }).toBe(true);
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 
     test('composer stays on screen through keyboard-style viewport shrink', async ({ page }, testInfo) => {
@@ -322,7 +353,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             return fit !== null && fit.bottom <= fit.viewportHeight + 1;
         }).toBe(true);
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 });
 
@@ -335,7 +366,7 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
     });
 
     test('composer fits and the send target keeps its current floor', async ({ page }) => {
-        await openReadyChat(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page, { selectCharacter: false });
 
         // Compact mode and connection state come from the linked user profile;
         // normalize both so this measures the stylesheet contract, not the
@@ -362,7 +393,7 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
         expect(composerBox.x).toBeGreaterThanOrEqual(-1);
         expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(321);
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 });
 
@@ -375,9 +406,9 @@ test.describe('mobile shell smoke at tablet 768x1024', () => {
     });
 
     test('mobile shell stays active at the 768px boundary', async ({ page }) => {
-        await openReadyChat(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page, { selectCharacter: false });
 
-        expect(await page.evaluate(() => window.SillyBunnyShell.isMobileViewport())).toBe(true);
+        await expect.poll(() => getIsMobileShellViewport(page)).toBe(true);
 
         await openLeftShell(page);
 
@@ -393,7 +424,7 @@ test.describe('mobile shell smoke at tablet 768x1024', () => {
             leftShellOpen: false,
         });
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+        await expectNoHorizontalOverflow(page);
     });
 });
 
@@ -406,9 +437,9 @@ test.describe('compact desktop smoke at 820x1180', () => {
     });
 
     test('mobile chrome stays dormant in the 769-1000px band', async ({ page }) => {
-        await openReadyChat(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page, { selectCharacter: false });
 
-        expect(await page.evaluate(() => window.SillyBunnyShell.isMobileViewport())).toBe(false);
+        await expect.poll(() => getIsMobileShellViewport(page)).toBe(false);
 
         // Shells open as pinned desktop panels without the mobile bound contract.
         await openLeftShell(page);
@@ -423,8 +454,12 @@ test.describe('compact desktop smoke at 820x1180', () => {
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
         await waitForAnimationFrames(page, 2);
 
-        expect((await getOverlayStateSnapshot(page)).chatToolsOpen).toBe(false);
+        await expect.poll(async () => {
+            const overlayState = await getOverlayStateSnapshot(page);
 
-        expect(await getHorizontalOverflow(page)).toBeLessThanOrEqual(1);
+            return overlayState.chatToolsOpen;
+        }).toBe(false);
+
+        await expectNoHorizontalOverflow(page);
     });
 });
