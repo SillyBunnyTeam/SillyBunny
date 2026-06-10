@@ -187,6 +187,22 @@ describe('mobile shell lifecycle wiring', () => {
         );
     });
 
+    test('routes mobile viewport sync planning through the lifecycle seam', () => {
+        const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
+        const queueMobileShellDrawerBoundsSyncSource = getFunctionSource('queueMobileShellDrawerBoundsSync');
+
+        expect(syncMobileViewportStateSource).toContain('sbMobileShellLifecycle.viewportSync.resolveSyncPlan({');
+        expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {');
+        expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
+        expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),');
+        expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({');
+        expect(queueMobileShellDrawerBoundsSyncSource).toContain('followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,');
+        expect(queueMobileShellDrawerBoundsSyncSource).toContain('window.setTimeout(sync, schedule.followupDelayMs);');
+        expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
+        expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (!isMobileViewport()) {');
+        expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
+    });
+
     test('offers snap-to-chat-width as a persistent desktop shell sizing mode', () => {
         const getDesktopShellDimensionsSource = getFunctionSource('getDesktopShellDimensions');
         const createDesktopShellSizingSettingsGroupSource = getFunctionSource('createDesktopShellSizingSettingsGroup');

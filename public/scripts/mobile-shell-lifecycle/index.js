@@ -318,6 +318,20 @@ export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
     'box-sizing',
 ]);
 
+export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
+    SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
+    SYNC_MOBILE_SHELL_DRAWER_BOUNDS: 'sync-mobile-shell-drawer-bounds',
+    CLOSE_MOBILE_NAV: 'close-mobile-nav',
+    CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
+    SYNC_MOBILE_SHELL_RAIL_ACTIONS: 'sync-mobile-shell-rail-actions',
+    SYNC_DESKTOP_SHELL_SIZING: 'sync-desktop-shell-sizing',
+    APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
+    SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
+    UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
+    SCHEDULE_TOPBAR_CONTEXT_REFRESH: 'schedule-topbar-context-refresh',
+    SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
+});
+
 function clampBoundNumber(value, min, max) {
     return Math.min(Math.max(normalizeNumber(value, min), min), max);
 }
@@ -371,6 +385,63 @@ export function resolveMobileDrawerBounds({
 }
 
 /**
+ * Resolves the ordered viewport sync work without touching shell DOM.
+ * @param {object} options Options.
+ * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
+ * @returns {{steps: string[]}}
+ */
+export function resolveMobileViewportSyncPlan({
+    isMobileViewport = false,
+} = {}) {
+    const steps = [
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
+    ];
+
+    if (!isMobileViewport) {
+        steps.push(
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_CHAT_TOOLS,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
+        );
+    }
+
+    steps.push(
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_RAIL_ACTIONS,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_DESKTOP_SHELL_SIZING,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SCHEDULE_TOPBAR_CONTEXT_REFRESH,
+        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_MODAL_STATE,
+    );
+
+    return { steps };
+}
+
+/**
+ * Resolves how drawer bounds should be queued after mobile viewport movement.
+ * @param {object} options Options.
+ * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
+ * @param {boolean} [options.hasAnimationFrame=false] Whether requestAnimationFrame is available.
+ * @param {number} [options.followupDelayMs=350] Follow-up sync delay.
+ * @returns {{shouldSchedule: boolean, useAnimationFrame: boolean, followupDelayMs: number}}
+ */
+export function resolveDrawerBoundsSyncSchedule({
+    isMobileViewport = false,
+    hasAnimationFrame = false,
+    followupDelayMs = 350,
+} = {}) {
+    const shouldSchedule = Boolean(isMobileViewport);
+
+    return {
+        shouldSchedule,
+        useAnimationFrame: shouldSchedule && Boolean(hasAnimationFrame),
+        followupDelayMs: normalizeNumber(followupDelayMs, 350),
+    };
+}
+
+/**
  * Creates the compatibility-facing mobile shell lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -397,6 +468,11 @@ export function createMobileShellLifecycle() {
             action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
             boundStyleProperties: MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES,
             resolveBounds: resolveMobileDrawerBounds,
+        },
+        viewportSync: {
+            step: MOBILE_SHELL_VIEWPORT_SYNC_STEP,
+            resolveSyncPlan: resolveMobileViewportSyncPlan,
+            resolveDrawerBoundsSchedule: resolveDrawerBoundsSyncSchedule,
         },
         timings: {
             navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
