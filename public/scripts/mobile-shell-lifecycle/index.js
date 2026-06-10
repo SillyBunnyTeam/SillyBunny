@@ -304,6 +304,72 @@ export function resolveMobileModalA11yState({
     };
 }
 
+export const MOBILE_SHELL_DRAWER_BOUND_ACTION = Object.freeze({
+    BIND: 'bind',
+    CLEAR: 'clear',
+    SKIP: 'skip',
+});
+
+export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
+    'top',
+    'bottom',
+    'height',
+    'max-height',
+    'box-sizing',
+]);
+
+function clampBoundNumber(value, min, max) {
+    return Math.min(Math.max(normalizeNumber(value, min), min), max);
+}
+
+/**
+ * Resolves the viewport bound decision for a single mobile shell drawer.
+ * Pure decision: callers read DOM state in, apply style writes/removals out.
+ * @param {object} options Options.
+ * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
+ * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
+ * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
+ * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
+ * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
+ * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
+ * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
+ */
+export function resolveMobileDrawerBounds({
+    isMobileViewport = false,
+    isOpen = false,
+    isViewportBound = false,
+    viewportHeight = 0,
+    baseTopOffset = 0,
+    shellGap = 0,
+} = {}) {
+    const shouldBind = Boolean(isMobileViewport) && Boolean(isOpen);
+
+    if (!shouldBind) {
+        return {
+            action: isViewportBound ? MOBILE_SHELL_DRAWER_BOUND_ACTION.CLEAR : MOBILE_SHELL_DRAWER_BOUND_ACTION.SKIP,
+            styleWrites: [],
+            styleRemovals: isViewportBound ? [...MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES] : [],
+        };
+    }
+
+    const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
+    const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
+    const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
+    const availableHeight = Math.max(0, safeViewportHeight - topOffset);
+
+    return {
+        action: MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND,
+        styleWrites: [
+            { property: 'top', value: `${topOffset}px`, priority: 'important' },
+            { property: 'bottom', value: 'auto', priority: 'important' },
+            { property: 'box-sizing', value: 'border-box', priority: 'important' },
+            { property: 'height', value: `${availableHeight}px`, priority: 'important' },
+            { property: 'max-height', value: `${availableHeight}px`, priority: 'important' },
+        ],
+        styleRemovals: [],
+    };
+}
+
 /**
  * Creates the compatibility-facing mobile shell lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
@@ -326,6 +392,11 @@ export function createMobileShellLifecycle() {
         },
         modal: {
             resolveA11yState: resolveMobileModalA11yState,
+        },
+        drawerBounds: {
+            action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
+            boundStyleProperties: MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES,
+            resolveBounds: resolveMobileDrawerBounds,
         },
         timings: {
             navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,

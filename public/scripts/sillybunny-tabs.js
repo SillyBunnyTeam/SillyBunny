@@ -2327,17 +2327,24 @@ function getMobileShellBoundDrawers() {
     ])).filter(drawer => drawer instanceof HTMLElement);
 }
 
-function clearMobileShellDrawerBounds(drawer) {
-    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbMobileViewportBound !== 'true') {
+function applyMobileDrawerBoundsDecision(drawer, decision) {
+    if (!(drawer instanceof HTMLElement) || !decision) {
         return;
     }
 
-    drawer.style.removeProperty('top');
-    drawer.style.removeProperty('bottom');
-    drawer.style.removeProperty('height');
-    drawer.style.removeProperty('max-height');
-    drawer.style.removeProperty('box-sizing');
-    delete drawer.dataset.sbMobileViewportBound;
+    if (decision.action === sbMobileShellLifecycle.drawerBounds.action.BIND) {
+        drawer.dataset.sbMobileViewportBound = 'true';
+    } else if (decision.action === sbMobileShellLifecycle.drawerBounds.action.CLEAR) {
+        delete drawer.dataset.sbMobileViewportBound;
+    }
+
+    for (const property of decision.styleRemovals) {
+        drawer.style.removeProperty(property);
+    }
+
+    for (const { property, value, priority } of decision.styleWrites) {
+        drawer.style.setProperty(property, value, priority);
+    }
 }
 
 function syncMobileShellDrawerBounds() {
@@ -2347,31 +2354,22 @@ function syncMobileShellDrawerBounds() {
         return;
     }
 
-    if (!isMobileViewport()) {
-        drawers.forEach(clearMobileShellDrawerBounds);
-        return;
-    }
-
-    const viewportSize = getShellViewportSize();
-    const baseTopOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+    const mobileViewport = isMobileViewport();
+    const viewportSize = mobileViewport ? getShellViewportSize() : null;
+    const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
 
     for (const drawer of drawers) {
-        if (!drawer.classList.contains('openDrawer')) {
-            clearMobileShellDrawerBounds(drawer);
-            continue;
-        }
+        const isOpen = drawer.classList.contains('openDrawer');
+        const drawerStyles = mobileViewport && isOpen ? window.getComputedStyle(drawer) : null;
 
-        const drawerStyles = window.getComputedStyle(drawer);
-        const shellGap = Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0;
-        const topOffset = clampNumber(Math.round(baseTopOffset + shellGap), 0, viewportSize.height);
-        const availableHeight = Math.max(0, viewportSize.height - topOffset);
-
-        drawer.dataset.sbMobileViewportBound = 'true';
-        drawer.style.setProperty('top', `${topOffset}px`, 'important');
-        drawer.style.setProperty('bottom', 'auto', 'important');
-        drawer.style.setProperty('box-sizing', 'border-box', 'important');
-        drawer.style.setProperty('height', `${availableHeight}px`, 'important');
-        drawer.style.setProperty('max-height', `${availableHeight}px`, 'important');
+        applyMobileDrawerBoundsDecision(drawer, sbMobileShellLifecycle.drawerBounds.resolveBounds({
+            isMobileViewport: mobileViewport,
+            isOpen,
+            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
+            viewportHeight: viewportSize?.height ?? 0,
+            baseTopOffset,
+            shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
+        }));
     }
 }
 
