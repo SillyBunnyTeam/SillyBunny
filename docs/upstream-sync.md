@@ -30,6 +30,8 @@ git fetch https://github.com/SillyTavern/SillyTavern.git \
 ## Phase-Gate Drill
 
 Run this before starting a new refactor phase and before an actual upstream sync.
+When reviewing an ancestry-anchor PR before it merges, substitute `HEAD` for
+`origin/staging`.
 
 ```sh
 git fetch origin
@@ -37,12 +39,15 @@ git fetch https://github.com/SillyTavern/SillyTavern.git \
   refs/heads/release:refs/remotes/upstream/release \
   refs/heads/staging:refs/remotes/upstream/staging
 
-git merge-base origin/staging refs/remotes/upstream/release
+expected_release_anchor=51ad27fb86d39a3daca3adaa970375c9670c12df
+actual_release_anchor="$(git merge-base origin/staging refs/remotes/upstream/release)"
+test "$actual_release_anchor" = "$expected_release_anchor"
 git merge-tree --quiet origin/staging refs/remotes/upstream/release
 ```
 
-Passing state for the current upstream `release` is a valid merge base and a
-zero exit code from `merge-tree --quiet`. If conflicts appear, list them with:
+Passing state for the current upstream `release` is the expected last-synced
+merge base and a zero exit code from `merge-tree --quiet`. If conflicts appear,
+list them with:
 
 ```sh
 git merge-tree --name-only origin/staging refs/remotes/upstream/release
