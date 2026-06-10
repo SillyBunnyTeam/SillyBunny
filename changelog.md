@@ -49,6 +49,7 @@ This update prepares SillyBunny 1.6.4 by refreshing the visible app version, Hor
 - PR #397 (2026-06-10) `chore: route mobile viewport sync plan through mobile-shell-lifecycle`
 - PR #398 (2026-06-10) `fix: strip hidden content from closed details in screenshots`
 - PR #400 (2026-06-10) `chore: use distinct icon for Settings tab`
+- PR #401 (2026-06-10) `fix: clip root overflow so search jumps can't shift the fixed viewport`
 
 ## v1.6.3
 
