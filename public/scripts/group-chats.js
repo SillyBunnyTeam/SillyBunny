@@ -1152,9 +1152,11 @@ async function groupChatExists(chatId) {
 /**
  * Validates a group by checking if all members exist and removing duplicates.
  * @param {Group} group Group to validate
+ * @param {object} [options] Validation options
+ * @param {boolean} [options.trustActiveChat=false] Whether to keep the active chat id even before its JSONL exists
  * @returns {Promise<void>}
  */
-async function validateGroup(group) {
+async function validateGroup(group, { trustActiveChat = false } = {}) {
     if (!group) return;
 
     // Validate that all members exist as characters
@@ -1212,7 +1214,8 @@ async function validateGroup(group) {
             dirty = true;
         }
 
-        if (presentChats.length && !presentChats.includes(String(group.chat_id ?? ''))) {
+        // SillyBunny: a newly-created group chat has no JSONL yet, so keep its active branch id.
+        if (!trustActiveChat && presentChats.length && !presentChats.includes(String(group.chat_id ?? ''))) {
             group.chat_id = presentChats[presentChats.length - 1];
             dirty = true;
         }
@@ -1247,7 +1250,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     }
 
     // Run validation before any loading
-    await validateGroup(group);
+    await validateGroup(group, { trustActiveChat: newlyCreated });
     await unshallowGroupMembers(groupId);
 
     let createdChat = newlyCreated;
