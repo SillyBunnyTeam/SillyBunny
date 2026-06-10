@@ -507,7 +507,9 @@ async function sendClaudeRequest(request, response) {
             if (!generateResponse.ok) {
                 const generateResponseText = await generateResponse.text();
                 console.warn(color.red(`Claude API returned error: ${generateResponse.status} ${generateResponse.statusText}\n${generateResponseText}\n${divider}`));
-                return response.status(500).send({ error: true });
+                // SillyBunny: forward upstream error body/status so the client toast shows the real cause (401→400 per forwardFetchResponse convention)
+                const errorBody = tryParse(generateResponseText) ?? { error: { message: generateResponseText || generateResponse.statusText } };
+                return response.status(generateResponse.status === 401 ? 400 : generateResponse.status).send(errorBody);
             }
 
             /** @type {any} */
