@@ -162,7 +162,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
         expect(tabsSource).toContain('root.style.setProperty(\'--sb-shell-available-height\'');
-        expect(tabsSource).toContain('drawer.style.setProperty(\'height\', `${availableHeight}px`, \'important\')');
+        expect(tabsSource).toContain('function applyMobileDrawerBoundsDecision(');
         expect(tabsSource).toContain('window.visualViewport');
         expect(tabsSource).toContain('function getShellViewportTop(');
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'sheld\')');
@@ -240,5 +240,27 @@ describe('mobile shell lifecycle wiring', () => {
         expect(toggleMobileNavSource).toContain('toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET');
         expect(toggleMobileNavSource).toContain('toggleIntent.shouldCloseCompetingPanels');
         expect(toggleMobileNavSource).toContain('setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);');
+    });
+
+    test('routes mobile drawer bound decisions through the lifecycle seam', () => {
+        const applyDecisionSource = getFunctionSource('applyMobileDrawerBoundsDecision');
+        const syncBoundsSource = getFunctionSource('syncMobileShellDrawerBounds');
+
+        // The adapter is the single DOM writer for drawer bound styles.
+        expect(applyDecisionSource).toContain('sbMobileShellLifecycle.drawerBounds.action.BIND');
+        expect(applyDecisionSource).toContain('sbMobileShellLifecycle.drawerBounds.action.CLEAR');
+        expect(applyDecisionSource).toContain('decision.styleRemovals');
+        expect(applyDecisionSource).toContain('decision.styleWrites');
+        expect(applyDecisionSource).toContain('drawer.style.setProperty(property, value, priority);');
+        expect(applyDecisionSource).toContain('drawer.style.removeProperty(property);');
+
+        // The call site resolves decisions through the seam and applies via the adapter.
+        expect(syncBoundsSource).toContain('sbMobileShellLifecycle.drawerBounds.resolveBounds({');
+        expect(syncBoundsSource).toContain('applyMobileDrawerBoundsDecision(drawer,');
+
+        // The old inline style writes are gone from the call site.
+        expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');
+        expect(syncBoundsSource).not.toContain('style.setProperty(\'height\'');
+        expect(syncBoundsSource).not.toContain('style.removeProperty(');
     });
 });
