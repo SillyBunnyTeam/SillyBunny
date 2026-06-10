@@ -947,7 +947,10 @@
 
     body {
         touch-action: manipulation;
+        /* SillyBunny: keep in sync with style.css — `clip` blocks programmatic
+           viewport scrolling (scrollIntoView) that `hidden` allows. */
         overflow: hidden;
+        overflow: clip;
         position: fixed;
     }
 
