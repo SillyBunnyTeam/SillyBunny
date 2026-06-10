@@ -223,8 +223,8 @@ backups:
     enabled: true
     # Verify integrity of chat files before saving
     checkIntegrity: true
-    # Maximum number of chat backups to keep per user (starting from the most recent). Set to -1 to keep all backups.
-    maxTotalBackups: -1
+    # Maximum number of chat backups to keep per user (starting from the most recent). Set to -1 to keep all backups. Cap applies to regular chat_, forced_overwrite_, and pre_write_ backups.
+    maxTotalBackups: 25
     # Interval in milliseconds to throttle chat backups per user
     throttleInterval: 10000
     # Log chat and settings backup writes/skips for diagnosing backup frequency
