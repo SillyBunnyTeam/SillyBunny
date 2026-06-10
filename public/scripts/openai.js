@@ -5319,7 +5319,7 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    // Claude Fable models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
+    // SillyBunny: Claude Fable models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
     // Substring match to also catch router ids like 'anthropic/claude-fable-5'.
     if (/claude-fable/.test(model)) {
         delete generate_data.temperature;
@@ -5327,8 +5327,12 @@ export async function createGenerationParameters(settings, model, type, messages
         delete generate_data.top_k;
         delete generate_data.frequency_penalty;
         delete generate_data.presence_penalty;
-        delete generate_data.reasoning_effort;
-        delete generate_data.custom_reasoning_param_name;
+        // Keep reasoning_effort for the native Claude source (the backend maps it to adaptive thinking);
+        // strip it for proxies, which may translate it into a thinking budget that fable rejects.
+        if (settings.chat_completion_source !== chat_completion_sources.CLAUDE) {
+            delete generate_data.reasoning_effort;
+            delete generate_data.custom_reasoning_param_name;
+        }
     }
 
     if (jsonSchema) {
@@ -8057,7 +8061,7 @@ async function onModelChange() {
     if (oai_settings.chat_completion_source == chat_completion_sources.CLAUDE) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', unlocked_max);
-        } else if (/^claude-(sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) {
+        } else if (/^claude-(sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5 has a 1M context window
             $('#openai_max_context').attr('max', max_1mil);
         } else if (/^claude-(3|opus|haiku|sonnet)/.test(value)) {
             $('#openai_max_context').attr('max', max_200k);
@@ -8657,7 +8661,7 @@ export function isImageInliningSupported() {
         'o4-mini',
         // Claude
         'claude-3',
-        'claude-fable',
+        'claude-fable', // SillyBunny: claude-fable-5 vision support
         'claude-opus-4',
         'claude-sonnet-4',
         'claude-haiku-4',

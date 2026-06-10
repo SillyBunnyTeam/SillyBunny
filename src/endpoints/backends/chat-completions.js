@@ -340,7 +340,7 @@ async function sendClaudeRequest(request, response) {
         const useTools = Array.isArray(request.body.tools) && request.body.tools.length > 0;
         const useSystemPrompt = Boolean(request.body.use_sysprompt);
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
-        // Substring match: also catches router ids like 'anthropic/claude-fable-5'
+        // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
         const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking);
         const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel) && Boolean(request.body.enable_web_search);
@@ -432,7 +432,7 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_p;
         }
 
-        // claude-fable-* removed temperature/top_p/top_k entirely; sending any of them returns HTTP 400.
+        // SillyBunny: claude-fable-* removed temperature/top_p/top_k entirely; sending any of them returns HTTP 400.
         if (isFableModel) {
             delete requestBody.temperature;
             delete requestBody.top_p;
