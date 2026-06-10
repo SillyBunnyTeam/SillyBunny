@@ -224,7 +224,7 @@
     --sb-composer-side-rail-width: min(14%, calc(var(--sb-composer-action-size) * 4 + 10px));
 }
 
-@media (pointer: coarse), screen and (max-width: 760px) {
+@media (pointer: coarse), screen and (max-width: 768px) {
     :root,
     :root[data-sb-compact-mode='true'] {
         --sb-control-min-height: var(--sb-mobile-touch-target);
@@ -1293,7 +1293,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     display: none !important;
 }
 
-@media screen and (min-width: 761px) {
+@media screen and (min-width: 769px) {
     #options_button::before {
         content: '' !important;
         display: block !important;
@@ -1312,7 +1312,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     }
 }
 
-@media screen and (max-width: 760px) {
+@media screen and (max-width: 768px) {
     #send_form {
         padding: 4px 6px 6px;
     }
@@ -3961,7 +3961,7 @@ input[type='range']::-moz-range-thumb {
     max-height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
 }
 
-@media screen and (max-width: 760px) {
+@media screen and (max-width: 768px) {
     #openai_api-presets .flex-container.flexNoGap {
         grid-template-columns: 1fr;
     }
@@ -5269,7 +5269,7 @@ input[type='range']::-moz-range-thumb {
     }
 }
 
-@media screen and (max-width: 760px) {
+@media screen and (max-width: 768px) {
     #openai_model_picker {
         gap: 8px;
     }
