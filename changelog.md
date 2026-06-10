@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.5
+
+### Merged Staging PRs
+- PR #402 (2026-06-10) `chore: bump version to 1.6.5`
+
 ## v1.6.4
 
 Date: 2026-06-10
