@@ -149,7 +149,7 @@ const WELCOME_GUIDE_CARDS = Object.freeze([
         title: 'Customize Menu',
         body: 'Open the Customize button in the top bar when you want to change your workspace setup: app settings, extensions, backgrounds, and the visual feel of SillyBunny.',
         chips: ['Settings', 'Extensions', 'Background'],
-        icon: 'fa-sliders',
+        icon: 'fa-screwdriver-wrench',
         actionLabel: 'Open the Customize menu',
         actionType: 'open-tab',
         actionValue: 'right:settings',

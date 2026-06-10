@@ -62,7 +62,7 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
     { value: 'characters:world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { value: 'left:agents', label: 'Agents', icon: 'fa-robot' },
     { value: 'action:search', label: 'Search', icon: 'fa-magnifying-glass' },
-    { value: 'right:settings', label: 'Settings', icon: 'fa-sliders' },
+    { value: 'right:settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
     { value: 'right:extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'characters:persona', label: 'Persona', icon: 'fa-face-smile' },
     { value: 'right:background', label: 'Background', icon: 'fa-panorama' },
@@ -522,7 +522,7 @@ const SB_SHELLS = Object.freeze({
         baseTab: {
             id: 'settings',
             label: 'Settings',
-            icon: 'fa-sliders',
+            icon: 'fa-screwdriver-wrench',
             searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
             searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
         },
@@ -623,7 +623,7 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting', label: 'Formatting', icon: 'fa-text-height' },
     { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { value: 'left:agents', shellKey: 'left', tabId: 'agents', label: 'Agents', icon: 'fa-robot' },
-    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-sliders' },
+    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
     { value: 'right:extensions', shellKey: 'right', tabId: 'extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'right:background', shellKey: 'right', tabId: 'background', label: 'Background', icon: 'fa-panorama' },
     { value: 'right:server', shellKey: 'right', tabId: 'server', label: 'Server', icon: 'fa-server' },
@@ -11355,7 +11355,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         type: 'checkbox',
         value: 'show-customize',
         label: getMobileNavCustomizeLocationLabel(mode),
-        icon: 'fa-sliders',
+        icon: 'fa-screwdriver-wrench',
         onChange: input => isDesktop ? setDesktopNavShowCustomize(input.checked) : setMobileNavShowCustomize(input.checked),
     });
     const showQuickActionsChoice = createMobileNavChoice({
