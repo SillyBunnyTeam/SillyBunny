@@ -1,4 +1,4 @@
-export const PRESET_SELECT_TOUCH_GUARD_DRAG_THRESHOLD_PX = 6;
+export const PRESET_SELECT_TOUCH_GUARD_DRAG_THRESHOLD_PX = 4;
 
 function normalizeNumber(value, fallback = 0) {
     const numberValue = Number(value);
@@ -77,6 +77,27 @@ export function resolvePresetSelectTouchGuardMove({
     return {
         ...touchGuardState,
         dragging,
+    };
+}
+
+/**
+ * Marks active preset select touch guard state as dragging.
+ * @param {object} options Options.
+ * @param {object|null} [options.touchGuardState=null] Existing touch guard state.
+ * @param {number|null} [options.pointerId=null] Pointer identifier.
+ * @returns {object|null} Updated touch guard state.
+ */
+export function markPresetSelectTouchGuardDragging({
+    touchGuardState = null,
+    pointerId = null,
+} = {}) {
+    if (!touchGuardState || !isSamePointer(touchGuardState, pointerId)) {
+        return touchGuardState;
+    }
+
+    return {
+        ...touchGuardState,
+        dragging: true,
     };
 }
 
