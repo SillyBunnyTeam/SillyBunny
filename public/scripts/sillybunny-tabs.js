@@ -2374,7 +2374,13 @@ function syncMobileShellDrawerBounds() {
 }
 
 function queueMobileShellDrawerBoundsSync() {
-    if (!isMobileViewport()) {
+    const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
+        isMobileViewport: isMobileViewport(),
+        hasAnimationFrame: typeof window.requestAnimationFrame === 'function',
+        followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,
+    });
+
+    if (!schedule.shouldSchedule) {
         return;
     }
 
@@ -2383,13 +2389,13 @@ function queueMobileShellDrawerBoundsSync() {
         syncMobileShellDrawerBounds();
     };
 
-    if (typeof window.requestAnimationFrame === 'function') {
+    if (schedule.useAnimationFrame) {
         window.requestAnimationFrame(sync);
     } else {
         sync();
     }
 
-    window.setTimeout(sync, SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS);
+    window.setTimeout(sync, schedule.followupDelayMs);
 }
 
 function isMovingUIActive() {
@@ -14104,22 +14110,34 @@ function applyDefaultDrawerStates() {
 }
 
 function syncMobileViewportState() {
-    syncShellViewportBounds();
-    syncMobileShellDrawerBounds();
+    const viewportSyncStep = sbMobileShellLifecycle.viewportSync.step;
+    const syncPlan = sbMobileShellLifecycle.viewportSync.resolveSyncPlan({
+        isMobileViewport: isMobileViewport(),
+    });
+    const stepHandlers = {
+        [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
+        [viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {
+            syncMobileShellDrawerBounds();
+        },
+        [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
+        [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
+        [viewportSyncStep.SYNC_MOBILE_SHELL_RAIL_ACTIONS]: () => syncMobileShellRailActions(),
+        [viewportSyncStep.SYNC_DESKTOP_SHELL_SIZING]: () => syncDesktopShellSizing(),
+        [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
+        [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
+        [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
+        [viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),
+        [viewportSyncStep.SYNC_MOBILE_MODAL_STATE]: () => syncMobileModalState(),
+    };
 
-    if (!isMobileViewport()) {
-        closeMobileNav();
-        closeMobileChatTools();
-        syncMobileShellDrawerBounds();
+    for (const step of syncPlan.steps) {
+        const handler = stepHandlers[step];
+        if (typeof handler !== 'function') {
+            throw new Error(`Unknown mobile viewport sync step: ${step}`);
+        }
+
+        handler();
     }
-
-    syncMobileShellRailActions();
-    syncDesktopShellSizing();
-    applyTopbarOffset();
-    syncChatbarVisibilityState();
-    updateTopBarBrand();
-    scheduleTopbarContextRefresh(0);
-    syncMobileModalState();
 }
 
 function reinitSelect2AfterShell() {
