@@ -13412,7 +13412,7 @@ function getInlineDrawerAutoCloseId(drawer, index = 0) {
     }
 
     const drawerId = String(drawer.id || '').trim();
-    return drawerId ? `id:${drawerId}` : `index:${index}`;
+    return drawerId ? `id:${drawerId}:index:${index}` : `index:${index}`;
 }
 
 function interceptDrawerOpeners() {
