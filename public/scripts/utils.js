@@ -17,6 +17,7 @@ import { getTagsList } from './tags.js';
 import { groups, selected_group } from './group-chats.js';
 import { getCurrentLocale, t } from './i18n.js';
 import { importWorldInfo } from './world-info.js';
+import { mapSillyBunnyVersionToStEquivalent } from './sillybunny-version-map.js';
 
 export const shiftUpByOne = (e, i, a) => a[i] = e + 1;
 export const shiftDownByOne = (e, i, a) => a[i] = e - 1;
@@ -2909,23 +2910,6 @@ export function versionCompare(srcVersion, minVersion, options = {}) {
     }
 
     return s.localeCompare(m, undefined, { numeric: true, sensitivity: 'base' }) > -1;
-}
-
-function mapSillyBunnyVersionToStEquivalent(version) {
-    const match = String(version).match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
-    if (!match) {
-        return version;
-    }
-
-    const [, major, minor, patch, suffix] = match;
-    const numericMajor = Number(major);
-    const numericMinor = Number(minor);
-
-    if (numericMajor !== 1 || !Number.isInteger(numericMinor) || numericMinor >= 10) {
-        return version;
-    }
-
-    return `${numericMajor}.${numericMinor + 10}.${patch}${suffix}`;
 }
 
 /**
