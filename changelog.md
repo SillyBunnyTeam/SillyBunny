@@ -30,6 +30,7 @@
 - PR #430 (2026-06-11) `chore(tests): pin @playwright/test to 1.60.0 for chromium 1223`
 - PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
 - PR #434 (2026-06-11) `chore: consolidate drawer and overlay mobile styles`
+- PR #435 (2026-06-11) `chore: tighten phase 2 mobile css ratchets`
 
 ## v1.6.4
 
