@@ -25,6 +25,7 @@ import { serverDirectory } from './server-directory.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { loadPlugins } from './plugin-loader.js';
+import { registerGracefulShutdown } from './shutdown.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -489,7 +490,7 @@ async function preSetupTasks() {
     const consoleTitle = process.title;
 
     let isExiting = false;
-    const exitProcess = async () => {
+    const exitProcess = async (exitCode = 0) => {
         if (isExiting) return;
         isExiting = true;
         await statsOnExit();
@@ -498,8 +499,10 @@ async function preSetupTasks() {
         }
         diskCache.dispose();
         setWindowTitle(consoleTitle);
-        process.exit();
+        process.exit(exitCode);
     };
+
+    registerGracefulShutdown(exitProcess);
 
     // Set up event listeners for a graceful shutdown
     process.on('SIGINT', exitProcess);
