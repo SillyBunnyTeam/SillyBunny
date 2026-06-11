@@ -9,8 +9,8 @@ import {
 
 export function setPublicAssetHeaders(res, requestPath) {
     if (/\.(?:m?js)$/i.test(requestPath)) {
-        // SillyBunny: public JS modules are mostly unversioned; iOS WebKit can keep stale module graphs over plain HTTP.
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        // SillyBunny: revalidate unversioned JS modules to avoid stale iOS WebKit graphs without forcing full reloads.
+        res.setHeader('Cache-Control', 'no-cache');
         return;
     }
 
