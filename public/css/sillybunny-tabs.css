@@ -1,3 +1,4 @@
+@layer sb-tabs {
 /* =============================================================================
    SillyBunny Navigation Shell
    ============================================================================= */
@@ -7685,4 +7686,47 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
+}
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered shell layout rules. */
+/* Must beat upstream public/style.css:862/869 #top-bar. */
+#top-bar {
+    z-index: var(--sb-z-shell);
+    align-items: flex-start;
+    height: var(--sb-topbar-layout-offset);
+}
+
+/* Must beat upstream public/style.css:878/879/882 #sheld. */
+#sheld {
+    top: var(--sb-topbar-layout-offset);
+    height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
+    max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
+}
+
+/* Must beat upstream public/style.css:5142/5143 #select_chat_popup. */
+#select_chat_popup {
+    max-height: calc(100vh - var(--sb-topbar-layout-offset));
+    max-height: calc(100dvh - var(--sb-topbar-layout-offset));
+}
+
+/* Must beat upstream public/style.css:6042/6043 #top-settings-holder. */
+#top-settings-holder {
+    position: fixed;
+    z-index: var(--sb-z-shell-panel);
+}
+
+/* Must beat upstream public/style.css:6051 .drawer. */
+#top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
+    width: 0;
+    min-width: 0;
+    flex: 0 0 auto;
+    overflow: hidden;
+}
+
+/* Must beat upstream public/style.css:6267 .fillRight. */
+.sb-shell-root.fillLeft.openDrawer,
+.sb-shell-root.fillRight.openDrawer,
+#right-nav-panel.openDrawer {
+    z-index: var(--sb-z-shell-panel);
 }

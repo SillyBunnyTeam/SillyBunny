@@ -1,3 +1,6 @@
+@layer sb-theme, sb-tabs, sb-chat, sb-shell;
+
+@layer sb-theme {
 /* =============================================================================
    SillyBunny Theme Overhaul
    ============================================================================= */
@@ -1751,12 +1754,6 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         }
     }
 
-    :root:not([data-sb-theme]) #top-bar,
-    :root[data-sb-theme='clean-minimal'] #top-bar {
-        background: var(--sb-topbar-surface-bg) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
-    }
 
     :root:not([data-sb-theme]) #send_form,
     :root[data-sb-theme='clean-minimal'] #send_form {
@@ -1771,11 +1768,9 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         background: var(--sb-mobile-default-input-solid);
     }
 
-    :root:not([data-sb-theme]) #top-bar::before,
     :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
     :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
-    :root[data-sb-theme='clean-minimal'] #top-bar::before,
     :root[data-sb-theme='clean-minimal'] #send_form::before,
     :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
     :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
@@ -5816,4 +5811,89 @@ input[type='range']::-moz-range-thumb {
         padding-inline: 4px;
         text-align: center;
     }
+}
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered theme rules. */
+/* Must beat upstream public/style.css:91 :root. */
+:root {
+    --color-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
+}
+
+/* Must beat upstream public/style.css:957 #chat. */
+#chat {
+    bottom: 0;
+}
+
+/* Must beat upstream public/style.css:864/865/866/867/868 #top-bar. */
+#top-bar {
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
+        var(--sb-topbar-surface-bg);
+    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+}
+
+/* Must keep the Safari workaround above the unlayered public/style.css:852 #top-bar guard. */
+body.safari-macos #top-bar {
+    border-bottom-color: transparent;
+    box-shadow:
+        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
+        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+}
+
+/* Must beat upstream public/style.css:6130 .inline-drawer-header. */
+.inline-drawer-header {
+    background: var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%));
+}
+
+/* Must beat upstream public/style.css:971/978 #form_sheld. */
+#form_sheld {
+    margin: var(--sb-chat-composer-gap) auto 0;
+}
+
+/* Must beat upstream public/style.css:995 #nonQRFormItems. */
+#nonQRFormItems {
+    padding: 4px 6px;
+}
+
+/* Must beat upstream public/style.css:1027/1031 send-form action controls. */
+#leftSendForm > div,
+#rightSendForm > div:not(.mes_stop),
+#send_form .mes_stop,
+#options_button {
+    width: var(--sb-composer-action-size);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+}
+
+/* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
+#send_form:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
+}
+
+/* Must beat upstream public/style.css:4909/4914 .mes_buttons, .extraMesButtons. */
+#chat .mes .mes_buttons,
+#chat .mes .extraMesButtons {
+    gap: 3px;
+    padding: 0;
+}
+
+/* Must beat upstream public/style.css:5074/5077/5078 .edit_textarea, .reasoning_edit_textarea. */
+#chat .edit_textarea,
+#chat .reasoning_edit_textarea {
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-input-bg));
+    line-height: calc(var(--mainFontSize) + 0.35rem);
+}
+
+/* Must beat upstream public/style.css:5996 #CustomCSS-textAreaBlock. */
+#CustomCSS-textAreaBlock {
+    display: flex;
+}
+
+/* Must beat upstream public/style.css:3103 #rm_extensions_block. */
+#rm_extensions_block {
+    overflow: visible;
 }
