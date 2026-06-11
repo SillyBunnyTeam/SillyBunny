@@ -29,6 +29,7 @@
 - PR #429 (2026-06-11) `fix: stop double-evaluating script.js via versioned module URLs (#424)`
 - PR #430 (2026-06-11) `chore(tests): pin @playwright/test to 1.60.0 for chromium 1223`
 - PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
+- PR #434 (2026-06-11) `chore: consolidate drawer and overlay mobile styles`
 
 ## v1.6.4
 
