@@ -13301,7 +13301,7 @@ export function select_rm_info(type, charId, previousCharId = null) {
 export function select_selected_character(chid, { switchMenu = true } = {}) {
     //character select
     //console.log('select_selected_character() -- starting with input of -- ' + chid + ' (name:' + characters[chid].name + ')');
-    select_rm_create({ switchMenu });
+    select_rm_create({ switchMenu, resetForm: false });
     switchMenu && setMenuType('character_edit');
     $('#delete_button').css('display', 'flex');
     $('#export_button').css('display', 'flex');
@@ -13323,6 +13323,7 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     }
 
     $('#add_avatar_button').val('');
+    $('#avatar_div').css('display', 'flex');
 
     $('#character_name_pole').val(characters[chid].name);
     $('#description_textarea').val(characters[chid].description);
@@ -13386,12 +13387,13 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
  * Selects the right menu for creating a new character.
  * @param {object} [options] Options for the switch
  * @param {boolean} [options.switchMenu=true] Whether to switch the menu
+ * @param {boolean} [options.resetForm=true] Whether to reset the editor form to create defaults
  */
-function select_rm_create({ switchMenu = true } = {}) {
-    switchMenu && setMenuType('create');
+function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
+    resetForm && switchMenu && setMenuType('create');
 
     //console.log('select_rm_Create() -- selected button: '+selected_button);
-    if (selected_button == 'create' && create_save.avatar) {
+    if (resetForm && selected_button == 'create' && create_save.avatar) {
         const addAvatarInput = /** @type {HTMLInputElement} */ ($('#add_avatar_button').get(0));
         addAvatarInput.files = create_save.avatar;
         read_avatar_load(addAvatarInput);
@@ -13407,6 +13409,11 @@ function select_rm_create({ switchMenu = true } = {}) {
     $('#create_button').attr('value', 'Create');
     $('#dupe_button').hide();
     $('#char_connections_button').hide();
+
+    if (!resetForm) {
+        focusUiSurface(document.getElementById('right-nav-panel'));
+        return;
+    }
 
     //create text poles
     $('#rm_button_back').css('display', '');
