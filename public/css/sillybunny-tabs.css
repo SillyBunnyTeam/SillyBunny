@@ -1,4 +1,3 @@
-@layer sb-tabs {
 /* =============================================================================
    SillyBunny Navigation Shell
    ============================================================================= */
@@ -220,14 +219,6 @@
     height: var(--sb-topbar-layout-offset);
     padding: max(env(safe-area-inset-top), 0px) var(--sb-topbar-padding-x) 0;
     overflow: visible;
-    isolation: isolate;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
 }
 
 @media (pointer: fine) and (hover: hover) {
@@ -244,39 +235,6 @@
 
 #top-bar * {
     pointer-events: auto;
-}
-
-#top-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    opacity: var(--sb-shell-surface-opacity);
-}
-
-/* Firefox and Chrome on macOS can mispaint the fixed header surface pseudo-element. */
-body:is(.firefox-macos, .chrome-macos) #top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
-body:is(.firefox-macos, .chrome-macos) #top-bar::before {
-    display: none;
-}
-
-/* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 body.sb-topbar-dragging {
@@ -3355,7 +3313,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     gap: var(--sb-shell-space-xs);
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 900px) {
     .sb-admin-card-header,
     .sb-server-config-meta {
         flex-direction: column;
@@ -4334,7 +4292,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     flex: 1 1 auto;
     min-width: 0;
     width: 100%;
-    height: calc(17px * var(--sb-bottom-bar-scale));
+    height: calc(17px * var(--sb-bottom-bar-scale)) !important;
     min-height: 0 !important;
     margin: 0;
     padding: 0 !important;
@@ -4463,7 +4421,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     pointer-events: none;
 }
 
-@media screen and (min-width: 769px) and (max-width: 1000px) {
+@media screen and (max-width: 1000px) {
     #sb-bottom-chat-bar {
         --sb-bottom-chat-mobile-gutter: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
@@ -4561,7 +4519,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     .sb-bottom-chat-search-field input {
-        height: calc(var(--sb-bottom-chat-mobile-select-height) - 14px);
+        height: calc(var(--sb-bottom-chat-mobile-select-height) - 14px) !important;
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.74 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.84));
     }
 
@@ -4606,6 +4564,31 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.78 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.88));
         line-height: 1;
     }
+}
+
+@media screen and (max-width: 420px) {
+    #sb-bottom-chat-bar {
+        --sb-bottom-chat-mobile-gutter: max(4px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+        --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
+        --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
+        --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
+        --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
+        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
+    }
+
+    #sb-bottom-chat-select {
+        flex-basis: 48px;
+        padding-inline: clamp(5px, calc(6px * var(--sb-bottom-bar-scale)), 8px);
+        font-size: clamp(calc(var(--mainFontSize) * 0.64), calc(var(--mainFontSize) * 0.72 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.82));
+    }
+
+    .sb-bottom-chat-search-status {
+        max-width: 74px;
+    }
+
 }
 
 .sb-chat-delete-overlay {
@@ -4660,7 +4643,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (max-width: 620px) {
+@media screen and (max-width: 480px) {
     .sb-chat-delete-overlay {
         inset: 0;
         align-items: center;
@@ -5037,7 +5020,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     font-weight: 700;
 }
 
-@media screen and (max-width: 620px) {
+@media screen and (max-width: 520px) {
     #sb-persona-picker {
         min-width: min(300px, calc(100vw - 16px));
     }
@@ -5264,7 +5247,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     gap: 4px;
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 1100px) {
     #right-nav-panel .sb-character-editor-controls-row {
         grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr) minmax(240px, 28rem);
         grid-template-areas:
@@ -6164,7 +6147,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-width: 0;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 900px) {
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #group_tags_div {
         grid-column: 1 / -1;
         width: min(448px, 100%);
@@ -6490,7 +6473,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     margin-left: auto;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1420px) {
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
         grid-template-columns: auto minmax(0, 1fr);
     }
@@ -6506,7 +6489,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1180px) {
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -7123,7 +7106,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1100px) {
     #left-nav-panel.openDrawer,
     #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
@@ -7183,7 +7166,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (max-width: 1000px), screen and (max-height: 768px) {
+@media screen and (max-width: 1180px), screen and (max-height: 860px) {
     #left-nav-panel.openDrawer,
     #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
@@ -7195,7 +7178,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (max-height: 768px) {
+@media screen and (max-height: 860px) {
     #left-nav-panel.openDrawer,
     #user-settings-block.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
@@ -7222,7 +7205,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 1001px) and (max-width: 1440px) {
     #left-nav-panel.openDrawer,
     #user-settings-block.openDrawer {
         width: min(100vw, clamp(680px, 60vw, 920px)) !important;
@@ -7232,7 +7215,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 /* Expansion of PR #145: Add compact mode scaling for laptop viewport panels */
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 1001px) and (max-width: 1440px) {
     :root[data-sb-compact-mode='true'] #left-nav-panel.openDrawer,
     :root[data-sb-compact-mode='true'] #user-settings-block.openDrawer {
         width: min(100vw, clamp(600px, 58vw, 810px)) !important;
@@ -7243,7 +7226,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 
 
-@media screen and (max-width: 620px) {
+@media screen and (max-width: 450px) {
     .sb-mobile-section-list {
         grid-template-columns: 1fr;
     }
@@ -7702,62 +7685,4 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
-}
-}
-
-/* Unlayered fork cascade guards for upstream rules that beat layered shell layout rules. */
-/* Must beat upstream public/style.css:862/864/865/866/867/868/869 #top-bar. */
-#top-bar {
-    z-index: var(--sb-z-shell);
-    align-items: flex-start;
-    height: var(--sb-topbar-layout-offset);
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-}
-
-/* Must keep the Safari workaround above the unlayered public/style.css:852 #top-bar guard. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-}
-
-/* Must beat upstream public/style.css:878/879/882 #sheld. */
-#sheld {
-    top: var(--sb-topbar-layout-offset);
-    height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
-    max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
-}
-
-/* Must beat upstream public/style.css:5142/5143 #select_chat_popup. */
-#select_chat_popup {
-    max-height: calc(100vh - var(--sb-topbar-layout-offset));
-    max-height: calc(100dvh - var(--sb-topbar-layout-offset));
-}
-
-/* Must beat upstream public/style.css:6042/6043 #top-settings-holder. */
-#top-settings-holder {
-    position: fixed;
-    z-index: var(--sb-z-shell-panel);
-}
-
-/* Must beat upstream public/style.css:6051 .drawer. */
-#top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
-    width: 0;
-    min-width: 0;
-    flex: 0 0 auto;
-    overflow: hidden;
-}
-
-/* Must beat upstream public/style.css:6267 .fillRight. */
-.sb-shell-root.fillLeft.openDrawer,
-.sb-shell-root.fillRight.openDrawer,
-#right-nav-panel.openDrawer {
-    z-index: var(--sb-z-shell-panel);
 }
