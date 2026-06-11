@@ -28,6 +28,7 @@
 - PR #428 (2026-06-11) `fix: make server.js self-supervising so restart works everywhere (#412)`
 - PR #429 (2026-06-11) `fix: stop double-evaluating script.js via versioned module URLs (#424)`
 - PR #430 (2026-06-11) `chore(tests): pin @playwright/test to 1.60.0 for chromium 1223`
+- PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
 
 ## v1.6.4
 
