@@ -11,9 +11,9 @@ import simpleGit from 'simple-git';
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
     getBranchDisplayNames,
+    getGeneratedInstallChangePaths,
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
-    hasOnlyBunLockChange,
     NON_GIT_REPOSITORY_MESSAGE,
     isRuntimeBranch,
     isGitRepository,
@@ -395,19 +395,22 @@ async function restoreAutoStash(git, { reason = 'after update failure' } = {}) {
     }
 }
 
-async function restoreGeneratedBunLockChange(git, gitStatus) {
-    if (!hasOnlyBunLockChange(gitStatus?.files)) {
+async function restoreGeneratedInstallFileChanges(git, gitStatus) {
+    const generatedPaths = getGeneratedInstallChangePaths(gitStatus?.files);
+
+    if (!generatedPaths.length) {
         return gitStatus;
     }
 
     try {
-        await git.raw(['restore', '--staged', '--worktree', '--', 'bun.lock']);
+        await git.raw(['restore', '--staged', '--worktree', '--', ...generatedPaths]);
     } catch {
-        await git.raw(['reset', 'HEAD', '--', 'bun.lock']);
-        await git.raw(['checkout', '--', 'bun.lock']);
+        await git.raw(['reset', 'HEAD', '--', ...generatedPaths]);
+        await git.raw(['checkout', '--', ...generatedPaths]);
     }
 
-    console.info('Restored tracked bun.lock before checking for updates.');
+    // SillyBunny: Windows launchers can rewrite install metadata while recovering from stale Bun locks.
+    console.info(`Restored generated install file changes before checking for updates: ${generatedPaths.join(', ')}.`);
 
     return await git.status();
 }
@@ -508,7 +511,7 @@ async function getRepositoryStatus() {
     status.branch = toTrimmedString(await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => ''));
     status.currentCommit = toTrimmedString(await git.revparse(['--short', 'HEAD']).catch(() => ''));
 
-    const gitStatus = await restoreGeneratedBunLockChange(git, await git.status());
+    const gitStatus = await restoreGeneratedInstallFileChanges(git, await git.status());
     status.hasLocalChanges = !gitStatus.isClean();
     status.changedFilesCount = gitStatus.files.length;
     status.changedFiles = gitStatus.files.slice(0, 12).map(file => ({
