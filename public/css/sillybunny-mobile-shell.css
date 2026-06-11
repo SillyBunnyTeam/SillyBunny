@@ -1,3 +1,4 @@
+@layer sb-shell {
 /* SillyBunny mobile shell foundation: final sheet contract for modal drawers.
  * Keep this at the end of the shell sheet so it beats older mobile drawer rules. */
 @media screen and (max-width: 768px) {
@@ -1060,12 +1061,12 @@
 
     #sb-topbar-primary .sb-proxy-button i,
     #sb-topbar-primary .sb-chatbar-button > i {
-        width: 1em !important;
-        height: 1em !important;
-        flex: 0 0 auto !important;
+        width: 1em;
+        height: 1em;
+        flex: 0 0 auto;
         display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        align-items: center;
+        justify-content: center;
         font-size: calc(var(--sb-mobile-toggle-size) * 0.48) !important;
         line-height: 1 !important;
         margin: 0 !important;
@@ -1106,6 +1107,19 @@
         padding: 0 var(--sb-topbar-padding-x);
     }
 
+    /* Keep phone-width top-bar surface overrides in the mobile shell sheet. */
+    :root:not([data-sb-theme]) #top-bar,
+    :root[data-sb-theme='clean-minimal'] #top-bar {
+        background: var(--sb-topbar-surface-bg) !important;
+        backdrop-filter: blur(12px) saturate(110%) !important;
+        -webkit-backdrop-filter: blur(12px) saturate(110%) !important;
+    }
+
+    :root:not([data-sb-theme]) #top-bar::before,
+    :root[data-sb-theme='clean-minimal'] #top-bar::before {
+        opacity: var(--sb-shell-surface-opacity);
+    }
+
     #sb-topbar-stack {
         grid-template-rows:
             var(--sb-topbar-primary-height)
@@ -1115,7 +1129,7 @@
     }
 
     #sb-connection-strip {
-        display: none !important;
+        display: none;
     }
 
     #sb-chatbar {
@@ -2823,5 +2837,67 @@
     .streaming-display button {
         font-size: 0.82em;
         padding: 6px 10px;
+    }
+}
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered mobile shell rules. */
+@media screen and (max-width: 768px) {
+    /* Must beat upstream public/style.css:971 #form_sheld. */
+    #form_sheld {
+        margin: var(--sb-chat-composer-gap) auto 0;
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
+    #send_form {
+        border-width: 1px 0 0;
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    }
+
+    /* Must beat the unlayered theme focus guard after upstream public/css/mobile-styles.css:1096 #send_form. */
+    #send_form:focus-within {
+        border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, transparent);
+        box-shadow:
+            0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent),
+            0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 24%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent),
+            inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 24%, transparent);
+    }
+
+    /* Must beat the unlayered base/focus #send_form guards while generating. */
+    #send_form.sb-generating-controls {
+        border-top-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 78%, transparent);
+        box-shadow:
+            0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent),
+            0 -6px 24px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 28%, transparent),
+            0 0 0 1px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent);
+    }
+
+    /* Must beat upstream public/style.css:862 #top-bar. */
+    #top-bar {
+        height: var(--sb-topbar-layout-offset);
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */
+    #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
+        display: flex;
+    }
+
+    /* Must beat upstream public/style.css:2875 #right-nav-panel-tabs. */
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #right-nav-panel-tabs {
+        display: grid;
+    }
+
+    /* Must beat upstream public/css/tags.css:162 .rm_tag_controls. */
+    #right-nav-panel.openDrawer .rm_tag_controls {
+        flex-wrap: nowrap;
+    }
+
+    /* Must beat upstream public/style.css:3489 .character_name_block_sub_line. */
+    #right-nav-panel.openDrawer #rm_print_characters_block .character_name_block_sub_line {
+        position: static;
+        right: auto;
+        top: auto;
     }
 }
