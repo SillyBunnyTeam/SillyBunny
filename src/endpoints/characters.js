@@ -24,6 +24,7 @@ import { getUserDirectories } from '../users.js';
 import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
+import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 
 // With 100 MB limit it would take roughly 3000 characters to reach this limit
 const memoryCacheCapacity = getConfigValue('performance.memoryCacheCapacity', '100mb');
@@ -36,6 +37,7 @@ const useDiskCache = !!getConfigValue('performance.useDiskCache', true, 'boolean
 const BULK_MERGE_CONCURRENCY = 8;
 const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
+const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
 
 class DiskCache {
     /**
@@ -1169,6 +1171,30 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
         return;
     }
 
+    const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+
+    if (request.body[CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE] !== 'true') {
+        try {
+            const currentCharacter = tryParse(await readCharacterData(avatarPath));
+            const suspiciousEmptyFields = getSuspiciousEmptyCharacterDefinitionFields(currentCharacter, request.body);
+
+            if (suspiciousEmptyFields.length > 0) {
+                const fieldList = suspiciousEmptyFields.map(field => field.label).join(', ');
+                const message = [
+                    'SillyBunny blocked this character save because previously populated definition fields were submitted empty:',
+                    `${fieldList}.`,
+                    'Reload the page before editing this character again, or confirm the save if you intentionally cleared those fields.',
+                ].join(' ');
+
+                console.warn(`Blocked suspicious empty character definition save for ${request.body.avatar_url}: ${fieldList}`);
+                response.status(409).send(message);
+                return;
+            }
+        } catch (err) {
+            console.warn('Could not inspect existing character data before edit save.', err);
+        }
+    }
+
     let char = charaFormatData(request.body, request.user.directories);
     char.chat = request.body.chat;
     char.create_date = request.body.create_date;
@@ -1177,7 +1203,6 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
 
     try {
         if (!request.file) {
-            const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
             await writeCharacterData(avatarPath, char, targetFile, request);
         } else {
             const crop = tryParse(request.query.crop);
