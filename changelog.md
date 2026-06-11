@@ -10,6 +10,7 @@
 - PR #402 (2026-06-10) `chore: bump version to 1.6.5`
 - PR #404 (2026-06-10) `chore: route mobile rail and quick-action models through mobile-shell-lifecycle`
 - PR #407 (2026-06-10) `docs: ledger the mobile-styles media gate and canonical breakpoints`
+- PR #408 (2026-06-11) `fix: align sillybunny-theme 760px queries to the 768px breakpoint`
 - PR #410 (2026-06-10) `fix: correct SillyBunny→SillyTavern version mapping for extension compatibility`
 - PR #411 (2026-06-11) `fix: cap chat backups and deduplicate pre-write snapshots`
 - PR #413 (2026-06-11) `fix: surface iOS WebKit boot failures`
