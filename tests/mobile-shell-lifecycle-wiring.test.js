@@ -222,9 +222,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncMobileViewportState, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
-        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
-        expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
-            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
+        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto;[\s\S]*box-sizing:\s*border-box;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
+        expect(mobileShellCssSource.lastIndexOf('bottom: auto;')).toBeGreaterThan(
+            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px);'),
         );
     });
 

@@ -43,7 +43,7 @@ function getMediaQueryPxValues(cssSource) {
 // test landed. Lower them as cleanup PRs land; never raise them without a
 // review note explaining the regression.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 661,
+    'sillybunny-mobile-shell.css': 0,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 141,
@@ -124,7 +124,7 @@ describe('mobile css ratchet budgets', () => {
         expect(forkSheetSources['sillybunny-theme.css']).not.toContain(":root[data-sb-theme='clean-minimal'] #top-bar::before,");
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain(':root:not([data-sb-theme]) #top-bar,');
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain(":root[data-sb-theme='clean-minimal'] #top-bar::before");
-        expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain('background: var(--sb-topbar-surface-bg) !important;');
+        expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain('background: var(--sb-topbar-surface-bg);');
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain('opacity: var(--sb-shell-surface-opacity);');
     });
 
