@@ -378,43 +378,6 @@ body::before {
     scroll-padding-bottom: 8px;
 }
 
-#top-bar {
-    position: relative;
-    isolation: isolate;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-}
-
-#top-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    opacity: var(--sb-shell-surface-opacity);
-}
-
-/* Firefox and Chrome on macOS can mispaint the fixed header surface pseudo-element. */
-body:is(.firefox-macos, .chrome-macos) #top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body:is(.firefox-macos, .chrome-macos) #top-bar::before {
-    display: none !important;
-}
-
 /*
  * macOS browser compositors can mispaint contained/transformed descendants in
  * the top-bar stack, which shows up as a dark block in the center header area.
@@ -427,14 +390,6 @@ body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-chatbar-layer {
 
 body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
     will-change: auto !important;
-}
-
-/* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 hr {
@@ -719,7 +674,7 @@ h3:not(.popup h3):not(#chat h3) {
     margin-top: 0;
 }
 
-@media screen and (min-width: 769px) and (max-width: 1280px) and (pointer: fine) {
+@media screen and (min-width: 769px) and (max-width: 1000px) and (pointer: fine) {
     .checkbox_label {
         min-height: 32px;
         gap: 8px;
@@ -2390,7 +2345,7 @@ input[type='range']::-moz-range-thumb {
     grid-column: span 2;
 }
 
-@media screen and (max-width: 700px) {
+@media screen and (max-width: 768px) {
     .sb-sampling-priority-row {
         grid-template-columns: 1fr;
     }
@@ -3091,7 +3046,7 @@ input[type='range']::-moz-range-thumb {
     }
 }
 
-@media screen and (max-width: 520px) {
+@media screen and (max-width: 620px) {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
         gap: 6px;
     }
@@ -4106,7 +4061,7 @@ input[type='range']::-moz-range-thumb {
     border-radius: var(--sb-radius-md);
 }
 
-@media screen and (max-width: 850px) {
+@media screen and (max-width: 1000px) {
     .sb-setting-inline-copy-center {
         width: 100%;
         min-width: 0;
@@ -5415,7 +5370,7 @@ input[type='range']::-moz-range-thumb {
 
 }
 
-@media screen and (max-width: 480px) {
+@media screen and (max-width: 620px) {
     #AdvancedFormatting .title_restorable.standoutHeader {
         gap: 6px;
     }
@@ -5727,25 +5682,6 @@ input[type='range']::-moz-range-thumb {
 /* Must beat upstream public/style.css:957 #chat. */
 #chat {
     bottom: 0;
-}
-
-/* Must beat upstream public/style.css:864/865/866/867/868 #top-bar. */
-#top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-}
-
-/* Must keep the Safari workaround above the unlayered public/style.css:852 #top-bar guard. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 /* Must beat upstream public/style.css:6130 .inline-drawer-header. */

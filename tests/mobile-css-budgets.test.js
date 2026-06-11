@@ -46,7 +46,7 @@ const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 0,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 141,
+    'sillybunny-theme.css': 137,
 });
 
 const FORK_SHEET_LAYERS = Object.freeze({
@@ -60,11 +60,10 @@ const FORK_LAYER_ORDER = 'sb-theme, sb-tabs, sb-chat, sb-shell';
 const FORK_UNLAYERED_GUARD_PINS = Object.freeze({
     'sillybunny-theme.css': [
         '/* Must beat upstream public/style.css:91 :root. */',
-        '/* Must beat upstream public/style.css:864/865/866/867/868 #top-bar. */',
         '/* Must beat upstream public/style.css:5996 #CustomCSS-textAreaBlock. */',
     ],
     'sillybunny-tabs.css': [
-        '/* Must beat upstream public/style.css:862/869 #top-bar. */',
+        '/* Must beat upstream public/style.css:862/864/865/866/867/868/869 #top-bar. */',
         '/* Must beat upstream public/style.css:6051 .drawer. */',
         '/* Must beat upstream public/style.css:6267 .fillRight. */',
     ],
@@ -80,7 +79,7 @@ const FORK_UNLAYERED_GUARD_PINS = Object.freeze({
         '/* Must beat upstream public/css/tags.css:162 .rm_tag_controls. */',
     ],
 });
-const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
+const FORK_DISTINCT_BREAKPOINT_BUDGET = 6;
 
 const forkSheetSources = Object.fromEntries(
     Object.keys(FORK_SHEET_IMPORTANT_BUDGETS).map(sheetName => [sheetName, readPublicFile('css', sheetName)]),
