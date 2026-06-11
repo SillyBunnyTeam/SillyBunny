@@ -26,6 +26,7 @@ import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
 import { getThumbnailDimensions, setThumbnailDimensions } from './image-metadata.js';
 import { getThumbnailRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
+import { requestGracefulExit } from '../shutdown.js';
 
 const GIT_OPTIONS = Object.freeze({ timeout: { block: 10 * 60 * 1000 } });
 const RESTART_RESPONSE_DELAY_MS = 200;
@@ -299,7 +300,7 @@ function getRestartPayload() {
         parentPid: process.pid,
         cwd: serverDirectory,
         command: [process.argv[0], ...process.argv.slice(1)],
-        envPatch: isNativeTermuxEnvironment() ? { SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' } : {},
+        envPatch: { SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' },
         visibleRelaunch: process.platform === 'win32',
     };
 
@@ -331,7 +332,7 @@ function scheduleRestart(response) {
         response.once('finish', () => {
             setTimeout(() => {
                 console.info(`Restart requested; exiting with code ${RESTART_EXIT_CODE} for launcher relaunch.`);
-                process.exit(RESTART_EXIT_CODE);
+                requestGracefulExit(RESTART_EXIT_CODE);
             }, RESTART_RESPONSE_DELAY_MS);
         });
         return;
@@ -353,11 +354,8 @@ function scheduleRestart(response) {
 
     response.once('finish', () => {
         setTimeout(() => {
-            try {
-                process.kill(process.pid, 'SIGTERM');
-            } catch (error) {
-                console.error('Failed to stop current process during restart.', error);
-            }
+            console.info(`Restart requested; initiating graceful shutdown with code ${RESTART_EXIT_CODE}.`);
+            requestGracefulExit(RESTART_EXIT_CODE);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -379,8 +377,8 @@ function scheduleZipUpdate(response, stagedUpdate) {
 
     response.once('finish', () => {
         setTimeout(() => {
-            console.info('ZIP update staged; exiting current server so the helper can replace files safely.');
-            process.exit(0);
+            console.info('ZIP update staged; initiating graceful shutdown so the helper can replace files safely.');
+            requestGracefulExit(0);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
