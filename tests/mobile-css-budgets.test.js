@@ -44,9 +44,9 @@ function getMediaQueryPxValues(cssSource) {
 // review note explaining the regression.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 661,
-    'sillybunny-tabs.css': 386,
+    'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 157,
+    'sillybunny-theme.css': 141,
 });
 
 const FORK_SHEET_LAYERS = Object.freeze({
@@ -126,6 +126,22 @@ describe('mobile css ratchet budgets', () => {
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain(":root[data-sb-theme='clean-minimal'] #top-bar::before");
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain('background: var(--sb-topbar-surface-bg) !important;');
         expect(forkSheetSources['sillybunny-mobile-shell.css']).toContain('opacity: var(--sb-shell-surface-opacity);');
+    });
+
+    test('mobile shell owns mobile composer and bottom-chat responsive overrides', () => {
+        const normalizedThemeSource = forkSheetSources['sillybunny-theme.css'].replace(/\r\n/g, '\n');
+        const normalizedTabsSource = forkSheetSources['sillybunny-tabs.css'].replace(/\r\n/g, '\n');
+        const normalizedShellSource = forkSheetSources['sillybunny-mobile-shell.css'].replace(/\r\n/g, '\n');
+
+        expect(normalizedThemeSource).not.toContain('/* Override any optional theme-specific sizing. */');
+        expect(normalizedThemeSource).not.toContain(":root:not([data-sb-theme]) #send_form,\n    :root[data-sb-theme='clean-minimal'] #send_form");
+        expect(normalizedTabsSource).not.toContain('@media screen and (max-width: 1000px) {\n    #sb-bottom-chat-bar');
+        expect(normalizedTabsSource).not.toContain('@media screen and (max-width: 420px) {\n    #sb-bottom-chat-bar');
+
+        expect(normalizedTabsSource).toContain('@media screen and (min-width: 769px) and (max-width: 1000px) {\n    #sb-bottom-chat-bar');
+        expect(normalizedShellSource).toContain('/* Keep phone-width composer surface overrides in the mobile shell sheet. */');
+        expect(normalizedShellSource).toContain('padding-block-end: max(var(--sb-chat-composer-edge-gap), env(safe-area-inset-bottom, 0px));');
+        expect(normalizedShellSource).toContain('#sb-bottom-chat-bar:not(.sb-bottom-chat-search-open) .sb-bottom-chat-search-field');
     });
 
     test('fork sheets keep verified upstream collision guards outside layers', () => {
