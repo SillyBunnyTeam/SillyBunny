@@ -10,6 +10,7 @@ import { debounce_timeout } from './constants.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { SimpleMutex } from './util/SimpleMutex.js';
 import { loadStylesheetAsync, prefetchAsset } from './dynamic-styles.js';
+import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';
 import {
     EXTENSION_BOOT_ACTIVATION_ACTION,
     normalizeExtensionBootId,
@@ -1040,8 +1041,9 @@ async function activateExtensions() {
                         return callExtensionHook(name, 'activate');
                     })
                     .catch(err => {
-                        console.log('Could not activate extension', name, err);
-                        extensionLoadErrors.add(t`Extension "${displayName}" failed to load: ${err}`);
+                        const loadError = formatExtensionLoadError(err);
+                        console.log('Could not activate extension', name, loadError, err);
+                        extensionLoadErrors.add(t`Extension "${displayName}" failed to load: ${loadError}`);
                     })
                     .finally(() => {
                         activatingExtensionDedupKeys.delete(extensionKey);
@@ -1231,7 +1233,7 @@ function addExtensionScript(name, manifest) {
             script.src = url;
             script.async = true;
             script.onerror = function (err) {
-                reject(err);
+                reject(createExtensionScriptLoadError(name, url, err));
             };
             script.onload = function () {
                 if (!ready) {
