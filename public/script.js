@@ -40,6 +40,7 @@ import {
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 
 import {
     world_info,
@@ -14310,6 +14311,25 @@ export async function createOrEditCharacter(e) {
                 formData.append('alternate_greetings', value);
             }
 
+            const editedAvatar = String(formData.get('avatar_url') ?? '');
+            const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];
+            const suspiciousEmptyDefinitionSave = getSuspiciousEmptyCharacterDefinitionSave(editedCharacter, getCharacterDefinitionFormValues(formData));
+
+            if (suspiciousEmptyDefinitionSave) {
+                const fieldList = suspiciousEmptyDefinitionSave.emptiedFieldLabels.join(', ');
+                const confirmation = await callGenericPopup(
+                    t`SillyBunny is about to save this character with previously populated definition fields empty: ${fieldList}. This can happen after a stale frontend load. Reload the page unless you intentionally cleared these fields. Continue saving?`,
+                    POPUP_TYPE.CONFIRM,
+                );
+
+                if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
+                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character save blocked`);
+                    return;
+                }
+
+                formData.set('allow_empty_definition_save', 'true');
+            }
+
             const fetchResult = await fetch(url, {
                 method: 'POST',
                 headers: headers,
@@ -14318,7 +14338,7 @@ export async function createOrEditCharacter(e) {
             });
 
             if (!fetchResult.ok) {
-                throw new Error('Fetch result is not ok');
+                throw new Error(await fetchResult.text() || 'Fetch result is not ok');
             }
 
             await getOneCharacter(formData.get('avatar_url'));
@@ -14351,7 +14371,10 @@ export async function createOrEditCharacter(e) {
             }
         } catch (error) {
             console.log(error);
-            toastr.error(t`Something went wrong while saving the character, or the image file provided was in an invalid format. Double check that the image is not a webp.`);
+            const message = error instanceof Error && error.message
+                ? error.message
+                : t`Something went wrong while saving the character, or the image file provided was in an invalid format. Double check that the image is not a webp.`;
+            toastr.error(message);
         }
     }
 }
