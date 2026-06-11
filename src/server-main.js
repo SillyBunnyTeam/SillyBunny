@@ -22,6 +22,7 @@ import helmet from 'helmet';
 import './fetch-patch.js';
 import { APP_NAME, isBunRuntime } from './runtime.js';
 import { serverDirectory } from './server-directory.js';
+import { getServerBootId } from './server-boot-marker.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { loadPlugins } from './plugin-loader.js';
@@ -448,7 +449,10 @@ app.use(multerMonkeyPatch);
 
 app.get('/version', async function (_, response) {
     const data = await getVersion();
-    response.send(data);
+    response.send({
+        ...data,
+        serverBootId: getServerBootId(),
+    });
 });
 
 setupPrivateEndpoints(app);

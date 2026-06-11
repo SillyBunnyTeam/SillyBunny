@@ -4,6 +4,7 @@ import {
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
+import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { flushCharacterSaveDebounced, getOneCharacter, saveSettingsDebounced } from '../script.js';
 
@@ -9401,7 +9402,7 @@ function renderServerThumbnailSettings(data) {
     setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
 }
 
-async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, expectedVersion = '' } = {}) {
+async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeReload = false, expectedVersion = '', previousServerBootId = '' } = {}) {
     let sawOffline = false;
 
     async function reloadAfterOptionalCacheClear() {
@@ -9421,20 +9422,7 @@ async function waitForServerReturn(expectedRevision = '', { clearCacheBeforeRelo
             }
 
             const version = await response.json().catch(() => ({}));
-            const revision = String(version?.gitRevision ?? '').trim();
-            const pkgVersion = String(version?.pkgVersion ?? '').trim();
-
-            if (expectedRevision && revision === expectedRevision) {
-                await reloadAfterOptionalCacheClear();
-                return true;
-            }
-
-            if (expectedVersion && pkgVersion === expectedVersion) {
-                await reloadAfterOptionalCacheClear();
-                return true;
-            }
-
-            if (sawOffline) {
+            if (hasServerReturnedAfterRestart(version, { expectedRevision, expectedVersion, previousServerBootId, sawOffline })) {
                 await reloadAfterOptionalCacheClear();
                 return true;
             }
@@ -9734,7 +9722,7 @@ async function handleServerAdminRestart() {
         setServerAdminMessage(refs.updateNote, result?.message || 'Restarting SillyBunny…', 'warn');
         toastr.info(result?.message || 'Restarting SillyBunny…', 'Server');
 
-        const restarted = await waitForServerReturn();
+        const restarted = await waitForServerReturn('', { previousServerBootId: result?.serverBootId });
         if (!restarted) {
             state.restarting = false;
             setServerAdminMessage(refs.updateNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
