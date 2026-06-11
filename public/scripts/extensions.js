@@ -1042,7 +1042,7 @@ async function activateExtensions() {
                     })
                     .catch(err => {
                         const loadError = formatExtensionLoadError(err);
-                        console.log('Could not activate extension', name, loadError, err);
+                        console.error('Could not activate extension', name, loadError, err);
                         extensionLoadErrors.add(t`Extension "${displayName}" failed to load: ${loadError}`);
                     })
                     .finally(() => {

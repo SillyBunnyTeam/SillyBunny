@@ -4,12 +4,23 @@
 
     var bootCompleted = false;
     var failureShown = false;
+    var failureDismissed = false;
     var lastFailure = null;
     var timeoutId = null;
     var BOOT_TIMEOUT_MS = 25000;
     var BOOT_TIMEOUT_RETRY_MS = 10000;
     var MAX_BOOT_TIMEOUT_MS = 90000;
     var bootStartedAt = Date.now();
+
+    var THIRD_PARTY_EXTENSION_PATH = '/scripts/extensions/third-party/';
+
+    function isThirdPartyExtensionSource(value) {
+        try {
+            return String(value || '').indexOf(THIRD_PARTY_EXTENSION_PATH) !== -1;
+        } catch (_error) {
+            return false;
+        }
+    }
 
     function describeError(error) {
         try {
@@ -146,7 +157,7 @@
     }
 
     function handleBootTimeout() {
-        if (bootCompleted || failureShown) {
+        if (bootCompleted || failureShown || failureDismissed) {
             return;
         }
 
@@ -159,7 +170,7 @@
     }
 
     function showFailure(details) {
-        if (bootCompleted || failureShown) {
+        if (bootCompleted || failureShown || failureDismissed) {
             return;
         }
 
@@ -193,6 +204,18 @@
             reloadAfterCacheClear(button);
         });
 
+        var dismissButton = document.createElement('button');
+        dismissButton.type = 'button';
+        dismissButton.textContent = 'Continue anyway';
+        dismissButton.style.cssText = 'width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.24);border-radius:12px;background:transparent;color:#e2e8f0;font-weight:600;font-size:15px;padding:11px 14px;';
+        dismissButton.addEventListener('click', function () {
+            failureDismissed = true;
+            if (timeoutId) {
+                window.clearTimeout(timeoutId);
+            }
+            removeElement(preloader);
+        });
+
         var hint = document.createElement('p');
         hint.textContent = 'If this keeps happening, clear this site\'s Safari/Chrome website data and reload.';
         hint.style.cssText = 'margin:14px 0 0;color:#94a3b8;font-size:14px;';
@@ -212,6 +235,7 @@
         panel.appendChild(title);
         panel.appendChild(message);
         panel.appendChild(button);
+        panel.appendChild(dismissButton);
         panel.appendChild(hint);
         panel.appendChild(summary);
         preloader.appendChild(panel);
@@ -238,10 +262,20 @@
             var rel = target.rel || '';
             var url = target.src || target.href || '';
 
+            if (isThirdPartyExtensionSource(url)) {
+                console.warn('SillyBunny boot guard ignored a third-party extension resource failure.', url);
+                return;
+            }
+
             if (tagName === 'SCRIPT' || (tagName === 'LINK' && rel.indexOf('modulepreload') !== -1)) {
                 recordFailure('Failed to load startup resource: ' + url, event.error);
             }
 
+            return;
+        }
+
+        if (isThirdPartyExtensionSource(event.filename)) {
+            console.warn('SillyBunny boot guard ignored a third-party extension startup error.', event.filename);
             return;
         }
 
@@ -250,9 +284,16 @@
     }, true);
 
     window.addEventListener('unhandledrejection', function (event) {
-        if (!bootCompleted) {
-            recordFailure('Unhandled startup promise rejection.', event.reason);
+        if (bootCompleted) {
+            return;
         }
+
+        if (isThirdPartyExtensionSource(describeError(event.reason))) {
+            console.warn('SillyBunny boot guard ignored a third-party extension startup rejection.', event.reason);
+            return;
+        }
+
+        recordFailure('Unhandled startup promise rejection.', event.reason);
     });
 
     scheduleBootTimeout(BOOT_TIMEOUT_MS);
