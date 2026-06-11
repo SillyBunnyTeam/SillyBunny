@@ -2,11 +2,21 @@ import { registerDebugFunction } from './power-user.js';
 import { updateSecretDisplay } from './secrets.js';
 
 const storageKey = 'language';
-const overrideLanguage = localStorage.getItem(storageKey);
+const overrideLanguage = getStoredLanguage();
 const localeFile = String(overrideLanguage || navigator.language || navigator.userLanguage || 'en').toLowerCase();
 var langs;
 // Don't change to let/const! It will break module loading.
 var localeData;
+
+function getStoredLanguage() {
+    try {
+        return localStorage.getItem(storageKey);
+    } catch (error) {
+        // SillyBunny: iOS WebKit can throw on localStorage before the boot UI exists.
+        console.warn('Unable to read stored language override.', error);
+        return null;
+    }
+}
 
 /** @type {Set<string>|null} Array of translations keys if they should be tracked - if not tracked then null */
 let trackMissingDynamicTranslate = null;
