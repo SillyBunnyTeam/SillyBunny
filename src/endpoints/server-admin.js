@@ -27,6 +27,7 @@ import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from 
 import { getThumbnailDimensions, setThumbnailDimensions } from './image-metadata.js';
 import { getThumbnailRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
 import { requestGracefulExit } from '../shutdown.js';
+import { getServerBootId } from '../server-boot-marker.js';
 
 const GIT_OPTIONS = Object.freeze({ timeout: { block: 10 * 60 * 1000 } });
 const RESTART_RESPONSE_DELAY_MS = 200;
@@ -783,6 +784,7 @@ router.post('/restart', requireAdminMiddleware, async (_request, response) => {
         response.status(202).json({
             ok: true,
             restarting: true,
+            serverBootId: getServerBootId(),
             message: `${APP_NAME} is restarting.`,
         });
     } catch (error) {
