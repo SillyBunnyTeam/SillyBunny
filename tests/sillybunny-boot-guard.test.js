@@ -218,4 +218,59 @@ describe('SillyBunny boot guard', () => {
 
         expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
     });
+
+    test('offers a dismiss button that removes the panel and suppresses later failures', () => {
+        const { document, window } = createBootGuardHarness();
+        addPreloader(document);
+
+        window.SillyBunnyBootGuard.showFailure('boom');
+
+        const preloader = document.getElementById('preloader');
+        const dismissButton = preloader.querySelectorAll('button').find(button => button.textContent === 'Continue anyway');
+        expect(dismissButton).toBeDefined();
+
+        dismissButton.listeners.get('click')();
+
+        expect(document.getElementById('preloader')).toBeNull();
+    });
+
+    test('ignores startup errors originating from third-party extensions', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('error')({
+            target: { tagName: 'SCRIPT', src: '/scripts/extensions/third-party/Extension-WebSearch/index.js?v=1.6.5' },
+        });
+        listeners.get('error')({
+            filename: '/scripts/extensions/third-party/Extension-WebSearch/index.js',
+            message: 'boom',
+            lineno: 1,
+            colno: 1,
+        });
+        listeners.get('unhandledrejection')({
+            reason: { stack: 'Error: boom\n    at /scripts/extensions/third-party/Extension-WebSearch/index.js:1:1' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('button')).toBeNull();
+    });
+
+    test('still surfaces non-extension startup errors', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('error')({
+            filename: '/script.js',
+            message: 'boom',
+            lineno: 1,
+            colno: 1,
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+    });
 });
