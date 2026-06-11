@@ -25,6 +25,7 @@
 - PR #425 (2026-06-11) `fix: cancel pending character save when switching characters (#423)`
 - PR #426 (2026-06-11) `fix: avoid resetting editor form when selecting character (#423)`
 - PR #427 (2026-06-11) `fix: load script.js under its bare URL to restore single module identity`
+- PR #428 (2026-06-11) `fix: make server.js self-supervising so restart works everywhere (#412)`
 
 ## v1.6.4
 
