@@ -18,6 +18,7 @@
 - PR #416 (2026-06-11) `fix: restore public JS revalidation caching`
 - PR #417 (2026-06-11) `fix: restore generated install metadata before updates`
 - PR #418 (2026-06-11) `fix: harden frontend boot recovery`
+- PR #419 (2026-06-11) `fix: keep shutdown exit codes numeric`
 
 ## v1.6.4
 
