@@ -2,6 +2,10 @@
 
 ## v1.6.5
 
+### Fixed
+- Chat backup count is now capped to 25 by default (`backups.chat.maxTotalBackups`) instead of unlimited, preventing unbounded accumulation over time.
+- Pre-write chat backups now skip writing when the on-disk content is unchanged (duplicate detection), reducing redundant snapshots during rapid save flows like swiping.
+
 ### Merged Staging PRs
 - PR #402 (2026-06-10) `chore: bump version to 1.6.5`
 - PR #404 (2026-06-10) `chore: route mobile rail and quick-action models through mobile-shell-lifecycle`

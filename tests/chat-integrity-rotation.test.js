@@ -178,6 +178,49 @@ describe('chat integrity rotation', () => {
         const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
 
         expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(1);
+    });
+
+    test('skips duplicate pre-write backups when on-disk content is unchanged', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-dedup-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('original-integrity', 'original content').map(JSON.stringify).join('\n'));
+
+        const firstResult = await trySaveChat(
+            chatWithIntegrity('original-integrity', 'original content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const secondResult = await trySaveChat(
+            chatWithIntegrity(firstResult.integrity, 'different content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        await trySaveChat(
+            chatWithIntegrity(secondResult.integrity, 'final content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const backupFiles = await fs.readdir(backupDir);
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
         expect(preWriteBackups).toHaveLength(2);
     });
 
