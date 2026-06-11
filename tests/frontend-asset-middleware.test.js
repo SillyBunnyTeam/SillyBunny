@@ -11,14 +11,17 @@ function getCacheControlFor(requestPath) {
 }
 
 describe('frontend asset fallback headers', () => {
-    test('keeps html, json, maps, and raw JavaScript revalidating', () => {
+    test('keeps html, json, and maps revalidating', () => {
         expect(getCacheControlFor('/index.html')).toBe('no-cache');
         expect(getCacheControlFor('/login.html')).toBe('no-cache');
         expect(getCacheControlFor('/manifest.json')).toBe('no-cache');
         expect(getCacheControlFor('/script.js.map')).toBe('no-cache');
-        expect(getCacheControlFor('/script.js')).toBe('no-cache');
-        expect(getCacheControlFor('/scripts/chat-render-lifecycle/render-window.js')).toBe('no-cache');
-        expect(getCacheControlFor('/scripts/bootstrap.mjs')).toBe('no-cache');
+    });
+
+    test('bypasses the browser cache for unversioned public JavaScript modules', () => {
+        expect(getCacheControlFor('/script.js')).toBe('no-store, no-cache, must-revalidate');
+        expect(getCacheControlFor('/scripts/chat-render-lifecycle/render-window.js')).toBe('no-store, no-cache, must-revalidate');
+        expect(getCacheControlFor('/scripts/bootstrap.mjs')).toBe('no-store, no-cache, must-revalidate');
     });
 
     test('keeps static non-code fallback assets short-lived', () => {
