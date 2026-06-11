@@ -16,6 +16,7 @@
 - PR #414 (2026-06-11) `fix: unify graceful shutdown so frontend restart works on Windows`
 - PR #415 (2026-06-11) `fix: increase Prose Polisher max tokens to 32000`
 - PR #416 (2026-06-11) `fix: restore public JS revalidation caching`
+- PR #417 (2026-06-11) `fix: restore generated install metadata before updates`
 
 ## v1.6.4
 
