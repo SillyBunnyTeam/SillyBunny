@@ -820,7 +820,7 @@
     }
 }
 
-@media screen and (min-width: 769px) and (max-width: 1180px) {
+@media screen and (min-width: 769px) and (max-width: 1000px) {
     /* SillyBunny: keep tablet full-screen shells edge-to-edge without overriding MovingUI resizing. */
     body:not(.movingUI) #sheld {
         width: 100vw;
