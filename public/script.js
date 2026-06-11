@@ -708,6 +708,14 @@ export async function flushCharacterSaveDebounced() {
     await characterSavePromise;
 }
 
+export function cancelCharacterSaveDebounced() {
+    if (pendingCharacterSaveTimer) {
+        console.debug('Debounced character save cancelled');
+        clearTimeout(pendingCharacterSaveTimer);
+        pendingCharacterSaveTimer = null;
+    }
+}
+
 /**
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
  * Use this function instead of a direct `printCharacters()` whenever the reprinting of the character list is not the primary focus.
@@ -1269,6 +1277,7 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             return false;
         }
 
+        cancelCharacterSaveDebounced();
         setCharacterId(undefined);
         setCharacterName('');
         resetSelectedGroup();
