@@ -1,8 +1,19 @@
 #!/usr/bin/env bun
-import './src/server-log-buffer.js';
-import { CommandLineParser } from './src/command-line.js';
-import { APP_NAME, formatRuntimeLabel } from './src/runtime.js';
-import { serverDirectory } from './src/server-directory.js';
+import { runSupervisor, shouldSupervise } from './src/server-supervisor.js';
+
+// When started directly (bun/node server.js, Docker, systemd), supervise a
+// child copy of this process so the in-app restart (exit code 75) relaunches
+// it. Launcher scripts set SILLYBUNNY_LAUNCHER=1 and loop on the exit code
+// themselves; the supervised child sees SILLYBUNNY_SUPERVISED=1 and boots.
+if (shouldSupervise()) {
+    await runSupervisor();
+}
+
+// The log buffer must evaluate before anything else writes to the console.
+await import('./src/server-log-buffer.js');
+const { CommandLineParser } = await import('./src/command-line.js');
+const { APP_NAME, formatRuntimeLabel } = await import('./src/runtime.js');
+const { serverDirectory } = await import('./src/server-directory.js');
 
 process.env.NODE_ENV ??= 'production';
 console.log(`${APP_NAME} startup on ${formatRuntimeLabel()}. Environment: ${process.env.NODE_ENV ?? 'development'}. Server directory: ${serverDirectory}`);
