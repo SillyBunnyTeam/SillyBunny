@@ -8,7 +8,13 @@ import {
 } from '../frontend-assets.js';
 
 export function setPublicAssetHeaders(res, requestPath) {
-    if (/\.(?:html?|json|map|m?js)$/i.test(requestPath)) {
+    if (/\.(?:m?js)$/i.test(requestPath)) {
+        // SillyBunny: public JS modules are mostly unversioned; iOS WebKit can keep stale module graphs over plain HTTP.
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return;
+    }
+
+    if (/\.(?:html?|json|map)$/i.test(requestPath)) {
         res.setHeader('Cache-Control', 'no-cache');
         return;
     }
