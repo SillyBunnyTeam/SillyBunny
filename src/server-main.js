@@ -505,8 +505,9 @@ async function preSetupTasks() {
     registerGracefulShutdown(exitProcess);
 
     // Set up event listeners for a graceful shutdown
-    process.on('SIGINT', exitProcess);
-    process.on('SIGTERM', exitProcess);
+    // SillyBunny: signal handlers pass signal names, but process.exit needs numeric codes in Bun.
+    process.on('SIGINT', () => exitProcess(0));
+    process.on('SIGTERM', () => exitProcess(0));
     process.on('uncaughtException', (err) => {
         console.error('Uncaught exception:', err);
         exitProcess();
