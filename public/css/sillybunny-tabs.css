@@ -4293,7 +4293,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     flex: 1 1 auto;
     min-width: 0;
     width: 100%;
-    height: calc(17px * var(--sb-bottom-bar-scale)) !important;
+    height: calc(17px * var(--sb-bottom-bar-scale));
     min-height: 0 !important;
     margin: 0;
     padding: 0 !important;
@@ -4422,7 +4422,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     pointer-events: none;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (min-width: 769px) and (max-width: 1000px) {
     #sb-bottom-chat-bar {
         --sb-bottom-chat-mobile-gutter: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
@@ -4520,7 +4520,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     .sb-bottom-chat-search-field input {
-        height: calc(var(--sb-bottom-chat-mobile-select-height) - 14px) !important;
+        height: calc(var(--sb-bottom-chat-mobile-select-height) - 14px);
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.74 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.84));
     }
 
@@ -4565,31 +4565,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.78 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.88));
         line-height: 1;
     }
-}
-
-@media screen and (max-width: 420px) {
-    #sb-bottom-chat-bar {
-        --sb-bottom-chat-mobile-gutter: max(4px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
-        --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
-        --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
-        --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
-        --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
-        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
-    }
-
-    #sb-bottom-chat-select {
-        flex-basis: 48px;
-        padding-inline: clamp(5px, calc(6px * var(--sb-bottom-bar-scale)), 8px);
-        font-size: clamp(calc(var(--mainFontSize) * 0.64), calc(var(--mainFontSize) * 0.72 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.82));
-    }
-
-    .sb-bottom-chat-search-status {
-        max-width: 74px;
-    }
-
 }
 
 .sb-chat-delete-overlay {

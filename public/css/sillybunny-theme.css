@@ -1315,62 +1315,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     }
 }
 
-@media screen and (max-width: 768px) {
-    #send_form {
-        padding: 4px 6px 6px;
-    }
-
-    #nonQRFormItems {
-        align-items: flex-end;
-        gap: 6px;
-        padding: 3px 5px 2px;
-    }
-
-    #leftSendForm,
-    #rightSendForm {
-        width: auto !important;
-        min-width: max-content;
-        flex-wrap: nowrap !important;
-    }
-
-    #leftSendForm > div,
-    #rightSendForm > div:not(.mes_stop),
-    #options_button {
-        width: var(--sb-composer-action-size) !important;
-        min-width: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
-        min-height: var(--sb-composer-action-size) !important;
-        max-width: var(--sb-composer-action-size) !important;
-        max-height: var(--sb-composer-action-size) !important;
-    }
-
-    /* Override any optional theme-specific sizing. */
-    #leftSendForm > *,
-    #rightSendForm > *:not(.mes_stop),
-    #form_sheld #options_button {
-        width: var(--sb-composer-action-size) !important;
-        min-width: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
-        min-height: var(--sb-composer-action-size) !important;
-        max-width: var(--sb-composer-action-size) !important;
-        max-height: var(--sb-composer-action-size) !important;
-    }
-
-    #send_form .mes_stop {
-        width: var(--sb-composer-action-size);
-        min-width: var(--sb-composer-action-size);
-        max-width: var(--sb-composer-action-size);
-        height: var(--sb-composer-action-size);
-        min-height: var(--sb-composer-action-size);
-        max-height: var(--sb-composer-action-size);
-    }
-
-    #send_textarea {
-        min-height: 46px;
-        padding: 8px 10px;
-        font-size: var(--mainFontSize);
-    }
-}
 .popup {
     box-shadow: 0 26px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
 }
@@ -1719,10 +1663,6 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
     }
 
-    #form_sheld {
-        padding-block-end: max(var(--sb-chat-composer-edge-gap), env(safe-area-inset-bottom, 0px));
-    }
-
     :root:not([data-sb-theme]),
     :root[data-sb-theme='clean-minimal'] {
         --sb-mobile-default-surface-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, black 8%);
@@ -1754,24 +1694,8 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         }
     }
 
-
-    :root:not([data-sb-theme]) #send_form,
-    :root[data-sb-theme='clean-minimal'] #send_form {
-        background: var(--sb-composer-surface-bg) !important;
-        border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
-    }
-
-    :root:not([data-sb-theme]) #send_textarea,
-    :root[data-sb-theme='clean-minimal'] #send_textarea {
-        background: var(--sb-mobile-default-input-solid);
-    }
-
-    :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
     :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
-    :root[data-sb-theme='clean-minimal'] #send_form::before,
     :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
     :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
         opacity: var(--sb-shell-surface-opacity) !important;
@@ -5489,26 +5413,6 @@ input[type='range']::-moz-range-thumb {
         border-radius: 999px;
     }
 
-    #leftSendForm > div,
-    #rightSendForm > div:not(.mes_stop),
-    #send_form .mes_stop,
-    #options_button {
-        width: var(--sb-composer-action-size);
-        min-width: var(--sb-composer-action-size);
-        height: var(--sb-composer-action-size);
-        min-height: var(--sb-composer-action-size);
-        max-height: var(--sb-composer-action-size);
-    }
-
-    #send_textarea {
-        min-height: 46px;
-        padding: 6px 8px;
-    }
-
-    :root[data-sb-compact-mode='true'] #send_textarea {
-        min-height: 38px;
-        padding: 5px 7px;
-    }
 }
 
 @media screen and (max-width: 480px) {
