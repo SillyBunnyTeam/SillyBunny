@@ -13,6 +13,7 @@
 - PR #410 (2026-06-10) `fix: correct SillyBunny→SillyTavern version mapping for extension compatibility`
 - PR #411 (2026-06-11) `fix: cap chat backups and deduplicate pre-write snapshots`
 - PR #413 (2026-06-11) `fix: surface iOS WebKit boot failures`
+- PR #414 (2026-06-11) `fix: unify graceful shutdown so frontend restart works on Windows`
 
 ## v1.6.4
 
