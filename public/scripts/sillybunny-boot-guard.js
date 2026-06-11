@@ -7,6 +7,9 @@
     var lastFailure = null;
     var timeoutId = null;
     var BOOT_TIMEOUT_MS = 25000;
+    var BOOT_TIMEOUT_RETRY_MS = 10000;
+    var MAX_BOOT_TIMEOUT_MS = 90000;
+    var bootStartedAt = Date.now();
 
     function describeError(error) {
         try {
@@ -89,6 +92,72 @@
             });
     }
 
+    function removeElement(element) {
+        if (!element) {
+            return;
+        }
+
+        if (typeof element.remove === 'function') {
+            element.remove();
+            return;
+        }
+
+        if (element.parentNode) {
+            element.parentNode.removeChild(element);
+        }
+    }
+
+    function queryAll(selector, root) {
+        try {
+            return Array.prototype.slice.call((root || document).querySelectorAll(selector));
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    function isStartupLoaderActive() {
+        try {
+            return Boolean(document.querySelector('#loader, .splash-screen, #load-spinner, dialog #loader, dialog .splash-screen, dialog #load-spinner'));
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function removeStartupLoaderArtifacts() {
+        queryAll('dialog').forEach(function (dialog) {
+            try {
+                if (dialog.querySelector('#loader, .splash-screen, #load-spinner')) {
+                    removeElement(dialog);
+                }
+            } catch (_error) {
+                // Keep surfacing the boot failure even if a browser rejects a selector.
+            }
+        });
+
+        queryAll('#loader, .splash-screen, #load-spinner, ._poly_dialog_overlay').forEach(removeElement);
+    }
+
+    function getElapsedBootTimeMs() {
+        return Date.now() - bootStartedAt;
+    }
+
+    function scheduleBootTimeout(delay) {
+        timeoutId = window.setTimeout(handleBootTimeout, delay);
+    }
+
+    function handleBootTimeout() {
+        if (bootCompleted || failureShown) {
+            return;
+        }
+
+        if (!lastFailure && isStartupLoaderActive() && getElapsedBootTimeMs() < MAX_BOOT_TIMEOUT_MS) {
+            scheduleBootTimeout(BOOT_TIMEOUT_RETRY_MS);
+            return;
+        }
+
+        showFailure(lastFailure || 'Startup timed out before SillyBunny removed the preloader.');
+    }
+
     function showFailure(details) {
         if (bootCompleted || failureShown) {
             return;
@@ -100,6 +169,7 @@
         }
 
         failureShown = true;
+        removeStartupLoaderArtifacts();
         preloader.innerHTML = '';
         preloader.removeAttribute('aria-hidden');
         preloader.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#1d2128;color:#f4f7fb;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
@@ -185,7 +255,5 @@
         }
     });
 
-    timeoutId = window.setTimeout(function () {
-        showFailure(lastFailure || 'Startup timed out before SillyBunny removed the preloader.');
-    }, BOOT_TIMEOUT_MS);
+    scheduleBootTimeout(BOOT_TIMEOUT_MS);
 }());
