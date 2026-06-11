@@ -19,6 +19,7 @@
 - PR #417 (2026-06-11) `fix: restore generated install metadata before updates`
 - PR #418 (2026-06-11) `fix: harden frontend boot recovery`
 - PR #419 (2026-06-11) `fix: keep shutdown exit codes numeric`
+- PR #420 (2026-06-11) `fix: protect character saves from stale frontend`
 
 ## v1.6.4
 
