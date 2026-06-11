@@ -20,6 +20,7 @@
 - PR #418 (2026-06-11) `fix: harden frontend boot recovery`
 - PR #419 (2026-06-11) `fix: keep shutdown exit codes numeric`
 - PR #420 (2026-06-11) `fix: protect character saves from stale frontend`
+- PR #422 (2026-06-11) `fix: improve extension load diagnostics`
 
 ## v1.6.4
 
