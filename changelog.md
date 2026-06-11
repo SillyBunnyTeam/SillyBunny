@@ -23,6 +23,7 @@
 - PR #420 (2026-06-11) `fix: protect character saves from stale frontend`
 - PR #422 (2026-06-11) `fix: improve extension load diagnostics`
 - PR #425 (2026-06-11) `fix: cancel pending character save when switching characters (#423)`
+- PR #426 (2026-06-11) `fix: avoid resetting editor form when selecting character (#423)`
 
 ## v1.6.4
 
