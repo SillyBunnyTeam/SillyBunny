@@ -73,13 +73,10 @@ describe('frontend asset manifest rewriting', () => {
         expect(FRONTEND_ASSET_PREFIX).toBe('/frontend-assets/');
     });
 
-    test('loads the main app module through a versioned URL', () => {
-        const indexHtml = fs.readFileSync(path.join(process.cwd(), '..', 'public', 'index.html'), 'utf8');
-
-        expect(indexHtml).toContain('<link rel="modulepreload" href="script.js?v=20260611b">');
-        expect(indexHtml).toContain('<script type="module" src="script.js?v=20260611b"></script>');
-    });
-
+    // The 'loads the main app module through a versioned URL' test was removed:
+    // it pinned the regression that double-evaluated script.js (module identity
+    // splits when the tag URL carries ?v= but bare '../script.js' imports do not).
+    // tests/script-module-identity.test.js owns the corrected invariant.
     test('only treats fingerprinted frontend asset names as immutable', () => {
         expect(HASHED_FRONTEND_ASSET_RE.test('script-0123456789ab.js')).toBe(true);
         expect(HASHED_FRONTEND_ASSET_RE.test('scripts/extensions-abcdef123456.js')).toBe(true);
