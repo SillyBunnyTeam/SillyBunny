@@ -27,7 +27,7 @@ const defaultSettings = {
     promptGuidedResponse: '[Take the following into special consideration for your next message: {{input}}]',
     promptGuidedSwipe: '[Take the following into special consideration for your next message: {{input}}]',
     promptGuidedCorrection: '[Apply the following correction to your previous message: {{input}}]',
-    promptImpersonate1st: 'Write the next message in first person as {{user}}, not {{char}}. Keep the response in {{user}}\'s own words and actions. {{input}}',
+    promptImpersonate1st: 'Write the next message as {{user}}, not {{char}}. Follow the requested perspective, narration style, and constraints exactly. {{input}}',
     helperPrefillMessages: '',
     depthPromptGuidedResponse: 0,
     depthPromptGuidedSwipe: 0,
@@ -339,7 +339,7 @@ function updateExtensionButtons() {
 
     const buttons = [
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
-        settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user', guidedImpersonate),
+        settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user-pen', guidedImpersonate),
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),
         settings.showGuidedCorrection && createActionButton('gg_correction_button', 'Guided Correction', 'fa-solid fa-pen-to-square', guidedCorrection),
         settings.showGuidedResponse && createActionButton('gg_response_button', 'Guided Response', 'fa-solid fa-compass', guidedResponse),

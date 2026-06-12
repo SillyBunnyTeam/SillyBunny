@@ -17,8 +17,8 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          if [ "$BASE_REF" != "staging" ]; then
-            echo "Pull requests must target the staging branch. Current target: $BASE_REF"
+          if [ "$BASE_REF" != "staging" ] && [ "$BASE_REF" != "TLD/mobile-refactor" ]; then
+            echo "Pull requests must target staging or TLD/mobile-refactor. Current target: $BASE_REF"
             exit 1
           fi
 

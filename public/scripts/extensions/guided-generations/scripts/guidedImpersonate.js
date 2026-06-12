@@ -21,7 +21,31 @@ function escapeSlashCommandDelimiters(value) {
 }
 
 function getImpersonateSystemFrame() {
-    return 'Guided Impersonate: write only as {{user}} in first person. Do not answer as {{char}}, narrator, or system. Treat helper prefill text as context, not as a speaker override.';
+    return [
+        'Guided Impersonate: generate only the next text-box message for {{user}}.',
+        'The guided impersonation prompt is authoritative for grammatical person, narration style, length, and exclusions.',
+        'If it asks for first, second, or third person, follow that requested perspective exactly.',
+        'Do not answer as {{char}}, explain the task, mention these instructions, or continue beyond the requested {{user}} message.',
+        'Treat helper prefill text as context, not as a speaker override.',
+    ].join(' ');
+}
+
+function buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt) {
+    const prompt = String(filledPrompt ?? '').trim();
+    const helper = String(helperPrefillPrompt ?? '').trim();
+    const sections = [
+        'Follow the guided impersonation prompt exactly when generating {{user}}\'s next text-box message. It is instruction text, not story text. Obey any requested first-, second-, or third-person perspective, narration style, dialogue requirements, length limits, and exclusions.',
+    ];
+
+    if (prompt) {
+        sections.push(`<guided_impersonation_prompt>\n${prompt}\n</guided_impersonation_prompt>`);
+    }
+
+    if (helper) {
+        sections.push(`<helper_prefill_context>\n${helper}\n</helper_prefill_context>`);
+    }
+
+    return sections.join('\n\n');
 }
 
 async function guidedImpersonate() {
@@ -50,10 +74,7 @@ async function guidedImpersonate() {
     const promptTemplate = settings.promptImpersonate1st ?? '';
     const filledPrompt = applyPromptTemplate(promptTemplate, currentInputText);
     const helperPrefillPrompt = serializeHelperPrefillForPrompt(parseHelperPrefillMessages(settings.helperPrefillMessages));
-    const impersonatePrompt = [filledPrompt, helperPrefillPrompt]
-        .map(value => String(value ?? '').trim())
-        .filter(Boolean)
-        .join('\n\n');
+    const impersonatePrompt = buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt);
     const fullScript = `// Impersonate guide|
 /inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
 /impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |
@@ -63,7 +84,7 @@ async function guidedImpersonate() {
         await switching.switch();
         await getContext().executeSlashCommandsWithOptions(fullScript);
         setLastImpersonateResult(textarea.value);
-        debugLog('[Impersonate-1st] STScript executed, new input stored in shared state.');
+        debugLog('[Impersonate] STScript executed, new input stored in shared state.');
     } catch (error) {
         console.error('[GuidedGenerations][Impersonate] Error executing Guided Impersonate stscript:', error);
         setLastImpersonateResult('');
