@@ -82,6 +82,7 @@ import { debounce, delay, equalsIgnoreCaseAndAccents, findChar, getCharIndex, is
 import { registerVariableCommands, resolveVariable } from './variables.js';
 import { registerActionLoaderSlashCommands } from './action-loader-slashcommands.js';
 import { background_settings } from './backgrounds.js';
+import { IMPERSONATION_FORMATS, normalizeImpersonationFormat } from './impersonation-mode.js';
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { SlashCommandClosureResult } from './slash-commands/SlashCommandClosureResult.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -346,7 +347,13 @@ export function initDefaultSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'impersonate',
         callback: async function (args, prompt) {
-            const options = prompt?.toString()?.trim() ? { quiet_prompt: prompt.toString().trim(), quietToLoud: true } : {};
+            const options = {
+                impersonationFormat: normalizeImpersonationFormat(args?.format),
+            };
+            if (prompt?.toString()?.trim()) {
+                options.quiet_prompt = prompt.toString().trim();
+                options.quietToLoud = true;
+            }
             const shouldAwait = isTrueBoolean(args?.await?.toString());
             const outerPromise = new Promise((outerResolve) => setTimeout(async () => {
                 try {
@@ -380,6 +387,15 @@ export function initDefaultSlashCommands() {
                 false,
                 false,
                 'false',
+            ),
+            new SlashCommandNamedArgument(
+                'format',
+                t`Impersonation prompt format. Use neutral to let the prompt control perspective without the user-name continuation prefill.`,
+                [ARGUMENT_TYPE.STRING],
+                false,
+                false,
+                IMPERSONATION_FORMATS.DEFAULT,
+                [IMPERSONATION_FORMATS.DEFAULT, IMPERSONATION_FORMATS.NEUTRAL],
             ),
         ],
         unnamedArgumentList: [

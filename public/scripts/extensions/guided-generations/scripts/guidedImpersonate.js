@@ -15,6 +15,7 @@ import {
     parseHelperPrefillMessages,
     serializeHelperPrefillForPrompt,
 } from '../../helper-prefill.js';
+import { IMPERSONATION_FORMATS } from '../../../impersonation-mode.js';
 
 function escapeSlashCommandDelimiters(value) {
     return String(value ?? '').replace(/\|/g, '\\|');
@@ -77,7 +78,7 @@ async function guidedImpersonate() {
     const impersonatePrompt = buildGuidedImpersonatePrompt(filledPrompt, helperPrefillPrompt);
     const fullScript = `// Impersonate guide|
 /inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system ${escapeSlashCommandDelimiters(getImpersonateSystemFrame())} |
-/impersonate await=true ${escapeSlashCommandDelimiters(impersonatePrompt)} |
+/impersonate await=true format=${IMPERSONATION_FORMATS.NEUTRAL} ${escapeSlashCommandDelimiters(impersonatePrompt)} |
 /flushinject gg-impersonate-voice |`;
 
     try {

@@ -137,6 +137,7 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
 
+    /* eslint-disable playwright/no-standalone-expect -- Jest test.each is not recognized by this Playwright rule. */
     test.each([
         ['first', 'FIRST PERSON: {{input}}'],
         ['second', 'SECOND PERSON: {{input}}'],
@@ -159,7 +160,7 @@ I | begin`;
         expect(command).toContain('The guided impersonation prompt is authoritative for grammatical person, narration style, length, and exclusions.');
         expect(command).toContain('If it asks for first, second, or third person, follow that requested perspective exactly.');
         expect(command).not.toContain('write only as {{user}} in first person');
-        expect(command).toContain('/impersonate await=true Follow the guided impersonation prompt exactly when generating {{user}}\'s next text-box message.');
+        expect(command).toContain('/impersonate await=true format=neutral Follow the guided impersonation prompt exactly when generating {{user}}\'s next text-box message.');
         expect(command).toContain('<guided_impersonation_prompt>');
         expect(command).toContain(promptTemplate.replace('{{input}}', 'aim for a colder, suspicious reply'));
         expect(command).toContain('</guided_impersonation_prompt>');
@@ -169,4 +170,5 @@ I | begin`;
         expect(command).toContain('</helper_prefill_context>');
         expect(command).toContain('/flushinject gg-impersonate-voice |');
     });
+    /* eslint-enable playwright/no-standalone-expect */
 });
