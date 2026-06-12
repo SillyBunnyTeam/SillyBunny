@@ -16,6 +16,7 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
+import { openCompanionPanel } from './companion-panel.js';
 
 const RECENT_NOTES_LIMIT = 20;
 const NOTE_SNIPPET_LENGTH = 120;
@@ -67,7 +68,7 @@ export function buildCompanionAgentRowHtml(agent) {
     const enabled = isAgentEnabledForCurrentScope(agent);
     const pills = [
         companion.trigger === 'manual' ? 'manual' : 'auto',
-        companion.displayMode === 'hidden' ? 'hidden' : 'card',
+        ['panel', 'hidden'].includes(companion.displayMode) ? companion.displayMode : 'card',
         companion.format,
         companion.batch ? 'batch' : '',
         companion.feedback.enabled ? `feedback ×${companion.feedback.depth}` : '',
@@ -175,6 +176,10 @@ export function buildDashboardHtml() {
                     <i class="fa-solid fa-play"></i>
                     <span>Run All on Last Reply</span>
                 </button>
+                <button type="button" class="menu_button menu_button_icon" data-action="open-panel" title="Open the slide-out tracker panel with the latest companion state">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    <span>Tracker Panel</span>
+                </button>
                 <button type="button" class="menu_button menu_button_icon" data-action="new-companion" title="Create a new companion from scratch">
                     <i class="fa-solid fa-plus"></i>
                     <span>New Companion</span>
@@ -245,6 +250,12 @@ async function handleDashboardAction(event, root, rerender) {
         } finally {
             button.prop('disabled', false);
         }
+        return;
+    }
+
+    if (action === 'open-panel') {
+        await closeDashboard();
+        openCompanionPanel();
         return;
     }
 

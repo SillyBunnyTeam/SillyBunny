@@ -8,6 +8,7 @@ import {
 import { getContext } from '../../../extensions.js';
 import { eventSource } from '../../../events.js';
 import { getWorldInfoPrompt } from '../../../world-info.js';
+import { getConnectionProfileDisplayName } from '../profile-utils.js';
 import {
     getAgentById,
     getCompanionConfig,
@@ -52,7 +53,13 @@ function capResultContent(value = '') {
 
 function getProfileLabel(agent, responseProfileId = '') {
     const profileId = String(responseProfileId || resolveConnectionProfile(agent?.connectionProfile) || '').trim();
-    return profileId || 'Main model';
+    if (!profileId) {
+        return 'Main model';
+    }
+
+    // Show a friendly profile name or nothing: a raw profile id in the card header reads as noise.
+    const displayName = getConnectionProfileDisplayName(profileId);
+    return displayName === profileId ? '' : displayName;
 }
 
 function getModelLabel(agent = {}) {
@@ -298,11 +305,19 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const companion = getCompanionConfig(agent);
     const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
+    // Tracker prompts were written to ride along with a story reply; running standalone, models
+    // tend to add narration around the state block unless told the scene is not theirs to write.
+    const stateOnlyInstruction = agent?.category === 'tracker'
+        ? 'You are a state tracker, not a storyteller. Output only the tracked state in the exact format the instructions define. Do not write narration, dialogue, prose, or commentary around it.'
+        : '';
 
     return [
         {
             role: 'system',
-            content: `${expandedPrompt}\n\n${getFormatInstruction(companion.format)}`.trim(),
+            content: [expandedPrompt, getFormatInstruction(companion.format), stateOnlyInstruction]
+                .filter(Boolean)
+                .join('\n\n')
+                .trim(),
         },
         {
             role: 'user',

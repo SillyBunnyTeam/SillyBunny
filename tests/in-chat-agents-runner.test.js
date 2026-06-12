@@ -918,6 +918,47 @@ describe('in-chat agent post-processing runner', () => {
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults).toBeUndefined();
     });
 
+    test('instructs tracker companions to output state only', async () => {
+        const trackerCompanion = createCompanionAgent({ id: 'tracker-companion', category: 'tracker' });
+        const noteCompanion = createCompanionAgent({ id: 'note-companion' });
+        enabledAgents = [trackerCompanion, noteCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const trackerMessages = await companionRunner.buildCompanionPromptMessages(trackerCompanion, 1);
+        expect(trackerMessages[0].role).toBe('system');
+        expect(trackerMessages[0].content).toContain('state tracker, not a storyteller');
+
+        const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
+        expect(noteMessages[0].content).not.toContain('state tracker');
+    });
+
+    test('stores readable profile labels instead of raw profile ids', async () => {
+        const profiledCompanion = createCompanionAgent({ id: 'profiled-companion' });
+        profiledCompanion.connectionProfile = '20345602-939a-44c2-8522-525fb7212b0e';
+        enabledAgents = [profiledCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const unresolvedMessage = { mes: 'Reply A', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(unresolvedMessage);
+
+        const unresolved = companionRunner.setCompanionResult(unresolvedMessage, profiledCompanion, { status: 'done', content: 'note' });
+        expect(unresolved.profileLabel).toBe('');
+
+        connectionManagerRequestService = {
+            getProfile: jest.fn(() => ({ name: 'Cheap Notes Model' })),
+        };
+        const resolvedMessage = { mes: 'Reply B', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(resolvedMessage);
+
+        const resolved = companionRunner.setCompanionResult(resolvedMessage, profiledCompanion, { status: 'done', content: 'note' });
+        expect(resolved.profileLabel).toBe('Cheap Notes Model');
+    });
+
     test('waits for Pathfinder retrieval before injecting pre-generation prompts', async () => {
         usePrePromptAgent();
         enabledAgents.unshift({

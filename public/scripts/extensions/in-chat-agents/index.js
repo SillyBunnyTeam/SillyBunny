@@ -84,6 +84,7 @@ import {
 import { collectRecentCompanionResults, initCompanionRunner } from './companion/companion-runner.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
+import { initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -300,8 +301,11 @@ async function applyAgentExecutionConversion(agent, targetExecution) {
     refreshRegexSnapshotsForAgent(agent.id);
     syncToolAgentRegistrations();
     renderAgentList();
+    const companionDestination = getCompanionConfig(agent).displayMode === 'panel'
+        ? 'its state now appears in the slide-out Tracker panel'
+        : 'it now runs as a note card under assistant replies';
     toastr.success(targetExecution === 'companion'
-        ? `"${agent.name}" now runs as a companion note under assistant replies.`
+        ? `"${agent.name}" converted to companion — ${companionDestination}.`
         : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}.`);
     return true;
 }
@@ -1776,6 +1780,7 @@ function renderAgentList() {
         restoreAgentListScrollState(scrollState);
         updateFixTrackersButtonVisibility();
         updateCompanionButtonVisibility();
+        updateCompanionPanelHandleVisibility();
         return;
     }
 
@@ -1987,6 +1992,7 @@ function renderAgentList() {
     restoreAgentListScrollState(scrollState);
     updateFixTrackersButtonVisibility();
     updateCompanionButtonVisibility();
+    updateCompanionPanelHandleVisibility();
 }
 
 // ===================== Editor Modal =====================
@@ -4488,6 +4494,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         getLastAssistantMessageIndex,
     });
     initCompanionWandMenuItem();
+    initCompanionPanel();
     schedulePathfinderExtensionsMount();
 
     // Wire up toolbar

@@ -742,7 +742,7 @@ export function normalizeCompanionConfig(raw = {}) {
         trigger: ['auto', 'manual'].includes(String(rawConfig.trigger))
             ? String(rawConfig.trigger)
             : defaults.trigger,
-        displayMode: ['card', 'hidden'].includes(String(rawConfig.displayMode))
+        displayMode: ['card', 'panel', 'hidden'].includes(String(rawConfig.displayMode))
             ? String(rawConfig.displayMode)
             : defaults.displayMode,
         format: ['markdown', 'html', 'text'].includes(String(rawConfig.format))
@@ -1223,6 +1223,11 @@ export function convertAgentExecution(agent, targetExecution) {
     if (wantsCompanion) {
         agent.execution = 'companion';
         agent.companion = normalizeCompanionConfig(agent.companion);
+        // Trackers are state, not notes: keep them out of the chat flow and in the
+        // slide-out tracker panel. The editor can switch them back to cards.
+        if (agent.category === 'tracker') {
+            agent.companion.displayMode = 'panel';
+        }
         agent.phase = 'post';
         return true;
     }

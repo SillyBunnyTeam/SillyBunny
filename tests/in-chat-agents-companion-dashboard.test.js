@@ -104,6 +104,10 @@ describe('companion dashboard', () => {
             runCompanionsOnMessage: jest.fn(async () => ({})),
         }));
 
+        await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
+            openCompanionPanel: jest.fn(),
+        }));
+
         return await import('../public/scripts/extensions/in-chat-agents/companion/companion-dashboard.js');
     }
 

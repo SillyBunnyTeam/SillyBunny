@@ -1543,6 +1543,170 @@ button.ica--card-pill--version-update {
     max-width: 100%;
 }
 
+/* ── Slide-out Tracker Panel ────────────────────────── */
+
+.ica--tpanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    width: min(420px, 94vw);
+    height: 100dvh;
+    padding: 12px;
+    gap: 12px;
+    border-left: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 92%, #000);
+    backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    contain: layout style;
+}
+
+.ica--tpanel.is-open {
+    transform: translateX(0);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+}
+
+.ica--tpanel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.ica--tpanel-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    font-size: calc(var(--mainFontSize) * 1.1);
+}
+
+.ica--tpanel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ica--tpanel-agent {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 48%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 36%, transparent);
+}
+
+.ica--tpanel-agent-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ica--tpanel-agent-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1 1 auto;
+    font-weight: 700;
+}
+
+.ica--tpanel-agent-name span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ica--tpanel-agent-when {
+    flex: 0 0 auto;
+    font-size: calc(var(--mainFontSize) * 0.75);
+    opacity: 0.6;
+}
+
+.ica--tpanel-agent-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.ica--tpanel-agent-body {
+    line-height: 1.45;
+    font-size: calc(var(--mainFontSize) * 0.92);
+}
+
+.ica--tpanel-agent-body > :first-child {
+    margin-top: 0;
+}
+
+.ica--tpanel-agent-body > :last-child {
+    margin-bottom: 0;
+}
+
+.ica--tpanel-history summary {
+    cursor: pointer;
+    font-size: calc(var(--mainFontSize) * 0.8);
+    opacity: 0.65;
+    user-select: none;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+}
+
+.ica--tpanel-history-entry {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+}
+
+.ica--tpanel-history-head {
+    font-size: calc(var(--mainFontSize) * 0.72);
+    opacity: 0.55;
+    margin-bottom: 4px;
+}
+
+.ica--tpanel-handle {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    z-index: 2999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 7px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
+    border-right: none;
+    border-radius: 10px 0 0 10px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 88%, #000);
+    color: inherit;
+    cursor: pointer;
+    transform: translateY(-50%);
+    opacity: 0.82;
+}
+
+.ica--tpanel-handle:hover,
+.ica--tpanel-handle:focus-visible {
+    opacity: 1;
+    outline: none;
+}
+
+.ica--tpanel-handle span {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: calc(var(--mainFontSize) * 0.72);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 /* ── Template Browser ───────────────────────────────── */
 
 .ica--template-browser {

@@ -452,7 +452,7 @@ describe('in-chat agent scoped enabled state', () => {
         expect(agent.phase).toBe('post');
         expect(agent.category).toBe('tracker');
         expect(store.isCompanionAgent(agent)).toBe(true);
-        expect(agent.companion).toEqual(store.createDefaultCompanionConfig());
+        expect(agent.companion).toEqual({ ...store.createDefaultCompanionConfig(), displayMode: 'panel' });
         expect(agent.regexScripts).toHaveLength(1);
         expect(agent.regexScripts[0]).toEqual(expect.objectContaining({ findRegex: '/foo/', replaceString: 'bar' }));
         expect(agent.injection).toEqual(expect.objectContaining({ position: 1, depth: 6, role: 2, order: 42, scan: true }));
@@ -496,6 +496,29 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
         expect(store.isCompanionAgent(agent)).toBe(true);
         expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
+    });
+
+    test('keeps converted trackers out of the chat flow via the panel display mode', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'plain-tracker', name: 'Plain Tracker', category: 'tracker', phase: 'pre' },
+            { id: 'plain-content', name: 'Content Agent', category: 'content', phase: 'post' },
+        ]);
+
+        const plainTracker = store.getAgentById('plain-tracker');
+        expect(store.convertAgentExecution(plainTracker, 'companion')).toBe(true);
+        expect(plainTracker.companion.displayMode).toBe('panel');
+
+        const contentAgent = store.getAgentById('plain-content');
+        expect(store.convertAgentExecution(contentAgent, 'companion')).toBe(true);
+        expect(contentAgent.companion.displayMode).toBe('card');
+    });
+
+    test('normalizes the panel display mode for companion configs', async () => {
+        const store = await importStore();
+
+        expect(store.normalizeCompanionConfig({ displayMode: 'panel' }).displayMode).toBe('panel');
+        expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('card');
     });
 
     test('refuses no-op and tool-agent execution conversions', async () => {

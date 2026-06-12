@@ -106,13 +106,15 @@ function getResultSortValue(result = {}) {
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function isHiddenCompanionResult(agentId, result = {}) {
-    if (result.displayMode === 'hidden') {
+const OFF_LEDGER_DISPLAY_MODES = new Set(['hidden', 'panel']);
+
+export function isHiddenCompanionResult(agentId, result = {}) {
+    if (OFF_LEDGER_DISPLAY_MODES.has(result.displayMode)) {
         return true;
     }
 
     const agent = getAgentById(agentId);
-    return Boolean(agent && getCompanionConfig(agent).displayMode === 'hidden');
+    return Boolean(agent && OFF_LEDGER_DISPLAY_MODES.has(getCompanionConfig(agent).displayMode));
 }
 
 function getRenderableCompanionEntries(message) {
@@ -139,13 +141,26 @@ function buildCompanionBody(agentId, result, message) {
     return formatCompanionContent(agentId, result, message);
 }
 
+const RAW_ID_LABEL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TRAILING_ID_IN_NAME_RE = /\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*$/i;
+
+function isReadableLabel(label) {
+    return Boolean(label) && !RAW_ID_LABEL_RE.test(label);
+}
+
+/** Imported/AI-generated agents sometimes carry a uuid suffix in their name; never display it. */
+export function cleanCompanionAgentName(name) {
+    return String(name ?? '').replace(TRAILING_ID_IN_NAME_RE, '').trim() || 'Companion';
+}
+
 function buildCompanionCard(agentId, result, message) {
     const status = getResultStatus(result);
-    const agentName = String(result.agentName ?? '').trim() || 'Companion';
+    const agentName = cleanCompanionAgentName(result.agentName);
     const icon = String(result.icon ?? '').trim() || 'fa-user-astronaut';
     const profileLabel = String(result.profileLabel ?? '').trim();
     const modelLabel = String(result.modelLabel ?? '').trim();
-    const meta = [profileLabel, modelLabel].filter(Boolean).join(' / ');
+    // Results saved before profile labels were resolved to names may carry raw profile ids.
+    const meta = [profileLabel, modelLabel].filter(isReadableLabel).join(' / ');
     const openAttribute = result.collapsed ? '' : ' open';
 
     return `

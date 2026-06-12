@@ -200,6 +200,26 @@ describe('companion card ui', () => {
         expect(html).toBe('<md>[STATUS|calm]</md>');
     });
 
+    test('keeps panel and hidden results out of the chat ledger', async () => {
+        const { isHiddenCompanionResult } = await importCompanionUi();
+
+        expect(isHiddenCompanionResult('companion-tracker', { displayMode: 'panel' })).toBe(true);
+        expect(isHiddenCompanionResult('companion-tracker', { displayMode: 'hidden' })).toBe(true);
+        expect(isHiddenCompanionResult('companion-tracker', { displayMode: 'card' })).toBe(false);
+
+        const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        store.getCompanionConfig.mockReturnValue({ displayMode: 'panel' });
+        expect(isHiddenCompanionResult('companion-tracker', {})).toBe(true);
+    });
+
+    test('cleans uuid suffixes from companion agent display names', async () => {
+        const { cleanCompanionAgentName } = await importCompanionUi();
+
+        expect(cleanCompanionAgentName('Scene Tracker 20345602-939a-44c2-8522-525fb7212b0e')).toBe('Scene Tracker');
+        expect(cleanCompanionAgentName('Scene Tracker')).toBe('Scene Tracker');
+        expect(cleanCompanionAgentName('')).toBe('Companion');
+    });
+
     test('registers re-render listeners for lazy loads, edits, and deletions', async () => {
         const { initCompanionCardUi } = await importCompanionUi();
 

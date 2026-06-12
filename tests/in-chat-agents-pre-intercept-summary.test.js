@@ -198,6 +198,12 @@ beforeAll(async () => {
         openCompanionDashboard: jest.fn(),
     }));
 
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
+        initCompanionPanel: jest.fn(),
+        openCompanionPanel: jest.fn(),
+        updateCompanionPanelHandleVisibility: jest.fn(),
+    }));
+
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
         buildFallbackPromptText: jest.fn(() => ''),
         extractProfileResponseText: jest.fn(() => ''),
