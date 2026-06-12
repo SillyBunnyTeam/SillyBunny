@@ -8239,7 +8239,13 @@ function hideHostToggles() {
     // and sends their dropdowns off-screen (Sillyanonymous/SillyTavern-CharacterLibrary#28).
     const characterDrawer = getCharacterDrawerHost();
     characterDrawer?.classList.add('sb-drawer-host');
-    characterDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-ghost-toggle');
+    const characterToggle = characterDrawer?.querySelector(':scope > .drawer-toggle');
+    characterToggle?.classList.add('sb-ghost-toggle');
+    // Apply critical hiding via inline styles to avoid !important budget inflation
+    if (characterToggle instanceof HTMLElement) {
+        characterToggle.style.visibility = 'hidden';
+        characterToggle.style.pointerEvents = 'none';
+    }
 
     // SillyBunny: World Info is no longer a left/top-level drawer, but keeping
     // the upstream drawer ID preserves legacy selectors until runtime reparents it.

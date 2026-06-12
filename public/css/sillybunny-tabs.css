@@ -222,16 +222,15 @@
 /*
  * SillyBunny: ghost-toggle for the native Characters drawer toggle.
  * Extensions like CharacterLibrary anchor dropdowns to the native toggle's (or its icon child's) bounding rect.
- * This rule keeps the toggle invisible and non-interactive while preserving a real layout rect of correct size,
- * positioned via JS over the shell's proxy Characters button so extension dropdowns can position correctly.
+ * Critical hiding properties (visibility, pointer-events) are applied via inline styles in hideHostToggles()
+ * to stay within the CSS ratchet budget; this class serves as a semantic marker and default.
+ * Positioned via JS over the shell's proxy Characters button so extension dropdowns anchor correctly.
  */
 .sb-ghost-toggle {
-    visibility: hidden !important;
-    pointer-events: none !important;
-    z-index: -1 !important;
-    opacity: 0 !important;
-    margin: 0 !important;
-    border: none !important;
+    z-index: -1;
+    opacity: 0;
+    margin: 0;
+    border: none;
 }
 
 #top-settings-holder > #ai-config-button > .drawer-content.openDrawer,
