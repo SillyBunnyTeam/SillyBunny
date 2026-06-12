@@ -334,7 +334,7 @@ describe('in-chat agent scoped enabled state', () => {
         expect(agent.execution).toBe('inline');
         expect(agent.companion).toEqual({
             trigger: 'auto',
-            displayMode: 'card',
+            displayMode: 'panel',
             format: 'markdown',
             rawPrompt: false,
             inlinePhase: '',
@@ -527,7 +527,7 @@ describe('in-chat agent scoped enabled state', () => {
         const contentAgent = store.getAgentById('plain-content');
         expect(store.convertAgentExecution(contentAgent, 'companion')).toBe(true);
         expect(contentAgent.companion).toEqual(expect.objectContaining({
-            displayMode: 'card',
+            displayMode: 'panel',
             rawPrompt: false,
             feedback: expect.objectContaining({ enabled: false }),
         }));
@@ -560,14 +560,14 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.applyTrackerCompanionAutoLoopDefaults(store.getAgentById('inline-tracker'))).toBe(false);
         const noteCompanion = store.getAgentById('note-companion');
         expect(store.applyTrackerCompanionAutoLoopDefaults(noteCompanion)).toBe(false);
-        expect(noteCompanion.companion.displayMode).toBe('card');
+        expect(noteCompanion.companion.displayMode).toBe('panel');
     });
 
     test('normalizes the panel display mode for companion configs', async () => {
         const store = await importStore();
 
         expect(store.normalizeCompanionConfig({ displayMode: 'panel' }).displayMode).toBe('panel');
-        expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('card');
+        expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('panel');
     });
 
     test('grants context access defaults to companions while honoring explicit choices', async () => {
@@ -604,6 +604,26 @@ describe('in-chat agent scoped enabled state', () => {
         }));
         expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(false);
         expect(store.applyCompanionContextAccessDefaults(store.getAgentById('inline-agent'))).toBe(false);
+    });
+
+    test('moves card-mode companions into the panel once', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'card-companion', name: 'Card Companion', category: 'companion', execution: 'companion', companion: { displayMode: 'card' } },
+            { id: 'hidden-companion', name: 'Hidden Companion', category: 'companion', execution: 'companion', companion: { displayMode: 'hidden' } },
+            { id: 'inline-agent', name: 'Inline', category: 'custom' },
+        ]);
+
+        const cardCompanion = store.getAgentById('card-companion');
+        expect(store.applyCompanionPanelDisplayDefault(cardCompanion)).toBe(true);
+        expect(cardCompanion.companion.displayMode).toBe('panel');
+        expect(store.applyCompanionPanelDisplayDefault(cardCompanion)).toBe(false);
+
+        const hiddenCompanion = store.getAgentById('hidden-companion');
+        expect(store.applyCompanionPanelDisplayDefault(hiddenCompanion)).toBe(false);
+        expect(hiddenCompanion.companion.displayMode).toBe('hidden');
+
+        expect(store.applyCompanionPanelDisplayDefault(store.getAgentById('inline-agent'))).toBe(false);
     });
 
     test('matches agents to list tabs by phase and execution', async () => {

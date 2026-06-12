@@ -9,14 +9,14 @@
         "memory",
         "notes"
     ],
-    "version": 1,
+    "version": 2,
     "author": "SillyBunny",
     "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Return 3-6 bullets. If nothing needs attention, write exactly: No continuity issues noticed. Do not rewrite the reply.",
     "phase": "post",
     "execution": "companion",
     "companion": {
         "trigger": "auto",
-        "displayMode": "card",
+        "displayMode": "panel",
         "format": "markdown",
         "contextMessages": 12,
         "includeCharacterCard": false,

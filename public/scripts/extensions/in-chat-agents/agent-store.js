@@ -751,7 +751,8 @@ function clampNumber(value, fallback, min, max) {
 export function createDefaultCompanionConfig() {
     return {
         trigger: 'auto',
-        displayMode: 'card',
+        // Companions live in the slide-out panel by default; in-chat cards are an opt-in.
+        displayMode: 'panel',
         format: 'markdown',
         rawPrompt: false,
         inlinePhase: '',
@@ -1268,6 +1269,27 @@ function buildCompanionContextAccessDefaults() {
         // Companions evolve their own previous states instead of re-deriving them each turn.
         includeHistory: true,
     };
+}
+
+/**
+ * Moves a card-mode companion into the slide-out panel. Used by the one-time migration;
+ * the editor can still opt back into in-chat cards afterwards.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyCompanionPanelDisplayDefault(agent) {
+    if (!agent || !isCompanionAgent(agent)) {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    agent.companion = companion;
+    if (companion.displayMode !== 'card') {
+        return false;
+    }
+
+    companion.displayMode = 'panel';
+    return true;
 }
 
 /**

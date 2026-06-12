@@ -44,6 +44,7 @@ import {
     loadCustomGroups,
     agentMatchesListTab,
     applyCompanionContextAccessDefaults,
+    applyCompanionPanelDisplayDefault,
     applyTrackerCompanionAutoLoopDefaults,
     convertAgentExecution,
     isCompanionAgent,
@@ -293,7 +294,7 @@ async function toggleAgentFavorite(agent) {
     renderAgentList();
 }
 
-const TRACKER_COMPANION_AUTO_LOOP_VERSION = 3;
+const TRACKER_COMPANION_AUTO_LOOP_VERSION = 4;
 
 async function migrateTrackerCompanionsToAutoLoop() {
     const settings = getGlobalSettings();
@@ -305,8 +306,9 @@ async function migrateTrackerCompanionsToAutoLoop() {
     let migrated = 0;
     for (const agent of getAgents()) {
         const contextChanged = applyCompanionContextAccessDefaults(agent);
+        const displayChanged = applyCompanionPanelDisplayDefault(agent);
         const loopChanged = applyTrackerCompanionAutoLoopDefaults(agent);
-        if (contextChanged || loopChanged) {
+        if (contextChanged || displayChanged || loopChanged) {
             await saveAgent(agent);
             migrated++;
         }

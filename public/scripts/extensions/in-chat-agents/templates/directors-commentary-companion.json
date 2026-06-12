@@ -9,14 +9,14 @@
         "scene",
         "notes"
     ],
-    "version": 1,
+    "version": 2,
     "author": "SillyBunny",
     "prompt": "You are the director watching this scene from behind the camera. Read the latest assistant reply and recent context, then write a short commentary track for the user. Cover: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Do not rewrite the reply and do not address the characters.",
     "phase": "post",
     "execution": "companion",
     "companion": {
         "trigger": "auto",
-        "displayMode": "card",
+        "displayMode": "panel",
         "format": "markdown",
         "contextMessages": 8,
         "includeCharacterCard": false,

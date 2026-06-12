@@ -124,7 +124,7 @@ describe('in-chat agent bundled templates', () => {
         }));
         expect(continuity.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
-            displayMode: 'card',
+            displayMode: 'panel',
             format: 'markdown',
             feedback: { enabled: true, depth: 2 },
             batch: true,
@@ -132,7 +132,7 @@ describe('in-chat agent bundled templates', () => {
         }));
         expect(relationship.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
-            displayMode: 'card',
+            displayMode: 'panel',
             feedback: { enabled: false, depth: 1 },
         }));
 
