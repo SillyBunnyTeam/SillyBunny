@@ -192,6 +192,12 @@ beforeAll(async () => {
         updateCompanionButtonVisibility: jest.fn(),
     }));
 
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-dashboard.js', () => ({
+        configureCompanionDashboard: jest.fn(),
+        initCompanionWandMenuItem: jest.fn(),
+        openCompanionDashboard: jest.fn(),
+    }));
+
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
         buildFallbackPromptText: jest.fn(() => ''),
         extractProfileResponseText: jest.fn(() => ''),

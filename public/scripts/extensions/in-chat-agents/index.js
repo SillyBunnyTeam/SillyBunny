@@ -83,6 +83,7 @@ import {
 } from './profile-utils.js';
 import { collectRecentCompanionResults, initCompanionRunner } from './companion/companion-runner.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
+import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -286,6 +287,23 @@ async function toggleAgentFavorite(agent) {
     agent.favorite = !agent.favorite;
     await saveAgent(agent);
     renderAgentList();
+}
+
+async function applyAgentExecutionConversion(agent, targetExecution) {
+    const movesToCustom = targetExecution === 'inline' && agent.category === 'companion';
+    if (!convertAgentExecution(agent, targetExecution)) {
+        return false;
+    }
+
+    lockBundledAgentCustomization(agent);
+    await saveAgent(agent);
+    refreshRegexSnapshotsForAgent(agent.id);
+    syncToolAgentRegistrations();
+    renderAgentList();
+    toastr.success(targetExecution === 'companion'
+        ? `"${agent.name}" now runs as a companion note under assistant replies.`
+        : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}.`);
+    return true;
 }
 
 function findTemplateById(templateId) {
@@ -1920,20 +1938,7 @@ function renderAgentList() {
 
             card.find('.ica--btn-convert-execution').on('click', async event => {
                 stopEvent(event);
-                const targetExecution = isCompanionAgent(agent) ? 'inline' : 'companion';
-                const movesToCustom = targetExecution === 'inline' && agent.category === 'companion';
-                if (!convertAgentExecution(agent, targetExecution)) {
-                    return;
-                }
-
-                lockBundledAgentCustomization(agent);
-                await saveAgent(agent);
-                refreshRegexSnapshotsForAgent(agent.id);
-                syncToolAgentRegistrations();
-                renderAgentList();
-                toastr.success(targetExecution === 'companion'
-                    ? `"${agent.name}" now runs as a companion note under assistant replies.`
-                    : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}.`);
+                await applyAgentExecutionConversion(agent, isCompanionAgent(agent) ? 'inline' : 'companion');
             });
 
             card.find('.ica--btn-run').on('click', async event => {
@@ -2091,14 +2096,26 @@ async function openRegexScriptEditor(existingScript = null) {
     });
 }
 
+function buildCompanionDraftAgent() {
+    const draft = createDefaultAgent();
+    draft.category = 'companion';
+    draft.execution = 'companion';
+    draft.phase = 'post';
+    draft.companion = getCompanionConfig(draft);
+    return draft;
+}
+
 /**
  * Opens the agent editor for the given agent ID (or creates a new one).
  * @param {string|null} agentId
+ * @param {object} [options]
+ * @param {object|null} [options.draft] Prefilled agent to edit instead of a blank default (new agents only).
+ * @param {boolean} [options.autoOpenCompanionMaker] Open the companion AI maker once the editor is up.
  */
-async function openEditor(agentId = null) {
+async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker = false } = {}) {
     const existingAgent = agentId ? getAgentById(agentId) : null;
     if (agentId && !existingAgent) return;
-    const agent = existingAgent ? structuredClone(existingAgent) : createDefaultAgent();
+    const agent = existingAgent ? structuredClone(existingAgent) : (draft ?? createDefaultAgent());
     const originalAgentState = JSON.stringify(agent);
     if (!agent) return;
 
@@ -2619,6 +2636,10 @@ async function openEditor(agentId = null) {
         };
         await previewCompanionFeedbackPrompt(previewAgent);
     });
+
+    if (autoOpenCompanionMaker) {
+        setTimeout(() => editorEl.find('#ica--editor-companion-maker').trigger('click'), 50);
+    }
 
     // Show popup
     const result = await new Popup(editorEl, POPUP_TYPE.CONFIRM, '', {
@@ -4458,6 +4479,15 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     // Render the panel
     renderAgentList();
     initCompanionCardUi();
+    configureCompanionDashboard({
+        openEditor: agentId => openEditor(agentId),
+        openCompanionDraftEditor: ({ autoOpenCompanionMaker = false } = {}) => openEditor(null, { draft: buildCompanionDraftAgent(), autoOpenCompanionMaker }),
+        toggleAgentEnabled,
+        convertAgent: applyAgentExecutionConversion,
+        getVisibleAgents: getVisibleInChatAgents,
+        getLastAssistantMessageIndex,
+    });
+    initCompanionWandMenuItem();
     schedulePathfinderExtensionsMount();
 
     // Wire up toolbar
@@ -4472,6 +4502,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         toastr.info(enabled ? 'In-Chat Agents enabled.' : 'In-Chat Agents disabled.');
     });
     $('#ica--addAgent').on('click', () => openEditor());
+    $('#ica--companionsDashboard').on('click', () => openCompanionDashboard());
     $('#ica--importAgent').on('click', () => $('#ica--importFile').trigger('click'));
     $('#ica--importFile').on('change', handleImport);
     $('#ica--exportAll').on('click', handleExportAll);
