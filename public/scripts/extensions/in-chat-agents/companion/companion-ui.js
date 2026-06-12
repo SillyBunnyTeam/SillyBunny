@@ -78,14 +78,14 @@ export function formatCompanionContent(agentId, result = {}, message = null) {
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
 
     if (result.format === 'html') {
-        return sanitizeCompanionHtml(content);
+        return decorateChoiceLines(sanitizeCompanionHtml(content));
     }
 
     if (result.format === 'text') {
         return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
     }
 
-    return sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content)));
 }
 
 function getResultStatus(result = {}) {
@@ -154,10 +154,72 @@ export function cleanCompanionAgentName(name) {
 }
 
 const CHOICE_PREFIX_RE = /^(?:[-*•→>]|\d+[.):]|[a-z][.)])\s+/i;
+const CHOICE_LINE_RE = /^(?:[-*•→>]|\d+[.):]|[a-z][.)])\s+\S/i;
 
 /** Normalizes a clicked choice line: collapse whitespace and strip list enumeration. */
 export function extractChoiceText(text) {
     return String(text ?? '').replace(/\s+/g, ' ').trim().replace(CHOICE_PREFIX_RE, '').trim();
+}
+
+function buildChoiceButtonHtml(innerHtml) {
+    return `<button type="button" class="ica--choice-line" title="Put this choice in the message box">${innerHtml}</button>`;
+}
+
+function wrapChoiceSegment(segment) {
+    const probe = document.createElement('div');
+    probe.innerHTML = segment;
+    const text = probe.textContent.replace(/\s+/g, ' ').trim();
+    if (!CHOICE_LINE_RE.test(text) || probe.querySelector('button, a, details')) {
+        return segment;
+    }
+
+    return buildChoiceButtonHtml(segment);
+}
+
+/**
+ * Wraps choice-looking lines in real buttons so they are tappable everywhere (iOS included).
+ * Covers proper markdown lists AND enumerated lines that showdown's simpleLineBreaks leaves
+ * as <br>-separated text inside one paragraph — the shape CYOA/direction prompts produce.
+ * Runs after sanitization; only our own button markup is added around already-clean content.
+ */
+export function decorateChoiceLines(html) {
+    if (typeof document?.createElement !== 'function') {
+        return html;
+    }
+
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    for (const item of container.querySelectorAll('li')) {
+        if (!item.querySelector('button, a, ul, ol') && item.textContent.trim()) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'ica--choice-line';
+            button.title = 'Put this choice in the message box';
+            button.innerHTML = item.innerHTML;
+            item.innerHTML = '';
+            item.appendChild(button);
+        }
+    }
+
+    for (const paragraph of container.querySelectorAll('p')) {
+        if (paragraph.querySelector('button, a')) {
+            continue;
+        }
+
+        const segments = paragraph.innerHTML.split(/<br\s*\/?>/i);
+        if (segments.length > 1) {
+            paragraph.innerHTML = segments.map(wrapChoiceSegment).join('<br>');
+            continue;
+        }
+
+        const text = paragraph.textContent.replace(/\s+/g, ' ').trim();
+        if (CHOICE_LINE_RE.test(text)) {
+            paragraph.innerHTML = buildChoiceButtonHtml(paragraph.innerHTML);
+        }
+    }
+
+    return container.innerHTML;
 }
 
 /**
@@ -426,7 +488,7 @@ export function initCompanionCardUi() {
         await runCompanionsFromMessageButton(messageIndex, this);
     });
     $(document).on('click', '.ica--companion-action', handleCompanionAction);
-    $(document).on('click', '.ica--companion-body li', function (event) {
+    $(document).on('click', '.ica--companion-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
         insertChoiceIntoMessageInput(this.textContent);

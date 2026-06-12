@@ -4164,8 +4164,8 @@ function populatePathfinderSubmoduleToggle() {
 }
 
 function populateGlobalExecutionModeDropdown() {
-    const mode = getGlobalSettings().appendAgentsExecutionMode || 'parallel';
-    $('#ica--appendAgentsExecutionMode').val(mode);
+    $('#ica--appendAgentsExecutionMode').val(getGlobalSettings().appendAgentsExecutionMode || 'parallel');
+    $('#ica--companionExecutionMode').val(getGlobalSettings().companionExecutionMode || 'parallel');
 }
 
 function populateGlobalHelperPrefillField() {
@@ -4815,6 +4815,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     $('#ica--appendAgentsExecutionMode').on('change', function () {
         setGlobalSettings({ appendAgentsExecutionMode: this.value });
+        persistExtensionState();
+    });
+    $('#ica--companionExecutionMode').on('change', function () {
+        setGlobalSettings({ companionExecutionMode: this.value });
         persistExtensionState();
     });
     $('#ica--helperPrefillMessages').on('input', function () {

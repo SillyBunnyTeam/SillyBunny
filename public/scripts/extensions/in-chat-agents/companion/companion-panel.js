@@ -115,6 +115,15 @@ function bindHandleDrag(handleElement) {
 
     handleElement.addEventListener('pointerup', endDrag);
     handleElement.addEventListener('pointercancel', endDrag);
+
+    // iOS Safari ignores touch-action on position:fixed elements and turns the drag into a
+    // page scroll (firing pointercancel). Blocking touchmove directly keeps the gesture ours;
+    // it must be non-passive for preventDefault to count.
+    handleElement.addEventListener('touchmove', event => {
+        if (activePointerId !== null) {
+            event.preventDefault();
+        }
+    }, { passive: false });
 }
 
 function isAssistantMessage(message) {
@@ -268,9 +277,7 @@ function renderPanel() {
 }
 
 export function updateCompanionPanelHandleVisibility() {
-    const shouldShow = shouldShowCompanionPanelHandle();
-    $('#ica--tracker-panel-handle').toggle(shouldShow);
-    $('#ica--trackerPanelChatButton').toggle(shouldShow);
+    $('#ica--tracker-panel-handle').toggle(shouldShowCompanionPanelHandle());
 }
 
 export function openCompanionPanel() {
@@ -348,7 +355,7 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
-    $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body li', function (event) {
+    $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
         if (insertChoiceIntoMessageInput(this.textContent)) {
@@ -363,18 +370,6 @@ export function initCompanionPanel() {
         toggleCompanionPanel();
     });
     bindHandleDrag($('#ica--tracker-panel-handle')[0]);
-
-    // An always-reachable toggle on the chat screen itself, next to the wand menu button.
-    // The handler is delegated because the mobile shell re-arranges the send form's children.
-    if (!$('#ica--trackerPanelChatButton').length) {
-        $('#leftSendForm').append(`
-            <div id="ica--trackerPanelChatButton" class="fa-solid fa-map-location-dot interactable" title="Open the tracker panel" aria-label="Open the tracker panel" tabindex="0" style="display:none"></div>
-        `);
-    }
-    $(document).on('click', '#ica--trackerPanelChatButton', event => {
-        event.preventDefault();
-        toggleCompanionPanel();
-    });
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`
@@ -393,7 +388,7 @@ export function initCompanionPanel() {
         if (!panelOpen || Date.now() - panelOpenedAt < 250) {
             return;
         }
-        if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle, #ica--trackerPanelChatButton')) {
+        if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle')) {
             return;
         }
         closeCompanionPanel();

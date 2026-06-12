@@ -567,7 +567,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
 
     const cancelRevision = getAgentGenerationCancelRevision();
     const units = partitionCompanionRuns(agents, messageIndex);
-    const executionMode = getGlobalSettings().appendAgentsExecutionMode === 'sequential' ? 'sequential' : 'parallel';
+    const executionMode = getGlobalSettings().companionExecutionMode === 'sequential' ? 'sequential' : 'parallel';
 
     if (executionMode === 'sequential') {
         for (const unit of units) {
@@ -656,7 +656,7 @@ export async function runCompanionsOnMessage(messageIndex) {
 
     const cancelRevision = getAgentGenerationCancelRevision();
     const units = partitionCompanionRuns(agents, messageIndex);
-    const executionMode = getGlobalSettings().appendAgentsExecutionMode === 'sequential' ? 'sequential' : 'parallel';
+    const executionMode = getGlobalSettings().companionExecutionMode === 'sequential' ? 'sequential' : 'parallel';
 
     if (executionMode === 'sequential') {
         for (const unit of units) {

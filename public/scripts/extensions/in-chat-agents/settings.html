@@ -148,6 +148,13 @@
                     Order is shown on each agent card.
                 </small>
             </label>
+            <label class="ica--profile-label">
+                <span>Companion Execution</span>
+                <select id="ica--companionExecutionMode" class="text_pole" title="Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting.">
+                    <option value="parallel">Parallel (faster)</option>
+                    <option value="sequential">Sequential (rate-limit friendly)</option>
+                </select>
+            </label>
             <label class="ica--profile-label ica--helper-prefill-label">
                 <span>Helper Prefill Messages</span>
                 <textarea id="ica--helperPrefillMessages" class="text_pole ica--helper-prefill-field" rows="4" placeholder="[assistant] Start of helper response&#10;&#10;[system] Extra instruction"></textarea>

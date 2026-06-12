@@ -160,6 +160,7 @@ let globalSettings = {
     companionConnectionProfile: '',
     promptTransformShowNotifications: true,
     appendAgentsExecutionMode: 'parallel',
+    companionExecutionMode: 'parallel',
     helperPrefillMessages: '',
 };
 

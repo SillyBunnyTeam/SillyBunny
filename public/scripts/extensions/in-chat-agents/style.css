@@ -1320,19 +1320,30 @@ button.ica--card-pill--version-update {
 }
 
 /* Choice lines (CYOA options, directions, suggestions) insert into the message box on click. */
-.ica--companion-body li,
-.ica--tpanel-agent-body li {
-    cursor: pointer;
+.ica--choice-line {
+    display: inline-block;
+    max-width: 100%;
+    padding: 2px 6px;
+    margin: 1px 0 1px -6px;
+    border: none;
     border-radius: 6px;
-    padding: 2px 4px;
-    margin-left: -4px;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    text-align: left;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
     transition: background 0.12s;
 }
 
-.ica--companion-body li:hover,
-.ica--tpanel-agent-body li:hover {
+.ica--choice-line:hover,
+.ica--choice-line:focus-visible {
     background: rgba(128, 128, 128, 0.18);
     background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 14%, transparent);
+    outline: none;
 }
 
 .ica--companion-body > :first-child {
@@ -1829,6 +1840,9 @@ button.ica--card-pill--version-update {
     appearance: none;
     cursor: grab;
     touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
     transform: translateY(-50%);
     opacity: 0.82;
 }
@@ -1851,21 +1865,6 @@ button.ica--card-pill--version-update {
     text-transform: uppercase;
 }
 
-#ica--trackerPanelChatButton {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    font-size: calc(var(--mainFontSize) * 1.15);
-    opacity: 0.75;
-    cursor: pointer;
-}
-
-#ica--trackerPanelChatButton:hover,
-#ica--trackerPanelChatButton:focus-visible {
-    opacity: 1;
-    outline: none;
-}
 
 /* ── Template Browser ───────────────────────────────── */
 
