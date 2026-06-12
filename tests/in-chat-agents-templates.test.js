@@ -62,6 +62,7 @@ describe('in-chat agent bundled templates', () => {
             'continuity-companion.json',
             'directors-commentary-companion.json',
             'lorebook-scout-companion.json',
+            'memory-shard-companion.json',
             'npc-motivator.json',
             'relationship-lens-companion.json',
             'scene-tracker.json',
@@ -134,8 +135,9 @@ describe('in-chat agent bundled templates', () => {
         const commentary = findCatalogTemplate(catalog, 'tpl-directors-commentary-companion');
         const interview = findCatalogTemplate(catalog, 'tpl-actor-interview-companion');
         const lorebookScout = findCatalogTemplate(catalog, 'tpl-lorebook-scout-companion');
+        const memoryShard = findCatalogTemplate(catalog, 'tpl-memory-shard-companion');
 
-        for (const template of [commentary, interview, lorebookScout]) {
+        for (const template of [commentary, interview, lorebookScout, memoryShard]) {
             expect(template).toEqual(expect.objectContaining({
                 category: 'companion',
                 execution: 'companion',
@@ -154,6 +156,13 @@ describe('in-chat agent bundled templates', () => {
         expect(lorebookScout.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
             includeWorldInfo: true,
+        }));
+        expect(memoryShard.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            contextMessages: 30,
+            includeHistory: true,
+            feedback: { enabled: true, depth: 1 },
+            maxTokens: 4096,
         }));
 
         const { isCompanionAgent, normalizeAgent } = await importAgentStore();
