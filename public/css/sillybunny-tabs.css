@@ -197,8 +197,7 @@
 #top-settings-holder > #user-settings-button > .drawer-toggle,
 #top-settings-holder > #backgrounds-button > .drawer-toggle,
 #top-settings-holder > #extensions-settings-button > .drawer-toggle,
-#top-settings-holder > #persona-management-button > .drawer-toggle,
-#top-settings-holder > #rightNavHolder > .drawer-toggle {
+#top-settings-holder > #persona-management-button > .drawer-toggle {
     display: none !important;
 }
 
@@ -218,6 +217,20 @@
 #top-settings-holder > #rightNavHolder > .drawer-content.closedDrawer:not(.openDrawer) {
     display: none !important;
     pointer-events: none !important;
+}
+
+/*
+ * SillyBunny: ghost-toggle for the native Characters drawer toggle.
+ * Extensions like CharacterLibrary anchor dropdowns to the native toggle's (or its icon child's) bounding rect.
+ * Critical hiding properties (visibility, pointer-events) are applied via inline styles in hideHostToggles()
+ * to stay within the CSS ratchet budget; this class serves as a semantic marker and default.
+ * Positioned via JS over the shell's proxy Characters button so extension dropdowns anchor correctly.
+ */
+.sb-ghost-toggle {
+    z-index: -1;
+    opacity: 0;
+    margin: 0;
+    border: none;
 }
 
 #top-settings-holder > #ai-config-button > .drawer-content.openDrawer,

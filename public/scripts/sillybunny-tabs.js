@@ -7644,6 +7644,54 @@ function ensureCharacterResizeHandle() {
     return handle;
 }
 
+let characterToggleDispatchGuard = false;
+let characterToggleSkipExtensionIntercept = false;
+
+function syncCharacterToggleGhostRect() {
+    const nativeToggle = getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle');
+    const proxyButton = document.getElementById('sb-character-toggle');
+    if (!(nativeToggle instanceof HTMLElement)) return;
+    if (!(proxyButton instanceof HTMLElement)) return;
+    const proxyRect = proxyButton.getBoundingClientRect();
+    nativeToggle.style.left = proxyRect.left + 'px';
+    nativeToggle.style.top = proxyRect.top + 'px';
+    nativeToggle.style.width = proxyRect.width + 'px';
+    nativeToggle.style.height = proxyRect.height + 'px';
+}
+
+let characterToggleGhostObserver = null;
+function scheduleCharacterToggleGhostSync() {
+    window.requestAnimationFrame(syncCharacterToggleGhostRect);
+    if (characterToggleGhostObserver) return;
+    const observer = new ResizeObserver(syncCharacterToggleGhostRect);
+    const attach = () => {
+        const proxyButton = document.getElementById('sb-character-toggle');
+        if (!proxyButton) return false;
+        observer.observe(proxyButton);
+        characterToggleGhostObserver = observer;
+        return true;
+    };
+    if (!attach()) {
+        const intervalId = window.setInterval(() => {
+            if (attach()) window.clearInterval(intervalId);
+        }, 250);
+        window.setTimeout(() => window.clearInterval(intervalId), 5000);
+    }
+}
+window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
+
+document.addEventListener('click', (e) => {
+    if (characterToggleDispatchGuard) return;
+    const nativeToggle = getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle');
+    if (!(nativeToggle instanceof HTMLElement)) return;
+    if (!nativeToggle.contains(e.target)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    characterToggleSkipExtensionIntercept = true;
+    toggleCharacterPanel();
+    characterToggleSkipExtensionIntercept = false;
+}, true);
+
 function toggleCharacterPanel({ preferredTab = null } = {}) {
     injectCharacterDrawerControls();
     ensureCharacterResizeHandle();
@@ -7669,6 +7717,28 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     // Temporarily allow overflow on the parent so the panel renders.
     setCharacterDrawerHostOverflow(true);
 
+    // SillyBunny: dispatch a cancelable click on the native Characters toggle to give
+    // extensions like CharacterLibrary a chance to intercept. If they preventDefault(),
+    // they handle the UI themselves and we yield. Otherwise, we proceed with shell's
+    // normal open flow (Sillyanonymous/SillyTavern-CharacterLibrary#28).
+    if (characterToggleSkipExtensionIntercept) {
+        characterToggleSkipExtensionIntercept = false;
+    } else {
+        syncCharacterToggleGhostRect();
+        const nativeToggle = getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle');
+        if (nativeToggle instanceof HTMLElement) {
+            const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+            characterToggleDispatchGuard = true;
+            nativeToggle.dispatchEvent(clickEvent);
+            characterToggleDispatchGuard = false;
+            if (clickEvent.defaultPrevented) {
+                setCharacterDrawerHostOverflow(false);
+                return;
+            }
+        }
+    }
+
+    // No extension intercepted — proceed with shell's normal open flow.
     // SillyBunny: open the character drawer directly via forceDrawerState instead of
     // synthetic-clicking the hidden native toggle. The old approach triggered handlers
     // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
@@ -8151,6 +8221,7 @@ function buildTopBar() {
     updateShortcutButton('right');
     syncTopbarLayoutState();
     queueLandingPageStateSync();
+    scheduleCharacterToggleGhostSync();
 }
 
 function hideHostToggles() {
@@ -8162,9 +8233,19 @@ function hideHostToggles() {
         hostToggle?.classList.add('sb-hidden-toggle');
     }
 
+    // SillyBunny: use sb-ghost-toggle (not sb-hidden-toggle) so the native Characters toggle
+    // retains a real bounding rect. Extensions like CharacterLibrary anchor dropdowns to this
+    // toggle's or its icon child's getBoundingClientRect(); display:none produces a zero rect
+    // and sends their dropdowns off-screen (Sillyanonymous/SillyTavern-CharacterLibrary#28).
     const characterDrawer = getCharacterDrawerHost();
     characterDrawer?.classList.add('sb-drawer-host');
-    characterDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-hidden-toggle');
+    const characterToggle = characterDrawer?.querySelector(':scope > .drawer-toggle');
+    characterToggle?.classList.add('sb-ghost-toggle');
+    // Apply critical hiding via inline styles to avoid !important budget inflation
+    if (characterToggle instanceof HTMLElement) {
+        characterToggle.style.visibility = 'hidden';
+        characterToggle.style.pointerEvents = 'none';
+    }
 
     // SillyBunny: World Info is no longer a left/top-level drawer, but keeping
     // the upstream drawer ID preserves legacy selectors until runtime reparents it.
