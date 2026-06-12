@@ -2252,8 +2252,8 @@ function getShellViewportSize() {
     return {
         width,
         height,
-        left: 0,
-        top: 0,
+        left: Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.offsetLeft, 0))),
+        top: Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.offsetTop, 0))),
         right: width,
         bottom: height,
     };
@@ -2271,6 +2271,10 @@ function syncShellViewportBounds() {
     root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
     root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+    // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
+    // when the keyboard opens; without this var the shell stays anchored at
+    // the layout viewport top and the composer floats mid-screen.
+    root.style.setProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
 function getMobileShellBoundDrawers() {
@@ -2447,27 +2451,50 @@ function hydratePersistedShellSizes() {
 }
 
 function getResolvedShellTopbarOffset() {
-    const chatShell = document.getElementById('sheld');
-    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
-        const chatRect = chatShell.getBoundingClientRect();
-        if (Number.isFinite(chatRect.top) && chatRect.top > 0) {
-            return chatRect.top;
+    const docEl = document.documentElement;
+    const docTop = (docEl instanceof HTMLElement && docEl.getClientRects().length > 0)
+        ? Math.max(0, Math.round(readFiniteViewportNumber(docEl.getBoundingClientRect().top, 0)))
+        : 0;
+
+    // SillyBunny: on mobile the shell's own rect.top is driven by the very
+    // CSS var this function feeds back into (--sb-shell-measured-top-offset),
+    // so reading it creates a feedback loop. If an overscroll momentarily
+    // displaces the shell (e.g. iOS rubber-band), the displaced value is
+    // written back, the shell is pushed further, and the chat goes blank
+    // even after the page snaps back. Stay off #sheld on mobile.
+    const isMobileViewportLike = isMobileViewport() || isTouchOnlyDesktopViewport();
+    const fallbackTopOffset = (() => {
+        const topbarOffset = Number.parseFloat(
+            window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
+        );
+        return Number.isFinite(topbarOffset) ? topbarOffset : 0;
+    })();
+
+    if (!isMobileViewportLike) {
+        const chatShell = document.getElementById('sheld');
+        if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+            const chatRect = chatShell.getBoundingClientRect();
+            if (Number.isFinite(chatRect.top)) {
+                const offset = chatRect.top - docTop;
+                if (offset > 0) {
+                    return offset;
+                }
+            }
         }
     }
 
     const topBar = document.getElementById('top-bar');
     if (topBar instanceof HTMLElement && topBar.getClientRects().length > 0) {
         const topBarRect = topBar.getBoundingClientRect();
-        if (Number.isFinite(topBarRect.bottom) && topBarRect.bottom > 0) {
-            return topBarRect.bottom;
+        if (Number.isFinite(topBarRect.bottom)) {
+            const offset = topBarRect.bottom - docTop;
+            if (offset > 0) {
+                return offset;
+            }
         }
     }
 
-    const topbarOffset = Number.parseFloat(
-        window.getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset'),
-    );
-
-    return Number.isFinite(topbarOffset) ? topbarOffset : 0;
+    return fallbackTopOffset;
 }
 
 function getShellViewportTop(root, viewportSize = getShellViewportSize()) {
