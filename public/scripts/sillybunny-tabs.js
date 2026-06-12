@@ -6366,25 +6366,12 @@ function getCharacterDrawerHost() {
     return host instanceof HTMLElement ? host : null;
 }
 
-function getCharacterDrawerToggle() {
-    return getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle') ?? null;
-}
-
 function getCharacterPanel() {
     const panel = getCharacterDrawerHost()?.querySelector(':scope > #right-nav-panel')
         ?? document.querySelector('#right-nav-panel.sb-character-drawer-root')
         ?? document.getElementById('right-nav-panel');
 
     return panel instanceof HTMLElement ? panel : null;
-}
-
-function triggerDrawerToggle(selectorOrElement) {
-    const toggle = typeof selectorOrElement === 'string'
-        ? document.querySelector(selectorOrElement)
-        : selectorOrElement;
-    if (toggle instanceof HTMLElement) {
-        toggle.click();
-    }
 }
 
 function getDrawerRoot(drawerRootOrId) {
@@ -7655,11 +7642,14 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     // Temporarily allow overflow on the parent so the panel renders.
     setCharacterDrawerHostOverflow(true);
 
-    triggerDrawerToggle(getCharacterDrawerToggle());
+    // SillyBunny: open the character drawer directly via forceDrawerState instead of
+    // synthetic-clicking the hidden native toggle. The old approach triggered handlers
+    // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
+    // anchor dropdowns/popups to native toggle positions (e.g. CharacterLibrary).
+    forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
     syncMobileShellDrawerBounds();
     queueMobileShellDrawerBoundsSync();
 
-    // Fallback: if the jQuery drawer-toggle handler didn't fire, force-open
     window.requestAnimationFrame(() => {
         if (!isCharacterPanelOpen()) {
             forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
@@ -8013,6 +8003,12 @@ function buildTopBar() {
         return;
     }
 
+    // SillyBunny: preserve children injected by third-party extensions before wiping
+    // the bar. Re-append them after the shell layout is built so extensions targeting
+    // #top-bar (e.g. CharacterLibrary in standalone mode) aren't orphaned.
+    const preservedExtensionChildren = Array.from(topBar.children)
+        .filter(child => !(child instanceof HTMLElement) || !child.id.startsWith('sb-'));
+
     topBar.replaceChildren();
 
     const stack = createElement('div', { id: 'sb-topbar-stack' });
@@ -8116,7 +8112,7 @@ function buildTopBar() {
     primaryRow.appendChild(topBarInner);
 
     stack.append(primaryRow, searchRow);
-    topBar.append(stack);
+    topBar.append(stack, ...preservedExtensionChildren);
 
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);

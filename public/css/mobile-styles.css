@@ -1549,7 +1549,16 @@
      * reparent the content. Once the shell adds data-sb-shell-ready
      * or sb-shell-root, the drawer becomes visible through its own rules.
      */
-    #top-settings-holder .drawer-content:not(#right-nav-panel):not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content) {
+    /* SillyBunny: scope to native drawer IDs; allow third-party extension drawers to render. */
+    #top-settings-holder #ai-config-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #sys-settings-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #advanced-formatting-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #WI-SP-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #user-settings-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #backgrounds-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #extensions-settings-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #persona-management-button .drawer-content:not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content),
+    #top-settings-holder #rightNavHolder .drawer-content:not(#right-nav-panel):not([data-sb-shell-ready]):not(.sb-managed):not(.sb-shell-embedded-content) {
         opacity: 0 !important;
         pointer-events: none !important;
     }
