@@ -305,19 +305,16 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const companion = getCompanionConfig(agent);
     const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
-    // Tracker prompts were written to ride along with a story reply; running standalone, models
-    // tend to add narration around the state block unless told the scene is not theirs to write.
-    const stateOnlyInstruction = agent?.category === 'tracker'
-        ? 'You are a state tracker, not a storyteller. Output only the tracked state in the exact format the instructions define. Do not write narration, dialogue, prose, or commentary around it.'
-        : '';
+    // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
+    // format and break when extra format instructions are appended around them.
+    const systemContent = companion.rawPrompt
+        ? expandedPrompt
+        : [expandedPrompt, getFormatInstruction(companion.format)].filter(Boolean).join('\n\n');
 
     return [
         {
             role: 'system',
-            content: [expandedPrompt, getFormatInstruction(companion.format), stateOnlyInstruction]
-                .filter(Boolean)
-                .join('\n\n')
-                .trim(),
+            content: systemContent.trim(),
         },
         {
             role: 'user',
@@ -435,13 +432,13 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
     const contextSections = await buildCompanionContextSections(agents[0], messageIndex);
     const tasks = agents.map(agent => {
         const companion = getCompanionConfig(agent);
+        const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
         return [
             `<<<COMPANION:${agent.id}>>>`,
             `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
             'Instruction:',
             expandCompanionPrompt(agent, messageIndex, generationType),
-            'Output format:',
-            getFormatInstruction(companion.format),
+            ...formatLines,
             `<<<END:${agent.id}>>>`,
         ].join('\n');
     }).join('\n\n');

@@ -1187,16 +1187,20 @@ button.ica--card-pill--version-update {
 
 .ica--companion-card {
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 52%, transparent);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 52%, transparent);
+    background: transparent;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 32%, transparent);
     overflow: clip;
 }
 
 .ica--companion-card--pending {
+    border-color: var(--SmartThemeQuoteColor, #8b8);
     border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 44%, transparent);
 }
 
 .ica--companion-card--error {
+    border-color: var(--fullred, #a33);
     border-color: color-mix(in srgb, var(--fullred, #a33) 56%, transparent);
 }
 
@@ -1208,10 +1212,15 @@ button.ica--card-pill--version-update {
     padding: 8px 10px;
     cursor: pointer;
     user-select: none;
+    list-style: none;
 }
 
 .ica--companion-summary::-webkit-details-marker {
     display: none;
+}
+
+.ica--companion-summary::marker {
+    content: none;
 }
 
 .ica--companion-title {
@@ -1247,6 +1256,7 @@ button.ica--card-pill--version-update {
     flex: 0 0 auto;
     padding: 2px 8px;
     border-radius: 999px;
+    background: rgba(128, 128, 128, 0.25);
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 34%, transparent);
     font-size: calc(var(--mainFontSize) * 0.68);
     text-transform: uppercase;
@@ -1261,29 +1271,46 @@ button.ica--card-pill--version-update {
     flex: 0 0 auto;
 }
 
-.ica--companion-action {
+/* The #chat-scoped variant outranks theme rules like `#chat .mes button { … }`. */
+.ica--companion-action,
+#chat .ica--companion-actions .ica--companion-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 30px;
     min-width: 30px;
+    max-width: 30px;
     height: 30px;
     min-height: 30px;
     padding: 0;
+    margin: 0;
     border: none;
     border-radius: 999px;
     background: transparent;
+    box-shadow: none;
     color: inherit;
+    font: inherit;
+    line-height: 1;
+    -webkit-appearance: none;
+    appearance: none;
     opacity: 0.62;
     cursor: pointer;
 }
 
 .ica--companion-action:hover,
-.ica--companion-action:focus-visible {
+.ica--companion-action:focus-visible,
+#chat .ica--companion-actions .ica--companion-action:hover,
+#chat .ica--companion-actions .ica--companion-action:focus-visible {
     opacity: 1;
+    background: rgba(128, 128, 128, 0.25);
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 22%, transparent);
     outline: none;
 }
 
 .ica--companion-action.caution:hover,
-.ica--companion-action.caution:focus-visible {
+.ica--companion-action.caution:focus-visible,
+#chat .ica--companion-actions .ica--companion-action.caution:hover,
+#chat .ica--companion-actions .ica--companion-action.caution:focus-visible {
     color: var(--fullred, #a33);
 }
 
@@ -1363,7 +1390,9 @@ button.ica--card-pill--version-update {
     gap: 8px;
     padding: 8px 12px;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px solid color-mix(in srgb, var(--fullred, #a33) 46%, transparent);
+    border: 1px solid var(--fullred, #a33);
+    border-color: color-mix(in srgb, var(--fullred, #a33) 46%, transparent);
+    background: rgba(170, 51, 51, 0.12);
     background: color-mix(in srgb, var(--fullred, #a33) 12%, transparent);
     font-size: calc(var(--mainFontSize) * 0.85);
 }
@@ -1390,6 +1419,7 @@ button.ica--card-pill--version-update {
 .ica--cdash-count {
     padding: 1px 8px;
     border-radius: 999px;
+    background: rgba(128, 128, 128, 0.25);
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 34%, transparent);
     font-size: calc(var(--mainFontSize) * 0.72);
     opacity: 0.8;
@@ -1407,26 +1437,36 @@ button.ica--card-pill--version-update {
     gap: 10px;
     padding: 8px 10px;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    background: transparent;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 30%, transparent);
 }
 
 .ica--cdash-row.is-enabled {
+    border-color: var(--SmartThemeQuoteColor, #8b8);
     border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 44%, transparent);
 }
 
 .ica--cdash-toggle {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 38px;
     min-width: 38px;
     height: 32px;
     min-height: 32px;
     padding: 0;
+    margin: 0;
     border: none;
     border-radius: 999px;
     background: transparent;
+    box-shadow: none;
     color: inherit;
     font-size: calc(var(--mainFontSize) * 1.15);
+    -webkit-appearance: none;
+    appearance: none;
     opacity: 0.62;
     cursor: pointer;
 }
@@ -1465,15 +1505,24 @@ button.ica--card-pill--version-update {
 }
 
 .ica--cdash-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 32px;
     min-width: 32px;
     height: 32px;
     min-height: 32px;
     padding: 0;
+    margin: 0;
     border: none;
     border-radius: 999px;
     background: transparent;
+    box-shadow: none;
     color: inherit;
+    font: inherit;
+    line-height: 1;
+    -webkit-appearance: none;
+    appearance: none;
     opacity: 0.62;
     cursor: pointer;
 }
@@ -1483,6 +1532,7 @@ button.ica--card-pill--version-update {
 .ica--cdash-toggle:hover,
 .ica--cdash-toggle:focus-visible {
     opacity: 1;
+    background: rgba(128, 128, 128, 0.25);
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 22%, transparent);
     outline: none;
 }
@@ -1496,7 +1546,8 @@ button.ica--card-pill--version-update {
 .ica--cdash-empty {
     padding: 10px 12px;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    border: 1px dashed var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
     font-size: calc(var(--mainFontSize) * 0.85);
     opacity: 0.65;
 }
@@ -1506,17 +1557,24 @@ button.ica--card-pill--version-update {
     flex-direction: column;
     gap: 4px;
     padding: 8px 10px;
+    margin: 0;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    background: transparent;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 30%, transparent);
+    box-shadow: none;
     color: inherit;
     font: inherit;
     text-align: left;
+    -webkit-appearance: none;
+    appearance: none;
     cursor: pointer;
 }
 
 .ica--cdash-note:hover,
 .ica--cdash-note:focus-visible {
+    border-color: var(--SmartThemeQuoteColor, #8b8);
     border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 44%, transparent);
     outline: none;
 }
@@ -1556,8 +1614,11 @@ button.ica--card-pill--version-update {
     width: min(420px, 94vw);
     height: 100dvh;
     padding: 12px;
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
     gap: 12px;
-    border-left: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
+    border-left: 1px solid var(--SmartThemeBorderColor, #555);
+    border-left-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
+    background: var(--SmartThemeBlurTintColor, #222);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 92%, #000);
     backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
     transform: translateX(100%);
@@ -1599,7 +1660,9 @@ button.ica--card-pill--version-update {
     gap: 8px;
     padding: 10px 12px;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 48%, transparent);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 48%, transparent);
+    background: transparent;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 36%, transparent);
 }
 
@@ -1664,7 +1727,8 @@ button.ica--card-pill--version-update {
     margin-top: 8px;
     padding: 8px 10px;
     border-radius: var(--sb-radius-lg, 14px);
-    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
+    border: 1px dashed var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 42%, transparent);
 }
 
 .ica--tpanel-history-head {
@@ -1683,11 +1747,19 @@ button.ica--card-pill--version-update {
     align-items: center;
     gap: 6px;
     padding: 10px 7px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
+    padding-right: calc(7px + env(safe-area-inset-right, 0px));
+    margin: 0;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 60%, transparent);
     border-right: none;
     border-radius: 10px 0 0 10px;
+    background: var(--SmartThemeBlurTintColor, #222);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 88%, #000);
-    color: inherit;
+    box-shadow: none;
+    color: var(--SmartThemeBodyColor, inherit);
+    font: inherit;
+    -webkit-appearance: none;
+    appearance: none;
     cursor: pointer;
     transform: translateY(-50%);
     opacity: 0.82;
@@ -1705,6 +1777,22 @@ button.ica--card-pill--version-update {
     font-size: calc(var(--mainFontSize) * 0.72);
     letter-spacing: 0.08em;
     text-transform: uppercase;
+}
+
+#ica--trackerPanelChatButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    font-size: calc(var(--mainFontSize) * 1.15);
+    opacity: 0.75;
+    cursor: pointer;
+}
+
+#ica--trackerPanelChatButton:hover,
+#ica--trackerPanelChatButton:focus-visible {
+    opacity: 1;
+    outline: none;
 }
 
 /* ── Template Browser ───────────────────────────────── */

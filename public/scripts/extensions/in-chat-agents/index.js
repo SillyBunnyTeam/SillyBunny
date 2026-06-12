@@ -42,6 +42,7 @@ import {
     getCompanionConfig,
     loadBuiltinGroups,
     loadCustomGroups,
+    applyTrackerCompanionAutoLoopDefaults,
     convertAgentExecution,
     isCompanionAgent,
     isToolAgent,
@@ -288,6 +289,24 @@ async function toggleAgentFavorite(agent) {
     agent.favorite = !agent.favorite;
     await saveAgent(agent);
     renderAgentList();
+}
+
+async function migrateTrackerCompanionsToAutoLoop() {
+    if (getGlobalSettings().trackerCompanionAutoLoopApplied) {
+        return 0;
+    }
+
+    let migrated = 0;
+    for (const agent of getAgents()) {
+        if (applyTrackerCompanionAutoLoopDefaults(agent)) {
+            await saveAgent(agent);
+            migrated++;
+        }
+    }
+
+    setGlobalSettings({ trackerCompanionAutoLoopApplied: true });
+    persistExtensionState();
+    return migrated;
 }
 
 async function applyAgentExecutionConversion(agent, targetExecution) {
@@ -2173,6 +2192,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
+    editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
 
     let editorFullscreen = false;
     const fullscreenButton = editorEl.find('#ica--editor-fullscreen');
@@ -2254,10 +2274,13 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         return {
             ...current,
             trigger: root.find('#ica--editor-companion-trigger').val()?.toString() === 'manual' ? 'manual' : 'auto',
-            displayMode: root.find('#ica--editor-companion-displayMode').val()?.toString() === 'hidden' ? 'hidden' : 'card',
+            displayMode: ['card', 'panel', 'hidden'].includes(root.find('#ica--editor-companion-displayMode').val()?.toString())
+                ? root.find('#ica--editor-companion-displayMode').val().toString()
+                : 'card',
             format: ['markdown', 'html', 'text'].includes(root.find('#ica--editor-companion-format').val()?.toString())
                 ? root.find('#ica--editor-companion-format').val().toString()
                 : 'markdown',
+            rawPrompt: root.find('#ica--editor-companion-rawPrompt').prop('checked'),
             contextMessages: Number(root.find('#ica--editor-companion-contextMessages').val()) || current.contextMessages,
             includeCharacterCard: root.find('#ica--editor-companion-includeCharacterCard').prop('checked'),
             includePersona: root.find('#ica--editor-companion-includePersona').prop('checked'),
@@ -2289,6 +2312,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
+        editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);
         updateCompanionEditorVisibility();
     }
 
@@ -4449,6 +4473,11 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     const removedDuplicateCount = await removeRedundantBundledAgentDuplicates();
     if (removedDuplicateCount > 0) {
         toastr.success(`Removed ${removedDuplicateCount} redundant bundled agent duplicate(s).`);
+    }
+
+    const migratedTrackerCompanionCount = await migrateTrackerCompanionsToAutoLoop();
+    if (migratedTrackerCompanionCount > 0) {
+        toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel.`);
     }
 
     if (getGlobalSettings().separateRecentChats) {

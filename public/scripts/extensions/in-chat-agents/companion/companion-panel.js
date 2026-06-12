@@ -169,7 +169,9 @@ function renderPanel() {
 }
 
 export function updateCompanionPanelHandleVisibility() {
-    $('#ica--tracker-panel-handle').toggle(shouldShowCompanionPanelHandle());
+    const shouldShow = shouldShowCompanionPanelHandle();
+    $('#ica--tracker-panel-handle').toggle(shouldShow);
+    $('#ica--trackerPanelChatButton').toggle(shouldShow);
 }
 
 export function openCompanionPanel() {
@@ -247,6 +249,15 @@ export function initCompanionPanel() {
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
     $('#ica--tracker-panel-handle').on('click', () => toggleCompanionPanel());
+
+    // A always-reachable toggle on the chat screen itself, next to the wand menu button.
+    if (!$('#ica--trackerPanelChatButton').length) {
+        const chatButton = $(`
+            <div id="ica--trackerPanelChatButton" class="fa-solid fa-map-location-dot interactable" title="Open the tracker panel" aria-label="Open the tracker panel" tabindex="0" style="display:none"></div>
+        `);
+        chatButton.on('click', () => toggleCompanionPanel());
+        $('#leftSendForm').append(chatButton);
+    }
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`

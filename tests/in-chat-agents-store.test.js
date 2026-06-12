@@ -336,6 +336,7 @@ describe('in-chat agent scoped enabled state', () => {
             trigger: 'auto',
             displayMode: 'card',
             format: 'markdown',
+            rawPrompt: false,
             contextMessages: 10,
             includeCharacterCard: false,
             includePersona: false,
@@ -452,7 +453,12 @@ describe('in-chat agent scoped enabled state', () => {
         expect(agent.phase).toBe('post');
         expect(agent.category).toBe('tracker');
         expect(store.isCompanionAgent(agent)).toBe(true);
-        expect(agent.companion).toEqual({ ...store.createDefaultCompanionConfig(), displayMode: 'panel' });
+        expect(agent.companion).toEqual({
+            ...store.createDefaultCompanionConfig(),
+            displayMode: 'panel',
+            rawPrompt: true,
+            feedback: { enabled: true, depth: 1 },
+        });
         expect(agent.regexScripts).toHaveLength(1);
         expect(agent.regexScripts[0]).toEqual(expect.objectContaining({ findRegex: '/foo/', replaceString: 'bar' }));
         expect(agent.injection).toEqual(expect.objectContaining({ position: 1, depth: 6, role: 2, order: 42, scan: true }));
@@ -498,7 +504,7 @@ describe('in-chat agent scoped enabled state', () => {
         expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
     });
 
-    test('keeps converted trackers out of the chat flow via the panel display mode', async () => {
+    test('keeps converted trackers in the automatic panel loop', async () => {
         const store = await importStore();
         store.loadAgents([
             { id: 'plain-tracker', name: 'Plain Tracker', category: 'tracker', phase: 'pre' },
@@ -507,11 +513,50 @@ describe('in-chat agent scoped enabled state', () => {
 
         const plainTracker = store.getAgentById('plain-tracker');
         expect(store.convertAgentExecution(plainTracker, 'companion')).toBe(true);
-        expect(plainTracker.companion.displayMode).toBe('panel');
+        expect(plainTracker.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            feedback: expect.objectContaining({ enabled: true }),
+        }));
 
         const contentAgent = store.getAgentById('plain-content');
         expect(store.convertAgentExecution(contentAgent, 'companion')).toBe(true);
-        expect(contentAgent.companion.displayMode).toBe('card');
+        expect(contentAgent.companion).toEqual(expect.objectContaining({
+            displayMode: 'card',
+            rawPrompt: false,
+            feedback: expect.objectContaining({ enabled: false }),
+        }));
+    });
+
+    test('applies the tracker auto-loop defaults once and only to tracker companions', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'manual-card-tracker',
+                name: 'Manual Card Tracker',
+                category: 'tracker',
+                execution: 'companion',
+                companion: { trigger: 'manual', displayMode: 'card', feedback: { enabled: false, depth: 2 } },
+            },
+            { id: 'inline-tracker', name: 'Inline Tracker', category: 'tracker' },
+            { id: 'note-companion', name: 'Note Companion', category: 'companion', execution: 'companion' },
+        ]);
+
+        const trackerCompanion = store.getAgentById('manual-card-tracker');
+        expect(store.applyTrackerCompanionAutoLoopDefaults(trackerCompanion)).toBe(true);
+        expect(trackerCompanion.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            feedback: { enabled: true, depth: 2 },
+        }));
+        expect(store.applyTrackerCompanionAutoLoopDefaults(trackerCompanion)).toBe(false);
+
+        expect(store.applyTrackerCompanionAutoLoopDefaults(store.getAgentById('inline-tracker'))).toBe(false);
+        const noteCompanion = store.getAgentById('note-companion');
+        expect(store.applyTrackerCompanionAutoLoopDefaults(noteCompanion)).toBe(false);
+        expect(noteCompanion.companion.displayMode).toBe('card');
     });
 
     test('normalizes the panel display mode for companion configs', async () => {

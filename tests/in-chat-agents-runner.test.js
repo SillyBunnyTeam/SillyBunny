@@ -276,8 +276,9 @@ describe('in-chat agent post-processing runner', () => {
             getAgentById: jest.fn(id => enabledAgents.find(agent => agent.id === id)),
             getCompanionConfig: jest.fn(agent => ({
                 trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
-                displayMode: agent?.companion?.displayMode === 'hidden' ? 'hidden' : 'card',
+                displayMode: ['panel', 'hidden'].includes(agent?.companion?.displayMode) ? agent.companion.displayMode : 'card',
                 format: ['markdown', 'html', 'text'].includes(agent?.companion?.format) ? agent.companion.format : 'markdown',
+                rawPrompt: Boolean(agent?.companion?.rawPrompt),
                 contextMessages: Number(agent?.companion?.contextMessages) || 10,
                 includeCharacterCard: Boolean(agent?.companion?.includeCharacterCard),
                 includePersona: Boolean(agent?.companion?.includePersona),
@@ -918,10 +919,12 @@ describe('in-chat agent post-processing runner', () => {
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults).toBeUndefined();
     });
 
-    test('instructs tracker companions to output state only', async () => {
-        const trackerCompanion = createCompanionAgent({ id: 'tracker-companion', category: 'tracker' });
+    test('sends raw-prompt companion prompts verbatim without extra instructions', async () => {
+        const rawCompanion = createCompanionAgent({ id: 'raw-companion', companion: { rawPrompt: true } });
+        rawCompanion.prompt = 'Track the scene state in the [Scene|...] format.';
         const noteCompanion = createCompanionAgent({ id: 'note-companion' });
-        enabledAgents = [trackerCompanion, noteCompanion];
+        noteCompanion.prompt = 'Write a side note.';
+        enabledAgents = [rawCompanion, noteCompanion];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         chat.push(
@@ -929,12 +932,13 @@ describe('in-chat agent post-processing runner', () => {
             { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
         );
 
-        const trackerMessages = await companionRunner.buildCompanionPromptMessages(trackerCompanion, 1);
-        expect(trackerMessages[0].role).toBe('system');
-        expect(trackerMessages[0].content).toContain('state tracker, not a storyteller');
+        const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
+        expect(rawMessages[0].role).toBe('system');
+        expect(rawMessages[0].content).toBe('Track the scene state in the [Scene|...] format.');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
-        expect(noteMessages[0].content).not.toContain('state tracker');
+        expect(noteMessages[0].content).toContain('Write a side note.');
+        expect(noteMessages[0].content).toContain('Return only markdown');
     });
 
     test('stores readable profile labels instead of raw profile ids', async () => {

@@ -710,6 +710,7 @@ export function createDefaultCompanionConfig() {
         trigger: 'auto',
         displayMode: 'card',
         format: 'markdown',
+        rawPrompt: false,
         contextMessages: 10,
         includeCharacterCard: false,
         includePersona: false,
@@ -748,6 +749,7 @@ export function normalizeCompanionConfig(raw = {}) {
         format: ['markdown', 'html', 'text'].includes(String(rawConfig.format))
             ? String(rawConfig.format)
             : defaults.format,
+        rawPrompt: Boolean(rawConfig.rawPrompt),
         contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
         includeCharacterCard: Boolean(rawConfig.includeCharacterCard),
         includePersona: Boolean(rawConfig.includePersona),
@@ -1208,6 +1210,40 @@ export function getCompanionConfig(agent = {}) {
 }
 
 /**
+ * Applies the tracker auto-loop defaults to a companion-execution tracker: run automatically
+ * after each reply with the agent prompt sent as-is, feed the latest state back into the next
+ * main generation, and show state in the slide-out tracker panel instead of chat cards.
+ * The editor can override any of it.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyTrackerCompanionAutoLoopDefaults(agent) {
+    if (!agent || !isCompanionAgent(agent) || agent.category !== 'tracker') {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    const next = {
+        ...companion,
+        trigger: 'auto',
+        displayMode: 'panel',
+        rawPrompt: true,
+        feedback: {
+            ...companion.feedback,
+            enabled: true,
+        },
+    };
+
+    if (JSON.stringify(next) === JSON.stringify(companion)) {
+        agent.companion = companion;
+        return false;
+    }
+
+    agent.companion = next;
+    return true;
+}
+
+/**
  * Switches an agent between inline and companion execution in place.
  * Keeps prompt, regex scripts, injection, and conditions so the agent can round-trip.
  * @param {InChatAgent} agent
@@ -1223,11 +1259,7 @@ export function convertAgentExecution(agent, targetExecution) {
     if (wantsCompanion) {
         agent.execution = 'companion';
         agent.companion = normalizeCompanionConfig(agent.companion);
-        // Trackers are state, not notes: keep them out of the chat flow and in the
-        // slide-out tracker panel. The editor can switch them back to cards.
-        if (agent.category === 'tracker') {
-            agent.companion.displayMode = 'panel';
-        }
+        applyTrackerCompanionAutoLoopDefaults(agent);
         agent.phase = 'post';
         return true;
     }

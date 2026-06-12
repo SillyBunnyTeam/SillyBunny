@@ -115,6 +115,7 @@ beforeAll(async () => {
         getAgentChatScopeLabel: jest.fn(() => 'Individual chat'),
         getPromptTransformMode: jest.fn(() => 'rewrite'),
         isTrackerFixAgent: jest.fn(() => false),
+        applyTrackerCompanionAutoLoopDefaults: jest.fn(() => false),
         convertAgentExecution: jest.fn(() => false),
         isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
         isToolAgent: jest.fn(agent => agent?.category === 'tool'),
