@@ -760,7 +760,7 @@ export function createDefaultCompanionConfig() {
         includeWorldInfo: true,
         includeAuthorsNote: true,
         includeSystemPrompt: true,
-        includeHistory: false,
+        includeHistory: true,
         historyDepth: 3,
         feedback: {
             enabled: false,
@@ -1263,6 +1263,8 @@ function buildCompanionContextAccessDefaults() {
         includeWorldInfo: true,
         includeAuthorsNote: true,
         includeSystemPrompt: true,
+        // Companions evolve their own previous states instead of re-deriving them each turn.
+        includeHistory: true,
     };
 }
 

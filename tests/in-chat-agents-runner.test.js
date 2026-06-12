@@ -977,6 +977,31 @@ describe('in-chat agent post-processing runner', () => {
         expect(plainMessages[1].content).not.toContain('[Author\'s Note]');
     });
 
+    test('feeds a companion its previous states when history is enabled', async () => {
+        const historyCompanion = createCompanionAgent({
+            id: 'history-companion',
+            companion: { includeHistory: true, historyDepth: 2 },
+        });
+        enabledAgents = [historyCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Keep going.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        companionRunner.setCompanionResult(chat[0], historyCompanion, { status: 'done', content: 'State after reply one' });
+
+        const messages = await companionRunner.buildCompanionPromptMessages(historyCompanion, 2);
+
+        expect(messages[1].content).toContain('[Your previous notes]');
+        expect(messages[1].content).toContain('State after reply one');
+
+        const noHistoryCompanion = createCompanionAgent({ id: 'no-history-companion', companion: { includeHistory: false } });
+        const plainMessages = await companionRunner.buildCompanionPromptMessages(noHistoryCompanion, 2);
+        expect(plainMessages[1].content).not.toContain('[Your previous notes]');
+    });
+
     test('runs the companion stage concurrently with post passes when enabled', async () => {
         globalSettings.companionConcurrentWithPostGen = true;
         const companionAgent = createCompanionAgent();

@@ -293,7 +293,7 @@ async function toggleAgentFavorite(agent) {
     renderAgentList();
 }
 
-const TRACKER_COMPANION_AUTO_LOOP_VERSION = 2;
+const TRACKER_COMPANION_AUTO_LOOP_VERSION = 3;
 
 async function migrateTrackerCompanionsToAutoLoop() {
     const settings = getGlobalSettings();

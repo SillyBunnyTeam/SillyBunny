@@ -343,7 +343,7 @@ describe('in-chat agent scoped enabled state', () => {
             includeWorldInfo: true,
             includeAuthorsNote: true,
             includeSystemPrompt: true,
-            includeHistory: false,
+            includeHistory: true,
             historyDepth: 3,
             feedback: {
                 enabled: false,
@@ -598,6 +598,7 @@ describe('in-chat agent scoped enabled state', () => {
             includeCharacterCard: true,
             includeAuthorsNote: true,
             includeSystemPrompt: true,
+            includeHistory: true,
         }));
         expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(false);
         expect(store.applyCompanionContextAccessDefaults(store.getAgentById('inline-agent'))).toBe(false);
