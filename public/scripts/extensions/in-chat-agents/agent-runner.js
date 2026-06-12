@@ -4698,3 +4698,189 @@ export async function runAgentOnMessage(agentId, messageIndex) {
 
     return await enqueueManualAgentRun(agentId, messageIndex);
 }
+
+export async function runTrackerFixOnMessage(messageIndex) {
+    if (!areAgentsGloballyEnabled()) {
+        toastr.warning('In-Chat Agents are disabled.');
+        return;
+    }
+
+    await commitOpenEditorForMessage(messageIndex);
+
+    const message = chat[messageIndex];
+    if (!message || message.is_user || message.is_system) {
+        return;
+    }
+
+    const generationType = 'normal';
+    const enabledAgents = getEnabledAgents();
+    const trackerTransformAgents = enabledAgents.filter(agent =>
+        agent.category === 'tracker' &&
+        (agent.phase === 'post' || agent.phase === 'both') &&
+        agent.postProcess?.promptTransformEnabled &&
+        String(agent.prompt ?? '').trim(),
+    );
+
+    if (trackerTransformAgents.length === 0) {
+        toastr.info('No enabled tracker agents with prompt transforms found.');
+        return;
+    }
+
+    let regexSnapshotChanged = false;
+    for (const agent of trackerTransformAgents) {
+        const changed = refreshRegexSnapshotForAgentOnMessage(agent.id, messageIndex, {
+            generationType,
+            includeForcedAgent: true,
+            markPendingSave: false,
+            respectGenerationTypes: false,
+            save: false,
+        });
+        regexSnapshotChanged = regexSnapshotChanged || changed;
+    }
+
+    let chatStateChanged = false;
+    let messageDisplayChanged = false;
+    const promptRuns = [];
+    let currentPromptTransformText = unwrapAssistantResponseWrapper(message.mes);
+
+    if (currentPromptTransformText !== normalizeContentText(message.mes)) {
+        message.mes = currentPromptTransformText;
+        await syncPromptTransformMessageStateAsync(message, messageIndex);
+        chatStateChanged = true;
+        messageDisplayChanged = true;
+    }
+
+    let appendBatch = [];
+    const flushAppendBatch = async () => {
+        if (appendBatch.length === 0) {
+            return;
+        }
+
+        const batchAgents = appendBatch;
+        appendBatch = [];
+
+        const batchResult = await runPromptTransformAppendBatch(
+            batchAgents,
+            message,
+            generationType,
+            currentPromptTransformText,
+            messageIndex,
+        );
+        promptRuns.push(...batchResult.results);
+        currentPromptTransformText = batchResult.nextMessageText;
+
+        if (batchResult.changed) {
+            chatStateChanged = true;
+            messageDisplayChanged = true;
+        }
+    };
+
+    for (const agent of trackerTransformAgents) {
+        if (getPromptTransformMode(agent) === 'append') {
+            appendBatch.push(agent);
+            continue;
+        }
+
+        await flushAppendBatch();
+
+        try {
+            const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, messageIndex);
+            promptRuns.push(result);
+            currentPromptTransformText = result.nextMessageText;
+
+            if (result.changed) {
+                chatStateChanged = true;
+                messageDisplayChanged = true;
+            }
+        } catch (error) {
+            promptRuns.push({
+                agentId: agent.id,
+                agentName: agent.name,
+                changed: false,
+                status: 'error',
+                mode: getPromptTransformMode(agent),
+                error: error instanceof Error ? error.message : String(error),
+                runner: 'error',
+                timestamp: new Date().toISOString(),
+            });
+        }
+    }
+
+    await flushAppendBatch();
+
+    if (currentPromptTransformText !== message.mes) {
+        message.mes = currentPromptTransformText;
+        await syncPromptTransformMessageStateAsync(message, messageIndex);
+        chatStateChanged = true;
+        messageDisplayChanged = true;
+    }
+
+    const utilityAgents = trackerTransformAgents.filter(agent =>
+        agent.postProcess?.enabled && agent.postProcess.type !== 'regex',
+    );
+
+    for (const agent of utilityAgents) {
+        const postProcess = agent.postProcess;
+
+        switch (postProcess.type) {
+            case 'extract': {
+                if (!postProcess.extractPattern || !postProcess.extractVariable) {
+                    break;
+                }
+
+                try {
+                    const regex = new RegExp(postProcess.extractPattern, 'g');
+                    const matches = message.mes.match(regex);
+                    if (matches) {
+                        chat_metadata[`agent_${postProcess.extractVariable}`] = matches.join('\n');
+                        chatStateChanged = true;
+                    }
+                } catch (error) {
+                    console.warn(`[InChatAgents] Extract error in agent "${agent.name}":`, error);
+                }
+                break;
+            }
+
+            case 'append': {
+                if (!postProcess.appendText) {
+                    break;
+                }
+
+                const appendedText = substituteParams(postProcess.appendText);
+                if (appendedText.trim()) {
+                    message.mes += appendedText;
+                    chatStateChanged = true;
+                    messageDisplayChanged = true;
+                }
+                break;
+            }
+        }
+    }
+
+    if (updateMessageRegexSnapshot(message, trackerTransformAgents, generationType)) {
+        chatStateChanged = true;
+        messageDisplayChanged = true;
+    }
+
+    if (promptRuns.length > 0 && updatePromptTransformRuns(message, promptRuns)) {
+        chatStateChanged = true;
+    }
+
+    let promptHistoryChanged = false;
+    for (const run of promptRuns) {
+        promptHistoryChanged = updatePromptTransformHistory(message, run) || promptHistoryChanged;
+    }
+
+    if (promptHistoryChanged) {
+        chatStateChanged = true;
+    }
+
+    if (chatStateChanged || regexSnapshotChanged) {
+        syncAssistantMessageStateToSwipe(message, messageIndex);
+        saveChatDebouncedForAgent({ deferBackup: false });
+    }
+
+    if (messageDisplayChanged) {
+        scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
+    }
+}

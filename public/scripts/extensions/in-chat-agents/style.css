@@ -1603,3 +1603,14 @@ button.ica--card-pill--version-update {
         inset: -14px -10px;
     }
 }
+
+.mes_fix_trackers--running {
+    opacity: 0.5;
+    pointer-events: none;
+    animation: mes-fix-trackers-spin 1s linear infinite;
+}
+
+@keyframes mes-fix-trackers-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
