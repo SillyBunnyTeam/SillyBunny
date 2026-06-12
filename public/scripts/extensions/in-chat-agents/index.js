@@ -42,6 +42,7 @@ import {
     getCompanionConfig,
     loadBuiltinGroups,
     loadCustomGroups,
+    agentMatchesListTab,
     applyTrackerCompanionAutoLoopDefaults,
     convertAgentExecution,
     isCompanionAgent,
@@ -1662,6 +1663,34 @@ async function runTrackerFixFromButton(messageIndex, button) {
     }
 }
 
+const AGENT_LIST_TAB_STORAGE_KEY = 'ica--agent-list-tab';
+const AGENT_LIST_TABS = ['all', 'quick', 'pre', 'post', 'companion'];
+
+function getActiveAgentListTab() {
+    try {
+        const stored = globalThis.localStorage?.getItem?.(AGENT_LIST_TAB_STORAGE_KEY);
+        return AGENT_LIST_TABS.includes(stored) ? stored : 'all';
+    } catch {
+        return 'all';
+    }
+}
+
+function setActiveAgentListTab(tab) {
+    try {
+        globalThis.localStorage?.setItem?.(AGENT_LIST_TAB_STORAGE_KEY, tab);
+    } catch {
+        // Private browsing or storage quota: tab selection just won't persist.
+    }
+}
+
+function syncAgentTabStrip(activeTab) {
+    $('#ica--agentTabs .ica--agent-tab').each(function () {
+        const isActive = $(this).attr('data-tab') === activeTab;
+        $(this).toggleClass('is-active', isActive);
+        $(this).attr('aria-selected', String(isActive));
+    });
+}
+
 /**
  * Re-renders the agent list panel.
  */
@@ -1672,6 +1701,8 @@ function renderAgentList() {
     updateCancelGenerationButton();
     const profileNames = buildConnectionProfileNameMap();
     const allAgents = sortAgentsByOrder(getVisibleInChatAgents());
+    const activeTab = getActiveAgentListTab();
+    syncAgentTabStrip(activeTab);
 
     const searchTerm = ($('#ica--search').val() || '').toString().toLowerCase();
     const categoryFilter = ($('#ica--categoryFilter').val() || '').toString();
@@ -1689,7 +1720,12 @@ function renderAgentList() {
         agents = agents.filter(a => a.category === categoryFilter);
     }
 
-    if (!selectModeActive && allAgents.length > 0) {
+    if (activeTab !== 'all' && activeTab !== 'quick') {
+        agents = agents.filter(a => agentMatchesListTab(a, activeTab));
+    }
+
+    const showQuickSection = !selectModeActive && allAgents.length > 0 && (activeTab === 'all' || activeTab === 'quick');
+    if (showQuickSection) {
         const legend = $(`
             <div class="ica--action-legend" aria-label="Agent card action legend">
                 <span><i class="fa-solid fa-eye"></i> Preview</span>
@@ -1715,7 +1751,9 @@ function renderAgentList() {
                 <div class="ica--quick-grid"></div>
             </div>
         `);
-        container.append(legend);
+        if (activeTab !== 'quick') {
+            container.append(legend);
+        }
         const quickGrid = quickSection.find('.ica--quick-grid');
 
         if (favoriteAgents.length === 0) {
@@ -1781,6 +1819,17 @@ function renderAgentList() {
         }
 
         container.append(quickSection);
+    }
+
+    if (activeTab === 'quick') {
+        if (allAgents.length === 0) {
+            container.append('<div class="ica--empty-state">No agents yet. Click <b>New Agent</b> or <b>Templates</b> to get started.</div>');
+        }
+        restoreAgentListScrollState(scrollState);
+        updateFixTrackersButtonVisibility();
+        updateCompanionButtonVisibility();
+        updateCompanionPanelHandleVisibility();
+        return;
     }
 
     // Group by category
@@ -4068,12 +4117,20 @@ async function openPathfinderEditor(agent) {
  */
 function populateProfileDropdown() {
     const select = document.getElementById('ica--connectionProfile');
-    if (!select) return;
+    if (select) {
+        populateConnectionProfileSelect(select, {
+            emptyLabel: 'Use selected connection profile',
+            selectedValue: getGlobalSettings().connectionProfile || '',
+        });
+    }
 
-    populateConnectionProfileSelect(select, {
-        emptyLabel: 'Use selected connection profile',
-        selectedValue: getGlobalSettings().connectionProfile || '',
-    });
+    const companionSelect = document.getElementById('ica--companionConnectionProfile');
+    if (companionSelect) {
+        populateConnectionProfileSelect(companionSelect, {
+            emptyLabel: 'Use Default Connection Profile',
+            selectedValue: getGlobalSettings().companionConnectionProfile || '',
+        });
+    }
 }
 
 function refreshConnectionProfileUi() {
@@ -4688,6 +4745,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
 
     // Wire up filter
+    $('#ica--agentTabs').on('click', '.ica--agent-tab', function () {
+        setActiveAgentListTab($(this).attr('data-tab') || 'all');
+        renderAgentList();
+    });
     $('#ica--search').on('input', renderAgentList);
     $('#ica--categoryFilter').on('change', renderAgentList);
 
@@ -4698,6 +4759,11 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     populateGlobalHelperPrefillField();
     $('#ica--connectionProfile').on('change', function () {
         setGlobalSettings({ connectionProfile: this.value });
+        persistExtensionState();
+        renderAgentList();
+    });
+    $('#ica--companionConnectionProfile').on('change', function () {
+        setGlobalSettings({ companionConnectionProfile: this.value });
         persistExtensionState();
         renderAgentList();
     });

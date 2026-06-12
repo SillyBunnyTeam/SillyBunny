@@ -13,12 +13,109 @@ import {
     getCompanionResults,
     runCompanionAgentOnMessage,
 } from './companion-runner.js';
-import { cleanCompanionAgentName, formatCompanionContent } from './companion-ui.js';
+import { cleanCompanionAgentName, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
 
 const PANEL_HISTORY_LIMIT = 5;
+const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top';
+const HANDLE_DRAG_THRESHOLD_PX = 6;
 
 let panelInitialized = false;
 let panelOpen = false;
+let panelOpenedAt = 0;
+let suppressHandleClickUntil = 0;
+
+/** Keeps the dragged handle reachable: never closer than 8% to either screen edge. */
+export function clampHandleTopFraction(fraction) {
+    const numeric = Number(fraction);
+    return Math.min(0.92, Math.max(0.08, Number.isFinite(numeric) ? numeric : 0.5));
+}
+
+function getStoredHandleTopFraction() {
+    try {
+        const raw = globalThis.localStorage?.getItem?.(HANDLE_POSITION_STORAGE_KEY);
+        if (raw === null || raw === undefined || raw === '') {
+            return null;
+        }
+        const numeric = Number(raw);
+        return Number.isFinite(numeric) ? clampHandleTopFraction(numeric) : null;
+    } catch {
+        return null;
+    }
+}
+
+function storeHandleTopFraction(fraction) {
+    try {
+        globalThis.localStorage?.setItem?.(HANDLE_POSITION_STORAGE_KEY, String(clampHandleTopFraction(fraction)));
+    } catch {
+        // Private browsing or storage quota: the position just won't persist.
+    }
+}
+
+function applyHandleTopFraction(handleElement, fraction) {
+    handleElement.style.top = `${(clampHandleTopFraction(fraction) * 100).toFixed(2)}%`;
+}
+
+function bindHandleDrag(handleElement) {
+    if (!handleElement?.addEventListener) {
+        return;
+    }
+
+    const storedFraction = getStoredHandleTopFraction();
+    if (storedFraction !== null) {
+        applyHandleTopFraction(handleElement, storedFraction);
+    }
+
+    let activePointerId = null;
+    let startClientY = 0;
+    let startCenterY = 0;
+    let dragging = false;
+
+    handleElement.addEventListener('pointerdown', event => {
+        activePointerId = event.pointerId;
+        startClientY = event.clientY;
+        const rect = handleElement.getBoundingClientRect();
+        startCenterY = rect.top + rect.height / 2;
+        dragging = false;
+        handleElement.setPointerCapture?.(event.pointerId);
+    });
+
+    handleElement.addEventListener('pointermove', event => {
+        if (activePointerId === null || event.pointerId !== activePointerId) {
+            return;
+        }
+
+        const delta = event.clientY - startClientY;
+        if (!dragging && Math.abs(delta) < HANDLE_DRAG_THRESHOLD_PX) {
+            return;
+        }
+
+        dragging = true;
+        event.preventDefault();
+        const viewportHeight = globalThis.innerHeight || 1;
+        applyHandleTopFraction(handleElement, (startCenterY + delta) / viewportHeight);
+    });
+
+    const endDrag = event => {
+        if (activePointerId === null || event.pointerId !== activePointerId) {
+            return;
+        }
+
+        handleElement.releasePointerCapture?.(event.pointerId);
+        activePointerId = null;
+
+        if (dragging) {
+            dragging = false;
+            // The click that follows pointerup would toggle the panel; swallow it.
+            suppressHandleClickUntil = Date.now() + 350;
+            const viewportHeight = globalThis.innerHeight || 1;
+            const rect = handleElement.getBoundingClientRect();
+            storeHandleTopFraction((rect.top + rect.height / 2) / viewportHeight);
+        }
+    };
+
+    handleElement.addEventListener('pointerup', endDrag);
+    handleElement.addEventListener('pointercancel', endDrag);
+}
 
 function isAssistantMessage(message) {
     return Boolean(message && !message.is_user && !message.is_system);
@@ -69,7 +166,9 @@ export function collectPanelAgentStates() {
         }
     }
 
-    return [...byAgentId.values()];
+    // Mirror the agents page: order by injection.order; orphaned results sink to the bottom.
+    const orderOf = state => (state.agent ? Number(state.agent.injection?.order ?? 0) : Number.MAX_SAFE_INTEGER);
+    return [...byAgentId.values()].sort((a, b) => orderOf(a) - orderOf(b));
 }
 
 export function shouldShowCompanionPanelHandle() {
@@ -176,6 +275,7 @@ export function updateCompanionPanelHandleVisibility() {
 
 export function openCompanionPanel() {
     panelOpen = true;
+    panelOpenedAt = Date.now();
     renderPanel();
     $('#ica--tracker-panel').addClass('is-open').attr('aria-hidden', 'false');
 }
@@ -248,7 +348,21 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
-    $('#ica--tracker-panel-handle').on('click', () => toggleCompanionPanel());
+    $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body li', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (insertChoiceIntoMessageInput(this.textContent)) {
+            // The panel covers the message box on small screens; get out of the way.
+            closeCompanionPanel();
+        }
+    });
+    $('#ica--tracker-panel-handle').on('click', () => {
+        if (Date.now() < suppressHandleClickUntil) {
+            return;
+        }
+        toggleCompanionPanel();
+    });
+    bindHandleDrag($('#ica--tracker-panel-handle')[0]);
 
     // An always-reachable toggle on the chat screen itself, next to the wand menu button.
     // The handler is delegated because the mobile shell re-arranges the send form's children.
@@ -272,6 +386,18 @@ export function initCompanionPanel() {
         menuItem.on('click', () => openCompanionPanel());
         $('#extensionsMenu').append(menuItem);
     }
+
+    // Tapping anywhere outside the panel closes it. The grace window keeps the click
+    // that opened the panel (wand item, dashboard button) from immediately closing it.
+    $(document).on('click', event => {
+        if (!panelOpen || Date.now() - panelOpenedAt < 250) {
+            return;
+        }
+        if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle, #ica--trackerPanelChatButton')) {
+            return;
+        }
+        closeCompanionPanel();
+    });
 
     eventSource.on(COMPANION_RESULTS_UPDATED_EVENT, () => {
         if (panelOpen) {

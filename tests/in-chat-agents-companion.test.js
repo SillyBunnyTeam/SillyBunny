@@ -220,6 +220,17 @@ describe('companion card ui', () => {
         expect(cleanCompanionAgentName('')).toBe('Companion');
     });
 
+    test('extracts clickable choice text without list enumeration', async () => {
+        const { extractChoiceText } = await importCompanionUi();
+
+        expect(extractChoiceText('1. Ask Alhaitham about the doorframe')).toBe('Ask Alhaitham about the doorframe');
+        expect(extractChoiceText('- Leave the market quietly')).toBe('Leave the market quietly');
+        expect(extractChoiceText('• Side with Kaveh')).toBe('Side with Kaveh');
+        expect(extractChoiceText('B) Inspect   the\nwoodwork')).toBe('Inspect the woodwork');
+        expect(extractChoiceText('Plain choice with no marker')).toBe('Plain choice with no marker');
+        expect(extractChoiceText('   ')).toBe('');
+    });
+
     test('registers re-render listeners for lazy loads, edits, and deletions', async () => {
         const { initCompanionCardUi } = await importCompanionUi();
 

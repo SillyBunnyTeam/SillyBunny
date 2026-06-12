@@ -153,6 +153,32 @@ export function cleanCompanionAgentName(name) {
     return String(name ?? '').replace(TRAILING_ID_IN_NAME_RE, '').trim() || 'Companion';
 }
 
+const CHOICE_PREFIX_RE = /^(?:[-*•→>]|\d+[.):]|[a-z][.)])\s+/i;
+
+/** Normalizes a clicked choice line: collapse whitespace and strip list enumeration. */
+export function extractChoiceText(text) {
+    return String(text ?? '').replace(/\s+/g, ' ').trim().replace(CHOICE_PREFIX_RE, '').trim();
+}
+
+/**
+ * Puts a clicked companion choice (CYOA option, direction, suggestion) into the message box:
+ * replaces an empty box, appends on a new line otherwise.
+ * @returns {boolean} Whether anything was inserted.
+ */
+export function insertChoiceIntoMessageInput(rawText) {
+    const choice = extractChoiceText(rawText);
+    const textarea = document.getElementById('send_textarea');
+    if (!choice || !textarea) {
+        return false;
+    }
+
+    const current = String(textarea.value ?? '');
+    textarea.value = current.trim() ? `${current.replace(/\s+$/, '')}\n${choice}` : choice;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus();
+    return true;
+}
+
 function buildCompanionCard(agentId, result, message) {
     const status = getResultStatus(result);
     const agentName = cleanCompanionAgentName(result.agentName);
@@ -400,6 +426,11 @@ export function initCompanionCardUi() {
         await runCompanionsFromMessageButton(messageIndex, this);
     });
     $(document).on('click', '.ica--companion-action', handleCompanionAction);
+    $(document).on('click', '.ica--companion-body li', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertChoiceIntoMessageInput(this.textContent);
+    });
     document.addEventListener('toggle', event => {
         if (event.target?.classList?.contains('ica--companion-card')) {
             persistCompanionCollapseState(event);

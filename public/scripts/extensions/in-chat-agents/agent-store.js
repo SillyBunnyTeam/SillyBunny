@@ -157,6 +157,7 @@ let globalSettings = {
     enabledAgentIdsByChatType: createDefaultScopedEnabledAgentIds(),
     scopedEnabledAgentIdsInitialized: false,
     connectionProfile: '',
+    companionConnectionProfile: '',
     promptTransformShowNotifications: true,
     appendAgentsExecutionMode: 'parallel',
     helperPrefillMessages: '',
@@ -456,6 +457,46 @@ export function resolveConnectionProfile(profileId = '') {
     }
 
     return getActiveConnectionProfile();
+}
+
+/**
+ * Resolves the connection profile for a Companion run: the agent's own override wins,
+ * then the dedicated companion default, then the regular extension default chain.
+ * Keeps cheap auxiliary models separate from the post-generation default.
+ * @param {string} profileId Agent-level profile override
+ * @returns {string}
+ */
+export function resolveCompanionConnectionProfile(profileId = '') {
+    const explicitProfileId = normalizeConnectionProfileId(profileId);
+    if (explicitProfileId) {
+        return explicitProfileId;
+    }
+
+    const companionProfileId = normalizeConnectionProfileId(globalSettings.companionConnectionProfile);
+    if (companionProfileId) {
+        return companionProfileId;
+    }
+
+    return getActiveConnectionProfile();
+}
+
+/**
+ * Checks whether an agent belongs on the given agent-list tab.
+ * @param {InChatAgent} agent
+ * @param {'all'|'pre'|'post'|'companion'|string} tab
+ * @returns {boolean}
+ */
+export function agentMatchesListTab(agent, tab) {
+    switch (tab) {
+        case 'pre':
+            return !isCompanionAgent(agent) && ['pre', 'both'].includes(agent?.phase);
+        case 'post':
+            return !isCompanionAgent(agent) && ['post', 'both'].includes(agent?.phase);
+        case 'companion':
+            return isCompanionAgent(agent);
+        default:
+            return true;
+    }
 }
 
 export const LEGACY_AGENT_MAX_TOKENS = 2000;

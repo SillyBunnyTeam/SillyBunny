@@ -16,7 +16,7 @@ import {
     getGlobalSettings,
     isCompanionAgent,
     normalizeCompanionConfig,
-    resolveConnectionProfile,
+    resolveCompanionConnectionProfile,
 } from '../agent-store.js';
 import {
     buildPromptDynamicMacros,
@@ -52,7 +52,7 @@ function capResultContent(value = '') {
 }
 
 function getProfileLabel(agent, responseProfileId = '') {
-    const profileId = String(responseProfileId || resolveConnectionProfile(agent?.connectionProfile) || '').trim();
+    const profileId = String(responseProfileId || resolveCompanionConnectionProfile(agent?.connectionProfile) || '').trim();
     if (!profileId) {
         return 'Main model';
     }
@@ -279,13 +279,17 @@ async function buildCompanionContextSections(agent, messageIndex) {
     return sections.join('\n\n');
 }
 
-// Tracker prompts were written to ride along with a story reply; running standalone, models
-// continue the scene after the state block unless told the story is not theirs to write.
-// This guard stacks on top of rawPrompt, which only suppresses the format instruction.
+// Companion prompts were written to ride along with a story reply; running standalone —
+// especially on small models — they continue the scene unless told the story is not theirs
+// to write. These guards stack on top of rawPrompt, which only suppresses format instructions.
 const TRACKER_GUARD_INSTRUCTION = 'Output only the tracker state in the exact format the instructions above define. Do not continue the story: no narration, no dialogue, no commentary.';
+const COMPANION_GUARD_INSTRUCTION = 'You are an auxiliary companion, not the roleplayer. Do not continue the roleplay, write story prose, or speak as any character. Output only what your instructions ask for.';
+// Small models weigh the end of the prompt heaviest, and the context ends with roleplay
+// dialogue begging to be continued — anchor the task after it.
+const COMPANION_TASK_ANCHOR = '[Task]\nFollow your instructions on the conversation above. Output only what they ask for — do not continue the conversation itself.';
 
-function getTrackerGuardInstruction(agent) {
-    return agent?.category === 'tracker' ? TRACKER_GUARD_INSTRUCTION : '';
+function getCompanionGuardInstruction(agent) {
+    return agent?.category === 'tracker' ? TRACKER_GUARD_INSTRUCTION : COMPANION_GUARD_INSTRUCTION;
 }
 
 function getFormatInstruction(format) {
@@ -319,7 +323,7 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const systemContent = [
         expandedPrompt,
         companion.rawPrompt ? '' : getFormatInstruction(companion.format),
-        getTrackerGuardInstruction(agent),
+        getCompanionGuardInstruction(agent),
     ].filter(Boolean).join('\n\n');
 
     return [
@@ -329,7 +333,7 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
         },
         {
             role: 'user',
-            content: contextSections || '[Recent conversation]\nNo conversation context is available.',
+            content: `${contextSections || '[Recent conversation]\nNo conversation context is available.'}\n\n${COMPANION_TASK_ANCHOR}`,
         },
     ];
 }
@@ -337,7 +341,7 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
 function getBatchKey(agent, messageIndex) {
     const companion = getCompanionConfig(agent);
     return JSON.stringify({
-        profile: resolveConnectionProfile(agent.connectionProfile),
+        profile: resolveCompanionConnectionProfile(agent.connectionProfile),
         model: String(agent.modelOverride ?? '').trim(),
         contextMessages: companion.contextMessages,
         includeCharacterCard: companion.includeCharacterCard,
@@ -444,14 +448,13 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
     const tasks = agents.map(agent => {
         const companion = getCompanionConfig(agent);
         const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
-        const guardInstruction = getTrackerGuardInstruction(agent);
         return [
             `<<<COMPANION:${agent.id}>>>`,
             `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
             'Instruction:',
             expandCompanionPrompt(agent, messageIndex, generationType),
             ...formatLines,
-            ...(guardInstruction ? [guardInstruction] : []),
+            getCompanionGuardInstruction(agent),
             `<<<END:${agent.id}>>>`,
         ].join('\n');
     }).join('\n\n');
@@ -463,7 +466,7 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
         },
         {
             role: 'user',
-            content: `${contextSections || '[Recent conversation]\nNo conversation context is available.'}\n\n[Companion tasks]\n${tasks}`,
+            content: `${contextSections || '[Recent conversation]\nNo conversation context is available.'}\n\n[Companion tasks]\n${tasks}\n\nReturn every result inside its markers now. Do not continue the conversation itself.`,
         },
     ];
 }

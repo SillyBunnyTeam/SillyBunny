@@ -71,6 +71,7 @@ describe('companion tracker panel', () => {
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
             cleanCompanionAgentName: jest.fn(name => String(name ?? '').trim() || 'Companion'),
             formatCompanionContent: jest.fn((agentId, result) => `<formatted>${result.content}</formatted>`),
+            insertChoiceIntoMessageInput: jest.fn(() => true),
         }));
 
         return await import('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js');
@@ -115,6 +116,35 @@ describe('companion tracker panel', () => {
         expect(states[0].latest.result.content).toBe('state 7');
         expect(states[0].history).toHaveLength(5);
         expect(states[0].history[0].messageIndex).toBe(6);
+    });
+
+    test('orders panel sections by agents-page order with orphans last', async () => {
+        agents = [
+            { id: 'last-by-order', name: 'CYOA Choices', execution: 'companion', enabled: true, injection: { order: 900 } },
+            { id: 'first-by-order', name: 'Scene Tracker', execution: 'companion', enabled: true, injection: { order: 10 } },
+        ];
+        const panel = await importPanel();
+
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'orphan-agent': { status: 'done', content: 'orphan', agentName: 'Old Tracker' },
+            'last-by-order': { status: 'done', content: 'choices', agentName: 'CYOA Choices' },
+            'first-by-order': { status: 'done', content: 'scene', agentName: 'Scene Tracker' },
+        });
+
+        const states = panel.collectPanelAgentStates();
+
+        expect(states.map(state => state.agentId)).toEqual(['first-by-order', 'last-by-order', 'orphan-agent']);
+    });
+
+    test('clamps the draggable handle position fraction', async () => {
+        const panel = await importPanel();
+
+        expect(panel.clampHandleTopFraction(0.5)).toBe(0.5);
+        expect(panel.clampHandleTopFraction(-2)).toBe(0.08);
+        expect(panel.clampHandleTopFraction(1.4)).toBe(0.92);
+        expect(panel.clampHandleTopFraction('nonsense')).toBe(0.5);
     });
 
     test('includes enabled companions without stored state and orphaned results', async () => {

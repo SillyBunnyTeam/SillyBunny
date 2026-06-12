@@ -101,6 +101,14 @@
             </div>
         </div>
 
+        <div id="ica--agentTabs" class="ica--agent-tabs" role="tablist" aria-label="Agent list tabs">
+            <button type="button" class="ica--agent-tab is-active" data-tab="all" role="tab" aria-selected="true">All</button>
+            <button type="button" class="ica--agent-tab" data-tab="quick" role="tab" aria-selected="false"><i class="fa-solid fa-star fa-xs"></i> Quick Access</button>
+            <button type="button" class="ica--agent-tab" data-tab="pre" role="tab" aria-selected="false">Pre</button>
+            <button type="button" class="ica--agent-tab" data-tab="post" role="tab" aria-selected="false">Post</button>
+            <button type="button" class="ica--agent-tab" data-tab="companion" role="tab" aria-selected="false"><i class="fa-solid fa-user-astronaut fa-xs"></i> Companions</button>
+        </div>
+
         <div class="ica--filter">
             <input type="text" id="ica--search" class="text_pole" placeholder="Search agents..." />
             <select id="ica--categoryFilter" class="text_pole">
@@ -121,6 +129,13 @@
                 <select id="ica--connectionProfile" class="text_pole" title="Which connection profile to use when an agent does not have its own editor profile override. Leave this on the selected Connection Manager profile to follow the active profile.">
                     <option value="">Use selected connection profile</option>
                 </select>
+            </label>
+            <label class="ica--profile-label">
+                <span>Companion Connection Profile</span>
+                <select id="ica--companionConnectionProfile" class="text_pole" title="Which connection profile Companion agents (trackers, notes) use when they do not have their own editor profile override. Leave empty to share the default above.">
+                    <option value="">Use Default Connection Profile</option>
+                </select>
+                <small class="ica--profile-help">Point this at a cheap, fast model — companions run on every reply.</small>
             </label>
             <label class="ica--profile-label">
                 <span>Append Agents Execution</span>

@@ -34,6 +34,7 @@ import {
     isToolAgent,
     normalizePreProcessMaxTokens,
     normalizePromptTransformMaxTokens,
+    resolveCompanionConnectionProfile,
     resolveConnectionProfile,
 } from './agent-store.js';
 import { regexFromString } from '../../utils.js';
@@ -2076,7 +2077,9 @@ export function refreshRegexSnapshotsForAgent(agentId, { generationType = 'norma
 }
 
 function resolveAgentConnectionProfile(agent) {
-    return resolveConnectionProfile(agent?.connectionProfile);
+    return isCompanionAgent(agent)
+        ? resolveCompanionConnectionProfile(agent?.connectionProfile)
+        : resolveConnectionProfile(agent?.connectionProfile);
 }
 
 function getPromptTransformAgents(activeAgents) {

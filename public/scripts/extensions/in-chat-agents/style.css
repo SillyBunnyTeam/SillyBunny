@@ -1319,6 +1319,22 @@ button.ica--card-pill--version-update {
     line-height: 1.45;
 }
 
+/* Choice lines (CYOA options, directions, suggestions) insert into the message box on click. */
+.ica--companion-body li,
+.ica--tpanel-agent-body li {
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px 4px;
+    margin-left: -4px;
+    transition: background 0.12s;
+}
+
+.ica--companion-body li:hover,
+.ica--tpanel-agent-body li:hover {
+    background: rgba(128, 128, 128, 0.18);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 14%, transparent);
+}
+
 .ica--companion-body > :first-child {
     margin-top: 0;
 }
@@ -1354,6 +1370,55 @@ button.ica--card-pill--version-update {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+/* ── Agent List Tabs ────────────────────────────────── */
+
+.ica--agent-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+}
+
+.ica--agent-tab {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px 13px;
+    margin: 0;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 48%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    font-size: calc(var(--mainFontSize) * 0.85);
+    -webkit-appearance: none;
+    appearance: none;
+    opacity: 0.7;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ica--agent-tab:hover,
+.ica--agent-tab:focus-visible {
+    opacity: 1;
+    outline: none;
+}
+
+.ica--agent-tab.is-active {
+    opacity: 1;
+    border-color: var(--SmartThemeQuoteColor, #8b8);
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 62%, transparent);
+    background: rgba(128, 168, 128, 0.12);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 14%, transparent);
+    font-weight: 600;
 }
 
 /* ── Companions Dashboard ───────────────────────────── */
@@ -1762,9 +1827,14 @@ button.ica--card-pill--version-update {
     font: inherit;
     -webkit-appearance: none;
     appearance: none;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: none;
     transform: translateY(-50%);
     opacity: 0.82;
+}
+
+.ica--tpanel-handle:active {
+    cursor: grabbing;
 }
 
 .ica--tpanel-handle:hover,

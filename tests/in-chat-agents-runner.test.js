@@ -312,6 +312,7 @@ describe('in-chat agent post-processing runner', () => {
             normalizeCompanionConfig: jest.fn(value => value ?? {}),
             normalizePreProcessMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
             normalizePromptTransformMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
+            resolveCompanionConnectionProfile: jest.fn(value => value ?? ''),
             resolveConnectionProfile: jest.fn(value => value ?? ''),
         }));
 
@@ -934,11 +935,15 @@ describe('in-chat agent post-processing runner', () => {
 
         const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
         expect(rawMessages[0].role).toBe('system');
-        expect(rawMessages[0].content).toBe('Track the scene state in the [Scene|...] format.');
+        expect(rawMessages[0].content.startsWith('Track the scene state in the [Scene|...] format.')).toBe(true);
+        expect(rawMessages[0].content).not.toContain('Return only markdown');
+        expect(rawMessages[0].content).toContain('auxiliary companion, not the roleplayer');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
         expect(noteMessages[0].content).toContain('Write a side note.');
         expect(noteMessages[0].content).toContain('Return only markdown');
+        expect(noteMessages[1].content).toContain('[Task]');
+        expect(noteMessages[1].content).toContain('do not continue the conversation itself');
     });
 
     test('guards tracker companions against continuing the story even with raw prompts', async () => {

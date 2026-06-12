@@ -566,6 +566,36 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('card');
     });
 
+    test('matches agents to list tabs by phase and execution', async () => {
+        const store = await importStore();
+        const preAgent = { phase: 'pre' };
+        const postAgent = { phase: 'post' };
+        const bothAgent = { phase: 'both' };
+        const companionAgent = { phase: 'post', execution: 'companion' };
+
+        expect(store.agentMatchesListTab(preAgent, 'pre')).toBe(true);
+        expect(store.agentMatchesListTab(preAgent, 'post')).toBe(false);
+        expect(store.agentMatchesListTab(postAgent, 'post')).toBe(true);
+        expect(store.agentMatchesListTab(bothAgent, 'pre')).toBe(true);
+        expect(store.agentMatchesListTab(bothAgent, 'post')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'companion')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'post')).toBe(false);
+        expect(store.agentMatchesListTab(preAgent, 'all')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'all')).toBe(true);
+    });
+
+    test('resolves companion connection profiles through the dedicated default', async () => {
+        const store = await importStore();
+        store.setGlobalSettings({ connectionProfile: 'default-profile', companionConnectionProfile: 'cheap-profile' });
+
+        expect(store.resolveCompanionConnectionProfile('agent-profile')).toBe('agent-profile');
+        expect(store.resolveCompanionConnectionProfile('')).toBe('cheap-profile');
+        expect(store.resolveConnectionProfile('')).toBe('default-profile');
+
+        store.setGlobalSettings({ companionConnectionProfile: '' });
+        expect(store.resolveCompanionConnectionProfile('')).toBe('default-profile');
+    });
+
     test('refuses no-op and tool-agent execution conversions', async () => {
         const store = await importStore();
         store.loadAgents([
