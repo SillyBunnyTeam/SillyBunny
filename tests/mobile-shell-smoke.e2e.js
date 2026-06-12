@@ -364,6 +364,84 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expectNoHorizontalOverflow(page);
     });
 
+    test('bottom chat overflow keeps persona and common chat actions reachable', async ({ page }) => {
+        const getBottomBarSnapshot = () => page.evaluate(() => {
+            const bar = document.getElementById('sb-bottom-chat-bar');
+            const persona = document.getElementById('sb-persona-bubble');
+            const overflow = bar?.querySelector('.sb-bottom-chat-overflow-toggle');
+            const menu = document.getElementById('sb-bottom-chat-overflow-menu');
+            const directAction = id => bar?.querySelector(`[data-sb-bottom-action-id="${id}"]`);
+            const rectInfo = element => {
+                const rect = element?.getBoundingClientRect();
+
+                return rect
+                    ? {
+                        visible: rect.width > 0 && rect.height > 0,
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                    }
+                    : null;
+            };
+
+            return {
+                bar: rectInfo(bar),
+                persona: rectInfo(persona),
+                overflow: rectInfo(overflow),
+                overflowExpanded: overflow?.getAttribute('aria-expanded') ?? null,
+                viewFilesVisible: rectInfo(directAction('view-files'))?.visible ?? false,
+                newChatVisible: rectInfo(directAction('new-chat'))?.visible ?? false,
+                searchVisible: rectInfo(directAction('search-chat'))?.visible ?? false,
+                massDeleteVisible: rectInfo(directAction('mass-delete'))?.visible ?? false,
+                autoNameVisible: rectInfo(directAction('auto-name'))?.visible ?? false,
+                renameVisible: rectInfo(directAction('rename-chat'))?.visible ?? false,
+                deleteVisible: rectInfo(directAction('delete-chat'))?.visible ?? false,
+                menuOpen: menu ? !menu.hidden : false,
+                menuItems: menu ? Array.from(menu.querySelectorAll('.sb-bottom-chat-overflow-item')).map(item => item.textContent.trim()) : [],
+            };
+        });
+
+        await expect.poll(getBottomBarSnapshot).toMatchObject({
+            bar: { visible: true },
+            persona: { visible: true },
+            overflow: { visible: true },
+            overflowExpanded: 'false',
+            viewFilesVisible: true,
+            newChatVisible: true,
+            searchVisible: true,
+            massDeleteVisible: false,
+            autoNameVisible: false,
+            renameVisible: false,
+            deleteVisible: false,
+            menuOpen: false,
+        });
+
+        await page.locator('.sb-bottom-chat-overflow-toggle').click();
+
+        await expect.poll(getBottomBarSnapshot).toMatchObject({
+            overflowExpanded: 'true',
+            menuOpen: true,
+            menuItems: [
+                'Mass delete chats',
+                'Ask the LLM to name this chat',
+                'Rename chat',
+                'Delete chat',
+            ],
+        });
+
+        await page.locator('#sb-persona-bubble').click();
+
+        await expect.poll(getBottomBarSnapshot).toMatchObject({
+            overflowExpanded: 'false',
+            menuOpen: false,
+        });
+
+        const personaPickerBox = await page.locator('#sb-persona-picker').boundingBox();
+        expect(personaPickerBox).not.toBeNull();
+        expect(personaPickerBox.y + personaPickerBox.height).toBeLessThanOrEqual(844);
+
+        await expectNoHorizontalOverflow(page);
+    });
+
     test('keyboard-style viewport shrink re-syncs open drawer bounds and recovers', async ({ page }) => {
         await openLeftShell(page);
 

@@ -762,8 +762,15 @@ const sbState = {
         scrollTopButton: null,
         scrollBottomButton: null,
         managerButton: null,
+        newButton: null,
         massDeleteButton: null,
         autoNameButton: null,
+        renameButton: null,
+        deleteButton: null,
+        overflowButton: null,
+        overflowMenu: null,
+        overflowActions: [],
+        overflowOpen: false,
         secondaryOpen: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatSecondaryOpen), true),
         searchOpen: false,
         bindingRetryTimer: 0,
@@ -4725,6 +4732,7 @@ function setBottomChatActionBusy(button, busy) {
 
     button.classList.toggle('is-busy', Boolean(busy));
     setButtonDisabled(button, Boolean(busy));
+    refreshBottomChatOverflowMenu();
 }
 
 async function handleAutoNameChat() {
@@ -5992,6 +6000,18 @@ function createBottomChatButton({ icon, title, className = '' }, onClick) {
     return button;
 }
 
+function createBottomChatAction({ id, icon, title, className = '', onClick }) {
+    const button = createBottomChatButton({ icon, title, className }, onClick);
+    button.dataset.sbBottomActionId = id;
+
+    return {
+        id,
+        title,
+        icon,
+        button,
+    };
+}
+
 function createBottomChatSearchField() {
     const field = createElement('label', {
         id: 'sb-bottom-chat-search-field',
@@ -6027,6 +6047,194 @@ function createBottomChatSearchField() {
     return { field, input, status };
 }
 
+function getBottomChatActionModels() {
+    const bottomChatBarState = getBottomChatBarState();
+
+    return [
+        { id: 'view-files', button: bottomChatBarState.managerButton },
+        { id: 'new-chat', button: bottomChatBarState.newButton },
+        { id: 'mass-delete', button: bottomChatBarState.massDeleteButton },
+        { id: 'auto-name', button: bottomChatBarState.autoNameButton },
+        { id: 'rename-chat', button: bottomChatBarState.renameButton },
+        { id: 'search-chat', button: bottomChatBarState.searchToggleButton },
+        { id: 'delete-chat', button: bottomChatBarState.deleteButton },
+    ].filter(action => action.button instanceof HTMLElement)
+        .map(action => ({
+            ...action,
+            title: action.button.getAttribute('aria-label') || action.button.title || '',
+        }));
+}
+
+function ensureBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    if (bottomChatBarState.overflowMenu instanceof HTMLElement) {
+        return bottomChatBarState.overflowMenu;
+    }
+
+    const menu = createElement('div', {
+        id: 'sb-bottom-chat-overflow-menu',
+        className: 'sb-bottom-chat-overflow-menu',
+        attrs: {
+            role: 'menu',
+            'aria-label': 'More chat actions',
+        },
+    });
+    menu.hidden = true;
+    menu.addEventListener('click', event => {
+        const button = event.target instanceof Element
+            ? event.target.closest('.sb-bottom-chat-overflow-item')
+            : null;
+        if (!(button instanceof HTMLButtonElement) || button.disabled) {
+            return;
+        }
+
+        const actionButton = bottomChatBarState.overflowActions?.find(action => action.id === button.dataset.sbBottomActionId)?.button;
+        if (actionButton instanceof HTMLButtonElement) {
+            actionButton.click();
+            setBottomChatOverflowOpen(false, { restoreFocus: false });
+        }
+    });
+    menu.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setBottomChatOverflowOpen(false, { restoreFocus: true });
+        }
+    });
+
+    document.body.appendChild(menu);
+    bottomChatBarState.overflowMenu = menu;
+    return menu;
+}
+
+function positionBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    const menu = bottomChatBarState.overflowMenu;
+    const button = bottomChatBarState.overflowButton;
+
+    if (!(menu instanceof HTMLElement) || !(button instanceof HTMLElement) || menu.hidden) {
+        return;
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const barRect = document.getElementById('sb-bottom-chat-bar')?.getBoundingClientRect();
+    menu.style.visibility = 'hidden';
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
+
+    window.requestAnimationFrame(() => {
+        const menuRect = menu.getBoundingClientRect();
+        const viewportPadding = 8;
+        const left = Math.min(
+            Math.max(viewportPadding, buttonRect.right - menuRect.width),
+            Math.max(viewportPadding, window.innerWidth - menuRect.width - viewportPadding),
+        );
+        const anchorTop = barRect?.top ?? buttonRect.top;
+        const topAboveBar = anchorTop - menuRect.height - viewportPadding;
+        const top = Math.min(
+            Math.max(viewportPadding, topAboveBar),
+            Math.max(viewportPadding, window.innerHeight - menuRect.height - viewportPadding),
+        );
+
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+        menu.style.visibility = '';
+    });
+}
+
+function setBottomChatOverflowOpen(open, { restoreFocus = false } = {}) {
+    const bottomChatBarState = getBottomChatBarState();
+    const shouldOpen = Boolean(open) && Boolean(bottomChatBarState.overflowActions?.length);
+    const menu = shouldOpen ? ensureBottomChatOverflowMenu() : bottomChatBarState.overflowMenu;
+
+    bottomChatBarState.overflowOpen = shouldOpen;
+
+    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
+        setButtonPressed(bottomChatBarState.overflowButton, shouldOpen);
+        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
+    if (menu instanceof HTMLElement) {
+        menu.hidden = !shouldOpen;
+        menu.classList.toggle('is-open', shouldOpen);
+        if (shouldOpen) {
+            positionBottomChatOverflowMenu();
+            window.requestAnimationFrame(() => {
+                menu.querySelector('.sb-bottom-chat-overflow-item:not(:disabled)')?.focus({ preventScroll: true });
+            });
+        }
+    }
+
+    if (restoreFocus) {
+        bottomChatBarState.overflowButton?.focus?.({ preventScroll: true });
+    }
+}
+
+function refreshBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    if (!bottomChatBarState.overflowActions?.length) {
+        setBottomChatOverflowOpen(false);
+        return;
+    }
+
+    const menu = ensureBottomChatOverflowMenu();
+
+    menu.replaceChildren();
+
+    for (const action of bottomChatBarState.overflowActions ?? []) {
+        const item = createElement('button', {
+            className: 'sb-bottom-chat-overflow-item',
+            attrs: {
+                type: 'button',
+                role: 'menuitem',
+                title: action.title,
+                'aria-label': action.title,
+            },
+        });
+        item.dataset.sbBottomActionId = action.id;
+        item.innerHTML = action.button.innerHTML;
+        item.appendChild(createElement('span', { text: action.title }));
+        item.disabled = action.button.hasAttribute('disabled');
+        item.classList.toggle('is-disabled', item.disabled);
+        menu.appendChild(item);
+    }
+
+    if (bottomChatBarState.overflowOpen) {
+        positionBottomChatOverflowMenu();
+    }
+}
+
+function syncBottomChatActionOverflowState() {
+    const bottomChatBarState = getBottomChatBarState();
+    const plan = sbMobileShellLifecycle.railModel.resolveBottomBarActionVisibility({
+        actions: getBottomChatActionModels(),
+        isMobileViewport: isMobileViewport(),
+        visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,
+    });
+
+    bottomChatBarState.overflowActions = plan.overflowActions;
+
+    for (const action of [...plan.visibleActions, ...plan.overflowActions]) {
+        action.button.hidden = false;
+        action.button.classList.toggle('sb-bottom-chat-overflow-source', plan.overflowActions.includes(action));
+    }
+
+    const shouldRenderOverflow = plan.shouldRenderOverflow && isMobileViewport();
+
+    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
+        bottomChatBarState.overflowButton.hidden = !shouldRenderOverflow;
+        bottomChatBarState.overflowButton.classList.toggle('sb-bottom-chat-overflow-active', shouldRenderOverflow);
+        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldRenderOverflow && bottomChatBarState.overflowOpen));
+    }
+
+    if (!shouldRenderOverflow) {
+        setBottomChatOverflowOpen(false);
+    }
+
+    refreshBottomChatOverflowMenu();
+}
+
 function setBottomChatButtonIcon(button, iconClass) {
     if (!(button instanceof HTMLElement)) {
         return;
@@ -6058,6 +6266,10 @@ function syncBottomChatBarSecondaryState() {
         button.setAttribute('aria-label', title);
         button.setAttribute('aria-expanded', String(isOpen));
         setBottomChatButtonIcon(button, isOpen ? 'fa-chevron-up' : 'fa-chevron-down');
+    }
+
+    if (isHiddenOnMobile) {
+        setBottomChatOverflowOpen(false);
     }
 }
 
@@ -14549,6 +14761,7 @@ function buildBottomChatBar() {
     });
     personaBubble.addEventListener('click', (e) => {
         e.stopPropagation();
+        setBottomChatOverflowOpen(false);
         togglePersonaPicker();
     });
     updatePersonaBubble(personaBubble);
@@ -14585,15 +14798,32 @@ function buildBottomChatBar() {
 
     const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to top of chat' }, scrollCurrentChatToTop);
     const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to bottom of chat' }, scrollCurrentChatToBottom);
-    const chatManagerBtn = createBottomChatButton({ icon: 'fa-address-book', title: 'View chat files' }, handleChatManagerClick);
-    const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New chat' }, handleNewChat);
-    const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass delete chats' }, () => { void handleMassDeleteChats(); });
-    const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
-    const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
-    const deleteBtn = createBottomChatButton({ icon: 'fa-trash', title: 'Delete chat' }, () => { void handleDeleteChat(); });
+    const chatManagerAction = createBottomChatAction({ id: 'view-files', icon: 'fa-address-book', title: 'View chat files', onClick: handleChatManagerClick });
+    const newAction = createBottomChatAction({ id: 'new-chat', icon: 'fa-plus', title: 'New chat', onClick: handleNewChat });
+    const massDeleteAction = createBottomChatAction({ id: 'mass-delete', icon: 'fa-list-check', title: 'Mass delete chats', onClick: () => { void handleMassDeleteChats(); } });
+    const autoNameAction = createBottomChatAction({ id: 'auto-name', icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat', onClick: () => { void handleAutoNameChat(); } });
+    const renameAction = createBottomChatAction({ id: 'rename-chat', icon: 'fa-pencil', title: 'Rename chat', onClick: () => { void handleRenameChat(); } });
+    const searchAction = { id: 'search-chat', title: 'Search chat', icon: 'fa-magnifying-glass', button: searchToggleBtn };
+    searchToggleBtn.dataset.sbBottomActionId = searchAction.id;
+    const deleteAction = createBottomChatAction({ id: 'delete-chat', icon: 'fa-trash', title: 'Delete chat', onClick: () => { void handleDeleteChat(); } });
+    const overflowBtn = createBottomChatButton({ icon: 'fa-ellipsis', title: 'More chat actions', className: 'sb-bottom-chat-overflow-toggle' }, () => {
+        setBottomChatOverflowOpen(!getBottomChatBarState().overflowOpen, { restoreFocus: false });
+    });
+    overflowBtn.setAttribute('aria-controls', 'sb-bottom-chat-overflow-menu');
+    overflowBtn.setAttribute('aria-expanded', 'false');
+    overflowBtn.hidden = true;
 
     navCluster.append(topBtn, bottomBtn);
-    managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, deleteBtn);
+    managementCluster.append(
+        chatManagerAction.button,
+        newAction.button,
+        massDeleteAction.button,
+        autoNameAction.button,
+        renameAction.button,
+        searchAction.button,
+        deleteAction.button,
+        overflowBtn,
+    );
     secondaryRow.append(managementCluster);
     container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow);
 
@@ -14609,10 +14839,15 @@ function buildBottomChatBar() {
         secondaryRow,
         scrollTopButton: topBtn,
         scrollBottomButton: bottomBtn,
-        managerButton: chatManagerBtn,
-        massDeleteButton: massDeleteBtn,
-        autoNameButton: autoNameBtn,
+        managerButton: chatManagerAction.button,
+        newButton: newAction.button,
+        massDeleteButton: massDeleteAction.button,
+        autoNameButton: autoNameAction.button,
+        renameButton: renameAction.button,
+        deleteButton: deleteAction.button,
+        overflowButton: overflowBtn,
     });
+    syncBottomChatActionOverflowState();
     syncBottomChatBarSecondaryState();
     syncBottomChatBarSearchState();
 
@@ -14624,8 +14859,16 @@ function buildBottomChatBar() {
     if (!bottomChatBarState.outsideClickBound) {
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('sb-persona-picker');
+            const overflowMenu = bottomChatBarState.overflowMenu;
             if (picker && !picker.contains(e.target) && e.target !== bottomChatBarState.personaBubble) {
                 picker.remove();
+            }
+            if (
+                overflowMenu instanceof HTMLElement
+                && !overflowMenu.contains(e.target)
+                && !bottomChatBarState.overflowButton?.contains?.(e.target)
+            ) {
+                setBottomChatOverflowOpen(false);
             }
         });
         bottomChatBarState.outsideClickBound = true;
@@ -14656,8 +14899,12 @@ async function refreshBottomChatSelect() {
     setButtonDisabled(sbState.bottomChatBar?.scrollTopButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.scrollBottomButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.managerButton, !chatContext.canBrowseChats);
+    setButtonDisabled(sbState.bottomChatBar?.newButton, !chatContext.canStartNewChat);
     setButtonDisabled(sbState.bottomChatBar?.massDeleteButton, !chatContext.canBrowseChats);
     setButtonDisabled(sbState.bottomChatBar?.autoNameButton, !chatContext.hasChat);
+    setButtonDisabled(sbState.bottomChatBar?.renameButton, !chatContext.hasChat);
+    setButtonDisabled(sbState.bottomChatBar?.deleteButton, !chatContext.hasChat);
+    syncBottomChatActionOverflowState();
 
     if (!chatContext.context) {
         return;
@@ -14900,6 +15147,7 @@ function bindBottomChatBarWindowEvents() {
     }
 
     const refreshWithContext = () => {
+        syncBottomChatActionOverflowState();
         syncBottomChatBarSecondaryState();
         syncBottomChatBarSearchState();
         scheduleBottomChatBarRefresh(0);
