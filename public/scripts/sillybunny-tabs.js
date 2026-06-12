@@ -2410,6 +2410,29 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 }
 
+function getMobileSafeAreaBottomPx() {
+    const styles = window.getComputedStyle(document.documentElement);
+    const fallback = Number.parseFloat(styles.getPropertyValue('--sb-mobile-safe-area-bottom')) || 0;
+
+    if (!(document.body instanceof HTMLElement)) {
+        return fallback;
+    }
+
+    let probe = document.getElementById('sb-mobile-safe-area-bottom-probe');
+    if (!(probe instanceof HTMLElement)) {
+        probe = createElement('div', {
+            attrs: {
+                id: 'sb-mobile-safe-area-bottom-probe',
+                'aria-hidden': 'true',
+            },
+        });
+        probe.style.cssText = 'position:fixed;left:-9999px;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
+        document.body.appendChild(probe);
+    }
+
+    return Number.parseFloat(window.getComputedStyle(probe).paddingBottom) || fallback;
+}
+
 function syncMobileShellDrawerBounds() {
     const drawers = getMobileShellBoundDrawers();
 
@@ -2420,6 +2443,7 @@ function syncMobileShellDrawerBounds() {
     const mobileViewport = isMobileViewport();
     const viewportSize = mobileViewport ? getShellViewportSize() : null;
     const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
+    const safeAreaBottom = mobileViewport ? getMobileSafeAreaBottomPx() : 0;
 
     for (const drawer of drawers) {
         const isOpen = drawer.classList.contains('openDrawer');
@@ -2432,6 +2456,7 @@ function syncMobileShellDrawerBounds() {
             viewportHeight: viewportSize?.height ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
+            safeAreaBottom,
         }));
     }
 }
@@ -2475,6 +2500,113 @@ function queueMobileShellDrawerBoundsSync() {
         sbMobileShellDrawerBoundsFollowupId = 0;
         sync();
     }, schedule.followupDelayMs);
+}
+
+function bindMobileDrawerGestureDismiss(drawer, closeDrawer) {
+    if (!(drawer instanceof HTMLElement) || typeof closeDrawer !== 'function' || drawer.dataset.sbDrawerGestureBound === 'true') {
+        return;
+    }
+
+    drawer.dataset.sbDrawerGestureBound = 'true';
+    let drawerGesture = null;
+    let suppressDrawerClickUntil = 0;
+
+    const getGestureHandle = () => drawer.querySelector(':scope > .sb-shell-frame .sb-shell-header')
+        ?? drawer.querySelector(':scope > .sb-character-shell-header')
+        ?? drawer;
+
+    const clearDrawerGesture = () => {
+        drawerGesture = null;
+        drawer.style.removeProperty('transform');
+        drawer.classList.remove('sb-drawer-gesture-active');
+    };
+
+    const beginDrawerGesture = event => {
+        if (!isMobileViewport() || !drawer.classList.contains('openDrawer')) {
+            return;
+        }
+
+        const handle = getGestureHandle();
+        if (!(event.target instanceof Node) || !handle?.contains(event.target)) {
+            return;
+        }
+
+        drawerGesture = sbMobileShellLifecycle.drawerGestures.createGestureState({
+            isMobileViewport: isMobileViewport(),
+            isOpen: drawer.classList.contains('openDrawer'),
+            touch: event.touches?.[0],
+        });
+    };
+
+    const updateDrawerGesture = event => {
+        if (!drawerGesture) {
+            return;
+        }
+
+        const gestureMove = sbMobileShellLifecycle.drawerGestures.resolveGestureMove({
+            gestureState: drawerGesture,
+            touch: event.touches?.[0],
+        });
+
+        drawerGesture = gestureMove.gestureState;
+
+        if (!drawerGesture) {
+            clearDrawerGesture();
+            return;
+        }
+
+        drawer.classList.toggle('sb-drawer-gesture-active', drawerGesture.dragging);
+        if (drawerGesture.dragging) {
+            drawer.style.setProperty('transform', `translateY(${gestureMove.offsetY}px)`, 'important');
+        }
+
+        if (gestureMove.shouldPreventDefault && event.cancelable) {
+            event.preventDefault();
+        }
+
+        if (gestureMove.shouldStopPropagation) {
+            event.stopPropagation();
+        }
+    };
+
+    const finishDrawerGesture = event => {
+        const gestureEnd = sbMobileShellLifecycle.drawerGestures.resolveGestureEnd({
+            gestureState: drawerGesture,
+            nowMs: Date.now(),
+        });
+
+        if (gestureEnd.suppressClickUntil) {
+            suppressDrawerClickUntil = gestureEnd.suppressClickUntil;
+        }
+
+        clearDrawerGesture();
+
+        if (gestureEnd.shouldStopPropagation) {
+            event.stopPropagation();
+        }
+
+        if (gestureEnd.shouldDismiss) {
+            closeDrawer();
+        }
+    };
+
+    const suppressClickAfterDrawerGesture = event => {
+        if (!sbMobileShellLifecycle.drawerGestures.shouldSuppressClick({
+            nowMs: Date.now(),
+            suppressClickUntil: suppressDrawerClickUntil,
+        })) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    drawer.addEventListener('touchstart', beginDrawerGesture, { passive: true });
+    drawer.addEventListener('touchmove', updateDrawerGesture, { passive: false });
+    drawer.addEventListener('touchend', finishDrawerGesture, { passive: true });
+    drawer.addEventListener('touchcancel', clearDrawerGesture, { passive: true });
+    drawer.addEventListener('click', suppressClickAfterDrawerGesture, true);
 }
 
 function isMovingUIActive() {
@@ -7853,6 +7985,7 @@ document.addEventListener('click', (e) => {
 function toggleCharacterPanel({ preferredTab = null } = {}) {
     injectCharacterDrawerControls();
     ensureCharacterResizeHandle();
+    bindMobileDrawerGestureDismiss(getCharacterPanel(), closeCharacterPanel);
 
     if (isCharacterPanelOpen()) {
         closeCharacterPanel();
@@ -13002,6 +13135,8 @@ function openShell(shellKey, tabId = null) {
         return;
     }
 
+    bindMobileDrawerGestureDismiss(shellRoot, () => closeShell(shellKey));
+
     const shellSurface = getMobileShellSurfaceForShell(shellKey);
     if (shellSurface) {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
@@ -14219,7 +14354,9 @@ function closeMobileNav() {
 }
 
 function injectCharacterDrawerControls() {
-    getCharacterPanel()?.classList.add('sb-character-drawer-root');
+    const characterPanel = getCharacterPanel();
+    characterPanel?.classList.add('sb-character-drawer-root');
+    bindMobileDrawerGestureDismiss(characterPanel, closeCharacterPanel);
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
 
