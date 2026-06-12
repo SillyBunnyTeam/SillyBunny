@@ -141,6 +141,37 @@ describe('chat render lifecycle scroll state machine', () => {
         });
     });
 
+    test('media-resize transitions preserve scrolled-up anchors and restore bottom pins', () => {
+        expect(resolveChatScrollStateTransition({
+            state: CHAT_SCROLL_STATE.USER_READING,
+            intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
+            autoScrollEnabled: true,
+            isNearBottom: false,
+            hasAnchor: true,
+        })).toEqual({
+            state: CHAT_SCROLL_STATE.ANCHORED_HISTORY,
+            action: {
+                action: CHAT_SCROLL_ACTION.PRESERVE_ANCHOR,
+                reason: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
+            },
+        });
+
+        expect(resolveChatScrollStateTransition({
+            state: CHAT_SCROLL_STATE.ANCHORED_HISTORY,
+            intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
+            autoScrollEnabled: true,
+            isNearBottom: true,
+            hasAnchor: false,
+            isManualScrollSuppressed: false,
+        })).toEqual({
+            state: CHAT_SCROLL_STATE.PINNED_BOTTOM,
+            action: {
+                action: CHAT_SCROLL_ACTION.PIN_BOTTOM,
+                reason: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
+            },
+        });
+    });
+
     test('unknown intents keep the normalized current state and fail closed', () => {
         expect(resolveChatScrollStateTransition({
             state: 'unexpected-state',

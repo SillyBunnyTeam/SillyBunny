@@ -2532,13 +2532,16 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
         return;
     }
 
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom: Boolean(resizeState.isNearBottom),
         hasAnchor: Boolean(resizeState.anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
+    const action = transition.action;
 
     if (shouldApplyChatBottomScrollAction(action)) {
         // SillyBunny: coalesce media resize pins with the shared bottom-scroll rAF lane.
