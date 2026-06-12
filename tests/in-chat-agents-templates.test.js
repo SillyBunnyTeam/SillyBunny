@@ -58,7 +58,10 @@ describe('in-chat agent bundled templates', () => {
         const catalog = readTemplate('index.json');
         const sourceFilenames = [
             'achievements-tracker.json',
+            'actor-interview-companion.json',
             'continuity-companion.json',
+            'directors-commentary-companion.json',
+            'lorebook-scout-companion.json',
             'npc-motivator.json',
             'relationship-lens-companion.json',
             'scene-tracker.json',
@@ -126,6 +129,31 @@ describe('in-chat agent bundled templates', () => {
             trigger: 'manual',
             displayMode: 'card',
             feedback: { enabled: false, depth: 1 },
+        }));
+
+        const commentary = findCatalogTemplate(catalog, 'tpl-directors-commentary-companion');
+        const interview = findCatalogTemplate(catalog, 'tpl-actor-interview-companion');
+        const lorebookScout = findCatalogTemplate(catalog, 'tpl-lorebook-scout-companion');
+
+        for (const template of [commentary, interview, lorebookScout]) {
+            expect(template).toEqual(expect.objectContaining({
+                category: 'companion',
+                execution: 'companion',
+                phase: 'post',
+                enabled: false,
+            }));
+        }
+        expect(commentary.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            batch: true,
+        }));
+        expect(interview.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            includeCharacterCard: true,
+        }));
+        expect(lorebookScout.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            includeWorldInfo: true,
         }));
 
         const { isCompanionAgent, normalizeAgent } = await importAgentStore();

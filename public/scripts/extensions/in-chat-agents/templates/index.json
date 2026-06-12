@@ -1426,6 +1426,186 @@
     }
   },
   {
+    "id": "tpl-directors-commentary-companion",
+    "name": "Director's Commentary",
+    "description": "Side note card with a director's read on the scene: pacing, stakes, subtext, and where it could go next",
+    "icon": "fa-clapperboard",
+    "category": "companion",
+    "tags": [
+      "commentary",
+      "scene",
+      "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "You are the director watching this scene from behind the camera. Read the latest assistant reply and recent context, then write a short commentary track for the user. Cover: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Do not rewrite the reply and do not address the characters.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "auto",
+      "displayMode": "card",
+      "format": "markdown",
+      "contextMessages": 8,
+      "includeCharacterCard": false,
+      "includePersona": false,
+      "includeWorldInfo": false,
+      "includeHistory": false,
+      "historyDepth": 3,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": true,
+      "maxTokens": 2048
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 100,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
+    "id": "tpl-actor-interview-companion",
+    "name": "Actor Interview",
+    "description": "Manual side note card: interview the character about the latest scene, in character, off the record",
+    "icon": "fa-microphone-lines",
+    "category": "companion",
+    "tags": [
+      "interview",
+      "character",
+      "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "You are running a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about: what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Do not continue the scene itself.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "manual",
+      "displayMode": "card",
+      "format": "markdown",
+      "contextMessages": 10,
+      "includeCharacterCard": true,
+      "includePersona": false,
+      "includeWorldInfo": false,
+      "includeHistory": false,
+      "historyDepth": 3,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": false,
+      "maxTokens": 2048
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 100,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
+    "id": "tpl-lorebook-scout-companion",
+    "name": "Lorebook Scout",
+    "description": "Manual side note card: drafts one-concept lorebook entries with trigger keys from new facts established in the scene",
+    "icon": "fa-book-atlas",
+    "category": "companion",
+    "tags": [
+      "lorebook",
+      "world info",
+      "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Ignore transient scene state, and skip anything already covered by the provided World Info. For each fact, draft one lorebook entry covering exactly one concept, formatted as: a bold title, a 'Keys:' line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Output at most 4 entries. If nothing new and durable was established, write exactly: No new lore this turn.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "manual",
+      "displayMode": "card",
+      "format": "markdown",
+      "contextMessages": 10,
+      "includeCharacterCard": false,
+      "includePersona": false,
+      "includeWorldInfo": true,
+      "includeHistory": false,
+      "historyDepth": 3,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": false,
+      "maxTokens": 2048
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 100,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
     "id": "tpl-pathfinder",
     "name": "Pathfinder",
     "description": "Automatic agentic lorebook retrieval. Lets a model actively browse, search, and modify your lorebook using function tools. (Tool agent - requires API with tool calling support)",

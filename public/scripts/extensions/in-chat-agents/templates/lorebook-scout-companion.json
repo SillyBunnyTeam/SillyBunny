@@ -1,0 +1,60 @@
+{
+    "id": "tpl-lorebook-scout-companion",
+    "name": "Lorebook Scout",
+    "description": "Manual side note card: drafts one-concept lorebook entries with trigger keys from new facts established in the scene",
+    "icon": "fa-book-atlas",
+    "category": "companion",
+    "tags": [
+        "lorebook",
+        "world info",
+        "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Ignore transient scene state, and skip anything already covered by the provided World Info. For each fact, draft one lorebook entry covering exactly one concept, formatted as: a bold title, a 'Keys:' line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Output at most 4 entries. If nothing new and durable was established, write exactly: No new lore this turn.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "manual",
+        "displayMode": "card",
+        "format": "markdown",
+        "contextMessages": 10,
+        "includeCharacterCard": false,
+        "includePersona": false,
+        "includeWorldInfo": true,
+        "includeHistory": false,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 2048
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}
