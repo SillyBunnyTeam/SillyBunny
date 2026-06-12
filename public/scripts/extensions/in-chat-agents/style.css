@@ -1607,6 +1607,10 @@ button.ica--card-pill--version-update {
 .mes_fix_trackers--running {
     opacity: 0.5;
     pointer-events: none;
+}
+
+.mes_fix_trackers--running.fa-solid,
+.mes_fix_trackers--running > i {
     animation: mes-fix-trackers-spin 1s linear infinite;
 }
 
