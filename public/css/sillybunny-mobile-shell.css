@@ -1,6 +1,11 @@
 /* SillyBunny mobile shell foundation: final sheet contract for modal drawers.
  * Keep this at the end of the shell sheet so it beats older mobile drawer rules. */
 @media screen and (max-width: 768px) {
+    :root {
+        --sb-mobile-safe-area-left: env(safe-area-inset-left, 0px);
+        --sb-mobile-safe-area-right: env(safe-area-inset-right, 0px);
+    }
+
     #form_sheld {
         width: 100%;
         max-width: 100%;
@@ -1306,18 +1311,28 @@
         left: 8px !important;
         right: 8px !important;
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap)) !important;
-        bottom: env(safe-area-inset-bottom, 0px) !important;
-        height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
-        max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+        bottom: var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) !important;
+        height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
         min-width: 0 !important;
         margin-top: 0 !important;
         border-radius: 22px 22px 0 0 !important;
         animation: sbMobileShellSheetIn 220ms var(--sb-ease-out) both !important;
         transform-origin: center bottom;
+        transition: transform var(--sb-transition-fast);
+    }
+
+    #left-nav-panel.openDrawer.sb-drawer-gesture-active,
+    #user-settings-block.openDrawer.sb-drawer-gesture-active,
+    .sb-shell-root.openDrawer.sb-drawer-gesture-active,
+    .sb-shell-root.fillLeft.openDrawer.sb-drawer-gesture-active,
+    .sb-shell-root.fillRight.openDrawer.sb-drawer-gesture-active,
+    #right-nav-panel.openDrawer.sb-drawer-gesture-active {
+        transition: none;
     }
 
     :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
+        left: max(8px, var(--sb-mobile-safe-area-left, env(safe-area-inset-left, 0px))) !important;
         right: 0 !important;
         width: auto !important;
         max-width: none !important;
@@ -2609,8 +2624,8 @@
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
     }
 }
 
@@ -2667,7 +2682,7 @@
     }
 
     #sb-bottom-chat-bar {
-        --sb-bottom-chat-mobile-gutter: max(6px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+        --sb-bottom-chat-mobile-gutter: max(6px, var(--sb-mobile-safe-area-left, env(safe-area-inset-left, 0px)), var(--sb-mobile-safe-area-right, env(safe-area-inset-right, 0px)));
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
         --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
