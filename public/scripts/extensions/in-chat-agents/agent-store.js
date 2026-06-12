@@ -670,13 +670,35 @@ export function normalizePreProcessMaxTokens(value) {
 }
 
 const TRACKER_CATEGORY_TEMPLATE_IDS = new Set([
+    'tpl-achievements-tracker',
     'tpl-cyoa-choices',
     'tpl-direction-menu',
+    'tpl-event-tracker',
+    'tpl-item-tracker',
+    'tpl-parallel-tracker',
+    'tpl-relationship-tracker',
+    'tpl-reputation-tracker',
+    'tpl-scene-tracker',
+    'tpl-secrets-tracker',
+    'tpl-status-tracker',
+    'tpl-time-tracker',
+    'tpl-world-detail',
 ]);
 
 const TRACKER_CATEGORY_NAMES = new Set([
+    'achievements tracker',
     'cyoa choices',
     'direction menu',
+    'event tracker',
+    'item tracker',
+    'parallel off-screen',
+    'relationship tracker',
+    'reputation tracker',
+    'scene tracker',
+    'secrets tracker',
+    'status tracker',
+    'time tracker',
+    'world detail',
 ]);
 
 export function normalizeAgentCategory(category = '', sourceTemplateId = '', name = '') {

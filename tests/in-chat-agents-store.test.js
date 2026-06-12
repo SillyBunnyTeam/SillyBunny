@@ -465,6 +465,29 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.findTemplateForAgentSnapshot(agent, templates)?.id).toBe('tpl-achievements-tracker');
     });
 
+    test('normalizes legacy bundled tracker copies with stale categories', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'saved-status',
+                name: 'Saved Status',
+                category: 'custom',
+                sourceTemplateId: 'tpl-status-tracker',
+                enabled: true,
+            },
+            {
+                id: 'saved-scene',
+                name: 'Scene Tracker',
+                category: 'custom',
+                enabled: true,
+            },
+        ]);
+
+        expect(store.getAgentById('saved-status').category).toBe('tracker');
+        expect(store.getAgentById('saved-scene').category).toBe('tracker');
+        expect(store.getEnabledAgents().map(agent => agent.id)).toEqual(['saved-status', 'saved-scene']);
+    });
+
     test('keeps prompt-changed custom snapshots from matching bundled templates', async () => {
         const store = await importStore();
         const templates = [{
