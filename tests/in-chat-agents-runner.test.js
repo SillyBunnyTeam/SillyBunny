@@ -248,6 +248,10 @@ describe('in-chat agent post-processing runner', () => {
             removeReasoningFromString: jest.fn(value => String(value ?? '')),
         }));
 
+        await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({
+            getWorldInfoPrompt: jest.fn(async () => ({ worldInfoString: '' })),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/tool-calling.js', () => ({
             ToolManager: {
                 RECURSE_LIMIT: 5,
@@ -792,6 +796,126 @@ describe('in-chat agent post-processing runner', () => {
         }));
         expect(result).toEqual({ status: 'done', content: 'note' });
         expect(generateQuietPrompt).not.toHaveBeenCalled();
+    });
+
+    test('scans the latest user message for companion keyword triggers on continue', async () => {
+        const companionAgent = createCompanionAgent({
+            conditions: { triggerKeywords: ['lore'], generationTypes: ['normal', 'continue'] },
+        });
+        enabledAgents = [companionAgent];
+        chat.push(
+            { mes: 'Tell me about the lore here.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'An answer that never repeats the keyword.', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        const runCompanionStage = jest.fn(async () => []);
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionStage });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'continue');
+
+        expect(runCompanionStage).toHaveBeenCalledWith(expect.objectContaining({
+            messageIndex: 1,
+            generationType: 'continue',
+            activeAgents: [companionAgent],
+        }));
+    });
+
+    test('does not activate keyword companions from assistant-only mentions', async () => {
+        const companionAgent = createCompanionAgent({
+            conditions: { triggerKeywords: ['lore'], generationTypes: ['normal', 'continue'] },
+        });
+        enabledAgents = [companionAgent];
+        chat.push(
+            { mes: 'Just keep going.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'The lore of this place is vast.', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        const runCompanionStage = jest.fn(async () => []);
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionStage });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        const sawCompanion = runCompanionStage.mock.calls
+            .some(([stage]) => (stage?.activeAgents ?? []).includes(companionAgent));
+        expect(sawCompanion).toBe(false);
+    });
+
+    test('supports regex-literal companion trigger keywords', async () => {
+        const companionAgent = createCompanionAgent({
+            conditions: { triggerKeywords: ['/dragon\\s+lair/i'], generationTypes: ['normal'] },
+        });
+        enabledAgents = [companionAgent];
+        chat.push(
+            { mes: 'We approach the Dragon  Lair at dusk.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'The gates loom.', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        const runCompanionStage = jest.fn(async () => []);
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionStage });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(runCompanionStage).toHaveBeenCalledWith(expect.objectContaining({
+            activeAgents: [companionAgent],
+        }));
+    });
+
+    test('persists companion notes per swipe and restores them on swipe back', async () => {
+        const companionAgent = createCompanionAgent();
+        enabledAgents = [companionAgent];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const message = {
+            mes: 'Assistant reply',
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+            swipe_id: 0,
+            swipes: ['Assistant reply'],
+            swipe_info: [{ extra: {} }],
+        };
+        chat.push(message);
+
+        companionRunner.setCompanionResult(message, companionAgent, { status: 'done', content: 'note A' });
+
+        expect(message.extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
+            status: 'done',
+            content: 'note A',
+        }));
+        expect(message.swipe_info[0].extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
+            status: 'done',
+            content: 'note A',
+        }));
+
+        // Swipe to a fresh second swipe: the active extra no longer carries the note.
+        message.swipes.push('Second swipe');
+        message.swipe_info.push({ extra: {} });
+        message.swipe_id = 1;
+        message.extra = structuredClone(message.swipe_info[1].extra);
+        message.mes = 'Second swipe';
+
+        expect(companionRunner.getCompanionResults(message)).toEqual({});
+
+        // Swipe back restores the stored note.
+        message.swipe_id = 0;
+        message.extra = structuredClone(message.swipe_info[0].extra);
+        message.mes = 'Assistant reply';
+
+        expect(companionRunner.getCompanionResults(message)[companionAgent.id]).toEqual(expect.objectContaining({
+            content: 'note A',
+        }));
+
+        expect(companionRunner.deleteCompanionResult(message, companionAgent.id)).toBe(true);
+        expect(companionRunner.getCompanionResults(message)).toEqual({});
+        expect(message.extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(message.swipe_info[0].extra.inChatAgentCompanionResults).toBeUndefined();
     });
 
     test('waits for Pathfinder retrieval before injecting pre-generation prompts', async () => {
