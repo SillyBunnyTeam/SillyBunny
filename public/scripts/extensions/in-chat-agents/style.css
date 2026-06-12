@@ -1608,7 +1608,8 @@ button.ica--card-pill--version-update {
     top: 0;
     right: 0;
     bottom: 0;
-    z-index: 3000;
+    /* Above the mobile shell's modal layer (--sb-z-modal-content: 3100), below toasts. */
+    z-index: var(--sb-z-popout, 4000);
     display: flex;
     flex-direction: column;
     width: min(420px, 94vw);
@@ -1741,7 +1742,7 @@ button.ica--card-pill--version-update {
     position: fixed;
     top: 50%;
     right: 0;
-    z-index: 2999;
+    z-index: calc(var(--sb-z-popout, 4000) - 1);
     display: flex;
     flex-direction: column;
     align-items: center;

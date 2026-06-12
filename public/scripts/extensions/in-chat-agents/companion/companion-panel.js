@@ -250,14 +250,17 @@ export function initCompanionPanel() {
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
     $('#ica--tracker-panel-handle').on('click', () => toggleCompanionPanel());
 
-    // A always-reachable toggle on the chat screen itself, next to the wand menu button.
+    // An always-reachable toggle on the chat screen itself, next to the wand menu button.
+    // The handler is delegated because the mobile shell re-arranges the send form's children.
     if (!$('#ica--trackerPanelChatButton').length) {
-        const chatButton = $(`
+        $('#leftSendForm').append(`
             <div id="ica--trackerPanelChatButton" class="fa-solid fa-map-location-dot interactable" title="Open the tracker panel" aria-label="Open the tracker panel" tabindex="0" style="display:none"></div>
         `);
-        chatButton.on('click', () => toggleCompanionPanel());
-        $('#leftSendForm').append(chatButton);
     }
+    $(document).on('click', '#ica--trackerPanelChatButton', event => {
+        event.preventDefault();
+        toggleCompanionPanel();
+    });
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`

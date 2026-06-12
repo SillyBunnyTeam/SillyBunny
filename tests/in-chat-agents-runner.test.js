@@ -941,6 +941,24 @@ describe('in-chat agent post-processing runner', () => {
         expect(noteMessages[0].content).toContain('Return only markdown');
     });
 
+    test('guards tracker companions against continuing the story even with raw prompts', async () => {
+        const rawTracker = createCompanionAgent({ id: 'raw-tracker', category: 'tracker', companion: { rawPrompt: true } });
+        rawTracker.prompt = 'Track the scene in the [Scene|...] format.';
+        enabledAgents = [rawTracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(rawTracker, 1);
+
+        expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
+        expect(messages[0].content).toContain('Do not continue the story');
+        expect(messages[0].content).not.toContain('Return only markdown');
+    });
+
     test('stores readable profile labels instead of raw profile ids', async () => {
         const profiledCompanion = createCompanionAgent({ id: 'profiled-companion' });
         profiledCompanion.connectionProfile = '20345602-939a-44c2-8522-525fb7212b0e';

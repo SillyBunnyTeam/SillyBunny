@@ -279,6 +279,15 @@ async function buildCompanionContextSections(agent, messageIndex) {
     return sections.join('\n\n');
 }
 
+// Tracker prompts were written to ride along with a story reply; running standalone, models
+// continue the scene after the state block unless told the story is not theirs to write.
+// This guard stacks on top of rawPrompt, which only suppresses the format instruction.
+const TRACKER_GUARD_INSTRUCTION = 'Output only the tracker state in the exact format the instructions above define. Do not continue the story: no narration, no dialogue, no commentary.';
+
+function getTrackerGuardInstruction(agent) {
+    return agent?.category === 'tracker' ? TRACKER_GUARD_INSTRUCTION : '';
+}
+
 function getFormatInstruction(format) {
     switch (format) {
         case 'html':
@@ -307,9 +316,11 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
     // format and break when extra format instructions are appended around them.
-    const systemContent = companion.rawPrompt
-        ? expandedPrompt
-        : [expandedPrompt, getFormatInstruction(companion.format)].filter(Boolean).join('\n\n');
+    const systemContent = [
+        expandedPrompt,
+        companion.rawPrompt ? '' : getFormatInstruction(companion.format),
+        getTrackerGuardInstruction(agent),
+    ].filter(Boolean).join('\n\n');
 
     return [
         {
@@ -433,12 +444,14 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
     const tasks = agents.map(agent => {
         const companion = getCompanionConfig(agent);
         const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
+        const guardInstruction = getTrackerGuardInstruction(agent);
         return [
             `<<<COMPANION:${agent.id}>>>`,
             `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
             'Instruction:',
             expandCompanionPrompt(agent, messageIndex, generationType),
             ...formatLines,
+            ...(guardInstruction ? [guardInstruction] : []),
             `<<<END:${agent.id}>>>`,
         ].join('\n');
     }).join('\n\n');
