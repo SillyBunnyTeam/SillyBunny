@@ -1,15 +1,17 @@
 import { DOMPurify, showdown } from '../../../../lib.js';
-import { chat, saveChatDebounced } from '../../../../script.js';
+import { chat, saveChatDebounced, substituteParams, substituteParamsExtended } from '../../../../script.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
 import {
     areAgentsGloballyEnabled,
     getAgentById,
+    getAgentRegexScripts,
     getCompanionConfig,
     getEnabledAgents,
     isCompanionAgent,
 } from '../agent-store.js';
+import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -50,11 +52,30 @@ function sanitizeCompanionHtml(html = '') {
     });
 }
 
-function formatCompanionContent(result = {}) {
-    const content = String(result.content ?? '').trim();
-    if (!content) {
+function applyAgentRegexToCompanionContent(agentId, content, message) {
+    const agent = getAgentById(agentId);
+    const scripts = agent ? getAgentRegexScripts(agent) : [];
+    if (scripts.length === 0) {
+        return content;
+    }
+
+    // Same semantics as the chat message display path: a converted tracker's beautifier
+    // regex keeps working on its note card. Sanitization happens after, in the format step.
+    return applyRegexScriptList(content, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+        characterOverride: String(message?.name ?? '').trim(),
+        isMarkdown: true,
+        substituteParamsFn: substituteParams,
+        substituteParamsExtendedFn: substituteParamsExtended,
+    });
+}
+
+export function formatCompanionContent(agentId, result = {}, message = null) {
+    const rawContent = String(result.content ?? '').trim();
+    if (!rawContent) {
         return '<div class="ica--companion-empty">No note returned.</div>';
     }
+
+    const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
 
     if (result.format === 'html') {
         return sanitizeCompanionHtml(content);
@@ -100,7 +121,7 @@ function getRenderableCompanionEntries(message) {
         .sort(([, left], [, right]) => getResultSortValue(left) - getResultSortValue(right));
 }
 
-function buildCompanionBody(result) {
+function buildCompanionBody(agentId, result, message) {
     const status = getResultStatus(result);
 
     if (status === 'pending') {
@@ -115,10 +136,10 @@ function buildCompanionBody(result) {
         return '<div class="ica--companion-empty">Companion run was cancelled.</div>';
     }
 
-    return formatCompanionContent(result);
+    return formatCompanionContent(agentId, result, message);
 }
 
-function buildCompanionCard(agentId, result) {
+function buildCompanionCard(agentId, result, message) {
     const status = getResultStatus(result);
     const agentName = String(result.agentName ?? '').trim() || 'Companion';
     const icon = String(result.icon ?? '').trim() || 'fa-user-astronaut';
@@ -144,7 +165,7 @@ function buildCompanionCard(agentId, result) {
                     <button type="button" class="ica--companion-action caution" data-action="delete" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
                 </span>
             </summary>
-            <div class="ica--companion-body">${buildCompanionBody(result)}</div>
+            <div class="ica--companion-body">${buildCompanionBody(agentId, result, message)}</div>
         </details>
     `;
 }
@@ -175,7 +196,7 @@ export function renderCompanionResultsForMessage(messageIndex) {
         }
     }
 
-    ledger.html(entries.map(([agentId, result]) => buildCompanionCard(agentId, result)).join(''));
+    ledger.html(entries.map(([agentId, result]) => buildCompanionCard(agentId, result, message)).join(''));
 }
 
 function renderAllCompanionResults() {
@@ -384,7 +405,9 @@ export function initCompanionCardUi() {
         event_types.CHARACTER_MESSAGE_RENDERED,
         event_types.USER_MESSAGE_RENDERED,
         event_types.MESSAGE_UPDATED,
+        event_types.MESSAGE_EDITED,
         event_types.MESSAGE_SWIPED,
+        event_types.MORE_MESSAGES_LOADED,
     ].filter(Boolean);
 
     for (const eventName of renderEvents) {
@@ -394,6 +417,14 @@ export function initCompanionCardUi() {
             } else {
                 renderAllCompanionResults();
             }
+            updateCompanionButtonVisibility();
+        });
+    }
+
+    if (event_types.MESSAGE_DELETED) {
+        // The payload is the deleted index, but every later message shifts down — re-render all.
+        eventSource.on(event_types.MESSAGE_DELETED, () => {
+            renderAllCompanionResults();
             updateCompanionButtonVisibility();
         });
     }
