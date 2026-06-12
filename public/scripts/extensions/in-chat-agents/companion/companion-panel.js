@@ -541,10 +541,8 @@ export function initCompanionPanel() {
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
-        if (insertChoiceIntoMessageInput(this.textContent)) {
-            // The panel covers the message box on small screens; get out of the way.
-            closeCompanionPanel();
-        }
+        // The toast confirms the insert; keep the panel open so taps never yank the page away.
+        insertChoiceIntoMessageInput(this.textContent);
     });
     $('#ica--tracker-panel-handle').on('click', () => {
         if (Date.now() < suppressHandleClickUntil) {

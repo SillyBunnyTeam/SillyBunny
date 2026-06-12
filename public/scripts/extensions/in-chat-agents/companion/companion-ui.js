@@ -154,7 +154,9 @@ export function cleanCompanionAgentName(name) {
 }
 
 const CHOICE_PREFIX_RE = /^(?:[-*•→>]|\d+[.):]|[a-z][.)])\s+/i;
-const CHOICE_LINE_RE = /^(?:[-*•→>]|\d+[.):]|[a-z][.)])\s+\S/i;
+// Detection requires a real enumerator (1. / 2) / B)) — plain bullets are how trackers
+// format state lines, and wrapping those turned ordinary panel taps into inserts.
+const CHOICE_LINE_RE = /^(?:\d+[.):]|[a-z][.)])\s+\S/i;
 
 /** Normalizes a clicked choice line: collapse whitespace and strip list enumeration. */
 export function extractChoiceText(text) {

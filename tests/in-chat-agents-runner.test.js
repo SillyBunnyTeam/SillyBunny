@@ -941,11 +941,12 @@ describe('in-chat agent post-processing runner', () => {
 
         const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
         expect(rawMessages[0].role).toBe('system');
-        expect(rawMessages[0].content.startsWith('Track the scene state in the [Scene|...] format.')).toBe(true);
+        expect(rawMessages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
+        expect(rawMessages[0].content).toContain('Track the scene state in the [Scene|...] format.');
         expect(rawMessages[0].content).not.toContain('Return only markdown');
-        expect(rawMessages[0].content).toContain('auxiliary companion, not the roleplayer');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
+        expect(noteMessages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
         expect(noteMessages[0].content).toContain('Write a side note.');
         expect(noteMessages[0].content).toContain('Return only markdown');
         expect(noteMessages[1].content).toContain('[Task]');
@@ -1081,8 +1082,8 @@ describe('in-chat agent post-processing runner', () => {
 
         const messages = await companionRunner.buildCompanionPromptMessages(rawTracker, 1);
 
+        expect(messages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
         expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
-        expect(messages[0].content).toContain('Do not continue the story');
         expect(messages[0].content).not.toContain('Return only markdown');
     });
 

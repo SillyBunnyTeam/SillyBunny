@@ -306,15 +306,10 @@ async function buildCompanionContextSections(agent, messageIndex) {
 // Companion prompts were written to ride along with a story reply; running standalone —
 // especially on small models — they continue the scene unless told the story is not theirs
 // to write. These guards stack on top of rawPrompt, which only suppresses format instructions.
-const TRACKER_GUARD_INSTRUCTION = 'Output only the tracker state in the exact format the instructions above define. Do not continue the story: no narration, no dialogue, no commentary.';
-const COMPANION_GUARD_INSTRUCTION = 'You are an auxiliary companion, not the roleplayer. Do not continue the roleplay, write story prose, or speak as any character. Output only what your instructions ask for.';
+const COMPANION_GUARD_INSTRUCTION = 'Pause all roleplay and output only the following.';
 // Small models weigh the end of the prompt heaviest, and the context ends with roleplay
 // dialogue begging to be continued — anchor the task after it.
 const COMPANION_TASK_ANCHOR = '[Task]\nFollow your instructions on the conversation above. Output only what they ask for — do not continue the conversation itself.';
-
-function getCompanionGuardInstruction(agent) {
-    return agent?.category === 'tracker' ? TRACKER_GUARD_INSTRUCTION : COMPANION_GUARD_INSTRUCTION;
-}
 
 function getFormatInstruction(format) {
     switch (format) {
@@ -345,11 +340,12 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
-    // format and break when extra format instructions are appended around them.
+    // format and break when extra format instructions are appended around them. The guard
+    // leads so "the following" reads as the agent's own instructions.
     const systemContent = [
+        COMPANION_GUARD_INSTRUCTION,
         expandedPrompt,
         companion.rawPrompt ? '' : getFormatInstruction(companion.format),
-        getCompanionGuardInstruction(agent),
         repair ? COMPANION_REPAIR_INSTRUCTION : '',
     ].filter(Boolean).join('\n\n');
 
@@ -478,10 +474,10 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
         return [
             `<<<COMPANION:${agent.id}>>>`,
             `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
+            COMPANION_GUARD_INSTRUCTION,
             'Instruction:',
             expandCompanionPrompt(agent, messageIndex, generationType),
             ...formatLines,
-            getCompanionGuardInstruction(agent),
             `<<<END:${agent.id}>>>`,
         ].join('\n');
     }).join('\n\n');
