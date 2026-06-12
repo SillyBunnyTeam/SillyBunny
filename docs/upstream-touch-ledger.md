@@ -30,7 +30,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Chat lifecycle. |
 | Divergence reason | SillyBunny adds mobile batching, bottom pinning, manual-scroll suppression, long-chat anchoring, streaming DOM throttles, and issue `#167` scroll stability behavior. |
 | Target seam | `public/scripts/chat-render-lifecycle/`. |
-| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate bottom-scroll decisions, scheduling, scroll intent/state, replacement anchoring, and update batching to the lifecycle module. |
+| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement anchoring, and update batching to the lifecycle module. |
 | Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
 | Validation | `node --check public/script.js tests/chat-scroll-regressions.e2e.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js` (41/41), `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4567 npm run test:e2e --prefix tests -- chat-scroll-regressions.e2e.js -g "regenerated streaming replacement preserves"`, plus prior lifecycle lint/unit/e2e packs on this stack. |
 | Rollback path | Keep legacy behavior behind temporary rollout guard until lifecycle fixtures pass. |
@@ -262,13 +262,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Generation lifecycle and settings. |
-| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. |
+| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. Guided Generations must also let custom impersonation prompts control first-, second-, or third-person perspective without a conflicting first-person-only frame. |
 | Target seam | Core chat-completion prompt preparation in `public/scripts/openai.js`; Guided Generations adds its own fork-side system frame. |
-| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. |
+| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. Keep Guided Generations' impersonate frame person-neutral and make the user-configured guide authoritative for perspective and narration style. |
 | Protecting tests | `tests/openai-impersonate-defaults.test.js`, `tests/guided-generations-steering.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- openai-impersonate-defaults.test.js guided-generations-steering.test.js`, `node --check public/scripts/openai.js`, live chat-completion impersonate smoke when API access is available. |
 | Rollback path | Restore empty-string behavior for impersonation prompt/prefill and remove the prompt-manager guard if provider behavior regresses. |
-| Last reviewed | 2026-06-06 Bug 6 impersonate first-person defaults. |
+| Last reviewed | 2026-06-13 Guided Impersonate person-neutral steering. |
 | Owner | Refactor integrator and settings owner. |
 
 ### `public/css/sillybunny-tabs.css`, `public/css/sillybunny-mobile-shell.css`, `public/css/select2-overrides.css`, `public/css/welcome.css`, `public/style.css`, `public/script.js`, `public/sw.js`, and `public/index.html` - menu polish assets
