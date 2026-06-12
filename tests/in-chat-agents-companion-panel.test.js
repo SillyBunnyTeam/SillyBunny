@@ -208,6 +208,7 @@ describe('companion tracker panel', () => {
         expect(html).toContain('<formatted>Sumeru City Market</formatted>');
         expect(html).toContain('data-action="panel-regenerate"');
         expect(html).toContain('data-action="panel-fix"');
+        expect(html).toContain('data-action="panel-edit"');
         expect(html).toContain('data-action="panel-jump"');
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');

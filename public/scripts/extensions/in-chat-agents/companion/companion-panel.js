@@ -30,6 +30,12 @@ let panelOpen = false;
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
+/** Behavior owned by index.js (the agent editor) arrives through this seam — no import cycle. */
+let panelHooks = null;
+
+export function configureCompanionPanel(hooks) {
+    panelHooks = hooks;
+}
 
 /** Keeps the dragged handle reachable: never closer than 8% to either end of its edge. */
 export function clampHandleTopFraction(fraction) {
@@ -371,11 +377,16 @@ function buildPanelAgentSection(state) {
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
 
+    const editButton = state.agent
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Edit this companion" aria-label="Edit companion"><i class="fa-solid fa-pen-to-square"></i></button>'
+        : '';
+
     if (!latest) {
         return `
             <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
+                    <span class="ica--tpanel-agent-actions">${editButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
             </section>
@@ -404,6 +415,7 @@ function buildPanelAgentSection(state) {
                 <span class="ica--tpanel-agent-actions">
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
+                    ${editButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
             </div>
@@ -498,6 +510,17 @@ async function handlePanelAction(event) {
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
     const messageIndex = Number(section.attr('data-message-index'));
+
+    if (action === 'panel-edit') {
+        if (!agentId || typeof panelHooks?.openEditor !== 'function') {
+            toastr.warning('The agent editor is not available.');
+            return;
+        }
+        // The editor is its own popup; close the panel so they do not overlap on sheet edges.
+        closeCompanionPanel();
+        panelHooks.openEditor(agentId);
+        return;
+    }
 
     if (action === 'panel-jump') {
         closeCompanionPanel();

@@ -87,7 +87,7 @@ import {
 import { collectRecentCompanionResults, initCompanionRunner } from './companion/companion-runner.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
-import { initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
+import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -4597,6 +4597,9 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         getLastAssistantMessageIndex,
     });
     initCompanionWandMenuItem();
+    configureCompanionPanel({
+        openEditor: agentId => openEditor(agentId),
+    });
     initCompanionPanel();
     schedulePathfinderExtensionsMount();
 

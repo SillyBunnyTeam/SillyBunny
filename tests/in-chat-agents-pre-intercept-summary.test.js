@@ -203,6 +203,7 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
+        configureCompanionPanel: jest.fn(),
         initCompanionPanel: jest.fn(),
         openCompanionPanel: jest.fn(),
         updateCompanionPanelHandleVisibility: jest.fn(),
