@@ -1700,7 +1700,6 @@ button.ica--card-pill--version-update {
 }
 
 .ica--tpanel.is-open {
-    transform: translate(0, 0);
     box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -1750,6 +1749,18 @@ button.ica--card-pill--version-update {
     border-top-width: 1px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     transform: translateY(100%);
+}
+
+/* Must out-rank the per-edge closed transforms above (same class+attr specificity,
+   later source order would otherwise keep the panel off-screen while open). */
+.ica--tpanel[data-edge="right"].is-open,
+.ica--tpanel[data-edge="left"].is-open {
+    transform: translateX(0);
+}
+
+.ica--tpanel[data-edge="top"].is-open,
+.ica--tpanel[data-edge="bottom"].is-open {
+    transform: translateY(0);
 }
 
 .ica--tpanel-header {
