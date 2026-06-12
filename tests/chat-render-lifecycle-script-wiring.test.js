@@ -496,12 +496,17 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const anchor = isLastMessageSwipe && !isChatScrolledNearBottom()');
         expect(source).toContain('captureVisibleChatMessageAnchor()');
         expect(source).toContain('scrollWithAddOneMessage: isLastMessageSwipe && !anchor');
+        expect(source).toContain('const transition = resolveChatScrollStateTransition({');
+        expect(source).toContain('state: chatScrollState');
         expect(source).toContain('intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE');
         expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
         expect(source).toContain('isNearBottom,');
         expect(source).toContain('hasAnchor: Boolean(anchor)');
         expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
+        expect(source).toContain('chatScrollState = transition.state;');
+        expect(source).toContain('action: transition.action');
         expect(source).toContain('scrollWithAddOneMessage: false');
+        expect(source).not.toContain('const action = resolveChatScrollAction({');
     });
 
     test('guard-on swipe replacement applies bottom or anchor lifecycle actions', () => {
