@@ -108,6 +108,7 @@ let selectModeActive = false;
 const selectedAgentIds = new Set();
 let suppressCardClickUntil = 0;
 let pathfinderExtensionsMountPromise = null;
+let fixTrackersRunning = false;
 
 const REMOVED_BUNDLED_TEMPLATE_IDS = new Set([
     'tpl-anti-slop-regex',
@@ -187,6 +188,14 @@ function stopEvent(event) {
 
 function getLastAssistantMessageIndex() {
     return chat.findLastIndex(message => message && !message.is_user && !message.is_system);
+}
+
+function hasRunnableTrackerAgents() {
+    if (!areAgentsGloballyEnabled()) return false;
+    return getEnabledAgents().some(agent =>
+        agent.category === 'tracker' &&
+        (agent.phase === 'post' || agent.phase === 'both'),
+    );
 }
 
 function updateCancelGenerationButton() {
@@ -1484,15 +1493,28 @@ async function applyBulkEdit() {
 }
 
 function updateFixTrackersButtonVisibility() {
-    const shouldShow = (() => {
-        if (!areAgentsGloballyEnabled()) return false;
-        const enabled = getEnabledAgents();
-        return enabled.some(agent =>
-            agent.category === 'tracker' &&
-            (agent.phase === 'post' || agent.phase === 'both'),
-        );
-    })();
+    const shouldShow = hasRunnableTrackerAgents();
     $('.mes_fix_trackers').toggle(shouldShow);
+
+    const $agentsButton = $('#ica--fixTrackers');
+    $agentsButton.toggle(shouldShow);
+    $agentsButton.prop('disabled', !shouldShow || fixTrackersRunning);
+    $agentsButton.attr('aria-disabled', String(!shouldShow || fixTrackersRunning));
+}
+
+async function runTrackerFixFromButton(messageIndex, button) {
+    if (fixTrackersRunning) return;
+    fixTrackersRunning = true;
+    const $button = $(button);
+    $button.prop('disabled', true).addClass('mes_fix_trackers--running');
+    updateFixTrackersButtonVisibility();
+    try {
+        await runTrackerFixOnMessage(messageIndex);
+    } finally {
+        fixTrackersRunning = false;
+        $button.prop('disabled', false).removeClass('mes_fix_trackers--running');
+        updateFixTrackersButtonVisibility();
+    }
 }
 
 /**
@@ -4013,6 +4035,18 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     $('#ica--importFile').on('change', handleImport);
     $('#ica--exportAll').on('click', handleExportAll);
     $('#ica--templates').on('click', openTemplateBrowser);
+    $('#ica--fixTrackers').on('click', async function () {
+        if (!hasRunnableTrackerAgents()) {
+            updateFixTrackersButtonVisibility();
+            return;
+        }
+        const messageIndex = getLastAssistantMessageIndex();
+        if (messageIndex < 0) {
+            toastr.warning('No assistant reply yet to fix trackers on.');
+            return;
+        }
+        await runTrackerFixFromButton(messageIndex, this);
+    });
     $('#ica--templatesCallout').on('click', openTemplateBrowser);
     $('#ica--templatesCalloutDismiss').on('click', (event) => {
         event.preventDefault();
@@ -4337,14 +4371,14 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             toastr.warning('Invalid message.');
             return;
         }
-        const $button = $(this);
-        $button.prop('disabled', true).addClass('mes_fix_trackers--running');
-        try {
-            await runTrackerFixOnMessage(messageIndex);
-        } finally {
-            $button.prop('disabled', false).removeClass('mes_fix_trackers--running');
-        }
+        await runTrackerFixFromButton(messageIndex, this);
     });
 
-    eventSource.on(event_types.CHAT_CHANGED, updateFixTrackersButtonVisibility);
+    for (const eventName of [
+        event_types.CHAT_CHANGED,
+        event_types.CHARACTER_MESSAGE_RENDERED,
+    ].filter(Boolean)) {
+        eventSource.on(eventName, updateFixTrackersButtonVisibility);
+    }
+    updateFixTrackersButtonVisibility();
 })();
