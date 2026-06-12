@@ -432,6 +432,86 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.isCompanionAgent(store.getAgentById('tracker-companion'))).toBe(true);
     });
 
+    test('converts an inline tracker to companion execution while keeping its identity', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'inline-tracker',
+            name: 'Inline Tracker',
+            category: 'tracker',
+            phase: 'pre',
+            prompt: 'Track statuses.',
+            regexScripts: [{ id: 'rs-1', scriptName: 'Beautifier', findRegex: '/foo/', replaceString: 'bar' }],
+            injection: { position: 1, depth: 6, role: 2, order: 42, scan: true },
+            conditions: { triggerKeywords: ['status'], triggerProbability: 100, generationTypes: ['normal'] },
+        }]);
+        const agent = store.getAgentById('inline-tracker');
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+
+        expect(agent.execution).toBe('companion');
+        expect(agent.phase).toBe('post');
+        expect(agent.category).toBe('tracker');
+        expect(store.isCompanionAgent(agent)).toBe(true);
+        expect(agent.companion).toEqual(store.createDefaultCompanionConfig());
+        expect(agent.regexScripts).toHaveLength(1);
+        expect(agent.regexScripts[0]).toEqual(expect.objectContaining({ findRegex: '/foo/', replaceString: 'bar' }));
+        expect(agent.injection).toEqual(expect.objectContaining({ position: 1, depth: 6, role: 2, order: 42, scan: true }));
+        expect(agent.conditions.triggerKeywords).toEqual(['status']);
+        expect(agent.prompt).toBe('Track statuses.');
+    });
+
+    test('converts a companion-category agent back to inline by moving it to custom', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'pure-companion',
+            name: 'Pure Companion',
+            category: 'companion',
+            execution: 'companion',
+            prompt: 'Write a side note.',
+        }]);
+        const agent = store.getAgentById('pure-companion');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+
+        expect(agent.execution).toBe('inline');
+        expect(agent.category).toBe('custom');
+        expect(store.isCompanionAgent(agent)).toBe(false);
+    });
+
+    test('round-trips a customized companion config through inline conversion', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'customized-companion',
+            name: 'Customized Companion',
+            category: 'custom',
+            execution: 'companion',
+            prompt: 'Write a side note.',
+            companion: { trigger: 'manual', format: 'text', maxTokens: 4096 },
+        }]);
+        const agent = store.getAgentById('customized-companion');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+        expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+        expect(store.isCompanionAgent(agent)).toBe(true);
+        expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
+    });
+
+    test('refuses no-op and tool-agent execution conversions', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'already-companion', name: 'Companion', category: 'companion', execution: 'companion' },
+            { id: 'already-inline', name: 'Inline', category: 'custom' },
+            { id: 'tool-agent', name: 'Tool', category: 'tool' },
+        ]);
+
+        expect(store.convertAgentExecution(store.getAgentById('already-companion'), 'companion')).toBe(false);
+        expect(store.convertAgentExecution(store.getAgentById('already-inline'), 'inline')).toBe(false);
+        expect(store.convertAgentExecution(store.getAgentById('tool-agent'), 'companion')).toBe(false);
+        expect(store.convertAgentExecution(undefined, 'companion')).toBe(false);
+    });
+
     test('preserves disabled Pathfinder summary tool toggles while normalizing agents', async () => {
         const store = await importStore();
         store.loadAgents([

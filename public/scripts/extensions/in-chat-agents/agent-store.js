@@ -1208,6 +1208,35 @@ export function getCompanionConfig(agent = {}) {
 }
 
 /**
+ * Switches an agent between inline and companion execution in place.
+ * Keeps prompt, regex scripts, injection, and conditions so the agent can round-trip.
+ * @param {InChatAgent} agent
+ * @param {'companion'|'inline'} targetExecution
+ * @returns {boolean} Whether the agent changed.
+ */
+export function convertAgentExecution(agent, targetExecution) {
+    const wantsCompanion = targetExecution === 'companion';
+    if (!agent || isToolAgent(agent) || isCompanionAgent(agent) === wantsCompanion) {
+        return false;
+    }
+
+    if (wantsCompanion) {
+        agent.execution = 'companion';
+        agent.companion = normalizeCompanionConfig(agent.companion);
+        agent.phase = 'post';
+        return true;
+    }
+
+    agent.execution = 'inline';
+    // normalizeAgent re-derives execution from the category, so a companion-category
+    // agent has to move to custom or it would normalize back to a companion on save.
+    if (agent.category === 'companion') {
+        agent.category = 'custom';
+    }
+    return true;
+}
+
+/**
  * Loads agents from the server settings response.
  * @param {object[]} data - Array of agent objects from settings
  */

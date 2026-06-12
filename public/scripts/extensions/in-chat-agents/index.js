@@ -42,7 +42,9 @@ import {
     getCompanionConfig,
     loadBuiltinGroups,
     loadCustomGroups,
+    convertAgentExecution,
     isCompanionAgent,
+    isToolAgent,
     saveGroup,
     deleteGroup,
     createDefaultGroup,
@@ -1651,6 +1653,8 @@ function renderAgentList() {
             <div class="ica--action-legend" aria-label="Agent card action legend">
                 <span><i class="fa-solid fa-eye"></i> Preview</span>
                 <span><i class="fa-solid fa-robot"></i> Apply</span>
+                <span><i class="fa-solid fa-user-astronaut"></i> To Companion</span>
+                <span><i class="fa-solid fa-right-left"></i> To Inline</span>
                 <span><i class="fa-solid fa-pen-to-square"></i> Edit</span>
                 <span><i class="fa-solid fa-download"></i> Export</span>
                 <span><i class="fa-solid fa-trash"></i> Delete</span>
@@ -1807,6 +1811,11 @@ function renderAgentList() {
             const modelOverrideLabel = agent.modelOverride && agent.modelOverride.trim()
                 ? agent.modelOverride.trim()
                 : '';
+            const convertExecutionButton = isPathfinderAgent(agent) || isToolAgent(agent)
+                ? ''
+                : (companionExecution
+                    ? '<button type="button" class="ica--card-btn ica--btn-convert-execution" title="Convert to inline execution (runs inside the main generation again)" aria-label="Convert to Inline"><i class="fa-solid fa-right-left"></i></button>'
+                    : '<button type="button" class="ica--card-btn ica--btn-convert-execution" title="Convert to Companion (runs as a separate note card under replies, never edits the reply)" aria-label="Convert to Companion"><i class="fa-solid fa-user-astronaut"></i></button>');
 
             const card = $(`
                 <div class="ica--agent-card ${enabledClass}${selectModeActive ? ' ica--selectable' : ''}${selectedAgentIds.has(agent.id) ? ' ica--selected' : ''}" data-agent-id="${escapeHtml(agent.id)}">
@@ -1840,6 +1849,7 @@ function renderAgentList() {
                         ${previewCompanionButton}
                         ${previewPromptButton}
                         ${isPathfinderAgent(agent) ? '' : `<button type="button" class="ica--card-btn ica--btn-run" title="${escapeHtml(applyTitle)}" aria-label="${escapeHtml(applyAria)}"><i class="fa-solid ${applyIcon}"></i></button>`}
+                        ${convertExecutionButton}
                         <button type="button" class="ica--card-btn ica--btn-edit" title="Edit agent" aria-label="Edit agent"><i class="fa-solid fa-pen-to-square"></i></button>
                         ${isPathfinderAgent(agent) ? '' : '<button type="button" class="ica--card-btn ica--btn-export" title="Export agent" aria-label="Export agent"><i class="fa-solid fa-download"></i></button>'}
                         <button type="button" class="ica--card-btn ica--btn-delete caution" title="Delete agent" aria-label="Delete agent"><i class="fa-solid fa-trash"></i></button>
@@ -1906,6 +1916,24 @@ function renderAgentList() {
             card.find('.ica--btn-edit').on('click', event => {
                 stopEvent(event);
                 openEditor(agent.id);
+            });
+
+            card.find('.ica--btn-convert-execution').on('click', async event => {
+                stopEvent(event);
+                const targetExecution = isCompanionAgent(agent) ? 'inline' : 'companion';
+                const movesToCustom = targetExecution === 'inline' && agent.category === 'companion';
+                if (!convertAgentExecution(agent, targetExecution)) {
+                    return;
+                }
+
+                lockBundledAgentCustomization(agent);
+                await saveAgent(agent);
+                refreshRegexSnapshotsForAgent(agent.id);
+                syncToolAgentRegistrations();
+                renderAgentList();
+                toastr.success(targetExecution === 'companion'
+                    ? `"${agent.name}" now runs as a companion note under assistant replies.`
+                    : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}.`);
             });
 
             card.find('.ica--btn-run').on('click', async event => {
@@ -4558,6 +4586,27 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             }
         }
         toastr.success(`Set ${selectedAgentIds.size} agent(s) to User role.`);
+        exitSelectMode();
+    });
+    $('#ica--bulkConvertCompanion').on('click', async () => {
+        if (selectedAgentIds.size === 0) return;
+        let converted = 0;
+        for (const id of selectedAgentIds) {
+            const agent = getAgentById(id);
+            if (!agent || isPathfinderAgent(agent) || !convertAgentExecution(agent, 'companion')) {
+                continue;
+            }
+            lockBundledAgentCustomization(agent);
+            await saveAgent(agent);
+            refreshRegexSnapshotsForAgent(agent.id);
+            converted++;
+        }
+        if (converted > 0) {
+            syncToolAgentRegistrations();
+            toastr.success(`Converted ${converted} agent(s) to companion execution.`);
+        } else {
+            toastr.info('No selected agents could be converted to companions.');
+        }
         exitSelectMode();
     });
     $('#ica--bulkEditProps').on('click', () => {
