@@ -6440,20 +6440,34 @@ function mutationTouchesConnectionProfilesSource(mutation) {
 function bindConnectionProfileSourceElement(sourceElement) {
     const chatbarState = getChatbarState();
     const normalizedSource = sourceElement instanceof HTMLSelectElement ? sourceElement : null;
+    const bindingState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceBinding({
+        isSameSource: chatbarState.sourceObservedElement === normalizedSource,
+        hasCurrentSource: chatbarState.sourceObservedElement instanceof HTMLSelectElement,
+        hasNextSource: normalizedSource instanceof HTMLSelectElement,
+        hasChangeHandler: typeof chatbarState.sourceChangeHandler === 'function',
+    });
 
-    if (chatbarState.sourceObservedElement === normalizedSource) {
+    if (bindingState.shouldSkip) {
         return;
     }
 
-    if (chatbarState.sourceObservedElement instanceof HTMLSelectElement && typeof chatbarState.sourceChangeHandler === 'function') {
+    if (bindingState.shouldUnbindCurrent) {
         chatbarState.sourceObservedElement.removeEventListener('change', chatbarState.sourceChangeHandler);
     }
 
-    chatbarState.sourceSelectObserver?.disconnect();
-    chatbarState.sourceObservedElement = normalizedSource;
-    chatbarState.sourceChangeHandler = null;
+    if (bindingState.shouldDisconnectObserver) {
+        chatbarState.sourceSelectObserver?.disconnect();
+    }
 
-    if (!(normalizedSource instanceof HTMLSelectElement)) {
+    if (bindingState.shouldStoreNextSource) {
+        chatbarState.sourceObservedElement = normalizedSource;
+    }
+
+    if (bindingState.shouldClearChangeHandler) {
+        chatbarState.sourceChangeHandler = null;
+    }
+
+    if (!bindingState.shouldBindNext) {
         return;
     }
 
