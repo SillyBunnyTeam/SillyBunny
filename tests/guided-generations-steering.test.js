@@ -137,8 +137,12 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
 
-    test('guided impersonate frames first-person voice and appends helper prefill blocks', async () => {
-        extensionSettings['guided-generations'].promptImpersonate1st = 'FIRST PERSON: {{input}}';
+    test.each([
+        ['first', 'FIRST PERSON: {{input}}'],
+        ['second', 'SECOND PERSON: {{input}}'],
+        ['third', 'THIRD PERSON: {{input}}'],
+    ])('guided impersonate lets the prompt control %s-person perspective', async (_, promptTemplate) => {
+        extensionSettings['guided-generations'].promptImpersonate1st = promptTemplate;
         extensionSettings['guided-generations'].helperPrefillMessages = `[system]
 Stay terse.
 
@@ -151,10 +155,18 @@ I | begin`;
 
         expect(context.executeSlashCommandsWithOptions).toHaveBeenCalledTimes(1);
         const command = context.executeSlashCommandsWithOptions.mock.calls[0][0];
-        expect(command).toContain('/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system Guided Impersonate: write only as {{user}} in first person.');
-        expect(command).toContain('/impersonate await=true FIRST PERSON: aim for a colder, suspicious reply');
+        expect(command).toContain('/inject id=gg-impersonate-voice position=chat ephemeral=true scan=true depth=0 role=system Guided Impersonate: generate only the next text-box message for {{user}}.');
+        expect(command).toContain('The guided impersonation prompt is authoritative for grammatical person, narration style, length, and exclusions.');
+        expect(command).toContain('If it asks for first, second, or third person, follow that requested perspective exactly.');
+        expect(command).not.toContain('write only as {{user}} in first person');
+        expect(command).toContain('/impersonate await=true Follow the guided impersonation prompt exactly when generating {{user}}\'s next text-box message.');
+        expect(command).toContain('<guided_impersonation_prompt>');
+        expect(command).toContain(promptTemplate.replace('{{input}}', 'aim for a colder, suspicious reply'));
+        expect(command).toContain('</guided_impersonation_prompt>');
+        expect(command).toContain('<helper_prefill_context>');
         expect(command).toContain('SYSTEM:\nStay terse.');
         expect(command).toContain('ASSISTANT:\nI \\| begin');
+        expect(command).toContain('</helper_prefill_context>');
         expect(command).toContain('/flushinject gg-impersonate-voice |');
     });
 });

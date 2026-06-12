@@ -262,13 +262,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Generation lifecycle and settings. |
-| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. |
+| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. Guided Generations must also let custom impersonation prompts control first-, second-, or third-person perspective without a conflicting first-person-only frame. |
 | Target seam | Core chat-completion prompt preparation in `public/scripts/openai.js`; Guided Generations adds its own fork-side system frame. |
-| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. |
+| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. Keep Guided Generations' impersonate frame person-neutral and make the user-configured guide authoritative for perspective and narration style. |
 | Protecting tests | `tests/openai-impersonate-defaults.test.js`, `tests/guided-generations-steering.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- openai-impersonate-defaults.test.js guided-generations-steering.test.js`, `node --check public/scripts/openai.js`, live chat-completion impersonate smoke when API access is available. |
 | Rollback path | Restore empty-string behavior for impersonation prompt/prefill and remove the prompt-manager guard if provider behavior regresses. |
-| Last reviewed | 2026-06-06 Bug 6 impersonate first-person defaults. |
+| Last reviewed | 2026-06-13 Guided Impersonate person-neutral steering. |
 | Owner | Refactor integrator and settings owner. |
 
 ### `public/css/sillybunny-tabs.css`, `public/css/sillybunny-mobile-shell.css`, `public/css/select2-overrides.css`, `public/css/welcome.css`, `public/style.css`, `public/script.js`, `public/sw.js`, and `public/index.html` - menu polish assets
