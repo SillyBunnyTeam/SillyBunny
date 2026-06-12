@@ -1489,9 +1489,7 @@ function updateFixTrackersButtonVisibility() {
         const enabled = getEnabledAgents();
         return enabled.some(agent =>
             agent.category === 'tracker' &&
-            (agent.phase === 'post' || agent.phase === 'both') &&
-            agent.postProcess?.promptTransformEnabled &&
-            String(agent.prompt ?? '').trim(),
+            (agent.phase === 'post' || agent.phase === 'both'),
         );
     })();
     $('.mes_fix_trackers').toggle(shouldShow);

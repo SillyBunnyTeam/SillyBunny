@@ -4714,20 +4714,23 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     const generationType = 'normal';
     const enabledAgents = getEnabledAgents();
-    const trackerTransformAgents = enabledAgents.filter(agent =>
+    const trackerAgents = enabledAgents.filter(agent =>
         agent.category === 'tracker' &&
-        (agent.phase === 'post' || agent.phase === 'both') &&
+        (agent.phase === 'post' || agent.phase === 'both'),
+    );
+
+    if (trackerAgents.length === 0) {
+        toastr.info('No enabled tracker agents found.');
+        return;
+    }
+
+    const trackerTransformAgents = trackerAgents.filter(agent =>
         agent.postProcess?.promptTransformEnabled &&
         String(agent.prompt ?? '').trim(),
     );
 
-    if (trackerTransformAgents.length === 0) {
-        toastr.info('No enabled tracker agents with prompt transforms found.');
-        return;
-    }
-
     let regexSnapshotChanged = false;
-    for (const agent of trackerTransformAgents) {
+    for (const agent of trackerAgents) {
         const changed = refreshRegexSnapshotForAgentOnMessage(agent.id, messageIndex, {
             generationType,
             includeForcedAgent: true,
@@ -4815,7 +4818,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
         messageDisplayChanged = true;
     }
 
-    const utilityAgents = trackerTransformAgents.filter(agent =>
+    const utilityAgents = trackerAgents.filter(agent =>
         agent.postProcess?.enabled && agent.postProcess.type !== 'regex',
     );
 
@@ -4857,7 +4860,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
         }
     }
 
-    if (updateMessageRegexSnapshot(message, trackerTransformAgents, generationType)) {
+    if (updateMessageRegexSnapshot(message, trackerAgents, generationType)) {
         chatStateChanged = true;
         messageDisplayChanged = true;
     }
@@ -4882,5 +4885,19 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     if (messageDisplayChanged) {
         scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
+    }
+
+    const changedRuns = promptRuns.filter(r => r.changed);
+    const failedRuns = promptRuns.filter(r => r.status === 'error');
+    const parts = [];
+    if (changedRuns.length > 0) parts.push(`${changedRuns.length} prompt transform${changedRuns.length > 1 ? 's' : ''} applied`);
+    if (utilityAgents.length > 0) parts.push(`${utilityAgents.length} post-process${utilityAgents.length > 1 ? 'es' : ''} run`);
+    if (regexSnapshotChanged) parts.push('regex snapshot updated');
+    if (failedRuns.length > 0) parts.push(`${failedRuns.length} error${failedRuns.length > 1 ? 's' : ''}`);
+
+    if (parts.length > 0) {
+        toastr.success(parts.join(', '), 'Trackers fixed');
+    } else {
+        toastr.info('No changes made.', 'Trackers fixed');
     }
 }
