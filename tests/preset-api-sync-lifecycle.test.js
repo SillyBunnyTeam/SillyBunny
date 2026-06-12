@@ -7,6 +7,7 @@ import {
     normalizePresetApiId,
     resolveConnectionProfileMirrorState,
     resolveConnectionProfileSelectionSync,
+    resolveConnectionProfileSourceBinding,
     resolvePresetApiConnectButtonSelector,
     resolvePresetMainApiValue,
 } from '../public/scripts/preset-api-sync-lifecycle/index.js';
@@ -66,6 +67,52 @@ describe('preset/API sync lifecycle helper', () => {
         });
     });
 
+    test('skips connection profile source binding when the source is already observed', () => {
+        expect(resolveConnectionProfileSourceBinding({
+            isSameSource: true,
+            hasCurrentSource: true,
+            hasNextSource: true,
+            hasChangeHandler: true,
+        })).toEqual({
+            shouldSkip: true,
+            shouldUnbindCurrent: false,
+            shouldDisconnectObserver: false,
+            shouldStoreNextSource: false,
+            shouldClearChangeHandler: false,
+            shouldBindNext: false,
+        });
+    });
+
+    test('resolves connection profile source rebinding operations', () => {
+        expect(resolveConnectionProfileSourceBinding({
+            hasCurrentSource: true,
+            hasNextSource: true,
+            hasChangeHandler: true,
+        })).toEqual({
+            shouldSkip: false,
+            shouldUnbindCurrent: true,
+            shouldDisconnectObserver: true,
+            shouldStoreNextSource: true,
+            shouldClearChangeHandler: true,
+            shouldBindNext: true,
+        });
+    });
+
+    test('resolves connection profile source clearing without a next source', () => {
+        expect(resolveConnectionProfileSourceBinding({
+            hasCurrentSource: true,
+            hasNextSource: false,
+            hasChangeHandler: false,
+        })).toEqual({
+            shouldSkip: false,
+            shouldUnbindCurrent: false,
+            shouldDisconnectObserver: true,
+            shouldStoreNextSource: true,
+            shouldClearChangeHandler: true,
+            shouldBindNext: false,
+        });
+    });
+
     test('resolves mirror state when connection profiles are unavailable', () => {
         expect(resolveConnectionProfileMirrorState({
             hasConnectionProfiles: false,
@@ -116,6 +163,7 @@ describe('preset/API sync lifecycle helper', () => {
         expect(lifecycle.api.resolveConnectButtonSelector).toBe(resolvePresetApiConnectButtonSelector);
         expect(lifecycle.connectionProfiles.sourceState).toBe(PRESET_API_SYNC_CONNECTION_SOURCE_STATE);
         expect(lifecycle.connectionProfiles.resolveSelectionSync).toBe(resolveConnectionProfileSelectionSync);
+        expect(lifecycle.connectionProfiles.resolveSourceBinding).toBe(resolveConnectionProfileSourceBinding);
         expect(lifecycle.connectionProfiles.resolveMirrorState).toBe(resolveConnectionProfileMirrorState);
     });
 });
