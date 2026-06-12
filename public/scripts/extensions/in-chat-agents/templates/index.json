@@ -1306,6 +1306,126 @@
     }
   },
   {
+    "id": "tpl-continuity-companion",
+    "name": "Continuity Companion",
+    "description": "Side note card for contradictions, unresolved setup, and state changes that may matter next",
+    "icon": "fa-clipboard-check",
+    "category": "companion",
+    "tags": [
+      "continuity",
+      "memory",
+      "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Return 3-6 bullets. If nothing needs attention, write exactly: No continuity issues noticed. Do not rewrite the reply.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "auto",
+      "displayMode": "card",
+      "format": "markdown",
+      "contextMessages": 12,
+      "includeCharacterCard": false,
+      "includePersona": false,
+      "includeWorldInfo": false,
+      "includeHistory": true,
+      "historyDepth": 3,
+      "feedback": {
+        "enabled": true,
+        "depth": 2
+      },
+      "batch": true,
+      "maxTokens": 2048
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 100,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
+    "id": "tpl-relationship-lens-companion",
+    "name": "Relationship Lens Companion",
+    "description": "Side note card for subtext, leverage, trust shifts, and emotional consequences",
+    "icon": "fa-people-arrows",
+    "category": "companion",
+    "tags": [
+      "relationship",
+      "subtext",
+      "emotion"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Return short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Do not rewrite the reply and do not add new facts.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "manual",
+      "displayMode": "card",
+      "format": "markdown",
+      "contextMessages": 10,
+      "includeCharacterCard": false,
+      "includePersona": false,
+      "includeWorldInfo": false,
+      "includeHistory": true,
+      "historyDepth": 2,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": true,
+      "maxTokens": 2048
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 105,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
     "id": "tpl-pathfinder",
     "name": "Pathfinder",
     "description": "Automatic agentic lorebook retrieval. Lets a model actively browse, search, and modify your lorebook using function tools. (Tool agent - requires API with tool calling support)",

@@ -58,7 +58,9 @@ describe('in-chat agent bundled templates', () => {
         const catalog = readTemplate('index.json');
         const sourceFilenames = [
             'achievements-tracker.json',
+            'continuity-companion.json',
             'npc-motivator.json',
+            'relationship-lens-companion.json',
             'scene-tracker.json',
         ];
 
@@ -100,6 +102,43 @@ describe('in-chat agent bundled templates', () => {
         expect(template.conditions).toEqual(expect.objectContaining({
             runOnImpersonate: true,
         }));
+    });
+
+    test('bundles companion templates as sidecar execution agents', async () => {
+        const catalog = readTemplate('index.json');
+        const continuity = findCatalogTemplate(catalog, 'tpl-continuity-companion');
+        const relationship = findCatalogTemplate(catalog, 'tpl-relationship-lens-companion');
+
+        expect(continuity).toEqual(expect.objectContaining({
+            category: 'companion',
+            execution: 'companion',
+            phase: 'post',
+        }));
+        expect(continuity.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'card',
+            format: 'markdown',
+            feedback: { enabled: true, depth: 2 },
+            batch: true,
+            maxTokens: 2048,
+        }));
+        expect(relationship.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            displayMode: 'card',
+            feedback: { enabled: false, depth: 1 },
+        }));
+
+        const { isCompanionAgent, normalizeAgent } = await importAgentStore();
+        const saved = normalizeAgent({
+            ...continuity,
+            id: 'saved-continuity-companion',
+            sourceTemplateId: continuity.id,
+        });
+
+        expect(saved.category).toBe('companion');
+        expect(saved.execution).toBe('companion');
+        expect(isCompanionAgent(saved)).toBe(true);
+        expect(saved.companion.maxTokens).toBe(2048);
     });
 
     test('uses only known modal subcategories in the catalog', async () => {

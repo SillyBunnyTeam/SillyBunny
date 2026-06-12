@@ -327,6 +327,111 @@ describe('in-chat agent scoped enabled state', () => {
         }));
     });
 
+    test('defaults agents to inline execution with companion settings available', async () => {
+        const store = await importStore();
+        const agent = store.createDefaultAgent();
+
+        expect(agent.execution).toBe('inline');
+        expect(agent.companion).toEqual({
+            trigger: 'auto',
+            displayMode: 'card',
+            format: 'markdown',
+            contextMessages: 10,
+            includeCharacterCard: false,
+            includePersona: false,
+            includeWorldInfo: false,
+            includeHistory: false,
+            historyDepth: 3,
+            feedback: {
+                enabled: false,
+                depth: 1,
+            },
+            batch: false,
+            maxTokens: 2048,
+        });
+        expect(store.isCompanionAgent(agent)).toBe(false);
+    });
+
+    test('normalizes companion execution settings with safe defaults and clamps', async () => {
+        const store = await importStore();
+
+        expect(store.normalizeCompanionConfig({
+            trigger: 'manual',
+            displayMode: 'hidden',
+            format: 'html',
+            contextMessages: 999,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeHistory: true,
+            historyDepth: -1,
+            feedback: {
+                enabled: true,
+                depth: 999,
+            },
+            batch: true,
+            maxTokens: 999999,
+        })).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            displayMode: 'hidden',
+            format: 'html',
+            contextMessages: 50,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeHistory: true,
+            historyDepth: 1,
+            feedback: {
+                enabled: true,
+                depth: 10,
+            },
+            batch: true,
+            maxTokens: 16000,
+        }));
+
+        expect(store.normalizeCompanionConfig({
+            trigger: 'sometimes',
+            displayMode: 'window',
+            format: 'pdf',
+            contextMessages: 'never',
+            historyDepth: 'never',
+            feedback: { depth: 'never' },
+            maxTokens: 'never',
+        })).toEqual(store.createDefaultCompanionConfig());
+    });
+
+    test('normalizes category and execution independently for companion agents', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'pure-companion',
+                name: 'Pure Companion',
+                category: 'companion',
+                execution: 'inline',
+            },
+            {
+                id: 'tracker-companion',
+                name: 'Status Tracker',
+                category: 'companion',
+                sourceTemplateId: 'tpl-status-tracker',
+                execution: 'companion',
+            },
+        ]);
+
+        expect(store.getAgentById('pure-companion')).toEqual(expect.objectContaining({
+            category: 'companion',
+            execution: 'companion',
+        }));
+        expect(store.isCompanionAgent(store.getAgentById('pure-companion'))).toBe(true);
+        expect(store.getCompanionConfig(store.getAgentById('pure-companion'))).toEqual(store.createDefaultCompanionConfig());
+
+        expect(store.getAgentById('tracker-companion')).toEqual(expect.objectContaining({
+            category: 'tracker',
+            execution: 'companion',
+        }));
+        expect(store.isCompanionAgent(store.getAgentById('tracker-companion'))).toBe(true);
+    });
+
     test('preserves disabled Pathfinder summary tool toggles while normalizing agents', async () => {
         const store = await importStore();
         store.loadAgents([

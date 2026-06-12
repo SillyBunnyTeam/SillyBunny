@@ -22,6 +22,28 @@ import {
  */
 
 /**
+ * @typedef {object} AgentCompanionFeedback
+ * @property {boolean} enabled
+ * @property {number} depth
+ */
+
+/**
+ * @typedef {object} AgentCompanionConfig
+ * @property {'auto'|'manual'} trigger
+ * @property {'card'|'hidden'} displayMode
+ * @property {'markdown'|'html'|'text'} format
+ * @property {number} contextMessages
+ * @property {boolean} includeCharacterCard
+ * @property {boolean} includePersona
+ * @property {boolean} includeWorldInfo
+ * @property {boolean} includeHistory
+ * @property {number} historyDepth
+ * @property {AgentCompanionFeedback} feedback
+ * @property {boolean} batch
+ * @property {number} maxTokens
+ */
+
+/**
  * @typedef {object} AgentPreProcess
  * @property {'inject'|'intercept'} mode - Inject is the existing setExtensionPrompt flow; intercept rewrites the assembled outgoing context.
  * @property {'pre-generation'|'post-main-generation'} interceptTiming - When intercept mode runs.
@@ -81,13 +103,15 @@ import {
  * @property {string} name
  * @property {string} description
  * @property {string} icon
- * @property {'content'|'tracker'|'randomizer'|'custom'|'tool'} category
+ * @property {'content'|'tracker'|'randomizer'|'custom'|'tool'|'companion'} category
+ * @property {'inline'|'companion'} execution
  * @property {string[]} tags
  * @property {number} version
  * @property {string} author
  * @property {string} prompt
  * @property {'pre'|'post'|'both'} phase
  * @property {AgentInjection} injection
+ * @property {AgentCompanionConfig} companion
  * @property {AgentPreProcess} preProcess
  * @property {AgentPostProcess} postProcess
  * @property {AgentRegexScript[]} regexScripts
@@ -669,6 +693,76 @@ export function normalizePreProcessMaxTokens(value) {
     return Math.max(16, Math.min(16000, Number(value)));
 }
 
+function clampNumber(value, fallback, min, max) {
+    if (!Number.isFinite(Number(value))) {
+        return fallback;
+    }
+
+    return Math.max(min, Math.min(max, Number(value)));
+}
+
+/**
+ * Creates the default Companion execution config.
+ * @returns {AgentCompanionConfig}
+ */
+export function createDefaultCompanionConfig() {
+    return {
+        trigger: 'auto',
+        displayMode: 'card',
+        format: 'markdown',
+        contextMessages: 10,
+        includeCharacterCard: false,
+        includePersona: false,
+        includeWorldInfo: false,
+        includeHistory: false,
+        historyDepth: 3,
+        feedback: {
+            enabled: false,
+            depth: 1,
+        },
+        batch: false,
+        maxTokens: 2048,
+    };
+}
+
+/**
+ * Normalizes Companion execution settings loaded from disk or import.
+ * @param {Partial<AgentCompanionConfig>} raw
+ * @returns {AgentCompanionConfig}
+ */
+export function normalizeCompanionConfig(raw = {}) {
+    const defaults = createDefaultCompanionConfig();
+    const rawConfig = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const rawFeedback = rawConfig.feedback && typeof rawConfig.feedback === 'object' && !Array.isArray(rawConfig.feedback)
+        ? rawConfig.feedback
+        : {};
+
+    return {
+        ...defaults,
+        trigger: ['auto', 'manual'].includes(String(rawConfig.trigger))
+            ? String(rawConfig.trigger)
+            : defaults.trigger,
+        displayMode: ['card', 'hidden'].includes(String(rawConfig.displayMode))
+            ? String(rawConfig.displayMode)
+            : defaults.displayMode,
+        format: ['markdown', 'html', 'text'].includes(String(rawConfig.format))
+            ? String(rawConfig.format)
+            : defaults.format,
+        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
+        includeCharacterCard: Boolean(rawConfig.includeCharacterCard),
+        includePersona: Boolean(rawConfig.includePersona),
+        includeWorldInfo: Boolean(rawConfig.includeWorldInfo),
+        includeHistory: Boolean(rawConfig.includeHistory),
+        historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
+        feedback: {
+            enabled: Boolean(rawFeedback.enabled),
+            depth: clampNumber(rawFeedback.depth, defaults.feedback.depth, 1, 10),
+        },
+        batch: Boolean(rawConfig.batch),
+        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 16000),
+    };
+}
+
 const TRACKER_CATEGORY_TEMPLATE_IDS = new Set([
     'tpl-achievements-tracker',
     'tpl-cyoa-choices',
@@ -713,7 +807,7 @@ export function normalizeAgentCategory(category = '', sourceTemplateId = '', nam
     }
 
     const normalizedCategory = typeof category === 'string' ? category.trim().toLowerCase() : '';
-    if (['content', 'tracker', 'randomizer', 'custom', 'tool'].includes(normalizedCategory)) {
+    if (['content', 'tracker', 'randomizer', 'custom', 'tool', 'companion'].includes(normalizedCategory)) {
         return normalizedCategory;
     }
 
@@ -728,6 +822,7 @@ export const AGENT_CATEGORIES = {
     randomizer: { label: 'Randomizer', icon: 'fa-dice' },
     content: { label: 'Content', icon: 'fa-film' },
     tool: { label: 'Tool', icon: 'fa-screwdriver-wrench' },
+    companion: { label: 'Companion', icon: 'fa-user-astronaut' },
     custom: { label: 'Custom', icon: 'fa-puzzle-piece' },
 };
 
@@ -833,6 +928,7 @@ export function createDefaultAgent() {
         description: '',
         icon: '',
         category: 'custom',
+        execution: 'inline',
         tags: [],
         version: 1,
         author: '',
@@ -848,6 +944,7 @@ export function createDefaultAgent() {
             order: 100,
             scan: false,
         },
+        companion: createDefaultCompanionConfig(),
         preProcess: {
             mode: 'inject',
             interceptTiming: 'pre-generation',
@@ -920,6 +1017,10 @@ export function normalizeAgent(rawAgent = {}) {
     const rawPreProcess = rawAgent.preProcess && typeof rawAgent.preProcess === 'object' ? rawAgent.preProcess : {};
     const rawPostProcess = rawAgent.postProcess && typeof rawAgent.postProcess === 'object' ? rawAgent.postProcess : {};
     const conditions = rawAgent.conditions && typeof rawAgent.conditions === 'object' ? rawAgent.conditions : {};
+    const normalizedCategory = normalizeAgentCategory(rawAgent.category, rawAgent.sourceTemplateId, rawAgent.name);
+    const execution = rawAgent.execution === 'companion' || normalizedCategory === 'companion'
+        ? 'companion'
+        : defaults.execution;
 
     return {
         ...defaults,
@@ -928,7 +1029,8 @@ export function normalizeAgent(rawAgent = {}) {
         name: typeof rawAgent.name === 'string' ? rawAgent.name : defaults.name,
         description: typeof rawAgent.description === 'string' ? rawAgent.description : defaults.description,
         icon: typeof rawAgent.icon === 'string' ? rawAgent.icon : defaults.icon,
-        category: normalizeAgentCategory(rawAgent.category, rawAgent.sourceTemplateId, rawAgent.name),
+        category: normalizedCategory,
+        execution,
         tags: Array.isArray(rawAgent.tags)
             ? rawAgent.tags.map(tag => String(tag ?? '').trim()).filter(Boolean)
             : defaults.tags,
@@ -943,6 +1045,7 @@ export function normalizeAgent(rawAgent = {}) {
             ...defaults.injection,
             ...(rawAgent.injection ?? {}),
         },
+        companion: normalizeCompanionConfig(rawAgent.companion),
         preProcess: {
             ...defaults.preProcess,
             ...rawPreProcess,
@@ -1084,6 +1187,24 @@ export function getEnabledToolAgents() {
  */
 export function isToolAgent(agent) {
     return agent?.category === 'tool';
+}
+
+/**
+ * Checks if an agent should run through Companion execution.
+ * @param {InChatAgent} agent
+ * @returns {boolean}
+ */
+export function isCompanionAgent(agent) {
+    return agent?.execution === 'companion' || agent?.category === 'companion';
+}
+
+/**
+ * Returns a normalized Companion config for an agent.
+ * @param {Partial<InChatAgent>} agent
+ * @returns {AgentCompanionConfig}
+ */
+export function getCompanionConfig(agent = {}) {
+    return normalizeCompanionConfig(agent?.companion);
 }
 
 /**

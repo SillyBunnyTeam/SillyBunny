@@ -1,0 +1,60 @@
+{
+    "id": "tpl-continuity-companion",
+    "name": "Continuity Companion",
+    "description": "Side note card for contradictions, unresolved setup, and state changes that may matter next",
+    "icon": "fa-clipboard-check",
+    "category": "companion",
+    "tags": [
+        "continuity",
+        "memory",
+        "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Return 3-6 bullets. If nothing needs attention, write exactly: No continuity issues noticed. Do not rewrite the reply.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "card",
+        "format": "markdown",
+        "contextMessages": 12,
+        "includeCharacterCard": false,
+        "includePersona": false,
+        "includeWorldInfo": false,
+        "includeHistory": true,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": true,
+            "depth": 2
+        },
+        "batch": true,
+        "maxTokens": 2048
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}

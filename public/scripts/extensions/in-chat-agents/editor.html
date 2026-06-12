@@ -11,6 +11,7 @@
                     <option value="tracker">Tracker</option>
                     <option value="randomizer">Randomizer</option>
                     <option value="content">Content</option>
+                    <option value="companion">Companion</option>
                     <option value="custom">Custom</option>
                 </select>
             </label>
@@ -21,6 +22,15 @@
                     <option value="both">Both</option>
                 </select>
             </label>
+        </div>
+        <div class="ica--editor-row">
+            <label>Execution
+                <select id="ica--editor-execution" class="text_pole">
+                    <option value="inline">Inline: inject, intercept, regex, or rewrite the reply</option>
+                    <option value="companion">Companion: run separately and save a note card</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Companion execution never edits the assistant message. Tracker agents can use companion execution when you want their output as a side note instead of inline text.</div>
         </div>
         <div class="ica--editor-row">
             <label>Description
@@ -63,6 +73,69 @@
             </label>
         </div>
         <textarea id="ica--editor-prompt" class="text_pole textarea_compact" rows="8" placeholder="Write your agent prompt here. Supports macros: &#123;&#123;char&#125;&#125;, &#123;&#123;user&#125;&#125;, &#123;&#123;random::a::b::c&#125;&#125;, etc."></textarea>
+    </div>
+
+    <div class="ica--editor-section ica--companion-editor-section" id="ica--companion-section" style="display:none">
+        <div class="ica--editor-section-header">
+            <strong>Companion Settings</strong>
+            <div class="ica--editor-section-actions">
+                <button type="button" id="ica--editor-companion-maker" class="menu_button menu_button_icon" title="Create a companion prompt with AI">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>AI Maker</span>
+                </button>
+                <button type="button" id="ica--editor-companion-preview-feedback" class="menu_button menu_button_icon" title="Preview feedback notes injected into the next generation">
+                    <i class="fa-solid fa-eye"></i>
+                    <span>Preview Feedback</span>
+                </button>
+            </div>
+        </div>
+        <div class="ica--regex-note">Companions run after the main reply and render below it. Use Hidden when the note should only feed future prompts through feedback.</div>
+        <div class="ica--editor-row flex-container flexGap5">
+            <label class="flex1">Trigger
+                <select id="ica--editor-companion-trigger" class="text_pole">
+                    <option value="auto">Auto after matching replies</option>
+                    <option value="manual">Manual only</option>
+                </select>
+            </label>
+            <label class="flex1">Display
+                <select id="ica--editor-companion-displayMode" class="text_pole">
+                    <option value="card">Show note card</option>
+                    <option value="hidden">Hidden feedback note</option>
+                </select>
+            </label>
+            <label class="flex1">Format
+                <select id="ica--editor-companion-format" class="text_pole">
+                    <option value="markdown">Markdown</option>
+                    <option value="html">Safe HTML</option>
+                    <option value="text">Plain text</option>
+                </select>
+            </label>
+        </div>
+        <div class="ica--editor-row flex-container flexGap5">
+            <label class="flex1">Context Messages
+                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
+            </label>
+            <label class="flex1">History Depth
+                <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
+            </label>
+            <label class="flex1">Max Tokens
+                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="16000" value="2048" />
+            </label>
+        </div>
+        <div class="ica--companion-toggle-grid">
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeCharacterCard" /><span>Include character card</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includePersona" /><span>Include persona</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeWorldInfo" /><span>Include World Info</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-batch" /><span>Batch with compatible companions</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
+            <label>Feedback Depth
+                <input type="number" id="ica--editor-companion-feedbackDepth" class="text_pole" min="1" max="10" value="1" />
+            </label>
+            <div class="ica--regex-note">Feedback notes use the agent's Position, Depth, Role, and World Info scan fields from Pre-Generation Settings.</div>
+        </div>
     </div>
 
     <div class="ica--editor-section" id="ica--tracker-builder-section" style="display:none">

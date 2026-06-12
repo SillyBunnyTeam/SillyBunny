@@ -30,7 +30,7 @@ beforeAll(async () => {
                 return null;
             }
         },
-        POPUP_TYPE: { CONFIRM: 'confirm' },
+        POPUP_TYPE: { CONFIRM: 'confirm', TEXT: 'text' },
         POPUP_RESULT: { AFFIRMATIVE: 'affirmative' },
     }));
 
@@ -79,6 +79,20 @@ beforeAll(async () => {
         getEnabledAgents: jest.fn(() => []),
         getAgentById: jest.fn(() => null),
         getAgentRegexScripts: jest.fn(() => []),
+        getCompanionConfig: jest.fn(() => ({
+            trigger: 'auto',
+            displayMode: 'card',
+            format: 'markdown',
+            contextMessages: 10,
+            includeCharacterCard: false,
+            includePersona: false,
+            includeWorldInfo: false,
+            includeHistory: false,
+            historyDepth: 3,
+            feedback: { enabled: false, depth: 1 },
+            batch: false,
+            maxTokens: 2048,
+        })),
         loadAgents: jest.fn(),
         saveAgent: jest.fn(async () => {}),
         deleteAgent: jest.fn(async () => {}),
@@ -101,6 +115,7 @@ beforeAll(async () => {
         getAgentChatScopeLabel: jest.fn(() => 'Individual chat'),
         getPromptTransformMode: jest.fn(() => 'rewrite'),
         isTrackerFixAgent: jest.fn(() => false),
+        isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
         isPathfinderSubmoduleEnabled: jest.fn(() => false),
         findTemplateForAgentSnapshot: jest.fn(() => null),
         getRedundantBundledAgentDuplicateIds: jest.fn(() => []),
@@ -163,6 +178,16 @@ beforeAll(async () => {
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tool-definitions.js', () => ({
         getPathfinderToolDefinitions: jest.fn(() => []),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        collectRecentCompanionResults: jest.fn(() => []),
+        initCompanionRunner: jest.fn(),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
+        initCompanionCardUi: jest.fn(),
+        updateCompanionButtonVisibility: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({

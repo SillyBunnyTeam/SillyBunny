@@ -253,10 +253,34 @@ describe('in-chat agent post-processing runner', () => {
             },
         }));
 
+        await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+            regexFromString: jest.fn(value => {
+                const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
+                return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
+            }),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
             DEFAULT_AGENT_MAX_TOKENS: 8192,
             areAgentsGloballyEnabled: jest.fn(() => true),
             getAgentById: jest.fn(id => enabledAgents.find(agent => agent.id === id)),
+            getCompanionConfig: jest.fn(agent => ({
+                trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
+                displayMode: agent?.companion?.displayMode === 'hidden' ? 'hidden' : 'card',
+                format: ['markdown', 'html', 'text'].includes(agent?.companion?.format) ? agent.companion.format : 'markdown',
+                contextMessages: Number(agent?.companion?.contextMessages) || 10,
+                includeCharacterCard: Boolean(agent?.companion?.includeCharacterCard),
+                includePersona: Boolean(agent?.companion?.includePersona),
+                includeWorldInfo: Boolean(agent?.companion?.includeWorldInfo),
+                includeHistory: Boolean(agent?.companion?.includeHistory),
+                historyDepth: Number(agent?.companion?.historyDepth) || 3,
+                feedback: {
+                    enabled: Boolean(agent?.companion?.feedback?.enabled),
+                    depth: Number(agent?.companion?.feedback?.depth) || 1,
+                },
+                batch: Boolean(agent?.companion?.batch),
+                maxTokens: Number(agent?.companion?.maxTokens) || 2048,
+            })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
             getEnabledAgents: jest.fn(() => [...enabledAgents]),
             getEnabledToolAgents: jest.fn(() => []),
@@ -272,7 +296,9 @@ describe('in-chat agent post-processing runner', () => {
             }),
             isPathfinderSubmoduleEnabled: jest.fn(() => true),
             saveAgent: jest.fn(async () => {}),
+            isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
             isToolAgent: jest.fn(() => false),
+            normalizeCompanionConfig: jest.fn(value => value ?? {}),
             normalizePreProcessMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
             normalizePromptTransformMaxTokens: jest.fn(value => Number.isFinite(Number(value)) ? Math.max(16, Math.min(16000, Number(value))) : 8192),
             resolveConnectionProfile: jest.fn(value => value ?? ''),
@@ -364,6 +390,44 @@ describe('in-chat agent post-processing runner', () => {
                 generationTypes: ['normal'],
             },
         }];
+    }
+
+    function createCompanionAgent(overrides = {}) {
+        return {
+            id: overrides.id ?? 'agent-companion',
+            name: overrides.name ?? 'Companion',
+            category: overrides.category ?? 'companion',
+            execution: 'companion',
+            phase: overrides.phase ?? 'post',
+            prompt: overrides.prompt ?? 'Write a companion note.',
+            injection: {
+                position: 0,
+                depth: 4,
+                scan: false,
+                role: 0,
+                order: 100,
+                ...(overrides.injection ?? {}),
+            },
+            companion: {
+                trigger: 'auto',
+                displayMode: 'card',
+                format: 'markdown',
+                contextMessages: 10,
+                feedback: { enabled: false, depth: 1 },
+                ...(overrides.companion ?? {}),
+            },
+            postProcess: {
+                enabled: false,
+                promptTransformEnabled: false,
+                ...(overrides.postProcess ?? {}),
+            },
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+                ...(overrides.conditions ?? {}),
+            },
+        };
     }
 
     function createPreInterceptAgent(overrides = {}) {
@@ -664,6 +728,64 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts.inchat_agent_stale).toBeUndefined();
         expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+    });
+
+    test('delegates companion feedback prompt injection through registered runtime', async () => {
+        const companionAgent = createCompanionAgent();
+        enabledAgents = [companionAgent];
+        const injectCompanionFeedbackPrompts = jest.fn();
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ injectCompanionFeedbackPrompts });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+
+        expect(injectCompanionFeedbackPrompts).toHaveBeenCalledWith([companionAgent]);
+        expect(extensionPrompts[`inchat_agent_${companionAgent.id}`]).toBeUndefined();
+    });
+
+    test('runs companion stage after assistant message processing without mutating text', async () => {
+        const companionAgent = createCompanionAgent();
+        enabledAgents = [companionAgent];
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        const runCompanionStage = jest.fn(async () => []);
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionStage });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(runCompanionStage).toHaveBeenCalledWith(expect.objectContaining({
+            messageIndex: 1,
+            message: chat[1],
+            generationType: 'normal',
+            activeAgents: [companionAgent],
+        }));
+        expect(chat[1].mes).toBe('Assistant reply');
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+    });
+
+    test('routes manual companion runs through registered runtime', async () => {
+        const companionAgent = createCompanionAgent({ companion: { trigger: 'manual' } });
+        enabledAgents = [companionAgent];
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        const runCompanionAgentOnMessage = jest.fn(async () => ({ status: 'done', content: 'note' }));
+
+        const { registerCompanionRuntime, runAgentOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionAgentOnMessage });
+
+        const result = await runAgentOnMessage(companionAgent.id, 0);
+
+        expect(runCompanionAgentOnMessage).toHaveBeenCalledWith(companionAgent.id, 0, expect.objectContaining({
+            cancelRevision: expect.any(Number),
+        }));
+        expect(result).toEqual({ status: 'done', content: 'note' });
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
     });
 
     test('waits for Pathfinder retrieval before injecting pre-generation prompts', async () => {
