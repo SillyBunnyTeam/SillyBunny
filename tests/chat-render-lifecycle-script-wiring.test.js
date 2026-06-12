@@ -93,10 +93,14 @@ describe('chat render lifecycle script wiring', () => {
 
         const lifecycleGateSource = getSource(lifecycleGate);
         expect(lifecycleGateSource).toContain('isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.INITIAL_LOAD)');
-        expect(lifecycleGateSource).toContain('resolveChatScrollAction({');
+        expect(lifecycleGateSource).toContain('const transition = resolveChatScrollStateTransition({');
+        expect(lifecycleGateSource).toContain('state: chatScrollState');
         expect(lifecycleGateSource).toContain('intent: CHAT_SCROLL_INTENT.INITIAL_LOAD');
+        expect(lifecycleGateSource).toContain('chatScrollState = transition.state;');
+        expect(lifecycleGateSource).toContain('const action = transition.action;');
         expect(lifecycleGateSource).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(lifecycleGateSource).toContain('scrollLoadedChatToBottom();');
+        expect(lifecycleGateSource).not.toContain('resolveChatScrollAction({');
     });
 
     test('redisplayChat delegates selected messages to the guarded redisplay renderer', () => {
