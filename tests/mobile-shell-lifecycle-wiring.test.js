@@ -172,6 +172,22 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
     });
 
+    test('routes bottom chat overflow visibility through the lifecycle seam', () => {
+        const syncBottomChatActionOverflowStateSource = getFunctionSource('syncBottomChatActionOverflowState');
+        const buildBottomChatBarSource = getFunctionSource('buildBottomChatBar');
+
+        expect(syncBottomChatActionOverflowStateSource).toContain('sbMobileShellLifecycle.railModel.resolveBottomBarActionVisibility({');
+        expect(syncBottomChatActionOverflowStateSource).toContain('actions: getBottomChatActionModels(),');
+        expect(syncBottomChatActionOverflowStateSource).toContain('isMobileViewport: isMobileViewport(),');
+        expect(syncBottomChatActionOverflowStateSource).toContain('visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,');
+        expect(syncBottomChatActionOverflowStateSource).toContain('action.button.classList.toggle(\'sb-bottom-chat-overflow-source\', plan.overflowActions.includes(action));');
+        expect(buildBottomChatBarSource).toContain('const overflowBtn = createBottomChatButton({ icon: \'fa-ellipsis\', title: \'More chat actions\', className: \'sb-bottom-chat-overflow-toggle\' }');
+        expect(buildBottomChatBarSource).toContain('overflowBtn.setAttribute(\'aria-controls\', \'sb-bottom-chat-overflow-menu\');');
+        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-source');
+        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-menu');
+        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-item');
+    });
+
     test('routes inline drawer decisions through the lifecycle seam', () => {
         const interceptDrawerOpenersSource = getFunctionSource('interceptDrawerOpeners');
         const getInlineDrawerStorageKeySource = getFunctionSource('getInlineDrawerStorageKey');

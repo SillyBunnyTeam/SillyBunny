@@ -38,6 +38,11 @@ export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
 export const MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY = 'characters';
+export const MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS = Object.freeze([
+    'view-files',
+    'new-chat',
+    'search-chat',
+]);
 
 const MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 
@@ -680,6 +685,50 @@ export function resolveMobileShellRailActionVisibility({
 }
 
 /**
+ * Resolves which chat-management actions stay visible and which move into the
+ * mobile overflow menu.
+ * @param {object} options Options.
+ * @param {object[]} [options.actions=[]] Ordered bottom-bar action models.
+ * @param {boolean} [options.isMobileViewport=false] Whether mobile layout is active.
+ * @param {string[]} [options.visibleActionIds=MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS] High-frequency action ids.
+ * @returns {{visibleActions: object[], overflowActions: object[], shouldRenderOverflow: boolean}}
+ */
+export function resolveMobileShellBottomBarActionVisibility({
+    actions = [],
+    isMobileViewport = false,
+    visibleActionIds = MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS,
+} = {}) {
+    const normalizedActions = Array.isArray(actions) ? actions.filter(Boolean) : [];
+    if (!isMobileViewport) {
+        return {
+            visibleActions: normalizedActions,
+            overflowActions: [],
+            shouldRenderOverflow: false,
+        };
+    }
+
+    const visibleIds = new Set(Array.isArray(visibleActionIds) ? visibleActionIds.map(id => String(id)) : []);
+    const visibleActions = [];
+    const overflowActions = [];
+
+    for (const action of normalizedActions) {
+        const actionId = String(action?.id ?? '');
+
+        if (visibleIds.has(actionId)) {
+            visibleActions.push(action);
+        } else {
+            overflowActions.push(action);
+        }
+    }
+
+    return {
+        visibleActions,
+        overflowActions,
+        shouldRenderOverflow: overflowActions.length > 0,
+    };
+}
+
+/**
  * Resolves which open inline drawer siblings should close when a drawer opens.
  * The current shell behavior is viewport-agnostic; callers still pass viewport
  * state so the decision seam owns the policy if it becomes mobile-specific.
@@ -1012,10 +1061,12 @@ export function createMobileShellLifecycle() {
                 labelMaxLength: MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
                 iconFallback: MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
             },
+            bottomBarVisibleActionIds: MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS,
             resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
             normalizeQuickAction: normalizeMobileShellQuickAction,
             getQuickActionKey: getMobileShellQuickActionKey,
             resolveActionVisibility: resolveMobileShellRailActionVisibility,
+            resolveBottomBarActionVisibility: resolveMobileShellBottomBarActionVisibility,
         },
         inlineDrawers: {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
