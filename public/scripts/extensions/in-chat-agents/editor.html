@@ -116,6 +116,9 @@
             <label class="flex1">Context Messages
                 <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
             </label>
+            <label class="flex1" title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
+                <input type="number" id="ica--editor-companion-minContextTokens" class="text_pole" min="0" max="200000" step="1000" value="0" />
+            </label>
             <label class="flex1">History Depth
                 <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
             </label>

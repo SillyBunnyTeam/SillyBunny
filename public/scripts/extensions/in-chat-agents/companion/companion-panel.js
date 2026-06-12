@@ -1,5 +1,7 @@
 import { chat } from '../../../../script.js';
+import { hideChatMessageRange } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
+import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
 import {
     areAgentsGloballyEnabled,
@@ -11,6 +13,7 @@ import {
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
+    meetsCompanionContextThreshold,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
@@ -337,8 +340,12 @@ export function collectPanelAgentStates() {
     }
 
     // Mirror the agents page: order by injection.order; orphaned results sink to the bottom.
+    // Stateless agents below their context threshold (e.g. the memory shard before ~30k
+    // tokens) stay out of the panel until they become relevant.
     const orderOf = state => (state.agent ? Number(state.agent.injection?.order ?? 0) : Number.MAX_SAFE_INTEGER);
-    return [...byAgentId.values()].sort((a, b) => orderOf(a) - orderOf(b));
+    return [...byAgentId.values()]
+        .filter(state => state.latest || !state.agent || meetsCompanionContextThreshold(state.agent))
+        .sort((a, b) => orderOf(a) - orderOf(b));
 }
 
 export function shouldShowCompanionPanelHandle() {
@@ -377,8 +384,8 @@ function buildPanelAgentSection(state) {
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
 
-    const editButton = state.agent
-        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Edit this companion" aria-label="Edit companion"><i class="fa-solid fa-pen-to-square"></i></button>'
+    const settingsButton = state.agent
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
         : '';
 
     if (!latest) {
@@ -386,7 +393,7 @@ function buildPanelAgentSection(state) {
             <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
-                    <span class="ica--tpanel-agent-actions">${editButton}</span>
+                    <span class="ica--tpanel-agent-actions">${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
             </section>
@@ -415,14 +422,31 @@ function buildPanelAgentSection(state) {
                 <span class="ica--tpanel-agent-actions">
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
-                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-file-pen"></i></button>
-                    ${editButton}
+                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
+                    ${settingsButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
             </div>
             <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, latest)}</div>
+            ${buildCompactionButton(state)}
             ${historyHtml}
         </section>
+    `;
+}
+
+/** The memory shard can replace the history it summarizes: offer hiding everything above it. */
+function buildCompactionButton(state) {
+    const isMemoryShard = state.agent?.sourceTemplateId === 'tpl-memory-shard-companion'
+        || /memory shard/i.test(String(state.agent?.name ?? state.latest?.result?.agentName ?? ''));
+    if (!isMemoryShard || !state.latest || state.latest.messageIndex < 1 || state.latest.result?.status !== 'done') {
+        return '';
+    }
+
+    return `
+        <button type="button" class="menu_button menu_button_icon ica--tpanel-compact" data-action="panel-hide-before" title="Exclude every message above this shard from prompts — the shard carries the history from here on">
+            <i class="fa-solid fa-broom"></i>
+            <span>Hide story above this shard</span>
+        </button>
     `;
 }
 
@@ -511,6 +535,23 @@ async function handlePanelAction(event) {
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
     const messageIndex = Number(section.attr('data-message-index'));
+
+    if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
+        const result = await new Popup(
+            `Exclude messages #0–#${messageIndex - 1} from prompts? The shard carries that history from here on; messages stay visible in the chat and can be unhidden later.`,
+            POPUP_TYPE.CONFIRM,
+        ).show();
+        if (result !== POPUP_RESULT.AFFIRMATIVE) {
+            return;
+        }
+
+        await hideChatMessageRange(0, messageIndex - 1, false);
+        toastr.success(`Hid ${messageIndex} message(s) from prompts.`);
+        if (panelOpen) {
+            renderPanel();
+        }
+        return;
+    }
 
     if (action === 'panel-edit-note' && agentId && Number.isInteger(messageIndex)) {
         const message = chat[messageIndex];

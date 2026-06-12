@@ -1,7 +1,7 @@
 {
     "id": "tpl-memory-shard-companion",
     "name": "Memory Shard",
-    "description": "Manual side note card: compresses recent history into a compact, resumable memory shard — a token-lean take on the Memory Sharding quick reply, with the latest shard fed back into context",
+    "description": "Auto-compresses history into a compact, resumable memory shard once the chat reaches ~30k tokens, feeds the latest shard back into context, and can hide the story it has absorbed",
     "icon": "fa-brain",
     "category": "companion",
     "tags": [
@@ -9,13 +9,13 @@
         "summary",
         "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
     "prompt": "Compress the recent conversation into a compact memory shard the story could be resumed from if all other history were lost. When [Your previous notes] contains earlier shards, build on them: carry forward still-relevant facts, update what changed, drop what resolved, and do not repeat unchanged entries verbatim. Identify emotional peaks first and map causal chains backward from them; preserve high-impact material in more detail and compress or omit what can be inferred.\n\nOutput exactly these sections, using terse pipe-delimited lines and keywords instead of prose:\n\n## TIMELINE\nNumbered anchor phrases with location, oldest to newest. All other sections reference these numbers.\n\n## CHARACTERS\nName|role|3-5 trait keywords|status\n\n## RELATIONSHIPS\nA -> B: dimension=0-100 values | one-line note. 50 is neutral baseline; list only dimensions that matter (trust, intimacy, tension, hostility, affection, dependency).\n\n## EVENTS\nN. action -> consequence -> outcome, weight 1-5. Weight 5 means a permanent change to a character, relationship, or world state and must keep its key details; omit weight-1 filler entirely.\n\n## DIALOGUE KEYS\nTimeline#. \"exact quote\" --Speaker (context). Only confessions, threats, promises, reveals, and voice-defining lines.\n\n## THREADS\nUnresolved hooks and planted callbacks: thread|status (unresolved, developing, urgent)|note\n\n## NOW\nLocation, time, characters present, situation, pending actions, mood, physical state.\n\nMark uncertain facts with (?). Never invent events, quotes, or details. Plain text only, no code fences.",
     "phase": "post",
     "execution": "companion",
     "companion": {
-        "trigger": "manual",
+        "trigger": "auto",
         "displayMode": "panel",
         "format": "markdown",
         "contextMessages": 30,
@@ -29,7 +29,8 @@
             "depth": 1
         },
         "batch": false,
-        "maxTokens": 4096
+        "maxTokens": 4096,
+        "minContextTokens": 30000
     },
     "injection": {
         "position": 0,

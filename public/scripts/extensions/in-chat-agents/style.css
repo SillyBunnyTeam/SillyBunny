@@ -1843,6 +1843,11 @@ button.ica--card-pill--version-update {
     margin-bottom: 0;
 }
 
+.ica--tpanel-compact {
+    align-self: flex-start;
+    min-height: 32px;
+}
+
 .ica--tpanel-history summary {
     cursor: pointer;
     font-size: calc(var(--mainFontSize) * 0.8);

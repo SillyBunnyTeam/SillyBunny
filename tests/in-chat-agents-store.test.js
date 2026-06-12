@@ -338,6 +338,7 @@ describe('in-chat agent scoped enabled state', () => {
             format: 'markdown',
             rawPrompt: false,
             inlinePhase: '',
+            minContextTokens: 0,
             contextMessages: 10,
             includeCharacterCard: true,
             includePersona: true,
@@ -568,6 +569,9 @@ describe('in-chat agent scoped enabled state', () => {
 
         expect(store.normalizeCompanionConfig({ displayMode: 'panel' }).displayMode).toBe('panel');
         expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('panel');
+        expect(store.normalizeCompanionConfig({}).minContextTokens).toBe(0);
+        expect(store.normalizeCompanionConfig({ minContextTokens: 30000 }).minContextTokens).toBe(30000);
+        expect(store.normalizeCompanionConfig({ minContextTokens: 500000 }).minContextTokens).toBe(200000);
     });
 
     test('grants context access defaults to companions while honoring explicit choices', async () => {

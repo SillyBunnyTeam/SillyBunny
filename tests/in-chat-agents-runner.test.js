@@ -283,6 +283,7 @@ describe('in-chat agent post-processing runner', () => {
                 displayMode: ['panel', 'hidden'].includes(agent?.companion?.displayMode) ? agent.companion.displayMode : 'card',
                 format: ['markdown', 'html', 'text'].includes(agent?.companion?.format) ? agent.companion.format : 'markdown',
                 rawPrompt: Boolean(agent?.companion?.rawPrompt),
+                minContextTokens: Number(agent?.companion?.minContextTokens) || 0,
                 contextMessages: Number(agent?.companion?.contextMessages) || 10,
                 includeCharacterCard: Boolean(agent?.companion?.includeCharacterCard),
                 includePersona: Boolean(agent?.companion?.includePersona),
@@ -1002,6 +1003,25 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('gates auto companions behind their context token threshold', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: { token_count: 20000 } },
+            { mes: 'A'.repeat(40000), name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        expect(companionRunner.getChatTokenEstimate(1)).toBe(20000);
+        expect(companionRunner.getChatTokenEstimate()).toBe(30000);
+
+        const gated = createCompanionAgent({ id: 'gated-companion', companion: { minContextTokens: 30000 } });
+        expect(companionRunner.meetsCompanionContextThreshold(gated, 0)).toBe(false);
+        expect(companionRunner.meetsCompanionContextThreshold(gated, 1)).toBe(true);
+
+        const ungated = createCompanionAgent({ id: 'ungated-companion' });
+        expect(companionRunner.meetsCompanionContextThreshold(ungated, 0)).toBe(true);
     });
 
     test('appends the repair instruction on fix runs', async () => {

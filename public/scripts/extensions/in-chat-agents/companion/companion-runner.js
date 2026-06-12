@@ -560,12 +560,32 @@ async function runCompanionUnit(unit, messageIndex, generationType, cancelRevisi
     return await runSingleCompanionAgent(unit.agent, messageIndex, generationType, cancelRevision);
 }
 
-function getRunnableCompanionAgents(activeAgents = [], { manual = false } = {}) {
+/** Rough chat size from the stored per-message token accounting (chars/4 as fallback). */
+export function getChatTokenEstimate(beforeMessageIndex = chat.length) {
+    let total = 0;
+    for (let index = 0; index < Math.min(beforeMessageIndex, chat.length); index++) {
+        const message = chat[index];
+        const counted = Number(message?.extra?.token_count);
+        total += Number.isFinite(counted) && counted > 0
+            ? counted
+            : Math.ceil(String(message?.mes ?? '').length / 4);
+    }
+
+    return total;
+}
+
+/** Companions like the memory shard only become useful once the chat is large enough. */
+export function meetsCompanionContextThreshold(agent, messageIndex = chat.length - 1) {
+    const minContextTokens = getCompanionConfig(agent).minContextTokens;
+    return !minContextTokens || getChatTokenEstimate(messageIndex + 1) >= minContextTokens;
+}
+
+function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1 } = {}) {
     return activeAgents.filter(agent => {
         const companion = getCompanionConfig(agent);
         return isCompanionAgent(agent) &&
             String(agent.prompt ?? '').trim() &&
-            (manual || companion.trigger === 'auto');
+            (manual || (companion.trigger === 'auto' && meetsCompanionContextThreshold(agent, messageIndex)));
     });
 }
 
@@ -574,7 +594,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
         return [];
     }
 
-    const agents = getRunnableCompanionAgents(activeAgents);
+    const agents = getRunnableCompanionAgents(activeAgents, { messageIndex });
     if (agents.length === 0) {
         return [];
     }

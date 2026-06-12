@@ -2244,6 +2244,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-displayMode').val(companion.displayMode);
     editorEl.find('#ica--editor-companion-format').val(companion.format);
     editorEl.find('#ica--editor-companion-contextMessages').val(companion.contextMessages);
+    editorEl.find('#ica--editor-companion-minContextTokens').val(companion.minContextTokens);
     editorEl.find('#ica--editor-companion-historyDepth').val(companion.historyDepth);
     editorEl.find('#ica--editor-companion-maxTokens').val(companion.maxTokens);
     editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', companion.includeCharacterCard);
@@ -2345,6 +2346,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
                 : 'markdown',
             rawPrompt: root.find('#ica--editor-companion-rawPrompt').prop('checked'),
             contextMessages: Number(root.find('#ica--editor-companion-contextMessages').val()) || current.contextMessages,
+            minContextTokens: Number.isFinite(Number(root.find('#ica--editor-companion-minContextTokens').val()))
+                ? Number(root.find('#ica--editor-companion-minContextTokens').val())
+                : current.minContextTokens,
             includeCharacterCard: root.find('#ica--editor-companion-includeCharacterCard').prop('checked'),
             includePersona: root.find('#ica--editor-companion-includePersona').prop('checked'),
             includeWorldInfo: root.find('#ica--editor-companion-includeWorldInfo').prop('checked'),
@@ -2368,6 +2372,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-displayMode').val(nextCompanion.displayMode);
         editorEl.find('#ica--editor-companion-format').val(nextCompanion.format);
         editorEl.find('#ica--editor-companion-contextMessages').val(nextCompanion.contextMessages);
+        editorEl.find('#ica--editor-companion-minContextTokens').val(nextCompanion.minContextTokens);
         editorEl.find('#ica--editor-companion-historyDepth').val(nextCompanion.historyDepth);
         editorEl.find('#ica--editor-companion-maxTokens').val(nextCompanion.maxTokens);
         editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', nextCompanion.includeCharacterCard);

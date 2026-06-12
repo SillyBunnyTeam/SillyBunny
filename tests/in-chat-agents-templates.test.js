@@ -163,7 +163,8 @@ describe('in-chat agent bundled templates', () => {
             includeWorldInfo: true,
         }));
         expect(memoryShard.companion).toEqual(expect.objectContaining({
-            trigger: 'manual',
+            trigger: 'auto',
+            minContextTokens: 30000,
             contextMessages: 30,
             includeHistory: true,
             feedback: { enabled: true, depth: 1 },

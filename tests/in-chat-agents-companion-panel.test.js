@@ -7,6 +7,7 @@ describe('companion tracker panel', () => {
     let agents;
     let companionResultsByMessage;
     let globallyEnabled;
+    let chatTokenEstimate;
 
     function createEventSource() {
         const handlers = new Map();
@@ -32,6 +33,20 @@ describe('companion tracker panel', () => {
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/chats.js', () => ({
+            hideChatMessageRange: jest.fn(async () => {}),
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
+            Popup: class {
+                async show() {
+                    return 1;
+                }
+            },
+            POPUP_TYPE: { CONFIRM: 1 },
+            POPUP_RESULT: { AFFIRMATIVE: 1 },
         }));
 
         await jest.unstable_mockModule('../public/scripts/events.js', () => ({
@@ -65,6 +80,7 @@ describe('companion tracker panel', () => {
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
             COMPANION_RESULTS_UPDATED_EVENT: 'companion_results_updated',
             getCompanionResults: jest.fn(message => companionResultsByMessage.get(message) ?? {}),
+            meetsCompanionContextThreshold: jest.fn(agent => !agent?.companion?.minContextTokens || agent.companion.minContextTokens <= chatTokenEstimate),
             runCompanionAgentOnMessage: jest.fn(async () => ({})),
             runCompanionsOnMessage: jest.fn(async () => ({})),
         }));
@@ -85,6 +101,7 @@ describe('companion tracker panel', () => {
         agents = [];
         companionResultsByMessage = new Map();
         globallyEnabled = true;
+        chatTokenEstimate = 0;
         globalThis.toastr = {
             info: jest.fn(),
             success: jest.fn(),
@@ -215,6 +232,35 @@ describe('companion tracker panel', () => {
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
         expect(html).toContain('No state yet');
+    });
+
+    test('hides stateless companions below their context threshold and offers shard compaction', async () => {
+        agents = [
+            { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true, companion: { minContextTokens: 30000 } },
+        ];
+        const panel = await importPanel();
+
+        // Below the threshold with no state: stays out of the panel entirely.
+        expect(panel.buildPanelHtml()).not.toContain('Memory Shard');
+
+        // With a stored shard: section renders with the hide-history compaction button.
+        const message0 = { is_user: false, is_system: false, mes: 'old reply' };
+        const message1 = { is_user: false, is_system: false, mes: 'new reply' };
+        chat.push(message0, message1);
+        companionResultsByMessage.set(message1, {
+            'memory-shard': { status: 'done', content: '## TIMELINE', agentName: 'Memory Shard' },
+        });
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('Memory Shard');
+        expect(html).toContain('data-action="panel-hide-before"');
+
+        // Non-shard agents never offer compaction.
+        agents = [{ id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true }];
+        companionResultsByMessage.set(message1, {
+            'tracker-1': { status: 'done', content: 'state', agentName: 'Scene Tracker' },
+        });
+        expect(panel.buildPanelHtml()).not.toContain('data-action="panel-hide-before"');
     });
 
     test('shows the panel empty state when nothing is enabled or stored', async () => {
