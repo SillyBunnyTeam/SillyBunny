@@ -2738,16 +2738,18 @@ function getSwipeReplacementViewportUpdate({ isLastMessageSwipe, useLifecycleRou
 
     const isNearBottom = isChatScrolledNearBottom();
     const anchor = !isNearBottom ? captureVisibleChatMessageAnchor() : null;
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom,
         hasAnchor: Boolean(anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
 
     return {
-        action,
+        action: transition.action,
         anchor,
         scrollWithAddOneMessage: false,
     };
