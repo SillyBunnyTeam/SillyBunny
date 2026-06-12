@@ -796,6 +796,21 @@ export function getAgentRegexScripts(rawAgent = {}) {
     return legacyScript ? [legacyScript] : [];
 }
 
+export function isTrackerFixAgent(agent = {}) {
+    if (agent?.category !== 'tracker') {
+        return false;
+    }
+
+    if (agent.phase === 'post' || agent.phase === 'both') {
+        return true;
+    }
+
+    return agent.phase === 'pre' && (
+        (agent.postProcess?.enabled && agent.postProcess.type === 'extract') ||
+        getAgentRegexScripts(agent).length > 0
+    );
+}
+
 function cacheAgentRegexScriptsForAgent(agent) {
     cacheAgentRegexScripts(agent?.id, getAgentRegexScripts(agent));
 }

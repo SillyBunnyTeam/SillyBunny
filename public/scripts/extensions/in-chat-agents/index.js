@@ -28,6 +28,7 @@ import {
     normalizeAgentCategory,
     getAgentChatScopeLabel,
     getPromptTransformMode,
+    isTrackerFixAgent,
     isPathfinderSubmoduleEnabled,
     findTemplateForAgentSnapshot,
     getRedundantBundledAgentDuplicateIds,
@@ -188,10 +189,6 @@ function stopEvent(event) {
 
 function getLastAssistantMessageIndex() {
     return chat.findLastIndex(message => message && !message.is_user && !message.is_system);
-}
-
-function isTrackerFixAgent(agent) {
-    return agent?.category === 'tracker' && (agent.phase === 'post' || agent.phase === 'both');
 }
 
 function hasTrackerFixAgents() {

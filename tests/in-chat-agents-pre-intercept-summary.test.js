@@ -100,6 +100,7 @@ beforeAll(async () => {
         normalizeAgentCategory: jest.fn(value => value),
         getAgentChatScopeLabel: jest.fn(() => 'Individual chat'),
         getPromptTransformMode: jest.fn(() => 'rewrite'),
+        isTrackerFixAgent: jest.fn(() => false),
         isPathfinderSubmoduleEnabled: jest.fn(() => false),
         findTemplateForAgentSnapshot: jest.fn(() => null),
         getRedundantBundledAgentDuplicateIds: jest.fn(() => []),
