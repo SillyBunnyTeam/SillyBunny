@@ -35,6 +35,7 @@
 - PR #439 (2026-06-12) `fix: allow extensions to hook the Characters top-bar button`
 - PR #440 (2026-06-12) `feat(ica): add Fix Trackers button to re-run tracker agents`
 - PR #441 (2026-06-12) `fix(ica): make Fix Trackers button visible for all enabled trackers`
+- PR #442 (2026-06-12) `fix(ica): show tracker fix controls after render`
 
 ## v1.6.4
 
