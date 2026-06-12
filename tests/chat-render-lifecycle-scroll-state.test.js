@@ -109,6 +109,38 @@ describe('chat render lifecycle scroll state machine', () => {
         });
     });
 
+    test('replace-message transitions keep regenerated streams in the right lane', () => {
+        expect(resolveChatScrollStateTransition({
+            state: CHAT_SCROLL_STATE.STREAMING_FOLLOW,
+            intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
+            autoScrollEnabled: true,
+            isNearBottom: false,
+            hasAnchor: true,
+            isManualScrollSuppressed: true,
+        })).toEqual({
+            state: CHAT_SCROLL_STATE.ANCHORED_HISTORY,
+            action: {
+                action: CHAT_SCROLL_ACTION.PRESERVE_ANCHOR,
+                reason: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
+            },
+        });
+
+        expect(resolveChatScrollStateTransition({
+            state: CHAT_SCROLL_STATE.USER_READING,
+            intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
+            autoScrollEnabled: true,
+            isNearBottom: true,
+            hasAnchor: false,
+            isManualScrollSuppressed: false,
+        })).toEqual({
+            state: CHAT_SCROLL_STATE.PINNED_BOTTOM,
+            action: {
+                action: CHAT_SCROLL_ACTION.PIN_BOTTOM,
+                reason: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
+            },
+        });
+    });
+
     test('unknown intents keep the normalized current state and fail closed', () => {
         expect(resolveChatScrollStateTransition({
             state: 'unexpected-state',

@@ -1,4 +1,4 @@
-/* global document, WheelEvent, window */
+/* global document, requestAnimationFrame, WheelEvent, window */
 import { expect, test } from '@playwright/test';
 import {
     getChatScrollSnapshot,
@@ -9,6 +9,7 @@ import {
     installSyntheticLongChat,
     markFirstRenderedMessageEditing,
     markManualMobileScroll,
+    openQuietChatForSmoke,
     openReadyChat,
     scrollMessageNearTop,
     waitForAnimationFrames,
@@ -167,5 +168,61 @@ test.describe('issue 167 mobile chat scroll regressions', () => {
         expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
         expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(12);
         expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
+});
+
+test.describe('issue 167 synthetic mobile regenerate scroll regression', () => {
+    test.use({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    });
+
+    test.beforeEach(async ({ page }) => {
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+    });
+
+    test('regenerated streaming replacement preserves a manually scrolled mobile viewport', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 82, visibleCount: 82 });
+        await scrollMessageNearTop(page, 50, 24);
+
+        const before = await getChatScrollSnapshot(page);
+        await markManualMobileScroll(page, before.scrollTop);
+        await page.evaluate(async () => {
+            const context = window.SillyTavern.getContext();
+            const deletedMessageId = context.chat.length - 1;
+
+            context.chat.length = deletedMessageId;
+            await context.deleteLastMessage();
+
+            const replacement = {
+                name: 'Bunny Guide',
+                is_user: false,
+                is_system: false,
+                send_date: new Date(Date.UTC(2024, 0, 1, 2, 0)).toISOString(),
+                gen_started: new Date(Date.UTC(2024, 0, 1, 2, 0)).toISOString(),
+                gen_finished: new Date(Date.UTC(2024, 0, 1, 2, 1)).toISOString(),
+                mes: `issue 167 regenerated stream ${'token '.repeat(20)}`,
+                extra: {},
+            };
+
+            context.chat.push(replacement);
+            context.addOneMessage(replacement, { scroll: true });
+
+            for (let chunk = 0; chunk < 3; chunk++) {
+                replacement.mes += `\nissue 167 regenerated chunk ${chunk} ${'stream '.repeat(32)}`;
+                context.addOneMessage(replacement, { type: 'swipe', forceId: context.chat.length - 1, scroll: true });
+                await new Promise(resolve => requestAnimationFrame(resolve));
+            }
+        });
+        await waitForAnimationFrames(page, 8);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(12);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+        await expect(page.locator('#chat .mes').last()).toContainText('issue 167 regenerated chunk 2');
     });
 });
