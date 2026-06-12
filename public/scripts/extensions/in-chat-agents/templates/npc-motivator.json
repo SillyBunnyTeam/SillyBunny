@@ -10,20 +10,10 @@
         "motivation",
         "agency"
     ],
-    "version": 1,
+    "version": 2,
     "author": "Sheep",
     "prompt": "The roleplay is now concluded. Now you are a meticulous AI agent whose task is to crystallize each character's motivations and plan out their actions. Aside from {{user}}, analyse every character in the roleplay's current scene. Write out each character's next actions according to their personality, current situation, and background. Search the provided documents for any extra and relevant information to comprehend the characters better.\nThis is the output and formatting required of you. Please follow:\n[Character's full name]:\n- Long Term Goal — [one-liner on the character's main and long term goal]\n  - Motivation — [brief motivation/reasoning for their long term goal]\n- Current Goal — [brief the character's current objective/problem]\n  - Motivation — [motivations/reasonings for their current objective]\n- Assumptions — [collection of relevant assumptions of the character in the current scene.]\n- Next Action — [given the character's goals, motivations, assumptions, and personality, write how they will tackle the current goal. Also write what their most likely set of actions will be and why.]\n\nNOTE: There may be no characters in the scene right now. In such a case output \"Observation: No other characters in this scene.\" Do not use **bold**, *italics*, or # headers. Follow the output strictly and in its exact bullet point formatting.",
-    "phase": "pre",
-    "preProcess": {
-        "mode": "intercept",
-        "applyMode": "patch",
-        "wrapPosition": "after",
-        "wrapPrefix": "",
-        "wrapSuffix": "",
-        "patchStartTag": "<npc_motivation_plan>",
-        "patchEndTag": "</npc_motivation_plan>",
-        "maxTokens": 4096
-    },
+    "phase": "post",
     "injection": {
         "position": 1,
         "depth": 0,
@@ -58,5 +48,27 @@
         ]
     },
     "tools": [],
-    "settings": {}
+    "settings": {},
+    "execution": "companion",
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "markdown",
+        "rawPrompt": true,
+        "inlinePhase": "pre",
+        "contextMessages": 10,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
+        "includeAuthorsNote": true,
+        "includeSystemPrompt": true,
+        "includeHistory": true,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": true,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 4096
+    }
 }

@@ -12,6 +12,7 @@ import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
     runCompanionAgentOnMessage,
+    runCompanionsOnMessage,
 } from './companion-runner.js';
 import { cleanCompanionAgentName, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
 
@@ -53,8 +54,17 @@ function storeHandleTopFraction(fraction) {
     }
 }
 
+function getViewportHeight() {
+    return globalThis.visualViewport?.height || globalThis.innerHeight || 1;
+}
+
+/**
+ * Positions in pixels via inline style: percentages on position:fixed elements resolve
+ * against whatever containing block the page creates (mobile shells included), which can
+ * pin the handle to the top edge. Pixels measured from the viewport cannot.
+ */
 function applyHandleTopFraction(handleElement, fraction) {
-    handleElement.style.top = `${(clampHandleTopFraction(fraction) * 100).toFixed(2)}%`;
+    handleElement.style.top = `${Math.round(clampHandleTopFraction(fraction) * getViewportHeight())}px`;
 }
 
 /**
@@ -68,10 +78,12 @@ function bindHandleDrag(handleElement) {
         return;
     }
 
-    const storedFraction = getStoredHandleTopFraction();
-    if (storedFraction !== null) {
-        applyHandleTopFraction(handleElement, storedFraction);
-    }
+    // Always place explicitly (stored position or middle edge), and re-place on
+    // rotation/viewport changes so the pixel position tracks the screen.
+    const placeHandle = () => applyHandleTopFraction(handleElement, getStoredHandleTopFraction() ?? 0.5);
+    placeHandle();
+    globalThis.addEventListener?.('resize', placeHandle);
+    globalThis.visualViewport?.addEventListener?.('resize', placeHandle);
 
     let activeMode = null;
     let activePointerId = null;
@@ -93,7 +105,7 @@ function bindHandleDrag(handleElement) {
         }
 
         dragging = true;
-        applyHandleTopFraction(handleElement, (startCenterY + delta) / (globalThis.innerHeight || 1));
+        applyHandleTopFraction(handleElement, (startCenterY + delta) / getViewportHeight());
     };
 
     const finishDrag = cancelled => {
@@ -107,7 +119,7 @@ function bindHandleDrag(handleElement) {
 
         // The click that follows the gesture would toggle the panel; swallow it.
         suppressHandleClickUntil = Date.now() + 350;
-        const viewportHeight = globalThis.innerHeight || 1;
+        const viewportHeight = getViewportHeight();
 
         if (cancelled) {
             // The browser stole the gesture — positions read mid-hijack are garbage,
@@ -301,6 +313,7 @@ function buildPanelAgentSection(state) {
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
                 <span class="ica--tpanel-agent-actions">
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
             </div>
@@ -319,7 +332,10 @@ export function buildPanelHtml() {
     return `
         <div class="ica--tpanel-header">
             <span class="ica--tpanel-title"><i class="fa-solid fa-map-location-dot"></i> Tracker Panel</span>
-            <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
+            <span class="ica--tpanel-agent-actions">
+                <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
+                <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
+            </span>
         </div>
         <div class="ica--tpanel-body">${body}</div>
     `;
@@ -365,6 +381,24 @@ async function handlePanelAction(event) {
         return;
     }
 
+    if (action === 'panel-regenerate-all') {
+        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        if (lastAssistantIndex < 0) {
+            toastr.warning('No assistant reply yet to run companions on.');
+            return;
+        }
+        button.prop('disabled', true);
+        try {
+            await runCompanionsOnMessage(lastAssistantIndex);
+        } finally {
+            button.prop('disabled', false);
+            if (panelOpen) {
+                renderPanel();
+            }
+        }
+        return;
+    }
+
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
     const messageIndex = Number(section.attr('data-message-index'));
@@ -380,10 +414,10 @@ async function handlePanelAction(event) {
         return;
     }
 
-    if (action === 'panel-regenerate' && agentId && Number.isInteger(messageIndex)) {
+    if ((action === 'panel-regenerate' || action === 'panel-fix') && agentId && Number.isInteger(messageIndex)) {
         button.prop('disabled', true);
         try {
-            await runCompanionAgentOnMessage(agentId, messageIndex);
+            await runCompanionAgentOnMessage(agentId, messageIndex, { repair: action === 'panel-fix' });
         } finally {
             button.prop('disabled', false);
             if (panelOpen) {

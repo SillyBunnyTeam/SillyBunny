@@ -338,7 +338,9 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
     }).trim();
 }
 
-export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal') {
+const COMPANION_REPAIR_INSTRUCTION = 'Your previous attempt did not follow the required output. Redo the task now and output strictly what the instructions above define — absolutely no roleplay, no narration, no dialogue, no commentary.';
+
+export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false } = {}) {
     const companion = getCompanionConfig(agent);
     const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
@@ -348,6 +350,7 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
         expandedPrompt,
         companion.rawPrompt ? '' : getFormatInstruction(companion.format),
         getCompanionGuardInstruction(agent),
+        repair ? COMPANION_REPAIR_INSTRUCTION : '',
     ].filter(Boolean).join('\n\n');
 
     return [
@@ -417,7 +420,7 @@ function parseBatchResponse(output = '') {
     return parsed;
 }
 
-async function runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision) {
+async function runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, { repair = false } = {}) {
     const message = chat[messageIndex];
     if (!isAssistantMessage(message)) {
         return null;
@@ -430,7 +433,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
 
-        const promptMessages = await buildCompanionPromptMessages(agent, messageIndex, generationType);
+        const promptMessages = await buildCompanionPromptMessages(agent, messageIndex, generationType, { repair });
         const response = await requestPromptTransform(agent, promptMessages, companion.maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
@@ -606,6 +609,11 @@ export async function runCompanionStage({ messageIndex, message, generationType 
 }
 
 export function injectCompanionFeedbackPrompts(activeAgents = []) {
+    // A generation that starts with an assistant tail is rewriting that message
+    // (swipe/regenerate/continue) — its own stored state is stale, never feed it back.
+    const tailMessage = chat[chat.length - 1];
+    const beforeMessageIndex = isAssistantMessage(tailMessage) ? chat.length - 1 : chat.length;
+
     for (const agent of activeAgents) {
         if (!isCompanionAgent(agent)) {
             continue;
@@ -617,7 +625,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
         }
 
         const notes = collectRecentCompanionResults(agent.id, {
-            beforeMessageIndex: chat.length,
+            beforeMessageIndex,
             depth: companion.feedback.depth,
         });
         if (notes.length === 0) {
@@ -640,7 +648,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
     }
 }
 
-export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancelRevision = getAgentGenerationCancelRevision() } = {}) {
+export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancelRevision = getAgentGenerationCancelRevision(), repair = false } = {}) {
     const agent = getAgentById(agentId);
     const message = chat[messageIndex];
     if (!agent || !isCompanionAgent(agent) || !isAssistantMessage(message)) {
@@ -653,7 +661,7 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
         error: '',
     });
     await emitCompanionResultsUpdated(messageIndex, agent.id);
-    const result = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision);
+    const result = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, { repair });
     saveChatDebounced({ deferBackup: false });
     return result;
 }

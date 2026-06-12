@@ -66,6 +66,7 @@ describe('companion tracker panel', () => {
             COMPANION_RESULTS_UPDATED_EVENT: 'companion_results_updated',
             getCompanionResults: jest.fn(message => companionResultsByMessage.get(message) ?? {}),
             runCompanionAgentOnMessage: jest.fn(async () => ({})),
+            runCompanionsOnMessage: jest.fn(async () => ({})),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
@@ -186,7 +187,9 @@ describe('companion tracker panel', () => {
         expect(html).toContain('Scene Tracker');
         expect(html).toContain('<formatted>Sumeru City Market</formatted>');
         expect(html).toContain('data-action="panel-regenerate"');
+        expect(html).toContain('data-action="panel-fix"');
         expect(html).toContain('data-action="panel-jump"');
+        expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
         expect(html).toContain('No state yet');
     });

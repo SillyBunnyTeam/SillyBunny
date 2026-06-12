@@ -977,6 +977,49 @@ describe('in-chat agent post-processing runner', () => {
         expect(plainMessages[1].content).not.toContain('[Author\'s Note]');
     });
 
+    test('excludes the rewritten tail message from feedback on swipes', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'feedback-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const earlierReply = { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const tailReply = { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(earlierReply, { mes: 'Go on.', name: 'User', is_user: true, is_system: false, extra: {} }, tailReply);
+        companionRunner.setCompanionResult(earlierReply, feedbackCompanion, { status: 'done', content: 'State one' });
+        companionRunner.setCompanionResult(tailReply, feedbackCompanion, { status: 'done', content: 'Stale swipe state' });
+
+        // Assistant tail = swipe/regenerate of that message: its own state must not feed back.
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_feedback-companion'];
+        expect(injected.value).toContain('State one');
+        expect(injected.value).not.toContain('Stale swipe state');
+
+        // User tail = normal generation: the latest stored states all feed back.
+        chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('appends the repair instruction on fix runs', async () => {
+        const fixCompanion = createCompanionAgent({ id: 'fix-companion' });
+        enabledAgents = [fixCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const repairMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1, 'normal', { repair: true });
+        expect(repairMessages[0].content).toContain('Redo the task now');
+
+        const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
+        expect(normalMessages[0].content).not.toContain('Redo the task now');
+    });
+
     test('feeds a companion its previous states when history is enabled', async () => {
         const historyCompanion = createCompanionAgent({
             id: 'history-companion',

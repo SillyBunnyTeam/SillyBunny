@@ -75,21 +75,25 @@ describe('in-chat agent bundled templates', () => {
         }
     });
 
-    test('bundles NPC Motivator as a pre-generation intercept patch agent', () => {
+    test('bundles NPC Motivator as an auto-loop companion agent', () => {
         const template = readTemplate('npc-motivator.json');
 
         expect(template).toEqual(expect.objectContaining({
             id: 'tpl-npc-motivator',
             name: 'NPC Motivator',
             author: 'Sheep',
-            phase: 'pre',
+            version: 2,
+            phase: 'post',
+            execution: 'companion',
             enabled: false,
         }));
-        expect(template.preProcess).toEqual(expect.objectContaining({
-            mode: 'intercept',
-            applyMode: 'patch',
-            patchStartTag: '<npc_motivation_plan>',
-            patchEndTag: '</npc_motivation_plan>',
+        expect(template.preProcess).toBeUndefined();
+        expect(template.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            inlinePhase: 'pre',
+            feedback: { enabled: true, depth: 1 },
             maxTokens: 4096,
         }));
         expect(template.conditions.generationTypes).toEqual(['normal', 'continue', 'impersonate']);

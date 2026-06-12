@@ -754,6 +754,7 @@ export function createDefaultCompanionConfig() {
         displayMode: 'card',
         format: 'markdown',
         rawPrompt: false,
+        inlinePhase: '',
         contextMessages: 10,
         includeCharacterCard: true,
         includePersona: true,
@@ -795,6 +796,7 @@ export function normalizeCompanionConfig(raw = {}) {
             ? String(rawConfig.format)
             : defaults.format,
         rawPrompt: Boolean(rawConfig.rawPrompt),
+        inlinePhase: ['pre', 'post', 'both'].includes(String(rawConfig.inlinePhase)) ? String(rawConfig.inlinePhase) : '',
         contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
         includeCharacterCard: rawConfig.includeCharacterCard === undefined ? defaults.includeCharacterCard : Boolean(rawConfig.includeCharacterCard),
         includePersona: rawConfig.includePersona === undefined ? defaults.includePersona : Boolean(rawConfig.includePersona),
@@ -1342,12 +1344,17 @@ export function convertAgentExecution(agent, targetExecution) {
     if (wantsCompanion) {
         agent.execution = 'companion';
         agent.companion = normalizeCompanionConfig(agent.companion);
+        // Remember the inline phase so converting back restores it instead of leaving 'post'.
+        agent.companion.inlinePhase = ['pre', 'post', 'both'].includes(agent.phase) ? agent.phase : '';
         applyTrackerCompanionAutoLoopDefaults(agent);
         agent.phase = 'post';
         return true;
     }
 
     agent.execution = 'inline';
+    if (agent.companion?.inlinePhase) {
+        agent.phase = agent.companion.inlinePhase;
+    }
     // normalizeAgent re-derives execution from the category, so a companion-category
     // agent has to move to custom or it would normalize back to a companion on save.
     if (agent.category === 'companion') {

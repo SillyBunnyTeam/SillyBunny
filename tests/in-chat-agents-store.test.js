@@ -337,6 +337,7 @@ describe('in-chat agent scoped enabled state', () => {
             displayMode: 'card',
             format: 'markdown',
             rawPrompt: false,
+            inlinePhase: '',
             contextMessages: 10,
             includeCharacterCard: true,
             includePersona: true,
@@ -459,6 +460,7 @@ describe('in-chat agent scoped enabled state', () => {
             ...store.createDefaultCompanionConfig(),
             displayMode: 'panel',
             rawPrompt: true,
+            inlinePhase: 'pre',
             feedback: { enabled: true, depth: 1 },
         });
         expect(agent.regexScripts).toHaveLength(1);
@@ -632,6 +634,25 @@ describe('in-chat agent scoped enabled state', () => {
 
         store.setGlobalSettings({ companionConnectionProfile: '' });
         expect(store.resolveCompanionConnectionProfile('')).toBe('default-profile');
+    });
+
+    test('restores the inline phase when converting a companion back', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'pre-gen-tracker',
+            name: 'Pre Tracker',
+            category: 'tracker',
+            phase: 'pre',
+            prompt: 'Track things.',
+        }]);
+        const agent = store.getAgentById('pre-gen-tracker');
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+        expect(agent.phase).toBe('post');
+        expect(agent.companion.inlinePhase).toBe('pre');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+        expect(agent.phase).toBe('pre');
     });
 
     test('refuses no-op and tool-agent execution conversions', async () => {
