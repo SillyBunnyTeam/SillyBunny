@@ -1586,4 +1586,20 @@ button.ica--card-pill--version-update {
         display: inline-flex;
         touch-action: none;
     }
+
+    .ica--card-toggle::before {
+        content: '';
+        position: absolute;
+        inset: -14px -10px;
+    }
+
+    .ica--card-favorite {
+        position: relative;
+    }
+
+    .ica--card-favorite::before {
+        content: '';
+        position: absolute;
+        inset: -14px -10px;
+    }
 }
