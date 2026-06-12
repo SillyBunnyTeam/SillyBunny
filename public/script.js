@@ -340,7 +340,6 @@ import {
     renderMessagesInBatches,
     resolveChatBottomScrollAction,
     resolveChatRenderLifecycleRollout,
-    resolveChatScrollAction,
     resolveChatScrollStateTransition,
     restoreVisibleMessageAnchor,
     settleVisibleMessageAnchor,
@@ -3187,9 +3186,12 @@ function scrollLoadedChatToBottomThroughLifecycle() {
         return;
     }
 
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.INITIAL_LOAD,
     });
+    chatScrollState = transition.state;
+    const action = transition.action;
 
     if (shouldApplyChatBottomScrollAction(action)) {
         scrollLoadedChatToBottom();

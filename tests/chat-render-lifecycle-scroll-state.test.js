@@ -8,11 +8,26 @@ import {
 } from '../public/scripts/chat-render-lifecycle/scroll-state.js';
 
 describe('chat render lifecycle scroll state machine', () => {
-    test('initial load enters pinned-bottom with a forced bottom action', () => {
+    test('initial load always enters pinned-bottom with a forced bottom action', () => {
         expect(resolveChatScrollStateTransition({
             state: CHAT_SCROLL_STATE.USER_READING,
             intent: CHAT_SCROLL_INTENT.INITIAL_LOAD,
             autoScrollEnabled: false,
+        })).toEqual({
+            state: CHAT_SCROLL_STATE.PINNED_BOTTOM,
+            action: {
+                action: CHAT_SCROLL_ACTION.PIN_BOTTOM,
+                force: true,
+                reason: CHAT_SCROLL_INTENT.INITIAL_LOAD,
+            },
+        });
+
+        expect(resolveChatScrollStateTransition({
+            state: CHAT_SCROLL_STATE.ANCHORED_HISTORY,
+            intent: CHAT_SCROLL_INTENT.INITIAL_LOAD,
+            autoScrollEnabled: true,
+            isNearBottom: false,
+            isManualScrollSuppressed: true,
         })).toEqual({
             state: CHAT_SCROLL_STATE.PINNED_BOTTOM,
             action: {
