@@ -33,6 +33,7 @@
 - PR #437 (2026-06-12) `fix: scope top-bar drawer hiding to native drawers for extension compatibility`
 - PR #438 (2026-06-12) `fix(mobile): prevent iOS chat overscroll blanking and keyboard composer displacement`
 - PR #439 (2026-06-12) `fix: allow extensions to hook the Characters top-bar button`
+- PR #440 (2026-06-12) `feat(ica): add Fix Trackers button to re-run tracker agents`
 
 ## v1.6.4
 
