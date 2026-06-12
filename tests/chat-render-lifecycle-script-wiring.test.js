@@ -587,16 +587,21 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const resizeState = metadata ?? captureChatMessageResizeState(element, entry);');
         expect(source).toContain('if (isActiveStreamingMessageResizeBlock(element))');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
+        expect(source).toContain('const transition = resolveChatScrollStateTransition({');
+        expect(source).toContain('state: chatScrollState');
         expect(source).toContain('intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE');
         expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
         expect(source).toContain('isNearBottom: Boolean(resizeState.isNearBottom)');
         expect(source).toContain('hasAnchor: Boolean(resizeState.anchor)');
         expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
+        expect(source).toContain('chatScrollState = transition.state;');
+        expect(source).toContain('const action = transition.action;');
         expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(source).toContain('scrollChatToBottom({ waitForFrame: true, isNearBottom: true });');
         expect(source).toContain('action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
         expect(source).toContain('await settleVisibleChatMessageAnchor(resizeState.anchor);');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
+        expect(source).not.toContain('const action = resolveChatScrollAction({');
     });
 
     test('message resize metadata refreshes viewport anchors on chat scroll', () => {

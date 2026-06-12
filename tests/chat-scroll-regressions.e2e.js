@@ -136,6 +136,25 @@ test.describe('issue 167 chat scroll regressions', () => {
     });
 });
 
+test.describe('issue 167 synthetic media resize scroll regression', () => {
+    test.beforeEach(async ({ page }) => {
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+    });
+
+    test('late media resize above a synthetic viewport keeps the current message anchored', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 72, visibleCount: 72 });
+        await scrollMessageNearTop(page, 48, 24);
+
+        const before = await getChatScrollSnapshot(page);
+        await growMessageBlockAboveViewport(page, 12, { height: 460 });
+        const after = await getChatScrollSnapshot(page);
+
+        expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(8);
+        expect(after.scrollTop).toBeGreaterThan(before.scrollTop + 300);
+    });
+});
+
 test.describe('issue 167 mobile chat scroll regressions', () => {
     test.use({
         viewport: { width: 390, height: 844 },
