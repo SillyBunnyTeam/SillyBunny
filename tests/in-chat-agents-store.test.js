@@ -338,9 +338,11 @@ describe('in-chat agent scoped enabled state', () => {
             format: 'markdown',
             rawPrompt: false,
             contextMessages: 10,
-            includeCharacterCard: false,
-            includePersona: false,
-            includeWorldInfo: false,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
             includeHistory: false,
             historyDepth: 3,
             feedback: {
@@ -564,6 +566,41 @@ describe('in-chat agent scoped enabled state', () => {
 
         expect(store.normalizeCompanionConfig({ displayMode: 'panel' }).displayMode).toBe('panel');
         expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('card');
+    });
+
+    test('grants context access defaults to companions while honoring explicit choices', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'opted-out-companion',
+                name: 'Opted Out',
+                category: 'companion',
+                execution: 'companion',
+                companion: { includeCharacterCard: false, includePersona: false, includeWorldInfo: false, includeAuthorsNote: false, includeSystemPrompt: false },
+            },
+            { id: 'fresh-companion', name: 'Fresh', category: 'companion', execution: 'companion' },
+            { id: 'inline-agent', name: 'Inline', category: 'custom' },
+        ]);
+
+        // Stored explicit false survives normalization; absent keys pick up the new true defaults.
+        const optedOut = store.getAgentById('opted-out-companion');
+        expect(optedOut.companion.includeCharacterCard).toBe(false);
+        expect(store.getAgentById('fresh-companion').companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
+        }));
+
+        expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(true);
+        expect(optedOut.companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
+        }));
+        expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(false);
+        expect(store.applyCompanionContextAccessDefaults(store.getAgentById('inline-agent'))).toBe(false);
     });
 
     test('matches agents to list tabs by phase and execution', async () => {

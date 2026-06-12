@@ -252,6 +252,10 @@ describe('in-chat agent post-processing runner', () => {
             getWorldInfoPrompt: jest.fn(async () => ({ worldInfoString: '' })),
         }));
 
+        await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
+            power_user: { sysprompt: { enabled: true, content: 'Global system prompt text.' } },
+        }));
+
         await jest.unstable_mockModule('../public/scripts/tool-calling.js', () => ({
             ToolManager: {
                 RECURSE_LIMIT: 5,
@@ -283,6 +287,8 @@ describe('in-chat agent post-processing runner', () => {
                 includeCharacterCard: Boolean(agent?.companion?.includeCharacterCard),
                 includePersona: Boolean(agent?.companion?.includePersona),
                 includeWorldInfo: Boolean(agent?.companion?.includeWorldInfo),
+                includeAuthorsNote: Boolean(agent?.companion?.includeAuthorsNote),
+                includeSystemPrompt: Boolean(agent?.companion?.includeSystemPrompt),
                 includeHistory: Boolean(agent?.companion?.includeHistory),
                 historyDepth: Number(agent?.companion?.historyDepth) || 3,
                 feedback: {
@@ -944,6 +950,54 @@ describe('in-chat agent post-processing runner', () => {
         expect(noteMessages[0].content).toContain('Return only markdown');
         expect(noteMessages[1].content).toContain('[Task]');
         expect(noteMessages[1].content).toContain('do not continue the conversation itself');
+    });
+
+    test('includes the system prompt and authors note sections when toggled on', async () => {
+        const contextCompanion = createCompanionAgent({
+            id: 'context-companion',
+            companion: { includeSystemPrompt: true, includeAuthorsNote: true },
+        });
+        enabledAgents = [contextCompanion];
+        chatMetadata.note_prompt = 'Remember: it is raining.';
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(contextCompanion, 1);
+
+        expect(messages[1].content).toContain('[System Prompt]\nGlobal system prompt text.');
+        expect(messages[1].content).toContain('[Author\'s Note]\nRemember: it is raining.');
+
+        const plainCompanion = createCompanionAgent({ id: 'plain-companion' });
+        const plainMessages = await companionRunner.buildCompanionPromptMessages(plainCompanion, 1);
+        expect(plainMessages[1].content).not.toContain('[System Prompt]');
+        expect(plainMessages[1].content).not.toContain('[Author\'s Note]');
+    });
+
+    test('runs the companion stage concurrently with post passes when enabled', async () => {
+        globalSettings.companionConcurrentWithPostGen = true;
+        const companionAgent = createCompanionAgent();
+        enabledAgents = [companionAgent];
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        const runCompanionStage = jest.fn(async () => []);
+
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ runCompanionStage });
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(runCompanionStage).toHaveBeenCalledTimes(1);
+        expect(runCompanionStage).toHaveBeenCalledWith(expect.objectContaining({
+            messageIndex: 1,
+            activeAgents: [companionAgent],
+        }));
     });
 
     test('guards tracker companions against continuing the story even with raw prompts', async () => {

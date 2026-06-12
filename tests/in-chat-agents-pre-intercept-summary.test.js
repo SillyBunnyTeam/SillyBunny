@@ -116,6 +116,7 @@ beforeAll(async () => {
         getPromptTransformMode: jest.fn(() => 'rewrite'),
         isTrackerFixAgent: jest.fn(() => false),
         agentMatchesListTab: jest.fn(() => true),
+        applyCompanionContextAccessDefaults: jest.fn(() => false),
         applyTrackerCompanionAutoLoopDefaults: jest.fn(() => false),
         convertAgentExecution: jest.fn(() => false),
         resolveCompanionConnectionProfile: jest.fn(value => value ?? ''),

@@ -43,6 +43,7 @@ import {
     loadBuiltinGroups,
     loadCustomGroups,
     agentMatchesListTab,
+    applyCompanionContextAccessDefaults,
     applyTrackerCompanionAutoLoopDefaults,
     convertAgentExecution,
     isCompanionAgent,
@@ -292,20 +293,29 @@ async function toggleAgentFavorite(agent) {
     renderAgentList();
 }
 
+const TRACKER_COMPANION_AUTO_LOOP_VERSION = 2;
+
 async function migrateTrackerCompanionsToAutoLoop() {
-    if (getGlobalSettings().trackerCompanionAutoLoopApplied) {
+    const settings = getGlobalSettings();
+    const appliedVersion = Number(settings.trackerCompanionAutoLoopVersion ?? (settings.trackerCompanionAutoLoopApplied ? 1 : 0)) || 0;
+    if (appliedVersion >= TRACKER_COMPANION_AUTO_LOOP_VERSION) {
         return 0;
     }
 
     let migrated = 0;
     for (const agent of getAgents()) {
-        if (applyTrackerCompanionAutoLoopDefaults(agent)) {
+        const contextChanged = applyCompanionContextAccessDefaults(agent);
+        const loopChanged = applyTrackerCompanionAutoLoopDefaults(agent);
+        if (contextChanged || loopChanged) {
             await saveAgent(agent);
             migrated++;
         }
     }
 
-    setGlobalSettings({ trackerCompanionAutoLoopApplied: true });
+    setGlobalSettings({
+        trackerCompanionAutoLoopApplied: true,
+        trackerCompanionAutoLoopVersion: TRACKER_COMPANION_AUTO_LOOP_VERSION,
+    });
     persistExtensionState();
     return migrated;
 }
@@ -2237,6 +2247,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', companion.includeCharacterCard);
     editorEl.find('#ica--editor-companion-includePersona').prop('checked', companion.includePersona);
     editorEl.find('#ica--editor-companion-includeWorldInfo').prop('checked', companion.includeWorldInfo);
+    editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', companion.includeAuthorsNote);
+    editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', companion.includeSystemPrompt);
     editorEl.find('#ica--editor-companion-includeHistory').prop('checked', companion.includeHistory);
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
@@ -2334,6 +2346,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             includeCharacterCard: root.find('#ica--editor-companion-includeCharacterCard').prop('checked'),
             includePersona: root.find('#ica--editor-companion-includePersona').prop('checked'),
             includeWorldInfo: root.find('#ica--editor-companion-includeWorldInfo').prop('checked'),
+            includeAuthorsNote: root.find('#ica--editor-companion-includeAuthorsNote').prop('checked'),
+            includeSystemPrompt: root.find('#ica--editor-companion-includeSystemPrompt').prop('checked'),
             includeHistory: root.find('#ica--editor-companion-includeHistory').prop('checked'),
             historyDepth: Number(root.find('#ica--editor-companion-historyDepth').val()) || current.historyDepth,
             feedback: {
@@ -2357,6 +2371,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', nextCompanion.includeCharacterCard);
         editorEl.find('#ica--editor-companion-includePersona').prop('checked', nextCompanion.includePersona);
         editorEl.find('#ica--editor-companion-includeWorldInfo').prop('checked', nextCompanion.includeWorldInfo);
+        editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', nextCompanion.includeAuthorsNote);
+        editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', nextCompanion.includeSystemPrompt);
         editorEl.find('#ica--editor-companion-includeHistory').prop('checked', nextCompanion.includeHistory);
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
@@ -4166,6 +4182,7 @@ function populatePathfinderSubmoduleToggle() {
 function populateGlobalExecutionModeDropdown() {
     $('#ica--appendAgentsExecutionMode').val(getGlobalSettings().appendAgentsExecutionMode || 'parallel');
     $('#ica--companionExecutionMode').val(getGlobalSettings().companionExecutionMode || 'parallel');
+    $('#ica--companionConcurrent').prop('checked', Boolean(getGlobalSettings().companionConcurrentWithPostGen));
 }
 
 function populateGlobalHelperPrefillField() {
@@ -4596,6 +4613,33 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     $('#ica--addAgent').on('click', () => openEditor());
     $('#ica--companionsDashboard').on('click', () => openCompanionDashboard());
+    $('#ica--convertAllTrackers').on('click', async () => {
+        const inlineTrackers = getAgents().filter(agent => agent.category === 'tracker' && !isCompanionAgent(agent) && !isPathfinderAgent(agent));
+        if (inlineTrackers.length === 0) {
+            toastr.info('Every tracker already runs as a companion.');
+            return;
+        }
+
+        const result = await new Popup(`Convert ${inlineTrackers.length} tracker agent(s) to companion execution? They will run automatically on their own model and show in the Tracker panel.`, POPUP_TYPE.CONFIRM).show();
+        if (result !== POPUP_RESULT.AFFIRMATIVE) {
+            return;
+        }
+
+        let converted = 0;
+        for (const agent of inlineTrackers) {
+            if (!convertAgentExecution(agent, 'companion')) {
+                continue;
+            }
+            lockBundledAgentCustomization(agent);
+            await saveAgent(agent);
+            refreshRegexSnapshotsForAgent(agent.id);
+            converted++;
+        }
+
+        syncToolAgentRegistrations();
+        renderAgentList();
+        toastr.success(`Converted ${converted} tracker(s) to companions — state shows in the Tracker panel.`);
+    });
     $('#ica--importAgent').on('click', () => $('#ica--importFile').trigger('click'));
     $('#ica--importFile').on('change', handleImport);
     $('#ica--exportAll').on('click', handleExportAll);
@@ -4819,6 +4863,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     $('#ica--companionExecutionMode').on('change', function () {
         setGlobalSettings({ companionExecutionMode: this.value });
+        persistExtensionState();
+    });
+    $('#ica--companionConcurrent').on('change', function () {
+        setGlobalSettings({ companionConcurrentWithPostGen: $(this).prop('checked') });
         persistExtensionState();
     });
     $('#ica--helperPrefillMessages').on('input', function () {

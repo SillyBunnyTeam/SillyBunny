@@ -1,11 +1,13 @@
 import {
     chat,
+    chat_metadata,
     normalizeContentText,
     saveChatDebounced,
     setExtensionPrompt,
     substituteParams,
 } from '../../../../script.js';
-import { getContext } from '../../../extensions.js';
+import { power_user } from '../../../power-user.js';
+import { extension_settings, getContext } from '../../../extensions.js';
 import { eventSource } from '../../../events.js';
 import { getWorldInfoPrompt } from '../../../world-info.js';
 import { getConnectionProfileDisplayName } from '../profile-utils.js';
@@ -257,17 +259,39 @@ function getPreviousNotesSection(agent, messageIndex, companion) {
     }).map(result => `Message ${result.messageIndex}:\n${normalizeText(result.content)}`).join('\n\n');
 }
 
+function getSystemPromptSection(companion) {
+    if (!companion.includeSystemPrompt) {
+        return '';
+    }
+
+    return normalizeText(substituteParams(String(power_user?.sysprompt?.content ?? '')));
+}
+
+function getAuthorsNoteSection(companion) {
+    if (!companion.includeAuthorsNote) {
+        return '';
+    }
+
+    const note = String(chat_metadata?.note_prompt ?? '').trim()
+        || String(extension_settings?.note?.default ?? '').trim();
+    return normalizeText(substituteParams(note));
+}
+
 async function buildCompanionContextSections(agent, messageIndex) {
     const companion = getCompanionConfig(agent);
     const sections = [];
+    const systemPrompt = getSystemPromptSection(companion);
     const characterCard = getCharacterCardSection(companion);
     const worldInfo = await getWorldInfoSection(messageIndex, companion);
+    const authorsNote = getAuthorsNoteSection(companion);
     const previousNotes = getPreviousNotesSection(agent, messageIndex, companion);
     const recentConversation = getRecentConversationSection(messageIndex, companion);
 
     for (const [title, content] of [
+        ['System Prompt', systemPrompt],
         ['Character', characterCard],
         ['World Info', worldInfo],
+        ["Author's Note", authorsNote],
         ['Your previous notes', previousNotes],
         ['Recent conversation', recentConversation],
     ]) {

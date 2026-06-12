@@ -3638,6 +3638,14 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         markPostProcessingRunProcessed(message, runKey, messageIndex, indexRunKey);
 
         const activeAgents = getActiveAgentsForMessage(generationType, resolvedActivationSnapshot);
+        // Companions normally run last so they see the post-transform reply; the concurrent
+        // option trades that for speed and runs them against the raw reply alongside the passes.
+        const companionStageArgs = { messageIndex, message, generationType, activeAgents };
+        const concurrentCompanionStage = getGlobalSettings().companionConcurrentWithPostGen && companionRuntime?.runCompanionStage
+            ? companionRuntime.runCompanionStage(companionStageArgs).catch(error => {
+                console.warn('[InChatAgents] Companion stage failed:', error);
+            })
+            : null;
         const promptTransformAgents = getPromptTransformAgentsForMessage(activeAgents, generationType);
         const utilityAgents = isImpersonateGenerationType(generationType)
             ? []
@@ -3790,14 +3798,11 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
             scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
         }
 
-        if (companionRuntime?.runCompanionStage) {
+        if (concurrentCompanionStage) {
+            await concurrentCompanionStage;
+        } else if (companionRuntime?.runCompanionStage) {
             try {
-                await companionRuntime.runCompanionStage({
-                    messageIndex,
-                    message,
-                    generationType,
-                    activeAgents,
-                });
+                await companionRuntime.runCompanionStage(companionStageArgs);
             } catch (error) {
                 console.warn('[InChatAgents] Companion stage failed:', error);
             }

@@ -229,15 +229,22 @@ export function decorateChoiceLines(html) {
  */
 export function insertChoiceIntoMessageInput(rawText) {
     const choice = extractChoiceText(rawText);
+    if (!choice) {
+        return false;
+    }
+
     const textarea = document.getElementById('send_textarea');
-    if (!choice || !textarea) {
+    if (!textarea) {
+        toastr.warning('Could not find the message box.');
         return false;
     }
 
     const current = String(textarea.value ?? '');
     textarea.value = current.trim() ? `${current.replace(/\s+$/, '')}\n${choice}` : choice;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    globalThis.$?.(textarea).trigger('input');
     textarea.focus();
+    toastr.success('Added to the message box.');
     return true;
 }
 
@@ -488,7 +495,10 @@ export function initCompanionCardUi() {
         await runCompanionsFromMessageButton(messageIndex, this);
     });
     $(document).on('click', '.ica--companion-action', handleCompanionAction);
-    $(document).on('click', '.ica--companion-body .ica--choice-line', function (event) {
+    // Document-level catch-all: covers cards and any other surface rendering companion
+    // bodies. The panel binds its own element-level handler first (to close itself), and
+    // its stopPropagation keeps this one from double-inserting.
+    $(document).on('click', '.ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
         insertChoiceIntoMessageInput(this.textContent);

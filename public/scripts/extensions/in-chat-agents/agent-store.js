@@ -161,6 +161,7 @@ let globalSettings = {
     promptTransformShowNotifications: true,
     appendAgentsExecutionMode: 'parallel',
     companionExecutionMode: 'parallel',
+    companionConcurrentWithPostGen: false,
     helperPrefillMessages: '',
 };
 
@@ -754,9 +755,11 @@ export function createDefaultCompanionConfig() {
         format: 'markdown',
         rawPrompt: false,
         contextMessages: 10,
-        includeCharacterCard: false,
-        includePersona: false,
-        includeWorldInfo: false,
+        includeCharacterCard: true,
+        includePersona: true,
+        includeWorldInfo: true,
+        includeAuthorsNote: true,
+        includeSystemPrompt: true,
         includeHistory: false,
         historyDepth: 3,
         feedback: {
@@ -793,10 +796,12 @@ export function normalizeCompanionConfig(raw = {}) {
             : defaults.format,
         rawPrompt: Boolean(rawConfig.rawPrompt),
         contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
-        includeCharacterCard: Boolean(rawConfig.includeCharacterCard),
-        includePersona: Boolean(rawConfig.includePersona),
-        includeWorldInfo: Boolean(rawConfig.includeWorldInfo),
-        includeHistory: Boolean(rawConfig.includeHistory),
+        includeCharacterCard: rawConfig.includeCharacterCard === undefined ? defaults.includeCharacterCard : Boolean(rawConfig.includeCharacterCard),
+        includePersona: rawConfig.includePersona === undefined ? defaults.includePersona : Boolean(rawConfig.includePersona),
+        includeWorldInfo: rawConfig.includeWorldInfo === undefined ? defaults.includeWorldInfo : Boolean(rawConfig.includeWorldInfo),
+        includeAuthorsNote: rawConfig.includeAuthorsNote === undefined ? defaults.includeAuthorsNote : Boolean(rawConfig.includeAuthorsNote),
+        includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
+        includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
         historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
         feedback: {
             enabled: Boolean(rawFeedback.enabled),
@@ -1251,6 +1256,39 @@ export function getCompanionConfig(agent = {}) {
     return normalizeCompanionConfig(agent?.companion);
 }
 
+function buildCompanionContextAccessDefaults() {
+    return {
+        includeCharacterCard: true,
+        includePersona: true,
+        includeWorldInfo: true,
+        includeAuthorsNote: true,
+        includeSystemPrompt: true,
+    };
+}
+
+/**
+ * Grants a companion the default context access (persona, character card, world info,
+ * author's note, system prompt). Used by the one-time migration for existing companions.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyCompanionContextAccessDefaults(agent) {
+    if (!agent || !isCompanionAgent(agent)) {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    const next = { ...companion, ...buildCompanionContextAccessDefaults() };
+
+    if (JSON.stringify(next) === JSON.stringify(companion)) {
+        agent.companion = companion;
+        return false;
+    }
+
+    agent.companion = next;
+    return true;
+}
+
 /**
  * Applies the tracker auto-loop defaults to a companion-execution tracker: run automatically
  * after each reply with the agent prompt sent as-is, feed the latest state back into the next
@@ -1267,6 +1305,7 @@ export function applyTrackerCompanionAutoLoopDefaults(agent) {
     const companion = normalizeCompanionConfig(agent.companion);
     const next = {
         ...companion,
+        ...buildCompanionContextAccessDefaults(),
         trigger: 'auto',
         displayMode: 'panel',
         rawPrompt: true,

@@ -16,7 +16,9 @@ import {
 import { cleanCompanionAgentName, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
 
 const PANEL_HISTORY_LIMIT = 5;
-const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top';
+// v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
+// pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
+const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top-v2';
 const HANDLE_DRAG_THRESHOLD_PX = 6;
 
 let panelInitialized = false;
@@ -95,7 +97,7 @@ function bindHandleDrag(handleElement) {
         applyHandleTopFraction(handleElement, (startCenterY + delta) / viewportHeight);
     });
 
-    const endDrag = event => {
+    const endDrag = (event, cancelled) => {
         if (activePointerId === null || event.pointerId !== activePointerId) {
             return;
         }
@@ -103,18 +105,28 @@ function bindHandleDrag(handleElement) {
         handleElement.releasePointerCapture?.(event.pointerId);
         activePointerId = null;
 
-        if (dragging) {
-            dragging = false;
-            // The click that follows pointerup would toggle the panel; swallow it.
-            suppressHandleClickUntil = Date.now() + 350;
-            const viewportHeight = globalThis.innerHeight || 1;
-            const rect = handleElement.getBoundingClientRect();
-            storeHandleTopFraction((rect.top + rect.height / 2) / viewportHeight);
+        if (!dragging) {
+            return;
         }
+
+        dragging = false;
+        // The click that follows pointerup would toggle the panel; swallow it.
+        suppressHandleClickUntil = Date.now() + 350;
+        const viewportHeight = globalThis.innerHeight || 1;
+
+        if (cancelled) {
+            // The browser stole the gesture (e.g. turned it into a scroll) — positions read
+            // mid-hijack are garbage, so put the handle back where the drag started.
+            applyHandleTopFraction(handleElement, startCenterY / viewportHeight);
+            return;
+        }
+
+        const rect = handleElement.getBoundingClientRect();
+        storeHandleTopFraction((rect.top + rect.height / 2) / viewportHeight);
     };
 
-    handleElement.addEventListener('pointerup', endDrag);
-    handleElement.addEventListener('pointercancel', endDrag);
+    handleElement.addEventListener('pointerup', event => endDrag(event, false));
+    handleElement.addEventListener('pointercancel', event => endDrag(event, true));
 
     // iOS Safari ignores touch-action on position:fixed elements and turns the drag into a
     // page scroll (firing pointercancel). Blocking touchmove directly keeps the gesture ours;

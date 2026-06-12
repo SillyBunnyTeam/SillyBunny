@@ -1,7 +1,5 @@
 <div id="ica--settings" class="ica--settings">
     <div class="ica--inner">
-        <p class="ica--subtitle">Modular agents that can inject instructions, rewrite replies, or run as companion notes under assistant messages. Click <b>Templates</b> to browse bundled agents. Toggle them on, tweak their prompts, or use the robot button on a card to manually apply that agent to the last assistant reply.</p>
-
         <div class="ica--templates-callout">
             <div class="ica--templates-callout-copy">
                 <strong>Bundled trackers live in Templates</strong>
@@ -37,6 +35,10 @@
                 <button type="button" id="ica--companionsDashboard" class="menu_button menu_button_icon" title="Open the Companions dashboard: manage, run, and convert companion agents">
                     <i class="fa-solid fa-user-astronaut"></i>
                     <span>Companions</span>
+                </button>
+                <button type="button" id="ica--convertAllTrackers" class="menu_button menu_button_icon" title="Convert every inline tracker agent to companion execution (auto loop, tracker panel)">
+                    <i class="fa-solid fa-people-arrows"></i>
+                    <span>Trackers → Companions</span>
                 </button>
                 <div id="ica--cancelGeneration" class="menu_button menu_button_icon caution" title="Stop the active agent generation" style="display:none">
                     <i class="fa-solid fa-stop"></i>
@@ -154,6 +156,10 @@
                     <option value="parallel">Parallel (faster)</option>
                     <option value="sequential">Sequential (rate-limit friendly)</option>
                 </select>
+            </label>
+            <label class="checkbox_label" title="Run companion agents at the same time as post-generation passes instead of after them. Faster, but companions see the reply before post passes edit it.">
+                <input type="checkbox" id="ica--companionConcurrent" />
+                <span>Run Companions Alongside Post-Gen Passes</span>
             </label>
             <label class="ica--profile-label ica--helper-prefill-label">
                 <span>Helper Prefill Messages</span>
