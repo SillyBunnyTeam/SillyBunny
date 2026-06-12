@@ -19,43 +19,88 @@ import { cleanCompanionAgentName, formatCompanionContent, insertChoiceIntoMessag
 const PANEL_HISTORY_LIMIT = 5;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
+// The value is either a bare number (legacy: fraction along the right edge) or a JSON
+// object { edge, fraction } once the handle has been docked somewhere else.
 const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top-v2';
 const HANDLE_DRAG_THRESHOLD_PX = 6;
+const HANDLE_EDGES = ['right', 'left', 'top', 'bottom'];
 
 let panelInitialized = false;
 let panelOpen = false;
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
+let handleNode = null;
 
-/** Keeps the dragged handle reachable: never closer than 8% to either screen edge. */
+/** Keeps the dragged handle reachable: never closer than 8% to either end of its edge. */
 export function clampHandleTopFraction(fraction) {
     const numeric = Number(fraction);
     return Math.min(0.92, Math.max(0.08, Number.isFinite(numeric) ? numeric : 0.5));
 }
 
-function getStoredHandleTopFraction() {
+/** Accepts the legacy bare-number value (right-edge fraction) or the { edge, fraction } JSON. */
+export function parseStoredHandlePosition(raw) {
+    if (raw === null || raw === undefined || raw === '') {
+        return null;
+    }
+
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) {
+        return { edge: 'right', fraction: clampHandleTopFraction(numeric) };
+    }
+
     try {
-        const raw = globalThis.localStorage?.getItem?.(HANDLE_POSITION_STORAGE_KEY);
-        if (raw === null || raw === undefined || raw === '') {
-            return null;
+        const parsed = JSON.parse(String(raw));
+        if (HANDLE_EDGES.includes(parsed?.edge)) {
+            return { edge: parsed.edge, fraction: clampHandleTopFraction(parsed.fraction) };
         }
-        const numeric = Number(raw);
-        return Number.isFinite(numeric) ? clampHandleTopFraction(numeric) : null;
+    } catch {
+        // Garbage value: fall through to null.
+    }
+
+    return null;
+}
+
+function getStoredHandlePosition() {
+    try {
+        return parseStoredHandlePosition(globalThis.localStorage?.getItem?.(HANDLE_POSITION_STORAGE_KEY));
     } catch {
         return null;
     }
 }
 
-function storeHandleTopFraction(fraction) {
+function storeHandlePosition(edge, fraction) {
     try {
-        globalThis.localStorage?.setItem?.(HANDLE_POSITION_STORAGE_KEY, String(clampHandleTopFraction(fraction)));
+        globalThis.localStorage?.setItem?.(HANDLE_POSITION_STORAGE_KEY, JSON.stringify({
+            edge: HANDLE_EDGES.includes(edge) ? edge : 'right',
+            fraction: clampHandleTopFraction(fraction),
+        }));
     } catch {
         // Private browsing or storage quota: the position just won't persist.
     }
 }
 
+function getViewportWidth() {
+    return globalThis.visualViewport?.width || globalThis.innerWidth || 1;
+}
+
 function getViewportHeight() {
     return globalThis.visualViewport?.height || globalThis.innerHeight || 1;
+}
+
+/** Picks the dock for a release point: nearest viewport edge plus the fraction along it. */
+export function resolveHandleDock(centerX, centerY, viewportWidth, viewportHeight) {
+    const distances = {
+        left: centerX,
+        right: viewportWidth - centerX,
+        top: centerY,
+        bottom: viewportHeight - centerY,
+    };
+    const edge = HANDLE_EDGES.reduce((best, candidate) => (distances[candidate] < distances[best] ? candidate : best), 'right');
+    const fraction = edge === 'left' || edge === 'right'
+        ? centerY / (viewportHeight || 1)
+        : centerX / (viewportWidth || 1);
+
+    return { edge, fraction: clampHandleTopFraction(fraction) };
 }
 
 /**
@@ -63,8 +108,44 @@ function getViewportHeight() {
  * against whatever containing block the page creates (mobile shells included), which can
  * pin the handle to the top edge. Pixels measured from the viewport cannot.
  */
-function applyHandleTopFraction(handleElement, fraction) {
-    handleElement.style.top = `${Math.round(clampHandleTopFraction(fraction) * getViewportHeight())}px`;
+function placeDockedHandle() {
+    if (!handleNode?.getBoundingClientRect) {
+        return;
+    }
+
+    const { edge, fraction } = getStoredHandlePosition() ?? { edge: 'right', fraction: 0.5 };
+    handleNode.setAttribute('data-edge', edge);
+
+    const rect = handleNode.getBoundingClientRect();
+    const width = rect.width || 40;
+    const height = rect.height || 110;
+    const viewportWidth = getViewportWidth();
+    const viewportHeight = getViewportHeight();
+
+    let left;
+    let top;
+    if (edge === 'left' || edge === 'right') {
+        left = edge === 'left' ? 0 : viewportWidth - width;
+        top = clampHandleTopFraction(fraction) * viewportHeight - height / 2;
+    } else {
+        top = edge === 'top' ? 0 : viewportHeight - height;
+        left = clampHandleTopFraction(fraction) * viewportWidth - width / 2;
+    }
+
+    handleNode.style.left = `${Math.round(Math.min(Math.max(left, 0), viewportWidth - width))}px`;
+    handleNode.style.top = `${Math.round(Math.min(Math.max(top, 0), viewportHeight - height))}px`;
+}
+
+function requestHandlePlacement() {
+    if (!handleNode) {
+        return;
+    }
+
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+        globalThis.requestAnimationFrame(placeDockedHandle);
+    } else {
+        placeDockedHandle();
+    }
 }
 
 /**
@@ -78,34 +159,39 @@ function bindHandleDrag(handleElement) {
         return;
     }
 
-    // Always place explicitly (stored position or middle edge), and re-place on
-    // rotation/viewport changes so the pixel position tracks the screen.
-    const placeHandle = () => applyHandleTopFraction(handleElement, getStoredHandleTopFraction() ?? 0.5);
-    placeHandle();
-    globalThis.addEventListener?.('resize', placeHandle);
-    globalThis.visualViewport?.addEventListener?.('resize', placeHandle);
+    handleNode = handleElement;
+    placeDockedHandle();
+    globalThis.addEventListener?.('resize', requestHandlePlacement);
+    globalThis.visualViewport?.addEventListener?.('resize', requestHandlePlacement);
 
     let activeMode = null;
     let activePointerId = null;
+    let startClientX = 0;
     let startClientY = 0;
+    let startCenterX = 0;
     let startCenterY = 0;
     let dragging = false;
 
-    const beginDrag = clientY => {
+    const beginDrag = (clientX, clientY) => {
+        startClientX = clientX;
         startClientY = clientY;
         const rect = handleElement.getBoundingClientRect();
+        startCenterX = rect.left + rect.width / 2;
         startCenterY = rect.top + rect.height / 2;
         dragging = false;
     };
 
-    const moveDrag = clientY => {
-        const delta = clientY - startClientY;
-        if (!dragging && Math.abs(delta) < HANDLE_DRAG_THRESHOLD_PX) {
+    const moveDrag = (clientX, clientY) => {
+        const deltaX = clientX - startClientX;
+        const deltaY = clientY - startClientY;
+        if (!dragging && Math.max(Math.abs(deltaX), Math.abs(deltaY)) < HANDLE_DRAG_THRESHOLD_PX) {
             return;
         }
 
         dragging = true;
-        applyHandleTopFraction(handleElement, (startCenterY + delta) / getViewportHeight());
+        const rect = handleElement.getBoundingClientRect();
+        handleElement.style.left = `${Math.round(startCenterX + deltaX - rect.width / 2)}px`;
+        handleElement.style.top = `${Math.round(startCenterY + deltaY - rect.height / 2)}px`;
     };
 
     const finishDrag = cancelled => {
@@ -119,17 +205,21 @@ function bindHandleDrag(handleElement) {
 
         // The click that follows the gesture would toggle the panel; swallow it.
         suppressHandleClickUntil = Date.now() + 350;
-        const viewportHeight = getViewportHeight();
 
-        if (cancelled) {
-            // The browser stole the gesture — positions read mid-hijack are garbage,
-            // so put the handle back where the drag started.
-            applyHandleTopFraction(handleElement, startCenterY / viewportHeight);
-            return;
+        if (!cancelled) {
+            // Snap to the nearest viewport edge and remember the dock.
+            const rect = handleElement.getBoundingClientRect();
+            const dock = resolveHandleDock(
+                rect.left + rect.width / 2,
+                rect.top + rect.height / 2,
+                getViewportWidth(),
+                getViewportHeight(),
+            );
+            storeHandlePosition(dock.edge, dock.fraction);
         }
 
-        const rect = handleElement.getBoundingClientRect();
-        storeHandleTopFraction((rect.top + rect.height / 2) / viewportHeight);
+        // Cancelled drags re-place from storage; completed ones apply the new dock.
+        placeDockedHandle();
     };
 
     handleElement.addEventListener('touchstart', event => {
@@ -137,7 +227,7 @@ function bindHandleDrag(handleElement) {
             return;
         }
         activeMode = 'touch';
-        beginDrag(event.touches[0].clientY);
+        beginDrag(event.touches[0].clientX, event.touches[0].clientY);
     }, { passive: true });
 
     handleElement.addEventListener('touchmove', event => {
@@ -149,7 +239,7 @@ function bindHandleDrag(handleElement) {
         if (event.cancelable) {
             event.preventDefault();
         }
-        moveDrag(event.touches[0].clientY);
+        moveDrag(event.touches[0].clientX, event.touches[0].clientY);
     }, { passive: false });
 
     const touchEnd = event => {
@@ -168,7 +258,7 @@ function bindHandleDrag(handleElement) {
         activeMode = 'pointer';
         activePointerId = event.pointerId;
         handleElement.setPointerCapture?.(event.pointerId);
-        beginDrag(event.clientY);
+        beginDrag(event.clientX, event.clientY);
     });
 
     handleElement.addEventListener('pointermove', event => {
@@ -176,7 +266,7 @@ function bindHandleDrag(handleElement) {
             return;
         }
         event.preventDefault();
-        moveDrag(event.clientY);
+        moveDrag(event.clientX, event.clientY);
     });
 
     const pointerEnd = (event, cancelled) => {
@@ -331,7 +421,7 @@ export function buildPanelHtml() {
 
     return `
         <div class="ica--tpanel-header">
-            <span class="ica--tpanel-title"><i class="fa-solid fa-map-location-dot"></i> Tracker Panel</span>
+            <span class="ica--tpanel-title"><i class="fa-solid fa-user-astronaut"></i> Companions</span>
             <span class="ica--tpanel-agent-actions">
                 <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
@@ -346,14 +436,20 @@ function renderPanel() {
 }
 
 export function updateCompanionPanelHandleVisibility() {
-    $('#ica--tracker-panel-handle').toggle(shouldShowCompanionPanelHandle());
+    const shouldShow = shouldShowCompanionPanelHandle();
+    $('#ica--tracker-panel-handle').toggle(shouldShow);
+    if (shouldShow) {
+        // Sizes are only measurable once visible; (re)place on the next frame.
+        requestHandlePlacement();
+    }
 }
 
 export function openCompanionPanel() {
     panelOpen = true;
     panelOpenedAt = Date.now();
     renderPanel();
-    $('#ica--tracker-panel').addClass('is-open').attr('aria-hidden', 'false');
+    const { edge } = getStoredHandlePosition() ?? { edge: 'right' };
+    $('#ica--tracker-panel').attr('data-edge', edge).addClass('is-open').attr('aria-hidden', 'false');
 }
 
 export function closeCompanionPanel() {
@@ -433,11 +529,11 @@ export function initCompanionPanel() {
     }
 
     panelInitialized = true;
-    $(document.body).append('<div id="ica--tracker-panel" class="ica--tpanel" aria-hidden="true"></div>');
+    $(document.body).append('<div id="ica--tracker-panel" class="ica--tpanel" data-edge="right" aria-hidden="true"></div>');
     $(document.body).append(`
-        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" title="Open the tracker panel" aria-label="Open the tracker panel" style="display:none">
-            <i class="fa-solid fa-map-location-dot"></i>
-            <span>Trackers</span>
+        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the companion panel" aria-label="Open the companion panel" style="display:none">
+            <i class="fa-solid fa-user-astronaut"></i>
+            <span>Companion</span>
         </button>
     `);
 
@@ -460,9 +556,9 @@ export function initCompanionPanel() {
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`
-            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the tracker panel" tabindex="0">
-                <div class="fa-solid fa-map-location-dot extensionsMenuExtensionButton"></div>
-                <span>Tracker Panel</span>
+            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the companion panel" tabindex="0">
+                <div class="fa-solid fa-user-astronaut extensionsMenuExtensionButton"></div>
+                <span>Companion Panel</span>
             </div>
         `);
         menuItem.on('click', () => openCompanionPanel());

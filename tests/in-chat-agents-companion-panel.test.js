@@ -148,6 +148,26 @@ describe('companion tracker panel', () => {
         expect(panel.clampHandleTopFraction('nonsense')).toBe(0.5);
     });
 
+    test('snaps the handle dock to the nearest viewport edge', async () => {
+        const panel = await importPanel();
+
+        expect(panel.resolveHandleDock(390, 300, 400, 800)).toEqual({ edge: 'right', fraction: 0.375 });
+        expect(panel.resolveHandleDock(5, 700, 400, 800)).toEqual({ edge: 'left', fraction: 0.875 });
+        expect(panel.resolveHandleDock(200, 10, 400, 800)).toEqual({ edge: 'top', fraction: 0.5 });
+        expect(panel.resolveHandleDock(360, 790, 400, 800)).toEqual({ edge: 'bottom', fraction: 0.9 });
+        expect(panel.resolveHandleDock(2, 2, 400, 800).fraction).toBe(0.08);
+    });
+
+    test('parses stored handle positions including the legacy number form', async () => {
+        const panel = await importPanel();
+
+        expect(panel.parseStoredHandlePosition('0.4')).toEqual({ edge: 'right', fraction: 0.4 });
+        expect(panel.parseStoredHandlePosition(JSON.stringify({ edge: 'bottom', fraction: 0.25 }))).toEqual({ edge: 'bottom', fraction: 0.25 });
+        expect(panel.parseStoredHandlePosition('garbage')).toBeNull();
+        expect(panel.parseStoredHandlePosition(JSON.stringify({ edge: 'diagonal', fraction: 0.5 }))).toBeNull();
+        expect(panel.parseStoredHandlePosition(null)).toBeNull();
+    });
+
     test('includes enabled companions without stored state and orphaned results', async () => {
         agents = [{ id: 'fresh', name: 'Fresh Companion', execution: 'companion', enabled: true }];
         const panel = await importPanel();
@@ -183,7 +203,7 @@ describe('companion tracker panel', () => {
 
         const html = panel.buildPanelHtml();
 
-        expect(html).toContain('Tracker Panel');
+        expect(html).toContain('Companions');
         expect(html).toContain('Scene Tracker');
         expect(html).toContain('<formatted>Sumeru City Market</formatted>');
         expect(html).toContain('data-action="panel-regenerate"');

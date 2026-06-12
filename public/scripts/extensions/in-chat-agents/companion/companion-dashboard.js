@@ -176,9 +176,9 @@ export function buildDashboardHtml() {
                     <i class="fa-solid fa-play"></i>
                     <span>Run All on Last Reply</span>
                 </button>
-                <button type="button" class="menu_button menu_button_icon" data-action="open-panel" title="Open the slide-out tracker panel with the latest companion state">
-                    <i class="fa-solid fa-map-location-dot"></i>
-                    <span>Tracker Panel</span>
+                <button type="button" class="menu_button menu_button_icon" data-action="open-panel" title="Open the slide-out companion panel with the latest state">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Companion Panel</span>
                 </button>
                 <button type="button" class="menu_button menu_button_icon" data-action="new-companion" title="Create a new companion from scratch">
                     <i class="fa-solid fa-plus"></i>
