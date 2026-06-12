@@ -38,6 +38,7 @@
 - PR #442 (2026-06-12) `fix(ica): show tracker fix controls after render`
 - PR #443 (2026-06-12) `fix(ica): keep tracker fix button discoverable`
 - PR #444 (2026-06-12) `fix(ica): recognize legacy tracker agents`
+- PR #445 (2026-06-12) `fix(ica): include pre trackers in repair controls`
 
 ## v1.6.4
 
