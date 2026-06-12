@@ -77,4 +77,20 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(refreshSource).toContain('connectionMirrorState.shouldShowMobileSection');
         expect(refreshSource).toContain('connectionMirrorState.shouldDisableConnectButton');
     });
+
+    test('routes connection profile source binding through the lifecycle seam', () => {
+        const bindSource = getFunctionSource('bindConnectionProfileSourceElement');
+
+        expect(bindSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceBinding({');
+        expect(bindSource).toContain('isSameSource: chatbarState.sourceObservedElement === normalizedSource');
+        expect(bindSource).toContain('hasCurrentSource: chatbarState.sourceObservedElement instanceof HTMLSelectElement');
+        expect(bindSource).toContain('hasNextSource: normalizedSource instanceof HTMLSelectElement');
+        expect(bindSource).toContain('hasChangeHandler: typeof chatbarState.sourceChangeHandler === \'function\'');
+        expect(bindSource).toContain('bindingState.shouldSkip');
+        expect(bindSource).toContain('bindingState.shouldUnbindCurrent');
+        expect(bindSource).toContain('bindingState.shouldDisconnectObserver');
+        expect(bindSource).toContain('bindingState.shouldBindNext');
+        expect(bindSource).not.toContain('if (chatbarState.sourceObservedElement === normalizedSource)');
+        expect(bindSource).not.toContain('if (!(normalizedSource instanceof HTMLSelectElement))');
+    });
 });

@@ -78,6 +78,33 @@ export function resolveConnectionProfileSelectionSync({
 }
 
 /**
+ * Resolves how the shell should rebind the source connection-profile select.
+ * @param {object} options Options.
+ * @param {boolean} [options.isSameSource=false] Whether the current and next source are identical.
+ * @param {boolean} [options.hasCurrentSource=false] Whether an old source select is bound.
+ * @param {boolean} [options.hasNextSource=false] Whether a new source select is available.
+ * @param {boolean} [options.hasChangeHandler=false] Whether the old source has a change handler.
+ * @returns {{shouldSkip: boolean, shouldUnbindCurrent: boolean, shouldDisconnectObserver: boolean, shouldStoreNextSource: boolean, shouldClearChangeHandler: boolean, shouldBindNext: boolean}}
+ */
+export function resolveConnectionProfileSourceBinding({
+    isSameSource = false,
+    hasCurrentSource = false,
+    hasNextSource = false,
+    hasChangeHandler = false,
+} = {}) {
+    const shouldSkip = Boolean(isSameSource);
+
+    return {
+        shouldSkip,
+        shouldUnbindCurrent: !shouldSkip && Boolean(hasCurrentSource && hasChangeHandler),
+        shouldDisconnectObserver: !shouldSkip,
+        shouldStoreNextSource: !shouldSkip,
+        shouldClearChangeHandler: !shouldSkip,
+        shouldBindNext: !shouldSkip && Boolean(hasNextSource),
+    };
+}
+
+/**
  * Resolves UI state for mirrored connection-profile controls.
  * @param {object} options Options.
  * @param {boolean} [options.hasConnectionProfiles=false] Whether source select exists.
@@ -129,6 +156,7 @@ export function createPresetApiSyncLifecycle() {
         connectionProfiles: {
             sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE,
             resolveSelectionSync: resolveConnectionProfileSelectionSync,
+            resolveSourceBinding: resolveConnectionProfileSourceBinding,
             resolveMirrorState: resolveConnectionProfileMirrorState,
         },
     };
