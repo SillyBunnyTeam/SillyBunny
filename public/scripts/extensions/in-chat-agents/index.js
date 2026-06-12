@@ -55,6 +55,7 @@ import {
     getPromptTransformHistoryForMessage,
     refreshRegexSnapshotsForAgent,
     runAgentOnMessage,
+    runTrackerFixOnMessage,
     syncToolAgentRegistrations,
     undoPromptTransform,
     redoPromptTransform,
@@ -1482,6 +1483,20 @@ async function applyBulkEdit() {
     exitSelectMode();
 }
 
+function updateFixTrackersButtonVisibility() {
+    const shouldShow = (() => {
+        if (!areAgentsGloballyEnabled()) return false;
+        const enabled = getEnabledAgents();
+        return enabled.some(agent =>
+            agent.category === 'tracker' &&
+            (agent.phase === 'post' || agent.phase === 'both') &&
+            agent.postProcess?.promptTransformEnabled &&
+            String(agent.prompt ?? '').trim(),
+        );
+    })();
+    $('.mes_fix_trackers').toggle(shouldShow);
+}
+
 /**
  * Re-renders the agent list panel.
  */
@@ -1795,6 +1810,7 @@ function renderAgentList() {
     }
 
     restoreAgentListScrollState(scrollState);
+    updateFixTrackersButtonVisibility();
 }
 
 // ===================== Editor Modal =====================
@@ -3991,6 +4007,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         persistExtensionState();
         updateGlobalAgentToggle();
         syncToolAgentRegistrations();
+        updateFixTrackersButtonVisibility();
         toastr.info(enabled ? 'In-Chat Agents enabled.' : 'In-Chat Agents disabled.');
     });
     $('#ica--addAgent').on('click', () => openEditor());
@@ -4314,4 +4331,22 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         const messageIndex = Number(mesId);
         await openPromptTransformHistoryPopup(messageIndex);
     });
+
+    $(document).on('click', '.mes_fix_trackers', async function () {
+        const mesId = $(this).closest('.mes').attr('mesid');
+        const messageIndex = Number(mesId);
+        if (isNaN(messageIndex) || messageIndex < 0) {
+            toastr.warning('Invalid message.');
+            return;
+        }
+        const $button = $(this);
+        $button.prop('disabled', true).addClass('mes_fix_trackers--running');
+        try {
+            await runTrackerFixOnMessage(messageIndex);
+        } finally {
+            $button.prop('disabled', false).removeClass('mes_fix_trackers--running');
+        }
+    });
+
+    eventSource.on(event_types.CHAT_CHANGED, updateFixTrackersButtonVisibility);
 })();

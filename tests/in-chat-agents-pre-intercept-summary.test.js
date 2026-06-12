@@ -128,6 +128,7 @@ beforeAll(async () => {
         getPromptTransformHistoryForMessage: jest.fn(() => []),
         refreshRegexSnapshotsForAgent: jest.fn(() => 0),
         runAgentOnMessage: jest.fn(),
+        runTrackerFixOnMessage: jest.fn(),
         syncToolAgentRegistrations: jest.fn(),
         undoPromptTransform: jest.fn(async () => false),
         redoPromptTransform: jest.fn(async () => false),
