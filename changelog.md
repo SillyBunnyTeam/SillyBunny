@@ -32,6 +32,7 @@
 - PR #436 (2026-06-12) `fix: agent enable/disable toggle not responding on mobile`
 - PR #437 (2026-06-12) `fix: scope top-bar drawer hiding to native drawers for extension compatibility`
 - PR #438 (2026-06-12) `fix(mobile): prevent iOS chat overscroll blanking and keyboard composer displacement`
+- PR #439 (2026-06-12) `fix: allow extensions to hook the Characters top-bar button`
 
 ## v1.6.4
 
