@@ -1726,6 +1726,16 @@ function renderAgentList() {
 
             card.find('.ica--card-drag-handle').on('click', stopEvent);
 
+            // Prevent touch-punch (jQuery UI mouse widget polyfill) from
+            // capturing touchstart on these buttons. Inside a .sortable()
+            // container, touch-punch's _touchStart consults _mouseCapture
+            // which only checks `handle` (not `cancel`), so it swallows
+            // the touchstart and may never synthesize a click on mobile.
+            // Stopping propagation on touch events keeps them local.
+            const touchPassthrough = function (event) { event.stopPropagation(); };
+            card.find('.ica--card-toggle').on('touchstart touchend', touchPassthrough);
+            card.find('.ica--card-favorite').on('touchstart touchend', touchPassthrough);
+
             card.find('.ica--card-toggle').on('click', async function (event) {
                 stopEvent(event);
                 await toggleAgentEnabled(agent);
