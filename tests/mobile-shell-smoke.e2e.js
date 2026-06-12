@@ -264,6 +264,9 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         const getNavAgreementSnapshot = () => page.evaluate(() => {
             const overlay = document.getElementById('sb-mobile-nav');
             const button = document.getElementById('sb-hamburger');
+            const content = document.getElementById('sb-mobile-nav-content');
+            const contentRect = content?.getBoundingClientRect();
+            const closeRect = content?.querySelector('.sb-mobile-panel-close')?.getBoundingClientRect();
 
             return {
                 hidden: overlay?.hidden ?? null,
@@ -272,6 +275,10 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
                 openClass: overlay?.classList.contains('sb-nav-open') === true,
                 buttonExpanded: button?.getAttribute('aria-expanded') ?? null,
                 buttonOpenClass: button?.classList.contains('is-open') === true,
+                contentBottomPinned: contentRect ? Math.abs(window.innerHeight - contentRect.bottom) <= 10 : null,
+                contentMaxHeight: contentRect ? contentRect.height <= Math.ceil(window.innerHeight * 0.76) + 1 : null,
+                closeTargetFloor: closeRect ? Math.min(closeRect.width, closeRect.height) >= 44 : null,
+                viewportHeight: window.innerHeight,
             };
         });
 
@@ -284,6 +291,10 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             openClass: true,
             buttonExpanded: 'true',
             buttonOpenClass: true,
+            contentBottomPinned: true,
+            contentMaxHeight: true,
+            closeTargetFloor: true,
+            viewportHeight: 844,
         });
 
         await captureCheckpoint(page, testInfo, 'nav-open');
@@ -299,6 +310,10 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             openClass: false,
             buttonExpanded: 'false',
             buttonOpenClass: false,
+            contentBottomPinned: false,
+            contentMaxHeight: true,
+            closeTargetFloor: false,
+            viewportHeight: 844,
         });
 
         await expectNoHorizontalOverflow(page);
@@ -443,7 +458,7 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
         userAgent: IPHONE_USER_AGENT,
     });
 
-    test('composer fits and the send target keeps its current floor', async ({ page }) => {
+    test('composer fits and the send target keeps its mobile tap floor', async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
 
         // Compact mode and connection state come from the linked user profile;
@@ -458,12 +473,8 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
 
         const sendButtonBox = await page.locator('#send_but').boundingBox();
 
-        // Ratchet floor: today's composer renders the send target at
-        // --sb-composer-action-size (26px tall at this width). The mobile UX
-        // redesign raises this floor to 44px; until then this only guards
-        // against shrinking below the current shipped size.
         expect(sendButtonBox).not.toBeNull();
-        expect(Math.min(sendButtonBox.width, sendButtonBox.height)).toBeGreaterThanOrEqual(24);
+        expect(Math.min(sendButtonBox.width, sendButtonBox.height)).toBeGreaterThanOrEqual(44);
 
         const composerBox = await page.locator('#form_sheld').boundingBox();
 
