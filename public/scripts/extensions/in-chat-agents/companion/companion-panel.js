@@ -57,6 +57,12 @@ function applyHandleTopFraction(handleElement, fraction) {
     handleElement.style.top = `${(clampHandleTopFraction(fraction) * 100).toFixed(2)}%`;
 }
 
+/**
+ * Touch drives touch, pointer events drive only mouse/pen. iOS WebKit's pointer events are
+ * unreliable for touch drags on position:fixed elements (touch-action ignored, scroll
+ * takeover firing pointercancel, spotty pointermove delivery after capture) — raw touch
+ * events with a non-passive preventDefault have none of those problems.
+ */
 function bindHandleDrag(handleElement) {
     if (!handleElement?.addEventListener) {
         return;
@@ -67,56 +73,45 @@ function bindHandleDrag(handleElement) {
         applyHandleTopFraction(handleElement, storedFraction);
     }
 
+    let activeMode = null;
     let activePointerId = null;
     let startClientY = 0;
     let startCenterY = 0;
     let dragging = false;
 
-    handleElement.addEventListener('pointerdown', event => {
-        activePointerId = event.pointerId;
-        startClientY = event.clientY;
+    const beginDrag = clientY => {
+        startClientY = clientY;
         const rect = handleElement.getBoundingClientRect();
         startCenterY = rect.top + rect.height / 2;
         dragging = false;
-        handleElement.setPointerCapture?.(event.pointerId);
-    });
+    };
 
-    handleElement.addEventListener('pointermove', event => {
-        if (activePointerId === null || event.pointerId !== activePointerId) {
-            return;
-        }
-
-        const delta = event.clientY - startClientY;
+    const moveDrag = clientY => {
+        const delta = clientY - startClientY;
         if (!dragging && Math.abs(delta) < HANDLE_DRAG_THRESHOLD_PX) {
             return;
         }
 
         dragging = true;
-        event.preventDefault();
-        const viewportHeight = globalThis.innerHeight || 1;
-        applyHandleTopFraction(handleElement, (startCenterY + delta) / viewportHeight);
-    });
+        applyHandleTopFraction(handleElement, (startCenterY + delta) / (globalThis.innerHeight || 1));
+    };
 
-    const endDrag = (event, cancelled) => {
-        if (activePointerId === null || event.pointerId !== activePointerId) {
-            return;
-        }
-
-        handleElement.releasePointerCapture?.(event.pointerId);
-        activePointerId = null;
-
-        if (!dragging) {
-            return;
-        }
-
+    const finishDrag = cancelled => {
+        const wasDragging = dragging;
         dragging = false;
-        // The click that follows pointerup would toggle the panel; swallow it.
+        activeMode = null;
+
+        if (!wasDragging) {
+            return;
+        }
+
+        // The click that follows the gesture would toggle the panel; swallow it.
         suppressHandleClickUntil = Date.now() + 350;
         const viewportHeight = globalThis.innerHeight || 1;
 
         if (cancelled) {
-            // The browser stole the gesture (e.g. turned it into a scroll) — positions read
-            // mid-hijack are garbage, so put the handle back where the drag started.
+            // The browser stole the gesture — positions read mid-hijack are garbage,
+            // so put the handle back where the drag started.
             applyHandleTopFraction(handleElement, startCenterY / viewportHeight);
             return;
         }
@@ -125,17 +120,63 @@ function bindHandleDrag(handleElement) {
         storeHandleTopFraction((rect.top + rect.height / 2) / viewportHeight);
     };
 
-    handleElement.addEventListener('pointerup', event => endDrag(event, false));
-    handleElement.addEventListener('pointercancel', event => endDrag(event, true));
+    handleElement.addEventListener('touchstart', event => {
+        if (activeMode || !event.touches?.length) {
+            return;
+        }
+        activeMode = 'touch';
+        beginDrag(event.touches[0].clientY);
+    }, { passive: true });
 
-    // iOS Safari ignores touch-action on position:fixed elements and turns the drag into a
-    // page scroll (firing pointercancel). Blocking touchmove directly keeps the gesture ours;
-    // it must be non-passive for preventDefault to count.
     handleElement.addEventListener('touchmove', event => {
-        if (activePointerId !== null) {
+        if (activeMode !== 'touch' || !event.touches?.length) {
+            return;
+        }
+        // Non-passive: the gesture must never become a page scroll, even where iOS
+        // ignores touch-action on fixed elements.
+        if (event.cancelable) {
             event.preventDefault();
         }
+        moveDrag(event.touches[0].clientY);
     }, { passive: false });
+
+    const touchEnd = event => {
+        if (activeMode !== 'touch') {
+            return;
+        }
+        finishDrag(event.type === 'touchcancel');
+    };
+    handleElement.addEventListener('touchend', touchEnd);
+    handleElement.addEventListener('touchcancel', touchEnd);
+
+    handleElement.addEventListener('pointerdown', event => {
+        if (activeMode || event.pointerType === 'touch') {
+            return;
+        }
+        activeMode = 'pointer';
+        activePointerId = event.pointerId;
+        handleElement.setPointerCapture?.(event.pointerId);
+        beginDrag(event.clientY);
+    });
+
+    handleElement.addEventListener('pointermove', event => {
+        if (activeMode !== 'pointer' || event.pointerId !== activePointerId) {
+            return;
+        }
+        event.preventDefault();
+        moveDrag(event.clientY);
+    });
+
+    const pointerEnd = (event, cancelled) => {
+        if (activeMode !== 'pointer' || event.pointerId !== activePointerId) {
+            return;
+        }
+        handleElement.releasePointerCapture?.(event.pointerId);
+        activePointerId = null;
+        finishDrag(cancelled);
+    };
+    handleElement.addEventListener('pointerup', event => pointerEnd(event, false));
+    handleElement.addEventListener('pointercancel', event => pointerEnd(event, true));
 }
 
 function isAssistantMessage(message) {
