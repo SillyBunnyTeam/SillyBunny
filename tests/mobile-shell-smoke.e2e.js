@@ -100,6 +100,54 @@ function openLeftShell(page) {
     return page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
 }
 
+async function swipeLeftDrawerDown(page) {
+    await page.evaluate(() => {
+        const drawer = document.getElementById('left-nav-panel');
+        const header = drawer?.querySelector(':scope > .sb-shell-frame .sb-shell-header');
+        const rect = header?.getBoundingClientRect();
+
+        if (!drawer || !header || !rect) {
+            throw new Error('Left drawer header is not ready for swipe-dismiss');
+        }
+
+        const touch = (clientX, clientY) => new Touch({
+            identifier: 1,
+            target: header,
+            clientX,
+            clientY,
+            pageX: clientX + window.scrollX,
+            pageY: clientY + window.scrollY,
+            screenX: clientX,
+            screenY: clientY,
+        });
+        const startX = Math.round(rect.left + rect.width / 2);
+        const startY = Math.round(rect.top + Math.min(28, rect.height / 2));
+        const endY = startY + 96;
+
+        header.dispatchEvent(new TouchEvent('touchstart', {
+            bubbles: true,
+            cancelable: true,
+            touches: [touch(startX, startY)],
+            targetTouches: [touch(startX, startY)],
+            changedTouches: [touch(startX, startY)],
+        }));
+        header.dispatchEvent(new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true,
+            touches: [touch(startX, endY)],
+            targetTouches: [touch(startX, endY)],
+            changedTouches: [touch(startX, endY)],
+        }));
+        header.dispatchEvent(new TouchEvent('touchend', {
+            bubbles: true,
+            cancelable: true,
+            touches: [],
+            targetTouches: [],
+            changedTouches: [touch(startX, endY)],
+        }));
+    });
+}
+
 // While any drawer or overlay is open, the mobile modal policy marks the page
 // chrome (topbar included) inert, so a trusted pointer click cannot reach the
 // hamburger. Synthetic .click() still runs the toggle cascade under test.
@@ -176,6 +224,29 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         // applyMobileDrawerBoundsDecision removes every bound property and
         // the dataset marker once the drawer is no longer open.
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toEqual({
+            isOpen: false,
+            isViewportBound: false,
+            top: '',
+            bottom: '',
+            height: '',
+            maxHeight: '',
+            boxSizing: '',
+        });
+
+        await expectNoHorizontalOverflow(page);
+    });
+
+    test('left drawer swipe-down dismisses the mobile sheet', async ({ page }) => {
+        await openLeftShell(page);
+
+        await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toMatchObject({
+            isOpen: true,
+            isViewportBound: true,
+        });
+
+        await swipeLeftDrawerDown(page);
+
         await expect.poll(() => getDrawerBoundsSnapshot(page, 'left-nav-panel')).toEqual({
             isOpen: false,
             isViewportBound: false,
@@ -302,12 +373,19 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         const getRenderedDrawerFit = () => page.evaluate(() => {
             const drawer = document.getElementById('left-nav-panel');
             const rect = drawer.getBoundingClientRect();
+            const probe = document.createElement('div');
+
+            probe.style.cssText = 'position:fixed;left:-9999px;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
+            document.body.appendChild(probe);
+            const safeAreaBottom = Number.parseFloat(window.getComputedStyle(probe).paddingBottom) || 0;
+            probe.remove();
 
             return {
                 isOpen: drawer.classList.contains('openDrawer'),
                 isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
                 top: Math.round(rect.top),
                 bottom: Math.round(rect.bottom),
+                expectedBottom: Math.round(window.innerHeight - safeAreaBottom),
                 viewportHeight: window.innerHeight,
             };
         });
@@ -315,7 +393,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect.poll(async () => {
             const fit = await getRenderedDrawerFit();
 
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - fit.expectedBottom) <= 2;
         }).toBe(true);
 
         // Viewport shrink stands in for the on-screen keyboard: the resize
@@ -325,7 +403,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect.poll(async () => {
             const fit = await getRenderedDrawerFit();
 
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 500) <= 2;
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - fit.expectedBottom) <= 2;
         }).toBe(true);
 
         await page.setViewportSize({ width: 390, height: 844 });
@@ -333,7 +411,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect.poll(async () => {
             const fit = await getRenderedDrawerFit();
 
-            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - 844) <= 2;
+            return fit.isViewportBound && fit.top > 0 && Math.abs(fit.bottom - fit.expectedBottom) <= 2;
         }).toBe(true);
 
         await closeLeftShellThroughUi(page);
