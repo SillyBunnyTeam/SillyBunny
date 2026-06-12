@@ -488,6 +488,35 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getEnabledAgents().map(agent => agent.id)).toEqual(['saved-status', 'saved-scene']);
     });
 
+    test('considers pre-phase extract trackers repairable', async () => {
+        const store = await importStore();
+
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+            },
+        })).toBe(true);
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: false,
+                type: 'extract',
+            },
+        })).toBe(false);
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'append',
+            },
+        })).toBe(false);
+    });
+
     test('keeps prompt-changed custom snapshots from matching bundled templates', async () => {
         const store = await importStore();
         const templates = [{

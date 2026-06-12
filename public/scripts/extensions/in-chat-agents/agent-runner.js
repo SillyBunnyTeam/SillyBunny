@@ -27,6 +27,7 @@ import {
     getEnabledToolAgents,
     getGlobalSettings,
     getPromptTransformMode,
+    isTrackerFixAgent,
     isPathfinderSubmoduleEnabled,
     saveAgent,
     isToolAgent,
@@ -4714,10 +4715,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     const generationType = 'normal';
     const enabledAgents = getEnabledAgents();
-    const trackerAgents = enabledAgents.filter(agent =>
-        agent.category === 'tracker' &&
-        (agent.phase === 'post' || agent.phase === 'both'),
-    );
+    const trackerAgents = enabledAgents.filter(isTrackerFixAgent);
 
     if (trackerAgents.length === 0) {
         toastr.info('No enabled tracker agents found.');
@@ -4725,6 +4723,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
     }
 
     const trackerTransformAgents = trackerAgents.filter(agent =>
+        (agent.phase === 'post' || agent.phase === 'both') &&
         agent.postProcess?.promptTransformEnabled &&
         String(agent.prompt ?? '').trim(),
     );

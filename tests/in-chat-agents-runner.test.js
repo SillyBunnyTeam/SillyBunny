@@ -262,6 +262,14 @@ describe('in-chat agent post-processing runner', () => {
             getEnabledToolAgents: jest.fn(() => []),
             getGlobalSettings: jest.fn(() => globalSettings),
             getPromptTransformMode: jest.fn(agent => agent?.postProcess?.promptTransformMode === 'append' ? 'append' : 'rewrite'),
+            isTrackerFixAgent: jest.fn(agent => {
+                if (agent?.category !== 'tracker') return false;
+                if (agent.phase === 'post' || agent.phase === 'both') return true;
+                return agent.phase === 'pre' && (
+                    (agent.postProcess?.enabled && agent.postProcess.type === 'extract') ||
+                    (Array.isArray(agent.regexScripts) && agent.regexScripts.length > 0)
+                );
+            }),
             isPathfinderSubmoduleEnabled: jest.fn(() => true),
             saveAgent: jest.fn(async () => {}),
             isToolAgent: jest.fn(() => false),
@@ -486,6 +494,29 @@ describe('in-chat agent post-processing runner', () => {
                 minDepth: null,
                 maxDepth: null,
             }],
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+            },
+        }];
+    }
+
+    function usePreExtractTracker() {
+        enabledAgents = [{
+            id: 'agent-pre-extract-tracker',
+            name: 'Pre Extract Tracker',
+            category: 'tracker',
+            phase: 'pre',
+            prompt: 'Track changed statuses.',
+            injection: { order: 100 },
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[STATUS\\|[^\\]]*\\]',
+                extractVariable: 'status_data',
+                promptTransformEnabled: false,
+            },
             conditions: {
                 triggerKeywords: [],
                 triggerProbability: 100,
@@ -1444,6 +1475,25 @@ describe('in-chat agent post-processing runner', () => {
 
         await new Promise(resolve => setTimeout(resolve, 5));
         expect(saveChat).toHaveBeenCalledTimes(1);
+    });
+
+    test('manual tracker fix runs pre-phase extract trackers', async () => {
+        usePreExtractTracker();
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply\n[STATUS|Alice|Tired|Moderate]',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
+        expect(saveChatDebounced).toHaveBeenCalledTimes(1);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
     });
 
     test('snapshots regex-only agents on streamed tokens before final message events', async () => {
