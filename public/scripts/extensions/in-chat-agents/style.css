@@ -104,6 +104,10 @@
     gap: 4px;
 }
 
+#ica--fixTrackers[aria-disabled="true"]:not(:disabled) {
+    opacity: 0.65;
+}
+
 /* Filter bar */
 .ica--filter {
     display: flex;
