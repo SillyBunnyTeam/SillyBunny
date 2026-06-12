@@ -33,6 +33,8 @@ describe('in-chat agent post-processing runner', () => {
     let eventTypes;
     let saveChatDebounced;
     let saveChat;
+    let reloadCurrentChat;
+    let updateMessageBlock;
     let generateQuietPrompt;
     let generateRaw;
     let runSidecarRetrieval;
@@ -80,6 +82,8 @@ describe('in-chat agent post-processing runner', () => {
         };
         saveChatDebounced = jest.fn();
         saveChat = jest.fn();
+        reloadCurrentChat = jest.fn();
+        updateMessageBlock = jest.fn();
         generateQuietPrompt = jest.fn(async () => 'quiet result');
         generateRaw = jest.fn(async () => 'raw result');
         runSidecarRetrieval = jest.fn();
@@ -216,6 +220,8 @@ describe('in-chat agent post-processing runner', () => {
             extension_settings: extensionSettings,
             getContext: jest.fn(() => ({
                 saveChat,
+                reloadCurrentChat,
+                updateMessageBlock,
                 updateMessageMetaBadges,
                 ConnectionManagerRequestService: connectionManagerRequestService,
                 executeSlashCommandsWithOptions,
@@ -1572,7 +1578,143 @@ describe('in-chat agent post-processing runner', () => {
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
 
         await new Promise(resolve => setTimeout(resolve, 5));
+        expect(saveChat).not.toHaveBeenCalled();
+        expect(reloadCurrentChat).not.toHaveBeenCalled();
+        expect(saveChatDebounced).toHaveBeenCalled();
+    });
+
+    test('strips snapshots without saving or reloading when an agent becomes a companion', async () => {
+        useRegexOnlyAgent();
+        enabledAgents[0].execution = 'companion';
+
+        const { initAgentRunner, refreshRegexSnapshotsForAgent } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        for (let index = 0; index < 3; index++) {
+            const message = {
+                name: 'Assistant',
+                mes: `[STATUS|ready-${index}]`,
+                is_user: false,
+                is_system: false,
+                extra: {
+                    inChatAgents: {
+                        activeAgentIds: ['agent-regex-only'],
+                        generationType: 'normal',
+                        regexScriptRefs: [{ agentId: 'agent-regex-only', scriptId: 'regex-script-1', revision: 'rev-old' }],
+                        edited: false,
+                    },
+                },
+            };
+            message.swipes = [message.mes];
+            message.swipe_id = 0;
+            message.swipe_info = [{ extra: structuredClone(message.extra) }];
+            chat.push(message);
+        }
+        const originalMessages = [...chat];
+
+        expect(refreshRegexSnapshotsForAgent('agent-regex-only')).toBe(3);
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+
+        expect(chat).toHaveLength(3);
+        for (let index = 0; index < 3; index++) {
+            expect(chat[index]).toBe(originalMessages[index]);
+            expect(chat[index].mes).toBe(`[STATUS|ready-${index}]`);
+            expect(chat[index].extra.inChatAgents).toBeUndefined();
+            expect(chat[index].swipe_info[0].extra.inChatAgents).toBeUndefined();
+        }
+        expect(saveChat).not.toHaveBeenCalled();
+        expect(reloadCurrentChat).not.toHaveBeenCalled();
+        expect(saveChatDebounced).toHaveBeenCalled();
+    });
+
+    test('updates the rendered message block in place when refreshing snapshots', async () => {
+        useRegexOnlyAgent();
+        enabledAgents[0].execution = 'companion';
+        const messageElement = { id: 'message-0' };
+        document.querySelector = jest.fn(selector => selector === '.mes[mesid="0"]' ? messageElement : null);
+
+        const { initAgentRunner, refreshRegexSnapshotsForAgent } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: '[STATUS|ready]',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['agent-regex-only'],
+                    generationType: 'normal',
+                    regexScriptRefs: [{ agentId: 'agent-regex-only', scriptId: 'regex-script-1', revision: 'rev-old' }],
+                    edited: false,
+                },
+            },
+        });
+
+        expect(refreshRegexSnapshotsForAgent('agent-regex-only')).toBe(1);
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+
+        expect(updateMessageBlock).toHaveBeenCalledWith(0, chat[0]);
+        expect(saveChat).not.toHaveBeenCalled();
+        expect(reloadCurrentChat).not.toHaveBeenCalled();
+    });
+
+    test('keeps the save and reload fallback for off-screen text mutations', async () => {
+        useRegexOnlyAgent();
+
+        const { initAgentRunner, undoPromptTransform } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Rewritten text',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentTransformHistory: [{ beforeText: 'Original text', afterText: 'Rewritten text' }],
+            },
+        });
+
+        await expect(undoPromptTransform(0)).resolves.toBe(true);
+        expect(chat[0].mes).toBe('Original text');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+
         expect(saveChat).toHaveBeenCalledTimes(1);
+        expect(reloadCurrentChat).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not downgrade a pending text-mutation refresh to a bookkeeping-only one', async () => {
+        useRegexOnlyAgent();
+
+        const { initAgentRunner, refreshRegexSnapshotsForAgent, undoPromptTransform } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Rewritten text',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentTransformHistory: [{ beforeText: 'Original text', afterText: 'Rewritten text' }],
+                inChatAgents: {
+                    activeAgentIds: ['agent-regex-only'],
+                    generationType: 'normal',
+                    regexScriptRefs: [{ agentId: 'agent-regex-only', scriptId: 'regex-script-1', revision: 'rev-old' }],
+                    edited: false,
+                },
+            },
+        });
+
+        await expect(undoPromptTransform(0)).resolves.toBe(true);
+        expect(refreshRegexSnapshotsForAgent('agent-regex-only')).toBe(1);
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+
+        expect(saveChat).toHaveBeenCalledTimes(1);
+        expect(reloadCurrentChat).toHaveBeenCalledTimes(1);
     });
 
     test('manual regex-only agent runs snapshot and refresh the target message', async () => {

@@ -1962,7 +1962,7 @@ function ensureMessageRegexSnapshot(messageIndex, generationType, activationSnap
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup(), skipReloadFallback: true });
     }
 
     return true;
@@ -2050,7 +2050,7 @@ function refreshRegexSnapshotForAgentOnMessage(agentId, messageIndex, options = 
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup(), skipReloadFallback: true });
     }
 
     return true;
@@ -3273,7 +3273,7 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
     };
 }
 
-async function refreshMessageAfterMutation(messageIndex, message, { deferBackup = false } = {}) {
+async function refreshMessageAfterMutation(messageIndex, message, { deferBackup = false, skipReloadFallback = false } = {}) {
     const context = getContext();
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
 
@@ -3284,6 +3284,15 @@ async function refreshMessageAfterMutation(messageIndex, message, { deferBackup 
             await eventSource.emit(event_types.MESSAGE_UPDATED, messageIndex);
         }
 
+        return;
+    }
+
+    // Bookkeeping-only mutations (regex snapshot adds/removals in message.extra) never change what an
+    // unrendered message will look like once it is lazy-loaded, so they must not fall through to the
+    // save+reload path below: reloading the whole chat for every off-screen message races the debounced
+    // save against clearChat() and can persist an emptied chat. Persistence is already arranged by the
+    // snapshot-update call sites that set this flag.
+    if (skipReloadFallback) {
         return;
     }
 
@@ -3304,11 +3313,17 @@ async function refreshMessageAfterMutation(messageIndex, message, { deferBackup 
     }
 }
 
-function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = false } = {}) {
-    const existingTimeout = pendingRefreshTimeouts.get(messageIndex);
-    if (existingTimeout) {
-        clearTimeout(existingTimeout);
+function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = false, skipReloadFallback = false } = {}) {
+    const existingRefresh = pendingRefreshTimeouts.get(messageIndex);
+    if (existingRefresh) {
+        clearTimeout(existingRefresh.timeoutId);
     }
+
+    // When a pending refresh for the same message is replaced, a full-fallback request must never be
+    // downgraded to a bookkeeping-only one, or a genuine text mutation could miss its refresh.
+    const mergedSkipReloadFallback = existingRefresh
+        ? (existingRefresh.skipReloadFallback && skipReloadFallback)
+        : skipReloadFallback;
 
     const timeoutId = setTimeout(async () => {
         pendingRefreshTimeouts.delete(messageIndex);
@@ -3318,10 +3333,10 @@ function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = f
             return;
         }
 
-        await refreshMessageAfterMutation(messageIndex, liveMessage, { deferBackup });
+        await refreshMessageAfterMutation(messageIndex, liveMessage, { deferBackup, skipReloadFallback: mergedSkipReloadFallback });
     }, 0);
 
-    pendingRefreshTimeouts.set(messageIndex, timeoutId);
+    pendingRefreshTimeouts.set(messageIndex, { timeoutId, skipReloadFallback: mergedSkipReloadFallback });
 }
 
 function clearInChatAgentExtensionPrompts() {
