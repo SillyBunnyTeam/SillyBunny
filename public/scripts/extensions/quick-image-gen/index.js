@@ -9,7 +9,7 @@ function getRandomArtist(useTagFormat = false) {
 }
 
 const extensionName = "quick-image-gen";
-let extension_settings, getContext, saveSettingsDebounced, generateQuietPrompt, generateRaw, generateRawData, createRawPrompt, secret_state, rotateSecret, getRequestHeaders;
+let extension_settings, getContext, saveSettingsDebounced, saveSettings, generateQuietPrompt, generateRaw, generateRawData, createRawPrompt, secret_state, rotateSecret, getRequestHeaders;
 let createGenerationParameters, getChatCompletionModel;
 let saveBase64AsFile, getSanitizedFilename, humanizedDateTime;
 
@@ -606,17 +606,53 @@ const BACKUP_KEYS = {
     qig_active_pool_ids_by_card: "_backupActiveFilterPoolIdsByCard",
     qig_active_pool_ids_by_char: "_backupActiveFilterPoolIdsByChar",
 };
-function backupToSettings(localKey, data) {
+function writeBackupToSettings(localKey, data) {
     const backupKey = BACKUP_KEYS[localKey];
-    if (!backupKey) return;
+    if (!backupKey) return false;
     try {
         const es = extension_settings?.[extensionName];
-        if (!es) return;
+        if (!es) return false;
         es[backupKey] = data;
-        saveSettingsDebounced?.();
+        return true;
     } catch (e) {
         log(`Backup write failed for ${backupKey}: ${e.message}`);
+        return false;
     }
+}
+
+function backupToSettings(localKey, data) {
+    if (writeBackupToSettings(localKey, data)) {
+        saveSettingsDebounced?.();
+    }
+}
+
+async function flushSettingsBackup() {
+    if (typeof saveSettings === "function") {
+        await saveSettings();
+        return;
+    }
+
+    saveSettingsDebounced?.();
+}
+
+async function saveBackupToSettings(localKey, data) {
+    if (!writeBackupToSettings(localKey, data)) {
+        return false;
+    }
+
+    await flushSettingsBackup();
+    return true;
+}
+
+function saveLocalStoreBackup(localKey, data, errorMessage) {
+    if (!safeSetStorage(localKey, JSON.stringify(data), errorMessage)) return false;
+    backupToSettings(localKey, data);
+    return true;
+}
+
+async function saveLocalStoreBackupNow(localKey, data, errorMessage) {
+    if (!safeSetStorage(localKey, JSON.stringify(data), errorMessage)) return false;
+    return saveBackupToSettings(localKey, data);
 }
 function escapeHtml(str) {
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -10396,7 +10432,7 @@ function loadCharSettings() {
     return true;
 }
 
-function saveConnectionProfile() {
+async function saveConnectionProfile() {
     const s = getSettings();
     const provider = s.provider;
     const rawName = prompt("Profile name:");
@@ -10414,7 +10450,7 @@ function saveConnectionProfile() {
     if (!connectionProfiles[provider]) connectionProfiles[provider] = {};
     connectionProfiles[provider][name] = profile;
     if (!safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to save profile. Browser storage may be full.")) return;
-    backupToSettings("qig_profiles", connectionProfiles);
+    if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;
     renderProfileSelect(name);
     showStatus(`${existing ? "♻️ Updated" : "💾 Saved"} profile: ${name}`);
     setTimeout(hideStatus, 2000);
@@ -10438,12 +10474,12 @@ function loadConnectionProfile(name) {
     setTimeout(hideStatus, 2000);
 }
 
-function deleteConnectionProfile(name) {
+async function deleteConnectionProfile(name) {
     const provider = getSettings().provider;
     if (!confirm(`Delete profile "${name}"?`)) return;
     delete connectionProfiles[provider]?.[name];
     if (!safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to delete profile. Browser storage may be full.")) return;
-    backupToSettings("qig_profiles", connectionProfiles);
+    if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;
     renderProfileSelect();
 }
 
@@ -10492,9 +10528,11 @@ function applyComfyWorkflowSnapshot(snapshot) {
 }
 
 function saveComfyWorkflowStore(errorMessage = "Failed to save workflow presets. Browser storage may be full.") {
-    const result = safeSetStorage("qig_comfy_workflows", JSON.stringify(comfyWorkflows), errorMessage);
-    if (result) backupToSettings("qig_comfy_workflows", comfyWorkflows);
-    return result;
+    return saveLocalStoreBackup("qig_comfy_workflows", comfyWorkflows, errorMessage);
+}
+
+async function saveComfyWorkflowStoreNow(errorMessage = "Failed to save workflow presets. Browser storage may be full.") {
+    return saveLocalStoreBackupNow("qig_comfy_workflows", comfyWorkflows, errorMessage);
 }
 
 function setComfyWorkflowActionState(hasSelection) {
@@ -10541,7 +10579,7 @@ function loadSelectedComfyWorkflowPreset() {
     setTimeout(hideStatus, 2000);
 }
 
-function saveComfyWorkflowPresetAs() {
+async function saveComfyWorkflowPresetAs() {
     const rawName = prompt("Workflow preset name:");
     if (rawName == null) return;
     const name = rawName.trim();
@@ -10554,7 +10592,7 @@ function saveComfyWorkflowPresetAs() {
     if (existing) {
         if (!confirm(`Workflow preset "${name}" already exists. Overwrite it?`)) return;
         Object.assign(existing, snapshot, { updatedAt: new Date().toISOString() });
-        if (!saveComfyWorkflowStore()) return;
+        if (!await saveComfyWorkflowStoreNow()) return;
         renderComfyWorkflowPresets(existing.id);
         showStatus(`♻️ Updated workflow preset: ${name}`);
         setTimeout(hideStatus, 2000);
@@ -10562,13 +10600,13 @@ function saveComfyWorkflowPresetAs() {
     }
     const id = `cwf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     comfyWorkflows.push({ id, name, ...snapshot, updatedAt: new Date().toISOString() });
-    if (!saveComfyWorkflowStore()) return;
+    if (!await saveComfyWorkflowStoreNow()) return;
     renderComfyWorkflowPresets(id);
     showStatus(`💾 Saved workflow preset: ${name}`);
     setTimeout(hideStatus, 2000);
 }
 
-function updateSelectedComfyWorkflowPreset() {
+async function updateSelectedComfyWorkflowPreset() {
     const preset = getSelectedComfyWorkflowPreset();
     if (!preset) {
         toastr.warning("Select a workflow preset first");
@@ -10576,13 +10614,13 @@ function updateSelectedComfyWorkflowPreset() {
     }
     if (!confirm(`Overwrite workflow preset "${preset.name}" with current Comfy settings?`)) return;
     Object.assign(preset, getComfyWorkflowSnapshot(), { updatedAt: new Date().toISOString() });
-    if (!saveComfyWorkflowStore()) return;
+    if (!await saveComfyWorkflowStoreNow()) return;
     renderComfyWorkflowPresets(preset.id);
     showStatus(`♻️ Updated workflow preset: ${preset.name}`);
     setTimeout(hideStatus, 2000);
 }
 
-function deleteSelectedComfyWorkflowPreset() {
+async function deleteSelectedComfyWorkflowPreset() {
     const preset = getSelectedComfyWorkflowPreset();
     if (!preset) {
         toastr.warning("Select a workflow preset first");
@@ -10590,7 +10628,7 @@ function deleteSelectedComfyWorkflowPreset() {
     }
     if (!confirm(`Delete workflow preset "${preset.name}"?`)) return;
     comfyWorkflows = comfyWorkflows.filter(w => w.id !== preset.id);
-    if (!saveComfyWorkflowStore()) return;
+    if (!await saveComfyWorkflowStoreNow()) return;
     renderComfyWorkflowPresets("");
     showStatus(`🗑️ Deleted workflow preset: ${preset.name}`);
     setTimeout(hideStatus, 2000);
@@ -10600,9 +10638,11 @@ function deleteSelectedComfyWorkflowPreset() {
 const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "batchCount", "sequentialSeeds", "a1111Scheduler", "comfyScheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "proxyEndpointMode", "proxyPayloadMode", "proxyRefImageMode", "proxySse", "proxyChatImageMode", "proxyChatImageAllowImagesEndpoint", "proxyChatImageSystemPrompt", "proxyChatImageIncludePersonality", "proxyChatImageMaxTokens"];
 
 function saveGenerationPresetStore(errorMessage = "Failed to save preset. Browser storage may be full.") {
-    if (!safeSetStorage("qig_gen_presets", JSON.stringify(generationPresets), errorMessage)) return false;
-    backupToSettings("qig_gen_presets", generationPresets);
-    return true;
+    return saveLocalStoreBackup("qig_gen_presets", generationPresets, errorMessage);
+}
+
+async function saveGenerationPresetStoreNow(errorMessage = "Failed to save preset. Browser storage may be full.") {
+    return saveLocalStoreBackupNow("qig_gen_presets", generationPresets, errorMessage);
 }
 
 function ensureGenerationPresetIds({ persist = false } = {}) {
@@ -10707,7 +10747,7 @@ function setActiveGenerationPresetId(presetId = "", { persist = true } = {}) {
     renderPresets();
 }
 
-function savePreset() {
+async function savePreset() {
     const name = prompt("Preset name:");
     if (!name) return;
     ensureFilterPoolsState();
@@ -10720,7 +10760,7 @@ function savePreset() {
     const injectKeys = ["injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
     injectKeys.forEach(k => { if (s[k] !== undefined) preset[k] = s[k]; });
     generationPresets.push(preset);
-    if (!saveGenerationPresetStore()) return;
+    if (!await saveGenerationPresetStoreNow()) return;
     renderPresets();
     showStatus(`💾 Saved preset: ${name}`);
     setTimeout(hideStatus, 2000);
@@ -10752,23 +10792,23 @@ function loadPreset(i) {
     setTimeout(hideStatus, 2000);
 }
 
-function deletePreset(i) {
+async function deletePreset(i) {
     const removed = generationPresets.splice(i, 1)[0];
-    if (!saveGenerationPresetStore("Failed to delete preset. Browser storage may be full.")) return;
     if (removed?.id && getActiveGenerationPresetId() === removed.id) {
-        setActiveGenerationPresetId("", { persist: true });
+        setActiveGenerationPresetId("", { persist: false });
     }
-    syncActiveGenerationPresetSetting({ persist: true });
+    syncActiveGenerationPresetSetting({ persist: false });
+    if (!await saveGenerationPresetStoreNow("Failed to delete preset. Browser storage may be full.")) return;
     closePalettePresetMenu();
     renderPresets();
 }
 
-function clearPresets() {
+async function clearPresets() {
     if (confirm("Clear all presets?")) {
         generationPresets = [];
         localStorage.removeItem("qig_gen_presets");
-        backupToSettings("qig_gen_presets", generationPresets);
-        setActiveGenerationPresetId("", { persist: true });
+        setActiveGenerationPresetId("", { persist: false });
+        if (!await saveBackupToSettings("qig_gen_presets", generationPresets)) return;
         closePalettePresetMenu();
         renderPresets();
     }
@@ -10927,53 +10967,54 @@ function importSettings() {
                 connectionProfiles = data.connectionProfiles;
                 normalizeProxyProfileStore(connectionProfiles);
                 if (!safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles))) throw new Error("Could not save imported profiles. Browser storage may be full.");
-                backupToSettings("qig_profiles", connectionProfiles);
+                writeBackupToSettings("qig_profiles", connectionProfiles);
             }
             if (Array.isArray(data.comfyWorkflows)) {
                 comfyWorkflows = data.comfyWorkflows;
                 if (!safeSetStorage("qig_comfy_workflows", JSON.stringify(comfyWorkflows))) throw new Error("Could not save imported workflow presets. Browser storage may be full.");
-                backupToSettings("qig_comfy_workflows", comfyWorkflows);
+                writeBackupToSettings("qig_comfy_workflows", comfyWorkflows);
             }
             if (data.generationPresets) {
                 generationPresets = data.generationPresets;
                 ensureGenerationPresetIds();
                 normalizeGenerationPresetStore(generationPresets);
-                if (!saveGenerationPresetStore("Could not save imported presets. Browser storage may be full.")) throw new Error("Could not save imported presets. Browser storage may be full.");
+                if (!safeSetStorage("qig_gen_presets", JSON.stringify(generationPresets))) throw new Error("Could not save imported presets. Browser storage may be full.");
+                writeBackupToSettings("qig_gen_presets", generationPresets);
             }
             if (data.charSettings) {
                 charSettings = data.charSettings;
                 if (!safeSetStorage("qig_char_settings", JSON.stringify(charSettings))) throw new Error("Could not save imported character settings. Browser storage may be full.");
-                backupToSettings("qig_char_settings", charSettings);
+                writeBackupToSettings("qig_char_settings", charSettings);
             }
             if (data.charRefImages) {
                 charRefImages = data.charRefImages;
                 if (!safeSetStorage("qig_char_ref_images", JSON.stringify(charRefImages))) throw new Error("Could not save imported character reference images. Browser storage may be full.");
-                backupToSettings("qig_char_ref_images", charRefImages);
+                writeBackupToSettings("qig_char_ref_images", charRefImages);
             }
             if (data.contextualFilters) {
                 contextualFilters = data.contextualFilters;
                 if (!safeSetStorage("qig_contextual_filters", JSON.stringify(contextualFilters))) throw new Error("Could not save imported contextual filters. Browser storage may be full.");
-                backupToSettings("qig_contextual_filters", contextualFilters);
+                writeBackupToSettings("qig_contextual_filters", contextualFilters);
             }
             if (Array.isArray(data.filterPools)) {
                 filterPools = data.filterPools;
                 if (!safeSetStorage("qig_filter_pools", JSON.stringify(filterPools))) throw new Error("Could not save imported filter pools. Browser storage may be full.");
-                backupToSettings("qig_filter_pools", filterPools);
+                writeBackupToSettings("qig_filter_pools", filterPools);
             }
             if (Array.isArray(data.activeFilterPoolIdsGlobal)) {
                 activeFilterPoolIdsGlobal = data.activeFilterPoolIdsGlobal;
                 if (!safeSetStorage("qig_active_pool_ids_global", JSON.stringify(activeFilterPoolIdsGlobal))) throw new Error("Could not save imported global pool states. Browser storage may be full.");
-                backupToSettings("qig_active_pool_ids_global", activeFilterPoolIdsGlobal);
+                writeBackupToSettings("qig_active_pool_ids_global", activeFilterPoolIdsGlobal);
             }
             if (data.activeFilterPoolIdsByCard && typeof data.activeFilterPoolIdsByCard === "object") {
                 activeFilterPoolIdsByCard = data.activeFilterPoolIdsByCard;
                 if (!safeSetStorage("qig_active_pool_ids_by_card", JSON.stringify(activeFilterPoolIdsByCard))) throw new Error("Could not save imported card pool states. Browser storage may be full.");
-                backupToSettings("qig_active_pool_ids_by_card", activeFilterPoolIdsByCard);
+                writeBackupToSettings("qig_active_pool_ids_by_card", activeFilterPoolIdsByCard);
             }
             if (data.activeFilterPoolIdsByChar && typeof data.activeFilterPoolIdsByChar === "object") {
                 activeFilterPoolIdsByChar = data.activeFilterPoolIdsByChar;
                 if (!safeSetStorage("qig_active_pool_ids_by_char", JSON.stringify(activeFilterPoolIdsByChar))) throw new Error("Could not save imported character pool states. Browser storage may be full.");
-                backupToSettings("qig_active_pool_ids_by_char", activeFilterPoolIdsByChar);
+                writeBackupToSettings("qig_active_pool_ids_by_char", activeFilterPoolIdsByChar);
             }
             if (Array.isArray(data.promptReplacements)) {
                 migratePromptReplacementsToFilters(data.promptReplacements, {
@@ -10984,6 +11025,7 @@ function importSettings() {
             }
             syncActiveGenerationPresetSetting({ persist: true });
             ensureFilterPoolsState({ persist: true });
+            await flushSettingsBackup();
             renderPresets();
             renderProfileSelect();
             renderComfyWorkflowPresets();
@@ -15185,6 +15227,7 @@ jQuery(function () {
             extension_settings = extensionsModule.extension_settings;
             getContext = extensionsModule.getContext;
             saveSettingsDebounced = scriptModule.saveSettingsDebounced;
+            saveSettings = scriptModule.saveSettings;
             generateQuietPrompt = scriptModule.generateQuietPrompt;
             generateRaw = scriptModule.generateRaw;
             generateRawData = scriptModule.generateRawData;

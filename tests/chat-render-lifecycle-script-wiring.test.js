@@ -391,13 +391,19 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(source).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_START))');
         expect(source).toContain('scrollChatToBottom({ waitForFrame: true });');
-        expect(source).toContain('resolveChatScrollAction({');
-        expect(source).toContain('intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS');
-        expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
-        expect(source).toContain('isNearBottom: isChatScrolledNearBottom()');
-        expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
+        expect(source).toContain('const action = resolveStreamingProgressScrollAction();');
         expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(source).toContain('scrollChatElementToBottom();');
+
+        const resolveStreamingProgressScrollAction = findFunctionDeclaration('resolveStreamingProgressScrollAction');
+        const resolverSource = getSource(resolveStreamingProgressScrollAction);
+
+        expect(resolverSource).toContain('resolveChatScrollStateTransition({');
+        expect(resolverSource).toContain('state: chatScrollState');
+        expect(resolverSource).toContain('intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS');
+        expect(resolverSource).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
+        expect(resolverSource).toContain('chatScrollState = transition.state;');
+        expect(resolverSource).toContain('return transition.action;');
     });
 
     test('streaming progress keeps visible DOM write routing behind the lifecycle rollout guard', () => {
@@ -425,6 +431,12 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();');
         expect(source).toContain('if (shouldPinMobileBottom && shouldPinMobileChatToBottom())');
         expect(source).toContain('scheduleMobileStreamingBottomPin({ isFinal });');
+        expect(source).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS))');
+        expect(source).toContain('scrollChatToBottom({');
+        expect(source).toContain('const action = resolveStreamingProgressScrollAction({');
+        expect(source).toContain('isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true');
+        expect(source).toContain('isManualScrollSuppressed: shouldUseMobileStreamingPin');
+        expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(source).not.toContain('pinMobileChatToBottom({ waitForFrame: true, settle: isFinal });');
     });
 
@@ -484,12 +496,17 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const anchor = isLastMessageSwipe && !isChatScrolledNearBottom()');
         expect(source).toContain('captureVisibleChatMessageAnchor()');
         expect(source).toContain('scrollWithAddOneMessage: isLastMessageSwipe && !anchor');
+        expect(source).toContain('const transition = resolveChatScrollStateTransition({');
+        expect(source).toContain('state: chatScrollState');
         expect(source).toContain('intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE');
         expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
         expect(source).toContain('isNearBottom,');
         expect(source).toContain('hasAnchor: Boolean(anchor)');
         expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
+        expect(source).toContain('chatScrollState = transition.state;');
+        expect(source).toContain('action: transition.action');
         expect(source).toContain('scrollWithAddOneMessage: false');
+        expect(source).not.toContain('const action = resolveChatScrollAction({');
     });
 
     test('guard-on swipe replacement applies bottom or anchor lifecycle actions', () => {
@@ -570,16 +587,21 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('const resizeState = metadata ?? captureChatMessageResizeState(element, entry);');
         expect(source).toContain('if (isActiveStreamingMessageResizeBlock(element))');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
+        expect(source).toContain('const transition = resolveChatScrollStateTransition({');
+        expect(source).toContain('state: chatScrollState');
         expect(source).toContain('intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE');
         expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
         expect(source).toContain('isNearBottom: Boolean(resizeState.isNearBottom)');
         expect(source).toContain('hasAnchor: Boolean(resizeState.anchor)');
         expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
+        expect(source).toContain('chatScrollState = transition.state;');
+        expect(source).toContain('const action = transition.action;');
         expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
         expect(source).toContain('scrollChatToBottom({ waitForFrame: true, isNearBottom: true });');
         expect(source).toContain('action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
         expect(source).toContain('await settleVisibleChatMessageAnchor(resizeState.anchor);');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
+        expect(source).not.toContain('const action = resolveChatScrollAction({');
     });
 
     test('message resize metadata refreshes viewport anchors on chat scroll', () => {
@@ -690,12 +712,33 @@ describe('chat render lifecycle script wiring', () => {
         expect(handlerSource).toContain('if (mobileChatTouchScrolling || Date.now() < mobileChatManualScrollSuppressedUntil)');
         expect(handlerSource).toContain('markMobileChatManualScroll({ suppressMs: MOBILE_CHAT_VIEWPORT_SCROLL_SUPPRESS_MS });');
 
+        const markMobileChatManualScroll = findFunctionDeclaration('markMobileChatManualScroll');
+        const markSource = getSource(markMobileChatManualScroll);
+
+        expect(markSource).toContain('resolveChatScrollStateTransition({');
+        expect(markSource).toContain('state: chatScrollState');
+        expect(markSource).toContain('intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL');
+        expect(markSource).toContain('}).state;');
+
+        const pinMobileChatToBottom = findFunctionDeclaration('pinMobileChatToBottom');
+        expect(getSource(pinMobileChatToBottom)).toContain('chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;');
+
+        const markChatScrollStateForUserScroll = findFunctionDeclaration('markChatScrollStateForUserScroll');
+        const scrollStateSource = getSource(markChatScrollStateForUserScroll);
+
+        expect(scrollStateSource).toContain('chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;');
+        expect(scrollStateSource).toContain('intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL');
+
         const resetMobileViewportScrollState = findFunctionDeclaration('resetMobileViewportScrollState');
         const resetSource = getSource(resetMobileViewportScrollState);
 
         expect(resetSource).toContain('mobileChatTouchScrolling = false;');
         expect(resetSource).toContain('mobileChatManualScrollSuppressedUntil = 0;');
         expect(resetSource).toContain('mobileChatBottomPinUntil = 0;');
+
+        const initSource = scriptSource.slice(scriptSource.indexOf('const chatElementScroll = document.getElementById(\'chat\');'));
+        expect(initSource).toContain('const scrollIsAtBottom = isChatScrolledNearBottom();');
+        expect(initSource).toContain('markChatScrollStateForUserScroll({ isNearBottom: scrollIsAtBottom });');
     });
 
     test('mobile viewport lifecycle observer resets on chat clear and disposes on unload', () => {

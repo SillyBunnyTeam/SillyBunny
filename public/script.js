@@ -325,6 +325,7 @@ import {
     CHAT_RENDER_LIFECYCLE_ROUTE,
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
+    CHAT_SCROLL_STATE,
     captureVisibleMessageAnchor,
     createDelegatedResizeObserver,
     createMessageUpdateQueue,
@@ -337,6 +338,7 @@ import {
     resolveChatBottomScrollAction,
     resolveChatRenderLifecycleRollout,
     resolveChatScrollAction,
+    resolveChatScrollStateTransition,
     restoreVisibleMessageAnchor,
     settleVisibleMessageAnchor,
     shouldApplyChatBottomScrollAction,
@@ -635,6 +637,7 @@ let mobileMessageUpdateQueue = null;
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
+let chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
 const chatMessageResizeStates = new Map();
 
 let dialogueResolve = null;
@@ -1990,6 +1993,10 @@ function markMobileChatManualScroll({ touchActive = false, suppressMs = MOBILE_C
         return;
     }
 
+    chatScrollState = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL,
+    }).state;
     mobileChatBottomPinUntil = 0;
     clearMobileStreamingBottomPin();
 
@@ -2069,6 +2076,8 @@ function pinMobileChatToBottom({ waitForFrame = true, settle = false, immediate 
     if (immediate) {
         pin();
     }
+
+    chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
 
     if (waitForFrame) {
         requestAnimationFrame(pin);
@@ -2524,13 +2533,16 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
         return;
     }
 
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom: Boolean(resizeState.isNearBottom),
         hasAnchor: Boolean(resizeState.anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
+    const action = transition.action;
 
     if (shouldApplyChatBottomScrollAction(action)) {
         // SillyBunny: coalesce media resize pins with the shared bottom-scroll rAF lane.
@@ -2635,18 +2647,41 @@ function updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessag
     queue.flush();
 }
 
+function resolveStreamingProgressScrollAction({
+    isNearBottom = isChatScrolledNearBottom(),
+    isManualScrollSuppressed = shouldSuppressMobileChatAutoScroll(),
+} = {}) {
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS,
+        autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
+        isNearBottom,
+        isManualScrollSuppressed,
+    });
+    chatScrollState = transition.state;
+
+    return transition.action;
+}
+
+function markChatScrollStateForUserScroll({ isNearBottom = isChatScrolledNearBottom() } = {}) {
+    if (isNearBottom) {
+        chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
+        return;
+    }
+
+    chatScrollState = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL,
+    }).state;
+}
+
 function scrollStartedStreamingMessageThroughLifecycle() {
     if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_START)) {
         scrollChatToBottom({ waitForFrame: true });
         return;
     }
 
-    const action = resolveChatScrollAction({
-        intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS,
-        autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
-        isNearBottom: isChatScrolledNearBottom(),
-        isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
-    });
+    const action = resolveStreamingProgressScrollAction();
 
     if (shouldApplyChatBottomScrollAction(action)) {
         requestAnimationFrame(() => {
@@ -2670,16 +2705,18 @@ function getSwipeReplacementViewportUpdate({ isLastMessageSwipe, useLifecycleRou
 
     const isNearBottom = isChatScrolledNearBottom();
     const anchor = !isNearBottom ? captureVisibleChatMessageAnchor() : null;
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom,
         hasAnchor: Boolean(anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
 
     return {
-        action,
+        action: transition.action,
         anchor,
         scrollWithAddOneMessage: false,
     };
@@ -5962,10 +5999,27 @@ class StreamingProcessor {
         if (shouldPinMobileBottom && shouldPinMobileChatToBottom()) {
             scheduleMobileStreamingBottomPin({ isFinal });
         } else if (!scrollLock && (!shouldUseMobileStreamingPin || !isMobileChatManualScrollSuppressionActive())) {
-            scrollChatToBottom({
-                waitForFrame: true,
+            if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS)) {
+                scrollChatToBottom({
+                    waitForFrame: true,
+                    isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                });
+                return;
+            }
+
+            const action = resolveStreamingProgressScrollAction({
                 isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                isManualScrollSuppressed: shouldUseMobileStreamingPin
+                    ? isMobileChatManualScrollSuppressionActive()
+                    : shouldSuppressMobileChatAutoScroll(),
             });
+
+            if (shouldApplyChatBottomScrollAction(action)) {
+                scrollChatToBottom({
+                    waitForFrame: true,
+                    isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                });
+            }
         }
     }
 
@@ -15817,6 +15871,7 @@ jQuery(async function () {
         }
 
         const scrollIsAtBottom = isChatScrolledNearBottom();
+        markChatScrollStateForUserScroll({ isNearBottom: scrollIsAtBottom });
 
         // Resume autoscroll if the user scrolls to the bottom
         if (scrollLock && scrollIsAtBottom) {
