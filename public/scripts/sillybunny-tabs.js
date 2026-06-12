@@ -6366,25 +6366,12 @@ function getCharacterDrawerHost() {
     return host instanceof HTMLElement ? host : null;
 }
 
-function getCharacterDrawerToggle() {
-    return getCharacterDrawerHost()?.querySelector(':scope > .drawer-toggle') ?? null;
-}
-
 function getCharacterPanel() {
     const panel = getCharacterDrawerHost()?.querySelector(':scope > #right-nav-panel')
         ?? document.querySelector('#right-nav-panel.sb-character-drawer-root')
         ?? document.getElementById('right-nav-panel');
 
     return panel instanceof HTMLElement ? panel : null;
-}
-
-function triggerDrawerToggle(selectorOrElement) {
-    const toggle = typeof selectorOrElement === 'string'
-        ? document.querySelector(selectorOrElement)
-        : selectorOrElement;
-    if (toggle instanceof HTMLElement) {
-        toggle.click();
-    }
 }
 
 function getDrawerRoot(drawerRootOrId) {
@@ -7664,7 +7651,6 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
     queueMobileShellDrawerBoundsSync();
 
     window.requestAnimationFrame(() => {
-
         if (!isCharacterPanelOpen()) {
             forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
         }
