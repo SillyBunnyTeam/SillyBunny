@@ -178,9 +178,10 @@ function wrapChoiceSegment(segment) {
 
 /**
  * Wraps choice-looking lines in real buttons so they are tappable everywhere (iOS included).
- * Covers proper markdown lists AND enumerated lines that showdown's simpleLineBreaks leaves
- * as <br>-separated text inside one paragraph — the shape CYOA/direction prompts produce.
- * Runs after sanitization; only our own button markup is added around already-clean content.
+ * Three passes cover the shapes companion output takes: proper markdown lists; enumerated
+ * lines left as <br>-separated text inside one block by showdown's simpleLineBreaks (raw
+ * CYOA/direction output); and enumerated lines inside arbitrary styled markup produced by
+ * agent beautifier regexes. Runs after sanitization; only our own button wrapper is added.
  */
 export function decorateChoiceLines(html) {
     if (typeof document?.createElement !== 'function') {
@@ -202,21 +203,34 @@ export function decorateChoiceLines(html) {
         }
     }
 
-    for (const paragraph of container.querySelectorAll('p')) {
-        if (paragraph.querySelector('button, a')) {
+    for (const block of container.querySelectorAll('p, div')) {
+        if (block.querySelector('button, a, p, div, ul, ol')) {
             continue;
         }
 
-        const segments = paragraph.innerHTML.split(/<br\s*\/?>/i);
+        const segments = block.innerHTML.split(/<br\s*\/?>/i);
         if (segments.length > 1) {
-            paragraph.innerHTML = segments.map(wrapChoiceSegment).join('<br>');
+            block.innerHTML = segments.map(wrapChoiceSegment).join('<br>');
+        }
+    }
+
+    // Deepest-match pass for beautified markup: wrap any innermost element whose own text
+    // reads as a single enumerated choice (e.g. a styled row div emitted by a regex script).
+    const candidates = [...container.querySelectorAll('*')].filter(element => {
+        if (element.closest('button, a') || element.querySelector('button, a, br')) {
+            return false;
+        }
+
+        return CHOICE_LINE_RE.test(element.textContent.replace(/\s+/g, ' ').trim());
+    });
+
+    for (const element of candidates) {
+        const hasMatchingDescendant = candidates.some(other => other !== element && element.contains(other));
+        if (hasMatchingDescendant) {
             continue;
         }
 
-        const text = paragraph.textContent.replace(/\s+/g, ' ').trim();
-        if (CHOICE_LINE_RE.test(text)) {
-            paragraph.innerHTML = buildChoiceButtonHtml(paragraph.innerHTML);
-        }
+        element.innerHTML = buildChoiceButtonHtml(element.innerHTML);
     }
 
     return container.innerHTML;
