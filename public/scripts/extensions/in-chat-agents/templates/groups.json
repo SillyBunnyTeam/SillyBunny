@@ -36,5 +36,20 @@
             "tpl-dead-dove-escalation",
             "tpl-intimacy-kink-randomiser"
         ]
+    },
+    {
+        "id": "grp-companions",
+        "name": "Companions",
+        "description": "All bundled companion agents: auxiliary notes, trackers fed back into context, and the rolling memory shard",
+        "builtin": true,
+        "agentTemplateIds": [
+            "tpl-continuity-companion",
+            "tpl-relationship-lens-companion",
+            "tpl-directors-commentary-companion",
+            "tpl-actor-interview-companion",
+            "tpl-lorebook-scout-companion",
+            "tpl-memory-shard-companion",
+            "tpl-npc-motivator"
+        ]
     }
 ]
