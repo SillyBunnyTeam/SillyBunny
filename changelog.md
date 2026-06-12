@@ -31,6 +31,7 @@
 - PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
 - PR #436 (2026-06-12) `fix: agent enable/disable toggle not responding on mobile`
 - PR #437 (2026-06-12) `fix: scope top-bar drawer hiding to native drawers for extension compatibility`
+- PR #438 (2026-06-12) `fix(mobile): prevent iOS chat overscroll blanking and keyboard composer displacement`
 
 ## v1.6.4
 
