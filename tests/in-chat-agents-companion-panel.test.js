@@ -71,6 +71,7 @@ describe('companion tracker panel', () => {
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
             cleanCompanionAgentName: jest.fn(name => String(name ?? '').trim() || 'Companion'),
+            editCompanionResult: jest.fn(async () => {}),
             formatCompanionContent: jest.fn((agentId, result) => `<formatted>${result.content}</formatted>`),
             insertChoiceIntoMessageInput: jest.fn(() => true),
         }));
@@ -208,6 +209,7 @@ describe('companion tracker panel', () => {
         expect(html).toContain('<formatted>Sumeru City Market</formatted>');
         expect(html).toContain('data-action="panel-regenerate"');
         expect(html).toContain('data-action="panel-fix"');
+        expect(html).toContain('data-action="panel-edit-note"');
         expect(html).toContain('data-action="panel-edit"');
         expect(html).toContain('data-action="panel-jump"');
         expect(html).toContain('data-action="panel-regenerate-all"');

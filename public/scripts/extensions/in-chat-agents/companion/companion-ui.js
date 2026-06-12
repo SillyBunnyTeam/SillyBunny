@@ -407,7 +407,7 @@ function getCompanionActionContext(element) {
     return { card, messageIndex, agentId, message, result };
 }
 
-async function editCompanionResult(messageIndex, agentId, message, result) {
+export async function editCompanionResult(messageIndex, agentId, message, result) {
     const editor = $(`
         <div class="ica--companion-edit-popup">
             <div class="ica--regex-note">Edit only this saved card. Regenerate to ask the model again.</div>

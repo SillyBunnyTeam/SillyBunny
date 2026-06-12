@@ -49,7 +49,8 @@
             "tpl-actor-interview-companion",
             "tpl-lorebook-scout-companion",
             "tpl-memory-shard-companion",
-            "tpl-npc-motivator"
+            "tpl-npc-motivator",
+            "tpl-plot-compass-companion"
         ]
     }
 ]

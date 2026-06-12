@@ -1440,7 +1440,7 @@
   {
     "id": "tpl-directors-commentary-companion",
     "name": "Director's Commentary",
-    "description": "Side note card with a director's read on the scene: pacing, stakes, subtext, and where it could go next",
+    "description": "The story's narrator steps out from behind the page: commentary on pacing, subtext, and next beats, delivered in your active Narration Voice",
     "icon": "fa-clapperboard",
     "category": "companion",
     "tags": [
@@ -1448,9 +1448,9 @@
       "scene",
       "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "You are the director watching this scene from behind the camera. Read the latest assistant reply and recent context, then write a short commentary track for the user. Cover: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Do not rewrite the reply and do not address the characters.",
+    "prompt": "You are the story's narrator stepping out from behind the page for a moment, speaking directly to the reader between scenes.\n\n{{getvar::narration}}\n\nIf no Prose Voice is set above, default to that narrator's native register: intimate and mischievous, dry amusement, controlled irony, conspiratorial direct address to the reader, with razor-sharp asides.\n\nIn that voice, deliver a short commentary track on the latest reply: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Do not rewrite the reply and do not address the characters - this is strictly between you and the reader.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1649,6 +1649,70 @@
       },
       "batch": false,
       "maxTokens": 4096
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 100,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
+    "id": "tpl-plot-compass-companion",
+    "name": "Plot Compass",
+    "description": "Type your objective into its note (edit-note button) and it plans how the plot gets there: progress, next beats, obstacles, and a suggested move each turn",
+    "icon": "fa-compass",
+    "category": "companion",
+    "tags": [
+      "plot",
+      "objective",
+      "planning"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "You are the story's plot planner. The first line of [Your previous notes] is the user's standing OBJECTIVE for where they want the story to go; they edit that line by hand and it is your single source of truth.\n\nOutput exactly these sections:\n\nOBJECTIVE: carry the user's objective forward verbatim. If none is set yet, write exactly: none set - edit this note and replace this line with OBJECTIVE: your goal\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next beats:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nIf no objective is set, keep Progress/Next beats/Obstacles grounded in the story's own momentum instead. Never write story prose or dialogue.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "auto",
+      "displayMode": "panel",
+      "format": "markdown",
+      "rawPrompt": true,
+      "inlinePhase": "",
+      "contextMessages": 10,
+      "includeCharacterCard": true,
+      "includePersona": true,
+      "includeWorldInfo": true,
+      "includeAuthorsNote": true,
+      "includeSystemPrompt": true,
+      "includeHistory": true,
+      "historyDepth": 1,
+      "feedback": {
+        "enabled": true,
+        "depth": 1
+      },
+      "batch": false,
+      "maxTokens": 1536
     },
     "injection": {
       "position": 0,

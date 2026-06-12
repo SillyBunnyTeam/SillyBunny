@@ -14,7 +14,7 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
-import { cleanCompanionAgentName, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
+import { cleanCompanionAgentName, editCompanionResult, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
 
 const PANEL_HISTORY_LIMIT = 5;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
@@ -415,6 +415,7 @@ function buildPanelAgentSection(state) {
                 <span class="ica--tpanel-agent-actions">
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-file-pen"></i></button>
                     ${editButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
@@ -510,6 +511,20 @@ async function handlePanelAction(event) {
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
     const messageIndex = Number(section.attr('data-message-index'));
+
+    if (action === 'panel-edit-note' && agentId && Number.isInteger(messageIndex)) {
+        const message = chat[messageIndex];
+        const result = getCompanionResults(message)[agentId];
+        if (!result) {
+            toastr.warning('No stored state to edit.');
+            return;
+        }
+        await editCompanionResult(messageIndex, agentId, message, result);
+        if (panelOpen) {
+            renderPanel();
+        }
+        return;
+    }
 
     if (action === 'panel-edit') {
         if (!agentId || typeof panelHooks?.openEditor !== 'function') {

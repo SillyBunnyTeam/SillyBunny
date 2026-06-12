@@ -64,6 +64,7 @@ describe('in-chat agent bundled templates', () => {
             'lorebook-scout-companion.json',
             'memory-shard-companion.json',
             'npc-motivator.json',
+            'plot-compass-companion.json',
             'relationship-lens-companion.json',
             'scene-tracker.json',
         ];
@@ -168,6 +169,23 @@ describe('in-chat agent bundled templates', () => {
             feedback: { enabled: true, depth: 1 },
             maxTokens: 4096,
         }));
+
+        const plotCompass = findCatalogTemplate(catalog, 'tpl-plot-compass-companion');
+        expect(plotCompass).toEqual(expect.objectContaining({
+            category: 'companion',
+            execution: 'companion',
+            phase: 'post',
+            enabled: false,
+        }));
+        expect(plotCompass.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            includeHistory: true,
+            historyDepth: 1,
+            feedback: { enabled: true, depth: 1 },
+        }));
+        expect(plotCompass.prompt).toContain('OBJECTIVE');
 
         const { isCompanionAgent, normalizeAgent } = await importAgentStore();
         const saved = normalizeAgent({
