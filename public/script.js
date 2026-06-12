@@ -103,6 +103,7 @@ import {
     generatedTextFiltered,
     applyStylePins,
 } from './scripts/power-user.js';
+import { isNeutralImpersonationFormat, shouldAppendImpersonationNamePrompt } from './scripts/impersonation-mode.js';
 
 import {
     setOpenAIMessageExamples,
@@ -6607,6 +6608,7 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @property {string} [impersonationFormat] Optional impersonation format override.
  */
 
 /**
@@ -6651,7 +6653,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, impersonationFormat = null } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6670,6 +6672,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
     const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
     const isImpersonate = type == 'impersonate';
+    const neutralImpersonate = isImpersonate && isNeutralImpersonationFormat(impersonationFormat);
     const resolvedCacheScope = cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main');
     const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
     let textareaText = '';
@@ -7453,14 +7456,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
 
         // Get instruct mode line
-        if (isInstruct && !isContinue) {
-            const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (isImpersonate ? name1 : name2);
+        if (isInstruct && !isContinue && !neutralImpersonate) {
+            const promptAsImpersonate = isImpersonate;
+            const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (promptAsImpersonate ? name1 : name2);
             const isQuiet = quiet_prompt && type == 'quiet';
-            lastMesString += formatInstructModePrompt(name, isImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
+            lastMesString += formatInstructModePrompt(name, promptAsImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
         }
 
         // Get non-instruct impersonation line
-        if (!isInstruct && isImpersonate && !isContinue) {
+        if (shouldAppendImpersonationNamePrompt({ isInstruct, isImpersonate, isContinue, neutralImpersonate })) {
             const name = name1;
             if (!lastMesString.endsWith('\n')) {
                 lastMesString += '\n';
@@ -7687,6 +7691,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 type: type,
                 quietPrompt: quiet_prompt,
                 quietImage: quietImage,
+                impersonationFormat,
                 cyclePrompt: cyclePrompt,
                 systemPromptOverride: system,
                 jailbreakPromptOverride: jailbreak,
@@ -7786,7 +7791,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 }
 
                 const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
-                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, impersonationFormat });
 
                 hideSwipeButtons();
                 let getMessage = shouldBufferOutput
@@ -7907,7 +7912,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 }
             }
         } else {
-            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, impersonationFormat });
         }
     }
 
@@ -8628,6 +8633,7 @@ function setInContextMessages(msgInContextCount, type) {
  * @typedef {object} AdditionalRequestOptions
  * @property {JsonSchema} [jsonSchema]
  * @property {'main'|'auxiliary'|'none'} [cacheScope]
+ * @property {string} [impersonationFormat]
  */
 
 /**
