@@ -16,6 +16,10 @@ function normalizeString(value) {
     return String(value ?? '').trim();
 }
 
+function stripDecoratedConnectionProfileText(value) {
+    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
+}
+
 /**
  * Normalizes a main API id for preset/API sync lookups.
  * @param {unknown} value Main API id.
@@ -172,6 +176,39 @@ export function resolveConnectionProfileMirrorUpdate({
 }
 
 /**
+ * Resolves the mirrored connection-profile status label without touching DOM.
+ * @param {object} options Options.
+ * @param {boolean} [options.hasContext=false] Whether SillyTavern context is available.
+ * @param {boolean} [options.isNoConnection=false] Whether the active backend is disconnected.
+ * @param {unknown} [options.apiValue='Connected'] API value selected by context or slash command.
+ * @param {unknown} [options.modelValue=''] Model/status value selected by context or slash command.
+ * @param {unknown} [options.apiOptionText] Decorated API option label, when available.
+ * @param {unknown} [options.modelOptionText] Decorated model option label, when available.
+ * @returns {string}
+ */
+export function resolveConnectionProfileStatusText({
+    hasContext = false,
+    isNoConnection = false,
+    apiValue = 'Connected',
+    modelValue = '',
+    apiOptionText,
+    modelOptionText,
+} = {}) {
+    if (!hasContext) {
+        return '';
+    }
+
+    if (isNoConnection) {
+        return 'No connection...';
+    }
+
+    const resolvedApiValue = stripDecoratedConnectionProfileText(apiOptionText ?? apiValue);
+    const resolvedModelValue = stripDecoratedConnectionProfileText(modelOptionText ?? modelValue);
+
+    return resolvedModelValue ? `${resolvedApiValue} - ${resolvedModelValue}` : resolvedApiValue;
+}
+
+/**
  * Creates the compatibility-facing preset/API sync lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -190,6 +227,7 @@ export function createPresetApiSyncLifecycle() {
             resolveSourceBinding: resolveConnectionProfileSourceBinding,
             resolveMirrorState: resolveConnectionProfileMirrorState,
             resolveMirrorUpdate: resolveConnectionProfileMirrorUpdate,
+            resolveStatusText: resolveConnectionProfileStatusText,
         },
     };
 }

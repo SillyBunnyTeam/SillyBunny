@@ -94,6 +94,18 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(refreshSource).not.toContain('desktopRefs.connectionSelect.value = connectionProfilesSource.value');
     });
 
+    test('routes connection profile status text through the lifecycle seam', () => {
+        const statusSource = getFunctionSource('getConnectionStatusText');
+
+        expect(statusSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({');
+        expect(statusSource).toContain('hasContext: Boolean(context)');
+        expect(statusSource).toContain('isNoConnection: context?.onlineStatus === \'no_connection\'');
+        expect(statusSource).toContain('apiOptionText');
+        expect(statusSource).toContain('modelOptionText');
+        expect(statusSource).not.toContain('return \'No connection...\'');
+        expect(statusSource).not.toContain('modelValue ? `${apiValue} - ${modelValue}` : apiValue');
+    });
+
     test('routes connection profile source binding through the lifecycle seam', () => {
         const bindSource = getFunctionSource('bindConnectionProfileSourceElement');
 

@@ -4397,10 +4397,6 @@ function escapeRegExp(value) {
     return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function stripDecoratedOptionText(value) {
-    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
-}
-
 function getRequestHeadersFromContext(context = getSillyTavernContext()) {
     if (typeof context?.getRequestHeaders === 'function') {
         return context.getRequestHeaders();
@@ -6365,17 +6361,21 @@ function initChatSearchObserver() {
 
 async function getConnectionStatusText() {
     const context = getSillyTavernContext();
+    const initialStatusText = sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
+        hasContext: Boolean(context),
+        isNoConnection: context?.onlineStatus === 'no_connection',
+        apiValue: context?.mainApi,
+        modelValue: context?.onlineStatus,
+    });
 
-    if (!context) {
-        return '';
-    }
-
-    if (context.onlineStatus === 'no_connection') {
-        return 'No connection...';
+    if (!context || context.onlineStatus === 'no_connection') {
+        return initialStatusText;
     }
 
     let apiValue = String(context.mainApi ?? 'Connected').trim();
     let modelValue = String(context.onlineStatus ?? '').trim();
+    let apiOptionText;
+    let modelOptionText;
 
     try {
         const nextApiValue = await context.SlashCommandParser?.commands?.api?.callback?.({ quiet: 'true' }, '');
@@ -6402,11 +6402,18 @@ async function getConnectionStatusText() {
             ?? apiBlock.querySelector(`select#main_api option[value="${escapeSelectorValue(apiValue)}"]`);
         const modelOption = apiBlock.querySelector(`option[value="${escapeSelectorValue(modelValue)}"]`);
 
-        apiValue = stripDecoratedOptionText(apiOption?.textContent ?? apiValue);
-        modelValue = stripDecoratedOptionText(modelOption?.textContent ?? modelValue);
+        apiOptionText = apiOption?.textContent;
+        modelOptionText = modelOption?.textContent;
     }
 
-    return modelValue ? `${apiValue} - ${modelValue}` : apiValue;
+    return sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
+        hasContext: Boolean(context),
+        isNoConnection: context?.onlineStatus === 'no_connection',
+        apiValue,
+        modelValue,
+        apiOptionText,
+        modelOptionText,
+    });
 }
 
 function nodeTouchesConnectionProfilesSource(node) {
