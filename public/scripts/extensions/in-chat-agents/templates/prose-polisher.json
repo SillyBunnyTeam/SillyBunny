@@ -4,6 +4,7 @@
     "description": "Post-generation prose cleanup that rewrites repetitive tropes and cliched wording. Created by Geechan.",
     "icon": "",
     "category": "content",
+    "subcategory": "prose-quality",
     "tags": [
         "prose",
         "editing",

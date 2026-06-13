@@ -1,5 +1,12 @@
 /* global globalThis */
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import fs from 'node:fs';
+
+const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
+
+function readTemplate(filename) {
+    return JSON.parse(fs.readFileSync(new URL(filename, templateDir), 'utf8'));
+}
 
 function createEventSource() {
     const handlers = new Map();
@@ -188,6 +195,34 @@ describe('companion card ui', () => {
 
         expect(html).toBe('<div class="status">calm</div>');
         expect(sanitize).toHaveBeenCalledWith('<div class="status">calm</div>', expect.anything());
+    });
+
+    test('normalizes markerless Chatroom pipe streams before rendering', async () => {
+        const chatroomTemplate = readTemplate('chatroom-companion.json');
+        agents.push({
+            id: 'chatroom',
+            name: 'Chatroom',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            execution: 'companion',
+            regexScripts: chatroomTemplate.regexScripts,
+        });
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('chatroom', {
+            content: "mixed|mixed user_404/anon|150|Searching for hollowed out|205|She's talking about resonance depletion. Fleur_Stan/blue_laurel|180|omg the candy!!",
+            format: 'html',
+        }, { name: 'Assistant' });
+
+        expect(html).toContain('Chatroom');
+        expect(html).toContain('STYLE: mixed');
+        expect(html).toContain('user_404');
+        expect(html).toContain('anon');
+        expect(html).toContain('Searching for hollowed out');
+        expect(html).toContain("She's talking about resonance depletion.");
+        expect(html).toContain('Fleur_Stan');
+        expect(html).toContain('blue_laurel');
+        expect(html).toContain('omg the candy!!');
+        expect(html).not.toContain('mixed|mixed user_404/anon|150|');
     });
 
     test('renders content unchanged when the agent no longer exists', async () => {

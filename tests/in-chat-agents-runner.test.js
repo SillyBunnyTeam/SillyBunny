@@ -321,6 +321,7 @@ describe('in-chat agent post-processing runner', () => {
                     depth: Number(agent?.companion?.feedback?.depth) || 1,
                 },
                 batch: Boolean(agent?.companion?.batch),
+                batchAgentIds: Array.isArray(agent?.companion?.batchAgentIds) ? agent.companion.batchAgentIds : [],
                 maxTokens: Number(agent?.companion?.maxTokens) || 32000,
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
@@ -1332,6 +1333,55 @@ describe('in-chat agent post-processing runner', () => {
             messageIndex: 1,
             activeAgents: [companionAgent],
         }));
+    });
+
+    test('batches only explicitly selected compatible companions', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt
+            .mockResolvedValueOnce([
+                '<<<companion:companion-a>>>A note<<<end:companion-a>>>',
+                '<<<companion:companion-b>>>B note<<<end:companion-b>>>',
+            ].join('\n'))
+            .mockResolvedValueOnce('C note');
+        const companionA = createCompanionAgent({
+            id: 'companion-a',
+            name: 'Companion A',
+            companion: { batch: true, batchAgentIds: ['companion-b'] },
+        });
+        const companionB = createCompanionAgent({
+            id: 'companion-b',
+            name: 'Companion B',
+            companion: { batch: false, batchAgentIds: [] },
+        });
+        const companionC = createCompanionAgent({
+            id: 'companion-c',
+            name: 'Companion C',
+            prompt: 'Write the Companion C note.',
+            companion: { batch: true, batchAgentIds: [] },
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [companionA, companionB, companionC],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        const batchPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(batchPrompt).toContain('<<<companion:companion-a>>>');
+        expect(batchPrompt).toContain('<<<companion:companion-b>>>');
+        expect(batchPrompt).not.toContain('<<<companion:companion-c>>>');
+        const singlePrompt = generateQuietPrompt.mock.calls[1][0].quietPrompt;
+        expect(singlePrompt).toContain('Write the Companion C note.');
+        expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
+        expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
+        expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
     });
 
     test('guards tracker companions against continuing the story even with raw prompts', async () => {

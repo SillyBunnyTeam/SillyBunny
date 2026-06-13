@@ -308,6 +308,57 @@ function getChatroomSelectableCharacters() {
         .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+function normalizeCompanionBatchAgentIds(value = []) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,]/);
+    const seenIds = new Set();
+    const ids = [];
+
+    for (const rawValue of rawValues) {
+        const id = String(rawValue ?? '').trim().slice(0, 128);
+        const key = id.toLowerCase();
+        if (!id || seenIds.has(key)) continue;
+
+        seenIds.add(key);
+        ids.push(id);
+    }
+
+    return ids;
+}
+
+function getCompanionBatchCompatibilityKey(agent) {
+    const companion = getCompanionConfig(agent);
+    return JSON.stringify({
+        profile: resolveConnectionProfile(agent.connectionProfile),
+        model: String(agent.modelOverride ?? '').trim(),
+        contextMessages: companion.contextMessages,
+        includeCharacterCard: companion.includeCharacterCard,
+        includePersona: companion.includePersona,
+        includeWorldInfo: companion.includeWorldInfo,
+        includeAuthorsNote: companion.includeAuthorsNote,
+        includeSystemPrompt: companion.includeSystemPrompt,
+        includeHistory: companion.includeHistory,
+        historyDepth: companion.historyDepth,
+    });
+}
+
+function getCompanionBatchOptionsForAgent(agent) {
+    if (!isCompanionAgent(agent)) return [];
+
+    const currentKey = getCompanionBatchCompatibilityKey(agent);
+    return getAgents()
+        .filter(candidate => candidate.id !== agent.id)
+        .filter(candidate => isCompanionAgent(candidate))
+        .filter(candidate => isAgentEnabledForCurrentScope(candidate))
+        .filter(candidate => getCompanionBatchCompatibilityKey(candidate) === currentKey)
+        .map(candidate => ({
+            id: candidate.id,
+            label: String(candidate.name ?? '').trim() || candidate.id,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 function normalizeDirectorCommentaryVoice(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
     return DIRECTOR_COMMENTARY_VOICE_VALUES.includes(normalized) ? normalized : 'active';
@@ -2489,6 +2540,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
+    const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
     const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
@@ -2643,6 +2695,41 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         select.val(preferredName);
     }
 
+    function updateCompanionBatchAgentOptions() {
+        const select = editorEl.find('#ica--editor-companion-batchAgentIds');
+        const currentIds = normalizeCompanionBatchAgentIds(select.val());
+        const selectedIds = currentIds.length ? currentIds : savedCompanionBatchAgentIds;
+        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
+        const options = getCompanionBatchOptionsForAgent(agent);
+        const availableKeys = new Set(options.map(option => option.id.toLowerCase()));
+
+        select.empty();
+        if (!options.length && !selectedIds.length) {
+            select.append($('<option>').val('').text('No enabled compatible companions').prop('disabled', true));
+            return;
+        }
+
+        for (const option of options) {
+            select.append(
+                $('<option>')
+                    .val(option.id)
+                    .text(option.label)
+                    .prop('selected', selectedKeys.has(option.id.toLowerCase())),
+            );
+        }
+
+        for (const id of selectedIds) {
+            if (availableKeys.has(id.toLowerCase())) continue;
+
+            select.append(
+                $('<option>')
+                    .val(id)
+                    .text(`Unavailable or disabled: ${id}`)
+                    .prop('selected', true),
+            );
+        }
+    }
+
     function updateCompanionEditorVisibility() {
         const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
         const companionExecution = isEditorCompanionExecution();
@@ -2662,6 +2749,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         executionSelect.prop('disabled', category === 'companion');
         editorEl.find('#ica--companion-section').toggle(companionExecution);
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
+        editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
+        editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
         editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
         editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
         editorEl.find('#ica--chatroom-extra-characters-row').toggle(showChatroomSettings);
@@ -2699,6 +2788,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
                 depth: Number(root.find('#ica--editor-companion-feedbackDepth').val()) || current.feedback.depth,
             },
             batch: root.find('#ica--editor-companion-batch').prop('checked'),
+            batchAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-batchAgentIds').val()),
             maxTokens: Number(root.find('#ica--editor-companion-maxTokens').val()) || current.maxTokens,
         };
     }
@@ -2721,6 +2811,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
+        updateCompanionBatchAgentOptions();
         editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);
         updateCompanionEditorVisibility();
     }
@@ -2730,12 +2821,17 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateCompanionEditorVisibility();
     });
     editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-companion-batch').on('change', () => {
+        updateCompanionBatchAgentOptions();
+        updateCompanionEditorVisibility();
+    });
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
     updateChatroomExtraCharacterOptions();
     updateDirectorCustomVoiceOptions();
+    updateCompanionBatchAgentOptions();
     updateCompanionEditorVisibility();
 
     // Show/hide sections based on phase
@@ -3941,7 +4037,7 @@ function buildCompanionFallbackKit({ agentName, description, currentPrompt, goal
                 includeHistory: true,
                 historyDepth: 2,
                 feedback: { enabled: false, depth: 1 },
-                batch: true,
+                batch: false,
                 maxTokens: 32000,
             },
         }),
@@ -3977,7 +4073,7 @@ The JSON shape must be:
     "includeHistory": true,
     "historyDepth": 2,
     "feedback": { "enabled": false, "depth": 1 },
-    "batch": true,
+    "batch": false,
     "maxTokens": 32000
   }
 }

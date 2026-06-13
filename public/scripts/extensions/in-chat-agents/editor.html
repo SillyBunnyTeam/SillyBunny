@@ -200,7 +200,6 @@
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeSystemPrompt" /><span>Include System Prompt</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
-            <label class="checkbox_label" title="When this and other enabled companions use the same profile, model, and context settings, they share one model request."><input type="checkbox" id="ica--editor-companion-batch" /><span>Run with enabled companions in one request</span></label>
             <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
         </div>
         <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
@@ -208,6 +207,16 @@
                 <input type="number" id="ica--editor-companion-feedbackDepth" class="text_pole" min="1" max="10" value="1" />
             </label>
             <div class="ica--regex-note">Feedback notes use the agent's Position, Depth, Role, and World Info scan fields from Pre-Generation Settings.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-batch-row">
+            <label class="checkbox_label" title="When selected companions use the same profile, model, and context settings, they share one model request."><input type="checkbox" id="ica--editor-companion-batch" /><span>Run selected companions in one request</span></label>
+            <div class="ica--regex-note">Off by default. Turn it on to fetch currently enabled compatible companions, then pick which ones can share this agent's request.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-batch-select-row" style="display:none">
+            <label>Batch With Enabled Companions
+                <select id="ica--editor-companion-batchAgentIds" class="text_pole" multiple size="5"></select>
+            </label>
+            <div class="ica--regex-note">Only selected companions can batch together. Agents with different models, profiles, or context settings still run separately.</div>
         </div>
     </div>
 

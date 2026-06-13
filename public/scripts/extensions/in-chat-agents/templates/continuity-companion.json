@@ -28,7 +28,7 @@
             "enabled": true,
             "depth": 2
         },
-        "batch": true,
+        "batch": false,
         "maxTokens": 32000
     },
     "injection": {

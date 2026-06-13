@@ -4,6 +4,7 @@
     "description": "Track upcoming events, deadlines, promises, and unresolved threads",
     "icon": "",
     "category": "tracker",
+    "subcategory": "world",
     "tags": [
         "events",
         "deadlines",
@@ -37,5 +38,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }

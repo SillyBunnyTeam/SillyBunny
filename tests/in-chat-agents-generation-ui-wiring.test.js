@@ -80,8 +80,9 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('ica--companion-core-grid');
         expect(extensionStyleSource).toContain('.ica--companion-core-grid');
         expect(extensionStyleSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));');
-        expect(editorTemplateSource).toContain('Run with enabled companions in one request');
-        expect(editorTemplateSource).toContain('share one model request');
+        expect(editorTemplateSource).toContain('Run selected companions in one request');
+        expect(editorTemplateSource).toContain('Batch With Enabled Companions');
+        expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled compatible companions');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
     });
 

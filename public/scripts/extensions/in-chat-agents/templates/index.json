@@ -38,6 +38,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -217,8 +220,7 @@
     "name": "Nightmare Difficulty Increase",
     "description": "Aggressively hostile environment -- maximum difficulty and consequences",
     "icon": "",
-    "category": "content",
-    "subcategory": "behaviour",
+    "category": "custom",
     "tags": [
       "difficulty",
       "challenge",
@@ -309,8 +311,7 @@
     "name": "Don't Write for User",
     "description": "Never write {{user}}'s actions or dialogue -- only {{char}} and NPCs",
     "icon": "",
-    "category": "content",
-    "subcategory": "pov",
+    "category": "custom",
     "tags": [
       "pov",
       "user"
@@ -386,6 +387,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -393,8 +397,7 @@
     "name": "Friction Mode",
     "description": "Combats positivity bias -- characters resist, protect their pride, and take time to warm up",
     "icon": "",
-    "category": "content",
-    "subcategory": "behaviour",
+    "category": "custom",
     "tags": [
       "realism",
       "difficulty",
@@ -583,7 +586,7 @@
     ],
     "version": 1,
     "author": "Geechan",
-    "prompt": "# Role Preamble\nYou are a skilled proofreader and editor for works of storytelling fiction. Your primary objective is to scan for repetitive tropes and overused clichés in the following text corpus, and replace them with viable alternatives to encourage linguistic variety.\n\n## Rules\n- Scan and review the entire text body in isolation, noting any instances of wording analogous to those found in Banned Tropes.\n- Check against each individual trope category step-by-step.\n- Replace any instances (similar or exact) of banned tropes, overused word verbiage, and repetitive writing patterns with functional alternatives, or remove them entirely if no functional alternatives exist.\n- Keep the main body corpus of the story accurate to the creator's intent, minimizing changes only to what's absolutely required.\n- Return only the re-written text, with no extra commentary.\n\n---\n\n# Banned Tropes\n\n## Sentence Structure\n\nVerbiage that contributes to repetitive, predictable, and overused sentence structural writing patterns.\n\n### #1: Dialogue Echoing\n\nA characteristic writing trope where characters repeat, verbatim, spoken dialogue back from another party or character to acknowledge them. \n\nIn practice: this results in repetitive, filler prose that fails to actually progress the story forward in any meaningful way, leading to unnecessary stagnation.\n\n**Example Patterns to Target:**\n\n- \"The task?\", she repeated, unsure of what exactly that implies.\n- He nods at your beck and call. \"Strange, you say?\", he muses.\n- \"Finding things interesting...\" she echoes, the word tasted against her tongue.\n\n### #2: Negative Parallelisms\n\nThese attempt to provide a contrastive reframe to a sentence to give it surprise and tension. This also includes dramatic countdown patterns and self-posed rhetorical questions that ask a question nobody was asking. \n\nIn practice: overuse of these phrases reduces the efficacy of tension and drama via predictable causation.\n\n**Example Patterns to Target:**\n\n- It's not bold; it's backwards.\n- The question isn't whether she felt good. The question is whether she deserved it.\n- Not a bug. Not a feature. A fundamental design flaw.\n- The result? Devastating.\n\n### #3: Tricolon Abuse\n\nAlso known as the 'Rule of Three' writing principle, often extended to four or five. It is believed that a trio of descriptive entities is more satisfying, hence more memorable, due to the balance of brevity and rhythm.\n\nIn practice: this pattern creates repetition by assumption. Tricolons or hendiatric patterns quickly lose their satisfying effect in favour of formulaic patterns, placing unnecessary importance on the last item in the list. Varying descriptor patterns leads to more natural prose.\n\n**Example Patterns to Target:**\n\n- The best star pilot in the galaxy, a cunning warrior, and a good friend.\n- The scent of dated wine hangs thick in the cramped dressing room—spiced, fruity, and altogether too sweet.\n- She giggles: soft, silly, utterly charmed by the situation.\n\n### #4: Superficial Analyses\n\nTacking a present participle (\"-ing\") phrase onto the end of a sentence to inject shallow analysis that says nothing, without any real sense of scale.\n\nIn practice: this attaches significance, legacy, or broader meaning to mundane facts using broad phrasing and loosely related subjects.\n\n**Example Patterns to Target:**\n\n- ...leaving a void in his heart that could never truly be filled.\n- ...serving as a grim reminder of the world's inherent cruelty.\n- ...cementing her legacy as a harbinger of change.\n\n## Formatting Structure\n\nPatterns that contribute to repetitive and predictable formatting.\n\n### #1: Short Punchy Fragments\n\nExcessive use of very short sentences or sentence fragments as standalone paragraphs for manufactured emphasis. \n\nIn practice: prioritises \"writing for readability\" aimed at the lowest common denominator: one thought per sentence, no mental state-keeping required.\n\n**Example Patterns to Target:**\n\n- A beat. She nodded.\n- A pause. Not a moment too soon.\n- He published this. Openly. In a book. As a priest.\n\n### #2 Em-Dash Addiction\n\nCompulsive overuse of em dashes for dramatic pauses, parenthetical asides and pivot points. A good writer uses em dashes as a rare, important emphasis while using the other punctuation available in the English language more liberally.\n\nIn practice: overuse of em dashes leads to a very distinct, stilted writing style with an inability to maintain a versatile tone. Grammatical heterogeneity is key: only use em dashes as a rare surprise, or when used to break up dialogue.\n\n**Example Patterns to Target:**\n\n- Outside, the distant sounds of the bazaar continue—the chatter of merchants, the laughter of children, the clink of coins—utterly unaware of inner workings of their surroundings.\n- His body speaks instead—his elegant hands sliding up to cup her face with trembling tenderness.\n- A hiccup interrupts her thought, and she giggles—breathless and unguarded.\n\n## Composition\n\nGeneral, macro-level writing decisions that lead to deterministic conclusions.\n\n### #1: Thematic Conclusions\n\nSuddenly announcing a follow-up conclusion to the main narrative as a crux for narrative hooks.\n\nIn practice: competent writing doesn't need to tell you it's concluding or waiting for a response. The reader can feel it. This shallows writing agency by making unnecessary assumptions.\n\n**Example Patterns to Target:**\n\n- He waits, giving you space to choose, his shoulders loose and unburdened for the first time since entering this strange, peaceful realm.\n- She stands there, waiting, her posture relaxed but her presence commanding, inviting you to step further into the labyrinth of this conversation.\n- Her offer is tentative, weighted with the sincerity of someone who has spent years learning to give, but never learned how to receive without guilt.\n\n### #2 Verbose Copulatives\n\nReplacing simple \"is\" or \"are\" with pompous alternatives like \"serves as\", \"stands as\", \"marks\", or \"represents\". \n\nIn practice: replacing all basic copulatives leads to an imbalanced prose, with unnecessarily fancy constructions in places that don't require it. A balance should be struck: ask whether a sentence truly benefits from the use of a verbose copulative.\n\n**Example Patterns to Target:**\n\n- He stands as a beacon of hope for the rebellion.\n- The ancient sword serves as a testament to their forgotten lineage.\n- Her silence represents a total surrender.\n\n## Tone\n\nWriting that takes away from accuracy in favour of unnecessary stylistic flourish.\n\n### #1 Hyperbolic Stakes Inflation\n\nAssigns importance to everything, even subjects that don't require such emphasis. Everything is the most important thing ever.\n\nIn practice: inflates the stakes of every argument to world-historical significance. A story about love becomes a meditation on the fate of civilization.\n\n**Example Patterns to Target:**\n\n- The fate of the entire realm hung precariously in the balance.\n- It is a decision that will alter the course of history forever.\n- This single moment dictates the survival of humanity.\n\n## Word Choice\n\nTired word choices that require alternatives.\n\n### #1 Magic Adverbs\n\nOveruse of words like \"quietly\", \"deeply\", \"fundamentally\", \"remarkably\", \"arguably\", and similar other adverbs to convey subtle importance or understated power.\n\nIn practice: these adverbs make mundane descriptions feel too significant, reducing the quality of these adverbs for their intended use case.\n\n**Example Patterns to Target:**\n\n- She quietly slipped into the room,\n- He fundamentally misunderstood her intentions,\n- He stared deeply into the abyss.\n\n### #2: Ornate Nouns\n\nOveruse of ornate or grandiose nouns where simpler words would be completely functional. \"Tapestry\" is used to describe anything interconnected. \"Landscape\" is used to describe any field or domain. Other offenders: \"kaleidoscope\", \"labyrinth\", etc.\n\nIn practice: lessens the impact of these words by attributing mystique to every descriptor.\n\n**Example Patterns to Target:**\n\n- The rich tapestry of human experience...\n- A landscape of dark corridors..\n- A kaleidoscope of vibrant colours..\n\n### #3 Somatic Clichés\n\nA narrow set of physical reactions that convey character emotions.\n\nIn practice: cheapens the impact of physical reactions by bringing too much attention to itself.\n\n**Example Patterns to Target:**\n\n- A shiver ran down her spine.\n- His breath caught in his throat.\n- Her heart hammered against her ribs.\n\n### #4 Poetic Metaphor Over-Reliance\n\nUsing poetic and vague language to describe interactions, arguments, combat, etc.\n\nIn practice: reduces the text fidelity by over-attributing importance to surrounding content than the main body. The text should maintain focus on what's actually important.\n\n**Example Patterns to Target:**\n\n- The tension in the air was palpable.\n- A symphony of destruction.\n- A dizzying cocktail of emotion.\n\n### #5: Crutch Vocabulary\n\nOveruse of specific verbs and adjectives that are heavily weighted in language model training data, such as \"delve,\" \"certainly,\" \"utilize,\" \"harness,\" \"nuanced,\" \"resonate\", etc.\n\nIn practice: reliance on these default words flattens the narrative voice. It makes the prose homogenous and artificial instead of utilizing context-specific vocabulary.\n\n**Example Patterns to Target:**\n\n- They decided to delve into the intricate mysteries of the artifact.\n- We must navigate the nuances of this complex situation.\n- Her leadership fostered a sense of unity that resonated with the team.",
+    "prompt": "# Role Preamble\nYou are a skilled proofreader and editor for works of fictional writing. Your primary objective is to scan for repetitive tropes, writing fallacies, and overused clichés in the following text corpus, and replace them with viable alternatives to encourage linguistic variety.\n\n## Rules\n- Scan and review the entire text body in isolation, noting any instances of wording analogous to those found in Banned Tropes.\n- Check against each individual trope category step-by-step.\n- Replace any instances (similar or exact) of banned tropes, overused word verbiage, and repetitive writing patterns with functional alternatives, or remove them entirely if no functional alternatives exist.\n- Keep the main body corpus of the story accurate to the creator's intent.\n- Return only the re-written text, with no extra commentary.\n\n---\n\n# Banned Tropes\n\n## Sentence Structure\n\nVerbiage that contributes to repetitive, predictable, and overused sentence structural writing patterns.\n\n### #1: Lexical & Structural Echoing\n\nA fundamental structural writing crutch where characters directly repeat, verbatim, spoken dialogue or untold actions back from another party or character to acknowledge them.\n\nIn practice: this results in stilted filler prose that fails to actually progress the story forward in any meaningful way, leading to unnecessary stagnation and structural repetition. Remove or replace the entire acknowledgement beat in favour of immediate reactions.\n\n**Example Patterns to Target:**\n\n- \"The task?\", she repeated, unsure of what exactly that implies.\n- He nods at your beck and call. \"Strange, you say?\", he muses.\n- \"Finding things interesting...\" she echoes, the word tasted against her tongue.\n\n### #2: Negative Parallelisms\n\nNegative parallelisms attempt to provide a contrastive reframe to a sentence to give it surprise and tension. This also includes dramatic countdown patterns and self-posed rhetorical questions that ask a question nobody was asking. \n\nIn practice: overuse of these phrases reduces the efficacy of tension and drama via predictable causation.\n\n**Example Patterns to Target:**\n\n- It's not bold; it's backwards.\n- The question isn't whether she felt good. The question is whether she deserved it.\n- Not a bug. Not a feature. A fundamental design flaw.\n- The result? Devastating.\n\n#3: Apophasis Abuse\n\nThe rhetorical device of bringing up a subject by stating it will not be mentioned, or explicitly drawing attention to the fact that something is not being said or done.\n\nIn practice: phrases like \"needless to say\" or \"it goes without saying\" are contradictory filler; if a point truly doesn't need to be said, the prose shouldn't waste words saying it.\n\n**Example Patterns to Target:**\n\n- Needless to say, the journey ahead would be perilous.\n- It goes without saying that she was terrified.\n- Words were unnecessary; his eyes communicated everything he felt.\n\n#4: Litotes Abuse\n\nThe overuse of double negatives or negated opposites to express a positive statement, often used to soften an assertion or feign nuance.\n\nIn practice: relying on \"not un-X\" or \"not without Y\" leads to evasive, overly wordy, and weak prose. Unless deliberately used for specific character voice or irony, writing should rely on strong, direct, and affirmative declarations.\n\n**Example Patterns to Target:**\n\n- Her reaction was not entirely unexpected.\n- The treacherous path up the mountain was not without its challenges.\n- He was not unfamiliar with the harsh realities of the world.\n- It wasn't an unappealing offer.\n\n### #4: Tricolon Abuse\n\nAlso known as the 'Rule of Three' writing principle, often extended to four or five. It is believed that a trio of descriptive entities is more satisfying, hence more memorable, due to the balance of brevity and rhythm.\n\nIn practice: this pattern creates repetition by assumption. Tricolons or hendiatric patterns quickly lose their satisfying effect in favour of formulaic patterns, placing unnecessary importance on the last item in the list. Varying descriptor patterns leads to more natural prose.\n\n**Example Patterns to Target:**\n\n- The best star pilot in the galaxy, a cunning warrior, and a good friend.\n- The scent of dated wine hangs thick in the cramped dressing room—spiced, fruity, and altogether too sweet.\n- She giggles: soft, silly, utterly charmed by the situation.\n\n### #5: Superficial Analyses\n\nTacking a present participle (\"-ing\") phrase onto the end of a sentence to inject shallow analysis that says nothing, without any real sense of scale.\n\nIn practice: this attaches significance, legacy, or broader meaning to mundane facts using broad phrasing and loosely related subjects.\n\n**Example Patterns to Target:**\n\n- ...leaving a void in his heart that could never truly be filled.\n- ...serving as a grim reminder of the world's inherent cruelty.\n- ...cementing her legacy as a harbinger of change.\n\n## Formatting Structure\n\nPatterns that contribute to repetitive and predictable formatting.\n\n### #1: Short Punchy Fragments\n\nExcessive use of very short sentences or sentence fragments as standalone paragraphs for manufactured emphasis. \n\nIn practice: prioritises \"writing for readability\" aimed at the lowest common denominator: one thought per sentence, no mental state-keeping required.\n\n**Example Patterns to Target:**\n\n- A beat. She nodded.\n- A pause. Not a moment too soon.\n- He published this. Openly. In a book. As a priest.\n\n### #2 Em-Dash Addiction\n\nCompulsive overuse of em dashes for dramatic pauses, parenthetical asides and pivot points. A good writer uses em dashes as a rare, important emphasis while using the other punctuation available in the English language more liberally.\n\nIn practice: overuse of em dashes leads to a very distinct, stilted writing style with an inability to maintain a versatile tone. Grammatical heterogeneity is key: only use em dashes as a rare surprise, or when used to break up dialogue.\n\n**Example Patterns to Target:**\n\n- Outside, the distant sounds of the bazaar continue—the chatter of merchants, the laughter of children, the clink of coins—utterly unaware of inner workings of their surroundings.\n- His body speaks instead—his elegant hands sliding up to cup her face with trembling tenderness.\n- A hiccup interrupts her thought, and she giggles—breathless and unguarded.\n\n## Composition\n\nGeneral, macro-level writing decisions that lead to deterministic conclusions.\n\n### #1: Thematic Conclusions\n\nSuddenly announcing a follow-up conclusion to the main narrative as a crux for narrative hooks.\n\nIn practice: competent writing doesn't need to tell you it's concluding or waiting for a response. The reader can feel it. This shallows writing agency by making unnecessary assumptions.\n\n**Example Patterns to Target:**\n\n- He waits, giving you space to choose, his shoulders loose and unburdened for the first time since entering this strange, peaceful realm.\n- She stands there, waiting, her posture relaxed but her presence commanding, inviting you to step further into the labyrinth of this conversation.\n- Her offer is tentative, weighted with the sincerity of someone who has spent years learning to give, but never learned how to receive without guilt.\n\n### #2 Verbose Copulatives\n\nReplacing simple \"is\" or \"are\" with pompous alternatives like \"serves as\", \"stands as\", \"marks\", or \"represents\". \n\nIn practice: replacing all basic copulatives leads to an imbalanced prose, with unnecessarily fancy constructions in places that don't require it. A balance should be struck: ask whether a sentence truly benefits from the use of a verbose copulative.\n\n**Example Patterns to Target:**\n\n- He stands as a beacon of hope for the rebellion.\n- The ancient sword serves as a testament to their forgotten lineage.\n- Her silence represents a total surrender.\n\n#3: Abstract Reification (or \"Misplaced Concreteness\")\n\nThe fallacy of treating abstract beliefs or hypothetical constructs as if they were a concrete real event or physical entity. In other words: it is the error of treating something that is not concrete, such as an idea, as a concrete thing.\n\nIn practice: the use of reification in logical reasoning or rhetoric is misleading, and leads to melodramatic, cartoonish prose. Instead of characters experiencing emotions or reacting to their environment, the abstract emotions are treated as the active subjects doing things to the characters.\n\n**Example Patterns to Target:**\n\n- Guilt gnawed at the edges of his conscience.\n- A heavy silence pressed its suffocating arms around the room.\n- Doubt crept into her mind, anchoring her feet to the floor.\n- The tension in the air threatened to choke them.\n\n## Tone\n\nWriting that takes away from accuracy in favour of unnecessary stylistic flourish.\n\n### #1 Hyperbolic Stakes Inflation\n\nAssigns importance to everything, even subjects that don't require such emphasis. Everything is the most important thing ever.\n\nIn practice: inflates the stakes of every argument to world-historical significance. A story about love becomes a meditation on the fate of civilization.\n\n**Example Patterns to Target:**\n\n- The fate of the entire realm hung precariously in the balance.\n- It is a decision that will alter the course of history forever.\n- This single moment dictates the survival of humanity.\n\n## Word Choice\n\nTired word choices that require alternatives.\n\n### #1 Magic Adverbs\n\nOveruse of words like \"quietly\", \"deeply\", \"fundamentally\", \"remarkably\", \"arguably\", and similar other adverbs to convey subtle importance or understated power.\n\nIn practice: these adverbs make mundane descriptions feel too significant, reducing the quality of these adverbs for their intended use case.\n\n**Example Patterns to Target:**\n\n- She quietly slipped into the room,\n- He fundamentally misunderstood her intentions,\n- He stared deeply into the abyss.\n\n### #2: Ornate Nouns\n\nOveruse of ornate or grandiose nouns where simpler words would be completely functional. \"Tapestry\" is used to describe anything interconnected. \"Landscape\" is used to describe any field or domain. Other offenders: \"kaleidoscope\", \"labyrinth\", etc.\n\nIn practice: lessens the impact of these words by attributing mystique to every descriptor.\n\n**Example Patterns to Target:**\n\n- The rich tapestry of human experience...\n- A landscape of dark corridors..\n- A kaleidoscope of vibrant colours..\n\n### #3 Somatic Clichés\n\nA narrow set of physical reactions that convey character emotions.\n\nIn practice: cheapens the impact of physical reactions by bringing too much attention to itself.\n\n**Example Patterns to Target:**\n\n- A shiver ran down her spine.\n- His breath caught in his throat.\n- Her heart hammered against her ribs.\n\n### #4 Poetic Metaphor Over-Reliance\n\nUsing poetic and vague language to describe interactions, arguments, combat, etc.\n\nIn practice: reduces the text fidelity by over-attributing importance to surrounding content than the main body. The text should maintain focus on what's actually important.\n\n**Example Patterns to Target:**\n\n- The tension in the air was palpable.\n- A symphony of destruction.\n- A dizzying cocktail of emotion.\n\n### #5: Crutch Vocabulary\n\nOveruse of specific verbs and adjectives that are heavily weighted in language model training data, such as \"delve,\" \"certainly,\" \"utilize,\" \"harness,\" \"nuanced,\" \"resonate\", etc.\n\nIn practice: reliance on these default words flattens the narrative voice. It makes the prose homogenous and artificial instead of utilizing context-specific vocabulary.\n\n**Example Patterns to Target:**\n\n- They decided to delve into the intricate mysteries of the artifact.\n- We must navigate the nuances of this complex situation.\n- Her leadership fostered a sense of unity that resonated with the team.",
     "phase": "post",
     "injection": {
       "position": 1,
@@ -623,8 +626,7 @@
     "name": "HTML Toggle",
     "description": "Use inline HTML for diegetic in-world objects (signs, letters, screens)",
     "icon": "",
-    "category": "content",
-    "subcategory": "prose-quality",
+    "category": "custom",
     "tags": [
       "html",
       "artifacts",
@@ -742,6 +744,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -749,8 +754,7 @@
     "name": "NPC Profile Cards",
     "description": "Generate brief profile cards when introducing new named NPCs",
     "icon": "",
-    "category": "tracker",
-    "subcategory": "characters",
+    "category": "custom",
     "tags": [
       "npc",
       "characters",
@@ -763,7 +767,7 @@
     "injection": {
       "position": 0,
       "depth": 4,
-      "role": 1,
+      "role": 0,
       "order": 100,
       "scan": false
     },
@@ -901,6 +905,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -909,7 +916,7 @@
     "description": "Track affection and trust for recurring NPCs with meaningful interactions",
     "icon": "",
     "category": "tracker",
-    "subcategory": "characters",
+    "subcategory": "progress",
     "tags": [
       "relationship",
       "npc",
@@ -943,6 +950,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -951,7 +961,7 @@
     "description": "Track how {{user}} is perceived by groups and factions",
     "icon": "",
     "category": "tracker",
-    "subcategory": "characters",
+    "subcategory": "progress",
     "tags": [
       "reputation",
       "rumors",
@@ -985,6 +995,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1110,6 +1123,9 @@
         "normal",
         "continue"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1118,7 +1134,7 @@
     "description": "Track secrets, lies, and information asymmetry between characters",
     "icon": "",
     "category": "tracker",
-    "subcategory": "characters",
+    "subcategory": "progress",
     "tags": [
       "secrets",
       "lies",
@@ -1152,6 +1168,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1160,7 +1179,7 @@
     "description": "Track physical, mental, and behavioral states when they change",
     "icon": "",
     "category": "tracker",
-    "subcategory": "characters",
+    "subcategory": "progress",
     "tags": [
       "status",
       "conditions",
@@ -1194,6 +1213,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1237,6 +1259,9 @@
         "normal",
         "continue"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1279,6 +1304,9 @@
       "generationTypes": [
         "normal"
       ]
+    },
+    "companion": {
+      "includeSystemPrompt": false
     }
   },
   {
@@ -1286,8 +1314,7 @@
     "name": "Write for User",
     "description": "Include {{user}} as a fully realized character -- write their actions, dialogue, and reactions",
     "icon": "",
-    "category": "content",
-    "subcategory": "pov",
+    "category": "custom",
     "tags": [
       "pov",
       "user"
@@ -1353,7 +1380,7 @@
         "enabled": true,
         "depth": 2
       },
-      "batch": true,
+      "batch": false,
       "maxTokens": 32000
     },
     "injection": {
@@ -1413,7 +1440,7 @@
         "enabled": false,
         "depth": 1
       },
-      "batch": true,
+      "batch": false,
       "maxTokens": 32000
     },
     "injection": {
@@ -1473,7 +1500,7 @@
         "enabled": false,
         "depth": 1
       },
-      "batch": true,
+      "batch": false,
       "maxTokens": 32000
     },
     "injection": {
@@ -2148,18 +2175,373 @@
   {
     "id": "tpl-pathfinder",
     "name": "Pathfinder",
-    "description": "Automatic agentic lorebook retrieval. Lets a model actively browse, search, and modify your lorebook using function tools. (Tool agent - requires API with tool calling support)",
+    "description": "Automatic agentic lorebook retrieval. Lets a model actively browse, search, and modify your lorebook using function tools.",
     "icon": "fa-route",
     "category": "tool",
     "tags": [
       "lorebook",
       "retrieval",
       "memory",
-      "agentic"
+      "agentic",
+      "pathfinder"
     ],
     "version": 1,
     "author": "SillyBunny",
     "prompt": "",
-    "phase": "both"
+    "phase": "both",
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 50,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": "",
+      "promptTransformEnabled": false,
+      "promptTransformShowNotifications": true,
+      "promptTransformMode": "rewrite",
+      "promptTransformMaxTokens": 8192
+    },
+    "regexScripts": [],
+    "connectionProfile": "",
+    "sourceTemplateId": "tpl-pathfinder",
+    "enabled": false,
+    "tools": [
+      {
+        "name": "Pathfinder_Search",
+        "displayName": "Pathfinder Search",
+        "description": "Navigate the lorebook waypoint map and retrieve relevant entries for the current scene. Call without a node_id to see the top-level waypoint map. Call with a node_id to drill into a specific waypoint and see its sub-waypoints or retrieve entries. Use this tool whenever you need context about characters, locations, world rules, or recent events.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "description": "ID of the waypoint/node to navigate into. Omit to see the top-level waypoint guide."
+            }
+          }
+        },
+        "actionKey": "pathfinder_search",
+        "formatMessageKey": "pathfinder_search_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Remember",
+        "displayName": "Pathfinder Remember",
+        "description": "Create a new lorebook entry to remember information for future reference. Use this when new facts, character developments, world details, or important information emerge that should be preserved beyond this conversation.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "title",
+            "content"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Title for the new entry (e.g., \"Sable - Personality\" or \"[Tracker] Mood\")"
+            },
+            "content": {
+              "type": "string",
+              "description": "Full content to remember"
+            },
+            "book": {
+              "type": "string",
+              "description": "Target lorebook name. Omit to use the default."
+            }
+          }
+        },
+        "actionKey": "pathfinder_remember",
+        "formatMessageKey": "pathfinder_remember_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Update",
+        "displayName": "Pathfinder Update",
+        "description": "Edit an existing lorebook entry when information changes. Use this when a character's status changes, relationships evolve, or facts need correction.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "uid"
+          ],
+          "properties": {
+            "uid": {
+              "type": "number",
+              "description": "UID of the entry to update (found via Search)"
+            },
+            "content": {
+              "type": "string",
+              "description": "New content for the entry. Omit to keep existing."
+            },
+            "title": {
+              "type": "string",
+              "description": "New title for the entry. Omit to keep existing."
+            },
+            "book": {
+              "type": "string",
+              "description": "Lorebook name. Omit for default."
+            }
+          }
+        },
+        "actionKey": "pathfinder_update",
+        "formatMessageKey": "pathfinder_update_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Forget",
+        "displayName": "Pathfinder Forget",
+        "description": "Disable or delete a lorebook entry that is no longer relevant. Use this when a character dies, a location is destroyed, or a fact is proven false.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "uid"
+          ],
+          "properties": {
+            "uid": {
+              "type": "number",
+              "description": "UID of the entry to forget"
+            },
+            "book": {
+              "type": "string",
+              "description": "Lorebook name. Omit for default."
+            },
+            "hard_delete": {
+              "type": "boolean",
+              "description": "Permanently delete instead of disabling. Default: false."
+            }
+          }
+        },
+        "actionKey": "pathfinder_forget",
+        "formatMessageKey": "pathfinder_forget_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Summarize",
+        "displayName": "Pathfinder Summarize",
+        "description": "Create a scene or event summary with significance level and optional narrative arc. Use this when important events happen: battles, confessions, discoveries, or turning points.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "title",
+            "content"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Short title for the event/scene"
+            },
+            "content": {
+              "type": "string",
+              "description": "Full summary of what happened"
+            },
+            "arc": {
+              "type": "string",
+              "description": "Optional narrative arc name to file this under"
+            },
+            "significance": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "description": "How important this event is. Default: medium."
+            },
+            "book": {
+              "type": "string",
+              "description": "Lorebook name. Omit for default."
+            }
+          }
+        },
+        "actionKey": "pathfinder_summarize",
+        "formatMessageKey": "pathfinder_summarize_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Reorganize",
+        "displayName": "Pathfinder Reorganize",
+        "description": "Move entries between waypoints or create new waypoints to reorganize the lorebook structure.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "move",
+                "create_waypoint"
+              ],
+              "description": "\"move\" to relocate an entry, \"create_waypoint\" to make a new waypoint"
+            },
+            "uid": {
+              "type": "number",
+              "description": "Entry UID to move (for \"move\" action)"
+            },
+            "target_node_id": {
+              "type": "string",
+              "description": "Target waypoint node ID (for \"move\" action)"
+            },
+            "name": {
+              "type": "string",
+              "description": "New waypoint name (for \"create_waypoint\" action)"
+            },
+            "parent_node_id": {
+              "type": "string",
+              "description": "Parent waypoint ID. Omit for top level."
+            },
+            "description": {
+              "type": "string",
+              "description": "Description for new waypoint."
+            },
+            "book": {
+              "type": "string",
+              "description": "Lorebook name. Omit for default."
+            }
+          }
+        },
+        "actionKey": "pathfinder_reorganize",
+        "formatMessageKey": "pathfinder_reorganize_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_MergeSplit",
+        "displayName": "Pathfinder Merge/Split",
+        "description": "Merge related entries together or split a long entry into two. Use merge when two entries cover the same topic. Use split when one entry covers too many topics.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "split"
+              ],
+              "description": "\"merge\" to combine entries, \"split\" to divide one"
+            },
+            "uid1": {
+              "type": "number",
+              "description": "First entry UID (for merge)"
+            },
+            "uid2": {
+              "type": "number",
+              "description": "Second entry UID (for merge)"
+            },
+            "merged_title": {
+              "type": "string",
+              "description": "Title for the merged entry (optional)"
+            },
+            "uid": {
+              "type": "number",
+              "description": "Entry UID to split (for split)"
+            },
+            "title1": {
+              "type": "string",
+              "description": "Title for first part (for split)"
+            },
+            "content1": {
+              "type": "string",
+              "description": "Content for first part (for split)"
+            },
+            "title2": {
+              "type": "string",
+              "description": "Title for second part (for split)"
+            },
+            "content2": {
+              "type": "string",
+              "description": "Content for second part (for split)"
+            },
+            "book": {
+              "type": "string",
+              "description": "Lorebook name. Omit for default."
+            }
+          }
+        },
+        "actionKey": "pathfinder_merge_split",
+        "formatMessageKey": "pathfinder_merge_split_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      },
+      {
+        "name": "Pathfinder_Notebook",
+        "displayName": "Pathfinder Notebook",
+        "description": "Write to or read from a private AI scratchpad for plans, follow-ups, and narrative threads. This is NOT a permanent lorebook entry — use it for temporary notes that persist across turns but don't need to be in the lorebook.",
+        "parameters": {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "delete"
+              ],
+              "description": "\"read\" all entries, \"write\" a new entry, \"delete\" an entry"
+            },
+            "key": {
+              "type": "string",
+              "description": "Note key/title (for write and delete)"
+            },
+            "content": {
+              "type": "string",
+              "description": "Note content (for write)"
+            }
+          }
+        },
+        "actionKey": "pathfinder_notebook",
+        "formatMessageKey": "pathfinder_notebook_fmt",
+        "shouldRegister": true,
+        "stealth": false,
+        "enabled": true
+      }
+    ],
+    "settings": {
+      "searchMode": "traversal",
+      "recurseLimit": 5,
+      "mandatoryTools": false,
+      "dedupDetection": false,
+      "dedupThreshold": 0.85,
+      "autoSummary": false,
+      "autoSummaryInterval": 20,
+      "multiBookMode": "unified",
+      "ephemeralResults": true,
+      "sidecarEnabled": false,
+      "enabledLorebooks": []
+    },
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
   }
 ]

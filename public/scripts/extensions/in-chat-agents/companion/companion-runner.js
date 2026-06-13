@@ -727,35 +727,77 @@ function getBatchKey(agent, messageIndex) {
         includeCharacterCard: companion.includeCharacterCard,
         includePersona: companion.includePersona,
         includeWorldInfo: companion.includeWorldInfo,
+        includeAuthorsNote: companion.includeAuthorsNote,
+        includeSystemPrompt: companion.includeSystemPrompt,
         includeHistory: companion.includeHistory,
         historyDepth: companion.historyDepth,
         messageIndex,
     });
 }
 
+function getCompanionBatchAgentIdSet(agent) {
+    return new Set(
+        (Array.isArray(getCompanionConfig(agent).batchAgentIds) ? getCompanionConfig(agent).batchAgentIds : [])
+            .map(id => String(id ?? '').trim())
+            .filter(Boolean),
+    );
+}
+
 function partitionCompanionRuns(agents, messageIndex) {
     const singles = [];
-    const batchBuckets = new Map();
+    const agentById = new Map(agents.map(agent => [agent.id, agent]));
+    const batchableAgents = agents.filter(agent => getCompanionConfig(agent).batch);
+    const adjacency = new Map(batchableAgents.map(agent => [agent.id, new Set()]));
 
-    for (const agent of agents) {
+    for (const agent of batchableAgents) {
         const companion = getCompanionConfig(agent);
-        if (!companion.batch) {
+        const selectedIds = getCompanionBatchAgentIdSet(agent);
+        if (selectedIds.size === 0) continue;
+
+        const key = getBatchKey(agent, messageIndex);
+        for (const selectedId of selectedIds) {
+            const selectedAgent = agentById.get(selectedId);
+            if (!selectedAgent) continue;
+            if (getBatchKey(selectedAgent, messageIndex) !== key) continue;
+
+            if (!adjacency.has(selectedAgent.id)) {
+                adjacency.set(selectedAgent.id, new Set());
+            }
+            adjacency.get(agent.id)?.add(selectedAgent.id);
+            adjacency.get(selectedAgent.id)?.add(agent.id);
+        }
+    }
+
+    const batches = [];
+    const visitedIds = new Set();
+    for (const agent of agents) {
+        if (!adjacency.has(agent.id)) {
             singles.push({ type: 'single', agent });
             continue;
         }
 
-        const key = getBatchKey(agent, messageIndex);
-        const bucket = batchBuckets.get(key) ?? [];
-        bucket.push(agent);
-        batchBuckets.set(key, bucket);
-    }
+        if (visitedIds.has(agent.id)) continue;
+        const stack = [agent.id];
+        const componentIds = [];
+        visitedIds.add(agent.id);
 
-    const batches = [];
-    for (const bucket of batchBuckets.values()) {
-        if (bucket.length < 2) {
-            singles.push({ type: 'single', agent: bucket[0] });
+        while (stack.length > 0) {
+            const currentId = stack.pop();
+            componentIds.push(currentId);
+
+            for (const nextId of adjacency.get(currentId) ?? []) {
+                if (visitedIds.has(nextId)) continue;
+
+                visitedIds.add(nextId);
+                stack.push(nextId);
+            }
+        }
+
+        const componentAgents = componentIds.map(id => agentById.get(id)).filter(Boolean);
+        if (componentAgents.length > 1) {
+            batches.push({ type: 'batch', agents: componentAgents });
         } else {
-            batches.push({ type: 'batch', agents: bucket });
+            singles.push({ type: 'single', agent });
         }
     }
 

@@ -27,6 +27,18 @@ let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
 const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
+const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const CHATROOM_STYLE_VALUES = new Set([
+    'mixed',
+    'in-world',
+    'discord/twitch',
+    'twitter/x',
+    'reddit',
+    'ao3/wattpad',
+    'newsroom',
+    'thread-board/4chan',
+    'custom',
+]);
 const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
@@ -39,6 +51,10 @@ function getAgentTemplateId(agent = {}) {
 
 function isMessageInboxAgent(agent = null) {
     return getAgentTemplateId(agent) === MESSAGE_INBOX_TEMPLATE_ID;
+}
+
+function isChatroomAgent(agent = null) {
+    return getAgentTemplateId(agent) === CHATROOM_TEMPLATE_ID;
 }
 
 function isChatOnlyAgent(agent = null) {
@@ -65,6 +81,102 @@ function appendChatOnlyUserMessage(transcript = '', userInput = '') {
 
 function normalizePlotCompassObjective(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
+}
+
+function isChatroomTone(value = '') {
+    return /^[0-9]{1,3}$/.test(String(value ?? '').trim());
+}
+
+function splitChatroomSpeakerMeta(value = '', style = '') {
+    let text = String(value ?? '').trim();
+    const normalizedStyle = String(style ?? '').trim().toLowerCase();
+    if (normalizedStyle && text.toLowerCase().startsWith(`${normalizedStyle} `)) {
+        text = text.slice(style.length).trim();
+    }
+
+    const slashIndex = text.indexOf('/');
+    if (slashIndex <= 0) return null;
+
+    const speaker = text.slice(0, slashIndex).trim();
+    const meta = text.slice(slashIndex + 1).trim();
+    if (!speaker || !meta) return null;
+
+    return { speaker, meta };
+}
+
+function splitTrailingChatroomSpeakerMeta(message = '') {
+    const text = String(message ?? '').trim();
+    const match = text.match(/(?:^|\s)([A-Za-z][A-Za-z0-9_.-]{0,79}\/[^|\s]{1,80})\s*$/);
+    if (!match) {
+        return { message: text, speakerMeta: '' };
+    }
+
+    return {
+        message: text.slice(0, match.index).trim(),
+        speakerMeta: match[1],
+    };
+}
+
+function normalizeChatroomField(value = '') {
+    return String(value ?? '').replaceAll('|', '/').replaceAll(/\r?\n/g, ' ').trim();
+}
+
+function normalizeMarkerlessChatroomContent(content = '') {
+    const text = String(content ?? '').replaceAll(/\r\n?/g, '\n').trim();
+    if (!text || /^(?:CHATROOM_STYLE|chatroom-style|CHATROOM|chatroom)\|/m.test(text)) {
+        return content;
+    }
+
+    const styleMatch = text.match(/^\s*([^|\n]+)\|([\s\S]*)$/);
+    const style = styleMatch?.[1]?.trim().toLowerCase() || '';
+    if (!CHATROOM_STYLE_VALUES.has(style)) {
+        return content;
+    }
+
+    const tokens = styleMatch[2].split('|').map(token => token.trim());
+    const rows = [];
+    let currentSpeakerMeta = splitChatroomSpeakerMeta(tokens[0], style);
+    let index = currentSpeakerMeta && isChatroomTone(tokens[1]) ? 1 : 0;
+
+    while (index < tokens.length) {
+        const explicitSpeakerMeta = splitChatroomSpeakerMeta(tokens[index], style);
+        if (explicitSpeakerMeta && isChatroomTone(tokens[index + 1])) {
+            currentSpeakerMeta = explicitSpeakerMeta;
+            index += 1;
+            continue;
+        }
+
+        if (!isChatroomTone(tokens[index])) {
+            index += 1;
+            continue;
+        }
+
+        const tone = tokens[index];
+        let message = tokens[index + 1] ?? '';
+        index += 2;
+
+        if (!currentSpeakerMeta || !String(message).trim()) {
+            continue;
+        }
+
+        let nextSpeakerMeta = null;
+        if (isChatroomTone(tokens[index])) {
+            const splitMessage = splitTrailingChatroomSpeakerMeta(message);
+            if (splitMessage.speakerMeta && splitMessage.message) {
+                message = splitMessage.message;
+                nextSpeakerMeta = splitChatroomSpeakerMeta(splitMessage.speakerMeta, style);
+            }
+        }
+
+        rows.push(`chatroom|${normalizeChatroomField(currentSpeakerMeta.speaker)}|${normalizeChatroomField(currentSpeakerMeta.meta)}|${tone}|${normalizeChatroomField(message)}`);
+        currentSpeakerMeta = nextSpeakerMeta ?? currentSpeakerMeta;
+    }
+
+    if (!rows.length) {
+        return content;
+    }
+
+    return ['chatroom-style|' + style, ...rows, 'chatroom-end'].join('\n');
 }
 
 function autoGrowCompanionTextarea(textarea) {
@@ -128,7 +240,8 @@ function applyAgentRegexToCompanionContent(agentId, content, message) {
 
     // Same semantics as the chat message display path: a converted tracker's beautifier
     // regex keeps working on its note card. Sanitization happens after, in the format step.
-    return applyRegexScriptList(content, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+    const normalizedContent = isChatroomAgent(agent) ? normalizeMarkerlessChatroomContent(content) : content;
+    return applyRegexScriptList(normalizedContent, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
         characterOverride: String(message?.name ?? '').trim(),
         isMarkdown: true,
         substituteParamsFn: substituteParams,

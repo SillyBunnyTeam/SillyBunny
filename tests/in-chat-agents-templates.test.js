@@ -161,6 +161,16 @@ describe('in-chat agent bundled templates', () => {
         }
     });
 
+    test('keeps tracker templates from including the system prompt by default', () => {
+        const catalog = readTemplate('index.json');
+
+        for (const template of catalog.filter(template => template.category === 'tracker')) {
+            expect(template.companion).toEqual(expect.objectContaining({
+                includeSystemPrompt: false,
+            }));
+        }
+    });
+
     test('keeps Prose Polisher enabled for impersonation prompt rewrites in the catalog', () => {
         const catalog = readTemplate('index.json');
         const template = findCatalogTemplate(catalog, 'tpl-prose-polisher');
@@ -189,7 +199,7 @@ describe('in-chat agent bundled templates', () => {
             displayMode: 'panel',
             format: 'markdown',
             feedback: { enabled: true, depth: 2 },
-            batch: true,
+            batch: false,
             maxTokens: 32000,
         }));
         expect(relationship.companion).toEqual(expect.objectContaining({
@@ -219,7 +229,7 @@ describe('in-chat agent bundled templates', () => {
         }
         expect(commentary.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
-            batch: true,
+            batch: false,
         }));
         expect(commentary.prompt).toContain('[Selected Director Commentary Voice]');
         expect(commentary.prompt).toContain('[Director Commentary Voice]');

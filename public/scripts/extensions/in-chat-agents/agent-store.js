@@ -40,6 +40,7 @@ import {
  * @property {number} historyDepth
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
+ * @property {string[]} batchAgentIds
  * @property {number} maxTokens
  */
 
@@ -860,6 +861,26 @@ function clampNumber(value, fallback, min, max) {
     return Math.max(min, Math.min(max, Number(value)));
 }
 
+function normalizeStringIdList(value = [], limit = 50) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,]/);
+    const seenIds = new Set();
+    const ids = [];
+
+    for (const rawValue of rawValues) {
+        const id = String(rawValue ?? '').trim().slice(0, 128);
+        const key = id.toLowerCase();
+        if (!id || seenIds.has(key)) continue;
+
+        seenIds.add(key);
+        ids.push(id);
+        if (ids.length >= limit) break;
+    }
+
+    return ids;
+}
+
 /**
  * Creates the default Companion execution config.
  * @returns {AgentCompanionConfig}
@@ -886,6 +907,7 @@ export function createDefaultCompanionConfig() {
             depth: 1,
         },
         batch: false,
+        batchAgentIds: [],
         maxTokens: 32000,
     };
 }
@@ -929,6 +951,7 @@ export function normalizeCompanionConfig(raw = {}) {
             depth: clampNumber(rawFeedback.depth, defaults.feedback.depth, 1, 10),
         },
         batch: Boolean(rawConfig.batch),
+        batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
         maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 32000),
     };
 }

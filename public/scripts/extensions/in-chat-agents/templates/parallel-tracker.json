@@ -4,6 +4,7 @@
     "description": "Track what absent characters and the wider world are doing off-screen",
     "icon": "",
     "category": "tracker",
+    "subcategory": "world",
     "tags": [
         "offscreen",
         "npcs",
@@ -37,5 +38,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }
