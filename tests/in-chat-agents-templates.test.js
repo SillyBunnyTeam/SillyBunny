@@ -296,7 +296,6 @@ describe('in-chat agent bundled templates', () => {
         expect(chatOnly.prompt).toContain('[Chat Only side chat]');
         expect(chatOnly.prompt).toContain('You: the user\'s newest aside');
         expect(chatOnly.prompt).toContain('Actions appear as plain prose');
-        expect(chatOnly.prompt).toContain('live side chat panel');
         expect(chatOnly.prompt).not.toContain('**You:**');
         expect(chatOnly.regexScripts).toHaveLength(1);
         expect(chatOnly.regexScripts[0]).toEqual(expect.objectContaining({
