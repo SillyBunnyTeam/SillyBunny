@@ -1044,6 +1044,12 @@ describe('in-chat agent post-processing runner', () => {
 
         const selectedMessages = await companionRunner.buildCompanionPromptMessages(chatroomCompanion, 1);
         expect(selectedMessages[0].content).toContain('[Selected Chatroom Style]\nthread-board/4chan');
+        expect(selectedMessages[0].content).toContain('[Chatroom Output Contract]');
+        expect(selectedMessages[0].content).toContain('chatroom|Username|short label|18|Post/comment text');
+        expect(selectedMessages[0].content).toContain('Each post line has exactly five pipe-separated fields.');
+        expect(selectedMessages[0].content).toContain('Use a real short audience label in field 3');
+        expect(selectedMessages[0].content).toContain('Keep labels, IDs, scores, dashes, bullets, markdown, and extra pipe fields out of the post/comment text.');
+        expect(selectedMessages[0].content).toContain('The panel renders each post as two stacked parts: Username on one line, then Post/comment below it.');
 
         const defaultMessages = await companionRunner.buildCompanionPromptMessages(defaultChatroomCompanion, 1);
         expect(defaultMessages[0].content).toContain('[Selected Chatroom Style]\nmixed');

@@ -262,8 +262,9 @@ describe('in-chat agent bundled templates', () => {
         }));
         expect(chatroom.regexScripts).toHaveLength(6);
         expect(chatroom.prompt).toContain('chatroom-style|active-style');
-        expect(chatroom.prompt).toContain('chatroom|speaker|meta|tone|message');
-        expect(chatroom.prompt).toContain('message field on one line');
+        expect(chatroom.prompt).toContain('chatroom|Username|label|tone|Post/comment');
+        expect(chatroom.prompt).toContain('post/comment field on one line');
+        expect(chatroom.prompt).toContain('Keep the post/comment field clean');
         expect(chatroom.prompt).toContain('[Chatroom Extra Character Cards]');
         expect(chatroom.prompt).toContain('[Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('- custom: follow [Custom Chatroom Style]');
@@ -364,7 +365,8 @@ describe('in-chat agent bundled templates', () => {
         expect(html).toContain('>be the Martyred Maiden');
         expect(html).toContain('>spend your free time sharpening a sword and eating sweets');
         expect(html).toContain('font-family:ui-monospace');
-        expect(html).toContain('grid-template-columns:minmax(86px,auto) 1fr');
+        expect(html).toContain('display:flex;flex-direction:column');
+        expect(html).not.toContain('grid-template-columns:minmax(86px,auto) 1fr');
         expect(html).not.toMatch(/^>spend your free time/m);
     });
 

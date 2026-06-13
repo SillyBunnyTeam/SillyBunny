@@ -224,6 +224,37 @@ describe('companion card ui', () => {
         expect(html).not.toContain('mixed|mixed @Rover_Stan/user/18/');
     });
 
+    test('cleans shifted Chatroom labels out of visible posts', async () => {
+        const chatroomTemplate = readTemplate('chatroom-companion.json');
+        agents.push({
+            id: 'chatroom',
+            name: 'Chatroom',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            execution: 'companion',
+            regexScripts: chatroomTemplate.regexScripts,
+        });
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('chatroom', {
+            content: [
+                'chatroom-style|reddit',
+                "chatroom|Laurus_Fan_99|meta|18|top comment|181|He's so pure!",
+                'chatroom|Gale_Watcher|meta|42|reply|42|She looks exhausted.',
+                'chatroom-end',
+            ].join('\n'),
+            format: 'html',
+        }, { name: 'Assistant' });
+
+        expect(html).toContain('Laurus_Fan_99');
+        expect(html).toContain('Gale_Watcher');
+        expect(html).toContain('top comment');
+        expect(html).toContain('reply');
+        expect(html).toContain("He's so pure!");
+        expect(html).toContain('She looks exhausted.');
+        expect(html).not.toContain("top comment|181|He's so pure!");
+        expect(html).not.toContain('reply|42|She looks exhausted.');
+    });
+
     test('renders content unchanged when the agent no longer exists', async () => {
         const { formatCompanionContent } = await importCompanionUi();
 

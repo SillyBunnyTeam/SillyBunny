@@ -321,6 +321,21 @@ function getDirectorRandomisedVoicePrompt() {
     return `Pick one built-in Narration Voice preset for this run and keep the commentary in that single voice.\n\n${presetBlocks}`;
 }
 
+function getChatroomOutputContractPrompt(style) {
+    return [
+        '[Chatroom Output Contract]',
+        'Return plain text lines only, using exactly this structure:',
+        `chatroom-style|${style}`,
+        'chatroom|Username|short label|18|Post/comment text',
+        'chatroom|Another_User|short label|42|Another post/comment',
+        'chatroom-end',
+        'Each post line has exactly five pipe-separated fields. The fifth field is only the visible post/comment text.',
+        'Use the username/handle in field 2. Use a real short audience label in field 3, or leave field 3 blank instead of the literal word meta.',
+        'Keep labels, IDs, scores, dashes, bullets, markdown, and extra pipe fields out of the post/comment text.',
+        'The panel renders each post as two stacked parts: Username on one line, then Post/comment below it.',
+    ].join('\n');
+}
+
 function getDirectorCommentaryVoicePrompt(voice, settings = {}) {
     const normalizedVoice = normalizeDirectorCommentaryVoice(voice);
 
@@ -347,7 +362,7 @@ function getTemplateSettingsPromptBlock(agent = {}) {
 
     if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
         const style = normalizeChatroomStyle(agent.settings?.chatroomStyle);
-        const blocks = [`[Selected Chatroom Style]\n${style}`];
+        const blocks = [`[Selected Chatroom Style]\n${style}`, getChatroomOutputContractPrompt(style)];
 
         if (style === CHATROOM_CUSTOM_STYLE_VALUE) {
             const customStyle = resolveChatroomCustomStyle(agent.settings);

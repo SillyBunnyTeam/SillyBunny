@@ -89,11 +89,83 @@ function normalizeChatroomField(value = '') {
 
 // Hues the template instructs the model to use.
 const CHATROOM_VALID_TONES = new Set(['18', '42', '92', '150', '205', '265', '315']);
+const CHATROOM_TONE_RE = /^[0-9]{1,3}$/;
+const CHATROOM_MESSAGE_PREFIX_RE = /^([^|\n]{1,48})\|([0-9]{1,3})\|([\s\S]+)$/;
 
-function normalizeMarkerlessChatroomContent(content = '') {
+function normalizeChatroomMessageParts(meta = '', tone = '', message = '') {
+    let nextMeta = normalizeChatroomField(meta);
+    let nextTone = String(tone ?? '').trim();
+    let nextMessage = String(message ?? '').trim();
+    const shiftedMessage = nextMessage.match(CHATROOM_MESSAGE_PREFIX_RE);
+
+    if (shiftedMessage) {
+        const shiftedMeta = normalizeChatroomField(shiftedMessage[1]);
+        const shiftedTone = shiftedMessage[2].trim();
+
+        if (!nextMeta || nextMeta.toLowerCase() === 'meta' || /^[+-]?\d+$/.test(nextMeta)) {
+            nextMeta = shiftedMeta;
+        }
+        if (!CHATROOM_TONE_RE.test(nextTone)) {
+            nextTone = shiftedTone;
+        }
+        nextMessage = shiftedMessage[3].trim();
+    }
+
+    return { meta: nextMeta, tone: nextTone, message: nextMessage };
+}
+
+function normalizeChatroomGeneratedLine(line = '') {
+    const trimmed = String(line ?? '').trim();
+
+    if (/^(?:CHATROOM_STYLE|chatroom-style)\|/i.test(trimmed)) {
+        const [, style = 'mixed'] = trimmed.split('|');
+        return `chatroom-style|${normalizeChatroomField(style) || 'mixed'}`;
+    }
+
+    if (/^(?:CHATROOM_END|chatroom-end)$/i.test(trimmed)) {
+        return 'chatroom-end';
+    }
+
+    if (!/^(?:CHATROOM|chatroom)\|/i.test(trimmed)) {
+        return line;
+    }
+
+    const parts = trimmed.split('|');
+    if (parts.length < 5) {
+        return line;
+    }
+
+    const speaker = parts[1];
+    let meta = parts[2];
+    let tone = parts[3];
+    let messageParts = parts.slice(4);
+
+    if (!CHATROOM_TONE_RE.test(String(tone ?? '').trim()) && CHATROOM_TONE_RE.test(String(parts[4] ?? '').trim())) {
+        meta = parts[3];
+        tone = parts[4];
+        messageParts = parts.slice(5);
+    }
+
+    const normalized = normalizeChatroomMessageParts(meta, tone, messageParts.join('|'));
+    const cleanSpeaker = normalizeChatroomField(speaker);
+    const cleanTone = CHATROOM_TONE_RE.test(normalized.tone) ? normalized.tone : '18';
+    const cleanMessage = normalizeChatroomField(normalized.message);
+
+    if (!cleanSpeaker || !cleanMessage) {
+        return line;
+    }
+
+    return `chatroom|${cleanSpeaker}|${normalizeChatroomField(normalized.meta)}|${cleanTone}|${cleanMessage}`;
+}
+
+function normalizeChatroomContent(content = '') {
     const text = String(content ?? '').replaceAll(/\r\n?/g, '\n').trim();
-    if (!text || /^(?:CHATROOM_STYLE|chatroom-style|CHATROOM|chatroom)\|/m.test(text)) {
+    if (!text) {
         return content;
+    }
+
+    if (/^(?:CHATROOM_STYLE|chatroom-style|CHATROOM|chatroom)\|/m.test(text)) {
+        return text.split('\n').map(normalizeChatroomGeneratedLine).join('\n');
     }
 
     // Expect first line: `style|...` (may have the style value duplicated after the pipe)
@@ -201,7 +273,7 @@ function applyAgentRegexToCompanionContent(agentId, content, message) {
 
     // Same semantics as the chat message display path: a converted tracker's beautifier
     // regex keeps working on its note card. Sanitization happens after, in the format step.
-    const normalizedContent = isChatroomAgent(agent) ? normalizeMarkerlessChatroomContent(content) : content;
+    const normalizedContent = isChatroomAgent(agent) ? normalizeChatroomContent(content) : content;
     return applyRegexScriptList(normalizedContent, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
         characterOverride: String(message?.name ?? '').trim(),
         isMarkdown: true,
