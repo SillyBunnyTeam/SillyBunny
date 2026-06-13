@@ -106,6 +106,19 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(statusSource).not.toContain('modelValue ? `${apiValue} - ${modelValue}` : apiValue');
     });
 
+    test('routes connection strip open state through the lifecycle seam', () => {
+        const stripSource = getFunctionSource('setConnectionStripOpenState');
+
+        expect(stripSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveStripOpenState({');
+        expect(stripSource).toContain('shouldOpen');
+        expect(stripSource).toContain('hasDesktopStrip: desktopRefs?.connectionStrip instanceof HTMLElement');
+        expect(stripSource).toContain('stripState.shouldApply');
+        expect(stripSource).toContain('stripState.shouldApplySurfaceExclusivity');
+        expect(stripSource).toContain('stripState.nextState');
+        expect(stripSource).not.toContain('const nextState = Boolean(shouldOpen)');
+        expect(stripSource).not.toContain('if (nextState)');
+    });
+
     test('routes connection profile source binding through the lifecycle seam', () => {
         const bindSource = getFunctionSource('bindConnectionProfileSourceElement');
 

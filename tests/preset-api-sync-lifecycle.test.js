@@ -10,6 +10,7 @@ import {
     resolveConnectionProfileSelectionSync,
     resolveConnectionProfileSourceBinding,
     resolveConnectionProfileStatusText,
+    resolveConnectionStripOpenState,
     resolvePresetApiConnectButtonSelector,
     resolvePresetMainApiValue,
 } from '../public/scripts/preset-api-sync-lifecycle/index.js';
@@ -223,6 +224,35 @@ describe('preset/API sync lifecycle helper', () => {
         })).toBe('Claude');
     });
 
+    test('resolves connection strip open state plans', () => {
+        expect(resolveConnectionStripOpenState({
+            shouldOpen: true,
+            hasDesktopStrip: true,
+        })).toEqual({
+            shouldApply: true,
+            nextState: true,
+            shouldApplySurfaceExclusivity: true,
+        });
+
+        expect(resolveConnectionStripOpenState({
+            shouldOpen: false,
+            hasDesktopStrip: true,
+        })).toEqual({
+            shouldApply: true,
+            nextState: false,
+            shouldApplySurfaceExclusivity: false,
+        });
+
+        expect(resolveConnectionStripOpenState({
+            shouldOpen: true,
+            hasDesktopStrip: false,
+        })).toEqual({
+            shouldApply: false,
+            nextState: true,
+            shouldApplySurfaceExclusivity: false,
+        });
+    });
+
     test('creates a stable lifecycle seam for future runtime wiring', () => {
         const lifecycle = createPresetApiSyncLifecycle();
 
@@ -236,5 +266,6 @@ describe('preset/API sync lifecycle helper', () => {
         expect(lifecycle.connectionProfiles.resolveMirrorState).toBe(resolveConnectionProfileMirrorState);
         expect(lifecycle.connectionProfiles.resolveMirrorUpdate).toBe(resolveConnectionProfileMirrorUpdate);
         expect(lifecycle.connectionProfiles.resolveStatusText).toBe(resolveConnectionProfileStatusText);
+        expect(lifecycle.connectionProfiles.resolveStripOpenState).toBe(resolveConnectionStripOpenState);
     });
 });
