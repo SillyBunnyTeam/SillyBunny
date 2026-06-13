@@ -297,7 +297,7 @@ describe('in-chat agent post-processing runner', () => {
                     depth: Number(agent?.companion?.feedback?.depth) || 1,
                 },
                 batch: Boolean(agent?.companion?.batch),
-                maxTokens: Number(agent?.companion?.maxTokens) || 2048,
+                maxTokens: Number(agent?.companion?.maxTokens) || 32000,
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
             getEnabledAgents: jest.fn(() => [...enabledAgents]),
@@ -417,6 +417,8 @@ describe('in-chat agent post-processing runner', () => {
             name: overrides.name ?? 'Companion',
             category: overrides.category ?? 'companion',
             execution: 'companion',
+            sourceTemplateId: overrides.sourceTemplateId ?? '',
+            settings: { ...(overrides.settings ?? {}) },
             phase: overrides.phase ?? 'post',
             prompt: overrides.prompt ?? 'Write a companion note.',
             injection: {
@@ -954,6 +956,55 @@ describe('in-chat agent post-processing runner', () => {
         expect(noteMessages[0].content).toContain('Return only markdown');
         expect(noteMessages[1].content).toContain('[Task]');
         expect(noteMessages[1].content).toContain('do not quote the prompt, explain the task, or continue the conversation');
+    });
+
+    test('injects the selected Chatroom style into companion prompts', async () => {
+        const chatroomCompanion = createCompanionAgent({
+            id: 'chatroom-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: { chatroomStyle: 'thread-board/4chan' },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
+        const defaultChatroomCompanion = createCompanionAgent({
+            id: 'chatroom-default-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: { chatroomStyle: 'unsupported-style' },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const selectedMessages = await companionRunner.buildCompanionPromptMessages(chatroomCompanion, 1);
+        expect(selectedMessages[0].content).toContain('[Selected Chatroom Style]\nthread-board/4chan');
+
+        const defaultMessages = await companionRunner.buildCompanionPromptMessages(defaultChatroomCompanion, 1);
+        expect(defaultMessages[0].content).toContain('[Selected Chatroom Style]\nmixed');
+    });
+
+    test('injects the Plot Compass objective into companion prompts', async () => {
+        const plotCompass = createCompanionAgent({
+            id: 'plot-compass-companion',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            settings: { plotCompassObjective: 'Reach the tower' },
+            companion: { rawPrompt: true },
+            prompt: 'Plan from the objective.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(plotCompass, 1);
+
+        expect(messages[0].content).toContain('[Plot Compass Objective]\nReach the tower');
     });
 
     test('includes the system prompt and authors note sections when toggled on', async () => {

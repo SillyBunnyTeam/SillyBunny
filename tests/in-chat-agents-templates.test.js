@@ -96,7 +96,7 @@ describe('in-chat agent bundled templates', () => {
             rawPrompt: true,
             inlinePhase: 'pre',
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 4096,
+            maxTokens: 32000,
         }));
         expect(template.conditions.generationTypes).toEqual(['normal', 'continue', 'impersonate']);
     });
@@ -130,7 +130,7 @@ describe('in-chat agent bundled templates', () => {
             format: 'markdown',
             feedback: { enabled: true, depth: 2 },
             batch: true,
-            maxTokens: 2048,
+            maxTokens: 32000,
         }));
         expect(relationship.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
@@ -170,7 +170,7 @@ describe('in-chat agent bundled templates', () => {
             contextMessages: 30,
             includeHistory: true,
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 4096,
+            maxTokens: 32000,
         }));
         expect(chatroom.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
@@ -180,10 +180,13 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 4096,
+            maxTokens: 32000,
         }));
+        expect(chatroom.regexScripts).toHaveLength(3);
+        expect(chatroom.prompt).toContain('CHATROOM_STYLE|active-style');
         expect(chatroom.prompt).toContain('thread-board/4chan');
-        expect(chatroom.prompt).toContain('No NSFW chat styles');
+        expect(chatroom.prompt).not.toContain('No NSFW chat styles');
+        expect(chatroom.prompt).not.toContain('targeted slurs');
 
         const plotCompass = findCatalogTemplate(catalog, 'tpl-plot-compass-companion');
         expect(plotCompass).toEqual(expect.objectContaining({
@@ -199,8 +202,10 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: true, depth: 1 },
+            maxTokens: 32000,
         }));
-        expect(plotCompass.prompt).toContain('OBJECTIVE');
+        expect(plotCompass.prompt).toContain('[Plot Compass Objective]');
+        expect(plotCompass.prompt).not.toContain('first line of [Your previous notes]');
 
         const { isCompanionAgent, normalizeAgent } = await importAgentStore();
         const saved = normalizeAgent({
@@ -212,7 +217,7 @@ describe('in-chat agent bundled templates', () => {
         expect(saved.category).toBe('companion');
         expect(saved.execution).toBe('companion');
         expect(isCompanionAgent(saved)).toBe(true);
-        expect(saved.companion.maxTokens).toBe(2048);
+        expect(saved.companion.maxTokens).toBe(32000);
     });
 
     test('uses only known modal subcategories in the catalog', async () => {

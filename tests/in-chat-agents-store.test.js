@@ -352,7 +352,7 @@ describe('in-chat agent scoped enabled state', () => {
                 depth: 1,
             },
             batch: false,
-            maxTokens: 2048,
+            maxTokens: 32000,
         });
         expect(store.isCompanionAgent(agent)).toBe(false);
     });
@@ -391,7 +391,7 @@ describe('in-chat agent scoped enabled state', () => {
                 depth: 10,
             },
             batch: true,
-            maxTokens: 16000,
+            maxTokens: 32000,
         }));
 
         expect(store.normalizeCompanionConfig({

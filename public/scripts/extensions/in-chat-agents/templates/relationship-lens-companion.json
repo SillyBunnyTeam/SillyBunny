@@ -29,7 +29,7 @@
             "depth": 1
         },
         "batch": true,
-        "maxTokens": 2048
+        "maxTokens": 32000
     },
     "injection": {
         "position": 0,

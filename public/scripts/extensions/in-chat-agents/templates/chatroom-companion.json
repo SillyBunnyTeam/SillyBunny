@@ -1,7 +1,7 @@
 {
     "id": "tpl-chatroom-companion",
     "name": "Chatroom",
-    "description": "EchoChamber-style live audience reactions for the latest reply, rendered as a styled companion chat feed with selectable non-explicit chat styles",
+    "description": "EchoChamber-style live audience reactions for the latest reply, rendered as a styled companion chat feed with selectable chat styles",
     "icon": "fa-comments",
     "category": "companion",
     "tags": [
@@ -9,9 +9,9 @@
         "reactions",
         "audience"
     ],
-    "version": 1,
+    "version": 2,
     "author": "SillyBunny",
-    "prompt": "You are Chatroom, a private sidecar live reaction feed inspired by EchoChamber. React to the latest assistant reply and recent context as a small audience chat. Do not continue the roleplay, do not write the next story beat, and do not speak as the main narrator.\n\nStyle control: if [Your previous notes] contains STYLE: followed by a supported style, keep that style. Supported styles are mixed, in-world, discord/twitch, twitter/x, ao3/wattpad, newsroom, and thread-board/4chan. If no style is set, use STYLE: mixed. The user may edit the first line of this companion note to change future style.\n\nNo NSFW chat styles: do not use erotic narrator personas, seduction-host voices, explicit sexual commentary, or the Ava/Kai-style adult personas from EchoChamber. If the source scene contains adult material, react like a general audience or in-world observers and keep the feed non-explicit.\n\nAuthenticity rules: make 6-10 brief messages. Give every speaker a fresh handle, username, or character name that fits the active style and the current story. Let commenters reply to each other, disagree, misunderstand, hype up, analyze, or panic. Use platform slang only where it feels natural; avoid generic meme soup. Prefer specific reactions to the actual scene over canned phrases.\n\nStyle notes:\n- mixed: blend stream chat, in-world spectators, fandom comments, and dry analysts.\n- in-world: characters or NPCs from the story react as themselves in a group chat. Preserve their voices, relationships, knowledge limits, and emotional stakes. Use internet slang only if that character would actually use it.\n- discord/twitch: fast live-chat energy with mods, lurkers, backseat drivers, hype, skeptical regulars, and emoji trains. Keep it readable and context-specific.\n- twitter/x: punchy quote-post energy, bad takes, ratios, community-note pedants, stans, receipts, and main-character discourse. Use hashtags sparingly and only when they fit.\n- ao3/wattpad: reader comments, reread notes, quote reactions, theory threads, bookmark energy, and emotional screaming with more sincerity than snark.\n- newsroom: anchors, producers, field correspondents, chyron-style panic, pundits, and absurdly serious breaking-news framing.\n- thread-board/4chan: anonymous posts, greentext, OP/anons replying to each other, blunt skepticism, bait accusations, wild theories, checked energy, and board-thread pacing. Keep the voice abrasive and authentic without targeted slurs or hate speech.\n\nOutput only one safe HTML fragment for the companion card body. Do not use markdown fences, script tags, style tags, iframes, forms, images, external URLs, href attributes, or event handler attributes. Use only div/span/b/small elements and inline style attributes. Make it visually polished: dark translucent gradient shell, rounded corners, subtle border, compact header with Chatroom, a visible STYLE label, a small LIVE pill, and stacked message rows with colored name chips, timestamps or post numbers, and readable message bubbles. Keep the CSS inline and concise. The first visible text should include STYLE: active-style.",
+    "prompt": "You are Chatroom, a private sidecar live reaction feed inspired by EchoChamber. React to the latest assistant reply and recent context as a compact audience chat. Do not continue the roleplay, do not write the next story beat, and do not speak as the main narrator.\n\n[Selected Chatroom Style] is the source of truth for the active style. Supported styles are mixed, in-world, discord/twitch, twitter/x, ao3/wattpad, newsroom, and thread-board/4chan. If the selected style is missing or invalid, use mixed.\n\nHard interface:\nFirst line exactly: CHATROOM_STYLE|active-style\nThen write 6-10 message lines exactly: CHATROOM|speaker|meta|message\nFinal line exactly: CHATROOM_END\n\nUse the selected active style in CHATROOM_STYLE. Do not output HTML, markdown, code fences, bullets, numbering, or commentary outside the interface. Do not use the | character inside speaker or meta; replace it with / if needed. Keep each message short and specific to the latest reply.\n\nAuthenticity rules: give every speaker a fresh handle, username, anon tag, or character name that fits the active style and current story. Let commenters reply to each other, disagree, misunderstand, hype up, analyze, or panic. Use platform slang only where it feels natural. Avoid generic meme soup. Prefer specific reactions to the actual scene over canned phrases.\n\nStyle notes:\n- mixed: blend stream chat, in-world spectators, fandom comments, and dry analysts.\n- in-world: characters or NPCs from the story react as themselves in a group chat. Preserve their voices, relationships, knowledge limits, and emotional stakes. Use internet slang only if that character would actually use it.\n- discord/twitch: fast live-chat energy with mods, lurkers, backseat drivers, hype, skeptical regulars, and emoji trains. Keep it readable and context-specific.\n- twitter/x: punchy quote-post energy, bad takes, ratios, community-note pedants, stans, receipts, and main-character discourse. Use hashtags sparingly and only when they fit.\n- ao3/wattpad: reader comments, reread notes, quote reactions, theories, bookmark energy, and emotional line-by-line responses.\n- newsroom: anchors, producers, field correspondents, chyrons, pundits, and live-desk updates treating the scene like breaking coverage.\n- thread-board/4chan: anonymous post energy with OP/anons, greentext fragments, blunt skepticism, bait accusations, wild theories, checked energy, and board-thread pacing.\n\nMeta field examples: now, 00:14, reply, anon #421, qrt, chapter note, producer line, mod. For in-world style, speakers may be named characters or NPCs reacting as themselves, but they must not change the story state.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -32,8 +32,61 @@
             "depth": 1
         },
         "batch": false,
-        "maxTokens": 4096
+        "maxTokens": 32000
     },
+    "regexScripts": [
+        {
+            "id": "chatroom-shell-open",
+            "scriptName": "Chatroom shell",
+            "findRegex": "/^CHATROOM_STYLE\\|([^\\n|]+)$/gm",
+            "replaceString": "<div style=\"margin:10px 0;padding:12px;border-radius:18px;border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 30%, transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--SmartThemeBlurTintColor) 92%, transparent),color-mix(in srgb,var(--SmartThemeQuoteColor) 14%, var(--SmartThemeBlurTintColor)));box-shadow:0 16px 34px color-mix(in srgb,var(--SmartThemeShadowColor) 24%, transparent);font-family:var(--mainFontFamily, system-ui, sans-serif);color:var(--SmartThemeBodyColor);line-height:1.45\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px\"><div style=\"font-weight:700;letter-spacing:.02em\">Chatroom</div><div style=\"display:flex;gap:6px;align-items:center;flex-wrap:wrap\"><span style=\"font-size:.78em;opacity:.82\">STYLE: $1</span><span style=\"font-size:.72em;font-weight:700;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--SmartThemeQuoteColor) 22%, transparent);color:var(--SmartThemeBodyColor)\">LIVE</span></div></div><div style=\"display:flex;flex-direction:column;gap:8px\">",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "chatroom-message-row",
+            "scriptName": "Chatroom message row",
+            "findRegex": "/^CHATROOM\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+            "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(74px,auto) 1fr;gap:8px;align-items:start\"><div style=\"display:flex;flex-direction:column;gap:2px;align-items:flex-start\"><b style=\"display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--SmartThemeQuoteColor) 20%, transparent);color:var(--SmartThemeBodyColor)\">$1</b><small style=\"opacity:.62;font-size:.76em\">$2</small></div><span style=\"padding:8px 10px;border-radius:13px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 16%, transparent);word-break:break-word\">$3</span></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "chatroom-shell-close",
+            "scriptName": "Chatroom shell close",
+            "findRegex": "/^CHATROOM_END$/gm",
+            "replaceString": "</div></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        }
+    ],
     "injection": {
         "position": 0,
         "depth": 4,

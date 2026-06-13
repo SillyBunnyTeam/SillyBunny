@@ -139,12 +139,30 @@ const REMOVED_BUNDLED_GROUP_IDS = new Set([
     'grp-pura-director',
 ]);
 
-const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set();
+const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHATROOM_STYLE_VALUES = Object.freeze([
+    'mixed',
+    'in-world',
+    'discord/twitch',
+    'twitter/x',
+    'ao3/wattpad',
+    'newsroom',
+    'thread-board/4chan',
+]);
+const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set([
+    CHATROOM_TEMPLATE_ID,
+]);
 const BUNDLED_PROMPT_TRANSFORM_IMPERSONATE_TEMPLATE_IDS = new Set([
     'tpl-prose-polisher',
 ]);
 const CYOA_CHOICES_TEMPLATE_ID = 'tpl-cyoa-choices';
 const CYOA_CHOICES_EMPTY_ROW_CLEANUP_SCRIPT_ID = '9fa2958c-215f-4fef-9a3e-804c0846f4fb';
+
+function normalizeChatroomStyle(value = '') {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return CHATROOM_STYLE_VALUES.includes(normalized) ? normalized : 'mixed';
+}
 
 const REGEX_PLACEMENT_LABELS = {
     [AGENT_REGEX_PLACEMENT.AI_OUTPUT]: 'AI Output',
@@ -2257,6 +2275,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
+    editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
+    editorEl.find('#ica--editor-plot-compass-objective').val(typeof agent.settings?.plotCompassObjective === 'string'
+        ? agent.settings.plotCompassObjective
+        : '');
 
     let editorFullscreen = false;
     const fullscreenButton = editorEl.find('#ica--editor-fullscreen');
@@ -2323,6 +2345,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
         const companionExecution = isEditorCompanionExecution();
         const executionSelect = editorEl.find('#ica--editor-execution');
+        const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
 
         if (category === 'companion') {
             executionSelect.val('companion');
@@ -2331,6 +2354,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         executionSelect.prop('disabled', category === 'companion');
         editorEl.find('#ica--companion-section').toggle(companionExecution);
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
+        editorEl.find('#ica--chatroom-style-row').toggle(companionExecution && sourceTemplateId === CHATROOM_TEMPLATE_ID);
+        editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
     function readCompanionConfigFromEditor(root, baseAgent = agent) {
@@ -2768,6 +2793,16 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     agent.modelOverride = editorEl.find('#ica--editor-modelOverride').val()?.toString().trim() || '';
     agent.prompt = editorEl.find('#ica--editor-prompt').val().toString();
     agent.companion = readCompanionConfigFromEditor(editorEl, agent);
+    agent.settings = agent.settings && typeof agent.settings === 'object' && !Array.isArray(agent.settings)
+        ? { ...agent.settings }
+        : {};
+    const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
+    if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
+        agent.settings.chatroomStyle = normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val());
+    }
+    if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
+        agent.settings.plotCompassObjective = editorEl.find('#ica--editor-plot-compass-objective').val()?.toString().trim() || '';
+    }
 
     agent.injection.position = Number(editorEl.find('#ica--editor-position').val());
     agent.injection.depth = Number(editorEl.find('#ica--editor-depth').val());
@@ -3580,7 +3615,7 @@ function buildCompanionFallbackKit({ agentName, description, currentPrompt, goal
                 historyDepth: 2,
                 feedback: { enabled: false, depth: 1 },
                 batch: true,
-                maxTokens: 2048,
+                maxTokens: 32000,
             },
         }),
         usedFallback: true,
@@ -3616,7 +3651,7 @@ The JSON shape must be:
     "historyDepth": 2,
     "feedback": { "enabled": false, "depth": 1 },
     "batch": true,
-    "maxTokens": 2048
+    "maxTokens": 32000
   }
 }
 
@@ -3626,7 +3661,7 @@ Requirements:
 - Prefer concise markdown unless the user specifically needs HTML or plain text.
 - Use trigger "manual" for occasional diagnostics and "auto" for notes that should run after most replies.
 - Use displayMode "hidden" only when the note is mainly for feedback into future generations.
-- Keep maxTokens between 512 and 4096 unless the requested companion needs more.`;
+- Keep maxTokens between 512 and 32000. Use 32000 by default unless the user asks for a smaller, cheaper companion.`;
 
     const userPrompt = [
         `Agent name: ${agentName || '(blank)'}`,

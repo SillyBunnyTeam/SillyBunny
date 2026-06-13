@@ -90,6 +90,26 @@
             </div>
         </div>
         <div class="ica--regex-note">Companions run after the main reply and render below it. Use Hidden when the note should only feed future prompts through feedback.</div>
+        <div class="ica--editor-row" id="ica--chatroom-style-row" style="display:none">
+            <label>Chatroom Style
+                <select id="ica--editor-chatroom-style" class="text_pole">
+                    <option value="mixed">Mixed</option>
+                    <option value="in-world">In-world</option>
+                    <option value="discord/twitch">Discord / Twitch</option>
+                    <option value="twitter/x">Twitter / X</option>
+                    <option value="ao3/wattpad">AO3 / Wattpad</option>
+                    <option value="newsroom">Newsroom</option>
+                    <option value="thread-board/4chan">Thread-board / 4chan</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Injected into Chatroom runs, so the output can stay compact and render through bundled regex.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--plot-compass-objective-row" style="display:none">
+            <label>Plot Objective
+                <textarea id="ica--editor-plot-compass-objective" class="text_pole textarea_compact" rows="3" placeholder="Example: steer the story toward the hidden tower without forcing the scene"></textarea>
+            </label>
+            <div class="ica--regex-note">Injected into Plot Compass runs and editable any time from this agent's settings.</div>
+        </div>
         <div class="ica--editor-row flex-container flexGap5">
             <label class="flex1">Trigger
                 <select id="ica--editor-companion-trigger" class="text_pole">
@@ -123,7 +143,7 @@
                 <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
             </label>
             <label class="flex1">Max Tokens
-                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="16000" value="2048" />
+                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="32000" value="32000" />
             </label>
         </div>
         <div class="ica--companion-toggle-grid">

@@ -770,7 +770,7 @@ export function createDefaultCompanionConfig() {
             depth: 1,
         },
         batch: false,
-        maxTokens: 2048,
+        maxTokens: 32000,
     };
 }
 
@@ -813,7 +813,7 @@ export function normalizeCompanionConfig(raw = {}) {
             depth: clampNumber(rawFeedback.depth, defaults.feedback.depth, 1, 10),
         },
         batch: Boolean(rawConfig.batch),
-        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 16000),
+        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 32000),
     };
 }
 

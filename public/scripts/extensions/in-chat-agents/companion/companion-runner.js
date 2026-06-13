@@ -36,11 +36,42 @@ export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_
 const MAX_COMPANION_RESULT_CHARS = 64 * 1024;
 const COMPANION_PROMPT_KEY_PREFIX = 'inchat_agent_companion_';
 const BATCH_MARKER_RE = /<<<COMPANION:([\w-]+)>>>([\s\S]*?)<<<END:\1>>>/g;
+const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHATROOM_STYLE_VALUES = new Set([
+    'mixed',
+    'in-world',
+    'discord/twitch',
+    'twitter/x',
+    'ao3/wattpad',
+    'newsroom',
+    'thread-board/4chan',
+]);
 
 let companionRunnerInitialized = false;
 
 function normalizeText(value = '') {
     return normalizeContentText(String(value ?? '')).trim();
+}
+
+function normalizeChatroomStyle(value = '') {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return CHATROOM_STYLE_VALUES.has(normalized) ? normalized : 'mixed';
+}
+
+function getTemplateSettingsPromptBlock(agent = {}) {
+    const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
+
+    if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
+        return `[Selected Chatroom Style]\n${normalizeChatroomStyle(agent.settings?.chatroomStyle)}`;
+    }
+
+    if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
+        const objective = String(agent.settings?.plotCompassObjective ?? '').trim();
+        return `[Plot Compass Objective]\n${objective || 'none set'}`;
+    }
+
+    return '';
 }
 
 export function stripMarkdownFence(value = '') {
@@ -326,11 +357,13 @@ function getFormatInstruction(format) {
 function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
     const message = chat[messageIndex];
     const messageText = normalizeText(message?.mes ?? '');
-    return substituteParams(agent.prompt, {
+    const prompt = substituteParams(agent.prompt, {
         name2Override: String(message?.name ?? '').trim(),
         original: messageText,
         dynamicMacros: buildPromptDynamicMacros(messageText, message, agent, generationType),
     }).trim();
+
+    return [prompt, getTemplateSettingsPromptBlock(agent)].filter(Boolean).join('\n\n').trim();
 }
 
 const COMPANION_REPAIR_INSTRUCTION = 'Your previous attempt did not follow the required output. Redo the task now and output strictly what the instructions above define — absolutely no roleplay, no narration, no dialogue, no commentary.';
@@ -502,7 +535,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
     try {
         const promptMessages = await buildBatchPromptMessages(agents, messageIndex, generationType);
-        const maxTokens = Math.min(16000, agents.reduce((sum, agent) => sum + normalizeCompanionConfig(agent.companion).maxTokens, 0));
+        const maxTokens = Math.min(32000, agents.reduce((sum, agent) => sum + normalizeCompanionConfig(agent.companion).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
