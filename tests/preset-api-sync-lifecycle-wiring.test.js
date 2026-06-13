@@ -134,4 +134,16 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(bindSource).not.toContain('if (chatbarState.sourceObservedElement === normalizedSource)');
         expect(bindSource).not.toContain('if (!(normalizedSource instanceof HTMLSelectElement))');
     });
+
+    test('routes connection profile source mutation decisions through the lifecycle seam', () => {
+        const mutationSource = getFunctionSource('mutationTouchesConnectionProfilesSource');
+
+        expect(mutationSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceMutation({');
+        expect(mutationSource).toContain('targetTouchesSource: nodeTouchesConnectionProfilesSource(mutation.target)');
+        expect(mutationSource).toContain('addedTouchesSource: Array.from(mutation.addedNodes).some(nodeTouchesConnectionProfilesSource)');
+        expect(mutationSource).toContain('removedTouchesSource: Array.from(mutation.removedNodes).some(nodeTouchesConnectionProfilesSource)');
+        expect(mutationSource).toContain('return mutationState.shouldRebind;');
+        expect(mutationSource).not.toContain('for (const node of mutation.addedNodes)');
+        expect(mutationSource).not.toContain('for (const node of mutation.removedNodes)');
+    });
 });

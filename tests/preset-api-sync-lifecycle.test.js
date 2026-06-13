@@ -9,6 +9,7 @@ import {
     resolveConnectionProfileMirrorUpdate,
     resolveConnectionProfileSelectionSync,
     resolveConnectionProfileSourceBinding,
+    resolveConnectionProfileSourceMutation,
     resolveConnectionProfileStatusText,
     resolveConnectionStripOpenState,
     resolvePresetApiConnectButtonSelector,
@@ -113,6 +114,30 @@ describe('preset/API sync lifecycle helper', () => {
             shouldStoreNextSource: true,
             shouldClearChangeHandler: true,
             shouldBindNext: false,
+        });
+    });
+
+    test('resolves connection profile source mutation rebind decisions', () => {
+        expect(resolveConnectionProfileSourceMutation()).toEqual({
+            shouldRebind: false,
+        });
+
+        expect(resolveConnectionProfileSourceMutation({
+            targetTouchesSource: true,
+        })).toEqual({
+            shouldRebind: true,
+        });
+
+        expect(resolveConnectionProfileSourceMutation({
+            addedTouchesSource: true,
+        })).toEqual({
+            shouldRebind: true,
+        });
+
+        expect(resolveConnectionProfileSourceMutation({
+            removedTouchesSource: true,
+        })).toEqual({
+            shouldRebind: true,
         });
     });
 
@@ -263,6 +288,7 @@ describe('preset/API sync lifecycle helper', () => {
         expect(lifecycle.connectionProfiles.sourceState).toBe(PRESET_API_SYNC_CONNECTION_SOURCE_STATE);
         expect(lifecycle.connectionProfiles.resolveSelectionSync).toBe(resolveConnectionProfileSelectionSync);
         expect(lifecycle.connectionProfiles.resolveSourceBinding).toBe(resolveConnectionProfileSourceBinding);
+        expect(lifecycle.connectionProfiles.resolveSourceMutation).toBe(resolveConnectionProfileSourceMutation);
         expect(lifecycle.connectionProfiles.resolveMirrorState).toBe(resolveConnectionProfileMirrorState);
         expect(lifecycle.connectionProfiles.resolveMirrorUpdate).toBe(resolveConnectionProfileMirrorUpdate);
         expect(lifecycle.connectionProfiles.resolveStatusText).toBe(resolveConnectionProfileStatusText);

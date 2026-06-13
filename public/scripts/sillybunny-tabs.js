@@ -6551,23 +6551,13 @@ function nodeTouchesConnectionProfilesSource(node) {
 }
 
 function mutationTouchesConnectionProfilesSource(mutation) {
-    if (nodeTouchesConnectionProfilesSource(mutation.target)) {
-        return true;
-    }
+    const mutationState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceMutation({
+        targetTouchesSource: nodeTouchesConnectionProfilesSource(mutation.target),
+        addedTouchesSource: Array.from(mutation.addedNodes).some(nodeTouchesConnectionProfilesSource),
+        removedTouchesSource: Array.from(mutation.removedNodes).some(nodeTouchesConnectionProfilesSource),
+    });
 
-    for (const node of mutation.addedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    for (const node of mutation.removedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    return false;
+    return mutationState.shouldRebind;
 }
 
 function bindConnectionProfileSourceElement(sourceElement) {
