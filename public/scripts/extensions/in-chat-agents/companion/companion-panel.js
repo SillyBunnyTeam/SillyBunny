@@ -355,6 +355,21 @@ function normalizePlotCompassObjective(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
 }
 
+function autoGrowPanelTextarea(textarea) {
+    if (!textarea?.style) {
+        return;
+    }
+
+    textarea.style.height = 'auto';
+    const height = Math.min(140, Math.max(34, textarea.scrollHeight || 34));
+    textarea.style.height = `${height}px`;
+}
+
+function autoGrowPanelTextareas(root = document) {
+    root?.querySelectorAll?.('.ica--chatonly-input, .ica--plot-objective-input')
+        ?.forEach(autoGrowPanelTextarea);
+}
+
 function getLatestAssistantIndex() {
     return chat.findLastIndex(isAssistantMessage);
 }
@@ -480,11 +495,10 @@ function buildPlotCompassObjectiveComposer(state) {
         <div class="ica--plot-objective-composer ica--tpanel-plot-objective">
             <label>
                 <span>Plot Objective</span>
-                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="2" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="1" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
             </label>
             <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
-                <span>Save objective</span>
             </button>
         </div>
     `;
@@ -594,7 +608,9 @@ export function buildPanelHtml() {
 }
 
 function renderPanel() {
-    $('#ica--tracker-panel').html(buildPanelHtml());
+    const panelElement = $('#ica--tracker-panel');
+    panelElement.html(buildPanelHtml());
+    autoGrowPanelTextareas(panelElement.get?.(0));
 }
 
 export function updateCompanionPanelHandleVisibility() {
@@ -855,6 +871,9 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
+    $('#ica--tracker-panel').on('input', '.ica--chatonly-input, .ica--plot-objective-input', function () {
+        autoGrowPanelTextarea(this);
+    });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();

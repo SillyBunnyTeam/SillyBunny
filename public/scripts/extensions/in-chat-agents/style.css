@@ -1868,10 +1868,10 @@ button.ica--card-pill--version-update {
 .ica--chatonly-composer,
 .ica--plot-objective-composer {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) 42px;
     gap: 8px;
     align-items: end;
-    padding: 9px;
+    padding: 8px;
     border-radius: var(--sb-radius-lg, 14px);
     border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 34%, transparent);
     background:
@@ -1896,14 +1896,19 @@ button.ica--card-pill--version-update {
 
 .ica--chatonly-input,
 .ica--plot-objective-input {
-    min-height: 42px;
-    resize: vertical;
+    box-sizing: border-box;
+    min-height: 34px;
+    height: 34px;
+    max-height: 140px;
+    line-height: 1.35;
+    resize: none;
+    overflow-y: auto;
 }
 
 .ica--plot-objective-composer label {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
 }
 
@@ -1914,8 +1919,13 @@ button.ica--card-pill--version-update {
 
 .ica--chatonly-send,
 .ica--plot-objective-save {
-    min-height: 36px;
-    align-self: stretch;
+    width: 42px;
+    min-width: 42px;
+    min-height: 34px;
+    height: 34px;
+    align-self: end;
+    justify-content: center;
+    padding-inline: 0;
 }
 
 .ica--companion-chatonly-composer,

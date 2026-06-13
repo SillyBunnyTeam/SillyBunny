@@ -67,6 +67,21 @@ function normalizePlotCompassObjective(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
 }
 
+function autoGrowCompanionTextarea(textarea) {
+    if (!textarea?.style) {
+        return;
+    }
+
+    textarea.style.height = 'auto';
+    const height = Math.min(140, Math.max(34, textarea.scrollHeight || 34));
+    textarea.style.height = `${height}px`;
+}
+
+function autoGrowCompanionTextareas(root = document) {
+    root?.querySelectorAll?.('.ica--chatonly-input, .ica--plot-objective-input')
+        ?.forEach(autoGrowCompanionTextarea);
+}
+
 async function setAgentSetting(agent, key, value) {
     if (!agent) return;
 
@@ -241,11 +256,10 @@ function buildPlotCompassObjectiveComposer(agentId) {
         <div class="ica--plot-objective-composer ica--companion-plot-objective">
             <label>
                 <span>Plot Objective</span>
-                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="2" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="1" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
             </label>
-            <button type="button" class="menu_button ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
-                <span>Save objective</span>
             </button>
         </div>
     `;
@@ -441,6 +455,7 @@ export function renderCompanionResultsForMessage(messageIndex) {
     }
 
     ledger.html(entries.map(([agentId, result]) => buildCompanionCard(agentId, result, message)).join(''));
+    autoGrowCompanionTextareas(messageElement.get?.(0));
 }
 
 function renderAllCompanionResults() {
@@ -719,6 +734,9 @@ export function initCompanionCardUi() {
         await runCompanionsFromMessageButton(messageIndex, this);
     });
     $(document).on('click', '.ica--companion-action, .ica--companion-control-action', handleCompanionAction);
+    $(document).on('input', '.ica--chatonly-input, .ica--plot-objective-input', function () {
+        autoGrowCompanionTextarea(this);
+    });
     // Document-level catch-all: covers cards and any other surface rendering companion
     // bodies. The panel binds its own element-level handler first (to close itself), and
     // its stopPropagation keeps this one from double-inserting.
