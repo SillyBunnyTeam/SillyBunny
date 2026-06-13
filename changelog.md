@@ -132,7 +132,11 @@ This update introduces Companion Agents, sidecar-style auxiliary AI helpers that
 - PR #428 (2026-06-11) `fix: make server.js self-supervising so restart works everywhere (#412)`
 - PR #429 (2026-06-11) `fix: stop double-evaluating script.js via versioned module URLs (#424)`
 - PR #430 (2026-06-11) `chore(tests): pin @playwright/test to 1.60.0 for chromium 1223`
+- PR #431 (2026-06-11) `chore: layer fork stylesheets and consolidate top-bar mobile rules`
 - PR #432 (2026-06-11) `chore: sync Quick Image Gen v2.1.0`
+- PR #433 (2026-06-11) `chore: consolidate composer and bottom-bar mobile styles`
+- PR #434 (2026-06-11) `chore: consolidate drawer and overlay mobile styles`
+- PR #435 (2026-06-11) `chore: tighten phase 2 mobile css ratchets`
 - PR #436 (2026-06-12) `fix: agent enable/disable toggle not responding on mobile`
 - PR #437 (2026-06-12) `fix: scope top-bar drawer hiding to native drawers for extension compatibility`
 - PR #438 (2026-06-12) `fix(mobile): prevent iOS chat overscroll blanking and keyboard composer displacement`

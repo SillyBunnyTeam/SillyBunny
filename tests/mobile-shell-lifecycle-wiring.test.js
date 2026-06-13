@@ -239,10 +239,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
-        expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
-        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
-        expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
-            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
+        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto;[\s\S]*box-sizing:\s*border-box;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
+        expect(mobileShellCssSource.lastIndexOf('bottom: auto;')).toBeGreaterThan(
+            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px);'),
         );
     });
 
@@ -436,9 +436,9 @@ describe('mobile shell lifecycle wiring', () => {
     test('keeps mobile drawer safe-area math on shell tokens', () => {
         expect(mobileShellCssSource).toContain('--sb-mobile-safe-area-left: env(safe-area-inset-left, 0px);');
         expect(mobileShellCssSource).toContain('--sb-mobile-safe-area-right: env(safe-area-inset-right, 0px);');
-        expect(mobileShellCssSource).toContain('bottom: var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) !important;');
+        expect(mobileShellCssSource).toContain('bottom: var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));');
         expect(mobileShellCssSource).toContain('.sb-drawer-gesture-active');
-        expect(mobileShellCssSource).not.toContain(' - env(safe-area-inset-bottom, 0px)) !important;');
-        expect(mobileShellCssSource).not.toContain('bottom: env(safe-area-inset-bottom, 0px) !important;');
+        expect(mobileShellCssSource).not.toContain(' - env(safe-area-inset-bottom, 0px));');
+        expect(mobileShellCssSource).not.toContain('bottom: env(safe-area-inset-bottom, 0px);');
     });
 });
