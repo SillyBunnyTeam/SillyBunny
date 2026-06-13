@@ -304,12 +304,12 @@ async function buildCompanionContextSections(agent, messageIndex) {
 }
 
 // Companion prompts were written to ride along with a story reply; running standalone —
-// especially on small models — they continue the scene unless told the story is not theirs
-// to write. These guards stack on top of rawPrompt, which only suppresses format instructions.
-const COMPANION_GUARD_INSTRUCTION = 'Pause all roleplay and output only the following.';
+// especially on small models — they continue the scene or echo the task unless the boundary
+// is explicit. These guards stack on top of rawPrompt, which only suppresses format instructions.
+const COMPANION_GUARD_INSTRUCTION = 'Stop roleplay. This is a private companion task, not the chat reply. Do not continue the scene, and do not quote or restate these instructions; return only the task result.';
 // Small models weigh the end of the prompt heaviest, and the context ends with roleplay
 // dialogue begging to be continued — anchor the task after it.
-const COMPANION_TASK_ANCHOR = '[Task]\nFollow your instructions on the conversation above. Output only what they ask for — do not continue the conversation itself.';
+const COMPANION_TASK_ANCHOR = '[Task]\nUse the conversation above only as context. Complete the companion task from the system message, return only its result, and do not quote the prompt, explain the task, or continue the conversation.';
 
 function getFormatInstruction(format) {
     switch (format) {
@@ -341,7 +341,7 @@ export async function buildCompanionPromptMessages(agent, messageIndex, generati
     const contextSections = await buildCompanionContextSections(agent, messageIndex);
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
     // format and break when extra format instructions are appended around them. The guard
-    // leads so "the following" reads as the agent's own instructions.
+    // leads so the companion boundary is established before the agent's own instructions.
     const systemContent = [
         COMPANION_GUARD_INSTRUCTION,
         expandedPrompt,

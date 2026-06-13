@@ -942,16 +942,18 @@ describe('in-chat agent post-processing runner', () => {
 
         const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
         expect(rawMessages[0].role).toBe('system');
-        expect(rawMessages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
+        expect(rawMessages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
+        expect(rawMessages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
         expect(rawMessages[0].content).toContain('Track the scene state in the [Scene|...] format.');
         expect(rawMessages[0].content).not.toContain('Return only markdown');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
-        expect(noteMessages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
+        expect(noteMessages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
+        expect(noteMessages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
         expect(noteMessages[0].content).toContain('Write a side note.');
         expect(noteMessages[0].content).toContain('Return only markdown');
         expect(noteMessages[1].content).toContain('[Task]');
-        expect(noteMessages[1].content).toContain('do not continue the conversation itself');
+        expect(noteMessages[1].content).toContain('do not quote the prompt, explain the task, or continue the conversation');
     });
 
     test('includes the system prompt and authors note sections when toggled on', async () => {
@@ -1102,7 +1104,8 @@ describe('in-chat agent post-processing runner', () => {
 
         const messages = await companionRunner.buildCompanionPromptMessages(rawTracker, 1);
 
-        expect(messages[0].content.startsWith('Pause all roleplay and output only the following.')).toBe(true);
+        expect(messages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
+        expect(messages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
         expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
         expect(messages[0].content).not.toContain('Return only markdown');
     });
