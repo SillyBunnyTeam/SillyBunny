@@ -146,6 +146,8 @@ const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
 const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
+const CHATROOM_EXTRA_CHARACTER_LIMIT = 12;
+const CHATROOM_EXTRA_CHARACTER_AVATAR_MAX_CHARS = 256;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
 const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
@@ -155,6 +157,7 @@ const CHATROOM_STYLE_VALUES = Object.freeze([
     'in-world',
     'discord/twitch',
     'twitter/x',
+    'reddit',
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
@@ -226,6 +229,80 @@ function getChatroomCustomStylesSetting(settings = {}) {
 
     const legacyCustomStyle = String(settings?.chatroomCustomStyle ?? '').trim();
     return legacyCustomStyle ? normalizeChatroomCustomStyles(`Custom: ${legacyCustomStyle}`) : '';
+}
+
+function normalizeChatroomExtraCharacterAvatars(value = []) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,]/);
+    const seenAvatars = new Set();
+    const avatars = [];
+
+    for (const rawValue of rawValues) {
+        const avatar = String(rawValue ?? '').trim().slice(0, CHATROOM_EXTRA_CHARACTER_AVATAR_MAX_CHARS);
+        const key = avatar.toLowerCase();
+        if (!avatar || seenAvatars.has(key)) continue;
+
+        seenAvatars.add(key);
+        avatars.push(avatar);
+        if (avatars.length >= CHATROOM_EXTRA_CHARACTER_LIMIT) break;
+    }
+
+    return avatars;
+}
+
+function getActiveChatroomCharacterAvatars(context = getContext()) {
+    const activeAvatars = new Set();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+
+    if (context?.groupId) {
+        const activeGroup = Array.isArray(context?.groups)
+            ? context.groups.find(group => String(group?.id ?? '') === String(context.groupId ?? ''))
+            : null;
+        const members = Array.isArray(activeGroup?.members) ? activeGroup.members : [];
+        for (const avatar of members) {
+            const value = String(avatar ?? '').trim();
+            if (value) activeAvatars.add(value.toLowerCase());
+        }
+        return activeAvatars;
+    }
+
+    const characterIndex = Number(context?.characterId);
+    if (Number.isInteger(characterIndex) && characters[characterIndex]?.avatar) {
+        activeAvatars.add(String(characters[characterIndex].avatar).trim().toLowerCase());
+    }
+
+    return activeAvatars;
+}
+
+function getChatroomCharacterOptionLabel(character = {}, index = 0) {
+    const name = String(character?.name || character?.data?.name || '').trim();
+    const avatar = String(character?.avatar ?? '').trim();
+    const fallbackName = avatar.replace(/\.[^.]+$/, '') || `Character ${index + 1}`;
+
+    return name && avatar ? `${name} (${avatar})` : (name || fallbackName);
+}
+
+function getChatroomSelectableCharacters() {
+    const context = getContext();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    const activeAvatars = getActiveChatroomCharacterAvatars(context);
+    const seenAvatars = new Set();
+
+    return characters
+        .map((character, index) => {
+            const avatar = String(character?.avatar ?? '').trim();
+            const key = avatar.toLowerCase();
+            if (!avatar || activeAvatars.has(key) || seenAvatars.has(key)) return null;
+
+            seenAvatars.add(key);
+            return {
+                avatar,
+                label: getChatroomCharacterOptionLabel(character, index),
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function normalizeDirectorCommentaryVoice(value = '') {
@@ -2388,6 +2465,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
     const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
     editorEl.find('#ica--editor-chatroom-custom-styles').val(getChatroomCustomStylesSetting(agent.settings));
+    const savedChatroomExtraCharacterAvatars = normalizeChatroomExtraCharacterAvatars(agent.settings?.chatroomExtraCharacterAvatars);
     editorEl.find('#ica--editor-director-voice').val(normalizeDirectorCommentaryVoice(agent.settings?.directorCommentaryVoice));
     const savedDirectorCustomVoiceName = normalizeDirectorCustomVoiceName(agent.settings?.directorCommentaryCustomVoiceName);
     editorEl.find('#ica--editor-director-custom-voices').val(getDirectorCustomVoicesSetting(agent.settings));
@@ -2479,6 +2557,41 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         select.val(preferredName);
     }
 
+    function updateChatroomExtraCharacterOptions() {
+        const select = editorEl.find('#ica--editor-chatroom-extra-character-avatars');
+        const currentAvatars = normalizeChatroomExtraCharacterAvatars(select.val());
+        const selectedAvatars = currentAvatars.length ? currentAvatars : savedChatroomExtraCharacterAvatars;
+        const selectedKeys = new Set(selectedAvatars.map(avatar => avatar.toLowerCase()));
+        const selectableCharacters = getChatroomSelectableCharacters();
+        const availableKeys = new Set(selectableCharacters.map(character => character.avatar.toLowerCase()));
+
+        select.empty();
+        if (!selectableCharacters.length && !selectedAvatars.length) {
+            select.append($('<option>').val('').text('No other character cards available').prop('disabled', true));
+            return;
+        }
+
+        for (const character of selectableCharacters) {
+            select.append(
+                $('<option>')
+                    .val(character.avatar)
+                    .text(character.label)
+                    .prop('selected', selectedKeys.has(character.avatar.toLowerCase())),
+            );
+        }
+
+        for (const avatar of selectedAvatars) {
+            if (availableKeys.has(avatar.toLowerCase())) continue;
+
+            select.append(
+                $('<option>')
+                    .val(avatar)
+                    .text(`Missing or active: ${avatar}`)
+                    .prop('selected', true),
+            );
+        }
+    }
+
     function updateDirectorCustomVoiceOptions() {
         const select = editorEl.find('#ica--editor-director-custom-voice-name');
         const currentName = normalizeDirectorCustomVoiceName(select.val());
@@ -2523,6 +2636,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
         editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
+        editorEl.find('#ica--chatroom-extra-characters-row').toggle(showChatroomSettings);
         editorEl.find('#ica--director-voice-row').toggle(showDirectorSettings);
         editorEl.find('#ica--director-custom-voice-row').toggle(showCustomDirectorVoice);
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
@@ -2592,6 +2706,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
+    updateChatroomExtraCharacterOptions();
     updateDirectorCustomVoiceOptions();
     updateCompanionEditorVisibility();
 
@@ -2975,6 +3090,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         agent.settings.chatroomStyle = normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val());
         agent.settings.chatroomCustomStyles = normalizeChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
         agent.settings.chatroomCustomStyleName = normalizeChatroomCustomStyleName(editorEl.find('#ica--editor-chatroom-custom-style-name').val());
+        agent.settings.chatroomExtraCharacterAvatars = normalizeChatroomExtraCharacterAvatars(editorEl.find('#ica--editor-chatroom-extra-character-avatars').val());
         delete agent.settings.chatroomCustomStyle;
     }
     if (sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID) {

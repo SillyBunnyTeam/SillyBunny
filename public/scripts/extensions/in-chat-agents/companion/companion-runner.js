@@ -43,6 +43,9 @@ const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
 const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
+const CHATROOM_EXTRA_CHARACTER_LIMIT = 12;
+const CHATROOM_EXTRA_CHARACTER_AVATAR_MAX_CHARS = 256;
+const CHATROOM_EXTRA_CHARACTER_CARD_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
 const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
@@ -52,6 +55,7 @@ const CHATROOM_STYLE_VALUES = new Set([
     'in-world',
     'discord/twitch',
     'twitter/x',
+    'reddit',
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
@@ -131,6 +135,120 @@ function getChatroomCustomStylesSetting(settings = {}) {
 
     const legacyCustomStyle = String(settings?.chatroomCustomStyle ?? '').trim();
     return legacyCustomStyle ? normalizeChatroomCustomStyles(`Custom: ${legacyCustomStyle}`) : '';
+}
+
+function normalizeChatroomExtraCharacterAvatars(value = []) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,]/);
+    const seenAvatars = new Set();
+    const avatars = [];
+
+    for (const rawValue of rawValues) {
+        const avatar = String(rawValue ?? '').trim().slice(0, CHATROOM_EXTRA_CHARACTER_AVATAR_MAX_CHARS);
+        const key = avatar.toLowerCase();
+        if (!avatar || seenAvatars.has(key)) continue;
+
+        seenAvatars.add(key);
+        avatars.push(avatar);
+        if (avatars.length >= CHATROOM_EXTRA_CHARACTER_LIMIT) break;
+    }
+
+    return avatars;
+}
+
+function getActiveChatroomCharacterAvatarKeys(context = getContext()) {
+    const activeAvatars = new Set();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+
+    if (context?.groupId) {
+        const activeGroup = Array.isArray(context?.groups)
+            ? context.groups.find(group => String(group?.id ?? '') === String(context.groupId ?? ''))
+            : null;
+        const members = Array.isArray(activeGroup?.members) ? activeGroup.members : [];
+        for (const avatar of members) {
+            const value = String(avatar ?? '').trim();
+            if (value) activeAvatars.add(value.toLowerCase());
+        }
+        return activeAvatars;
+    }
+
+    const characterIndex = Number(context?.characterId);
+    if (Number.isInteger(characterIndex) && characters[characterIndex]?.avatar) {
+        activeAvatars.add(String(characters[characterIndex].avatar).trim().toLowerCase());
+    }
+
+    return activeAvatars;
+}
+
+function getChatroomCharacterName(character = {}, index = 0) {
+    return normalizeText(character?.name || character?.data?.name || character?.avatar || `Character ${index + 1}`);
+}
+
+function getChatroomCharacterCardFields(context, characterIndex, character = {}) {
+    if (typeof context?.getCharacterCardFields === 'function') {
+        try {
+            const fields = context.getCharacterCardFields({ chid: characterIndex });
+            if (fields && typeof fields === 'object') {
+                return fields;
+            }
+        } catch (error) {
+            console.warn('[InChatAgents] Chatroom extra character card lookup failed:', error);
+        }
+    }
+
+    return {
+        description: character.description,
+        personality: character.personality,
+        scenario: character.scenario,
+        system: character.data?.system_prompt,
+        creatorNotes: character.data?.creator_notes || character.creatorcomment,
+        firstMessage: character.first_mes,
+        mesExamples: character.mes_example,
+    };
+}
+
+function formatChatroomExtraCharacterCard(character, fields, index = 0) {
+    const parts = [`Name: ${getChatroomCharacterName(character, index)}`];
+
+    for (const [label, value] of [
+        ['Description', fields.description],
+        ['Personality', fields.personality],
+        ['Scenario', fields.scenario],
+        ['System', fields.system],
+        ['Creator Notes', fields.creatorNotes],
+        ['First Message', fields.firstMessage],
+        ['Examples', fields.mesExamples],
+    ]) {
+        const text = normalizeText(value);
+        if (text) {
+            parts.push(`${label}:\n${text}`);
+        }
+    }
+
+    return parts.join('\n\n').slice(0, CHATROOM_EXTRA_CHARACTER_CARD_MAX_CHARS);
+}
+
+function getChatroomExtraCharacterCardsBlock(settings = {}) {
+    const selectedAvatars = normalizeChatroomExtraCharacterAvatars(settings?.chatroomExtraCharacterAvatars);
+    if (!selectedAvatars.length) return '';
+
+    const context = getContext();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    const activeAvatarKeys = getActiveChatroomCharacterAvatarKeys(context);
+    const selectedAvatarKeys = new Set(selectedAvatars.map(avatar => avatar.toLowerCase()));
+    const sections = [];
+
+    characters.forEach((character, index) => {
+        const avatar = String(character?.avatar ?? '').trim();
+        const key = avatar.toLowerCase();
+        if (!avatar || !selectedAvatarKeys.has(key) || activeAvatarKeys.has(key)) return;
+
+        const fields = getChatroomCharacterCardFields(context, index, character);
+        sections.push(formatChatroomExtraCharacterCard(character, fields, index));
+    });
+
+    return sections.filter(Boolean).join('\n\n---\n\n');
 }
 
 function resolveChatroomCustomStyle(settings = {}) {
@@ -236,6 +354,11 @@ function getTemplateSettingsPromptBlock(agent = {}) {
             blocks.push(customStyle
                 ? `[Custom Chatroom Style]\nName: ${customStyle.name}\n${customStyle.prompt}`
                 : '[Custom Chatroom Style]\nnone set - use mixed');
+        }
+
+        const extraCharacterCards = getChatroomExtraCharacterCardsBlock(agent.settings);
+        if (extraCharacterCards) {
+            blocks.push(`[Chatroom Extra Character Cards]\n${extraCharacterCards}`);
         }
 
         return blocks.join('\n\n');

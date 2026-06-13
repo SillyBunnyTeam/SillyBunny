@@ -639,7 +639,8 @@ export function initCompanionPanel() {
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
-        if (insertChoiceIntoMessageInput(this.textContent)) {
+        const inserted = insertChoiceIntoMessageInput(this.textContent);
+        if (inserted && !panelLocked) {
             closeCompanionPanel();
         }
     });

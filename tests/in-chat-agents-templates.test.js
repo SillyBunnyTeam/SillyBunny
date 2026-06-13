@@ -185,12 +185,17 @@ describe('in-chat agent bundled templates', () => {
             feedback: { enabled: false, depth: 1 },
             maxTokens: 32000,
         }));
-        expect(chatroom.regexScripts).toHaveLength(4);
+        expect(chatroom.regexScripts).toHaveLength(5);
         expect(chatroom.prompt).toContain('CHATROOM_STYLE|active-style');
         expect(chatroom.prompt).toContain('CHATROOM|speaker|meta|tone|message');
+        expect(chatroom.prompt).toContain('Do not put line breaks inside a message');
+        expect(chatroom.prompt).toContain('[Chatroom Extra Character Cards]');
         expect(chatroom.prompt).toContain('[Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('- custom: follow [Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('thread-board/4chan');
+        expect(chatroom.prompt).toContain('Use unique post labels instead of repeating Anon');
+        expect(chatroom.prompt).toContain('- reddit:');
+        expect(chatroom.regexScripts.map(script => script.id)).toContain('chatroom-message-row-greentext');
         expect(chatroom.prompt).not.toContain('No NSFW chat styles');
         expect(chatroom.prompt).not.toContain('targeted slurs');
 

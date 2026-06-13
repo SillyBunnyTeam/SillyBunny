@@ -447,5 +447,19 @@ describe('companion tracker panel', () => {
         expect(companionUi.insertChoiceIntoMessageInput).toHaveBeenCalledWith('A) Open the door');
         expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
         expect(panelElement.attr).toHaveBeenCalledWith('aria-hidden', 'true');
+
+        panelElement.removeClass.mockClear();
+        panelElement.attr.mockClear();
+        companionUi.insertChoiceIntoMessageInput.mockClear();
+        panel.openCompanionPanel();
+        panel.setCompanionPanelLocked(true);
+        const lockedEvent = { preventDefault: jest.fn(), stopPropagation: jest.fn() };
+        choiceHandler.call({ textContent: 'B) Stay here' }, lockedEvent);
+
+        expect(lockedEvent.preventDefault).toHaveBeenCalled();
+        expect(lockedEvent.stopPropagation).toHaveBeenCalled();
+        expect(companionUi.insertChoiceIntoMessageInput).toHaveBeenCalledWith('B) Stay here');
+        expect(panelElement.removeClass).not.toHaveBeenCalled();
+        expect(panelElement.attr).not.toHaveBeenCalledWith('aria-hidden', 'true');
     });
 });

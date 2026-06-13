@@ -97,6 +97,7 @@
                     <option value="in-world">In-world</option>
                     <option value="discord/twitch">Discord / Twitch</option>
                     <option value="twitter/x">Twitter / X</option>
+                    <option value="reddit">Reddit</option>
                     <option value="ao3/wattpad">AO3 / Wattpad</option>
                     <option value="newsroom">Newsroom</option>
                     <option value="thread-board/4chan">Thread-board / 4chan</option>
@@ -115,6 +116,12 @@
                 <textarea id="ica--editor-chatroom-custom-styles" class="text_pole textarea_compact" rows="5" placeholder="Radio Call-In: local radio host, regular callers, fake ads, timestamps, and running jokes tied to the scene&#10;Forum Mods: old forum thread with moderators, power users, quote replies, and derail warnings"></textarea>
             </label>
             <div class="ica--regex-note">Add one reusable style per line as Name: instructions, then pick which one this Chatroom uses.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--chatroom-extra-characters-row" style="display:none">
+            <label>Extra Character Reactors
+                <select id="ica--editor-chatroom-extra-character-avatars" class="text_pole" multiple size="6"></select>
+            </label>
+            <div class="ica--regex-note">Select character cards outside the current chat or group. Chatroom can use them as in-world commenters, not as active scene participants.</div>
         </div>
         <div class="ica--editor-row" id="ica--director-voice-row" style="display:none">
             <label>Director Voice

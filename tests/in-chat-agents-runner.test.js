@@ -49,6 +49,10 @@ describe('in-chat agent post-processing runner', () => {
     let mainApi;
     let documentListeners;
     let windowListeners;
+    let contextCharacters;
+    let contextCharacterId;
+    let contextGroups;
+    let contextGroupId;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -128,6 +132,10 @@ describe('in-chat agent post-processing runner', () => {
         mainApi = 'kobold';
         documentListeners = new Map();
         windowListeners = new Map();
+        contextCharacters = [];
+        contextCharacterId = undefined;
+        contextGroups = [];
+        contextGroupId = null;
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -227,6 +235,22 @@ describe('in-chat agent post-processing runner', () => {
                 executeSlashCommandsWithOptions,
                 generateRaw,
                 mainApi,
+                characters: contextCharacters,
+                characterId: contextCharacterId,
+                groups: contextGroups,
+                groupId: contextGroupId,
+                getCharacterCardFields: jest.fn(({ chid = contextCharacterId } = {}) => {
+                    const character = contextCharacters[Number(chid)] ?? {};
+                    return {
+                        description: character.description,
+                        personality: character.personality,
+                        scenario: character.scenario,
+                        system: character.data?.system_prompt,
+                        creatorNotes: character.data?.creator_notes || character.creatorcomment,
+                        firstMessage: character.first_mes,
+                        mesExamples: character.mes_example,
+                    };
+                }),
             })),
         }));
 
@@ -973,6 +997,13 @@ describe('in-chat agent post-processing runner', () => {
             companion: { rawPrompt: true },
             prompt: 'Return Chatroom lines.',
         });
+        const redditChatroomCompanion = createCompanionAgent({
+            id: 'chatroom-reddit-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: { chatroomStyle: 'reddit' },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
         const customChatroomCompanion = createCompanionAgent({
             id: 'chatroom-custom-companion',
             sourceTemplateId: 'tpl-chatroom-companion',
@@ -1007,6 +1038,9 @@ describe('in-chat agent post-processing runner', () => {
         const defaultMessages = await companionRunner.buildCompanionPromptMessages(defaultChatroomCompanion, 1);
         expect(defaultMessages[0].content).toContain('[Selected Chatroom Style]\nmixed');
 
+        const redditMessages = await companionRunner.buildCompanionPromptMessages(redditChatroomCompanion, 1);
+        expect(redditMessages[0].content).toContain('[Selected Chatroom Style]\nreddit');
+
         const customMessages = await companionRunner.buildCompanionPromptMessages(customChatroomCompanion, 1);
         expect(customMessages[0].content).toContain('[Selected Chatroom Style]\ncustom');
         expect(customMessages[0].content).toContain('[Custom Chatroom Style]\nName: Forum Mods');
@@ -1016,6 +1050,55 @@ describe('in-chat agent post-processing runner', () => {
         const fallbackCustomMessages = await companionRunner.buildCompanionPromptMessages(fallbackCustomChatroomCompanion, 1);
         expect(fallbackCustomMessages[0].content).toContain('[Custom Chatroom Style]\nName: Radio Call-In');
         expect(fallbackCustomMessages[0].content).toContain('local radio call-in show');
+    });
+
+    test('injects selected extra Chatroom character cards while excluding the active card', async () => {
+        contextCharacters = [
+            {
+                name: 'Hero',
+                avatar: 'hero.png',
+                description: 'The active hero card.',
+                personality: 'Brave and direct.',
+            },
+            {
+                name: 'Mentor',
+                avatar: 'mentor.png',
+                description: 'An older strategist watching from the sidelines.',
+                personality: 'Dry, observant, and fond of needling the hero.',
+                scenario: 'Knows the hero well but is not present in the scene.',
+            },
+            {
+                name: 'Rival',
+                avatar: 'rival.png',
+                description: 'A rival who was not selected.',
+            },
+        ];
+        contextCharacterId = 0;
+        const chatroomCompanion = createCompanionAgent({
+            id: 'chatroom-extra-character-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: {
+                chatroomExtraCharacterAvatars: ['mentor.png', 'hero.png', 'missing.png'],
+            },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(chatroomCompanion, 1);
+
+        expect(messages[0].content).toContain('[Chatroom Extra Character Cards]');
+        expect(messages[0].content).toContain('Name: Mentor');
+        expect(messages[0].content).toContain('An older strategist watching from the sidelines.');
+        expect(messages[0].content).toContain('Dry, observant, and fond of needling the hero.');
+        expect(messages[0].content).not.toContain('The active hero card.');
+        expect(messages[0].content).not.toContain('A rival who was not selected.');
+        expect(messages[0].content).not.toContain('missing.png');
     });
 
     test('injects the selected Director Commentary voice into companion prompts', async () => {
