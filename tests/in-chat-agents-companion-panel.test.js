@@ -219,7 +219,7 @@ describe('companion tracker panel', () => {
         expect(orphan.agent).toBeNull();
     });
 
-    test('keeps Message Inbox hidden until a text or letter is returned', async () => {
+    test('shows Message Inbox while suppressing empty no-message results', async () => {
         const inbox = {
             id: 'message-inbox',
             name: 'Message Inbox',
@@ -231,7 +231,9 @@ describe('companion tracker panel', () => {
         agents = [inbox];
         const panel = await importPanel();
 
-        expect(panel.buildPanelHtml()).not.toContain('Message Inbox');
+        const initialHtml = panel.buildPanelHtml();
+        expect(initialHtml).toContain('Message Inbox');
+        expect(initialHtml).toContain('No state yet');
 
         const emptyMessage = { is_user: false, is_system: false, mes: 'reply without a text' };
         chat.push(emptyMessage);
@@ -239,9 +241,15 @@ describe('companion tracker panel', () => {
             'message-inbox': { status: 'done', content: 'phone-none', agentName: 'Message Inbox' },
         });
 
-        expect(panel.collectPanelAgentStates()).toHaveLength(0);
-        expect(panel.buildPanelHtml()).not.toContain('phone-none');
-        expect(panel.buildPanelHtml()).not.toContain('Message Inbox');
+        const waitingStates = panel.collectPanelAgentStates();
+        expect(waitingStates).toHaveLength(1);
+        expect(waitingStates[0].agent?.id).toBe('message-inbox');
+        expect(waitingStates[0].latest).toBeNull();
+
+        const waitingHtml = panel.buildPanelHtml();
+        expect(waitingHtml).toContain('Message Inbox');
+        expect(waitingHtml).toContain('No state yet');
+        expect(waitingHtml).not.toContain('phone-none');
 
         const textMessage = { is_user: false, is_system: false, mes: 'reply with a text' };
         chat.push(textMessage);
@@ -283,14 +291,16 @@ describe('companion tracker panel', () => {
         expect(html).toContain('No state yet');
     });
 
-    test('hides stateless companions below their context threshold and offers shard compaction', async () => {
+    test('shows enabled memory shard before threshold and offers shard compaction after a run', async () => {
         agents = [
             { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true, companion: { minContextTokens: 30000 } },
         ];
         const panel = await importPanel();
 
-        // Below the threshold with no state: stays out of the panel entirely.
-        expect(panel.buildPanelHtml()).not.toContain('Memory Shard');
+        // Below the threshold with no state: it still appears so users know it is enabled.
+        const waitingHtml = panel.buildPanelHtml();
+        expect(waitingHtml).toContain('Memory Shard');
+        expect(waitingHtml).toContain('No state yet');
 
         // With a stored shard: section renders with the hide-history compaction button.
         const message0 = { is_user: false, is_system: false, mes: 'old reply' };

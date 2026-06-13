@@ -6,6 +6,7 @@ const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/inde
 const sourceFilenames = [
     'achievements-tracker.json',
     'actor-interview-companion.json',
+    'chat-only-companion.json',
     'chatroom-companion.json',
     'continuity-companion.json',
     'directors-commentary-companion.json',
@@ -91,6 +92,15 @@ describe('in-chat agent bundled templates', () => {
         }
     });
 
+    test('keeps draft companion template versions at v1', () => {
+        const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
+
+        for (const filename of companionFilenames) {
+            const template = readTemplate(filename);
+            expect(template.version).toBe(1);
+        }
+    });
+
     test('bundles NPC Motivator as an auto-loop companion agent', () => {
         const template = readTemplate('npc-motivator.json');
 
@@ -98,7 +108,7 @@ describe('in-chat agent bundled templates', () => {
             id: 'tpl-npc-motivator',
             name: 'NPC Motivator',
             author: 'Sheep',
-            version: 3,
+            version: 1,
             phase: 'post',
             execution: 'companion',
             enabled: false,
@@ -160,9 +170,10 @@ describe('in-chat agent bundled templates', () => {
         const lorebookScout = findCatalogTemplate(catalog, 'tpl-lorebook-scout-companion');
         const memoryShard = findCatalogTemplate(catalog, 'tpl-memory-shard-companion');
         const chatroom = findCatalogTemplate(catalog, 'tpl-chatroom-companion');
+        const chatOnly = findCatalogTemplate(catalog, 'tpl-chat-only-companion');
         const messageInbox = findCatalogTemplate(catalog, 'tpl-message-inbox-companion');
 
-        for (const template of [commentary, interview, lorebookScout, memoryShard, chatroom, messageInbox]) {
+        for (const template of [commentary, interview, lorebookScout, memoryShard, chatroom, chatOnly, messageInbox]) {
             expect(template).toEqual(expect.objectContaining({
                 category: 'companion',
                 execution: 'companion',
@@ -216,6 +227,25 @@ describe('in-chat agent bundled templates', () => {
         expect(chatroom.regexScripts.map(script => script.id)).toContain('chatroom-message-row-greentext');
         expect(chatroom.prompt).not.toContain('No NSFW chat styles');
         expect(chatroom.prompt).not.toContain('targeted slurs');
+
+        expect(chatOnly.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            displayMode: 'panel',
+            format: 'markdown',
+            rawPrompt: true,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeHistory: true,
+            historyDepth: 6,
+            feedback: { enabled: false, depth: 1 },
+            maxTokens: 32000,
+        }));
+        expect(chatOnly.prompt).toContain('private side-channel conversation');
+        expect(chatOnly.prompt).toContain('[Your previous notes]');
+        expect(chatOnly.prompt).toContain('You: ask your aside here');
+        expect(chatOnly.prompt).toContain('side chat panel');
 
         expect(messageInbox.companion).toEqual(expect.objectContaining({
             trigger: 'auto',

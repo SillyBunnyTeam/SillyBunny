@@ -10,7 +10,7 @@
         "motivation",
         "agency"
     ],
-    "version": 3,
+    "version": 1,
     "author": "Sheep",
     "prompt": "Roleplay pauses for a companion planning note. Analyze every character in the current scene aside from {{user}}. Write each character's motivations and likely next actions according to their personality, current situation, background, and any relevant provided documents.\n\nUse this bullet shape:\n[Character full name]:\n- Long Term Goal: one line on the character's main long-term goal\n  - Motivation: brief reasoning for that long-term goal\n- Current Goal: brief current objective or problem\n  - Motivation: reasoning for the current objective\n- Assumptions: relevant assumptions the character is making in the current scene\n- Next Action: how they will tackle the current goal, their most likely action set, and why\n\nFor an empty scene, write: Observation: scene currently has no other characters. Use plain markdown bullets in this shape.",
     "phase": "post",

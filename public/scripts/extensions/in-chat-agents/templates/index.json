@@ -793,7 +793,7 @@
       "motivation",
       "agency"
     ],
-    "version": 3,
+    "version": 1,
     "author": "Sheep",
     "prompt": "Roleplay pauses for a companion planning note. Analyze every character in the current scene aside from {{user}}. Write each character's motivations and likely next actions according to their personality, current situation, background, and any relevant provided documents.\n\nUse this bullet shape:\n[Character full name]:\n- Long Term Goal: one line on the character's main long-term goal\n  - Motivation: brief reasoning for that long-term goal\n- Current Goal: brief current objective or problem\n  - Motivation: reasoning for the current objective\n- Assumptions: relevant assumptions the character is making in the current scene\n- Next Action: how they will tackle the current goal, their most likely action set, and why\n\nFor an empty scene, write: Observation: scene currently has no other characters. Use plain markdown bullets in this shape.",
     "phase": "post",
@@ -1328,7 +1328,7 @@
       "memory",
       "notes"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Use 3-6 bullets. If everything is stable, write: Continuity looks stable.",
     "phase": "post",
@@ -1388,7 +1388,7 @@
       "subtext",
       "emotion"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Stay with established facts and relationship implications from the source reply.",
     "phase": "post",
@@ -1448,7 +1448,7 @@
       "scene",
       "notes"
     ],
-    "version": 5,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "The story narrator steps out from behind the page for a moment, speaking directly to the reader between scenes.\n\n{{getvar::narration}}\n\nThe editor appends [Selected Director Commentary Voice] and [Director Commentary Voice] after this prompt. Treat [Director Commentary Voice] as the source of truth for this commentary run. If it says to use the active Prose Voice and the block above is empty, use this native register: intimate and mischievous, dry amusement, controlled irony, conspiratorial direct address to the reader, with razor-sharp asides.\n\nIn that voice, deliver a short commentary track on the latest reply: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Keep the result between narrator and reader, focused on scene craft.",
     "phase": "post",
@@ -1508,7 +1508,7 @@
       "character",
       "notes"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Run a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Keep the result as off-record interview commentary.",
     "phase": "post",
@@ -1568,7 +1568,7 @@
       "world info",
       "notes"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Favor facts that are not already covered by the provided World Info. For each fact, draft one lorebook entry covering one concept, formatted as a bold title, a Keys line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Use up to 4 entries. For empty turns, write: Lorebook has nothing durable this turn.",
     "phase": "post",
@@ -1628,7 +1628,7 @@
       "summary",
       "notes"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Compress the recent conversation into a compact memory shard the story could be resumed from. When [Your previous notes] contains earlier shards, build on them: carry forward still-relevant facts, update what changed, drop resolved material, and merge unchanged entries. Identify emotional peaks first and map causal chains backward from them; preserve high-impact material in more detail and compress material that can be inferred.\n\nUse these sections with terse pipe-delimited lines and keywords instead of prose:\n\n## Timeline\nNumbered anchor phrases with location, oldest to newest. All other sections reference these numbers.\n\n## Characters\nName|role|3-5 trait keywords|status\n\n## Relationships\nA -> B: dimension=0-100 values | one-line note. 50 is neutral baseline; list dimensions that matter, such as trust, intimacy, tension, hostility, affection, dependency.\n\n## Events\nN. action -> consequence -> outcome, weight 1-5. Weight 5 means a permanent change to a character, relationship, or world state and keeps its key details; weight-1 filler can be omitted.\n\n## Dialogue Keys\nTimeline#. \"exact quote\" -- Speaker (context). Use confessions, threats, promises, reveals, and voice-defining lines.\n\n## Threads\nUnresolved hooks and planted callbacks: thread|status (unresolved, developing, urgent)|note\n\n## Now\nLocation, time, characters present, situation, pending actions, mood, physical state.\n\nMark uncertain facts with (?). Use sourced events, quotes, and details. Plain text keeps this easy to compact.",
     "phase": "post",
@@ -1689,7 +1689,7 @@
       "objective",
       "planning"
     ],
-    "version": 3,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "The story's plot planner uses [Plot Compass Objective] as the user's standing objective for where they want the story to go.\n\nUse these sections:\n\n**Objective:** carry the user's objective forward verbatim. When the objective is empty, write: none set - open this agent's settings and fill in Plot Objective\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next beats:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nWhen the objective is empty, keep Progress, Next beats, and Obstacles grounded in the story's own momentum. Keep the plan in outline mode with plot-planning notes.",
     "phase": "post",
@@ -1753,7 +1753,7 @@
       "reactions",
       "audience"
     ],
-    "version": 7,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Chatroom is a private sidecar live reaction feed inspired by EchoChamber. React to the latest assistant reply and recent context as a compact audience chat. Scene continuation, next-beat writing, and main-narrator voice stay outside the feed.\n\n[Selected Chatroom Style] is the source of truth for the active style. Supported preset styles are mixed, in-world, discord/twitch, twitter/x, reddit, ao3/wattpad, newsroom, and thread-board/4chan. The selected style may also be custom. If the selected style is custom, follow [Custom Chatroom Style] as the source of truth for the audience, voice, handles, pacing, and recurring bits. If custom is selected and [Custom Chatroom Style] is empty, use mixed.\n\nIf [Chatroom Extra Character Cards] is present, treat those cards as optional out-of-scene reactor personas. The current active character remains separate from those cards. For in-world or mixed styles, they can comment using their card voice, relationships, and knowledge as audience chatter.\n\nOutput shape:\nFirst line: chatroom-style|active-style\nMessage lines: chatroom|speaker|meta|tone|message\nFinal line: chatroom-end\n\nUse the selected active style in chatroom-style. For custom styles, write chatroom-style|custom unless the custom instruction explicitly gives a short style label. Tone is one of these hue numbers: 18, 42, 92, 150, 205, 265, 315. Rotate tones so adjacent speakers have different name-chip colors. Use / instead of | inside speaker, meta, or message fields. Keep each message short and specific to the latest reply. Each chatroom line is one complete post, with the message field on one line.\n\nAuthenticity rules: give every speaker a fresh handle, username, anon tag, or character name that fits the active style and current story. Let commenters react to each other, disagree, misunderstand, hype, analyze, panic, or get petty. Favor scene-specific reactions over generic meme soup. Use slang sparingly and only when it fits the style. For anonymous board styles, use distinct post labels such as OP, Anon #421, Anon #088, Janitor, or other identifiable post labels.\n\nStyle notes:\n- mixed: blend in-world reactions, stream chat, fandom comments, and dry analysis.\n- in-world: characters, NPCs, factions, servants, bystanders, rivals, gods, ghosts, or observers react as if gossiping from inside the setting. Preserve their voices, relationships, and limits of knowledge.\n- discord/twitch: fast chat energy with mods, lurkers, backseat drivers, hype posters, skeptics, regulars, and running bits.\n- twitter/x: quote-post energy, bad takes, ratios, community-note pedants, stans, receipt collectors, and reply-guy derailments.\n- reddit: comment-section argument spiral with OP, throwaways, mods, pedants, armchair experts, downvote pile-ons, edit notes, unnecessary hostility, petty dunking, and users fighting over semantics or inventing motives for no reason. Use meta like top comment, -42, OP reply, mod note, edited, or controversial. Make the replies petty and toxic where funny, while keeping every take tied to the actual scene.\n- ao3/wattpad: reader comments, reread notes, quote reactions, bookmark energy, theories, and emotional over-identification.\n- newsroom: anchors, producers, field correspondents, chyrons, pundits, and overheated breaking-news framing.\n- thread-board/4chan: anonymous post energy with OP/anons, greentext fragments, blunt skepticism, bait accusations, wild theories, checked energy, and board-thread pacing. Use unique post labels instead of repeating Anon. When a message starts with >, write one greentext beat in that row and put the next beat in a new row with a different post label.\n- custom: follow [Custom Chatroom Style] closely, but keep the same hard interface and keep reactions grounded in the actual scene.",
     "phase": "post",
@@ -1893,6 +1893,69 @@
     }
   },
   {
+    "id": "tpl-chat-only-companion",
+    "name": "Chat Only",
+    "description": "Manual private aside chat with the character or characters in the scene, kept outside the roleplay transcript",
+    "icon": "fa-comments",
+    "category": "companion",
+    "tags": [
+      "chat",
+      "aside",
+      "character"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Chat Only is a private side-channel conversation with the character or characters currently active in the scene. Use the latest assistant reply, recent context, and included character material to infer who is present and how they would speak.\n\n[Your previous notes] is the private aside transcript. The user can edit that note with a new line such as You: ask your aside here, then run this companion again. Answer the newest user aside in the voice of the relevant present character. If the transcript has no user aside yet, open with a brief private invitation and list who seems available to talk.\n\nKeep the result as an out-of-continuity companion note. It can reveal candid thoughts, motives, emotions, and meta commentary, while staying separate from story actions and future roleplay events. For multiple present characters, let 1-3 of them answer with distinct voices when useful.\n\nUse a compact transcript shape:\n**You:** the user's newest aside, if present\n**Character Name:** in-character aside reply\n\nCarry forward the useful recent turns from [Your previous notes], then append the new reply. Keep it readable, conversational, and short enough to use as a side chat panel.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "manual",
+      "displayMode": "panel",
+      "format": "markdown",
+      "rawPrompt": true,
+      "contextMessages": 12,
+      "includeCharacterCard": true,
+      "includePersona": true,
+      "includeWorldInfo": true,
+      "includeAuthorsNote": true,
+      "includeSystemPrompt": false,
+      "includeHistory": true,
+      "historyDepth": 6,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": false,
+      "maxTokens": 32000
+    },
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 113,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
     "id": "tpl-message-inbox-companion",
     "name": "Message Inbox",
     "description": "Shows in-story texts or letters sent to the user as a phone inbox or parchment companion view, and stays hidden when no message arrives",
@@ -1903,7 +1966,7 @@
       "phone",
       "letters"
     ],
-    "version": 2,
+    "version": 1,
     "author": "SillyBunny",
     "prompt": "Message Inbox is a private sidecar detector for diegetic messages sent to the user character. Inspect the latest assistant reply first; recent context helps identify names, setting, and whether the world uses phones or letters.\n\nRender a card when the latest assistant reply says someone sent the user character a readable text, DM, phone notification with content, magical message, courier note, sealed letter, scroll, or similar written remote message. Treat spoken dialogue, narration, thoughts, choices, Chatroom reactions, tracker text, and vague phone buzzes as background rather than inbox items. For empty turns, output: phone-none\n\nChoose the interface:\n- Use phone-start for modern, sci-fi, urban, contemporary, cyberpunk, or any setting where phones, DMs, terminals, comms, watches, or digital notifications fit.\n- Use letter-start for fantasy, medieval, ancient, parchment, magic, courtly, courier, raven, scroll, sealed-note, or otherwise pre-phone settings. When the setting has an unclear device level, prefer the parchment letter view.\n\nPhone mode shape:\nFirst line: phone-start|thread-title|status\nMessage lines: phone-text|sender|meta|message\nFinal line: phone-end\n\nParchment mode shape:\nFirst line: letter-start|title-or-seal|status\nLetter lines: letter-text|sender|meta|message\nFinal line: letter-end\n\nAllowed responses are phone-none, phone mode, or parchment mode. Use / instead of | inside fields. Keep each message field on one line. Keep messages faithful to the actual roleplay text, preserving sender intent and tone. Shorten when needed for readability. Use 1-6 phone messages or 1-4 letter lines. Prefer the named sender from the scene; use Unknown when the sender is truly unclear. Status can be just now, unread, delivered, sealed, urgent, by raven, by courier, spell-sent, or another short in-world status.",
     "phase": "post",

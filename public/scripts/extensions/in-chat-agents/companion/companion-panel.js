@@ -13,7 +13,6 @@ import {
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
-    meetsCompanionContextThreshold,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
@@ -22,7 +21,6 @@ import {
     editCompanionResult,
     formatCompanionContent,
     insertChoiceIntoMessageInput,
-    isSilentCompanionAgent,
     isSuppressedCompanionResult,
 } from './companion-ui.js';
 
@@ -332,7 +330,7 @@ export function collectPanelAgentStates() {
     const byAgentId = new Map();
 
     for (const agent of getPanelAgents()) {
-        if (isAgentEnabledForCurrentScope(agent) && !isSilentCompanionAgent(agent)) {
+        if (isAgentEnabledForCurrentScope(agent)) {
             byAgentId.set(agent.id, { agentId: agent.id, agent, latest: null, history: [] });
         }
     }
@@ -369,11 +367,10 @@ export function collectPanelAgentStates() {
     }
 
     // Mirror the agents page: order by injection.order; orphaned results sink to the bottom.
-    // Stateless agents below their context threshold (e.g. the memory shard before ~30k
-    // tokens) stay out of the panel until they become relevant.
+    // Enabled companions stay visible even before their first runnable turn so users can
+    // see what is on and open settings from the panel.
     const orderOf = state => (state.agent ? Number(state.agent.injection?.order ?? 0) : Number.MAX_SAFE_INTEGER);
     return [...byAgentId.values()]
-        .filter(state => state.latest || !state.agent || meetsCompanionContextThreshold(state.agent))
         .sort((a, b) => orderOf(a) - orderOf(b));
 }
 

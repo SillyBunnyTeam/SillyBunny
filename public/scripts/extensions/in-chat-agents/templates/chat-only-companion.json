@@ -1,0 +1,63 @@
+{
+    "id": "tpl-chat-only-companion",
+    "name": "Chat Only",
+    "description": "Manual private aside chat with the character or characters in the scene, kept outside the roleplay transcript",
+    "icon": "fa-comments",
+    "category": "companion",
+    "tags": [
+        "chat",
+        "aside",
+        "character"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Chat Only is a private side-channel conversation with the character or characters currently active in the scene. Use the latest assistant reply, recent context, and included character material to infer who is present and how they would speak.\n\n[Your previous notes] is the private aside transcript. The user can edit that note with a new line such as You: ask your aside here, then run this companion again. Answer the newest user aside in the voice of the relevant present character. If the transcript has no user aside yet, open with a brief private invitation and list who seems available to talk.\n\nKeep the result as an out-of-continuity companion note. It can reveal candid thoughts, motives, emotions, and meta commentary, while staying separate from story actions and future roleplay events. For multiple present characters, let 1-3 of them answer with distinct voices when useful.\n\nUse a compact transcript shape:\n**You:** the user's newest aside, if present\n**Character Name:** in-character aside reply\n\nCarry forward the useful recent turns from [Your previous notes], then append the new reply. Keep it readable, conversational, and short enough to use as a side chat panel.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "manual",
+        "displayMode": "panel",
+        "format": "markdown",
+        "rawPrompt": true,
+        "contextMessages": 12,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
+        "includeAuthorsNote": true,
+        "includeSystemPrompt": false,
+        "includeHistory": true,
+        "historyDepth": 6,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 32000
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 113,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}
