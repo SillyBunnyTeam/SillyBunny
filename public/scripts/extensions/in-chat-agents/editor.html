@@ -100,9 +100,21 @@
                     <option value="ao3/wattpad">AO3 / Wattpad</option>
                     <option value="newsroom">Newsroom</option>
                     <option value="thread-board/4chan">Thread-board / 4chan</option>
+                    <option value="custom">Custom</option>
                 </select>
             </label>
             <div class="ica--regex-note">Injected into Chatroom runs, so the output can stay compact and render through bundled regex.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--chatroom-custom-style-row" style="display:none">
+            <label>Active Custom Style
+                <select id="ica--editor-chatroom-custom-style-name" class="text_pole">
+                    <option value="">Add styles below</option>
+                </select>
+            </label>
+            <label>Custom Style Library
+                <textarea id="ica--editor-chatroom-custom-styles" class="text_pole textarea_compact" rows="5" placeholder="Radio Call-In: local radio host, regular callers, fake ads, timestamps, and running jokes tied to the scene&#10;Forum Mods: old forum thread with moderators, power users, quote replies, and derail warnings"></textarea>
+            </label>
+            <div class="ica--regex-note">Add one reusable style per line as Name: instructions, then pick which one this Chatroom uses.</div>
         </div>
         <div class="ica--editor-row" id="ica--plot-compass-objective-row" style="display:none">
             <label>Plot Objective

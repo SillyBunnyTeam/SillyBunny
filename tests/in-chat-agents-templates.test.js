@@ -184,6 +184,8 @@ describe('in-chat agent bundled templates', () => {
         }));
         expect(chatroom.regexScripts).toHaveLength(3);
         expect(chatroom.prompt).toContain('CHATROOM_STYLE|active-style');
+        expect(chatroom.prompt).toContain('[Custom Chatroom Style]');
+        expect(chatroom.prompt).toContain('- custom: follow [Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('thread-board/4chan');
         expect(chatroom.prompt).not.toContain('No NSFW chat styles');
         expect(chatroom.prompt).not.toContain('targeted slurs');

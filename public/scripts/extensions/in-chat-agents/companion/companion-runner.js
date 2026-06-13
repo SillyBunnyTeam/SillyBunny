@@ -38,6 +38,10 @@ const COMPANION_PROMPT_KEY_PREFIX = 'inchat_agent_companion_';
 const BATCH_MARKER_RE = /<<<COMPANION:([\w-]+)>>>([\s\S]*?)<<<END:\1>>>/g;
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
+const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
+const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
+const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
 const CHATROOM_STYLE_VALUES = new Set([
     'mixed',
     'in-world',
@@ -46,6 +50,7 @@ const CHATROOM_STYLE_VALUES = new Set([
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
+    CHATROOM_CUSTOM_STYLE_VALUE,
 ]);
 
 let companionRunnerInitialized = false;
@@ -59,11 +64,70 @@ function normalizeChatroomStyle(value = '') {
     return CHATROOM_STYLE_VALUES.has(normalized) ? normalized : 'mixed';
 }
 
+function normalizeChatroomCustomStyles(value = '') {
+    return String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, CHATROOM_CUSTOM_STYLES_MAX_CHARS);
+}
+
+function normalizeChatroomCustomStyleName(value = '') {
+    return String(value ?? '').trim().slice(0, CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS);
+}
+
+function parseChatroomCustomStyles(value = '') {
+    const seenNames = new Set();
+    return normalizeChatroomCustomStyles(value)
+        .split('\n')
+        .map(line => {
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex <= 0) return null;
+
+            const name = normalizeChatroomCustomStyleName(line.slice(0, separatorIndex));
+            const prompt = line.slice(separatorIndex + 1).trim().slice(0, CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS);
+            const normalizedName = name.toLowerCase();
+
+            if (!name || !prompt || seenNames.has(normalizedName)) return null;
+            seenNames.add(normalizedName);
+            return { name, prompt };
+        })
+        .filter(Boolean);
+}
+
+function getChatroomCustomStylesSetting(settings = {}) {
+    const customStyles = normalizeChatroomCustomStyles(settings?.chatroomCustomStyles);
+    if (customStyles) return customStyles;
+
+    const legacyCustomStyle = String(settings?.chatroomCustomStyle ?? '').trim();
+    return legacyCustomStyle ? normalizeChatroomCustomStyles(`Custom: ${legacyCustomStyle}`) : '';
+}
+
+function resolveChatroomCustomStyle(settings = {}) {
+    const styles = parseChatroomCustomStyles(getChatroomCustomStylesSetting(settings));
+    if (!styles.length) return null;
+
+    const selectedName = normalizeChatroomCustomStyleName(settings?.chatroomCustomStyleName).toLowerCase();
+    return styles.find(style => style.name.toLowerCase() === selectedName) || styles[0];
+}
+
 function getTemplateSettingsPromptBlock(agent = {}) {
     const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
 
     if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
-        return `[Selected Chatroom Style]\n${normalizeChatroomStyle(agent.settings?.chatroomStyle)}`;
+        const style = normalizeChatroomStyle(agent.settings?.chatroomStyle);
+        const blocks = [`[Selected Chatroom Style]\n${style}`];
+
+        if (style === CHATROOM_CUSTOM_STYLE_VALUE) {
+            const customStyle = resolveChatroomCustomStyle(agent.settings);
+            blocks.push(customStyle
+                ? `[Custom Chatroom Style]\nName: ${customStyle.name}\n${customStyle.prompt}`
+                : '[Custom Chatroom Style]\nnone set - use mixed');
+        }
+
+        return blocks.join('\n\n');
     }
 
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {

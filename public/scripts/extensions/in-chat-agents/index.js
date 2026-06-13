@@ -141,6 +141,10 @@ const REMOVED_BUNDLED_GROUP_IDS = new Set([
 
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
+const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
+const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
+const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
 const CHATROOM_STYLE_VALUES = Object.freeze([
     'mixed',
     'in-world',
@@ -149,6 +153,7 @@ const CHATROOM_STYLE_VALUES = Object.freeze([
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
+    CHATROOM_CUSTOM_STYLE_VALUE,
 ]);
 const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set([
     CHATROOM_TEMPLATE_ID,
@@ -162,6 +167,47 @@ const CYOA_CHOICES_EMPTY_ROW_CLEANUP_SCRIPT_ID = '9fa2958c-215f-4fef-9a3e-804c08
 function normalizeChatroomStyle(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
     return CHATROOM_STYLE_VALUES.includes(normalized) ? normalized : 'mixed';
+}
+
+function normalizeChatroomCustomStyles(value = '') {
+    return String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, CHATROOM_CUSTOM_STYLES_MAX_CHARS);
+}
+
+function normalizeChatroomCustomStyleName(value = '') {
+    return String(value ?? '').trim().slice(0, CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS);
+}
+
+function parseChatroomCustomStyles(value = '') {
+    const seenNames = new Set();
+    return normalizeChatroomCustomStyles(value)
+        .split('\n')
+        .map(line => {
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex <= 0) return null;
+
+            const name = normalizeChatroomCustomStyleName(line.slice(0, separatorIndex));
+            const prompt = line.slice(separatorIndex + 1).trim().slice(0, CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS);
+            const normalizedName = name.toLowerCase();
+
+            if (!name || !prompt || seenNames.has(normalizedName)) return null;
+            seenNames.add(normalizedName);
+            return { name, prompt };
+        })
+        .filter(Boolean);
+}
+
+function getChatroomCustomStylesSetting(settings = {}) {
+    const customStyles = normalizeChatroomCustomStyles(settings?.chatroomCustomStyles);
+    if (customStyles) return customStyles;
+
+    const legacyCustomStyle = String(settings?.chatroomCustomStyle ?? '').trim();
+    return legacyCustomStyle ? normalizeChatroomCustomStyles(`Custom: ${legacyCustomStyle}`) : '';
 }
 
 const REGEX_PLACEMENT_LABELS = {
@@ -2276,6 +2322,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
+    const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
+    editorEl.find('#ica--editor-chatroom-custom-styles').val(getChatroomCustomStylesSetting(agent.settings));
     editorEl.find('#ica--editor-plot-compass-objective').val(typeof agent.settings?.plotCompassObjective === 'string'
         ? agent.settings.plotCompassObjective
         : '');
@@ -2341,11 +2389,37 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         return category === 'companion' || execution === 'companion';
     }
 
+    function updateChatroomCustomStyleOptions() {
+        const select = editorEl.find('#ica--editor-chatroom-custom-style-name');
+        const currentName = normalizeChatroomCustomStyleName(select.val());
+        const customStyles = parseChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
+
+        select.empty();
+        if (!customStyles.length) {
+            select.append($('<option>').val('').text('Add styles below'));
+            return;
+        }
+
+        const findStyleName = name => {
+            const normalizedName = normalizeChatroomCustomStyleName(name).toLowerCase();
+            return customStyles.find(style => style.name.toLowerCase() === normalizedName)?.name || '';
+        };
+        const preferredName = findStyleName(currentName) || findStyleName(savedChatroomCustomStyleName) || customStyles[0].name;
+
+        for (const style of customStyles) {
+            select.append($('<option>').val(style.name).text(style.name));
+        }
+        select.val(preferredName);
+    }
+
     function updateCompanionEditorVisibility() {
         const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
         const companionExecution = isEditorCompanionExecution();
         const executionSelect = editorEl.find('#ica--editor-execution');
         const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
+        const showChatroomSettings = companionExecution && sourceTemplateId === CHATROOM_TEMPLATE_ID;
+        const showCustomChatroomStyle = showChatroomSettings
+            && normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val()) === CHATROOM_CUSTOM_STYLE_VALUE;
 
         if (category === 'companion') {
             executionSelect.val('companion');
@@ -2354,7 +2428,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         executionSelect.prop('disabled', category === 'companion');
         editorEl.find('#ica--companion-section').toggle(companionExecution);
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
-        editorEl.find('#ica--chatroom-style-row').toggle(companionExecution && sourceTemplateId === CHATROOM_TEMPLATE_ID);
+        editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
+        editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
@@ -2417,8 +2492,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateTrackerBuilderVisibility();
         updateCompanionEditorVisibility();
     });
-    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     updateTrackerBuilderVisibility();
+    updateChatroomCustomStyleOptions();
     updateCompanionEditorVisibility();
 
     // Show/hide sections based on phase
@@ -2799,6 +2876,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
     if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
         agent.settings.chatroomStyle = normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val());
+        agent.settings.chatroomCustomStyles = normalizeChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
+        agent.settings.chatroomCustomStyleName = normalizeChatroomCustomStyleName(editorEl.find('#ica--editor-chatroom-custom-style-name').val());
+        delete agent.settings.chatroomCustomStyle;
     }
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
         agent.settings.plotCompassObjective = editorEl.find('#ica--editor-plot-compass-objective').val()?.toString().trim() || '';

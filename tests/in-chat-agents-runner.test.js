@@ -973,6 +973,27 @@ describe('in-chat agent post-processing runner', () => {
             companion: { rawPrompt: true },
             prompt: 'Return Chatroom lines.',
         });
+        const customChatroomCompanion = createCompanionAgent({
+            id: 'chatroom-custom-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: {
+                chatroomStyle: 'custom',
+                chatroomCustomStyleName: 'Forum Mods',
+                chatroomCustomStyles: 'Radio Call-In: local radio call-in show with a host, regular callers, fake ads, and running jokes.\nForum Mods: old forum thread with moderators, power users, quote replies, and derail warnings.',
+            },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
+        const fallbackCustomChatroomCompanion = createCompanionAgent({
+            id: 'chatroom-custom-fallback-companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            settings: {
+                chatroomStyle: 'custom',
+                chatroomCustomStyles: 'Radio Call-In: local radio call-in show with a host, regular callers, fake ads, and running jokes.\nForum Mods: old forum thread with moderators, power users, quote replies, and derail warnings.',
+            },
+            companion: { rawPrompt: true },
+            prompt: 'Return Chatroom lines.',
+        });
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         chat.push(
@@ -985,6 +1006,16 @@ describe('in-chat agent post-processing runner', () => {
 
         const defaultMessages = await companionRunner.buildCompanionPromptMessages(defaultChatroomCompanion, 1);
         expect(defaultMessages[0].content).toContain('[Selected Chatroom Style]\nmixed');
+
+        const customMessages = await companionRunner.buildCompanionPromptMessages(customChatroomCompanion, 1);
+        expect(customMessages[0].content).toContain('[Selected Chatroom Style]\ncustom');
+        expect(customMessages[0].content).toContain('[Custom Chatroom Style]\nName: Forum Mods');
+        expect(customMessages[0].content).toContain('old forum thread with moderators');
+        expect(customMessages[0].content).not.toContain('local radio call-in show');
+
+        const fallbackCustomMessages = await companionRunner.buildCompanionPromptMessages(fallbackCustomChatroomCompanion, 1);
+        expect(fallbackCustomMessages[0].content).toContain('[Custom Chatroom Style]\nName: Radio Call-In');
+        expect(fallbackCustomMessages[0].content).toContain('local radio call-in show');
     });
 
     test('injects the Plot Compass objective into companion prompts', async () => {
