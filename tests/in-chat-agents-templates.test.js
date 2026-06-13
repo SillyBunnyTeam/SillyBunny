@@ -298,6 +298,16 @@ describe('in-chat agent bundled templates', () => {
         expect(chatOnly.prompt).toContain('Actions appear as plain prose');
         expect(chatOnly.prompt).toContain('live side chat panel');
         expect(chatOnly.prompt).not.toContain('**You:**');
+        expect(chatOnly.regexScripts).toHaveLength(1);
+        expect(chatOnly.regexScripts[0]).toEqual(expect.objectContaining({
+            id: 'chat-only-transcript-row',
+            placement: [AGENT_REGEX_PLACEMENT.AI_OUTPUT],
+            markdownOnly: true,
+        }));
+        expect(chatOnly.regexScripts[0].replaceString).toContain('ica--chatonly-turn');
+        expect(chatOnly.regexScripts[0].replaceString).toContain('ica--chatonly-speaker');
+        expect(chatOnly.regexScripts[0].replaceString).toContain('ica--chatonly-message');
+        expect(chatOnly.regexScripts[0].replaceString).toContain('white-space:pre-wrap');
 
         expect(messageInbox.companion).toEqual(expect.objectContaining({
             trigger: 'auto',

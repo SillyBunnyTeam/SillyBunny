@@ -172,6 +172,39 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalled();
     });
 
+    test('beautifies Chat Only transcript speaker turns before markdown conversion', async () => {
+        const chatOnlyTemplate = readTemplate('chat-only-companion.json');
+        agents.push({
+            id: 'chat-only',
+            name: 'Chat Only',
+            sourceTemplateId: 'tpl-chat-only-companion',
+            execution: 'companion',
+            regexScripts: chatOnlyTemplate.regexScripts,
+        });
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('chat-only', {
+            content: [
+                'You: What are you going to do to him?',
+                'Kaveh: I\'m going to give him a piece of my mind!',
+                'Or... actually, I might just grab his hand and physically move it away.',
+                'Alhaitham: Options are varied. I could file a formal complaint.',
+            ].join('\n'),
+            format: 'markdown',
+        }, { name: 'Assistant' });
+
+        expect(html).toContain('ica--chatonly-turn');
+        expect(html).toContain('ica--chatonly-speaker');
+        expect(html).toContain('ica--chatonly-message');
+        expect(html).toContain('white-space:pre-wrap');
+        expect(html).toContain('Kaveh');
+        expect(html).toContain('Or... actually, I might just grab his hand');
+        expect(html).toContain('Alhaitham');
+        expect(html).not.toContain('Kaveh: I\'m going');
+        expect(html).not.toContain('Alhaitham: Options are varied');
+        expect(sanitize).toHaveBeenCalled();
+    });
+
     test('escapes regex output in text-format cards', async () => {
         const { formatCompanionContent } = await importCompanionUi();
 

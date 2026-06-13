@@ -1978,6 +1978,25 @@
             "batch": false,
             "maxTokens": 32000
         },
+        "regexScripts": [
+            {
+                "id": "chat-only-transcript-row",
+                "scriptName": "Chat Only transcript row",
+                "findRegex": "/^([A-Za-z][^:\\n]{0,48}):[ \\t]*([\\s\\S]*?)(?=\\n[A-Za-z][^:\\n]{0,48}:[ \\t]*|(?![\\s\\S]))/gm",
+                "replaceString": "<div class=\"ica--chatonly-turn\" style=\"display:flex;flex-direction:column;gap:5px;margin:0 0 9px;max-width:100%\"><div style=\"display:flex;align-items:center;gap:7px;min-width:0\"><b class=\"ica--chatonly-speaker\" style=\"display:inline-block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--SmartThemeQuoteColor) 24%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 32%, transparent);color:var(--SmartThemeBodyColor)\">$1</b></div><div class=\"ica--chatonly-message\" style=\"padding:9px 11px;border-radius:13px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 7%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 16%, transparent);line-height:1.45;white-space:pre-wrap;word-break:break-word\">$2</div></div>",
+                "trimStrings": [],
+                "placement": [
+                    2
+                ],
+                "disabled": false,
+                "markdownOnly": true,
+                "promptOnly": false,
+                "runOnEdit": true,
+                "substituteRegex": 0,
+                "minDepth": null,
+                "maxDepth": null
+            }
+        ],
         "injection": {
             "position": 0,
             "depth": 4,
