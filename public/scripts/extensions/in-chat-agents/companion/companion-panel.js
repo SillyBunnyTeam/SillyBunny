@@ -25,6 +25,9 @@ import {
 } from './companion-ui.js';
 
 const PANEL_HISTORY_LIMIT = 5;
+const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
+const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
+const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -321,6 +324,25 @@ function getPanelAgents() {
     return getAgents().filter(agent => isCompanionAgent(agent) && agent.category !== 'tool');
 }
 
+function isChatOnlyAgent(agent = {}) {
+    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
+    return templateId === CHAT_ONLY_TEMPLATE_ID;
+}
+
+function normalizeChatOnlyInput(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
+}
+
+function normalizeChatOnlyTranscript(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(-CHAT_ONLY_TRANSCRIPT_MAX_CHARS);
+}
+
+function appendChatOnlyUserMessage(transcript = '', userInput = '') {
+    const previous = normalizeChatOnlyTranscript(transcript);
+    const nextLine = `**You:** ${normalizeChatOnlyInput(userInput)}`;
+    return normalizeChatOnlyTranscript(previous ? `${previous}\n\n${nextLine}` : nextLine);
+}
+
 /**
  * Collects the latest stored result (and a short history) per companion agent by walking
  * the chat backwards. Enabled agents without any stored state are included so the panel
@@ -404,6 +426,23 @@ function buildPanelEntryBody(agentId, entry) {
     return formatCompanionContent(agentId, entry.result, chat[entry.messageIndex]);
 }
 
+function buildChatOnlyComposer(state) {
+    if (!isChatOnlyAgent(state.agent)) {
+        return '';
+    }
+
+    return `
+        <div class="ica--tpanel-chatonly-composer">
+            <div class="ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
+            <textarea class="text_pole textarea_compact ica--tpanel-chatonly-input" data-role="chat-only-input" rows="2" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside to the character here..."></textarea>
+            <button type="button" class="menu_button menu_button_icon ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span>Send aside</span>
+            </button>
+        </div>
+    `;
+}
+
 function buildPanelAgentSection(state) {
     const agentId = state.agentId ?? state.agent?.id ?? '';
     const latest = state.latest;
@@ -425,6 +464,7 @@ function buildPanelAgentSection(state) {
                     <span class="ica--tpanel-agent-actions">${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
+                ${buildChatOnlyComposer(state)}
             </section>
         `;
     }
@@ -457,6 +497,7 @@ function buildPanelAgentSection(state) {
                 </span>
             </div>
             <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, latest)}</div>
+            ${buildChatOnlyComposer(state)}
             ${buildCompactionButton(state)}
             ${historyHtml}
         </section>
@@ -599,6 +640,48 @@ async function handlePanelAction(event) {
             await runCompanionAgentOnMessage(agentId, lastAssistantIndex);
         } finally {
             button.prop('disabled', false);
+            if (panelOpen) {
+                renderPanel();
+            }
+        }
+        return;
+    }
+
+    if (action === 'panel-chat-only-send') {
+        const agent = getPanelAgents().find(candidate => candidate.id === agentId);
+        if (!agent || !isChatOnlyAgent(agent)) {
+            toastr.warning('Chat Only is not available.');
+            return;
+        }
+
+        const inputField = section.find('[data-role="chat-only-input"]');
+        const userInput = normalizeChatOnlyInput(inputField.val());
+        if (!userInput) {
+            toastr.warning('Type an aside first.');
+            return;
+        }
+
+        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        if (lastAssistantIndex < 0) {
+            toastr.warning('No assistant reply yet to chat beside.');
+            return;
+        }
+
+        const state = collectPanelAgentStates().find(candidate => candidate.agentId === agentId || candidate.agent?.id === agentId);
+        const transcript = appendChatOnlyUserMessage(state?.latest?.result?.content ?? '', userInput);
+        button.prop('disabled', true);
+        inputField.prop('disabled', true);
+        try {
+            await runCompanionAgentOnMessage(agentId, lastAssistantIndex, {
+                pendingContent: transcript,
+                extraContextSections: [{
+                    title: 'Chat Only side chat',
+                    content: transcript,
+                }],
+            });
+        } finally {
+            button.prop('disabled', false);
+            inputField.prop('disabled', false).val('');
             if (panelOpen) {
                 renderPanel();
             }

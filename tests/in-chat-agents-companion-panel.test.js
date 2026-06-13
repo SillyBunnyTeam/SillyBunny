@@ -511,6 +511,77 @@ describe('companion tracker panel', () => {
         expect(button.prop).toHaveBeenCalledWith('disabled', false);
     });
 
+    test('sends Chat Only textbox input as private side-chat context', async () => {
+        agents = [{
+            id: 'chat-only',
+            name: 'Chat Only',
+            sourceTemplateId: 'tpl-chat-only-companion',
+            execution: 'companion',
+            enabled: true,
+            companion: { trigger: 'manual', displayMode: 'panel' },
+        }];
+        chat.push({ is_user: true, mes: 'hello' }, { is_user: false, is_system: false, mes: 'latest reply' });
+        companionResultsByMessage.set(chat[1], {
+            'chat-only': { status: 'done', content: '**You:** Hey\n\n**Mona:** I can hear you.', agentName: 'Chat Only' },
+        });
+        const panel = await importPanel();
+        const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const panelElement = { on: jest.fn(() => panelElement), html: jest.fn(() => panelElement), toggle: jest.fn(() => panelElement), attr: jest.fn(() => panelElement), addClass: jest.fn(() => panelElement) };
+        const handleElement = { on: jest.fn(() => handleElement), toggle: jest.fn(() => handleElement) };
+        const button = { prop: jest.fn() };
+        const inputField = { val: jest.fn(value => (value === undefined ? 'Are you actually okay?' : inputField)), prop: jest.fn(() => inputField) };
+        const section = {
+            attr: jest.fn(name => (name === 'data-agent-id' ? 'chat-only' : '1')),
+            find: jest.fn(() => inputField),
+        };
+        const actionButton = {};
+        globalThis.$ = jest.fn(arg => {
+            if (arg === globalThis.document.body) {
+                return { append: jest.fn() };
+            }
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            if (arg === '#ica_tracker_panel_wand_item') {
+                return { length: 1 };
+            }
+            if (arg === actionButton) {
+                return {
+                    attr: jest.fn(name => (name === 'data-action' ? 'panel-chat-only-send' : undefined)),
+                    closest: jest.fn(() => section),
+                    prop: button.prop,
+                };
+            }
+            return { length: 0, on: jest.fn(), append: jest.fn(), html: jest.fn(), toggle: jest.fn() };
+        });
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('data-role="chat-only-input"');
+        expect(html).toContain('data-action="panel-chat-only-send"');
+        expect(html).toContain('Private side chat');
+
+        panel.initCompanionPanel();
+        const actionHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '[data-action]')[2];
+        await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
+
+        expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('chat-only', 1, expect.objectContaining({
+            pendingContent: expect.stringContaining('**You:** Are you actually okay?'),
+            extraContextSections: [expect.objectContaining({
+                title: 'Chat Only side chat',
+                content: expect.stringContaining('**Mona:** I can hear you.'),
+            })],
+        }));
+        expect(runner.runCompanionAgentOnMessage.mock.calls[0][2].extraContextSections[0].content).toContain('**You:** Are you actually okay?');
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', true);
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
+        expect(inputField.val).toHaveBeenCalledWith('');
+        expect(button.prop).toHaveBeenCalledWith('disabled', true);
+        expect(button.prop).toHaveBeenCalledWith('disabled', false);
+    });
+
     test('closes after a panel choice inserts into the message box', async () => {
         agents = [{ id: 'choices', name: 'CYOA Choices', execution: 'companion', enabled: true }];
         const panel = await importPanel();

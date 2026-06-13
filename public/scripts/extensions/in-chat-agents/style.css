@@ -1850,6 +1850,44 @@ button.ica--card-pill--version-update {
     margin-bottom: 0;
 }
 
+.ica--tpanel-chatonly-composer {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: end;
+    padding: 9px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 34%, transparent);
+    background:
+        linear-gradient(145deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 10%, transparent),
+            color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent));
+}
+
+.ica--tpanel-chatonly-live {
+    grid-column: 1 / -1;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: calc(var(--mainFontSize) * 0.76);
+    opacity: 0.72;
+}
+
+.ica--tpanel-chatonly-live i {
+    font-size: 0.58em;
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
+}
+
+.ica--tpanel-chatonly-input {
+    min-height: 42px;
+    resize: vertical;
+}
+
+.ica--tpanel-chatonly-send {
+    min-height: 36px;
+    align-self: stretch;
+}
+
 .ica--tpanel-compact {
     align-self: flex-start;
     min-height: 32px;

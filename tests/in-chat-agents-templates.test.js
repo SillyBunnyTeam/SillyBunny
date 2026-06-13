@@ -1,6 +1,19 @@
 import fs from 'node:fs';
 import { describe, expect, jest, test } from '@jest/globals';
 
+await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+    regexFromString: jest.fn(value => {
+        const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
+        return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
+    }),
+    uuidv4: jest.fn(() => 'test-uuid'),
+}));
+
+const {
+    AGENT_REGEX_PLACEMENT,
+    applyRegexScriptList,
+} = await import('../public/scripts/extensions/in-chat-agents/regex-scripts.js');
+
 const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
 const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url);
 const sourceFilenames = [
@@ -68,6 +81,13 @@ function findCatalogTemplate(catalog, templateId) {
     return template;
 }
 
+function renderChatroomOutput(source) {
+    const chatroom = readTemplate('chatroom-companion.json');
+    return applyRegexScriptList(source, chatroom.regexScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+        isMarkdown: true,
+    });
+}
+
 describe('in-chat agent bundled templates', () => {
     test('keeps source files synced with the template browser catalog', () => {
         const catalog = readTemplate('index.json');
@@ -123,6 +143,17 @@ describe('in-chat agent bundled templates', () => {
             maxTokens: 32000,
         }));
         expect(template.conditions.generationTypes).toEqual(['normal', 'continue', 'impersonate']);
+    });
+
+    test('keeps choice-menu templates from including the system prompt by default', () => {
+        const catalog = readTemplate('index.json');
+
+        for (const templateId of ['tpl-cyoa-choices', 'tpl-direction-menu']) {
+            const template = findCatalogTemplate(catalog, templateId);
+            expect(template.companion).toEqual(expect.objectContaining({
+                includeSystemPrompt: false,
+            }));
+        }
     });
 
     test('keeps Prose Polisher enabled for impersonation prompt rewrites in the catalog', () => {
@@ -214,7 +245,7 @@ describe('in-chat agent bundled templates', () => {
             feedback: { enabled: false, depth: 1 },
             maxTokens: 32000,
         }));
-        expect(chatroom.regexScripts).toHaveLength(5);
+        expect(chatroom.regexScripts).toHaveLength(6);
         expect(chatroom.prompt).toContain('chatroom-style|active-style');
         expect(chatroom.prompt).toContain('chatroom|speaker|meta|tone|message');
         expect(chatroom.prompt).toContain('message field on one line');
@@ -225,6 +256,7 @@ describe('in-chat agent bundled templates', () => {
         expect(chatroom.prompt).toContain('Use unique post labels instead of repeating Anon');
         expect(chatroom.prompt).toContain('- reddit:');
         expect(chatroom.regexScripts.map(script => script.id)).toContain('chatroom-message-row-greentext');
+        expect(chatroom.regexScripts.map(script => script.id)).toContain('chatroom-greentext-continuation');
         expect(chatroom.prompt).not.toContain('No NSFW chat styles');
         expect(chatroom.prompt).not.toContain('targeted slurs');
 
@@ -244,8 +276,9 @@ describe('in-chat agent bundled templates', () => {
         }));
         expect(chatOnly.prompt).toContain('private side-channel conversation');
         expect(chatOnly.prompt).toContain('[Your previous notes]');
-        expect(chatOnly.prompt).toContain('You: ask your aside here');
-        expect(chatOnly.prompt).toContain('side chat panel');
+        expect(chatOnly.prompt).toContain('Chat Only textbox');
+        expect(chatOnly.prompt).toContain('[Chat Only side chat]');
+        expect(chatOnly.prompt).toContain('live side chat panel');
 
         expect(messageInbox.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
@@ -300,6 +333,21 @@ describe('in-chat agent bundled templates', () => {
         expect(saved.execution).toBe('companion');
         expect(isCompanionAgent(saved)).toBe(true);
         expect(saved.companion.maxTokens).toBe(32000);
+    });
+
+    test('renders orphan greentext continuation lines inside the Chatroom interface', () => {
+        const html = renderChatroomOutput([
+            'chatroom-style|thread-board/4chan',
+            'chatroom|Anon #009|checked|18|>be the Martyred Maiden',
+            '>spend your free time sharpening a sword and eating sweets',
+            'chatroom-end',
+        ].join('\n'));
+
+        expect(html).toContain('>be the Martyred Maiden');
+        expect(html).toContain('>spend your free time sharpening a sword and eating sweets');
+        expect(html).toContain('font-family:ui-monospace');
+        expect(html).toContain('grid-template-columns:minmax(86px,auto) 1fr');
+        expect(html).not.toMatch(/^>spend your free time/m);
     });
 
     test('uses only known modal subcategories in the catalog', async () => {

@@ -4,6 +4,7 @@
   "description": "Append 3-5 numbered action choices at the end of every response",
   "icon": "",
   "category": "tracker",
+  "subcategory": "player-choices",
   "tags": [
     "choices",
     "interactive",
@@ -33,6 +34,9 @@
     "promptTransformShowNotifications": true,
     "promptTransformMode": "append",
     "promptTransformMaxTokens": 8192
+  },
+  "companion": {
+    "includeSystemPrompt": false
   },
   "enabled": false,
   "conditions": {

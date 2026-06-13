@@ -614,7 +614,21 @@ function getAuthorsNoteSection(companion) {
     return normalizeText(substituteParams(note));
 }
 
-async function buildCompanionContextSections(agent, messageIndex) {
+function normalizeExtraContextSections(extraContextSections = []) {
+    if (!Array.isArray(extraContextSections)) {
+        return [];
+    }
+
+    return extraContextSections
+        .map(section => ({
+            title: normalizeText(section?.title || 'Extra context'),
+            content: normalizeText(section?.content || ''),
+        }))
+        .filter(section => section.title && section.content)
+        .slice(0, 5);
+}
+
+async function buildCompanionContextSections(agent, messageIndex, { extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);
     const sections = [];
     const systemPrompt = getSystemPromptSection(companion);
@@ -635,6 +649,10 @@ async function buildCompanionContextSections(agent, messageIndex) {
         if (content) {
             sections.push(`[${title}]\n${content}`);
         }
+    }
+
+    for (const section of normalizeExtraContextSections(extraContextSections)) {
+        sections.push(`[${section.title}]\n${section.content}`);
     }
 
     return sections.join('\n\n');
@@ -674,10 +692,10 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
 
 const COMPANION_REPAIR_INSTRUCTION = 'The previous result missed the requested shape. Try again with the companion-result format described above and keep the answer inside that shape.';
 
-export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false } = {}) {
+export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false, extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);
     const expandedPrompt = expandCompanionPrompt(agent, messageIndex, generationType);
-    const contextSections = await buildCompanionContextSections(agent, messageIndex);
+    const contextSections = await buildCompanionContextSections(agent, messageIndex, { extraContextSections });
     // rawPrompt sends the agent prompt verbatim: tracker prompts define their own exact output
     // format and break when extra format instructions are appended around them. The guard
     // leads so the companion boundary is established before the agent's own instructions.
@@ -755,7 +773,7 @@ function parseBatchResponse(output = '') {
     return parsed;
 }
 
-async function runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, { repair = false } = {}) {
+async function runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, { repair = false, extraContextSections = [] } = {}) {
     const message = chat[messageIndex];
     if (!isAssistantMessage(message)) {
         return null;
@@ -768,7 +786,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
 
-        const promptMessages = await buildCompanionPromptMessages(agent, messageIndex, generationType, { repair });
+        const promptMessages = await buildCompanionPromptMessages(agent, messageIndex, generationType, { repair, extraContextSections });
         const response = await requestPromptTransform(agent, promptMessages, companion.maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
@@ -1003,7 +1021,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
     }
 }
 
-export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancelRevision = getAgentGenerationCancelRevision(), repair = false } = {}) {
+export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancelRevision = getAgentGenerationCancelRevision(), repair = false, extraContextSections = [], pendingContent = '' } = {}) {
     const agent = getAgentById(agentId);
     const message = chat[messageIndex];
     if (!agent || !isCompanionAgent(agent) || !isAssistantMessage(message)) {
@@ -1012,11 +1030,11 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
 
     setCompanionResult(message, agent, {
         status: 'pending',
-        content: '',
+        content: capResultContent(pendingContent),
         error: '',
     });
     await emitCompanionResultsUpdated(messageIndex, agent.id);
-    const result = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, { repair });
+    const result = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, { repair, extraContextSections });
     saveChatDebounced({ deferBackup: false });
     return result;
 }

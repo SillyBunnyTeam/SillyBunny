@@ -159,6 +159,9 @@
       "promptTransformMode": "append",
       "promptTransformMaxTokens": 8192
     },
+    "companion": {
+      "includeSystemPrompt": false
+    },
     "enabled": false,
     "conditions": {
       "triggerKeywords": [],
@@ -288,6 +291,9 @@
       "promptTransformShowNotifications": true,
       "promptTransformMode": "append",
       "promptTransformMaxTokens": 8192
+    },
+    "companion": {
+      "includeSystemPrompt": false
     },
     "enabled": false,
     "conditions": {
@@ -1814,6 +1820,23 @@
         "maxDepth": null
       },
       {
+        "id": "chatroom-greentext-continuation",
+        "scriptName": "Chatroom greentext continuation",
+        "findRegex": "/^\\s*((?:>|&gt;)[^\\n]*)$/gm",
+        "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(86px,auto) 1fr;gap:9px;align-items:center\"><div style=\"min-width:0\"></div><span style=\"padding:8px 10px;border-radius:13px;background:linear-gradient(135deg,oklch(22% .05 150 / .38),color-mix(in srgb,var(--SmartThemeBodyColor) 6%, transparent));border:1px solid oklch(68% .13 150 / .42);word-break:break-word;color:oklch(78% .16 150);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap\">$1</span></div>",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
         "id": "chatroom-message-row",
         "scriptName": "Chatroom message row",
         "findRegex": "/^(?:CHATROOM|chatroom)\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|([^\\n]*)$/gm",
@@ -1905,7 +1928,7 @@
     ],
     "version": 1,
     "author": "SillyBunny",
-    "prompt": "Chat Only is a private side-channel conversation with the character or characters currently active in the scene. Use the latest assistant reply, recent context, and included character material to infer who is present and how they would speak.\n\n[Your previous notes] is the private aside transcript. The user can edit that note with a new line such as You: ask your aside here, then run this companion again. Answer the newest user aside in the voice of the relevant present character. If the transcript has no user aside yet, open with a brief private invitation and list who seems available to talk.\n\nKeep the result as an out-of-continuity companion note. It can reveal candid thoughts, motives, emotions, and meta commentary, while staying separate from story actions and future roleplay events. For multiple present characters, let 1-3 of them answer with distinct voices when useful.\n\nUse a compact transcript shape:\n**You:** the user's newest aside, if present\n**Character Name:** in-character aside reply\n\nCarry forward the useful recent turns from [Your previous notes], then append the new reply. Keep it readable, conversational, and short enough to use as a side chat panel.",
+    "prompt": "Chat Only is a private side-channel conversation with the character or characters currently active in the scene. Use the latest assistant reply, recent context, and included character material to infer who is present and how they would speak.\n\nThe Companions panel provides a Chat Only textbox. When [Chat Only side chat] appears, treat it as the live private transcript from that textbox, with the newest **You:** line as the user's aside. [Your previous notes] can hold older side-chat turns. If there is no user aside yet, open with a brief private invitation and list who seems available to talk.\n\nKeep the result as an out-of-continuity companion note. It can reveal candid thoughts, motives, emotions, and meta commentary, while staying separate from story actions and future roleplay events. For multiple present characters, let 1-3 of them answer with distinct voices when useful.\n\nUse a compact transcript shape:\n**You:** the user's newest aside, if present\n**Character Name:** in-character aside reply\n\nCarry forward the useful recent turns from [Chat Only side chat] and [Your previous notes], then append the new reply. Keep it readable, conversational, and short enough to feel like a live side chat panel.",
     "phase": "post",
     "execution": "companion",
     "companion": {

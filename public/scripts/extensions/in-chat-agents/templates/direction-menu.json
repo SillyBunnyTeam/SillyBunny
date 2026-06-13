@@ -4,6 +4,7 @@
   "description": "4 plot-direction prompts at the end of every response (2 grounded + 2 wildcard pivots)",
   "icon": "",
   "category": "tracker",
+  "subcategory": "player-choices",
   "tags": [
     "directions",
     "menu",
@@ -34,6 +35,9 @@
     "promptTransformShowNotifications": true,
     "promptTransformMode": "append",
     "promptTransformMaxTokens": 8192
+  },
+  "companion": {
+    "includeSystemPrompt": false
   },
   "enabled": false,
   "conditions": {

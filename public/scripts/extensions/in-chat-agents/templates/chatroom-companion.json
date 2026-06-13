@@ -70,6 +70,23 @@
             "maxDepth": null
         },
         {
+            "id": "chatroom-greentext-continuation",
+            "scriptName": "Chatroom greentext continuation",
+            "findRegex": "/^\\s*((?:>|&gt;)[^\\n]*)$/gm",
+            "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(86px,auto) 1fr;gap:9px;align-items:center\"><div style=\"min-width:0\"></div><span style=\"padding:8px 10px;border-radius:13px;background:linear-gradient(135deg,oklch(22% .05 150 / .38),color-mix(in srgb,var(--SmartThemeBodyColor) 6%, transparent));border:1px solid oklch(68% .13 150 / .42);word-break:break-word;color:oklch(78% .16 150);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap\">$1</span></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
             "id": "chatroom-message-row",
             "scriptName": "Chatroom message row",
             "findRegex": "/^(?:CHATROOM|chatroom)\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|([^\\n]*)$/gm",

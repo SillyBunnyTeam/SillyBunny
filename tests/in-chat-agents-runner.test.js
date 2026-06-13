@@ -1052,6 +1052,31 @@ describe('in-chat agent post-processing runner', () => {
         expect(fallbackCustomMessages[0].content).toContain('local radio call-in show');
     });
 
+    test('injects panel textbox context into Chat Only prompts', async () => {
+        const chatOnly = createCompanionAgent({
+            id: 'chat-only',
+            sourceTemplateId: 'tpl-chat-only-companion',
+            prompt: 'Answer the private side chat.',
+            companion: { rawPrompt: true },
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(chatOnly, 1, 'normal', {
+            extraContextSections: [{
+                title: 'Chat Only side chat',
+                content: '**You:** Are you really okay?',
+            }],
+        });
+
+        expect(messages[1].content).toContain('[Chat Only side chat]');
+        expect(messages[1].content).toContain('**You:** Are you really okay?');
+    });
+
     test('injects selected extra Chatroom character cards while excluding the active card', async () => {
         contextCharacters = [
             {
