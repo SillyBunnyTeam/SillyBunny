@@ -31,6 +31,7 @@ import {
     isTrackerFixAgent,
     isPathfinderSubmoduleEnabled,
     findTemplateForAgentSnapshot,
+    getBundledAgentLatestTemplatePlan,
     getRedundantBundledAgentDuplicateIds,
     reconcileScopedEnabledAgentIdsFromLegacyFlags,
     resolveConnectionProfile,
@@ -1468,6 +1469,23 @@ async function removeRedundantBundledAgentDuplicates() {
     }
 
     return redundantIds.length;
+}
+
+async function refreshBundledAgentsFromLatestTemplates() {
+    const { updates, redundantIds } = getBundledAgentLatestTemplatePlan(getAgents(), templates);
+
+    for (const agentId of redundantIds) {
+        await deleteAgent(agentId);
+    }
+
+    for (const update of updates) {
+        await saveAgent(update.agent);
+    }
+
+    return {
+        updatedCount: updates.length,
+        removedCount: redundantIds.length,
+    };
 }
 
 async function purgeRemovedBundledAgents() {
@@ -4852,6 +4870,14 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     }
 
     await ensureDefaultBundledAgents();
+    const latestBundledAgentMigration = await refreshBundledAgentsFromLatestTemplates();
+    if (latestBundledAgentMigration.updatedCount > 0) {
+        toastr.success(`Updated ${latestBundledAgentMigration.updatedCount} bundled agent${latestBundledAgentMigration.updatedCount !== 1 ? 's' : ''} to the latest template defaults.`);
+    }
+    if (latestBundledAgentMigration.removedCount > 0) {
+        toastr.success(`Removed ${latestBundledAgentMigration.removedCount} redundant bundled agent duplicate${latestBundledAgentMigration.removedCount !== 1 ? 's' : ''}.`);
+    }
+
     await migrateBundledRegexScriptsToSavedAgents();
     const migratedCyoaChoiceRegexCount = await migrateCyoaChoiceRegexCleanupToSavedAgents();
     if (migratedCyoaChoiceRegexCount > 0) {

@@ -125,6 +125,7 @@ beforeAll(async () => {
         isToolAgent: jest.fn(agent => agent?.category === 'tool'),
         isPathfinderSubmoduleEnabled: jest.fn(() => false),
         findTemplateForAgentSnapshot: jest.fn(() => null),
+        getBundledAgentLatestTemplatePlan: jest.fn(() => ({ updates: [], redundantIds: [] })),
         getRedundantBundledAgentDuplicateIds: jest.fn(() => []),
         reconcileScopedEnabledAgentIdsFromLegacyFlags: jest.fn(() => false),
         resolveConnectionProfile: jest.fn(value => value ?? ''),

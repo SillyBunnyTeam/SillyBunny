@@ -632,6 +632,122 @@ function chooseSameTemplateAgentToKeep(agents, template) {
     return agents.find(agent => agent?.enabled) ?? agents[0] ?? null;
 }
 
+function chooseBundledTemplateAgentToKeep(agents, template) {
+    const templateId = String(template?.id ?? '').trim();
+    const templatePrompt = String(template?.prompt ?? '').trim();
+    const withCurrentPrompt = agents.find(agent =>
+        String(agent?.sourceTemplateId ?? '').trim() === templateId &&
+        String(agent?.prompt ?? '').trim() === templatePrompt,
+    );
+    if (withCurrentPrompt) {
+        return withCurrentPrompt;
+    }
+
+    const currentPromptAgent = agents.find(agent => String(agent?.prompt ?? '').trim() === templatePrompt);
+    if (currentPromptAgent) {
+        return currentPromptAgent;
+    }
+
+    const sourceBackedEnabled = agents.find(agent => String(agent?.sourceTemplateId ?? '').trim() === templateId && agent?.enabled);
+    if (sourceBackedEnabled) {
+        return sourceBackedEnabled;
+    }
+
+    return agents.find(agent => String(agent?.sourceTemplateId ?? '').trim() === templateId)
+        ?? agents.find(agent => agent?.enabled)
+        ?? agents[0]
+        ?? null;
+}
+
+function cloneSettings(settings = {}) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return {};
+    }
+
+    return structuredClone(settings);
+}
+
+export function buildLatestBundledAgentSnapshot(agent, template) {
+    const latest = normalizeAgent({
+        ...createDefaultAgent(),
+        ...structuredClone(template ?? {}),
+        id: typeof agent?.id === 'string' && agent.id.trim() ? agent.id.trim() : uuidv4(),
+        sourceTemplateId: String(template?.id ?? agent?.sourceTemplateId ?? '').trim(),
+        enabled: Boolean(agent?.enabled),
+        favorite: Boolean(agent?.favorite),
+        connectionProfile: typeof agent?.connectionProfile === 'string' ? agent.connectionProfile : '',
+        modelOverride: typeof agent?.modelOverride === 'string' ? agent.modelOverride : '',
+        settings: cloneSettings(agent?.settings),
+        phaseLocked: false,
+    });
+
+    latest.injection = {
+        ...latest.injection,
+        order: Number.isFinite(Number(agent?.injection?.order))
+            ? Number(agent.injection.order)
+            : latest.injection.order,
+    };
+    return latest;
+}
+
+function normalizedAgentJson(agent) {
+    return JSON.stringify(normalizeAgent(agent ?? {}));
+}
+
+export function getBundledAgentLatestTemplatePlan(agentList = [], templateList = []) {
+    const groupsByTemplateId = new Map();
+    const templatesById = new Map();
+
+    for (const agent of agentList) {
+        if (!agent || agent.phaseLocked) {
+            continue;
+        }
+
+        const template = findTemplateForAgentSnapshot(agent, templateList);
+        const templateId = String(template?.id ?? '').trim();
+        if (!templateId) {
+            continue;
+        }
+
+        templatesById.set(templateId, template);
+        if (!groupsByTemplateId.has(templateId)) {
+            groupsByTemplateId.set(templateId, []);
+        }
+        groupsByTemplateId.get(templateId).push(agent);
+    }
+
+    const redundantIds = new Set(getRedundantBundledAgentDuplicateIds(agentList, templateList));
+    const updates = [];
+
+    for (const [templateId, grouped] of groupsByTemplateId.entries()) {
+        const template = templatesById.get(templateId);
+        const keepAgent = chooseBundledTemplateAgentToKeep(grouped, template);
+        if (!keepAgent?.id) {
+            continue;
+        }
+
+        for (const agent of grouped) {
+            if (agent?.id && agent.id !== keepAgent.id && !agent.phaseLocked) {
+                redundantIds.add(agent.id);
+            }
+        }
+
+        const latestAgent = buildLatestBundledAgentSnapshot(keepAgent, template);
+        if (normalizedAgentJson(latestAgent) !== normalizedAgentJson(keepAgent)) {
+            updates.push({
+                agentId: keepAgent.id,
+                templateId,
+                agent: latestAgent,
+            });
+        }
+    }
+
+    return {
+        updates,
+        redundantIds: [...redundantIds].filter(id => !updates.some(update => update.agentId === id)),
+    };
+}
+
 export function getRedundantBundledAgentDuplicateIds(agentList = [], templateList = []) {
     const groupedAgents = new Map();
 

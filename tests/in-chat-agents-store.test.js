@@ -783,6 +783,146 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getRedundantBundledAgentDuplicateIds(agents, templates)).toEqual(['old-prose-polisher']);
     });
 
+    test('refreshes saved bundled agents from the latest template while preserving runtime state', async () => {
+        const store = await importStore();
+        const templates = [{
+            id: 'tpl-chatroom-companion',
+            name: 'Chatroom',
+            prompt: 'latest bundled prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            version: 1,
+            companion: {
+                trigger: 'auto',
+                displayMode: 'panel',
+                format: 'html',
+                includeWorldInfo: true,
+                maxTokens: 32000,
+            },
+            regexScripts: [{
+                id: 'latest-renderer',
+                scriptName: 'Latest renderer',
+                findRegex: '/x/g',
+                replaceString: 'y',
+            }],
+        }];
+        const agents = [{
+            id: 'saved-chatroom',
+            name: 'Chatroom',
+            prompt: 'old bundled prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            enabled: true,
+            favorite: true,
+            connectionProfile: 'sidecar-profile',
+            modelOverride: 'small-model',
+            injection: { order: 420 },
+            companion: {
+                trigger: 'manual',
+                displayMode: 'card',
+                format: 'markdown',
+                includeWorldInfo: false,
+                maxTokens: 2048,
+            },
+            regexScripts: [],
+            settings: {
+                chatroomStyle: 'reddit',
+            },
+        }];
+
+        const plan = store.getBundledAgentLatestTemplatePlan(agents, templates);
+
+        expect(plan.redundantIds).toEqual([]);
+        expect(plan.updates).toHaveLength(1);
+        expect(plan.updates[0].agent).toEqual(expect.objectContaining({
+            id: 'saved-chatroom',
+            name: 'Chatroom',
+            prompt: 'latest bundled prompt',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            enabled: true,
+            favorite: true,
+            connectionProfile: 'sidecar-profile',
+            modelOverride: 'small-model',
+            phaseLocked: false,
+            settings: { chatroomStyle: 'reddit' },
+        }));
+        expect(plan.updates[0].agent.injection.order).toBe(420);
+        expect(plan.updates[0].agent.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            format: 'html',
+            includeWorldInfo: true,
+            maxTokens: 32000,
+        }));
+        expect(plan.updates[0].agent.regexScripts).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'latest-renderer' }),
+        ]));
+    });
+
+    test('dedupes existing bundled setup copies while updating the keeper', async () => {
+        const store = await importStore();
+        const templates = [{
+            id: 'tpl-relationship-lens-companion',
+            name: 'Relationship Lens',
+            prompt: 'latest relationship prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            companion: {
+                includeCharacterCard: true,
+                includePersona: true,
+                includeWorldInfo: true,
+            },
+        }];
+        const agents = [
+            {
+                id: 'old-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'stale relationship prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                enabled: true,
+            },
+            {
+                id: 'duplicate-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'another stale prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                enabled: false,
+            },
+            {
+                id: 'locked-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'custom locked prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                phaseLocked: true,
+            },
+        ];
+
+        const plan = store.getBundledAgentLatestTemplatePlan(agents, templates);
+
+        expect(plan.redundantIds).toEqual(['duplicate-relationship-lens']);
+        expect(plan.updates).toHaveLength(1);
+        expect(plan.updates[0].agent.id).toBe('old-relationship-lens');
+        expect(plan.updates[0].agent.prompt).toBe('latest relationship prompt');
+        expect(plan.updates[0].agent.companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+        }));
+    });
+
     test('does not mark phase-locked same-template duplicates redundant', async () => {
         const store = await importStore();
         const templates = [{
