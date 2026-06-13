@@ -9,6 +9,7 @@ import {
     resolveConnectionProfileMirrorUpdate,
     resolveConnectionProfileSelectionSync,
     resolveConnectionProfileSourceBinding,
+    resolveConnectionProfileStatusText,
     resolvePresetApiConnectButtonSelector,
     resolvePresetMainApiValue,
 } from '../public/scripts/preset-api-sync-lifecycle/index.js';
@@ -191,6 +192,37 @@ describe('preset/API sync lifecycle helper', () => {
         });
     });
 
+    test('resolves connection profile status fallback states', () => {
+        expect(resolveConnectionProfileStatusText({
+            hasContext: false,
+            apiValue: 'openai',
+            modelValue: 'gpt-5',
+        })).toBe('');
+
+        expect(resolveConnectionProfileStatusText({
+            hasContext: true,
+            isNoConnection: true,
+            apiValue: 'openai',
+            modelValue: 'gpt-5',
+        })).toBe('No connection...');
+    });
+
+    test('resolves connection profile status labels from raw and decorated values', () => {
+        expect(resolveConnectionProfileStatusText({
+            hasContext: true,
+            apiValue: 'openai',
+            modelValue: 'gpt-5',
+            apiOptionText: 'OpenAI [Responses]',
+            modelOptionText: 'GPT-5 (fast)',
+        })).toBe('OpenAI - GPT-5');
+
+        expect(resolveConnectionProfileStatusText({
+            hasContext: true,
+            apiValue: 'Claude',
+            modelValue: '',
+        })).toBe('Claude');
+    });
+
     test('creates a stable lifecycle seam for future runtime wiring', () => {
         const lifecycle = createPresetApiSyncLifecycle();
 
@@ -203,5 +235,6 @@ describe('preset/API sync lifecycle helper', () => {
         expect(lifecycle.connectionProfiles.resolveSourceBinding).toBe(resolveConnectionProfileSourceBinding);
         expect(lifecycle.connectionProfiles.resolveMirrorState).toBe(resolveConnectionProfileMirrorState);
         expect(lifecycle.connectionProfiles.resolveMirrorUpdate).toBe(resolveConnectionProfileMirrorUpdate);
+        expect(lifecycle.connectionProfiles.resolveStatusText).toBe(resolveConnectionProfileStatusText);
     });
 });
