@@ -688,6 +688,15 @@ export function buildLatestBundledAgentSnapshot(agent, template) {
             ? Number(agent.injection.order)
             : latest.injection.order,
     };
+
+    // Preserve the stored agent's companion config so user customizations
+    // (trigger, displayMode, context toggles, format, etc.) survive template
+    // refreshes. Template companion config changes should be propagated via
+    // targeted version migrations in index.js instead.
+    if (agent?.companion && typeof agent.companion === 'object' && !Array.isArray(agent.companion)) {
+        latest.companion = normalizeCompanionConfig(agent.companion);
+    }
+
     return latest;
 }
 

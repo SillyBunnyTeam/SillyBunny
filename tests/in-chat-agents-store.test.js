@@ -854,11 +854,11 @@ describe('in-chat agent scoped enabled state', () => {
         }));
         expect(plan.updates[0].agent.injection.order).toBe(420);
         expect(plan.updates[0].agent.companion).toEqual(expect.objectContaining({
-            trigger: 'auto',
-            displayMode: 'panel',
-            format: 'html',
-            includeWorldInfo: true,
-            maxTokens: 32000,
+            trigger: 'manual',
+            displayMode: 'card',
+            format: 'markdown',
+            includeWorldInfo: false,
+            maxTokens: 2048,
         }));
         expect(plan.updates[0].agent.regexScripts).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'latest-renderer' }),
