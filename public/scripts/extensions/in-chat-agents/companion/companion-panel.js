@@ -9,6 +9,7 @@ import {
     getCompanionConfig,
     isAgentEnabledForCurrentScope,
     isCompanionAgent,
+    saveAgent,
 } from '../agent-store.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
@@ -26,8 +27,10 @@ import {
 
 const PANEL_HISTORY_LIMIT = 5;
 const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
+const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
 const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
+const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -329,6 +332,11 @@ function isChatOnlyAgent(agent = {}) {
     return templateId === CHAT_ONLY_TEMPLATE_ID;
 }
 
+function isPlotCompassAgent(agent = {}) {
+    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
+    return templateId === PLOT_COMPASS_TEMPLATE_ID;
+}
+
 function normalizeChatOnlyInput(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
 }
@@ -339,8 +347,28 @@ function normalizeChatOnlyTranscript(value = '') {
 
 function appendChatOnlyUserMessage(transcript = '', userInput = '') {
     const previous = normalizeChatOnlyTranscript(transcript);
-    const nextLine = `**You:** ${normalizeChatOnlyInput(userInput)}`;
+    const nextLine = `You: ${normalizeChatOnlyInput(userInput)}`;
     return normalizeChatOnlyTranscript(previous ? `${previous}\n\n${nextLine}` : nextLine);
+}
+
+function normalizePlotCompassObjective(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
+}
+
+function getLatestAssistantIndex() {
+    return chat.findLastIndex(isAssistantMessage);
+}
+
+async function savePlotCompassObjective(agent, objective) {
+    if (!agent || !isPlotCompassAgent(agent)) {
+        return;
+    }
+
+    agent.settings = agent.settings && typeof agent.settings === 'object' && !Array.isArray(agent.settings)
+        ? { ...agent.settings }
+        : {};
+    agent.settings.plotCompassObjective = normalizePlotCompassObjective(objective);
+    await saveAgent(agent);
 }
 
 /**
@@ -432,15 +460,41 @@ function buildChatOnlyComposer(state) {
     }
 
     return `
-        <div class="ica--tpanel-chatonly-composer">
-            <div class="ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
-            <textarea class="text_pole textarea_compact ica--tpanel-chatonly-input" data-role="chat-only-input" rows="2" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside to the character here..."></textarea>
-            <button type="button" class="menu_button menu_button_icon ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only">
+        <div class="ica--chatonly-composer ica--tpanel-chatonly-composer">
+            <div class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
+            <textarea class="text_pole textarea_compact ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" rows="1" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..."></textarea>
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
                 <i class="fa-solid fa-paper-plane"></i>
-                <span>Send aside</span>
             </button>
         </div>
     `;
+}
+
+function buildPlotCompassObjectiveComposer(state) {
+    if (!isPlotCompassAgent(state.agent)) {
+        return '';
+    }
+
+    const objective = normalizePlotCompassObjective(state.agent?.settings?.plotCompassObjective);
+    return `
+        <div class="ica--plot-objective-composer ica--tpanel-plot-objective">
+            <label>
+                <span>Plot Objective</span>
+                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="2" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+            </label>
+            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+                <i class="fa-solid fa-compass"></i>
+                <span>Save objective</span>
+            </button>
+        </div>
+    `;
+}
+
+function buildPanelEntryControls(state) {
+    return [
+        buildPlotCompassObjectiveComposer(state),
+        buildChatOnlyComposer(state),
+    ].filter(Boolean).join('');
 }
 
 function buildPanelAgentSection(state) {
@@ -464,7 +518,7 @@ function buildPanelAgentSection(state) {
                     <span class="ica--tpanel-agent-actions">${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
-                ${buildChatOnlyComposer(state)}
+                ${buildPanelEntryControls(state)}
             </section>
         `;
     }
@@ -497,7 +551,7 @@ function buildPanelAgentSection(state) {
                 </span>
             </div>
             <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, latest)}</div>
-            ${buildChatOnlyComposer(state)}
+            ${buildPanelEntryControls(state)}
             ${buildCompactionButton(state)}
             ${historyHtml}
         </section>
@@ -604,7 +658,7 @@ async function handlePanelAction(event) {
     }
 
     if (action === 'panel-regenerate-all') {
-        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
             toastr.warning('No assistant reply yet to run companions on.');
             return;
@@ -630,7 +684,7 @@ async function handlePanelAction(event) {
             toastr.warning('No companion selected.');
             return;
         }
-        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
             toastr.warning('No assistant reply yet to run this companion on.');
             return;
@@ -661,7 +715,7 @@ async function handlePanelAction(event) {
             return;
         }
 
-        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
             toastr.warning('No assistant reply yet to chat beside.');
             return;
@@ -682,6 +736,37 @@ async function handlePanelAction(event) {
         } finally {
             button.prop('disabled', false);
             inputField.prop('disabled', false).val('');
+            if (panelOpen) {
+                renderPanel();
+            }
+        }
+        return;
+    }
+
+    if (action === 'panel-plot-compass-save') {
+        const agent = getPanelAgents().find(candidate => candidate.id === agentId);
+        if (!agent || !isPlotCompassAgent(agent)) {
+            toastr.warning('Plot Compass is not available.');
+            return;
+        }
+
+        const inputField = section.find('[data-role="plot-compass-objective"]');
+        const objective = normalizePlotCompassObjective(inputField.val());
+        const runIndex = Number.isInteger(messageIndex) ? messageIndex : getLatestAssistantIndex();
+        if (runIndex < 0) {
+            toastr.warning('No assistant reply yet to plan from.');
+            return;
+        }
+
+        button.prop('disabled', true);
+        inputField.prop('disabled', true);
+        try {
+            await savePlotCompassObjective(agent, objective);
+            await runCompanionAgentOnMessage(agentId, runIndex);
+            toastr.success(objective ? 'Plot Objective saved.' : 'Plot Objective cleared.');
+        } finally {
+            button.prop('disabled', false);
+            inputField.prop('disabled', false);
             if (panelOpen) {
                 renderPanel();
             }

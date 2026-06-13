@@ -1034,6 +1034,21 @@ button.ica--card-pill--version-update {
     font-size: calc(var(--mainFontSize) * 0.88);
 }
 
+.ica--companion-core-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px 8px;
+    align-items: end;
+}
+
+.ica--companion-core-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    font-size: calc(var(--mainFontSize) * 0.88);
+}
+
 .ica--editor .checkbox_label {
     align-items: center;
     column-gap: 8px;
@@ -1850,7 +1865,8 @@ button.ica--card-pill--version-update {
     margin-bottom: 0;
 }
 
-.ica--tpanel-chatonly-composer {
+.ica--chatonly-composer,
+.ica--plot-objective-composer {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 8px;
@@ -1864,7 +1880,7 @@ button.ica--card-pill--version-update {
             color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent));
 }
 
-.ica--tpanel-chatonly-live {
+.ica--chatonly-live {
     grid-column: 1 / -1;
     display: inline-flex;
     align-items: center;
@@ -1873,19 +1889,38 @@ button.ica--card-pill--version-update {
     opacity: 0.72;
 }
 
-.ica--tpanel-chatonly-live i {
+.ica--chatonly-live i {
     font-size: 0.58em;
     color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
 }
 
-.ica--tpanel-chatonly-input {
+.ica--chatonly-input,
+.ica--plot-objective-input {
     min-height: 42px;
     resize: vertical;
 }
 
-.ica--tpanel-chatonly-send {
+.ica--plot-objective-composer label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.ica--plot-objective-composer label span {
+    font-size: calc(var(--mainFontSize) * 0.76);
+    opacity: 0.72;
+}
+
+.ica--chatonly-send,
+.ica--plot-objective-save {
     min-height: 36px;
     align-self: stretch;
+}
+
+.ica--companion-chatonly-composer,
+.ica--companion-plot-objective {
+    margin: 0 12px 12px;
 }
 
 .ica--tpanel-compact {
@@ -2279,6 +2314,10 @@ button.ica--card-pill--version-update {
 
     .ica--editor-row.flex-container {
         flex-direction: column;
+    }
+
+    .ica--companion-core-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .ica--template-filter-bar {

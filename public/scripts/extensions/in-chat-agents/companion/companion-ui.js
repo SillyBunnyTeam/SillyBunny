@@ -10,6 +10,7 @@ import {
     getCompanionConfig,
     getEnabledAgents,
     isCompanionAgent,
+    saveAgent,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
 import {
@@ -26,6 +27,11 @@ let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
 const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
+const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
+const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
+const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
+const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
 
 function getAgentTemplateId(agent = {}) {
     return String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
@@ -33,6 +39,42 @@ function getAgentTemplateId(agent = {}) {
 
 function isMessageInboxAgent(agent = null) {
     return getAgentTemplateId(agent) === MESSAGE_INBOX_TEMPLATE_ID;
+}
+
+function isChatOnlyAgent(agent = null) {
+    return getAgentTemplateId(agent) === CHAT_ONLY_TEMPLATE_ID;
+}
+
+function isPlotCompassAgent(agent = null) {
+    return getAgentTemplateId(agent) === PLOT_COMPASS_TEMPLATE_ID;
+}
+
+function normalizeChatOnlyInput(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
+}
+
+function normalizeChatOnlyTranscript(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(-CHAT_ONLY_TRANSCRIPT_MAX_CHARS);
+}
+
+function appendChatOnlyUserMessage(transcript = '', userInput = '') {
+    const previous = normalizeChatOnlyTranscript(transcript);
+    const nextLine = `You: ${normalizeChatOnlyInput(userInput)}`;
+    return normalizeChatOnlyTranscript(previous ? `${previous}\n\n${nextLine}` : nextLine);
+}
+
+function normalizePlotCompassObjective(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
+}
+
+async function setAgentSetting(agent, key, value) {
+    if (!agent) return;
+
+    agent.settings = agent.settings && typeof agent.settings === 'object' && !Array.isArray(agent.settings)
+        ? { ...agent.settings }
+        : {};
+    agent.settings[key] = value;
+    await saveAgent(agent);
 }
 
 function getMarkdownConverter() {
@@ -169,6 +211,51 @@ function buildCompanionBody(agentId, result, message) {
     }
 
     return formatCompanionContent(agentId, result, message);
+}
+
+function buildChatOnlyCardComposer(agentId) {
+    const agent = getAgentById(agentId);
+    if (!isChatOnlyAgent(agent)) {
+        return '';
+    }
+
+    return `
+        <div class="ica--chatonly-composer ica--companion-chatonly-composer">
+            <div class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
+            <textarea class="text_pole textarea_compact ica--chatonly-input ica--companion-chatonly-input" data-role="chat-only-input" rows="1" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..."></textarea>
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+    `;
+}
+
+function buildPlotCompassObjectiveComposer(agentId) {
+    const agent = getAgentById(agentId);
+    if (!isPlotCompassAgent(agent)) {
+        return '';
+    }
+
+    const objective = normalizePlotCompassObjective(agent.settings?.plotCompassObjective);
+    return `
+        <div class="ica--plot-objective-composer ica--companion-plot-objective">
+            <label>
+                <span>Plot Objective</span>
+                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="2" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+            </label>
+            <button type="button" class="menu_button ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+                <i class="fa-solid fa-compass"></i>
+                <span>Save objective</span>
+            </button>
+        </div>
+    `;
+}
+
+function buildCompanionCardControls(agentId) {
+    return [
+        buildPlotCompassObjectiveComposer(agentId),
+        buildChatOnlyCardComposer(agentId),
+    ].filter(Boolean).join('');
 }
 
 const RAW_ID_LABEL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -322,6 +409,7 @@ function buildCompanionCard(agentId, result, message) {
                 </span>
             </summary>
             <div class="ica--companion-body">${buildCompanionBody(agentId, result, message)}</div>
+            ${buildCompanionCardControls(agentId)}
         </details>
     `;
 }
@@ -427,6 +515,69 @@ async function runCompanionsFromMessageButton(messageIndex, button) {
     }
 }
 
+async function sendChatOnlyAside({ agentId, messageIndex, transcript = '', userInput = '', button = null, inputField = null } = {}) {
+    const agent = getAgentById(agentId);
+    if (!agent || !isChatOnlyAgent(agent)) {
+        toastr.warning('Chat Only is not available.');
+        return;
+    }
+
+    const normalizedInput = normalizeChatOnlyInput(userInput);
+    if (!normalizedInput) {
+        toastr.warning('Type an aside first.');
+        return;
+    }
+
+    if (!isAssistantMessage(chat[messageIndex])) {
+        toastr.warning('No assistant reply yet to chat beside.');
+        return;
+    }
+
+    const nextTranscript = appendChatOnlyUserMessage(transcript, normalizedInput);
+    button?.prop?.('disabled', true);
+    inputField?.prop?.('disabled', true);
+    try {
+        await runCompanionAgentOnMessage(agentId, messageIndex, {
+            pendingContent: nextTranscript,
+            extraContextSections: [{
+                title: 'Chat Only side chat',
+                content: nextTranscript,
+            }],
+        });
+        inputField?.val?.('');
+        renderCompanionResultsForMessage(messageIndex);
+    } finally {
+        button?.prop?.('disabled', false);
+        inputField?.prop?.('disabled', false);
+    }
+}
+
+async function savePlotCompassObjective({ agentId, messageIndex, objective = '', button = null, inputField = null } = {}) {
+    const agent = getAgentById(agentId);
+    if (!agent || !isPlotCompassAgent(agent)) {
+        toastr.warning('Plot Compass is not available.');
+        return;
+    }
+
+    if (!isAssistantMessage(chat[messageIndex])) {
+        toastr.warning('No assistant reply yet to plan from.');
+        return;
+    }
+
+    const nextObjective = normalizePlotCompassObjective(objective);
+    button?.prop?.('disabled', true);
+    inputField?.prop?.('disabled', true);
+    try {
+        await setAgentSetting(agent, 'plotCompassObjective', nextObjective);
+        await runCompanionAgentOnMessage(agentId, messageIndex);
+        renderCompanionResultsForMessage(messageIndex);
+        toastr.success(nextObjective ? 'Plot Objective saved.' : 'Plot Objective cleared.');
+    } finally {
+        button?.prop?.('disabled', false);
+        inputField?.prop?.('disabled', false);
+    }
+}
+
 function getCompanionActionContext(element) {
     const card = $(element).closest('.ica--companion-card');
     const messageIndex = getMessageIndexFromElement(element);
@@ -492,6 +643,33 @@ async function handleCompanionAction(event) {
         return;
     }
 
+    if (action === 'chat-only-send') {
+        const card = $(event.currentTarget).closest('.ica--companion-card');
+        const inputField = card.find('[data-role="chat-only-input"]');
+        await sendChatOnlyAside({
+            agentId,
+            messageIndex,
+            transcript: result?.content ?? '',
+            userInput: inputField.val(),
+            button: $(event.currentTarget),
+            inputField,
+        });
+        return;
+    }
+
+    if (action === 'plot-compass-save') {
+        const card = $(event.currentTarget).closest('.ica--companion-card');
+        const inputField = card.find('[data-role="plot-compass-objective"]');
+        await savePlotCompassObjective({
+            agentId,
+            messageIndex,
+            objective: inputField.val(),
+            button: $(event.currentTarget),
+            inputField,
+        });
+        return;
+    }
+
     if (action === 'edit') {
         await editCompanionResult(messageIndex, agentId, message, result);
         return;
@@ -540,7 +718,7 @@ export function initCompanionCardUi() {
         }
         await runCompanionsFromMessageButton(messageIndex, this);
     });
-    $(document).on('click', '.ica--companion-action', handleCompanionAction);
+    $(document).on('click', '.ica--companion-action, .ica--companion-control-action', handleCompanionAction);
     // Document-level catch-all: covers cards and any other surface rendering companion
     // bodies. The panel binds its own element-level handler first (to close itself), and
     // its stopPropagation keeps this one from double-inserting.

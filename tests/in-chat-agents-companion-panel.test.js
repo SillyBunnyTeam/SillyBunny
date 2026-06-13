@@ -76,6 +76,7 @@ describe('companion tracker panel', () => {
             })),
             isAgentEnabledForCurrentScope: jest.fn(agent => Boolean(agent?.enabled)),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
+            saveAgent: jest.fn(async () => {}),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
@@ -522,7 +523,7 @@ describe('companion tracker panel', () => {
         }];
         chat.push({ is_user: true, mes: 'hello' }, { is_user: false, is_system: false, mes: 'latest reply' });
         companionResultsByMessage.set(chat[1], {
-            'chat-only': { status: 'done', content: '**You:** Hey\n\n**Mona:** I can hear you.', agentName: 'Chat Only' },
+            'chat-only': { status: 'done', content: 'You: Hey\n\nMona: I can hear you.', agentName: 'Chat Only' },
         });
         const panel = await importPanel();
         const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
@@ -568,18 +569,90 @@ describe('companion tracker panel', () => {
         await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
 
         expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('chat-only', 1, expect.objectContaining({
-            pendingContent: expect.stringContaining('**You:** Are you actually okay?'),
+            pendingContent: expect.stringContaining('You: Are you actually okay?'),
             extraContextSections: [expect.objectContaining({
                 title: 'Chat Only side chat',
-                content: expect.stringContaining('**Mona:** I can hear you.'),
+                content: expect.stringContaining('Mona: I can hear you.'),
             })],
         }));
-        expect(runner.runCompanionAgentOnMessage.mock.calls[0][2].extraContextSections[0].content).toContain('**You:** Are you actually okay?');
+        expect(runner.runCompanionAgentOnMessage.mock.calls[0][2].extraContextSections[0].content).toContain('You: Are you actually okay?');
         expect(inputField.prop).toHaveBeenCalledWith('disabled', true);
         expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
         expect(inputField.val).toHaveBeenCalledWith('');
         expect(button.prop).toHaveBeenCalledWith('disabled', true);
         expect(button.prop).toHaveBeenCalledWith('disabled', false);
+    });
+
+    test('saves Plot Compass objective from the panel before rerunning', async () => {
+        const plotCompass = {
+            id: 'plot-compass',
+            name: 'Plot Compass',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            execution: 'companion',
+            enabled: true,
+            settings: { plotCompassObjective: 'Old objective' },
+            companion: { trigger: 'auto', displayMode: 'panel' },
+        };
+        agents = [plotCompass];
+        chat.push({ is_user: true, mes: 'hello' }, { is_user: false, is_system: false, mes: 'latest reply' });
+        companionResultsByMessage.set(chat[1], {
+            'plot-compass': { status: 'done', content: 'Plan', agentName: 'Plot Compass' },
+        });
+        const panel = await importPanel();
+        const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const panelElement = { on: jest.fn(() => panelElement), html: jest.fn(() => panelElement), toggle: jest.fn(() => panelElement), attr: jest.fn(() => panelElement), addClass: jest.fn(() => panelElement) };
+        const handleElement = { on: jest.fn(() => handleElement), toggle: jest.fn(() => handleElement) };
+        const button = { prop: jest.fn() };
+        const inputField = { val: jest.fn(value => (value === undefined ? 'Reach the tower' : inputField)), prop: jest.fn(() => inputField) };
+        const section = {
+            attr: jest.fn(name => (name === 'data-agent-id' ? 'plot-compass' : '1')),
+            find: jest.fn(() => inputField),
+        };
+        const actionButton = {};
+        globalThis.$ = jest.fn(arg => {
+            if (arg === globalThis.document.body) {
+                return { append: jest.fn() };
+            }
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            if (arg === '#ica_tracker_panel_wand_item') {
+                return { length: 1 };
+            }
+            if (arg === actionButton) {
+                return {
+                    attr: jest.fn(name => (name === 'data-action' ? 'panel-plot-compass-save' : undefined)),
+                    closest: jest.fn(() => section),
+                    prop: button.prop,
+                };
+            }
+            return { length: 0, on: jest.fn(), append: jest.fn(), html: jest.fn(), toggle: jest.fn() };
+        });
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('data-role="plot-compass-objective"');
+        expect(html).toContain('data-action="panel-plot-compass-save"');
+        expect(html).toContain('Old objective');
+
+        panel.initCompanionPanel();
+        const actionHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '[data-action]')[2];
+        await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
+
+        expect(plotCompass.settings.plotCompassObjective).toBe('Reach the tower');
+        expect(store.saveAgent).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'plot-compass',
+            settings: expect.objectContaining({ plotCompassObjective: 'Reach the tower' }),
+        }));
+        expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('plot-compass', 1);
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', true);
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
+        expect(button.prop).toHaveBeenCalledWith('disabled', true);
+        expect(button.prop).toHaveBeenCalledWith('disabled', false);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
     });
 
     test('closes after a panel choice inserts into the message box', async () => {

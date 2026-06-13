@@ -81,12 +81,13 @@ describe('companion card ui', () => {
             getCompanionConfig: jest.fn(() => ({ displayMode: 'card' })),
             getEnabledAgents: jest.fn(() => [...agents]),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
+            saveAgent: jest.fn(async () => {}),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
             COMPANION_RESULTS_UPDATED_EVENT: 'companion_results_updated',
             deleteCompanionResult: jest.fn(),
-            getCompanionResults: jest.fn(() => ({})),
+            getCompanionResults: jest.fn(message => message?.extra?.inChatAgentCompanionResults ?? {}),
             runCompanionAgentOnMessage: jest.fn(async () => ({})),
             runCompanionsOnMessage: jest.fn(async () => ({})),
             updateCompanionResult: jest.fn(),
@@ -245,6 +246,115 @@ describe('companion card ui', () => {
         expect(extractChoiceText('B) Inspect   the\nwoodwork')).toBe('Inspect the woodwork');
         expect(extractChoiceText('Plain choice with no marker')).toBe('Plain choice with no marker');
         expect(extractChoiceText('   ')).toBe('');
+    });
+
+    test('sends Chat Only card input as private side-chat context', async () => {
+        agents.push({
+            id: 'chat-only',
+            name: 'Chat Only',
+            sourceTemplateId: 'tpl-chat-only-companion',
+            execution: 'companion',
+        });
+        chat.push({
+            name: 'Assistant',
+            mes: 'reply',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    'chat-only': { content: 'You: Hey\n\nMona: I can hear you.', agentName: 'Chat Only' },
+                },
+            },
+        });
+        const { initCompanionCardUi } = await importCompanionUi();
+        const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const actionButton = {};
+        const docElement = { on: jest.fn(() => docElement) };
+        const mesElement = { attr: jest.fn(name => (name === 'mesid' ? '0' : '')) };
+        const inputField = { val: jest.fn(value => (value === undefined ? 'Are you actually okay?' : inputField)), prop: jest.fn(() => inputField) };
+        const cardElement = { attr: jest.fn(name => (name === 'data-agent-id' ? 'chat-only' : '')), find: jest.fn(() => inputField) };
+        const buttonElement = {
+            attr: jest.fn(name => (name === 'data-action' ? 'chat-only-send' : '')),
+            closest: jest.fn(selector => (selector === '.mes' ? mesElement : cardElement)),
+            prop: jest.fn(() => buttonElement),
+        };
+        globalThis.$ = jest.fn(arg => (arg === globalThis.document ? docElement : arg === actionButton ? buttonElement : {
+            length: 0,
+            each: jest.fn(),
+            on: jest.fn(),
+            toggle: jest.fn(),
+        }));
+
+        initCompanionCardUi();
+        const actionHandler = docElement.on.mock.calls.find(([, selector]) => selector === '.ica--companion-action, .ica--companion-control-action')[2];
+        await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
+
+        expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('chat-only', 0, expect.objectContaining({
+            pendingContent: expect.stringContaining('You: Are you actually okay?'),
+            extraContextSections: [expect.objectContaining({
+                title: 'Chat Only side chat',
+                content: expect.stringContaining('Mona: I can hear you.'),
+            })],
+        }));
+        expect(runner.runCompanionAgentOnMessage.mock.calls[0][2].extraContextSections[0].content).toContain('You: Are you actually okay?');
+        expect(inputField.val).toHaveBeenCalledWith('');
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', true);
+        expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
+        expect(buttonElement.prop).toHaveBeenCalledWith('disabled', true);
+        expect(buttonElement.prop).toHaveBeenCalledWith('disabled', false);
+    });
+
+    test('saves Plot Compass card objective before rerunning', async () => {
+        const plotCompass = {
+            id: 'plot-compass',
+            name: 'Plot Compass',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            execution: 'companion',
+            settings: { plotCompassObjective: 'Old objective' },
+        };
+        agents.push(plotCompass);
+        chat.push({
+            name: 'Assistant',
+            mes: 'reply',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    'plot-compass': { content: 'Plan', agentName: 'Plot Compass' },
+                },
+            },
+        });
+        const { initCompanionCardUi } = await importCompanionUi();
+        const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
+        const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const actionButton = {};
+        const docElement = { on: jest.fn(() => docElement) };
+        const mesElement = { attr: jest.fn(name => (name === 'mesid' ? '0' : '')) };
+        const inputField = { val: jest.fn(value => (value === undefined ? 'Reach the tower' : inputField)), prop: jest.fn(() => inputField) };
+        const cardElement = { attr: jest.fn(name => (name === 'data-agent-id' ? 'plot-compass' : '')), find: jest.fn(() => inputField) };
+        const buttonElement = {
+            attr: jest.fn(name => (name === 'data-action' ? 'plot-compass-save' : '')),
+            closest: jest.fn(selector => (selector === '.mes' ? mesElement : cardElement)),
+            prop: jest.fn(() => buttonElement),
+        };
+        globalThis.$ = jest.fn(arg => (arg === globalThis.document ? docElement : arg === actionButton ? buttonElement : {
+            length: 0,
+            each: jest.fn(),
+            on: jest.fn(),
+            toggle: jest.fn(),
+        }));
+
+        initCompanionCardUi();
+        const actionHandler = docElement.on.mock.calls.find(([, selector]) => selector === '.ica--companion-action, .ica--companion-control-action')[2];
+        await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
+
+        expect(plotCompass.settings.plotCompassObjective).toBe('Reach the tower');
+        expect(store.saveAgent).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'plot-compass',
+            settings: expect.objectContaining({ plotCompassObjective: 'Reach the tower' }),
+        }));
+        expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('plot-compass', 0);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
     });
 
     test('registers re-render listeners for lazy loads, edits, and deletions', async () => {

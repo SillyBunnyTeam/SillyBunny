@@ -75,4 +75,21 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('generateCompanionKitWithAI');
         expect(indexSource).toContain('Applied generated companion. Review and save when ready.');
     });
+
+    test('keeps companion settings labels clear and aligned', () => {
+        expect(editorTemplateSource).toContain('ica--companion-core-grid');
+        expect(extensionStyleSource).toContain('.ica--companion-core-grid');
+        expect(extensionStyleSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));');
+        expect(editorTemplateSource).toContain('Run with enabled companions in one request');
+        expect(editorTemplateSource).toContain('share one model request');
+        expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('labels companion agent cards as side execution', () => {
+        const labelSource = getFunctionSource('getAgentCardPhaseLabel');
+
+        expect(labelSource).toContain('isCompanionAgent(agent)');
+        expect(labelSource).toContain("return 'side';");
+        expect(indexSource).toContain('getAgentCardPhaseLabel(agent)');
+    });
 });

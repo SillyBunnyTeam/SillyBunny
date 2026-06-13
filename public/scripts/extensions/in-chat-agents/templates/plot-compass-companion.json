@@ -1,7 +1,7 @@
 {
     "id": "tpl-plot-compass-companion",
     "name": "Plot Compass",
-    "description": "Set a Plot Objective in this agent's settings and it plans how the story gets there: progress, next beats, obstacles, and a suggested move each turn",
+    "description": "Set a Plot Objective on the note card or in this agent's settings and it plans how the story gets there: progress, next developments, obstacles, and a suggested move each turn",
     "icon": "fa-compass",
     "category": "companion",
     "tags": [
@@ -11,7 +11,7 @@
     ],
     "version": 1,
     "author": "SillyBunny",
-    "prompt": "The story's plot planner uses [Plot Compass Objective] as the user's standing objective for where they want the story to go.\n\nUse these sections:\n\n**Objective:** carry the user's objective forward verbatim. When the objective is empty, write: none set - open this agent's settings and fill in Plot Objective\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next beats:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nWhen the objective is empty, keep Progress, Next beats, and Obstacles grounded in the story's own momentum. Keep the plan in outline mode with plot-planning notes.",
+    "prompt": "[Plot Compass Objective] is the user's standing objective for where they want the story to go.\n\nUse these sections:\n\n**Objective:** carry the user's objective forward verbatim. When the objective is empty, write: none set - open this agent's settings and fill in Plot Objective\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next developments:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nWhen the objective is empty, keep Progress, Next developments, and Obstacles grounded in the story's own momentum. Keep the plan in outline mode with plot-planning notes.",
     "phase": "post",
     "execution": "companion",
     "companion": {

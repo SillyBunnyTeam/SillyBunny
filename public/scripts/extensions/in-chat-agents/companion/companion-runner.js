@@ -690,7 +690,7 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
     return [prompt, getTemplateSettingsPromptBlock(agent)].filter(Boolean).join('\n\n').trim();
 }
 
-const COMPANION_REPAIR_INSTRUCTION = 'The previous result missed the requested shape. Try again with the companion-result format described above and keep the answer inside that shape.';
+const COMPANION_REPAIR_INSTRUCTION = 'Repair mode: produce the companion artifact again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
 
 export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false, extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);

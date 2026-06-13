@@ -158,39 +158,37 @@
             </label>
             <div class="ica--regex-note">Injected into Plot Compass runs and editable any time from this agent's settings.</div>
         </div>
-        <div class="ica--editor-row flex-container flexGap5">
-            <label class="flex1">Trigger
+        <div class="ica--companion-core-grid">
+            <label>Trigger
                 <select id="ica--editor-companion-trigger" class="text_pole">
                     <option value="auto">Auto after matching replies</option>
                     <option value="manual">Manual only</option>
                 </select>
             </label>
-            <label class="flex1">Display
+            <label>Display
                 <select id="ica--editor-companion-displayMode" class="text_pole">
                     <option value="card">Show note card</option>
                     <option value="panel">Tracker panel only</option>
                     <option value="hidden">Hidden feedback note</option>
                 </select>
             </label>
-            <label class="flex1">Format
+            <label>Format
                 <select id="ica--editor-companion-format" class="text_pole">
                     <option value="markdown">Markdown</option>
                     <option value="html">Safe HTML</option>
                     <option value="text">Plain text</option>
                 </select>
             </label>
-        </div>
-        <div class="ica--editor-row flex-container flexGap5">
-            <label class="flex1">Context Messages
+            <label>Context Messages
                 <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
             </label>
-            <label class="flex1" title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
+            <label title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
                 <input type="number" id="ica--editor-companion-minContextTokens" class="text_pole" min="0" max="200000" step="1000" value="0" />
             </label>
-            <label class="flex1">History Depth
+            <label>History Depth
                 <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
             </label>
-            <label class="flex1">Max Tokens
+            <label>Max Tokens
                 <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="32000" value="32000" />
             </label>
         </div>
@@ -202,7 +200,7 @@
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeSystemPrompt" /><span>Include System Prompt</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
-            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-batch" /><span>Batch with compatible companions</span></label>
+            <label class="checkbox_label" title="When this and other enabled companions use the same profile, model, and context settings, they share one model request."><input type="checkbox" id="ica--editor-companion-batch" /><span>Run with enabled companions in one request</span></label>
             <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
         </div>
         <div class="ica--editor-row" id="ica--companion-feedback-depth-row">

@@ -876,6 +876,14 @@ function buildCompanionCardPill(agent) {
     return `<span class="ica--card-pill ica--card-pill--companion"><i class="fa-solid fa-user-astronaut fa-xs"></i> companion ${escapeHtml(labels.join(' / '))}</span>`;
 }
 
+function getAgentCardPhaseLabel(agent) {
+    if (isCompanionAgent(agent)) {
+        return 'side';
+    }
+
+    return AGENT_PHASE_LABELS[agent?.phase] || agent?.phase || '';
+}
+
 function buildCompanionFeedbackPreviewText(agent) {
     const companion = getCompanionConfig(agent);
     if (!companion.feedback.enabled) {
@@ -2136,7 +2144,7 @@ function renderAgentList() {
                             <button type="button" class="ica--card-favorite ${agent.favorite ? 'is-active' : ''}" title="${agent.favorite ? 'Remove from Quick Toggles' : 'Add to Quick Toggles'}">
                                 <i class="fa-solid fa-star"></i>
                             </button>
-                            <span class="ica--card-phase">${AGENT_PHASE_LABELS[agent.phase] || agent.phase}</span>
+                            <span class="ica--card-phase">${escapeHtml(getAgentCardPhaseLabel(agent))}</span>
                             <button type="button" class="ica--card-drag-handle" title="Hold and drag to reorder">
                                 <i class="fa-solid fa-grip-vertical"></i>
                             </button>

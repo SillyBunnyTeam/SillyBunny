@@ -11,7 +11,7 @@
     ],
     "version": 1,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Stay with established facts and relationship implications from the source reply.",
+    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Stakes, Watch next. Stay with established facts and relationship implications from the source reply.",
     "phase": "post",
     "execution": "companion",
     "companion": {

@@ -1069,12 +1069,12 @@ describe('in-chat agent post-processing runner', () => {
         const messages = await companionRunner.buildCompanionPromptMessages(chatOnly, 1, 'normal', {
             extraContextSections: [{
                 title: 'Chat Only side chat',
-                content: '**You:** Are you really okay?',
+                content: 'You: Are you really okay?',
             }],
         });
 
         expect(messages[1].content).toContain('[Chat Only side chat]');
-        expect(messages[1].content).toContain('**You:** Are you really okay?');
+        expect(messages[1].content).toContain('You: Are you really okay?');
     });
 
     test('injects selected extra Chatroom character cards while excluding the active card', async () => {
@@ -1279,10 +1279,11 @@ describe('in-chat agent post-processing runner', () => {
         );
 
         const repairMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1, 'normal', { repair: true });
-        expect(repairMessages[0].content).toContain('previous result missed the requested shape');
+        expect(repairMessages[0].content).toContain('Repair mode: produce the companion artifact again in the requested format');
+        expect(repairMessages[0].content).toContain('return the bracketed choice or direction block');
 
         const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
-        expect(normalMessages[0].content).not.toContain('previous result missed the requested shape');
+        expect(normalMessages[0].content).not.toContain('Repair mode: produce the companion artifact');
     });
 
     test('feeds a companion its previous states when history is enabled', async () => {

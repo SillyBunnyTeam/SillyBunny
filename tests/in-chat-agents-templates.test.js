@@ -103,12 +103,14 @@ describe('in-chat agent bundled templates', () => {
         const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
         const negativeWrapperPattern = /\b(?:Do not|Don't|Never|Return only|Output only|strictly|AI agent|as an AI|LLM)\b/i;
         const uppercaseProtocolPattern = /\b(?:CHATROOM_STYLE|CHATROOM_END|PHONE_NONE|PHONE_START|PHONE_TEXT|PHONE_END|LETTER_START|LETTER_TEXT|LETTER_END|OBJECTIVE:|## TIMELINE|## CHARACTERS|## RELATIONSHIPS|## EVENTS|## DIALOGUE KEYS|## THREADS|## NOW)\b/;
+        const vagueCompanionPromptPattern = /\b(?:shape|shapes|pressure|pressures|beat|beats)\b/i;
 
         for (const filename of companionFilenames) {
             const template = readTemplate(filename);
             const prompt = String(template.prompt ?? '');
             expect(prompt).not.toMatch(negativeWrapperPattern);
             expect(prompt).not.toMatch(uppercaseProtocolPattern);
+            expect(prompt).not.toMatch(vagueCompanionPromptPattern);
         }
     });
 
@@ -153,6 +155,9 @@ describe('in-chat agent bundled templates', () => {
             expect(template.companion).toEqual(expect.objectContaining({
                 includeSystemPrompt: false,
             }));
+            expect(template.prompt).toContain('repair task');
+            expect(template.prompt).not.toContain('End EVERY');
+            expect(template.prompt).not.toContain('EXACT');
         }
     });
 
@@ -278,7 +283,10 @@ describe('in-chat agent bundled templates', () => {
         expect(chatOnly.prompt).toContain('[Your previous notes]');
         expect(chatOnly.prompt).toContain('Chat Only textbox');
         expect(chatOnly.prompt).toContain('[Chat Only side chat]');
+        expect(chatOnly.prompt).toContain('You: the user\'s newest aside');
+        expect(chatOnly.prompt).toContain('Actions appear as plain prose');
         expect(chatOnly.prompt).toContain('live side chat panel');
+        expect(chatOnly.prompt).not.toContain('**You:**');
 
         expect(messageInbox.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
