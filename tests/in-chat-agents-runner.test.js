@@ -969,18 +969,19 @@ describe('in-chat agent post-processing runner', () => {
 
         const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
         expect(rawMessages[0].role).toBe('system');
-        expect(rawMessages[0].content.startsWith('Stop roleplay. This is a private companion task')).toBe(true);
+        expect(rawMessages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(rawMessages[0].content).toContain('Do not continue the scene');
         expect(rawMessages[0].content).toContain('Track the scene state in the [Scene|...] format.');
         expect(rawMessages[0].content).not.toContain('Write a markdown companion card body');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
-        expect(noteMessages[0].content.startsWith('Stop roleplay. This is a private companion task')).toBe(true);
+        expect(noteMessages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(noteMessages[0].content).toContain('Do not continue the scene');
         expect(noteMessages[0].content).toContain('Write a side note.');
-        expect(noteMessages[0].content).toContain('Write a markdown companion card body');
+        expect(noteMessages[0].content).toContain('Write the result as markdown.');
+        expect(noteMessages[0].content).not.toMatch(/companion card/i);
         expect(noteMessages[1].content).toContain('[Task]');
-        expect(noteMessages[1].content).toContain('Complete the companion task from the system message, return only its result');
+        expect(noteMessages[1].content).toContain('Follow the system instructions, return only the requested result');
     });
 
     test('injects the selected Chatroom style into companion prompts', async () => {
@@ -1280,11 +1281,11 @@ describe('in-chat agent post-processing runner', () => {
         );
 
         const repairMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1, 'normal', { repair: true });
-        expect(repairMessages[0].content).toContain('Repair mode: produce the companion artifact again in the requested format');
+        expect(repairMessages[0].content).toContain('Repair mode: produce the requested result again in the requested format');
         expect(repairMessages[0].content).toContain('return the bracketed choice or direction block');
 
         const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
-        expect(normalMessages[0].content).not.toContain('Repair mode: produce the companion artifact');
+        expect(normalMessages[0].content).not.toContain('Repair mode: produce the requested result');
     });
 
     test('feeds a companion its previous states when history is enabled', async () => {
@@ -1374,6 +1375,9 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
         const batchPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(batchPrompt).toContain('Run each side-channel task independently.');
+        expect(batchPrompt).toContain('[Tasks]');
+        expect(batchPrompt).not.toContain('[Companion tasks]');
         expect(batchPrompt).toContain('<<<companion:companion-a>>>');
         expect(batchPrompt).toContain('<<<companion:companion-b>>>');
         expect(batchPrompt).not.toContain('<<<companion:companion-c>>>');
@@ -1397,7 +1401,7 @@ describe('in-chat agent post-processing runner', () => {
 
         const messages = await companionRunner.buildCompanionPromptMessages(rawTracker, 1);
 
-        expect(messages[0].content.startsWith('Stop roleplay. This is a private companion task')).toBe(true);
+        expect(messages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(messages[0].content).toContain('Do not continue the scene');
         expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
         expect(messages[0].content).not.toContain('Write a markdown companion card body');

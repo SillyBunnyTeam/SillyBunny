@@ -662,20 +662,20 @@ async function buildCompanionContextSections(agent, messageIndex, { extraContext
 // Companion prompts were written to ride along with a story reply; running standalone,
 // especially on small models, they can continue the scene or echo the task unless the boundary
 // is explicit. These guards stack on top of rawPrompt, which only suppresses format instructions.
-const COMPANION_GUARD_INSTRUCTION = 'Stop roleplay. This is a private companion task, not the chat reply. Do not continue the scene, and do not quote or restate these instructions; return only the task result.';
+const COMPANION_GUARD_INSTRUCTION = 'Stop roleplay. This is a private side-channel task, not the chat reply. Do not continue the scene, and do not quote or restate these instructions; return only the requested result.';
 // Small models weigh the end of the prompt heaviest, and the context ends with roleplay
 // dialogue begging to be continued, so anchor the task after it.
-const COMPANION_TASK_ANCHOR = '[Task]\nUse the conversation above only as context. Complete the companion task from the system message, return only its result, and do not quote the prompt, explain the task, or continue the conversation.';
+const COMPANION_TASK_ANCHOR = '[Task]\nUse the conversation above only as context. Follow the system instructions, return only the requested result, and do not quote the prompt, explain the task, or continue the conversation.';
 
 function getFormatInstruction(format) {
     switch (format) {
         case 'html':
-            return 'Write a safe HTML fragment for the companion card body using ordinary content elements.';
+            return 'Write the result as a safe HTML fragment using ordinary content elements.';
         case 'text':
-            return 'Write a plain text companion card body.';
+            return 'Write the result as plain text.';
         case 'markdown':
         default:
-            return 'Write a markdown companion card body.';
+            return 'Write the result as markdown.';
     }
 }
 
@@ -691,7 +691,7 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
     return [prompt, getTemplateSettingsPromptBlock(agent)].filter(Boolean).join('\n\n').trim();
 }
 
-const COMPANION_REPAIR_INSTRUCTION = 'Repair mode: produce the companion artifact again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
+const COMPANION_REPAIR_INSTRUCTION = 'Repair mode: produce the requested result again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
 
 export async function buildCompanionPromptMessages(agent, messageIndex, generationType = 'normal', { repair = false, extraContextSections = [] } = {}) {
     const companion = getCompanionConfig(agent);
@@ -885,11 +885,11 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType) {
     return [
         {
             role: 'system',
-            content: 'Run each Companion task independently. Put every result inside its matching <<<companion:agentId>>> and <<<end:agentId>>> markers. Text outside markers is ignored.',
+            content: 'Run each side-channel task independently. Put every result inside its matching <<<companion:agentId>>> and <<<end:agentId>>> markers. Text outside markers is ignored.',
         },
         {
             role: 'user',
-            content: `${contextSections || '[Recent conversation]\nConversation context is empty.'}\n\n[Companion tasks]\n${tasks}\n\nPlace every companion result inside its markers now.`,
+            content: `${contextSections || '[Recent conversation]\nConversation context is empty.'}\n\n[Tasks]\n${tasks}\n\nPlace every result inside its markers now.`,
         },
     ];
 }
