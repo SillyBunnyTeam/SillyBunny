@@ -59,6 +59,7 @@ describe('in-chat agent bundled templates', () => {
         const sourceFilenames = [
             'achievements-tracker.json',
             'actor-interview-companion.json',
+            'chatroom-companion.json',
             'continuity-companion.json',
             'directors-commentary-companion.json',
             'lorebook-scout-companion.json',
@@ -141,8 +142,9 @@ describe('in-chat agent bundled templates', () => {
         const interview = findCatalogTemplate(catalog, 'tpl-actor-interview-companion');
         const lorebookScout = findCatalogTemplate(catalog, 'tpl-lorebook-scout-companion');
         const memoryShard = findCatalogTemplate(catalog, 'tpl-memory-shard-companion');
+        const chatroom = findCatalogTemplate(catalog, 'tpl-chatroom-companion');
 
-        for (const template of [commentary, interview, lorebookScout, memoryShard]) {
+        for (const template of [commentary, interview, lorebookScout, memoryShard, chatroom]) {
             expect(template).toEqual(expect.objectContaining({
                 category: 'companion',
                 execution: 'companion',
@@ -170,6 +172,18 @@ describe('in-chat agent bundled templates', () => {
             feedback: { enabled: true, depth: 1 },
             maxTokens: 4096,
         }));
+        expect(chatroom.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            format: 'html',
+            rawPrompt: true,
+            includeHistory: true,
+            historyDepth: 1,
+            feedback: { enabled: false, depth: 1 },
+            maxTokens: 4096,
+        }));
+        expect(chatroom.prompt).toContain('thread-board/4chan');
+        expect(chatroom.prompt).toContain('No NSFW chat styles');
 
         const plotCompass = findCatalogTemplate(catalog, 'tpl-plot-compass-companion');
         expect(plotCompass).toEqual(expect.objectContaining({

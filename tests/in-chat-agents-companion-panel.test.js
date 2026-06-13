@@ -319,6 +319,7 @@ describe('companion tracker panel', () => {
         expect(wandAppends).toHaveLength(1);
         expect(menuItem.on).toHaveBeenCalledWith('click', expect.any(Function));
         expect(panelElement.on).toHaveBeenCalledWith('click', '[data-action]', expect.any(Function));
+        expect(panelElement.on).toHaveBeenCalledWith('click', '.ica--tpanel-agent-body .ica--choice-line', expect.any(Function));
         expect(handleElement.toggle).toHaveBeenCalled();
         const registered = eventSource.on.mock.calls.map(([eventName]) => eventName);
         expect(registered).toEqual(expect.arrayContaining([
@@ -327,5 +328,57 @@ describe('companion tracker panel', () => {
             'message_deleted',
             'message_swiped',
         ]));
+    });
+
+    test('closes after a panel choice inserts into the message box', async () => {
+        agents = [{ id: 'choices', name: 'CYOA Choices', execution: 'companion', enabled: true }];
+        const panel = await importPanel();
+        const companionUi = await import('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js');
+        const elementStub = () => {
+            const element = {
+                length: 0,
+                on: jest.fn(() => element),
+                append: jest.fn(() => element),
+                html: jest.fn(() => element),
+                toggle: jest.fn(() => element),
+                attr: jest.fn(() => element),
+                addClass: jest.fn(() => element),
+                removeClass: jest.fn(() => element),
+            };
+            return element;
+        };
+        const panelElement = elementStub();
+        const handleElement = elementStub();
+        const menuItem = { on: jest.fn(() => menuItem) };
+        globalThis.$ = jest.fn(arg => {
+            if (arg === globalThis.document.body) {
+                return { append: jest.fn() };
+            }
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            if (arg === '#ica_tracker_panel_wand_item') {
+                return { length: 1 };
+            }
+            if (typeof arg === 'string' && arg.trim().startsWith('<')) {
+                return menuItem;
+            }
+            return elementStub();
+        });
+
+        panel.initCompanionPanel();
+        panel.openCompanionPanel();
+        const choiceHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '.ica--tpanel-agent-body .ica--choice-line')[2];
+        const event = { preventDefault: jest.fn(), stopPropagation: jest.fn() };
+        choiceHandler.call({ textContent: 'A) Open the door' }, event);
+
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+        expect(companionUi.insertChoiceIntoMessageInput).toHaveBeenCalledWith('A) Open the door');
+        expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
+        expect(panelElement.attr).toHaveBeenCalledWith('aria-hidden', 'true');
     });
 });

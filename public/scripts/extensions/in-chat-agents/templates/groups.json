@@ -40,7 +40,7 @@
     {
         "id": "grp-companions",
         "name": "Companions",
-        "description": "All bundled companion agents: auxiliary notes, trackers fed back into context, and the rolling memory shard",
+        "description": "All bundled companion agents: auxiliary notes, reaction feeds, trackers fed back into context, and the rolling memory shard",
         "builtin": true,
         "agentTemplateIds": [
             "tpl-continuity-companion",
@@ -50,7 +50,8 @@
             "tpl-lorebook-scout-companion",
             "tpl-memory-shard-companion",
             "tpl-npc-motivator",
-            "tpl-plot-compass-companion"
+            "tpl-plot-compass-companion",
+            "tpl-chatroom-companion"
         ]
     }
 ]
