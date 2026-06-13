@@ -141,6 +141,37 @@ export function resolveConnectionProfileMirrorState({
 }
 
 /**
+ * Resolves mirrored connection-profile control updates without touching DOM.
+ * @param {object} options Options.
+ * @param {boolean} [options.shouldClearMirrors=false] Whether mirrored controls should be cleared.
+ * @param {boolean} [options.shouldShowMobileSection=false] Whether the mobile section should be visible.
+ * @param {boolean} [options.shouldDisableConnectButton=true] Whether connect buttons should be disabled.
+ * @param {unknown} [options.sourceOptionsMarkup=''] Source select option markup to mirror.
+ * @param {unknown} [options.sourceValue=''] Source select value to mirror.
+ * @param {unknown} [options.connectionStatusText=''] Current connection status text.
+ * @returns {{shouldClearMirrors: boolean, shouldShowMobileSection: boolean, shouldDisableConnectButton: boolean, optionsMarkup: string, selectedValue: string, statusText: string}}
+ */
+export function resolveConnectionProfileMirrorUpdate({
+    shouldClearMirrors = false,
+    shouldShowMobileSection = false,
+    shouldDisableConnectButton = true,
+    sourceOptionsMarkup = '',
+    sourceValue = '',
+    connectionStatusText = '',
+} = {}) {
+    const shouldClear = Boolean(shouldClearMirrors);
+
+    return {
+        shouldClearMirrors: shouldClear,
+        shouldShowMobileSection: Boolean(shouldShowMobileSection),
+        shouldDisableConnectButton: Boolean(shouldDisableConnectButton),
+        optionsMarkup: shouldClear ? '' : String(sourceOptionsMarkup ?? ''),
+        selectedValue: shouldClear ? '' : String(sourceValue ?? ''),
+        statusText: shouldClear ? '' : String(connectionStatusText ?? ''),
+    };
+}
+
+/**
  * Creates the compatibility-facing preset/API sync lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -158,6 +189,7 @@ export function createPresetApiSyncLifecycle() {
             resolveSelectionSync: resolveConnectionProfileSelectionSync,
             resolveSourceBinding: resolveConnectionProfileSourceBinding,
             resolveMirrorState: resolveConnectionProfileMirrorState,
+            resolveMirrorUpdate: resolveConnectionProfileMirrorUpdate,
         },
     };
 }

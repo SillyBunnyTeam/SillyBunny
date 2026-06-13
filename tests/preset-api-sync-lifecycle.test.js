@@ -6,6 +6,7 @@ import {
     PRESET_API_SYNC_CONNECTION_SOURCE_STATE,
     normalizePresetApiId,
     resolveConnectionProfileMirrorState,
+    resolveConnectionProfileMirrorUpdate,
     resolveConnectionProfileSelectionSync,
     resolveConnectionProfileSourceBinding,
     resolvePresetApiConnectButtonSelector,
@@ -154,6 +155,42 @@ describe('preset/API sync lifecycle helper', () => {
         });
     });
 
+    test('resolves connection profile mirror clearing without source values', () => {
+        expect(resolveConnectionProfileMirrorUpdate({
+            shouldClearMirrors: true,
+            shouldShowMobileSection: false,
+            shouldDisableConnectButton: true,
+            sourceOptionsMarkup: '<option value="profile-a">A</option>',
+            sourceValue: 'profile-a',
+            connectionStatusText: 'OpenAI - model',
+        })).toEqual({
+            shouldClearMirrors: true,
+            shouldShowMobileSection: false,
+            shouldDisableConnectButton: true,
+            optionsMarkup: '',
+            selectedValue: '',
+            statusText: '',
+        });
+    });
+
+    test('resolves connection profile mirror option and value updates', () => {
+        expect(resolveConnectionProfileMirrorUpdate({
+            shouldClearMirrors: false,
+            shouldShowMobileSection: true,
+            shouldDisableConnectButton: false,
+            sourceOptionsMarkup: '<option value="profile-a">A</option>',
+            sourceValue: 'profile-a',
+            connectionStatusText: 'OpenAI - model',
+        })).toEqual({
+            shouldClearMirrors: false,
+            shouldShowMobileSection: true,
+            shouldDisableConnectButton: false,
+            optionsMarkup: '<option value="profile-a">A</option>',
+            selectedValue: 'profile-a',
+            statusText: 'OpenAI - model',
+        });
+    });
+
     test('creates a stable lifecycle seam for future runtime wiring', () => {
         const lifecycle = createPresetApiSyncLifecycle();
 
@@ -165,5 +202,6 @@ describe('preset/API sync lifecycle helper', () => {
         expect(lifecycle.connectionProfiles.resolveSelectionSync).toBe(resolveConnectionProfileSelectionSync);
         expect(lifecycle.connectionProfiles.resolveSourceBinding).toBe(resolveConnectionProfileSourceBinding);
         expect(lifecycle.connectionProfiles.resolveMirrorState).toBe(resolveConnectionProfileMirrorState);
+        expect(lifecycle.connectionProfiles.resolveMirrorUpdate).toBe(resolveConnectionProfileMirrorUpdate);
     });
 });

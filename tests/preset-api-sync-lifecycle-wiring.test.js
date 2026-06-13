@@ -78,6 +78,22 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(refreshSource).toContain('connectionMirrorState.shouldDisableConnectButton');
     });
 
+    test('routes connection profile mirror updates through the lifecycle seam', () => {
+        const refreshSource = getFunctionSource('refreshChatbarState');
+
+        expect(refreshSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorUpdate({');
+        expect(refreshSource).toContain('shouldClearMirrors: connectionMirrorState.shouldClearMirrors');
+        expect(refreshSource).toContain('shouldShowMobileSection: connectionMirrorState.shouldShowMobileSection');
+        expect(refreshSource).toContain('shouldDisableConnectButton: connectionMirrorState.shouldDisableConnectButton');
+        expect(refreshSource).toContain('sourceOptionsMarkup: hasConnectionProfiles ? connectionProfilesSource.innerHTML : \'\'');
+        expect(refreshSource).toContain('sourceValue: hasConnectionProfiles ? connectionProfilesSource.value : \'\'');
+        expect(refreshSource).toContain('connectionMirrorUpdate.optionsMarkup');
+        expect(refreshSource).toContain('connectionMirrorUpdate.selectedValue');
+        expect(refreshSource).toContain('connectionMirrorUpdate.statusText');
+        expect(refreshSource).not.toContain('const optionsMarkup = connectionProfilesSource.innerHTML');
+        expect(refreshSource).not.toContain('desktopRefs.connectionSelect.value = connectionProfilesSource.value');
+    });
+
     test('routes connection profile source binding through the lifecycle seam', () => {
         const bindSource = getFunctionSource('bindConnectionProfileSourceElement');
 
