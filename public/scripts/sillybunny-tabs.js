@@ -6700,32 +6700,40 @@ async function refreshChatbarState() {
         setConnectionStripOpenState(false);
     }
 
-    if (connectionMirrorState.shouldClearMirrors) {
+    const connectionMirrorUpdate = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorUpdate({
+        shouldClearMirrors: connectionMirrorState.shouldClearMirrors,
+        shouldShowMobileSection: connectionMirrorState.shouldShowMobileSection,
+        shouldDisableConnectButton: connectionMirrorState.shouldDisableConnectButton,
+        sourceOptionsMarkup: hasConnectionProfiles ? connectionProfilesSource.innerHTML : '',
+        sourceValue: hasConnectionProfiles ? connectionProfilesSource.value : '',
+        connectionStatusText,
+    });
+
+    if (connectionMirrorUpdate.shouldClearMirrors) {
         if (desktopRefs) {
             desktopRefs.connectionSelect.replaceChildren();
-            desktopRefs.connectionStatus.textContent = '';
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
+            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
+            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
             mobileRefs.connectionSelect.replaceChildren();
-            mobileRefs.connectionStatus.textContent = '';
+            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
         }
     } else {
-        const optionsMarkup = connectionProfilesSource.innerHTML;
         if (desktopRefs) {
-            desktopRefs.connectionSelect.innerHTML = optionsMarkup;
-            desktopRefs.connectionSelect.value = connectionProfilesSource.value;
-            desktopRefs.connectionStatus.textContent = connectionStatusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
+            desktopRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
+            desktopRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
+            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
-            mobileRefs.connectionSelect.innerHTML = optionsMarkup;
-            mobileRefs.connectionSelect.value = connectionProfilesSource.value;
-            mobileRefs.connectionStatus.textContent = connectionStatusText;
+            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
+            mobileRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
+            mobileRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
+            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
         }
     }
 
