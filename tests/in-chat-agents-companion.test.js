@@ -212,6 +212,22 @@ describe('companion card ui', () => {
         expect(isHiddenCompanionResult('companion-tracker', {})).toBe(true);
     });
 
+    test('suppresses no-message Message Inbox results', async () => {
+        agents.push({
+            id: 'message-inbox',
+            name: 'Message Inbox',
+            sourceTemplateId: 'tpl-message-inbox-companion',
+            execution: 'companion',
+        });
+        const { formatCompanionContent, isHiddenCompanionResult, isSuppressedCompanionResult } = await importCompanionUi();
+        const emptyResult = { content: ' phone-none ', format: 'html', displayMode: 'panel' };
+
+        expect(isSuppressedCompanionResult('message-inbox', emptyResult)).toBe(true);
+        expect(isHiddenCompanionResult('message-inbox', emptyResult)).toBe(true);
+        expect(formatCompanionContent('message-inbox', emptyResult)).toBe('');
+        expect(isSuppressedCompanionResult('companion-tracker', emptyResult)).toBe(false);
+    });
+
     test('cleans uuid suffixes from companion agent display names', async () => {
         const { cleanCompanionAgentName } = await importCompanionUi();
 

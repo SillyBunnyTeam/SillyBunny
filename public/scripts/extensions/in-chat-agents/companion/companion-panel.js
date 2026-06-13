@@ -17,7 +17,14 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
-import { cleanCompanionAgentName, editCompanionResult, formatCompanionContent, insertChoiceIntoMessageInput } from './companion-ui.js';
+import {
+    cleanCompanionAgentName,
+    editCompanionResult,
+    formatCompanionContent,
+    insertChoiceIntoMessageInput,
+    isSilentCompanionAgent,
+    isSuppressedCompanionResult,
+} from './companion-ui.js';
 
 const PANEL_HISTORY_LIMIT = 5;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
@@ -25,12 +32,13 @@ const PANEL_HISTORY_LIMIT = 5;
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
 // object { edge, fraction } once the handle has been docked somewhere else.
 const HANDLE_POSITION_STORAGE_KEY = 'ica--tracker-panel-handle-top-v2';
+const PANEL_LOCK_STORAGE_KEY = 'ica--tracker-panel-locked';
 const HANDLE_DRAG_THRESHOLD_PX = 6;
 const HANDLE_EDGES = ['right', 'left', 'top', 'bottom'];
 
 let panelInitialized = false;
 let panelOpen = false;
-let panelLocked = false;
+let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
@@ -86,6 +94,22 @@ function storeHandlePosition(edge, fraction) {
         }));
     } catch {
         // Private browsing or storage quota: the position just won't persist.
+    }
+}
+
+function getStoredPanelLocked() {
+    try {
+        return globalThis.localStorage?.getItem?.(PANEL_LOCK_STORAGE_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function storePanelLocked(locked) {
+    try {
+        globalThis.localStorage?.setItem?.(PANEL_LOCK_STORAGE_KEY, locked ? 'true' : 'false');
+    } catch {
+        // Private browsing or storage quota: the lock still applies for this session.
     }
 }
 
@@ -308,7 +332,7 @@ export function collectPanelAgentStates() {
     const byAgentId = new Map();
 
     for (const agent of getPanelAgents()) {
-        if (isAgentEnabledForCurrentScope(agent)) {
+        if (isAgentEnabledForCurrentScope(agent) && !isSilentCompanionAgent(agent)) {
             byAgentId.set(agent.id, { agentId: agent.id, agent, latest: null, history: [] });
         }
     }
@@ -321,6 +345,10 @@ export function collectPanelAgentStates() {
 
         for (const [agentId, result] of Object.entries(getCompanionResults(message))) {
             if (!result || typeof result !== 'object') {
+                continue;
+            }
+
+            if (isSuppressedCompanionResult(agentId, result)) {
                 continue;
             }
 
@@ -388,13 +416,16 @@ function buildPanelAgentSection(state) {
     const settingsButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
         : '';
+    const runLatestButton = state.agent
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run this companion on the latest assistant reply" aria-label="Run companion"><i class="fa-solid fa-play"></i></button>'
+        : '';
 
     if (!latest) {
         return `
             <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
-                    <span class="ica--tpanel-agent-actions">${settingsButton}</span>
+                    <span class="ica--tpanel-agent-actions">${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
             </section>
@@ -461,7 +492,7 @@ export function buildPanelHtml() {
         <div class="ica--tpanel-header">
             <span class="ica--tpanel-title"><i class="fa-solid fa-user-astronaut"></i> Companions</span>
             <span class="ica--tpanel-agent-actions">
-                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock outside-click close' : 'Keep panel open when clicking outside'}" aria-label="${panelLocked ? 'Unlock panel' : 'Lock panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
+                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock panel auto-close' : 'Keep panel open until unlocked'}" aria-label="${panelLocked ? 'Unlock panel' : 'Lock panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
             </span>
@@ -502,6 +533,7 @@ export function isCompanionPanelLocked() {
 
 export function setCompanionPanelLocked(locked) {
     panelLocked = Boolean(locked);
+    storePanelLocked(panelLocked);
     if (panelOpen) {
         renderPanel();
     }
@@ -554,6 +586,28 @@ async function handlePanelAction(event) {
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
     const messageIndex = Number(section.attr('data-message-index'));
+
+    if (action === 'panel-run-latest') {
+        if (!agentId) {
+            toastr.warning('No companion selected.');
+            return;
+        }
+        const lastAssistantIndex = chat.findLastIndex(isAssistantMessage);
+        if (lastAssistantIndex < 0) {
+            toastr.warning('No assistant reply yet to run this companion on.');
+            return;
+        }
+        button.prop('disabled', true);
+        try {
+            await runCompanionAgentOnMessage(agentId, lastAssistantIndex);
+        } finally {
+            button.prop('disabled', false);
+            if (panelOpen) {
+                renderPanel();
+            }
+        }
+        return;
+    }
 
     if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
         const result = await new Popup(

@@ -9,9 +9,9 @@
         "memory",
         "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Return 3-6 bullets. If nothing needs attention, write exactly: No continuity issues noticed. Do not rewrite the reply.",
+    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Use 3-6 bullets. If everything is stable, write: Continuity looks stable.",
     "phase": "post",
     "execution": "companion",
     "companion": {

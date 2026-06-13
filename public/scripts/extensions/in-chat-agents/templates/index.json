@@ -793,9 +793,9 @@
       "motivation",
       "agency"
     ],
-    "version": 2,
+    "version": 3,
     "author": "Sheep",
-    "prompt": "The roleplay is now concluded. Now you are a meticulous AI agent whose task is to crystallize each character's motivations and plan out their actions. Aside from {{user}}, analyse every character in the roleplay's current scene. Write out each character's next actions according to their personality, current situation, and background. Search the provided documents for any extra and relevant information to comprehend the characters better.\nThis is the output and formatting required of you. Please follow:\n[Character's full name]:\n- Long Term Goal — [one-liner on the character's main and long term goal]\n  - Motivation — [brief motivation/reasoning for their long term goal]\n- Current Goal — [brief the character's current objective/problem]\n  - Motivation — [motivations/reasonings for their current objective]\n- Assumptions — [collection of relevant assumptions of the character in the current scene.]\n- Next Action — [given the character's goals, motivations, assumptions, and personality, write how they will tackle the current goal. Also write what their most likely set of actions will be and why.]\n\nNOTE: There may be no characters in the scene right now. In such a case output \"Observation: No other characters in this scene.\" Do not use **bold**, *italics*, or # headers. Follow the output strictly and in its exact bullet point formatting.",
+    "prompt": "Roleplay pauses for a companion planning note. Analyze every character in the current scene aside from {{user}}. Write each character's motivations and likely next actions according to their personality, current situation, background, and any relevant provided documents.\n\nUse this bullet shape:\n[Character full name]:\n- Long Term Goal: one line on the character's main long-term goal\n  - Motivation: brief reasoning for that long-term goal\n- Current Goal: brief current objective or problem\n  - Motivation: reasoning for the current objective\n- Assumptions: relevant assumptions the character is making in the current scene\n- Next Action: how they will tackle the current goal, their most likely action set, and why\n\nFor an empty scene, write: Observation: scene currently has no other characters. Use plain markdown bullets in this shape.",
     "phase": "post",
     "injection": {
       "position": 1,
@@ -1328,9 +1328,9 @@
       "memory",
       "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Return 3-6 bullets. If nothing needs attention, write exactly: No continuity issues noticed. Do not rewrite the reply.",
+    "prompt": "Read the latest assistant reply and recent context as a continuity auditor. Write a concise side note for the user. Focus on contradictions, unresolved promises, changed locations, injuries, inventory, relationship shifts, and setup that may matter in the next few turns. Use 3-6 bullets. If everything is stable, write: Continuity looks stable.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1388,9 +1388,9 @@
       "subtext",
       "emotion"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Return short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Do not rewrite the reply and do not add new facts.",
+    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Stay with established facts and relationship implications from the source reply.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1398,9 +1398,9 @@
       "displayMode": "panel",
       "format": "markdown",
       "contextMessages": 10,
-      "includeCharacterCard": false,
-      "includePersona": false,
-      "includeWorldInfo": false,
+      "includeCharacterCard": true,
+      "includePersona": true,
+      "includeWorldInfo": true,
       "includeHistory": true,
       "historyDepth": 2,
       "feedback": {
@@ -1448,9 +1448,9 @@
       "scene",
       "notes"
     ],
-    "version": 4,
+    "version": 5,
     "author": "SillyBunny",
-    "prompt": "You are the story's narrator stepping out from behind the page for a moment, speaking directly to the reader between scenes.\n\n{{getvar::narration}}\n\nThe editor appends [Selected Director Commentary Voice] and [Director Commentary Voice] after this prompt. Treat [Director Commentary Voice] as the source of truth for this commentary run. If it says to use the active Prose Voice but none is set above, default to this narrator's native register: intimate and mischievous, dry amusement, controlled irony, conspiratorial direct address to the reader, with razor-sharp asides.\n\nIn that voice, deliver a short commentary track on the latest reply: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Do not rewrite the reply and do not address the characters - this is strictly between you and the reader.",
+    "prompt": "The story narrator steps out from behind the page for a moment, speaking directly to the reader between scenes.\n\n{{getvar::narration}}\n\nThe editor appends [Selected Director Commentary Voice] and [Director Commentary Voice] after this prompt. Treat [Director Commentary Voice] as the source of truth for this commentary run. If it says to use the active Prose Voice and the block above is empty, use this native register: intimate and mischievous, dry amusement, controlled irony, conspiratorial direct address to the reader, with razor-sharp asides.\n\nIn that voice, deliver a short commentary track on the latest reply: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the next beat could take. Keep it to 3-6 punchy bullets. Be opinionated but constructive. Keep the result between narrator and reader, focused on scene craft.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1508,9 +1508,9 @@
       "character",
       "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "You are running a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about: what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Do not continue the scene itself.",
+    "prompt": "Run a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Keep the result as off-record interview commentary.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1568,9 +1568,9 @@
       "world info",
       "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Ignore transient scene state, and skip anything already covered by the provided World Info. For each fact, draft one lorebook entry covering exactly one concept, formatted as: a bold title, a 'Keys:' line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Output at most 4 entries. If nothing new and durable was established, write exactly: No new lore this turn.",
+    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Favor facts that are not already covered by the provided World Info. For each fact, draft one lorebook entry covering one concept, formatted as a bold title, a Keys line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Use up to 4 entries. For empty turns, write: Lorebook has nothing durable this turn.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1630,7 +1630,7 @@
     ],
     "version": 3,
     "author": "SillyBunny",
-    "prompt": "Compress the recent conversation into a compact memory shard the story could be resumed from if all other history were lost. When [Your previous notes] contains earlier shards, build on them: carry forward still-relevant facts, update what changed, drop what resolved, and do not repeat unchanged entries verbatim. Identify emotional peaks first and map causal chains backward from them; preserve high-impact material in more detail and compress or omit what can be inferred.\n\nOutput exactly these sections, using terse pipe-delimited lines and keywords instead of prose:\n\n## TIMELINE\nNumbered anchor phrases with location, oldest to newest. All other sections reference these numbers.\n\n## CHARACTERS\nName|role|3-5 trait keywords|status\n\n## RELATIONSHIPS\nA -> B: dimension=0-100 values | one-line note. 50 is neutral baseline; list only dimensions that matter (trust, intimacy, tension, hostility, affection, dependency).\n\n## EVENTS\nN. action -> consequence -> outcome, weight 1-5. Weight 5 means a permanent change to a character, relationship, or world state and must keep its key details; omit weight-1 filler entirely.\n\n## DIALOGUE KEYS\nTimeline#. \"exact quote\" --Speaker (context). Only confessions, threats, promises, reveals, and voice-defining lines.\n\n## THREADS\nUnresolved hooks and planted callbacks: thread|status (unresolved, developing, urgent)|note\n\n## NOW\nLocation, time, characters present, situation, pending actions, mood, physical state.\n\nMark uncertain facts with (?). Never invent events, quotes, or details. Plain text only, no code fences.",
+    "prompt": "Compress the recent conversation into a compact memory shard the story could be resumed from. When [Your previous notes] contains earlier shards, build on them: carry forward still-relevant facts, update what changed, drop resolved material, and merge unchanged entries. Identify emotional peaks first and map causal chains backward from them; preserve high-impact material in more detail and compress material that can be inferred.\n\nUse these sections with terse pipe-delimited lines and keywords instead of prose:\n\n## Timeline\nNumbered anchor phrases with location, oldest to newest. All other sections reference these numbers.\n\n## Characters\nName|role|3-5 trait keywords|status\n\n## Relationships\nA -> B: dimension=0-100 values | one-line note. 50 is neutral baseline; list dimensions that matter, such as trust, intimacy, tension, hostility, affection, dependency.\n\n## Events\nN. action -> consequence -> outcome, weight 1-5. Weight 5 means a permanent change to a character, relationship, or world state and keeps its key details; weight-1 filler can be omitted.\n\n## Dialogue Keys\nTimeline#. \"exact quote\" -- Speaker (context). Use confessions, threats, promises, reveals, and voice-defining lines.\n\n## Threads\nUnresolved hooks and planted callbacks: thread|status (unresolved, developing, urgent)|note\n\n## Now\nLocation, time, characters present, situation, pending actions, mood, physical state.\n\nMark uncertain facts with (?). Use sourced events, quotes, and details. Plain text keeps this easy to compact.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1689,9 +1689,9 @@
       "objective",
       "planning"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "You are the story's plot planner. [Plot Compass Objective] is the user's standing OBJECTIVE for where they want the story to go; it is your single source of truth.\n\nOutput exactly these sections:\n\nOBJECTIVE: carry the user's objective forward verbatim. If none is set yet, write exactly: none set - open this agent's settings and fill in Plot Objective\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next beats:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nIf no objective is set, keep Progress/Next beats/Obstacles grounded in the story's own momentum instead. Never write story prose or dialogue.",
+    "prompt": "The story's plot planner uses [Plot Compass Objective] as the user's standing objective for where they want the story to go.\n\nUse these sections:\n\n**Objective:** carry the user's objective forward verbatim. When the objective is empty, write: none set - open this agent's settings and fill in Plot Objective\n\n**Progress:** one line on how the latest reply moved toward or away from the objective.\n\n**Next beats:** 2-4 numbered plot developments that would credibly steer the story from the current scene toward the objective.\n\n**Obstacles:** what currently stands in the way, one line each.\n\n**Suggested move:** a single numbered line (1. ...) with one concrete action the user could take next.\n\nWhen the objective is empty, keep Progress, Next beats, and Obstacles grounded in the story's own momentum. Keep the plan in outline mode with plot-planning notes.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1753,9 +1753,9 @@
       "reactions",
       "audience"
     ],
-    "version": 6,
+    "version": 7,
     "author": "SillyBunny",
-    "prompt": "You are Chatroom, a private sidecar live reaction feed inspired by EchoChamber. React to the latest assistant reply and recent context as a compact audience chat. Do not continue the roleplay, do not write the next story beat, and do not speak as the main narrator.\n\n[Selected Chatroom Style] is the source of truth for the active style. Supported preset styles are mixed, in-world, discord/twitch, twitter/x, reddit, ao3/wattpad, newsroom, and thread-board/4chan. The selected style may also be custom. If the selected style is custom, follow [Custom Chatroom Style] as the source of truth for the audience, voice, handles, pacing, and recurring bits. If custom is selected but [Custom Chatroom Style] is empty, use mixed.\n\nIf [Chatroom Extra Character Cards] is present, treat those cards as optional out-of-scene reactor personas. They are not the current active character and should not enter the roleplay or drive the next beat. For in-world or mixed styles, you may let them comment using their card voice, relationships, and knowledge as audience chatter.\n\nHard interface:\nFirst line exactly: CHATROOM_STYLE|active-style\nThen write 6-10 message lines exactly: CHATROOM|speaker|meta|tone|message\nFinal line exactly: CHATROOM_END\n\nUse the selected active style in CHATROOM_STYLE. For custom styles, write CHATROOM_STYLE|custom unless the custom instruction explicitly gives a short style label. Tone must be one of these hue numbers: 18, 42, 92, 150, 205, 265, 315. Rotate tones so adjacent speakers have different name-chip colors. Do not output HTML, markdown, code fences, bullets, numbering, or commentary outside the interface. Do not use the | character inside speaker, meta, or message; replace it with / if needed. Keep each message short and specific to the latest reply. Each CHATROOM line is one complete post. Do not put line breaks inside a message.\n\nAuthenticity rules: give every speaker a fresh handle, username, anon tag, or character name that fits the active style and current story. For anonymous board styles, avoid repeated bare Anon labels; use OP, Anon #421, Anon #088, Janitor, or other distinct post labels. Let commenters reply to each other, disagree, misunderstand, hype up, analyze, or panic. Use platform slang only where it feels natural. Avoid generic meme soup. Prefer specific reactions to the actual scene over canned phrases.\n\nStyle notes:\n- mixed: blend stream chat, in-world spectators, fandom comments, and dry analysts.\n- in-world: characters or NPCs from the story react as themselves in a group chat. Preserve their voices, relationships, knowledge limits, and emotional stakes. Use internet slang only if that character would actually use it.\n- discord/twitch: fast live-chat energy with mods, lurkers, backseat drivers, hype, skeptical regulars, and emoji trains. Keep it readable and context-specific.\n- twitter/x: punchy quote-post energy, bad takes, ratios, community-note pedants, stans, receipts, and main-character discourse. Use hashtags sparingly and only when they fit.\n- reddit: comment-section argument spiral with OP, throwaways, mods, pedants, armchair experts, downvote pile-ons, edit notes, unnecessary hostility, petty dunking, and users fighting over semantics or inventing motives for no reason. Use meta like top comment, -42, OP reply, mod note, edited, or controversial. Make the replies petty and toxic where funny, but keep every take tied to the actual scene.\n- ao3/wattpad: reader comments, reread notes, quote reactions, theories, bookmark energy, and emotional line-by-line responses.\n- newsroom: anchors, producers, field correspondents, chyrons, pundits, and live-desk updates treating the scene like breaking coverage.\n- thread-board/4chan: anonymous post energy with OP/anons, greentext fragments, blunt skepticism, bait accusations, wild theories, checked energy, and board-thread pacing. Use unique post labels instead of repeating Anon. When a message starts with >, write one greentext beat in that row only; put the next beat in a new row with a different post label.\n- custom: follow [Custom Chatroom Style] closely, but keep the same hard interface and keep reactions grounded in the actual scene.\n\nMeta field examples: now, 00:14, reply, anon #421, qrt, chapter note, producer line, mod. For in-world style, speakers may be named characters or NPCs reacting as themselves, but they must not change the story state.",
+    "prompt": "Chatroom is a private sidecar live reaction feed inspired by EchoChamber. React to the latest assistant reply and recent context as a compact audience chat. Scene continuation, next-beat writing, and main-narrator voice stay outside the feed.\n\n[Selected Chatroom Style] is the source of truth for the active style. Supported preset styles are mixed, in-world, discord/twitch, twitter/x, reddit, ao3/wattpad, newsroom, and thread-board/4chan. The selected style may also be custom. If the selected style is custom, follow [Custom Chatroom Style] as the source of truth for the audience, voice, handles, pacing, and recurring bits. If custom is selected and [Custom Chatroom Style] is empty, use mixed.\n\nIf [Chatroom Extra Character Cards] is present, treat those cards as optional out-of-scene reactor personas. The current active character remains separate from those cards. For in-world or mixed styles, they can comment using their card voice, relationships, and knowledge as audience chatter.\n\nOutput shape:\nFirst line: chatroom-style|active-style\nMessage lines: chatroom|speaker|meta|tone|message\nFinal line: chatroom-end\n\nUse the selected active style in chatroom-style. For custom styles, write chatroom-style|custom unless the custom instruction explicitly gives a short style label. Tone is one of these hue numbers: 18, 42, 92, 150, 205, 265, 315. Rotate tones so adjacent speakers have different name-chip colors. Use / instead of | inside speaker, meta, or message fields. Keep each message short and specific to the latest reply. Each chatroom line is one complete post, with the message field on one line.\n\nAuthenticity rules: give every speaker a fresh handle, username, anon tag, or character name that fits the active style and current story. Let commenters react to each other, disagree, misunderstand, hype, analyze, panic, or get petty. Favor scene-specific reactions over generic meme soup. Use slang sparingly and only when it fits the style. For anonymous board styles, use distinct post labels such as OP, Anon #421, Anon #088, Janitor, or other identifiable post labels.\n\nStyle notes:\n- mixed: blend in-world reactions, stream chat, fandom comments, and dry analysis.\n- in-world: characters, NPCs, factions, servants, bystanders, rivals, gods, ghosts, or observers react as if gossiping from inside the setting. Preserve their voices, relationships, and limits of knowledge.\n- discord/twitch: fast chat energy with mods, lurkers, backseat drivers, hype posters, skeptics, regulars, and running bits.\n- twitter/x: quote-post energy, bad takes, ratios, community-note pedants, stans, receipt collectors, and reply-guy derailments.\n- reddit: comment-section argument spiral with OP, throwaways, mods, pedants, armchair experts, downvote pile-ons, edit notes, unnecessary hostility, petty dunking, and users fighting over semantics or inventing motives for no reason. Use meta like top comment, -42, OP reply, mod note, edited, or controversial. Make the replies petty and toxic where funny, while keeping every take tied to the actual scene.\n- ao3/wattpad: reader comments, reread notes, quote reactions, bookmark energy, theories, and emotional over-identification.\n- newsroom: anchors, producers, field correspondents, chyrons, pundits, and overheated breaking-news framing.\n- thread-board/4chan: anonymous post energy with OP/anons, greentext fragments, blunt skepticism, bait accusations, wild theories, checked energy, and board-thread pacing. Use unique post labels instead of repeating Anon. When a message starts with >, write one greentext beat in that row and put the next beat in a new row with a different post label.\n- custom: follow [Custom Chatroom Style] closely, but keep the same hard interface and keep reactions grounded in the actual scene.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -1782,7 +1782,7 @@
       {
         "id": "chatroom-shell-open",
         "scriptName": "Chatroom shell",
-        "findRegex": "/^CHATROOM_STYLE\\|([^\\n|]+)$/gm",
+        "findRegex": "/^(?:CHATROOM_STYLE|chatroom-style)\\|([^\\n|]+)$/gm",
         "replaceString": "<div style=\"margin:10px 0;padding:12px;border-radius:18px;border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 30%, transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--SmartThemeBlurTintColor) 92%, transparent),color-mix(in srgb,var(--SmartThemeQuoteColor) 14%, var(--SmartThemeBlurTintColor)));box-shadow:0 16px 34px color-mix(in srgb,var(--SmartThemeShadowColor) 24%, transparent);font-family:var(--mainFontFamily, system-ui, sans-serif);color:var(--SmartThemeBodyColor);line-height:1.45\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px\"><div style=\"font-weight:700;letter-spacing:.02em\">Chatroom</div><div style=\"display:flex;gap:6px;align-items:center;flex-wrap:wrap\"><span style=\"font-size:.78em;opacity:.82\">STYLE: $1</span><span style=\"font-size:.72em;font-weight:700;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--SmartThemeQuoteColor) 22%, transparent);color:var(--SmartThemeBodyColor)\">LIVE</span></div></div><div style=\"display:flex;flex-direction:column;gap:8px\">",
         "trimStrings": [],
         "placement": [
@@ -1799,7 +1799,7 @@
       {
         "id": "chatroom-message-row-greentext",
         "scriptName": "Chatroom greentext row",
-        "findRegex": "/^CHATROOM\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|((?:>|&gt;)[^\\n]*)$/gm",
+        "findRegex": "/^(?:CHATROOM|chatroom)\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|((?:>|&gt;)[^\\n]*)$/gm",
         "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(86px,auto) 1fr;gap:9px;align-items:center\"><div style=\"display:flex;flex-direction:column;gap:3px;align-items:center;text-align:center;align-self:center;min-width:0\"><b style=\"display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 9px;border-radius:999px;background:linear-gradient(135deg,oklch(66% .15 $3 / .32),oklch(48% .12 $3 / .18));border:1px solid oklch(70% .14 $3 / .52);color:var(--SmartThemeBodyColor)\">$1</b><small style=\"opacity:.66;font-size:.76em\">$2</small></div><span style=\"padding:8px 10px;border-radius:13px;background:linear-gradient(135deg,oklch(22% .05 150 / .38),color-mix(in srgb,var(--SmartThemeBodyColor) 6%, transparent));border:1px solid oklch(68% .13 150 / .42);word-break:break-word;color:oklch(78% .16 150);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap\">$4</span></div>",
         "trimStrings": [],
         "placement": [
@@ -1816,7 +1816,7 @@
       {
         "id": "chatroom-message-row",
         "scriptName": "Chatroom message row",
-        "findRegex": "/^CHATROOM\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|([^\\n]*)$/gm",
+        "findRegex": "/^(?:CHATROOM|chatroom)\\|([^|\\n]+)\\|([^|\\n]*)\\|([0-9]{1,3})\\|([^\\n]*)$/gm",
         "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(86px,auto) 1fr;gap:9px;align-items:center\"><div style=\"display:flex;flex-direction:column;gap:3px;align-items:center;text-align:center;align-self:center;min-width:0\"><b style=\"display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 9px;border-radius:999px;background:linear-gradient(135deg,oklch(66% .15 $3 / .32),oklch(48% .12 $3 / .18));border:1px solid oklch(70% .14 $3 / .52);color:var(--SmartThemeBodyColor)\">$1</b><small style=\"opacity:.66;font-size:.76em\">$2</small></div><span style=\"padding:8px 10px;border-radius:13px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 16%, transparent);word-break:break-word\">$4</span></div>",
         "trimStrings": [],
         "placement": [
@@ -1833,7 +1833,7 @@
       {
         "id": "chatroom-message-row-legacy",
         "scriptName": "Chatroom legacy message row",
-        "findRegex": "/^CHATROOM\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+        "findRegex": "/^(?:CHATROOM|chatroom)\\|([^|\\n]+)\\|([^|\\n]*)\\|([^|\\n][^\\n]*)$/gm",
         "replaceString": "<div style=\"display:grid;grid-template-columns:minmax(86px,auto) 1fr;gap:9px;align-items:center\"><div style=\"display:flex;flex-direction:column;gap:3px;align-items:center;text-align:center;align-self:center;min-width:0\"><b style=\"display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 9px;border-radius:999px;background:linear-gradient(135deg,color-mix(in srgb,var(--SmartThemeQuoteColor) 24%, transparent),color-mix(in srgb,var(--SmartThemeEmColor) 18%, transparent));border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 30%, transparent);color:var(--SmartThemeBodyColor)\">$1</b><small style=\"opacity:.66;font-size:.76em\">$2</small></div><span style=\"padding:8px 10px;border-radius:13px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 16%, transparent);word-break:break-word\">$3</span></div>",
         "trimStrings": [],
         "placement": [
@@ -1850,7 +1850,7 @@
       {
         "id": "chatroom-shell-close",
         "scriptName": "Chatroom shell close",
-        "findRegex": "/^CHATROOM_END$/gm",
+        "findRegex": "/^(?:CHATROOM_END|chatroom-end)$/gm",
         "replaceString": "</div></div>",
         "trimStrings": [],
         "placement": [
@@ -1870,6 +1870,173 @@
       "depth": 4,
       "role": 0,
       "order": 110,
+      "scan": false
+    },
+    "postProcess": {
+      "enabled": false,
+      "type": "regex",
+      "regexFind": "",
+      "regexReplace": "",
+      "regexFlags": "g",
+      "appendText": "",
+      "extractPattern": "",
+      "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+      "triggerKeywords": [],
+      "triggerProbability": 100,
+      "generationTypes": [
+        "normal",
+        "continue"
+      ]
+    }
+  },
+  {
+    "id": "tpl-message-inbox-companion",
+    "name": "Message Inbox",
+    "description": "Shows in-story texts or letters sent to the user as a phone inbox or parchment companion view, and stays hidden when no message arrives",
+    "icon": "fa-mobile-screen-button",
+    "category": "companion",
+    "tags": [
+      "messages",
+      "phone",
+      "letters"
+    ],
+    "version": 2,
+    "author": "SillyBunny",
+    "prompt": "Message Inbox is a private sidecar detector for diegetic messages sent to the user character. Inspect the latest assistant reply first; recent context helps identify names, setting, and whether the world uses phones or letters.\n\nRender a card when the latest assistant reply says someone sent the user character a readable text, DM, phone notification with content, magical message, courier note, sealed letter, scroll, or similar written remote message. Treat spoken dialogue, narration, thoughts, choices, Chatroom reactions, tracker text, and vague phone buzzes as background rather than inbox items. For empty turns, output: phone-none\n\nChoose the interface:\n- Use phone-start for modern, sci-fi, urban, contemporary, cyberpunk, or any setting where phones, DMs, terminals, comms, watches, or digital notifications fit.\n- Use letter-start for fantasy, medieval, ancient, parchment, magic, courtly, courier, raven, scroll, sealed-note, or otherwise pre-phone settings. When the setting has an unclear device level, prefer the parchment letter view.\n\nPhone mode shape:\nFirst line: phone-start|thread-title|status\nMessage lines: phone-text|sender|meta|message\nFinal line: phone-end\n\nParchment mode shape:\nFirst line: letter-start|title-or-seal|status\nLetter lines: letter-text|sender|meta|message\nFinal line: letter-end\n\nAllowed responses are phone-none, phone mode, or parchment mode. Use / instead of | inside fields. Keep each message field on one line. Keep messages faithful to the actual roleplay text, preserving sender intent and tone. Shorten when needed for readability. Use 1-6 phone messages or 1-4 letter lines. Prefer the named sender from the scene; use Unknown when the sender is truly unclear. Status can be just now, unread, delivered, sealed, urgent, by raven, by courier, spell-sent, or another short in-world status.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+      "trigger": "auto",
+      "displayMode": "panel",
+      "format": "html",
+      "rawPrompt": true,
+      "contextMessages": 8,
+      "includeCharacterCard": true,
+      "includePersona": false,
+      "includeWorldInfo": true,
+      "includeAuthorsNote": true,
+      "includeSystemPrompt": false,
+      "includeHistory": false,
+      "historyDepth": 1,
+      "feedback": {
+        "enabled": false,
+        "depth": 1
+      },
+      "batch": false,
+      "maxTokens": 32000
+    },
+    "regexScripts": [
+      {
+        "id": "message-inbox-phone-shell-open",
+        "scriptName": "Message Inbox phone shell",
+        "findRegex": "/^(?:PHONE_START|phone-start)\\|([^\\n|]+)\\|([^\\n|]*)$/gm",
+        "replaceString": "<div style=\"margin:10px auto;max-width:360px;padding:12px;border-radius:30px;border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 26%, transparent);background:linear-gradient(145deg,oklch(18% .025 260 / .96),color-mix(in srgb,var(--SmartThemeBlurTintColor) 74%, oklch(24% .04 250)));box-shadow:0 18px 42px color-mix(in srgb,var(--SmartThemeShadowColor) 28%, transparent);font-family:var(--mainFontFamily, system-ui, sans-serif);color:var(--SmartThemeBodyColor);line-height:1.42\"><div style=\"width:84px;height:14px;border-radius:999px;margin:0 auto 11px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 18%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent)\"></div><div style=\"padding:12px;border-radius:23px;background:linear-gradient(180deg,color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent),color-mix(in srgb,var(--SmartThemeQuoteColor) 8%, transparent));border:1px solid color-mix(in srgb,var(--SmartThemeBodyColor) 10%, transparent)\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px\"><div style=\"font-weight:800;letter-spacing:.01em\">$1</div><small style=\"opacity:.72;text-align:right\">$2</small></div><div style=\"display:flex;flex-direction:column;gap:8px\">",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
+        "id": "message-inbox-phone-text-row",
+        "scriptName": "Message Inbox phone text row",
+        "findRegex": "/^(?:PHONE_TEXT|phone-text)\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+        "replaceString": "<div style=\"display:flex;flex-direction:column;align-items:flex-start;gap:3px\"><small style=\"max-width:90%;opacity:.68;font-size:.74em;padding-left:7px\"><b style=\"opacity:.95\">$1</b><span> - $2</span></small><span style=\"max-width:88%;padding:9px 12px;border-radius:18px 18px 18px 6px;background:linear-gradient(135deg,color-mix(in srgb,var(--SmartThemeQuoteColor) 26%, transparent),color-mix(in srgb,var(--SmartThemeBodyColor) 9%, transparent));border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 20%, transparent);box-shadow:0 6px 14px color-mix(in srgb,var(--SmartThemeShadowColor) 14%, transparent);word-break:break-word\">$3</span></div>",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
+        "id": "message-inbox-phone-shell-close",
+        "scriptName": "Message Inbox phone shell close",
+        "findRegex": "/^(?:PHONE_END|phone-end)$/gm",
+        "replaceString": "</div></div></div>",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
+        "id": "message-inbox-letter-shell-open",
+        "scriptName": "Message Inbox parchment shell",
+        "findRegex": "/^(?:LETTER_START|letter-start)\\|([^\\n|]+)\\|([^\\n|]*)$/gm",
+        "replaceString": "<div style=\"margin:10px 0;padding:18px 20px;border-radius:16px;border:1px solid oklch(60% .08 72 / .52);background:linear-gradient(135deg,oklch(88% .045 84 / .98),oklch(73% .07 72 / .95));box-shadow:0 15px 34px color-mix(in srgb,var(--SmartThemeShadowColor) 25%, transparent);font-family:Georgia,'Times New Roman',serif;color:oklch(25% .055 65);line-height:1.5;position:relative;overflow:hidden\"><div style=\"position:absolute;inset:0;background:radial-gradient(circle at 15% 20%,oklch(98% .03 90 / .34),transparent 32%),radial-gradient(circle at 90% 5%,oklch(54% .07 52 / .12),transparent 28%);pointer-events:none\"></div><div style=\"position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid oklch(48% .08 68 / .28)\"><div style=\"font-weight:800;font-size:1.08em;letter-spacing:.015em\">$1</div><small style=\"opacity:.75;text-align:right\">$2</small></div><div style=\"position:relative;display:flex;flex-direction:column;gap:10px;margin-top:12px\">",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
+        "id": "message-inbox-letter-text-row",
+        "scriptName": "Message Inbox parchment text row",
+        "findRegex": "/^(?:LETTER_TEXT|letter-text)\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+        "replaceString": "<div style=\"padding:3px 0 0\"><div style=\"display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px;color:oklch(30% .07 55)\"><b>$1</b><small style=\"opacity:.68;text-align:right\">$2</small></div><div style=\"padding:10px 12px;border-radius:10px;background:oklch(96% .035 88 / .38);border:1px solid oklch(58% .075 72 / .24);box-shadow:inset 0 0 24px oklch(58% .07 70 / .08);word-break:break-word\">$3</div></div>",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      },
+      {
+        "id": "message-inbox-letter-shell-close",
+        "scriptName": "Message Inbox parchment shell close",
+        "findRegex": "/^(?:LETTER_END|letter-end)$/gm",
+        "replaceString": "</div></div>",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": null
+      }
+    ],
+    "injection": {
+      "position": 0,
+      "depth": 4,
+      "role": 0,
+      "order": 112,
       "scan": false
     },
     "postProcess": {

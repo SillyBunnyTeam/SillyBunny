@@ -176,6 +176,7 @@ describe('companion dashboard', () => {
 
     test('collects recent done notes newest-first with truncated snippets', async () => {
         const dashboard = await importDashboard();
+        agents = [{ id: 'message-inbox', name: 'Message Inbox', sourceTemplateId: 'tpl-message-inbox-companion' }];
         const oldMessage = { is_user: false, is_system: false, mes: 'old' };
         const userMessage = { is_user: true, mes: 'question' };
         const newMessage = { is_user: false, is_system: false, mes: 'new' };
@@ -187,6 +188,7 @@ describe('companion dashboard', () => {
         });
         companionResultsByMessage.set(newMessage, {
             'agent-a': { status: 'done', agentName: 'Notes', content: 'fresh  note\nwith   spacing' },
+            'message-inbox': { status: 'done', agentName: 'Message Inbox', content: 'phone-none' },
         });
 
         const entries = dashboard.collectRecentNoteEntries();
@@ -202,6 +204,7 @@ describe('companion dashboard', () => {
         expect(entries[1].snippet.endsWith('…')).toBe(true);
         expect(entries[1].snippet.length).toBeLessThanOrEqual(121);
         expect(entries.some(entry => entry.agentName === 'Pending')).toBe(false);
+        expect(entries.some(entry => entry.agentName === 'Message Inbox')).toBe(false);
     });
 
     test('appends the wand menu item once and wires its click handler', async () => {

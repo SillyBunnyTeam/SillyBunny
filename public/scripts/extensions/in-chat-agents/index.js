@@ -140,6 +140,7 @@ const REMOVED_BUNDLED_GROUP_IDS = new Set([
 ]);
 
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
@@ -178,6 +179,7 @@ const DIRECTOR_COMMENTARY_VOICE_VALUES = Object.freeze([
 ]);
 const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set([
     CHATROOM_TEMPLATE_ID,
+    MESSAGE_INBOX_TEMPLATE_ID,
 ]);
 const BUNDLED_PROMPT_TRANSFORM_IMPERSONATE_TEMPLATE_IDS = new Set([
     'tpl-prose-polisher',

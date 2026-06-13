@@ -51,7 +51,8 @@
             "tpl-memory-shard-companion",
             "tpl-npc-motivator",
             "tpl-plot-compass-companion",
-            "tpl-chatroom-companion"
+            "tpl-chatroom-companion",
+            "tpl-message-inbox-companion"
         ]
     }
 ]

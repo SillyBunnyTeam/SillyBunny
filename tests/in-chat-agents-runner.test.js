@@ -968,18 +968,18 @@ describe('in-chat agent post-processing runner', () => {
 
         const rawMessages = await companionRunner.buildCompanionPromptMessages(rawCompanion, 1);
         expect(rawMessages[0].role).toBe('system');
-        expect(rawMessages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
-        expect(rawMessages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
+        expect(rawMessages[0].content.startsWith('Companion task boundary: produce the private sidecar result')).toBe(true);
+        expect(rawMessages[0].content).toContain('separate from the chat reply and scene continuation');
         expect(rawMessages[0].content).toContain('Track the scene state in the [Scene|...] format.');
-        expect(rawMessages[0].content).not.toContain('Return only markdown');
+        expect(rawMessages[0].content).not.toContain('Write a markdown companion card body');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
-        expect(noteMessages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
-        expect(noteMessages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
+        expect(noteMessages[0].content.startsWith('Companion task boundary: produce the private sidecar result')).toBe(true);
+        expect(noteMessages[0].content).toContain('separate from the chat reply and scene continuation');
         expect(noteMessages[0].content).toContain('Write a side note.');
-        expect(noteMessages[0].content).toContain('Return only markdown');
+        expect(noteMessages[0].content).toContain('Write a markdown companion card body');
         expect(noteMessages[1].content).toContain('[Task]');
-        expect(noteMessages[1].content).toContain('do not quote the prompt, explain the task, or continue the conversation');
+        expect(noteMessages[1].content).toContain('Complete the companion task from the system message and return the result directly');
     });
 
     test('injects the selected Chatroom style into companion prompts', async () => {
@@ -1254,10 +1254,10 @@ describe('in-chat agent post-processing runner', () => {
         );
 
         const repairMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1, 'normal', { repair: true });
-        expect(repairMessages[0].content).toContain('Redo the task now');
+        expect(repairMessages[0].content).toContain('previous result missed the requested shape');
 
         const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
-        expect(normalMessages[0].content).not.toContain('Redo the task now');
+        expect(normalMessages[0].content).not.toContain('previous result missed the requested shape');
     });
 
     test('feeds a companion its previous states when history is enabled', async () => {
@@ -1321,10 +1321,10 @@ describe('in-chat agent post-processing runner', () => {
 
         const messages = await companionRunner.buildCompanionPromptMessages(rawTracker, 1);
 
-        expect(messages[0].content.startsWith('Stop roleplay. This is a private companion task, not the chat reply.')).toBe(true);
-        expect(messages[0].content).toContain('Do not continue the scene, and do not quote or restate these instructions');
+        expect(messages[0].content.startsWith('Companion task boundary: produce the private sidecar result')).toBe(true);
+        expect(messages[0].content).toContain('separate from the chat reply and scene continuation');
         expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
-        expect(messages[0].content).not.toContain('Return only markdown');
+        expect(messages[0].content).not.toContain('Write a markdown companion card body');
     });
 
     test('stores readable profile labels instead of raw profile ids', async () => {

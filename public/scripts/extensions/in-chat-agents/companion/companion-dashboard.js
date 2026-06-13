@@ -20,6 +20,18 @@ import { openCompanionPanel } from './companion-panel.js';
 
 const RECENT_NOTES_LIMIT = 20;
 const NOTE_SNIPPET_LENGTH = 120;
+const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
+const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
+
+function isSuppressedDashboardResult(agentId, result = {}) {
+    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
+        return false;
+    }
+
+    const agent = getAgentById(agentId);
+    const templateId = String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
+    return templateId === MESSAGE_INBOX_TEMPLATE_ID;
+}
 
 /**
  * Behavior owned by index.js (editor, list rendering, conversion flow) arrives through this seam
@@ -123,7 +135,7 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
                 break;
             }
 
-            if (!result || typeof result !== 'object' || result.status !== 'done') {
+            if (!result || typeof result !== 'object' || result.status !== 'done' || isSuppressedDashboardResult(agentId, result)) {
                 continue;
             }
 

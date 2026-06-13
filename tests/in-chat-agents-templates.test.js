@@ -3,6 +3,20 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
 const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url);
+const sourceFilenames = [
+    'achievements-tracker.json',
+    'actor-interview-companion.json',
+    'chatroom-companion.json',
+    'continuity-companion.json',
+    'directors-commentary-companion.json',
+    'lorebook-scout-companion.json',
+    'memory-shard-companion.json',
+    'message-inbox-companion.json',
+    'npc-motivator.json',
+    'plot-compass-companion.json',
+    'relationship-lens-companion.json',
+    'scene-tracker.json',
+];
 
 function readTemplate(filename) {
     return JSON.parse(fs.readFileSync(new URL(filename, templateDir), 'utf8'));
@@ -56,24 +70,24 @@ function findCatalogTemplate(catalog, templateId) {
 describe('in-chat agent bundled templates', () => {
     test('keeps source files synced with the template browser catalog', () => {
         const catalog = readTemplate('index.json');
-        const sourceFilenames = [
-            'achievements-tracker.json',
-            'actor-interview-companion.json',
-            'chatroom-companion.json',
-            'continuity-companion.json',
-            'directors-commentary-companion.json',
-            'lorebook-scout-companion.json',
-            'memory-shard-companion.json',
-            'npc-motivator.json',
-            'plot-compass-companion.json',
-            'relationship-lens-companion.json',
-            'scene-tracker.json',
-        ];
 
         for (const filename of sourceFilenames) {
             const source = readTemplate(filename);
             const catalogTemplate = catalog.find(template => template.id === source.id);
             expect(catalogTemplate).toEqual(source);
+        }
+    });
+
+    test('keeps bundled companion prompts free of negative wrappers and uppercase protocols', () => {
+        const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
+        const negativeWrapperPattern = /\b(?:Do not|Don't|Never|Return only|Output only|strictly|AI agent|as an AI|LLM)\b/i;
+        const uppercaseProtocolPattern = /\b(?:CHATROOM_STYLE|CHATROOM_END|PHONE_NONE|PHONE_START|PHONE_TEXT|PHONE_END|LETTER_START|LETTER_TEXT|LETTER_END|OBJECTIVE:|## TIMELINE|## CHARACTERS|## RELATIONSHIPS|## EVENTS|## DIALOGUE KEYS|## THREADS|## NOW)\b/;
+
+        for (const filename of companionFilenames) {
+            const template = readTemplate(filename);
+            const prompt = String(template.prompt ?? '');
+            expect(prompt).not.toMatch(negativeWrapperPattern);
+            expect(prompt).not.toMatch(uppercaseProtocolPattern);
         }
     });
 
@@ -84,7 +98,7 @@ describe('in-chat agent bundled templates', () => {
             id: 'tpl-npc-motivator',
             name: 'NPC Motivator',
             author: 'Sheep',
-            version: 2,
+            version: 3,
             phase: 'post',
             execution: 'companion',
             enabled: false,
@@ -135,6 +149,9 @@ describe('in-chat agent bundled templates', () => {
         expect(relationship.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
             displayMode: 'panel',
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
             feedback: { enabled: false, depth: 1 },
         }));
 
@@ -143,8 +160,9 @@ describe('in-chat agent bundled templates', () => {
         const lorebookScout = findCatalogTemplate(catalog, 'tpl-lorebook-scout-companion');
         const memoryShard = findCatalogTemplate(catalog, 'tpl-memory-shard-companion');
         const chatroom = findCatalogTemplate(catalog, 'tpl-chatroom-companion');
+        const messageInbox = findCatalogTemplate(catalog, 'tpl-message-inbox-companion');
 
-        for (const template of [commentary, interview, lorebookScout, memoryShard, chatroom]) {
+        for (const template of [commentary, interview, lorebookScout, memoryShard, chatroom, messageInbox]) {
             expect(template).toEqual(expect.objectContaining({
                 category: 'companion',
                 execution: 'companion',
@@ -186,9 +204,9 @@ describe('in-chat agent bundled templates', () => {
             maxTokens: 32000,
         }));
         expect(chatroom.regexScripts).toHaveLength(5);
-        expect(chatroom.prompt).toContain('CHATROOM_STYLE|active-style');
-        expect(chatroom.prompt).toContain('CHATROOM|speaker|meta|tone|message');
-        expect(chatroom.prompt).toContain('Do not put line breaks inside a message');
+        expect(chatroom.prompt).toContain('chatroom-style|active-style');
+        expect(chatroom.prompt).toContain('chatroom|speaker|meta|tone|message');
+        expect(chatroom.prompt).toContain('message field on one line');
         expect(chatroom.prompt).toContain('[Chatroom Extra Character Cards]');
         expect(chatroom.prompt).toContain('[Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('- custom: follow [Custom Chatroom Style]');
@@ -198,6 +216,29 @@ describe('in-chat agent bundled templates', () => {
         expect(chatroom.regexScripts.map(script => script.id)).toContain('chatroom-message-row-greentext');
         expect(chatroom.prompt).not.toContain('No NSFW chat styles');
         expect(chatroom.prompt).not.toContain('targeted slurs');
+
+        expect(messageInbox.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            format: 'html',
+            rawPrompt: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeHistory: false,
+            feedback: { enabled: false, depth: 1 },
+            maxTokens: 32000,
+        }));
+        expect(messageInbox.regexScripts).toHaveLength(6);
+        expect(messageInbox.prompt).toContain('phone-none');
+        expect(messageInbox.prompt).toContain('phone-start|thread-title|status');
+        expect(messageInbox.prompt).toContain('letter-start|title-or-seal|status');
+        expect(messageInbox.prompt).toContain('fantasy, medieval');
+        expect(messageInbox.regexScripts.map(script => script.id)).toEqual(expect.arrayContaining([
+            'message-inbox-phone-shell-open',
+            'message-inbox-phone-text-row',
+            'message-inbox-letter-shell-open',
+            'message-inbox-letter-text-row',
+        ]));
 
         const plotCompass = findCatalogTemplate(catalog, 'tpl-plot-compass-companion');
         expect(plotCompass).toEqual(expect.objectContaining({

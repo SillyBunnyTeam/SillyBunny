@@ -8,6 +8,7 @@ describe('companion tracker panel', () => {
     let companionResultsByMessage;
     let globallyEnabled;
     let chatTokenEstimate;
+    let localStorageValues;
 
     function createEventSource() {
         const handlers = new Map();
@@ -90,6 +91,12 @@ describe('companion tracker panel', () => {
             editCompanionResult: jest.fn(async () => {}),
             formatCompanionContent: jest.fn((agentId, result) => `<formatted>${result.content}</formatted>`),
             insertChoiceIntoMessageInput: jest.fn(() => true),
+            isSilentCompanionAgent: jest.fn(agent => String(agent?.sourceTemplateId ?? agent?.id ?? '') === 'tpl-message-inbox-companion'),
+            isSuppressedCompanionResult: jest.fn((agentId, result) => {
+                const agent = agents.find(agent => agent.id === agentId);
+                return ['PHONE_NONE', 'phone-none'].includes(String(result?.content ?? '').trim())
+                    && String(agent?.sourceTemplateId ?? agent?.id ?? '') === 'tpl-message-inbox-companion';
+            }),
         }));
 
         return await import('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js');
@@ -102,6 +109,11 @@ describe('companion tracker panel', () => {
         companionResultsByMessage = new Map();
         globallyEnabled = true;
         chatTokenEstimate = 0;
+        localStorageValues = new Map();
+        globalThis.localStorage = {
+            getItem: jest.fn(key => localStorageValues.get(key) ?? null),
+            setItem: jest.fn((key, value) => localStorageValues.set(key, String(value))),
+        };
         globalThis.toastr = {
             info: jest.fn(),
             success: jest.fn(),
@@ -207,6 +219,41 @@ describe('companion tracker panel', () => {
         expect(orphan.agent).toBeNull();
     });
 
+    test('keeps Message Inbox hidden until a text or letter is returned', async () => {
+        const inbox = {
+            id: 'message-inbox',
+            name: 'Message Inbox',
+            sourceTemplateId: 'tpl-message-inbox-companion',
+            execution: 'companion',
+            enabled: true,
+            companion: { displayMode: 'panel' },
+        };
+        agents = [inbox];
+        const panel = await importPanel();
+
+        expect(panel.buildPanelHtml()).not.toContain('Message Inbox');
+
+        const emptyMessage = { is_user: false, is_system: false, mes: 'reply without a text' };
+        chat.push(emptyMessage);
+        companionResultsByMessage.set(emptyMessage, {
+            'message-inbox': { status: 'done', content: 'phone-none', agentName: 'Message Inbox' },
+        });
+
+        expect(panel.collectPanelAgentStates()).toHaveLength(0);
+        expect(panel.buildPanelHtml()).not.toContain('phone-none');
+        expect(panel.buildPanelHtml()).not.toContain('Message Inbox');
+
+        const textMessage = { is_user: false, is_system: false, mes: 'reply with a text' };
+        chat.push(textMessage);
+        companionResultsByMessage.set(textMessage, {
+            'message-inbox': { status: 'done', content: 'phone-start|Messages|now\nphone-text|Mona|now|Where are you?\nphone-end', agentName: 'Message Inbox' },
+        });
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('Message Inbox');
+        expect(html).toContain('<formatted>phone-start|Messages|now');
+    });
+
     test('builds panel sections with state, actions, and empty states', async () => {
         const tracker = { id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true, companion: { displayMode: 'panel' } };
         const fresh = { id: 'fresh', name: 'Fresh Companion', execution: 'companion', enabled: true, companion: { trigger: 'manual' } };
@@ -230,6 +277,7 @@ describe('companion tracker panel', () => {
         expect(html).toContain('data-action="panel-edit"');
         expect(html).toContain('data-action="panel-jump"');
         expect(html).toContain('data-action="panel-lock"');
+        expect(html).toContain('data-action="panel-run-latest"');
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
         expect(html).toContain('No state yet');
@@ -249,7 +297,7 @@ describe('companion tracker panel', () => {
         const message1 = { is_user: false, is_system: false, mes: 'new reply' };
         chat.push(message0, message1);
         companionResultsByMessage.set(message1, {
-            'memory-shard': { status: 'done', content: '## TIMELINE', agentName: 'Memory Shard' },
+            'memory-shard': { status: 'done', content: '## Timeline', agentName: 'Memory Shard' },
         });
 
         const html = panel.buildPanelHtml();
@@ -390,11 +438,67 @@ describe('companion tracker panel', () => {
             outsideClickHandler({ target: { closest: jest.fn(() => null) } });
 
             expect(panel.isCompanionPanelLocked()).toBe(true);
+            expect(globalThis.localStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'true');
             expect(panel.buildPanelHtml()).toContain('aria-pressed="true"');
             expect(panelElement.removeClass).not.toHaveBeenCalled();
+
+            panel.setCompanionPanelLocked(false);
+            expect(globalThis.localStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'false');
         } finally {
             nowSpy.mockRestore();
         }
+    });
+
+    test('restores the saved panel lock state', async () => {
+        localStorageValues.set('ica--tracker-panel-locked', 'true');
+        const panel = await importPanel();
+
+        expect(panel.isCompanionPanelLocked()).toBe(true);
+        expect(panel.buildPanelHtml()).toContain('aria-pressed="true"');
+    });
+
+    test('runs a stateless companion on the latest assistant reply', async () => {
+        agents = [{ id: 'relationship-lens', name: 'Relationship Lens', execution: 'companion', enabled: true, companion: { trigger: 'manual' } }];
+        chat.push({ is_user: true, mes: 'hello' }, { is_user: false, is_system: false, mes: 'latest reply' });
+        const panel = await importPanel();
+        const runner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const panelElement = { on: jest.fn(() => panelElement), html: jest.fn(() => panelElement), toggle: jest.fn(() => panelElement), attr: jest.fn(() => panelElement), addClass: jest.fn(() => panelElement) };
+        const handleElement = { on: jest.fn(() => handleElement), toggle: jest.fn(() => handleElement) };
+        const button = { prop: jest.fn() };
+        const section = { attr: jest.fn(name => (name === 'data-agent-id' ? 'relationship-lens' : undefined)) };
+        const actionButton = {};
+        globalThis.$ = jest.fn(arg => {
+            if (arg === globalThis.document.body) {
+                return { append: jest.fn() };
+            }
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            if (arg === '#ica_tracker_panel_wand_item') {
+                return { length: 1 };
+            }
+            if (arg === actionButton) {
+                return {
+                attr: jest.fn(name => (name === 'data-action' ? 'panel-run-latest' : undefined)),
+                closest: jest.fn(() => section),
+                prop: button.prop,
+                };
+            }
+            return { length: 0, on: jest.fn(), append: jest.fn(), html: jest.fn(), toggle: jest.fn() };
+        });
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('data-action="panel-run-latest"');
+        panel.initCompanionPanel();
+        const actionHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '[data-action]')[2];
+        await actionHandler({ preventDefault: jest.fn(), stopPropagation: jest.fn(), currentTarget: actionButton });
+
+        expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('relationship-lens', 1);
+        expect(button.prop).toHaveBeenCalledWith('disabled', true);
+        expect(button.prop).toHaveBeenCalledWith('disabled', false);
     });
 
     test('closes after a panel choice inserts into the message box', async () => {

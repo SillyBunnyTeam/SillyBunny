@@ -24,6 +24,16 @@ import {
 let companionUiInitialized = false;
 let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
+const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
+const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
+
+function getAgentTemplateId(agent = {}) {
+    return String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
+}
+
+function isMessageInboxAgent(agent = null) {
+    return getAgentTemplateId(agent) === MESSAGE_INBOX_TEMPLATE_ID;
+}
 
 function getMarkdownConverter() {
     if (!companionMarkdownConverter) {
@@ -71,6 +81,10 @@ function applyAgentRegexToCompanionContent(agentId, content, message) {
 
 export function formatCompanionContent(agentId, result = {}, message = null) {
     const rawContent = String(result.content ?? '').trim();
+    if (isSuppressedCompanionResult(agentId, result)) {
+        return '';
+    }
+
     if (!rawContent) {
         return '<div class="ica--companion-empty">No note returned.</div>';
     }
@@ -109,12 +123,28 @@ function getResultSortValue(result = {}) {
 const OFF_LEDGER_DISPLAY_MODES = new Set(['hidden', 'panel']);
 
 export function isHiddenCompanionResult(agentId, result = {}) {
+    if (isSuppressedCompanionResult(agentId, result)) {
+        return true;
+    }
+
     if (OFF_LEDGER_DISPLAY_MODES.has(result.displayMode)) {
         return true;
     }
 
     const agent = getAgentById(agentId);
     return Boolean(agent && OFF_LEDGER_DISPLAY_MODES.has(getCompanionConfig(agent).displayMode));
+}
+
+export function isSilentCompanionAgent(agent = {}) {
+    return isMessageInboxAgent(agent);
+}
+
+export function isSuppressedCompanionResult(agentId, result = {}) {
+    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
+        return false;
+    }
+
+    return isMessageInboxAgent(getAgentById(agentId));
 }
 
 function getRenderableCompanionEntries(message) {

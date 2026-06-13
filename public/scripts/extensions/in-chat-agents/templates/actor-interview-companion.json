@@ -9,9 +9,9 @@
         "character",
         "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "You are running a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about: what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Do not continue the scene itself.",
+    "prompt": "Run a backstage interview with the character who just acted in the latest assistant reply. Stay fully in that character's voice, but let them speak candidly, as if the scene is paused and the cameras are off. Ask and answer 2-4 short interview questions about what they were really thinking during the scene, what they are hiding or holding back, how they feel about the other characters right now, and what they fear or hope happens next. Format each as a bold question followed by the in-character answer. Keep the result as off-record interview commentary.",
     "phase": "post",
     "execution": "companion",
     "companion": {

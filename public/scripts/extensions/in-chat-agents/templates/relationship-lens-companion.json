@@ -9,9 +9,9 @@
         "subtext",
         "emotion"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Return short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Do not rewrite the reply and do not add new facts.",
+    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Pressure, Watch next. Stay with established facts and relationship implications from the source reply.",
     "phase": "post",
     "execution": "companion",
     "companion": {
@@ -19,9 +19,9 @@
         "displayMode": "panel",
         "format": "markdown",
         "contextMessages": 10,
-        "includeCharacterCard": false,
-        "includePersona": false,
-        "includeWorldInfo": false,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
         "includeHistory": true,
         "historyDepth": 2,
         "feedback": {

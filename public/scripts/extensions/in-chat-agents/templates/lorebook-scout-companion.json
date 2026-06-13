@@ -9,9 +9,9 @@
         "world info",
         "notes"
     ],
-    "version": 2,
+    "version": 3,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Ignore transient scene state, and skip anything already covered by the provided World Info. For each fact, draft one lorebook entry covering exactly one concept, formatted as: a bold title, a 'Keys:' line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Output at most 4 entries. If nothing new and durable was established, write exactly: No new lore this turn.",
+    "prompt": "Read the latest assistant reply and recent context as a lorebook curator. Identify new, durable world facts the scene established: places, factions, items, customs, named NPCs, or rules of the world. Favor facts that are not already covered by the provided World Info. For each fact, draft one lorebook entry covering one concept, formatted as a bold title, a Keys line with 2-5 comma-separated trigger keywords, and a 1-3 sentence body written as timeless world canon in third person. Use up to 4 entries. For empty turns, write: Lorebook has nothing durable this turn.",
     "phase": "post",
     "execution": "companion",
     "companion": {
