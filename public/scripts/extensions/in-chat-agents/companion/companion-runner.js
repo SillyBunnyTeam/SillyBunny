@@ -519,14 +519,15 @@ function getCharacterCardSection(companion) {
     const parts = [];
 
     if (companion.includeCharacterCard) {
+        // Greeting (first_mes) and example dialogue are roleplay starters, not character
+        // definition. Including them leaks the greeting into companion context, so keep only
+        // the descriptive card fields.
         for (const [label, value] of [
             ['Description', fields.description],
             ['Personality', fields.personality],
             ['Scenario', fields.scenario],
             ['System', fields.system],
             ['Creator Notes', fields.creatorNotes],
-            ['First Message', fields.firstMessage],
-            ['Examples', fields.mesExamples],
         ]) {
             const text = normalizeText(value);
             if (text) {

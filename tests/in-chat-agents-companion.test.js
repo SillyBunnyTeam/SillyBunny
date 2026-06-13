@@ -209,20 +209,19 @@ describe('companion card ui', () => {
         const { formatCompanionContent } = await importCompanionUi();
 
         const html = formatCompanionContent('chatroom', {
-            content: "mixed|mixed user_404/anon|150|Searching for hollowed out|205|She's talking about resonance depletion. Fleur_Stan/blue_laurel|180|omg the candy!!",
+            content: "mixed|mixed @Rover_Stan/user/18/omg she's so precious/so sweet @Rinascita_Historian/user/42/The contrast is wild/analytical @CatEarEnthusiast/user/92/Kris is a real one/hype",
             format: 'html',
         }, { name: 'Assistant' });
 
         expect(html).toContain('Chatroom');
         expect(html).toContain('STYLE: mixed');
-        expect(html).toContain('user_404');
-        expect(html).toContain('anon');
-        expect(html).toContain('Searching for hollowed out');
-        expect(html).toContain("She's talking about resonance depletion.");
-        expect(html).toContain('Fleur_Stan');
-        expect(html).toContain('blue_laurel');
-        expect(html).toContain('omg the candy!!');
-        expect(html).not.toContain('mixed|mixed user_404/anon|150|');
+        expect(html).toContain('Rover_Stan');
+        expect(html).toContain("omg she's so precious");
+        expect(html).toContain('Rinascita_Historian');
+        expect(html).toContain('The contrast is wild');
+        expect(html).toContain('CatEarEnthusiast');
+        expect(html).toContain('Kris is a real one');
+        expect(html).not.toContain('mixed|mixed @Rover_Stan/user/18/');
     });
 
     test('renders content unchanged when the agent no longer exists', async () => {

@@ -5382,6 +5382,13 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             agent.injection = { ...agent.injection, ...fresh.injection };
             agent.postProcess = { ...agent.postProcess, ...fresh.postProcess };
             agent.regexScripts = Array.isArray(fresh.regexScripts) ? structuredClone(fresh.regexScripts) : agent.regexScripts;
+            // Reset companion settings (execution, batch, context flags) to template defaults too.
+            // Agent-level connectionProfile/modelOverride and per-agent settings live outside
+            // agent.companion, so they are preserved automatically.
+            if (fresh.companion && typeof fresh.companion === 'object') {
+                agent.companion = structuredClone(fresh.companion);
+            }
+            agent.execution = fresh.execution ?? agent.execution;
             agent.sourceTemplateId = template.id;
             await saveAgent(agent);
             resetCount++;

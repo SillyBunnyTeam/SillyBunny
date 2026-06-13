@@ -83,43 +83,12 @@ function normalizePlotCompassObjective(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
 }
 
-function isChatroomTone(value = '') {
-    return /^[0-9]{1,3}$/.test(String(value ?? '').trim());
-}
-
-function splitChatroomSpeakerMeta(value = '', style = '') {
-    let text = String(value ?? '').trim();
-    const normalizedStyle = String(style ?? '').trim().toLowerCase();
-    if (normalizedStyle && text.toLowerCase().startsWith(`${normalizedStyle} `)) {
-        text = text.slice(style.length).trim();
-    }
-
-    const slashIndex = text.indexOf('/');
-    if (slashIndex <= 0) return null;
-
-    const speaker = text.slice(0, slashIndex).trim();
-    const meta = text.slice(slashIndex + 1).trim();
-    if (!speaker || !meta) return null;
-
-    return { speaker, meta };
-}
-
-function splitTrailingChatroomSpeakerMeta(message = '') {
-    const text = String(message ?? '').trim();
-    const match = text.match(/(?:^|\s)([A-Za-z][A-Za-z0-9_.-]{0,79}\/[^|\s]{1,80})\s*$/);
-    if (!match) {
-        return { message: text, speakerMeta: '' };
-    }
-
-    return {
-        message: text.slice(0, match.index).trim(),
-        speakerMeta: match[1],
-    };
-}
-
 function normalizeChatroomField(value = '') {
     return String(value ?? '').replaceAll('|', '/').replaceAll(/\r?\n/g, ' ').trim();
 }
+
+// Hues the template instructs the model to use.
+const CHATROOM_VALID_TONES = new Set(['18', '42', '92', '150', '205', '265', '315']);
 
 function normalizeMarkerlessChatroomContent(content = '') {
     const text = String(content ?? '').replaceAll(/\r\n?/g, '\n').trim();
@@ -127,49 +96,41 @@ function normalizeMarkerlessChatroomContent(content = '') {
         return content;
     }
 
+    // Expect first line: `style|...` (may have the style value duplicated after the pipe)
     const styleMatch = text.match(/^\s*([^|\n]+)\|([\s\S]*)$/);
     const style = styleMatch?.[1]?.trim().toLowerCase() || '';
     if (!CHATROOM_STYLE_VALUES.has(style)) {
         return content;
     }
 
-    const tokens = styleMatch[2].split('|').map(token => token.trim());
+    let rest = styleMatch[2].trim();
+
+    // Strip duplicated style prefix emitted by some models: "mixed|mixed @..." → "@..."
+    if (rest.toLowerCase().startsWith(style)) {
+        rest = rest.slice(style.length).trim();
+    }
+
+    // Split into individual post tokens on @ boundaries.
+    // Each model post looks like: @Handle/meta/HUE/message text[/mood]
+    const rawTokens = rest.split(/(?=@[A-Za-z])/).map(t => t.trim()).filter(Boolean);
+
     const rows = [];
-    let currentSpeakerMeta = splitChatroomSpeakerMeta(tokens[0], style);
-    let index = currentSpeakerMeta && isChatroomTone(tokens[1]) ? 1 : 0;
+    for (const token of rawTokens) {
+        // Strip leading @
+        const t = token.startsWith('@') ? token.slice(1) : token;
+        const parts = t.split('/');
+        if (parts.length < 4) continue;
 
-    while (index < tokens.length) {
-        const explicitSpeakerMeta = splitChatroomSpeakerMeta(tokens[index], style);
-        if (explicitSpeakerMeta && isChatroomTone(tokens[index + 1])) {
-            currentSpeakerMeta = explicitSpeakerMeta;
-            index += 1;
-            continue;
-        }
+        const speaker = parts[0].trim();
+        const meta = parts[1].trim();
+        const tone = parts[2].trim();
+        if (!speaker || !CHATROOM_VALID_TONES.has(tone)) continue;
 
-        if (!isChatroomTone(tokens[index])) {
-            index += 1;
-            continue;
-        }
+        // Remaining parts joined as message (model may put a mood word as last slash-token)
+        const message = parts.slice(3).join(' ').trim();
+        if (!message) continue;
 
-        const tone = tokens[index];
-        let message = tokens[index + 1] ?? '';
-        index += 2;
-
-        if (!currentSpeakerMeta || !String(message).trim()) {
-            continue;
-        }
-
-        let nextSpeakerMeta = null;
-        if (isChatroomTone(tokens[index])) {
-            const splitMessage = splitTrailingChatroomSpeakerMeta(message);
-            if (splitMessage.speakerMeta && splitMessage.message) {
-                message = splitMessage.message;
-                nextSpeakerMeta = splitChatroomSpeakerMeta(splitMessage.speakerMeta, style);
-            }
-        }
-
-        rows.push(`chatroom|${normalizeChatroomField(currentSpeakerMeta.speaker)}|${normalizeChatroomField(currentSpeakerMeta.meta)}|${tone}|${normalizeChatroomField(message)}`);
-        currentSpeakerMeta = nextSpeakerMeta ?? currentSpeakerMeta;
+        rows.push(`chatroom|${normalizeChatroomField(speaker)}|${normalizeChatroomField(meta)}|${tone}|${normalizeChatroomField(message)}`);
     }
 
     if (!rows.length) {
