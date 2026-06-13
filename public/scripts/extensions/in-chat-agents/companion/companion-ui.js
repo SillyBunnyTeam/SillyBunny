@@ -212,21 +212,6 @@ function normalizeChatroomContent(content = '') {
     return ['chatroom-style|' + style, ...rows, 'chatroom-end'].join('\n');
 }
 
-function autoGrowCompanionTextarea(textarea) {
-    if (!textarea?.style) {
-        return;
-    }
-
-    textarea.style.height = 'auto';
-    const height = Math.min(140, Math.max(34, textarea.scrollHeight || 34));
-    textarea.style.height = `${height}px`;
-}
-
-function autoGrowCompanionTextareas(root = document) {
-    root?.querySelectorAll?.('.ica--chatonly-input, .ica--plot-objective-input')
-        ?.forEach(autoGrowCompanionTextarea);
-}
-
 async function setAgentSetting(agent, key, value) {
     if (!agent) return;
 
@@ -382,8 +367,10 @@ function buildChatOnlyCardComposer(agentId) {
 
     return `
         <div class="ica--chatonly-composer ica--companion-chatonly-composer">
-            <div class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
-            <textarea class="text_pole textarea_compact ica--chatonly-input ica--companion-chatonly-input" data-role="chat-only-input" rows="1" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..."></textarea>
+            <label>
+                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
+            </label>
             <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
@@ -402,7 +389,7 @@ function buildPlotCompassObjectiveComposer(agentId) {
         <div class="ica--plot-objective-composer ica--companion-plot-objective">
             <label>
                 <span>Plot Objective</span>
-                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="1" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+                <input type="text" class="text_pole ica--plot-objective-input" data-role="plot-compass-objective" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?" value="${escapeHtml(objective)}" aria-label="Plot Objective">
             </label>
             <button type="button" class="menu_button menu_button_icon ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
@@ -601,7 +588,6 @@ export function renderCompanionResultsForMessage(messageIndex) {
     }
 
     ledger.html(entries.map(([agentId, result]) => buildCompanionCard(agentId, result, message)).join(''));
-    autoGrowCompanionTextareas(messageElement.get?.(0));
 }
 
 function renderAllCompanionResults() {
@@ -880,9 +866,6 @@ export function initCompanionCardUi() {
         await runCompanionsFromMessageButton(messageIndex, this);
     });
     $(document).on('click', '.ica--companion-action, .ica--companion-control-action', handleCompanionAction);
-    $(document).on('input', '.ica--chatonly-input, .ica--plot-objective-input', function () {
-        autoGrowCompanionTextarea(this);
-    });
     // Document-level catch-all: covers cards and any other surface rendering companion
     // bodies. The panel binds its own element-level handler first (to close itself), and
     // its stopPropagation keeps this one from double-inserting.

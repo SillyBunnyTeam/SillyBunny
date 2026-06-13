@@ -1868,10 +1868,10 @@ button.ica--card-pill--version-update {
 .ica--chatonly-composer,
 .ica--plot-objective-composer {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 42px;
-    gap: 8px;
-    align-items: end;
-    padding: 8px;
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 6px;
+    align-items: center;
+    padding: 7px;
     border-radius: var(--sb-radius-lg, 14px);
     border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 34%, transparent);
     background:
@@ -1881,12 +1881,12 @@ button.ica--card-pill--version-update {
 }
 
 .ica--chatonly-live {
-    grid-column: 1 / -1;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     font-size: calc(var(--mainFontSize) * 0.76);
     opacity: 0.72;
+    min-width: 0;
 }
 
 .ica--chatonly-live i {
@@ -1897,33 +1897,41 @@ button.ica--card-pill--version-update {
 .ica--chatonly-input,
 .ica--plot-objective-input {
     box-sizing: border-box;
-    min-height: 34px;
-    height: 34px;
-    max-height: 140px;
-    line-height: 1.35;
-    resize: none;
-    overflow-y: auto;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    min-height: 32px;
+    height: 32px;
+    line-height: 32px;
+    padding-block: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
+.ica--chatonly-composer label,
 .ica--plot-objective-composer label {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
 }
 
+.ica--chatonly-composer label > span,
 .ica--plot-objective-composer label span {
+    flex: 0 0 auto;
     font-size: calc(var(--mainFontSize) * 0.76);
     opacity: 0.72;
+    white-space: nowrap;
 }
 
 .ica--chatonly-send,
 .ica--plot-objective-save {
-    width: 42px;
-    min-width: 42px;
-    min-height: 34px;
-    height: 34px;
-    align-self: end;
+    width: 36px;
+    min-width: 36px;
+    min-height: 32px;
+    height: 32px;
+    align-self: center;
     justify-content: center;
     padding-inline: 0;
 }

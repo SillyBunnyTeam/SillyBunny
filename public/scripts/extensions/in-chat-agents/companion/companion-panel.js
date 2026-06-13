@@ -355,21 +355,6 @@ function normalizePlotCompassObjective(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
 }
 
-function autoGrowPanelTextarea(textarea) {
-    if (!textarea?.style) {
-        return;
-    }
-
-    textarea.style.height = 'auto';
-    const height = Math.min(140, Math.max(34, textarea.scrollHeight || 34));
-    textarea.style.height = `${height}px`;
-}
-
-function autoGrowPanelTextareas(root = document) {
-    root?.querySelectorAll?.('.ica--chatonly-input, .ica--plot-objective-input')
-        ?.forEach(autoGrowPanelTextarea);
-}
-
 function getLatestAssistantIndex() {
     return chat.findLastIndex(isAssistantMessage);
 }
@@ -476,8 +461,10 @@ function buildChatOnlyComposer(state) {
 
     return `
         <div class="ica--chatonly-composer ica--tpanel-chatonly-composer">
-            <div class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></div>
-            <textarea class="text_pole textarea_compact ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" rows="1" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..."></textarea>
+            <label>
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
+            </label>
             <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
@@ -495,7 +482,7 @@ function buildPlotCompassObjectiveComposer(state) {
         <div class="ica--plot-objective-composer ica--tpanel-plot-objective">
             <label>
                 <span>Plot Objective</span>
-                <textarea class="text_pole textarea_compact ica--plot-objective-input" data-role="plot-compass-objective" rows="1" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?">${escapeHtml(objective)}</textarea>
+                <input type="text" class="text_pole ica--plot-objective-input" data-role="plot-compass-objective" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?" value="${escapeHtml(objective)}" aria-label="Plot Objective">
             </label>
             <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
@@ -610,7 +597,6 @@ export function buildPanelHtml() {
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     panelElement.html(buildPanelHtml());
-    autoGrowPanelTextareas(panelElement.get?.(0));
 }
 
 export function updateCompanionPanelHandleVisibility() {
@@ -871,9 +857,6 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
-    $('#ica--tracker-panel').on('input', '.ica--chatonly-input, .ica--plot-objective-input', function () {
-        autoGrowPanelTextarea(this);
-    });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
