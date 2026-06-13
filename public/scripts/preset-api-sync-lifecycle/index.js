@@ -109,6 +109,24 @@ export function resolveConnectionProfileSourceBinding({
 }
 
 /**
+ * Resolves whether a source-select mutation requires the shell to rebind.
+ * @param {object} options Options.
+ * @param {boolean} [options.targetTouchesSource=false] Whether the mutation target is or contains the source select.
+ * @param {boolean} [options.addedTouchesSource=false] Whether added nodes include the source select.
+ * @param {boolean} [options.removedTouchesSource=false] Whether removed nodes include the source select.
+ * @returns {{shouldRebind: boolean}}
+ */
+export function resolveConnectionProfileSourceMutation({
+    targetTouchesSource = false,
+    addedTouchesSource = false,
+    removedTouchesSource = false,
+} = {}) {
+    return {
+        shouldRebind: Boolean(targetTouchesSource || addedTouchesSource || removedTouchesSource),
+    };
+}
+
+/**
  * Resolves UI state for mirrored connection-profile controls.
  * @param {object} options Options.
  * @param {boolean} [options.hasConnectionProfiles=false] Whether source select exists.
@@ -246,6 +264,7 @@ export function createPresetApiSyncLifecycle() {
             sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE,
             resolveSelectionSync: resolveConnectionProfileSelectionSync,
             resolveSourceBinding: resolveConnectionProfileSourceBinding,
+            resolveSourceMutation: resolveConnectionProfileSourceMutation,
             resolveMirrorState: resolveConnectionProfileMirrorState,
             resolveMirrorUpdate: resolveConnectionProfileMirrorUpdate,
             resolveStatusText: resolveConnectionProfileStatusText,
