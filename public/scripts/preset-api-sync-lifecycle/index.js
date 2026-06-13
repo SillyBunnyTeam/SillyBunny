@@ -209,6 +209,27 @@ export function resolveConnectionProfileStatusText({
 }
 
 /**
+ * Resolves connection-strip state transitions without touching DOM.
+ * @param {object} options Options.
+ * @param {boolean} [options.shouldOpen=false] Requested strip open state.
+ * @param {boolean} [options.hasDesktopStrip=false] Whether the desktop strip exists.
+ * @returns {{shouldApply: boolean, nextState: boolean, shouldApplySurfaceExclusivity: boolean}}
+ */
+export function resolveConnectionStripOpenState({
+    shouldOpen = false,
+    hasDesktopStrip = false,
+} = {}) {
+    const nextState = Boolean(shouldOpen);
+    const shouldApply = Boolean(hasDesktopStrip);
+
+    return {
+        shouldApply,
+        nextState,
+        shouldApplySurfaceExclusivity: shouldApply && nextState,
+    };
+}
+
+/**
  * Creates the compatibility-facing preset/API sync lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -228,6 +249,7 @@ export function createPresetApiSyncLifecycle() {
             resolveMirrorState: resolveConnectionProfileMirrorState,
             resolveMirrorUpdate: resolveConnectionProfileMirrorUpdate,
             resolveStatusText: resolveConnectionProfileStatusText,
+            resolveStripOpenState: resolveConnectionStripOpenState,
         },
     };
 }

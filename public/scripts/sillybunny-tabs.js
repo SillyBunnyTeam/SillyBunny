@@ -5577,23 +5577,26 @@ function isConnectionStripOpen() {
 
 function setConnectionStripOpenState(shouldOpen) {
     const desktopRefs = getChatDesktopRefs();
-    const nextState = Boolean(shouldOpen);
+    const stripState = sbPresetApiSyncLifecycle.connectionProfiles.resolveStripOpenState({
+        shouldOpen,
+        hasDesktopStrip: desktopRefs?.connectionStrip instanceof HTMLElement,
+    });
 
-    if (!desktopRefs?.connectionStrip) {
+    if (!stripState.shouldApply) {
         return;
     }
 
-    if (nextState) {
+    if (stripState.shouldApplySurfaceExclusivity) {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
             surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
             isMobileViewport: isMobileViewport(),
         }));
     }
 
-    getChatbarState().connectionStripOpen = nextState;
-    desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    desktopRefs.connectionStrip.hidden = !nextState;
-    setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
+    getChatbarState().connectionStripOpen = stripState.nextState;
+    desktopRefs.connectionStrip.classList.toggle('is-open', stripState.nextState);
+    desktopRefs.connectionStrip.hidden = !stripState.nextState;
+    setButtonPressed(desktopRefs.toggleConnectionButton, stripState.nextState);
 }
 
 function getCurrentMainApiValue() {
