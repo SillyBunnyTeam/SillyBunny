@@ -156,6 +156,8 @@ describe('in-chat agent bundled templates', () => {
             trigger: 'auto',
             batch: true,
         }));
+        expect(commentary.prompt).toContain('[Selected Director Commentary Voice]');
+        expect(commentary.prompt).toContain('[Director Commentary Voice]');
         expect(interview.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
             includeCharacterCard: true,
@@ -177,13 +179,15 @@ describe('in-chat agent bundled templates', () => {
             displayMode: 'panel',
             format: 'html',
             rawPrompt: true,
+            includeWorldInfo: true,
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: false, depth: 1 },
             maxTokens: 32000,
         }));
-        expect(chatroom.regexScripts).toHaveLength(3);
+        expect(chatroom.regexScripts).toHaveLength(4);
         expect(chatroom.prompt).toContain('CHATROOM_STYLE|active-style');
+        expect(chatroom.prompt).toContain('CHATROOM|speaker|meta|tone|message');
         expect(chatroom.prompt).toContain('[Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('- custom: follow [Custom Chatroom Style]');
         expect(chatroom.prompt).toContain('thread-board/4chan');

@@ -1613,6 +1613,13 @@ button.ica--card-pill--version-update {
     outline: none;
 }
 
+.ica--cdash-action.is-active,
+.ica--cdash-action[aria-pressed="true"] {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #9aa0ff) 24%, transparent);
+    color: var(--SmartThemeBodyColor);
+}
+
 .ica--cdash-action:disabled {
     opacity: 0.3;
     cursor: default;

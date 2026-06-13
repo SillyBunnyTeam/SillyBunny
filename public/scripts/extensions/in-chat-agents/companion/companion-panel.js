@@ -30,6 +30,7 @@ const HANDLE_EDGES = ['right', 'left', 'top', 'bottom'];
 
 let panelInitialized = false;
 let panelOpen = false;
+let panelLocked = false;
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
@@ -460,6 +461,7 @@ export function buildPanelHtml() {
         <div class="ica--tpanel-header">
             <span class="ica--tpanel-title"><i class="fa-solid fa-user-astronaut"></i> Companions</span>
             <span class="ica--tpanel-agent-actions">
+                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock outside-click close' : 'Keep panel open when clicking outside'}" aria-label="${panelLocked ? 'Unlock panel' : 'Lock panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
             </span>
@@ -494,6 +496,18 @@ export function closeCompanionPanel() {
     $('#ica--tracker-panel').removeClass('is-open').attr('aria-hidden', 'true');
 }
 
+export function isCompanionPanelLocked() {
+    return panelLocked;
+}
+
+export function setCompanionPanelLocked(locked) {
+    panelLocked = Boolean(locked);
+    if (panelOpen) {
+        renderPanel();
+    }
+    return panelLocked;
+}
+
 export function toggleCompanionPanel() {
     if (panelOpen) {
         closeCompanionPanel();
@@ -511,6 +525,11 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-close') {
         closeCompanionPanel();
+        return;
+    }
+
+    if (action === 'panel-lock') {
+        setCompanionPanelLocked(!panelLocked);
         return;
     }
 
@@ -643,10 +662,10 @@ export function initCompanionPanel() {
         $('#extensionsMenu').append(menuItem);
     }
 
-    // Tapping anywhere outside the panel closes it. The grace window keeps the click
-    // that opened the panel (wand item, dashboard button) from immediately closing it.
+    // Tapping anywhere outside the panel closes it unless the user locks it open.
+    // The grace window keeps the click that opened the panel from immediately closing it.
     $(document).on('click', event => {
-        if (!panelOpen || Date.now() - panelOpenedAt < 250) {
+        if (!panelOpen || panelLocked || Date.now() - panelOpenedAt < 250) {
             return;
         }
         if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle')) {

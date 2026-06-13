@@ -140,11 +140,16 @@ const REMOVED_BUNDLED_GROUP_IDS = new Set([
 ]);
 
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
 const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
+const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS = 2000;
 const CHATROOM_STYLE_VALUES = Object.freeze([
     'mixed',
     'in-world',
@@ -154,6 +159,19 @@ const CHATROOM_STYLE_VALUES = Object.freeze([
     'newsroom',
     'thread-board/4chan',
     CHATROOM_CUSTOM_STYLE_VALUE,
+]);
+const DIRECTOR_COMMENTARY_VOICE_VALUES = Object.freeze([
+    'active',
+    'conspiratorial-absurdity',
+    'bureaucratic-irony',
+    'cosmic-playbook',
+    'beige-undercurrents',
+    'gossipy-voyeurism',
+    'cruel-realism',
+    'solemn-witness',
+    'grand-satirical-stage',
+    'randomised',
+    DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE,
 ]);
 const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set([
     CHATROOM_TEMPLATE_ID,
@@ -208,6 +226,52 @@ function getChatroomCustomStylesSetting(settings = {}) {
 
     const legacyCustomStyle = String(settings?.chatroomCustomStyle ?? '').trim();
     return legacyCustomStyle ? normalizeChatroomCustomStyles(`Custom: ${legacyCustomStyle}`) : '';
+}
+
+function normalizeDirectorCommentaryVoice(value = '') {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return DIRECTOR_COMMENTARY_VOICE_VALUES.includes(normalized) ? normalized : 'active';
+}
+
+function normalizeDirectorCustomVoices(value = '') {
+    return String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS);
+}
+
+function normalizeDirectorCustomVoiceName(value = '') {
+    return String(value ?? '').trim().slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS);
+}
+
+function parseDirectorCustomVoices(value = '') {
+    const seenNames = new Set();
+    return normalizeDirectorCustomVoices(value)
+        .split('\n')
+        .map(line => {
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex <= 0) return null;
+
+            const name = normalizeDirectorCustomVoiceName(line.slice(0, separatorIndex));
+            const prompt = line.slice(separatorIndex + 1).trim().slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS);
+            const normalizedName = name.toLowerCase();
+
+            if (!name || !prompt || seenNames.has(normalizedName)) return null;
+            seenNames.add(normalizedName);
+            return { name, prompt };
+        })
+        .filter(Boolean);
+}
+
+function getDirectorCustomVoicesSetting(settings = {}) {
+    const customVoices = normalizeDirectorCustomVoices(settings?.directorCommentaryCustomVoices);
+    if (customVoices) return customVoices;
+
+    const legacyCustomVoice = String(settings?.directorCommentaryCustomVoice ?? '').trim();
+    return legacyCustomVoice ? normalizeDirectorCustomVoices(`Custom: ${legacyCustomVoice}`) : '';
 }
 
 const REGEX_PLACEMENT_LABELS = {
@@ -2324,6 +2388,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
     const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
     editorEl.find('#ica--editor-chatroom-custom-styles').val(getChatroomCustomStylesSetting(agent.settings));
+    editorEl.find('#ica--editor-director-voice').val(normalizeDirectorCommentaryVoice(agent.settings?.directorCommentaryVoice));
+    const savedDirectorCustomVoiceName = normalizeDirectorCustomVoiceName(agent.settings?.directorCommentaryCustomVoiceName);
+    editorEl.find('#ica--editor-director-custom-voices').val(getDirectorCustomVoicesSetting(agent.settings));
     editorEl.find('#ica--editor-plot-compass-objective').val(typeof agent.settings?.plotCompassObjective === 'string'
         ? agent.settings.plotCompassObjective
         : '');
@@ -2412,6 +2479,29 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         select.val(preferredName);
     }
 
+    function updateDirectorCustomVoiceOptions() {
+        const select = editorEl.find('#ica--editor-director-custom-voice-name');
+        const currentName = normalizeDirectorCustomVoiceName(select.val());
+        const customVoices = parseDirectorCustomVoices(editorEl.find('#ica--editor-director-custom-voices').val());
+
+        select.empty();
+        if (!customVoices.length) {
+            select.append($('<option>').val('').text('Add voices below'));
+            return;
+        }
+
+        const findVoiceName = name => {
+            const normalizedName = normalizeDirectorCustomVoiceName(name).toLowerCase();
+            return customVoices.find(voice => voice.name.toLowerCase() === normalizedName)?.name || '';
+        };
+        const preferredName = findVoiceName(currentName) || findVoiceName(savedDirectorCustomVoiceName) || customVoices[0].name;
+
+        for (const voice of customVoices) {
+            select.append($('<option>').val(voice.name).text(voice.name));
+        }
+        select.val(preferredName);
+    }
+
     function updateCompanionEditorVisibility() {
         const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
         const companionExecution = isEditorCompanionExecution();
@@ -2420,6 +2510,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         const showChatroomSettings = companionExecution && sourceTemplateId === CHATROOM_TEMPLATE_ID;
         const showCustomChatroomStyle = showChatroomSettings
             && normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val()) === CHATROOM_CUSTOM_STYLE_VALUE;
+        const showDirectorSettings = companionExecution && sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID;
+        const showCustomDirectorVoice = showDirectorSettings
+            && normalizeDirectorCommentaryVoice(editorEl.find('#ica--editor-director-voice').val()) === DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE;
 
         if (category === 'companion') {
             executionSelect.val('companion');
@@ -2430,6 +2523,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
         editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
+        editorEl.find('#ica--director-voice-row').toggle(showDirectorSettings);
+        editorEl.find('#ica--director-custom-voice-row').toggle(showCustomDirectorVoice);
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
@@ -2492,10 +2587,12 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateTrackerBuilderVisibility();
         updateCompanionEditorVisibility();
     });
-    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
+    editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
+    updateDirectorCustomVoiceOptions();
     updateCompanionEditorVisibility();
 
     // Show/hide sections based on phase
@@ -2879,6 +2976,12 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         agent.settings.chatroomCustomStyles = normalizeChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
         agent.settings.chatroomCustomStyleName = normalizeChatroomCustomStyleName(editorEl.find('#ica--editor-chatroom-custom-style-name').val());
         delete agent.settings.chatroomCustomStyle;
+    }
+    if (sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID) {
+        agent.settings.directorCommentaryVoice = normalizeDirectorCommentaryVoice(editorEl.find('#ica--editor-director-voice').val());
+        agent.settings.directorCommentaryCustomVoices = normalizeDirectorCustomVoices(editorEl.find('#ica--editor-director-custom-voices').val());
+        agent.settings.directorCommentaryCustomVoiceName = normalizeDirectorCustomVoiceName(editorEl.find('#ica--editor-director-custom-voice-name').val());
+        delete agent.settings.directorCommentaryCustomVoice;
     }
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
         agent.settings.plotCompassObjective = editorEl.find('#ica--editor-plot-compass-objective').val()?.toString().trim() || '';

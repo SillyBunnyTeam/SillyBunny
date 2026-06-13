@@ -116,6 +116,35 @@
             </label>
             <div class="ica--regex-note">Add one reusable style per line as Name: instructions, then pick which one this Chatroom uses.</div>
         </div>
+        <div class="ica--editor-row" id="ica--director-voice-row" style="display:none">
+            <label>Director Voice
+                <select id="ica--editor-director-voice" class="text_pole">
+                    <option value="active">Active Narration Voice</option>
+                    <option value="conspiratorial-absurdity">Conspiratorial Absurdity</option>
+                    <option value="bureaucratic-irony">Bureaucratic Irony</option>
+                    <option value="cosmic-playbook">Cosmic Playbook</option>
+                    <option value="beige-undercurrents">Beige Undercurrents</option>
+                    <option value="gossipy-voyeurism">Gossipy Voyeurism</option>
+                    <option value="cruel-realism">Cruel Realism</option>
+                    <option value="solemn-witness">Solemn Witness</option>
+                    <option value="grand-satirical-stage">Grand Satirical Stage</option>
+                    <option value="randomised">Randomised</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Choose one of the preset Narration Voices or use your active preset variable.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--director-custom-voice-row" style="display:none">
+            <label>Active Custom Voice
+                <select id="ica--editor-director-custom-voice-name" class="text_pole">
+                    <option value="">Add voices below</option>
+                </select>
+            </label>
+            <label>Custom Voice Library
+                <textarea id="ica--editor-director-custom-voices" class="text_pole textarea_compact" rows="5" placeholder="Noir Whisper: clipped cigarette-smoke asides, suspicious empathy, and fatalistic punchlines&#10;Fairy-Tale Lecturer: storybook moralizing, soft menace, and elegant little warnings"></textarea>
+            </label>
+            <div class="ica--regex-note">Add one reusable voice per line as Name: instructions, then pick which one Director's Commentary uses.</div>
+        </div>
         <div class="ica--editor-row" id="ica--plot-compass-objective-row" style="display:none">
             <label>Plot Objective
                 <textarea id="ica--editor-plot-compass-objective" class="text_pole textarea_compact" rows="3" placeholder="Example: steer the story toward the hidden tower without forcing the scene"></textarea>

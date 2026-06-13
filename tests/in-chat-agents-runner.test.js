@@ -1018,6 +1018,58 @@ describe('in-chat agent post-processing runner', () => {
         expect(fallbackCustomMessages[0].content).toContain('local radio call-in show');
     });
 
+    test('injects the selected Director Commentary voice into companion prompts', async () => {
+        const directorPreset = createCompanionAgent({
+            id: 'director-preset-companion',
+            sourceTemplateId: 'tpl-directors-commentary-companion',
+            settings: { directorCommentaryVoice: 'bureaucratic-irony' },
+            companion: { rawPrompt: true },
+            prompt: 'Comment on the scene.',
+        });
+        const directorCustom = createCompanionAgent({
+            id: 'director-custom-companion',
+            sourceTemplateId: 'tpl-directors-commentary-companion',
+            settings: {
+                directorCommentaryVoice: 'custom',
+                directorCommentaryCustomVoiceName: 'Fairy-Tale Lecturer',
+                directorCommentaryCustomVoices: 'Noir Whisper: clipped cigarette-smoke asides, suspicious empathy, and fatalistic punchlines.\nFairy-Tale Lecturer: storybook moralizing, soft menace, and elegant little warnings.',
+            },
+            companion: { rawPrompt: true },
+            prompt: 'Comment on the scene.',
+        });
+        const directorCustomFallback = createCompanionAgent({
+            id: 'director-custom-fallback-companion',
+            sourceTemplateId: 'tpl-directors-commentary-companion',
+            settings: {
+                directorCommentaryVoice: 'custom',
+                directorCommentaryCustomVoices: 'Noir Whisper: clipped cigarette-smoke asides, suspicious empathy, and fatalistic punchlines.\nFairy-Tale Lecturer: storybook moralizing, soft menace, and elegant little warnings.',
+            },
+            companion: { rawPrompt: true },
+            prompt: 'Comment on the scene.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        const presetMessages = await companionRunner.buildCompanionPromptMessages(directorPreset, 1);
+        expect(presetMessages[0].content).toContain('[Selected Director Commentary Voice]\nbureaucratic-irony');
+        expect(presetMessages[0].content).toContain('[Director Commentary Voice]');
+        expect(presetMessages[0].content).toContain('dry, endless administrative nightmare');
+
+        const customMessages = await companionRunner.buildCompanionPromptMessages(directorCustom, 1);
+        expect(customMessages[0].content).toContain('[Selected Director Commentary Voice]\ncustom');
+        expect(customMessages[0].content).toContain('[Director Commentary Voice]\nName: Fairy-Tale Lecturer');
+        expect(customMessages[0].content).toContain('storybook moralizing');
+        expect(customMessages[0].content).not.toContain('cigarette-smoke');
+
+        const fallbackMessages = await companionRunner.buildCompanionPromptMessages(directorCustomFallback, 1);
+        expect(fallbackMessages[0].content).toContain('[Director Commentary Voice]\nName: Noir Whisper');
+        expect(fallbackMessages[0].content).toContain('cigarette-smoke');
+    });
+
     test('injects the Plot Compass objective into companion prompts', async () => {
         const plotCompass = createCompanionAgent({
             id: 'plot-compass-companion',

@@ -37,11 +37,16 @@ const MAX_COMPANION_RESULT_CHARS = 64 * 1024;
 const COMPANION_PROMPT_KEY_PREFIX = 'inchat_agent_companion_';
 const BATCH_MARKER_RE = /<<<COMPANION:([\w-]+)>>>([\s\S]*?)<<<END:\1>>>/g;
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
+const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
 const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
+const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
+const DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS = 2000;
 const CHATROOM_STYLE_VALUES = new Set([
     'mixed',
     'in-world',
@@ -52,6 +57,29 @@ const CHATROOM_STYLE_VALUES = new Set([
     'thread-board/4chan',
     CHATROOM_CUSTOM_STYLE_VALUE,
 ]);
+const DIRECTOR_COMMENTARY_VOICE_VALUES = new Set([
+    'active',
+    'conspiratorial-absurdity',
+    'bureaucratic-irony',
+    'cosmic-playbook',
+    'beige-undercurrents',
+    'gossipy-voyeurism',
+    'cruel-realism',
+    'solemn-witness',
+    'grand-satirical-stage',
+    'randomised',
+    DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE,
+]);
+const DIRECTOR_COMMENTARY_VOICE_PRESETS = Object.freeze({
+    'conspiratorial-absurdity': '# Prose Voice\nMaintain an intimate, mischievous voice characterized by dry amusement, controlled irony, and direct, conspiratorial address. Center your perspective on the grand cosmic comedy: the absolute indifference of the physical universe contrasted against desperate human struggles for meaning. Place a short, razor-sharp aside immediately after any absurd, tense, revealing, reckless, or socially charged behavior. Use these asides to highlight the mechanical, empty nature of human routines, stripping away illusions of fate or grand purpose, and pointing directly to the stark physical reality of the immediate moment.',
+    'bureaucratic-irony': '# Prose Voice\nCombine a dry, endless administrative nightmare with your intimate, conspiratorial voice. Frame every setting as a series of illogical, locked rooms or bizarre rules. Drop a sharp, whispering aside immediately after a character tries to appeal to authority or escape a loop: use these asides to point out the absolute, laughable futility of their efforts, then immediately push the scene forward.',
+    'cosmic-playbook': '# Prose Voice\nBlend chilling, metaphysical dread with a highly mischievous, intimate delivery. Treat characters as flimsy, hollow puppets or clockwork toys going through the motions. Insert a brief, mocking aside whenever they show genuine emotion or try to assume control: use these commentaries to highlight the artificial, fragile illusion of their safety, then drag them right back into the cold reality of the scene.',
+    'beige-undercurrents': '# Prose Voice\nDeliver the narrative in short, razor-sharp, loaded sentences while maintaining your intimate, teasing connection with the reader. Focus entirely on physical actions and concrete reality. Plant a dry, whispered aside immediately after a heavy pause or a tense, unspoken realization: use these brief comments to expose the massive emotional weight hiding beneath their simple actions, then immediately drive the next physical movement forward.',
+    'gossipy-voyeurism': '# Prose Voice\nMerge a hyper-detailed, cold focus on prestige and items with your highly conspiratorial, gossipy voice. Whenever a character flaunts status, shows vanity, or behaves with shallow cruelty, drop a sharp, satirical aside immediately after: use these commentaries to mock their hollow priorities and flag the hidden rot beneath the polished surface, keeping the scene moving forward instantly.',
+    'cruel-realism': '# Prose Voice\nExamine the petty pride and fragile dignity of the characters through your mischievous, cynical lens. Watch closely for moments of greed, social climbing, or sudden misfortune, and immediately slip in a dry, intimate aside: use these targeted comments to expose their hypocrisy and highlight the cruel irony of their choices, progressing the scene immediately after the jab.',
+    'solemn-witness': '# Prose Voice\nUse a heavy, rhythmic, biblical cadence to paint a harsh and beautiful environment, keeping your narration voice intimately close to the action. Whenever the physical world forces a character\'s hand or reveals their primal vulnerability, insert a brief, solemn yet teasing aside: use this commentary to underline the sheer absurdity of human ambition against an indifferent universe, then march the scene forward.',
+    'grand-satirical-stage': '# Prose Voice\nUnleash a bustling, highly theatrical world filled with colorful eccentrics and systemic hypocrisy, narrating with your signature playful intimacy. After any dramatic outburst, quirky gesture, or display of class inequality, deliver a swift, theatrical aside: use these comments to sharpen the social subtext and expose the folly of the wealthy or puffed-up, immediately steering the focus back to the unfolding action.',
+});
 
 let companionRunnerInitialized = false;
 
@@ -113,6 +141,89 @@ function resolveChatroomCustomStyle(settings = {}) {
     return styles.find(style => style.name.toLowerCase() === selectedName) || styles[0];
 }
 
+function normalizeDirectorCommentaryVoice(value = '') {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return DIRECTOR_COMMENTARY_VOICE_VALUES.has(normalized) ? normalized : 'active';
+}
+
+function normalizeDirectorCustomVoices(value = '') {
+    return String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS);
+}
+
+function normalizeDirectorCustomVoiceName(value = '') {
+    return String(value ?? '').trim().slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS);
+}
+
+function parseDirectorCustomVoices(value = '') {
+    const seenNames = new Set();
+    return normalizeDirectorCustomVoices(value)
+        .split('\n')
+        .map(line => {
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex <= 0) return null;
+
+            const name = normalizeDirectorCustomVoiceName(line.slice(0, separatorIndex));
+            const prompt = line.slice(separatorIndex + 1).trim().slice(0, DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS);
+            const normalizedName = name.toLowerCase();
+
+            if (!name || !prompt || seenNames.has(normalizedName)) return null;
+            seenNames.add(normalizedName);
+            return { name, prompt };
+        })
+        .filter(Boolean);
+}
+
+function getDirectorCustomVoicesSetting(settings = {}) {
+    const customVoices = normalizeDirectorCustomVoices(settings?.directorCommentaryCustomVoices);
+    if (customVoices) return customVoices;
+
+    const legacyCustomVoice = String(settings?.directorCommentaryCustomVoice ?? '').trim();
+    return legacyCustomVoice ? normalizeDirectorCustomVoices(`Custom: ${legacyCustomVoice}`) : '';
+}
+
+function resolveDirectorCustomVoice(settings = {}) {
+    const voices = parseDirectorCustomVoices(getDirectorCustomVoicesSetting(settings));
+    if (!voices.length) return null;
+
+    const selectedName = normalizeDirectorCustomVoiceName(settings?.directorCommentaryCustomVoiceName).toLowerCase();
+    return voices.find(voice => voice.name.toLowerCase() === selectedName) || voices[0];
+}
+
+function getDirectorRandomisedVoicePrompt() {
+    const presetBlocks = Object.entries(DIRECTOR_COMMENTARY_VOICE_PRESETS)
+        .map(([id, prompt]) => `Preset: ${id}\n${prompt}`)
+        .join('\n\n');
+
+    return `Choose exactly one built-in Narration Voice preset for this run and follow only that voice. Do not blend presets.\n\n${presetBlocks}`;
+}
+
+function getDirectorCommentaryVoicePrompt(voice, settings = {}) {
+    const normalizedVoice = normalizeDirectorCommentaryVoice(voice);
+
+    if (normalizedVoice === DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE) {
+        const customVoice = resolveDirectorCustomVoice(settings);
+        return customVoice
+            ? `Name: ${customVoice.name}\n${customVoice.prompt}`
+            : 'none set - use active Narration Voice';
+    }
+
+    if (normalizedVoice === 'randomised') {
+        return getDirectorRandomisedVoicePrompt();
+    }
+
+    if (normalizedVoice === 'active') {
+        return 'Use the active Prose Voice block from the template above. If that block is empty, use the template native default voice.';
+    }
+
+    return DIRECTOR_COMMENTARY_VOICE_PRESETS[normalizedVoice] || DIRECTOR_COMMENTARY_VOICE_PRESETS['conspiratorial-absurdity'];
+}
+
 function getTemplateSettingsPromptBlock(agent = {}) {
     const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
 
@@ -128,6 +239,14 @@ function getTemplateSettingsPromptBlock(agent = {}) {
         }
 
         return blocks.join('\n\n');
+    }
+
+    if (sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID) {
+        const voice = normalizeDirectorCommentaryVoice(agent.settings?.directorCommentaryVoice);
+        return [
+            `[Selected Director Commentary Voice]\n${voice}`,
+            `[Director Commentary Voice]\n${getDirectorCommentaryVoicePrompt(voice, agent.settings)}`,
+        ].join('\n\n');
     }
 
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {

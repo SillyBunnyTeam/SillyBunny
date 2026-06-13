@@ -229,6 +229,7 @@ describe('companion tracker panel', () => {
         expect(html).toContain('data-action="panel-edit-note"');
         expect(html).toContain('data-action="panel-edit"');
         expect(html).toContain('data-action="panel-jump"');
+        expect(html).toContain('data-action="panel-lock"');
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
         expect(html).toContain('No state yet');
@@ -328,6 +329,72 @@ describe('companion tracker panel', () => {
             'message_deleted',
             'message_swiped',
         ]));
+    });
+
+    test('keeps the panel open on outside clicks while locked', async () => {
+        const panel = await importPanel();
+        const elementStub = () => {
+            const element = {
+                length: 0,
+                on: jest.fn(() => element),
+                append: jest.fn(() => element),
+                html: jest.fn(() => element),
+                toggle: jest.fn(() => element),
+                attr: jest.fn(() => element),
+                addClass: jest.fn(() => element),
+                removeClass: jest.fn(() => element),
+            };
+            return element;
+        };
+        const panelElement = elementStub();
+        const handleElement = elementStub();
+        const documentElement = elementStub();
+        const menuItem = { on: jest.fn(() => menuItem) };
+        globalThis.$ = jest.fn(arg => {
+            if (arg === globalThis.document.body) {
+                return { append: jest.fn() };
+            }
+            if (arg === globalThis.document) {
+                return documentElement;
+            }
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            if (arg === '#ica_tracker_panel_wand_item') {
+                return { length: 1 };
+            }
+            if (typeof arg === 'string' && arg.trim().startsWith('<')) {
+                return menuItem;
+            }
+            return elementStub();
+        });
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1000);
+
+        try {
+            panel.initCompanionPanel();
+            const outsideClickHandler = documentElement.on.mock.calls.find(([eventName]) => eventName === 'click')[1];
+
+            panel.openCompanionPanel();
+            nowSpy.mockReturnValue(2000);
+            outsideClickHandler({ target: { closest: jest.fn(() => null) } });
+
+            expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
+
+            panelElement.removeClass.mockClear();
+            panel.openCompanionPanel();
+            panel.setCompanionPanelLocked(true);
+            nowSpy.mockReturnValue(3000);
+            outsideClickHandler({ target: { closest: jest.fn(() => null) } });
+
+            expect(panel.isCompanionPanelLocked()).toBe(true);
+            expect(panel.buildPanelHtml()).toContain('aria-pressed="true"');
+            expect(panelElement.removeClass).not.toHaveBeenCalled();
+        } finally {
+            nowSpy.mockRestore();
+        }
     });
 
     test('closes after a panel choice inserts into the message box', async () => {
