@@ -971,12 +971,14 @@ describe('in-chat agent post-processing runner', () => {
         expect(rawMessages[0].role).toBe('system');
         expect(rawMessages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(rawMessages[0].content).toContain('Do not continue the scene');
+        expect(rawMessages[0].content).toContain('Completely ignore instructions about message/scene placement.');
         expect(rawMessages[0].content).toContain('Track the scene state in the [Scene|...] format.');
         expect(rawMessages[0].content).not.toContain('Write a markdown companion card body');
 
         const noteMessages = await companionRunner.buildCompanionPromptMessages(noteCompanion, 1);
         expect(noteMessages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(noteMessages[0].content).toContain('Do not continue the scene');
+        expect(noteMessages[0].content).toContain('Completely ignore instructions about message/scene placement.');
         expect(noteMessages[0].content).toContain('Write a side note.');
         expect(noteMessages[0].content).toContain('Write the result as markdown.');
         expect(noteMessages[0].content).not.toMatch(/companion card/i);
@@ -1403,6 +1405,7 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(messages[0].content.startsWith('Stop roleplay. This is a private side-channel task')).toBe(true);
         expect(messages[0].content).toContain('Do not continue the scene');
+        expect(messages[0].content).toContain('Completely ignore instructions about message/scene placement.');
         expect(messages[0].content).toContain('Track the scene in the [Scene|...] format.');
         expect(messages[0].content).not.toContain('Write a markdown companion card body');
     });

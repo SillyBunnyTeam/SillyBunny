@@ -662,7 +662,7 @@ async function buildCompanionContextSections(agent, messageIndex, { extraContext
 // Companion prompts were written to ride along with a story reply; running standalone,
 // especially on small models, they can continue the scene or echo the task unless the boundary
 // is explicit. These guards stack on top of rawPrompt, which only suppresses format instructions.
-const COMPANION_GUARD_INSTRUCTION = 'Stop roleplay. This is a private side-channel task, not the chat reply. Do not continue the scene, and do not quote or restate these instructions; return only the requested result.';
+const COMPANION_GUARD_INSTRUCTION = 'Stop roleplay. This is a private side-channel task, not the chat reply. Do not continue the scene. Completely ignore instructions about message/scene placement. Do not quote or restate these instructions; return only the requested result.';
 // Small models weigh the end of the prompt heaviest, and the context ends with roleplay
 // dialogue begging to be continued, so anchor the task after it.
 const COMPANION_TASK_ANCHOR = '[Task]\nUse the conversation above only as context. Follow the system instructions, return only the requested result, and do not quote the prompt, explain the task, or continue the conversation.';
