@@ -32,19 +32,20 @@
             </div>
             <div class="expression_agent_block m-b-1 m-t-1">
                 <div class="expression_agent_status flex-container flexFlowColumn">
-                    <label data-i18n="In-Chat Agent Status">In-Chat Agent Status</label>
+                    <label data-i18n="Agent Auto-Generation">Agent Auto-Generation</label>
+                    <small data-i18n="Detect emotions after assistant replies and fill missing sprites with Quick Image Gen while you chat.">Detect emotions after assistant replies and fill missing sprites with Quick Image Gen while you chat.</small>
                     <small id="expressions_agent_status_text" data-i18n="Checking...">Checking...</small>
                 </div>
                 <label class="checkbox_label" for="expressions_agent_auto_generate_sprites" title="When an emotion is detected but no sprite exists, ask Quick Image Gen to create one automatically." data-i18n="[title]When an emotion is detected but no sprite exists, ask Quick Image Gen to create one automatically.">
                     <input id="expressions_agent_auto_generate_sprites" type="checkbox">
-                    <span data-i18n="Auto-generate missing sprites with Quick Image Gen">Auto-generate missing sprites with Quick Image Gen</span>
+                    <span data-i18n="Auto-generate missing sprites during chat">Auto-generate missing sprites during chat</span>
                 </label>
                 <label class="checkbox_label" for="expressions_agent_use_qig_llm_profile" title="Make the Expressions Agent classify emotions using the same Connection Manager profile that Quick Image Gen uses for LLM tasks." data-i18n="[title]Make the Expressions Agent classify emotions using the same Connection Manager profile that Quick Image Gen uses for LLM tasks.">
                     <input id="expressions_agent_use_qig_llm_profile" type="checkbox">
                     <span data-i18n="Share Quick Image Gen LLM override profile">Share Quick Image Gen LLM override profile</span>
                 </label>
-                <p class="expression_agent_hint hint" data-i18n="Install and enable the Expressions Agent companion template to use this classifier. Its connection profile controls which model performs classification.">
-                    Install and enable the Expressions Agent companion template to use this classifier. Its connection profile controls which model performs classification.
+                <p class="expression_agent_hint hint" data-i18n="Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.">
+                    Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.
                 </p>
             </div>
             <div class="expression_llm_prompt_block m-b-1 m-t-1">
@@ -102,6 +103,10 @@
                     <input id="expression_override_button" class="menu_button" type="submit" value="Submit" />
                 </div>
                 <div class="expression_buttons flex-container spaceEvenly">
+                    <div id="expressions_generate_missing_sprites" class="menu_button" role="button" tabindex="0" title="Generate all missing sprites in this set with Quick Image Gen" data-i18n="[title]Generate all missing sprites in this set with Quick Image Gen">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span data-i18n="Generate missing sprites">Generate missing sprites</span>
+                    </div>
                     <div id="expression_upload_pack_button" class="menu_button">
                         <i class="fa-solid fa-file-zipper"></i>
                         <span data-i18n="Upload sprite pack (ZIP)">Upload sprite pack (ZIP)</span>

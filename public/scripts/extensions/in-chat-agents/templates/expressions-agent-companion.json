@@ -17,7 +17,7 @@
     "execution": "companion",
     "companion": {
         "trigger": "auto",
-        "displayMode": "card",
+        "displayMode": "panel",
         "format": "text",
         "rawPrompt": true,
         "contextMessages": 4,
@@ -33,7 +33,7 @@
             "depth": 0
         },
         "batch": false,
-        "maxTokens": 32
+        "maxTokens": 32000
     },
     "injection": {
         "position": 0,

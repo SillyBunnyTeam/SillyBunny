@@ -217,9 +217,10 @@ export async function getAgentExpressionLabel(context, allowedExpressions) {
  * saving the returned URL into the character's sprite folder via the existing upload path.
  *
  * @param {string} expression - The expression label to generate a sprite for.
+ * @param {string} [characterName] - Optional character name to include in the image prompt.
  * @returns {Promise<string|null>} A URL/data-URI for the generated image, or null on failure.
  */
-export async function maybeGenerateExpressionSprite(expression) {
+export async function maybeGenerateExpressionSprite(expression, characterName = null) {
     if (!expression) return null;
 
     const qigBridge = await getQigBridge();
@@ -229,7 +230,7 @@ export async function maybeGenerateExpressionSprite(expression) {
     }
 
     const context = getContext();
-    const charName = context.name2 || 'character';
+    const charName = characterName || context.name2 || 'character';
 
     try {
         console.debug(`[Expressions Agent] Requesting sprite for ${expression} from QIG`);

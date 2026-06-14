@@ -4,6 +4,11 @@
         <div class="menu_button expression_list_upload" title="Upload image">
             <i class="fa-solid fa-upload"></i>
         </div>
+        {{#if this.canGenerate}}
+        <div class="menu_button expression_list_generate" title="Generate with Quick Image Gen" role="button" tabindex="0" aria-label="Generate with Quick Image Gen">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </div>
+        {{/if}}
         <div class="menu_button expression_list_delete" title="Delete image">
             <i class="fa-solid fa-trash"></i>
         </div>

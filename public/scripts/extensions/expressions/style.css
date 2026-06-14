@@ -200,14 +200,15 @@ img.expression.default {
 .expression_agent_block {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border-radius: var(--border-radius, 8px);
-    background-color: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.25));
+    gap: 0.65rem;
+    padding: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, var(--SmartThemeQuoteColor)) 42%, transparent);
+    border-radius: var(--border-radius, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor)) 72%, transparent);
 }
 
 .expression_agent_status {
-    gap: 0.15rem;
+    gap: 0.2rem;
 }
 
 .expression_agent_status small {
@@ -224,6 +225,22 @@ img.expression.default {
 
 .expression_agent_hint {
     margin: 0;
+}
+
+#expressions_generate_missing_sprites,
+.expression_list_generate {
+    color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
+#expressions_generate_missing_sprites[aria-disabled="true"],
+.expression_list_generate[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#image_list .expression_list_item[data-expression-type="failure"] .expression_list_delete {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .expression_agent_spinner {
