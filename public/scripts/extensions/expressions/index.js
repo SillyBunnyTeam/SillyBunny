@@ -1076,21 +1076,39 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         return false;
     }
 
-    const uploadedSpriteName = await uploadSpriteCommand({
-        name: uploadName,
-        label: expression,
-        folder: spriteFolderName,
-        spriteName: targetSpriteName,
-    }, imageUrl);
-    throwIfExpressionGenerationStopped();
-    setExpressionGenerationBusy(inSpriteGeneration);
-
-    if (!uploadedSpriteName) return false;
-    if (showToast) {
-        const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
-        toastr.success(message, t`Sprite Generation`);
+    // Run background removal / centering on individually generated sprites too, not just sheet
+    // tiles. Without this, the "Remove background" option never applies to single sprites.
+    let uploadUrl = imageUrl;
+    let processedUrl = null;
+    if (extension_settings.expressions.agentSpriteRemoveBackground) {
+        try {
+            processedUrl = await postProcessSpriteImage(imageUrl);
+            uploadUrl = processedUrl;
+        } catch (error) {
+            if (isExpressionGenerationAbortError(error)) throw error;
+            console.error('[Expressions] Failed to post-process generated sprite:', error);
+        }
     }
-    return true;
+
+    try {
+        const uploadedSpriteName = await uploadSpriteCommand({
+            name: uploadName,
+            label: expression,
+            folder: spriteFolderName,
+            spriteName: targetSpriteName,
+        }, uploadUrl);
+        throwIfExpressionGenerationStopped();
+        setExpressionGenerationBusy(inSpriteGeneration);
+
+        if (!uploadedSpriteName) return false;
+        if (showToast) {
+            const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
+            toastr.success(message, t`Sprite Generation`);
+        }
+        return true;
+    } finally {
+        if (processedUrl) URL.revokeObjectURL(processedUrl);
+    }
 }
 
 function getExpressionSpriteSheetGrid(tileCount) {
@@ -1222,6 +1240,29 @@ function makeCanvasBackgroundTransparent(canvas) {
     const imageData = context.getImageData(0, 0, width, height);
     const { data } = imageData;
     const backgroundPalette = getSheetBackgroundPalette(data, width, height);
+
+    // Determine whether to also do a global flat-white pass.
+    // When the character fills the entire tile boundary (e.g. after scale-to-fill), no edge
+    // pixel qualifies as background and the edge-seeded flood-fill removes nothing.  Detect
+    // this situation by checking the four corners; if at least two corners have flat-white (or
+    // very light neutral) pixels we know the background is present in the image and fall back to
+    // a global removal of pixels that match the flat-light threshold.  We only do this when the
+    // edge palette came back empty, to avoid clobbering interior whites when a proper edge-based
+    // palette was found.
+    const CORNER_INSET = Math.max(2, Math.round(Math.min(width, height) * 0.03));
+    const sampleCorners = [
+        [CORNER_INSET, CORNER_INSET],
+        [width - 1 - CORNER_INSET, CORNER_INSET],
+        [CORNER_INSET, height - 1 - CORNER_INSET],
+        [width - 1 - CORNER_INSET, height - 1 - CORNER_INSET],
+    ];
+    const cornerIsBackground = sampleCorners.map(([cx, cy]) => {
+        const i = ((cy * width) + cx) * 4;
+        return isSheetBackgroundPixel(data, i, backgroundPalette);
+    });
+    const backgroundCornerCount = cornerIsBackground.filter(Boolean).length;
+    const useGlobalFlatWhitePass = backgroundPalette.length === 0 && backgroundCornerCount >= 2;
+
     const visited = new Uint8Array(width * height);
     const stack = [];
     const enqueue = (x, y) => {
@@ -1253,6 +1294,24 @@ function makeCanvasBackgroundTransparent(canvas) {
         enqueue(x - 1, y);
         enqueue(x, y + 1);
         enqueue(x, y - 1);
+    }
+
+    // Global flat-white pass: when the edge-seeded flood-fill found no background (character
+    // fills the full tile boundary) but at least two corners are flat-white/light, do a full
+    // image sweep removing all flat-light background pixels.  This handles interior background
+    // regions not connected to any edge.  We use a stricter threshold than the edge-seeded pass
+    // (RGB >= 250, spread <= 10) to avoid clobbering highlights, pale skin, or teeth — we only
+    // want to remove pixels that are essentially pure white.
+    if (useGlobalFlatWhitePass) {
+        for (let pixel = 0; pixel < width * height; pixel++) {
+            throwIfExpressionGenerationStopped();
+            const i = pixel * 4;
+            if (data[i + 3] === 0) continue;
+            const { red, green, blue } = getPixelChannels(data, i);
+            if (red >= 250 && green >= 250 && blue >= 250 && getChannelSpread(red, green, blue) <= 10) {
+                data[i + 3] = 0;
+            }
+        }
     }
 
     context.putImageData(imageData, 0, 0);
