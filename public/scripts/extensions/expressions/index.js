@@ -128,6 +128,11 @@ const SHEET_BACKGROUND_BUCKET_SIZE = 16;
 const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
 const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
 const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
+const SHEET_TILE_SOURCE_INSET_RATIO = 0.025;
+const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
+const SPRITE_EDGE_BLEED_RATIO = 0.035;
+const SPRITE_EDGE_COMPONENT_KEEP_RATIO = 0.12;
+const SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO = 0.075;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -987,7 +992,7 @@ async function uploadSpriteCommand({ name, label, folder = null, spriteName = nu
 
 function setExpressionGenerationBusy(isBusy) {
     inSpriteGeneration = !!isBusy;
-    $('#expressions_generate_missing_sprites, #expressions_upload_sprite_sheet, #expressions_remove_all_sprites, .expression_list_generate, .expression_list_regenerate')
+    $('#expressions_generate_missing_sprites, #expressions_upload_sprite_sheet, #expressions_redo_sprite_cleanup, #expressions_remove_all_sprites, .expression_list_generate, .expression_list_regenerate')
         .toggleClass('disabled', inSpriteGeneration)
         .attr('aria-disabled', String(inSpriteGeneration));
     $('#expressions_stop_sprite_generation')
@@ -1191,7 +1196,7 @@ function isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette) {
 function isSheetBackgroundPixel(data, pixelIndex, backgroundPalette = []) {
     const { red, green, blue, alpha } = getPixelChannels(data, pixelIndex);
     if (alpha === 0) return true;
-    if (alpha < 24) return true;
+    if (alpha < SPRITE_FOREGROUND_ALPHA_THRESHOLD) return true;
 
     const isFlatLightBackground = red >= SHEET_BACKGROUND_RGB_THRESHOLD
         && green >= SHEET_BACKGROUND_RGB_THRESHOLD
@@ -1250,6 +1255,131 @@ function makeCanvasBackgroundTransparent(canvas) {
     context.putImageData(imageData, 0, 0);
 }
 
+function getSpriteForegroundComponents(data, width, height) {
+    const labels = new Int32Array(width * height);
+    const components = [];
+    const isForeground = pixel => data[(pixel * 4) + 3] >= SPRITE_FOREGROUND_ALPHA_THRESHOLD;
+
+    for (let startPixel = 0; startPixel < labels.length; startPixel++) {
+        if (labels[startPixel] || !isForeground(startPixel)) continue;
+
+        const label = components.length + 1;
+        const stack = [startPixel];
+        const component = {
+            label,
+            count: 0,
+            minX: width,
+            minY: height,
+            maxX: 0,
+            maxY: 0,
+        };
+        labels[startPixel] = label;
+
+        while (stack.length > 0) {
+            const pixel = stack.pop();
+            const x = pixel % width;
+            const y = Math.floor(pixel / width);
+            component.count += 1;
+            component.minX = Math.min(component.minX, x);
+            component.minY = Math.min(component.minY, y);
+            component.maxX = Math.max(component.maxX, x);
+            component.maxY = Math.max(component.maxY, y);
+
+            const neighbors = [pixel - 1, pixel + 1, pixel - width, pixel + width];
+            for (const neighbor of neighbors) {
+                if (neighbor < 0 || neighbor >= labels.length || labels[neighbor] || !isForeground(neighbor)) continue;
+                const neighborX = neighbor % width;
+                const sameRow = Math.abs(neighborX - x) <= 1;
+                if (!sameRow && Math.abs(neighbor - pixel) === 1) continue;
+                labels[neighbor] = label;
+                stack.push(neighbor);
+            }
+        }
+
+        components.push(component);
+    }
+
+    return { labels, components };
+}
+
+function getBoxDistance(a, b) {
+    const xDistance = Math.max(0, Math.max(a.minX - b.maxX, b.minX - a.maxX));
+    const yDistance = Math.max(0, Math.max(a.minY - b.maxY, b.minY - a.maxY));
+    return Math.sqrt((xDistance ** 2) + (yDistance ** 2));
+}
+
+function removeEdgeBleedArtifacts(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const { width, height } = canvas;
+    if (!width || !height) return;
+
+    const imageData = context.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const { labels, components } = getSpriteForegroundComponents(data, width, height);
+    if (components.length <= 1) return;
+
+    const mainComponent = components.reduce((largest, component) => component.count > largest.count ? component : largest, components[0]);
+    const edgeBand = Math.max(1, Math.round(Math.min(width, height) * SPRITE_EDGE_BLEED_RATIO));
+    const nearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO));
+    const minKeepCount = Math.max(24, mainComponent.count * SPRITE_EDGE_COMPONENT_KEEP_RATIO);
+    const removeLabels = new Set();
+
+    for (const component of components) {
+        if (component === mainComponent) continue;
+        const touchesEdge = component.minX <= edgeBand
+            || component.minY <= edgeBand
+            || component.maxX >= width - 1 - edgeBand
+            || component.maxY >= height - 1 - edgeBand;
+        if (!touchesEdge) continue;
+        if (component.count >= minKeepCount) continue;
+        if (getBoxDistance(component, mainComponent) <= nearMainDistance) continue;
+        removeLabels.add(component.label);
+    }
+
+    if (removeLabels.size === 0) return;
+
+    for (let pixel = 0; pixel < labels.length; pixel++) {
+        if (removeLabels.has(labels[pixel])) {
+            data[(pixel * 4) + 3] = 0;
+        }
+    }
+
+    context.putImageData(imageData, 0, 0);
+}
+
+function postProcessSpriteCanvas(canvas) {
+    makeCanvasBackgroundTransparent(canvas);
+    removeEdgeBleedArtifacts(canvas);
+}
+
+async function postProcessSpriteImage(imageUrl) {
+    throwIfExpressionGenerationStopped();
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch expression sprite: ${response.status}`);
+
+    const blob = await response.blob();
+    const sourceUrl = URL.createObjectURL(blob);
+    try {
+        const image = await loadImageElement(sourceUrl);
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if (!width || !height) throw new Error('Expression sprite has invalid dimensions.');
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Canvas is not available for expression sprite cleanup.');
+        context.drawImage(image, 0, 0, width, height);
+        postProcessSpriteCanvas(canvas);
+        return await canvasToPngObjectUrl(canvas);
+    } finally {
+        URL.revokeObjectURL(sourceUrl);
+    }
+}
+
 async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
     throwIfExpressionGenerationStopped();
     const response = await fetch(imageUrl);
@@ -1269,6 +1399,10 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
         const sourceTileHeight = sourceHeight / grid.rows;
         const outputTileWidth = Math.max(1, Math.floor(sourceTileWidth));
         const outputTileHeight = Math.max(1, Math.floor(sourceTileHeight));
+        const sourceInsetX = Math.min(sourceTileWidth / 5, Math.max(1, sourceTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
+        const sourceInsetY = Math.min(sourceTileHeight / 5, Math.max(1, sourceTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
+        const outputInsetX = Math.min(outputTileWidth / 5, Math.max(1, outputTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
+        const outputInsetY = Math.min(outputTileHeight / 5, Math.max(1, outputTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
 
         for (let index = 0; index < tileCount; index++) {
             throwIfExpressionGenerationStopped();
@@ -1281,16 +1415,16 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
             if (!context) throw new Error('Canvas is not available for sprite sheet splitting.');
             context.drawImage(
                 image,
-                column * sourceTileWidth,
-                row * sourceTileHeight,
-                sourceTileWidth,
-                sourceTileHeight,
-                0,
-                0,
-                outputTileWidth,
-                outputTileHeight,
+                (column * sourceTileWidth) + sourceInsetX,
+                (row * sourceTileHeight) + sourceInsetY,
+                sourceTileWidth - (sourceInsetX * 2),
+                sourceTileHeight - (sourceInsetY * 2),
+                outputInsetX,
+                outputInsetY,
+                outputTileWidth - (outputInsetX * 2),
+                outputTileHeight - (outputInsetY * 2),
             );
-            makeCanvasBackgroundTransparent(canvas);
+            postProcessSpriteCanvas(canvas);
             tileUrls.push(await canvasToPngObjectUrl(canvas));
         }
 
@@ -1398,10 +1532,11 @@ function getSpriteFilesForFolder(spriteFolderName) {
         .flatMap(sprite => (sprite.files || []).map(file => ({
             label: file.expression || sprite.label,
             fileName: file.fileName,
+            imageSrc: file.imageSrc,
             spriteName: withoutExtension(file.fileName || ''),
         })))
         .filter(file => {
-            if (!file.label || !file.spriteName) return false;
+            if (!file.label || !file.spriteName || !file.imageSrc) return false;
             const key = `${file.label}/${file.spriteName}`;
             if (seen.has(key)) return false;
             seen.add(key);
@@ -1418,6 +1553,25 @@ async function deleteExpressionSpriteFile(name, label, spriteName) {
 
     if (!result.ok) {
         throw new Error(`Sprite delete failed with status ${result.status}`);
+    }
+}
+
+async function reprocessExpressionSpriteFile(name, uploadName, file) {
+    let processedUrl = null;
+    try {
+        processedUrl = await postProcessSpriteImage(file.imageSrc);
+        throwIfExpressionGenerationStopped();
+        const uploadedSpriteName = await uploadSpriteCommand({
+            name: uploadName,
+            label: file.label,
+            folder: name,
+            spriteName: file.spriteName,
+        }, processedUrl);
+        throwIfExpressionGenerationStopped();
+        setExpressionGenerationBusy(inSpriteGeneration);
+        return Boolean(uploadedSpriteName);
+    } finally {
+        if (processedUrl) URL.revokeObjectURL(processedUrl);
     }
 }
 
@@ -1519,6 +1673,65 @@ async function onClickRemoveAllSprites(event) {
     if (failedCount > 0) {
         toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite Generation`);
     }
+}
+
+async function onClickRedoSpriteCleanup(event) {
+    event.stopPropagation();
+
+    const name = $('#image_list').data('name');
+    if (!name) {
+        toastr.warning(t`Open a chat before cleaning expression sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    await validateImages(name);
+    const spriteFiles = getSpriteFilesForFolder(name);
+    if (spriteFiles.length === 0) {
+        toastr.info(t`This sprite set has no images to clean.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Redo Crop and Transparency`,
+        t`Reprocess ${spriteFiles.length} sprite image(s) in ${name} with the improved crop and transparency cleanup? Existing sprite files will be overwritten.`,
+    );
+
+    if (!confirmed) return;
+
+    await withExpressionGenerationLock(async () => {
+        const cleanupToast = toastr.info(t`Cleaning expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const { uploadName } = getExpressionGenerationTarget(name);
+        let cleanedCount = 0;
+        let failedCount = 0;
+
+        try {
+            for (const file of spriteFiles) {
+                try {
+                    throwIfExpressionGenerationStopped();
+                    const cleaned = await reprocessExpressionSpriteFile(name, uploadName, file);
+                    if (cleaned) cleanedCount++;
+                    else failedCount++;
+                } catch (error) {
+                    if (isExpressionGenerationAbortError(error)) throw error;
+                    failedCount++;
+                    console.error(`[${MODULE_NAME}] Failed to clean sprite ${file.fileName}:`, error);
+                }
+            }
+        } finally {
+            toastr.clear(cleanupToast);
+            delete spriteCache[name];
+            await fetchImagesNoCache();
+            await validateImages(name);
+        }
+
+        if (cleanedCount > 0) {
+            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s).`, t`Sprite Generation`);
+        }
+
+        if (failedCount > 0) {
+            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite Generation`);
+        }
+    });
 }
 
 async function onClickUploadSpriteSheet(event) {
@@ -2999,6 +3212,9 @@ export async function init() {
             .on('keydown', onExpressionGenerationKeydown);
         $('#expressions_upload_sprite_sheet')
             .on('click', onClickUploadSpriteSheet)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_redo_sprite_cleanup')
+            .on('click', onClickRedoSpriteCleanup)
             .on('keydown', onExpressionGenerationKeydown);
         $('#expressions_stop_sprite_generation')
             .on('click', onClickStopExpressionGeneration)

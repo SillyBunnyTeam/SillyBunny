@@ -239,6 +239,7 @@ img.expression.default {
 
 #expressions_generate_missing_sprites,
 #expressions_upload_sprite_sheet,
+#expressions_redo_sprite_cleanup,
 .expression_list_generate,
 .expression_list_regenerate {
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
@@ -259,6 +260,7 @@ img.expression.default {
 
 #expressions_generate_missing_sprites[aria-disabled="true"],
 #expressions_upload_sprite_sheet[aria-disabled="true"],
+#expressions_redo_sprite_cleanup[aria-disabled="true"],
 #expressions_remove_all_sprites[aria-disabled="true"],
 .expression_list_generate[aria-disabled="true"],
 .expression_list_regenerate[aria-disabled="true"] {

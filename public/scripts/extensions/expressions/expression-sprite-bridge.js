@@ -50,6 +50,10 @@ const EXPRESSION_SPRITE_NEGATIVE = [
     'labels',
     'text',
     'expression names',
+    'overlapping cells',
+    'sprites crossing cell boundaries',
+    'cut off character',
+    'adjacent sprite fragments',
 ].join(', ');
 const EXPRESSION_SPRITE_FRAMING_PROMPTS = {
     [EXPRESSION_SPRITE_FRAMING.bust]: [
@@ -120,6 +124,8 @@ function buildSheetGenerationInstructions(expressions, characterName, grid) {
         'Use true alpha transparency for the sheet and every cell. If true transparency is not available, use a flat pure white background only.',
         'Do not draw a checkerboard, transparency grid, gray squares, paper texture, or any background pattern.',
         'No captions, labels, numbers, expression names, borders, gutters, panel outlines, or decorative dividers.',
+        'Keep every character, prop, weapon, accessory, hair strand, and shadow fully inside its own cell with clear transparent padding on all sides.',
+        'Do not let any part of a sprite cross into another cell. Adjacent cells must never overlap or leak into each other.',
         'Each filled cell must contain exactly one clean sprite tile that can be cropped by equal grid coordinates.',
     ].filter(Boolean).join('\n');
 }
