@@ -2,9 +2,11 @@ import { describe, expect, test } from '@jest/globals';
 import {
     buildChatCompletionPreset,
     buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingSettingsSnapshot,
     buildReverseProxyPresetForSave,
     getChatCompletionConnectionPresetKeys,
     getChatCompletionSamplingPresetKeys,
+    getChatCompletionSamplingSettingsKeys,
     normalizeReverseProxyPreset,
     shouldIncludeConnectionFieldsInPreset,
     shouldIncludeSamplingFieldsInPreset,
@@ -205,8 +207,24 @@ describe('Chat Completion preset utilities', () => {
         ]);
     });
 
+    test('lists sampling settings keys using live setting names', () => {
+        expect(getChatCompletionSamplingSettingsKeys(settingsMapWithSampling)).toEqual([
+            'temp_openai',
+            'freq_pen_openai',
+        ]);
+    });
+
+    test('builds model sampling snapshots from sampling flags', () => {
+        expect(buildChatCompletionSamplingSettingsSnapshot(settings, settingsMapWithSampling)).toEqual({
+            temp_openai: 0.72,
+            freq_pen_openai: 0.1,
+        });
+    });
+
     test('returns empty sampling keys for maps without sampling flags', () => {
         expect(getChatCompletionSamplingPresetKeys(settingsMap)).toEqual([]);
+        expect(getChatCompletionSamplingSettingsKeys(settingsMap)).toEqual([]);
+        expect(buildChatCompletionSamplingSettingsSnapshot(settings, settingsMap)).toEqual({});
     });
 
     test('includes sampling fields by default when bind_preset_to_sampling is not set', () => {

@@ -3,7 +3,7 @@
  * The default preserves legacy behavior by including connection fields.
  *
  * @param {Record<string, any>} settings Live OpenAI settings
- * @param {Record<string, [string, string, boolean, boolean, boolean]>} settingsMap OpenAI preset setting map
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
  * @param {object} [options] Build options
  * @param {boolean} [options.includeConnection=true] Whether to include provider/model/API fields
  * @param {boolean} [options.includeSampling=true] Whether to include sampling/temperature/penalty fields
@@ -30,7 +30,7 @@ export function buildChatCompletionPreset(settings, settingsMap, { includeConnec
 /**
  * Lists preset keys that represent provider/model/API connection state.
  *
- * @param {Record<string, [string, string, boolean, boolean]>} settingsMap OpenAI preset setting map
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
  * @returns {string[]} Preset keys that should be treated as connection fields
  */
 export function getChatCompletionConnectionPresetKeys(settingsMap) {
@@ -42,13 +42,42 @@ export function getChatCompletionConnectionPresetKeys(settingsMap) {
 /**
  * Lists preset keys that represent sampling/temperature/penalty settings.
  *
- * @param {Record<string, [string, string, boolean, boolean, boolean]>} settingsMap OpenAI preset setting map
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
  * @returns {string[]} Preset keys that should be treated as sampling fields
  */
 export function getChatCompletionSamplingPresetKeys(settingsMap) {
     return Object.entries(settingsMap ?? {})
         .filter(([, [, , , , isSampling]]) => isSampling)
         .map(([presetKey]) => presetKey);
+}
+
+/**
+ * Lists settings keys that represent sampling/temperature/penalty settings.
+ *
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
+ * @returns {string[]} Settings keys that should be stored in model sampling profiles
+ */
+export function getChatCompletionSamplingSettingsKeys(settingsMap) {
+    return Object.entries(settingsMap ?? {})
+        .filter(([, [, , , , isSampling]]) => isSampling)
+        .map(([, [, settingsKey]]) => settingsKey);
+}
+
+/**
+ * Builds a model sampling profile snapshot from live settings.
+ *
+ * @param {Record<string, any>} settings Live OpenAI settings
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
+ * @returns {Record<string, any>} Sampling settings snapshot
+ */
+export function buildChatCompletionSamplingSettingsSnapshot(settings, settingsMap) {
+    const snapshot = {};
+
+    for (const settingsKey of getChatCompletionSamplingSettingsKeys(settingsMap)) {
+        snapshot[settingsKey] = settings?.[settingsKey];
+    }
+
+    return structuredClone(snapshot);
 }
 
 /**
@@ -68,6 +97,7 @@ export function shouldIncludeConnectionFieldsInPreset(settings) {
  * @returns {boolean} True when sampling fields should be included in presets
  */
 export function shouldIncludeSamplingFieldsInPreset(settings) {
+    // Legacy settings that predate this toggle should keep saving sampling fields.
     return settings?.bind_preset_to_sampling !== false;
 }
 
@@ -75,7 +105,7 @@ export function shouldIncludeSamplingFieldsInPreset(settings) {
  * Builds a Chat Completion preset body using the current linked-preset mode.
  *
  * @param {Record<string, any>} settings Live OpenAI settings
- * @param {Record<string, [string, string, boolean, boolean, boolean]>} settingsMap OpenAI preset setting map
+ * @param {Record<string, [string, string, boolean, boolean, boolean?]>} settingsMap OpenAI preset setting map
  * @returns {Record<string, any>} Preset body
  */
 export function buildChatCompletionPresetForSave(settings, settingsMap) {

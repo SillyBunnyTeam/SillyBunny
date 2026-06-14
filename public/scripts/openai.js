@@ -86,7 +86,13 @@ import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } fr
 import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
-import { buildChatCompletionPresetForSave, buildReverseProxyPresetForSave, normalizeReverseProxyPreset } from './openai-preset-utils.js';
+import {
+    buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingSettingsSnapshot,
+    buildReverseProxyPresetForSave,
+    normalizeReverseProxyPreset,
+    shouldIncludeSamplingFieldsInPreset,
+} from './openai-preset-utils.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 
 export {
@@ -408,8 +414,9 @@ const sensitiveFields = [
 ];
 
 /**
- * preset_name -> [selector, setting_name, is_checkbox, is_connection]
- * @type {Record<string, [string, string, boolean, boolean]>}
+ * preset_name -> [selector, setting_name, is_checkbox, is_connection, is_sampling]
+ * The optional is_sampling flag marks fields for preset sampling binding and model sampling profiles.
+ * @type {Record<string, [string, string, boolean, boolean, boolean?]>}
  */
 export const settingsToUpdate = {
     chat_completion_source: ['#chat_completion_source', 'chat_completion_source', false, true, false],
@@ -639,6 +646,7 @@ const default_settings = {
     seed: -1,
     n: 1,
     bind_preset_to_connection: false,
+    // Undefined keeps legacy saved settings linked; use shouldIncludeSamplingFieldsInPreset when reading it.
     bind_preset_to_sampling: true,
     model_sampling_profiles: {},
     model_sampling_profiles_enabled: false,
@@ -6596,10 +6604,10 @@ function loadOpenAISettings(data, settings) {
 
     $(`#settings_preset_openai option[value="${openai_setting_names[oai_settings.preset_settings_openai]}"]`).prop('selected', true);
     $('#bind_preset_to_connection').prop('checked', oai_settings.bind_preset_to_connection);
-    $('#bind_preset_to_sampling').prop('checked', oai_settings.bind_preset_to_sampling !== false);
+    $('#bind_preset_to_sampling').prop('checked', shouldIncludeSamplingFieldsInPreset(oai_settings));
     updateBindPresetToConnectionHelp();
     updateBindPresetToSamplingHelp();
-    updateModelSamplingProfilesHelp();
+    syncModelSamplingProfilesUI();
     $('#openai_external_category').toggle(oai_settings.show_external_models);
     $('.reverse_proxy_warning').toggle(oai_settings.reverse_proxy !== '');
 
@@ -6652,7 +6660,7 @@ function updateBindPresetToSamplingHelp() {
         return;
     }
 
-    if (oai_settings.bind_preset_to_sampling !== false) {
+    if (shouldIncludeSamplingFieldsInPreset(oai_settings)) {
         copy.textContent = t`Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset.`;
         tip.textContent = t`Use this when each preset stores its own sampling values.`;
         return;
@@ -6662,17 +6670,15 @@ function updateBindPresetToSamplingHelp() {
     tip.textContent = t`Recommended when different models need different sampling settings.`;
 }
 
-function updateModelSamplingProfilesHelp() {
+function syncModelSamplingProfilesUI() {
     const $toggle = $('#model_sampling_profiles_enabled');
-    const $container = $('#model_sampling_profiles_container');
 
-    if (!$toggle.length || !$container.length) {
+    if (!$toggle.length) {
         return;
     }
 
-    const enabled = oai_settings.model_sampling_profiles_enabled;
+    const enabled = Boolean(oai_settings.model_sampling_profiles_enabled);
     $toggle.prop('checked', enabled);
-    $container.toggle(enabled);
 }
 
 function getModelSamplingProfileKey() {
@@ -6685,36 +6691,36 @@ function getModelSamplingProfileKey() {
 }
 
 function getSamplingSettingsSnapshot() {
-    return {
-        temp_openai: oai_settings.temp_openai,
-        freq_pen_openai: oai_settings.freq_pen_openai,
-        pres_pen_openai: oai_settings.pres_pen_openai,
-        top_p_openai: oai_settings.top_p_openai,
-        top_k_openai: oai_settings.top_k_openai,
-        min_p_openai: oai_settings.min_p_openai,
-        top_a_openai: oai_settings.top_a_openai,
-        repetition_penalty_openai: oai_settings.repetition_penalty_openai,
-        claude_disable_temperature: oai_settings.claude_disable_temperature,
-        claude_disable_top_p: oai_settings.claude_disable_top_p,
-    };
+    return buildChatCompletionSamplingSettingsSnapshot(oai_settings, settingsToUpdate);
 }
 
 function applySamplingSettings(profile) {
     if (!profile) {
         return false;
     }
-    const keys = Object.keys(getSamplingSettingsSnapshot());
+
+    const updateInput = (selector, value) => $(selector).val(value).trigger('input');
+    const updateCheckbox = (selector, value) => $(selector).prop('checked', value).trigger('input');
     let changed = false;
-    for (const key of keys) {
-        if (profile[key] !== undefined && profile[key] !== oai_settings[key]) {
-            const $input = $(`#${key}`);
-            if ($input.length > 0) {
-                $input.val(profile[key]).trigger('input');
-            }
-            oai_settings[key] = profile[key];
-            changed = true;
+
+    for (const [selector, setting, isCheckbox, , isSampling] of Object.values(settingsToUpdate)) {
+        if (!isSampling || profile[setting] === undefined || profile[setting] === oai_settings[setting]) {
+            continue;
         }
+
+        const value = profile[setting];
+        if (selector) {
+            if (isCheckbox) {
+                updateCheckbox(selector, value);
+            } else {
+                updateInput(selector, value);
+            }
+        }
+
+        oai_settings[setting] = value;
+        changed = true;
     }
+
     return changed;
 }
 
@@ -6723,9 +6729,6 @@ function saveSamplingProfileForCurrentModel() {
     if (!profileKey) {
         toastr.warning(t`No model is currently selected.`, t`Cannot save sampling profile`);
         return;
-    }
-    if (!oai_settings.model_sampling_profiles) {
-        oai_settings.model_sampling_profiles = {};
     }
     oai_settings.model_sampling_profiles[profileKey] = getSamplingSettingsSnapshot();
     saveSettingsDebounced();
@@ -6739,11 +6742,14 @@ function clearSamplingProfileForCurrentModel() {
         toastr.warning(t`No model is currently selected.`, t`Cannot clear sampling profile`);
         return;
     }
-    if (oai_settings.model_sampling_profiles && oai_settings.model_sampling_profiles[profileKey]) {
+    if (oai_settings.model_sampling_profiles?.[profileKey]) {
         delete oai_settings.model_sampling_profiles[profileKey];
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
         toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model sampling profile removed`);
+    } else {
+        const modelLabel = getChatCompletionModel();
+        toastr.info(t`No saved sampling profile exists for ${modelLabel}.`, t`No sampling profile to clear`);
     }
 }
 
@@ -7475,7 +7481,7 @@ function onSettingsPresetChange() {
                 continue;
             }
 
-            if (isSampling && oai_settings.bind_preset_to_sampling === false) {
+            if (isSampling && !shouldIncludeSamplingFieldsInPreset(oai_settings)) {
                 continue;
             }
 
@@ -10280,7 +10286,7 @@ export function initOpenAI() {
 
     $('#model_sampling_profiles_enabled').on('input', function () {
         oai_settings.model_sampling_profiles_enabled = !!$(this).prop('checked');
-        updateModelSamplingProfilesHelp();
+        syncModelSamplingProfilesUI();
         if (oai_settings.model_sampling_profiles_enabled) {
             maybeApplyModelSamplingProfile();
         }
