@@ -59,6 +59,7 @@ const CHATROOM_STYLE_VALUES = new Set([
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
+    'infomercial',
     CHATROOM_CUSTOM_STYLE_VALUE,
 ]);
 const DIRECTOR_COMMENTARY_VOICE_VALUES = new Set([

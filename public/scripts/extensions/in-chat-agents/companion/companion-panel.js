@@ -28,9 +28,11 @@ import {
 const PANEL_HISTORY_LIMIT = 5;
 const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
 const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
 const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
 const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
+const CHATROOM_REPLY_MAX_CHARS = 2000;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -337,6 +339,15 @@ function isPlotCompassAgent(agent = {}) {
     return templateId === PLOT_COMPASS_TEMPLATE_ID;
 }
 
+function isChatroomAgent(agent = {}) {
+    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
+    return templateId === CHATROOM_TEMPLATE_ID;
+}
+
+function normalizeChatroomReply(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHATROOM_REPLY_MAX_CHARS);
+}
+
 function normalizeChatOnlyInput(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
 }
@@ -491,10 +502,29 @@ function buildPlotCompassObjectiveComposer(state) {
     `;
 }
 
+function buildChatroomReplyComposer(state) {
+    if (!isChatroomAgent(state.agent)) {
+        return '';
+    }
+
+    return `
+        <div class="ica--chatonly-composer ica--tpanel-chatroom-reply">
+            <label>
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
+            </label>
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send your reply to the chatroom" aria-label="Send reply">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+    `;
+}
+
 function buildPanelEntryControls(state) {
     return [
         buildPlotCompassObjectiveComposer(state),
         buildChatOnlyComposer(state),
+        buildChatroomReplyComposer(state),
     ].filter(Boolean).join('');
 }
 
@@ -733,6 +763,45 @@ async function handlePanelAction(event) {
                 extraContextSections: [{
                     title: 'Chat Only side chat',
                     content: transcript,
+                }],
+            });
+        } finally {
+            button.prop('disabled', false);
+            inputField.prop('disabled', false).val('');
+            if (panelOpen) {
+                renderPanel();
+            }
+        }
+        return;
+    }
+
+    if (action === 'panel-chatroom-reply-send') {
+        const agent = getPanelAgents().find(candidate => candidate.id === agentId);
+        if (!agent || !isChatroomAgent(agent)) {
+            toastr.warning('Chatroom reply is not available.');
+            return;
+        }
+
+        const inputField = section.find('[data-role="chatroom-reply-input"]');
+        const userInput = normalizeChatroomReply(inputField.val());
+        if (!userInput) {
+            toastr.warning('Type a reply first.');
+            return;
+        }
+
+        const lastAssistantIndex = getLatestAssistantIndex();
+        if (lastAssistantIndex < 0) {
+            toastr.warning('No assistant reply yet to respond to.');
+            return;
+        }
+
+        button.prop('disabled', true);
+        inputField.prop('disabled', true);
+        try {
+            await runCompanionAgentOnMessage(agentId, lastAssistantIndex, {
+                extraContextSections: [{
+                    title: 'Viewer reply',
+                    content: userInput,
                 }],
             });
         } finally {

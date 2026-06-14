@@ -37,6 +37,7 @@ const CHATROOM_STYLE_VALUES = new Set([
     'ao3/wattpad',
     'newsroom',
     'thread-board/4chan',
+    'infomercial',
     'custom',
 ]);
 const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
@@ -44,6 +45,11 @@ const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
 const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
 const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
+const CHATROOM_REPLY_MAX_CHARS = 2000;
+
+function normalizeChatroomReply(value = '') {
+    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHATROOM_REPLY_MAX_CHARS);
+}
 
 function getAgentTemplateId(agent = {}) {
     return String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
@@ -378,6 +384,25 @@ function buildChatOnlyCardComposer(agentId) {
     `;
 }
 
+function buildChatroomReplyComposer(agentId) {
+    const agent = getAgentById(agentId);
+    if (!isChatroomAgent(agent)) {
+        return '';
+    }
+
+    return `
+        <div class="ica--chatonly-composer ica--companion-chatroom-reply">
+            <label>
+                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
+            </label>
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chatroom-reply-send" title="Send your reply to the chatroom" aria-label="Send reply">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+    `;
+}
+
 function buildPlotCompassObjectiveComposer(agentId) {
     const agent = getAgentById(agentId);
     if (!isPlotCompassAgent(agent)) {
@@ -402,6 +427,7 @@ function buildCompanionCardControls(agentId) {
     return [
         buildPlotCompassObjectiveComposer(agentId),
         buildChatOnlyCardComposer(agentId),
+        buildChatroomReplyComposer(agentId),
     ].filter(Boolean).join('');
 }
 
@@ -699,6 +725,41 @@ async function sendChatOnlyAside({ agentId, messageIndex, transcript = '', userI
     }
 }
 
+async function sendChatroomUserReply({ agentId, messageIndex, userInput = '', button = null, inputField = null } = {}) {
+    const agent = getAgentById(agentId);
+    if (!agent || !isChatroomAgent(agent)) {
+        toastr.warning('Chatroom reply is not available.');
+        return;
+    }
+
+    const normalizedInput = normalizeChatroomReply(userInput);
+    if (!normalizedInput) {
+        toastr.warning('Type a reply first.');
+        return;
+    }
+
+    if (!isAssistantMessage(chat[messageIndex])) {
+        toastr.warning('No assistant reply yet to respond to.');
+        return;
+    }
+
+    button?.prop?.('disabled', true);
+    inputField?.prop?.('disabled', true);
+    try {
+        await runCompanionAgentOnMessage(agentId, messageIndex, {
+            extraContextSections: [{
+                title: 'Viewer reply',
+                content: normalizedInput,
+            }],
+        });
+        inputField?.val?.('');
+        renderCompanionResultsForMessage(messageIndex);
+    } finally {
+        button?.prop?.('disabled', false);
+        inputField?.prop?.('disabled', false);
+    }
+}
+
 async function savePlotCompassObjective({ agentId, messageIndex, objective = '', button = null, inputField = null } = {}) {
     const agent = getAgentById(agentId);
     if (!agent || !isPlotCompassAgent(agent)) {
@@ -711,10 +772,10 @@ async function savePlotCompassObjective({ agentId, messageIndex, objective = '',
         return;
     }
 
-    const nextObjective = normalizePlotCompassObjective(objective);
     button?.prop?.('disabled', true);
     inputField?.prop?.('disabled', true);
     try {
+        const nextObjective = normalizePlotCompassObjective(objective);
         await setAgentSetting(agent, 'plotCompassObjective', nextObjective);
         await runCompanionAgentOnMessage(agentId, messageIndex);
         renderCompanionResultsForMessage(messageIndex);
@@ -797,6 +858,19 @@ async function handleCompanionAction(event) {
             agentId,
             messageIndex,
             transcript: result?.content ?? '',
+            userInput: inputField.val(),
+            button: $(event.currentTarget),
+            inputField,
+        });
+        return;
+    }
+
+    if (action === 'chatroom-reply-send') {
+        const card = $(event.currentTarget).closest('.ica--companion-card');
+        const inputField = card.find('[data-role="chatroom-reply-input"]');
+        await sendChatroomUserReply({
+            agentId,
+            messageIndex,
             userInput: inputField.val(),
             button: $(event.currentTarget),
             inputField,
