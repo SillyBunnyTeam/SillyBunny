@@ -243,6 +243,15 @@ img.expression.default {
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
 }
 
+#expressions_stop_sprite_generation {
+    display: none;
+    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
+#expressions_stop_sprite_generation.active {
+    display: flex;
+}
+
 #expressions_generate_missing_sprites[aria-disabled="true"],
 .expression_list_generate[aria-disabled="true"],
 .expression_list_regenerate[aria-disabled="true"] {

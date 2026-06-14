@@ -20,9 +20,12 @@ import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import {
     DEFAULT_EXPRESSION_SPRITE_PROMPT,
+    LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT,
     getAgentExpressionLabel,
     isExpressionsAgentAvailable,
     maybeGenerateExpressionSprite,
+    maybeGenerateExpressionSpriteSheet,
+    stopExpressionSpriteGeneration,
     syncExpressionsAgentProfile,
     cleanupExpressionAgentSpinner,
 } from './expressions-agent.js';
@@ -111,6 +114,16 @@ const EXPRESSION_SPRITE_FRAMING = {
 
 const DEFAULT_EXPRESSION_SPRITE_FRAMING = EXPRESSION_SPRITE_FRAMING.bust;
 
+/** @enum {string} */
+const EXPRESSION_SPRITE_GENERATION_MODE = {
+    individual: 'individual',
+    sheet: 'sheet',
+};
+
+const DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE = EXPRESSION_SPRITE_GENERATION_MODE.individual;
+const SHEET_BACKGROUND_RGB_THRESHOLD = 238;
+const SHEET_BACKGROUND_CHANNEL_SPREAD = 28;
+
 let expressionsList = null;
 let lastCharacter = undefined;
 let lastMessage = null;
@@ -119,6 +132,7 @@ let spriteCache = {};
 let inApiCall = false;
 let lastServerResponseTime = 0;
 let inSpriteGeneration = false;
+let expressionGenerationCancelRequested = false;
 
 /** @type {{[characterName: string]: string}} */
 export let lastExpression = {};
@@ -637,6 +651,7 @@ async function moduleWorker({ newChat = false } = {}) {
             if (!hasSprite) {
                 setExpressionGenerationBusy(true);
                 maybeGenerateExpressionSprite(expression, currentLastMessage.name, currentLastMessage.original_avatar).then(async (imageUrl) => {
+                    throwIfExpressionGenerationStopped();
                     if (imageUrl) {
                         await uploadSpriteCommand({
                             name: currentLastMessage.original_avatar || currentLastMessage.name,
@@ -645,6 +660,7 @@ async function moduleWorker({ newChat = false } = {}) {
                         }, imageUrl);
                     }
                 }).catch((error) => {
+                    if (isExpressionGenerationAbortError(error)) return;
                     console.error('[Expressions Agent] Auto sprite generation failed:', error);
                 }).finally(() => {
                     setExpressionGenerationBusy(false);
@@ -969,6 +985,41 @@ function setExpressionGenerationBusy(isBusy) {
     $('#expressions_generate_missing_sprites, .expression_list_generate, .expression_list_regenerate')
         .toggleClass('disabled', inSpriteGeneration)
         .attr('aria-disabled', String(inSpriteGeneration));
+    $('#expressions_stop_sprite_generation')
+        .toggleClass('active', inSpriteGeneration)
+        .attr('aria-disabled', String(!inSpriteGeneration));
+
+    if (!inSpriteGeneration) {
+        expressionGenerationCancelRequested = false;
+    }
+}
+
+function isExpressionGenerationAbortError(error) {
+    return error?.name === 'AbortError';
+}
+
+function throwIfExpressionGenerationStopped() {
+    if (expressionGenerationCancelRequested) {
+        throw new DOMException('Expression sprite generation stopped by user', 'AbortError');
+    }
+}
+
+async function requestExpressionGenerationStop() {
+    if (!inSpriteGeneration) {
+        toastr.info(t`No sprite generation is running.`, t`Sprite Generation`);
+        return;
+    }
+
+    expressionGenerationCancelRequested = true;
+    const stopped = await stopExpressionSpriteGeneration();
+    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite Generation`);
+}
+
+function getExpressionSpriteGenerationMode() {
+    const mode = extension_settings.expressions.agentSpriteGenerationMode;
+    return Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(mode)
+        ? mode
+        : DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
 }
 
 function getExpressionGenerationTarget(spriteFolderName) {
@@ -1003,7 +1054,9 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         ? generateUniqueSpriteName(expression, existingFiles)
         : expression);
     const { characterName, characterAvatar, uploadName } = getExpressionGenerationTarget(spriteFolderName);
+    throwIfExpressionGenerationStopped();
     const imageUrl = await maybeGenerateExpressionSprite(expression, characterName, characterAvatar);
+    throwIfExpressionGenerationStopped();
 
     if (!imageUrl) {
         if (showToast) toastr.warning(t`Quick Image Gen did not return an image.`, t`Sprite Generation`);
@@ -1016,6 +1069,7 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         folder: spriteFolderName,
         spriteName: targetSpriteName,
     }, imageUrl);
+    throwIfExpressionGenerationStopped();
     setExpressionGenerationBusy(inSpriteGeneration);
 
     if (!uploadedSpriteName) return false;
@@ -1024,6 +1078,190 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         toastr.success(message, t`Sprite Generation`);
     }
     return true;
+}
+
+function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Failed to load generated sprite sheet image.'));
+        image.src = src;
+    });
+}
+
+function canvasToPngObjectUrl(canvas) {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error('Failed to split generated sprite sheet.'));
+                return;
+            }
+            resolve(URL.createObjectURL(blob));
+        }, 'image/png');
+    });
+}
+
+function isSheetBackgroundPixel(data, pixelIndex) {
+    const red = data[pixelIndex];
+    const green = data[pixelIndex + 1];
+    const blue = data[pixelIndex + 2];
+    const alpha = data[pixelIndex + 3];
+    if (alpha === 0) return true;
+    if (alpha < 24) return true;
+
+    const maxChannel = Math.max(red, green, blue);
+    const minChannel = Math.min(red, green, blue);
+    return red >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && green >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && blue >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && (maxChannel - minChannel) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
+}
+
+function makeCanvasBackgroundTransparent(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const { width, height } = canvas;
+    if (!width || !height) return;
+
+    const imageData = context.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const visited = new Uint8Array(width * height);
+    const stack = [];
+    const enqueue = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const pixel = (y * width) + x;
+        if (visited[pixel]) return;
+        visited[pixel] = 1;
+        if (isSheetBackgroundPixel(data, pixel * 4)) stack.push(pixel);
+    };
+
+    for (let x = 0; x < width; x++) {
+        enqueue(x, 0);
+        enqueue(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        enqueue(0, y);
+        enqueue(width - 1, y);
+    }
+
+    while (stack.length > 0) {
+        throwIfExpressionGenerationStopped();
+        const pixel = stack.pop();
+        const x = pixel % width;
+        const y = Math.floor(pixel / width);
+        data[(pixel * 4) + 3] = 0;
+
+        enqueue(x + 1, y);
+        enqueue(x - 1, y);
+        enqueue(x, y + 1);
+        enqueue(x, y - 1);
+    }
+
+    context.putImageData(imageData, 0, 0);
+}
+
+async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
+    throwIfExpressionGenerationStopped();
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch generated sprite sheet: ${response.status}`);
+
+    const blob = await response.blob();
+    const sourceUrl = URL.createObjectURL(blob);
+    const tileUrls = [];
+
+    try {
+        const image = await loadImageElement(sourceUrl);
+        const sourceWidth = image.naturalWidth || image.width;
+        const sourceHeight = image.naturalHeight || image.height;
+        if (!sourceWidth || !sourceHeight) throw new Error('Generated sprite sheet has invalid dimensions.');
+
+        const sourceTileWidth = sourceWidth / grid.columns;
+        const sourceTileHeight = sourceHeight / grid.rows;
+        const outputTileWidth = Math.max(1, Math.floor(sourceTileWidth));
+        const outputTileHeight = Math.max(1, Math.floor(sourceTileHeight));
+
+        for (let index = 0; index < tileCount; index++) {
+            throwIfExpressionGenerationStopped();
+            const column = index % grid.columns;
+            const row = Math.floor(index / grid.columns);
+            const canvas = document.createElement('canvas');
+            canvas.width = outputTileWidth;
+            canvas.height = outputTileHeight;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('Canvas is not available for sprite sheet splitting.');
+            context.drawImage(
+                image,
+                column * sourceTileWidth,
+                row * sourceTileHeight,
+                sourceTileWidth,
+                sourceTileHeight,
+                0,
+                0,
+                outputTileWidth,
+                outputTileHeight,
+            );
+            makeCanvasBackgroundTransparent(canvas);
+            tileUrls.push(await canvasToPngObjectUrl(canvas));
+        }
+
+        return tileUrls;
+    } catch (error) {
+        tileUrls.forEach(url => URL.revokeObjectURL(url));
+        throw error;
+    } finally {
+        URL.revokeObjectURL(sourceUrl);
+    }
+}
+
+async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderName) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0) return { generatedCount: 0, failedCount: 0 };
+
+    const { characterName, characterAvatar, uploadName } = getExpressionGenerationTarget(spriteFolderName);
+    throwIfExpressionGenerationStopped();
+    const sheet = await maybeGenerateExpressionSpriteSheet(labels, characterName, characterAvatar);
+    throwIfExpressionGenerationStopped();
+    if (!sheet?.imageUrl) {
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    /** @type {string[]} */
+    let tileUrls = [];
+    try {
+        tileUrls = await splitSpriteSheetImage(sheet.imageUrl, sheet.grid, labels.length);
+    } catch (error) {
+        if (isExpressionGenerationAbortError(error)) throw error;
+        console.error('[Expressions] Failed to split generated sprite sheet:', error);
+        toastr.warning(t`Generated sheet could not be split into expression sprites.`, t`Sprite Generation`);
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    let generatedCount = 0;
+    let failedCount = Math.max(0, labels.length - tileUrls.length);
+
+    try {
+        for (let index = 0; index < labels.length && index < tileUrls.length; index++) {
+            throwIfExpressionGenerationStopped();
+            const expression = labels[index];
+            const uploadedSpriteName = await uploadSpriteCommand({
+                name: uploadName,
+                label: expression,
+                folder: spriteFolderName,
+                spriteName: expression,
+            }, tileUrls[index]);
+            throwIfExpressionGenerationStopped();
+            setExpressionGenerationBusy(inSpriteGeneration);
+
+            if (uploadedSpriteName) generatedCount++;
+            else failedCount++;
+        }
+    } finally {
+        tileUrls.forEach(url => URL.revokeObjectURL(url));
+    }
+
+    return { generatedCount, failedCount };
 }
 
 async function withExpressionGenerationLock(task) {
@@ -1035,6 +1273,12 @@ async function withExpressionGenerationLock(task) {
     setExpressionGenerationBusy(true);
     try {
         return await task();
+    } catch (error) {
+        if (isExpressionGenerationAbortError(error)) {
+            toastr.info(t`Sprite generation stopped.`, t`Sprite Generation`);
+            return null;
+        }
+        throw error;
     } finally {
         setExpressionGenerationBusy(false);
     }
@@ -1083,6 +1327,11 @@ async function onClickExpressionRegenerate(event) {
     }));
 }
 
+async function onClickStopExpressionGeneration(event) {
+    event.stopPropagation();
+    await requestExpressionGenerationStop();
+}
+
 async function onClickGenerateMissingSprites(event) {
     event.stopPropagation();
 
@@ -1100,7 +1349,9 @@ async function onClickGenerateMissingSprites(event) {
 
     const confirmed = await Popup.show.confirm(
         t`Generate Missing Sprites`,
-        t`Generate ${missingLabels.length} missing sprite(s) for ${spriteFolderName} with Quick Image Gen? This may take a while and can use provider credits.`,
+        getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1
+            ? t`Generate one character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}, then split it into individual expression images? This can use provider credits.`
+            : t`Generate ${missingLabels.length} missing sprite(s) for ${spriteFolderName} with Quick Image Gen? This may take a while and can use provider credits.`,
     );
 
     if (!confirmed) return;
@@ -1111,10 +1362,16 @@ async function onClickGenerateMissingSprites(event) {
         let failedCount = 0;
 
         try {
-            for (const expression of missingLabels) {
-                const generated = await generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast: false });
-                if (generated) generatedCount++;
-                else failedCount++;
+            if (getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1) {
+                const result = await generateAndUploadExpressionSpriteSheet(missingLabels, spriteFolderName);
+                generatedCount = result.generatedCount;
+                failedCount = result.failedCount;
+            } else {
+                for (const expression of missingLabels) {
+                    const generated = await generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast: false });
+                    if (generated) generatedCount++;
+                    else failedCount++;
+                }
             }
         } finally {
             toastr.clear(generationToast);
@@ -2436,7 +2693,15 @@ function migrateSettings() {
         saveSettingsDebounced();
     }
 
-    if (extension_settings.expressions.agentSpritePrompt === undefined) {
+    if (!Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(extension_settings.expressions.agentSpriteGenerationMode)) {
+        extension_settings.expressions.agentSpriteGenerationMode = DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
+        saveSettingsDebounced();
+    }
+
+    const previousDefaultSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT.replace('transparent background.', 'plain white or transparent background.');
+    if (extension_settings.expressions.agentSpritePrompt === undefined
+        || extension_settings.expressions.agentSpritePrompt === LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT
+        || extension_settings.expressions.agentSpritePrompt === previousDefaultSpritePrompt) {
         extension_settings.expressions.agentSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT;
         saveSettingsDebounced();
     }
@@ -2476,6 +2741,10 @@ export async function init() {
         $('#expressions_generate_missing_sprites')
             .on('click', onClickGenerateMissingSprites)
             .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_stop_sprite_generation')
+            .on('click', onClickStopExpressionGeneration)
+            .on('keydown', onExpressionGenerationKeydown);
+        setExpressionGenerationBusy(inSpriteGeneration);
         $('#expression_translate').prop('checked', extension_settings.expressions.translate).on('input', function () {
             extension_settings.expressions.translate = !!$(this).prop('checked');
             saveSettingsDebounced();
@@ -2530,6 +2799,15 @@ export async function init() {
                 syncExpressionsAgentProfile().catch((error) => {
                     console.error('[Expressions Agent] Profile sync failed:', error);
                 });
+            });
+        $('#expressions_agent_sprite_generation_mode')
+            .val(getExpressionSpriteGenerationMode())
+            .on('change', function () {
+                const mode = String($(this).val() || '');
+                extension_settings.expressions.agentSpriteGenerationMode = Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(mode)
+                    ? mode
+                    : DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
+                saveSettingsDebounced();
             });
         $('#expressions_agent_sprite_framing')
             .val(extension_settings.expressions.agentSpriteFraming)

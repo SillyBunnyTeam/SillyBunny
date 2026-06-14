@@ -30,7 +30,7 @@ const EXPRESSION_SPRITE_FRAMING = {
     fullBody: 'full_body',
 };
 const DEFAULT_EXPRESSION_SPRITE_FRAMING = EXPRESSION_SPRITE_FRAMING.bust;
-export const DEFAULT_EXPRESSION_SPRITE_PROMPT = [
+export const LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT = [
     'Create one image in a matching character expression sprite set for {{characterName}}.',
     'Expression to show: {{expression}}.',
     'Use these character card details as the source of truth for the character\'s actual appearance:',
@@ -38,6 +38,17 @@ export const DEFAULT_EXPRESSION_SPRITE_PROMPT = [
     '{{framingInstructions}}',
     'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
     'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, plain white or transparent background.',
+    'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
+    'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
+].join('\n');
+export const DEFAULT_EXPRESSION_SPRITE_PROMPT = [
+    '{{generationInstructions}}',
+    '{{sheetInstructions}}',
+    'Use these character card details as the source of truth for the character\'s actual appearance:',
+    '{{characterCard}}',
+    '{{framingInstructions}}',
+    'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
+    'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
     'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
     'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
 ].join('\n');
@@ -368,9 +379,52 @@ export async function maybeGenerateExpressionSprite(expression, characterName = 
         const imageUrl = await qigBridge.generateExpressionSprite(expression, promptContext);
         return imageUrl || null;
     } catch (error) {
+        if (error?.name === 'AbortError') throw error;
         console.error('[Expressions Agent] Failed to generate sprite:', error);
         return null;
     }
+}
+
+/**
+ * Trigger Quick Image Gen to create a sprite sheet for multiple expressions.
+ * @param {string[]} expressions - Expression labels to generate in sheet order.
+ * @param {string} [characterName] - Optional character name to include in the image prompt.
+ * @param {string} [characterAvatar] - Optional avatar filename used to resolve the character card.
+ * @returns {Promise<{imageUrl: string, grid: {columns: number, rows: number}}|null>} Generated sheet image and grid metadata.
+ */
+export async function maybeGenerateExpressionSpriteSheet(expressions, characterName = null, characterAvatar = null) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0) return null;
+
+    const qigBridge = await getQigBridge();
+    if (!qigBridge?.generateExpressionSpriteSheet) {
+        console.debug('[Expressions Agent] Quick Image Gen sprite sheet generator is not available');
+        return null;
+    }
+
+    const promptContext = getExpressionSpritePromptContext(characterName, characterAvatar);
+
+    try {
+        console.debug(`[Expressions Agent] Requesting sprite sheet for ${labels.length} expressions from QIG`);
+        const sheet = await qigBridge.generateExpressionSpriteSheet(labels, promptContext);
+        return sheet?.imageUrl ? sheet : null;
+    } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        console.error('[Expressions Agent] Failed to generate sprite sheet:', error);
+        return null;
+    }
+}
+
+/**
+ * Stop the active Quick Image Gen sprite request, if one is running.
+ * @returns {Promise<boolean>} True when a running request was asked to stop.
+ */
+export async function stopExpressionSpriteGeneration() {
+    const qigBridge = await getQigBridge();
+    if (qigBridge?.stopExpressionSpriteGeneration) {
+        return !!qigBridge.stopExpressionSpriteGeneration();
+    }
+    return false;
 }
 
 /**

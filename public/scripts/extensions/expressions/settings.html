@@ -45,6 +45,12 @@
                     <span data-i18n="Share Quick Image Gen LLM override profile">Share Quick Image Gen LLM override profile</span>
                 </label>
                 <div class="expression_agent_generation_controls flex-container flexFlowColumn">
+                    <label for="expressions_agent_sprite_generation_mode" data-i18n="Sprite generation mode">Sprite generation mode</label>
+                    <small data-i18n="Character sheet mode is used by Generate missing sprites, then split into transparent PNGs for each expression.">Character sheet mode is used by Generate missing sprites, then split into transparent PNGs for each expression.</small>
+                    <select id="expressions_agent_sprite_generation_mode" class="flex1 margin0">
+                        <option value="individual" data-i18n="Separate images">Separate images</option>
+                        <option value="sheet" data-i18n="Character sheet (auto-split)">Character sheet (auto-split)</option>
+                    </select>
                     <label for="expressions_agent_sprite_framing" data-i18n="Sprite framing">Sprite framing</label>
                     <small data-i18n="Keeps generated expressions at a consistent front-facing camera angle and crop.">Keeps generated expressions at a consistent front-facing camera angle and crop.</small>
                     <select id="expressions_agent_sprite_framing" class="flex1 margin0">
@@ -59,8 +65,8 @@
                             <i class="fa-solid fa-clock-rotate-left fa-sm"></i>
                         </div>
                     </label>
-                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{characterName}}, {{expression}}, {{characterCard}}, {{framingInstructions}}.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{characterName}}, {{expression}}, {{characterCard}}, {{framingInstructions}}.</small>
-                    <textarea id="expressions_agent_sprite_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="8" placeholder="Use &lcub;&lcub;characterName&rcub;&rcub;, &lcub;&lcub;expression&rcub;&rcub;, &lcub;&lcub;characterCard&rcub;&rcub;, and &lcub;&lcub;framingInstructions&rcub;&rcub; macros."></textarea>
+                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.</small>
+                    <textarea id="expressions_agent_sprite_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="8" placeholder="Use &lcub;&lcub;generationInstructions&rcub;&rcub;, &lcub;&lcub;characterCard&rcub;&rcub;, &lcub;&lcub;framingInstructions&rcub;&rcub;, and &lcub;&lcub;sheetInstructions&rcub;&rcub; macros."></textarea>
                 </div>
                 <p class="expression_agent_hint hint" data-i18n="Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.">
                     Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.
@@ -124,6 +130,10 @@
                     <div id="expressions_generate_missing_sprites" class="menu_button" role="button" tabindex="0" title="Generate all missing sprites in this set with Quick Image Gen" data-i18n="[title]Generate all missing sprites in this set with Quick Image Gen">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                         <span data-i18n="Generate missing sprites">Generate missing sprites</span>
+                    </div>
+                    <div id="expressions_stop_sprite_generation" class="menu_button" role="button" tabindex="0" title="Stop the current Quick Image Gen sprite generation" data-i18n="[title]Stop the current Quick Image Gen sprite generation">
+                        <i class="fa-solid fa-stop"></i>
+                        <span data-i18n="Stop generation">Stop generation</span>
                     </div>
                     <div id="expression_upload_pack_button" class="menu_button">
                         <i class="fa-solid fa-file-zipper"></i>

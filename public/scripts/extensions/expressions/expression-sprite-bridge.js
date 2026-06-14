@@ -13,8 +13,10 @@ import {
     finalizeGeneratedEntry as qigFinalizeGeneratedEntry,
     withTransientGenerationSettings as qigWithTransientGenerationSettings,
 } from '../quick-image-gen/index.js';
+import { getRequestHeaders } from '../../../script.js';
 
 const SPINNER_ID = 'expression-agent-spinner';
+const LOCAL_INTERRUPT_TIMEOUT_MS = 2500;
 const EXPRESSION_SPRITE_FRAMING = {
     bust: 'bust',
     fullBody: 'full_body',
@@ -36,6 +38,9 @@ const EXPRESSION_SPRITE_NEGATIVE = [
     'different outfit',
     'different hairstyle',
     'different accessories',
+    'opaque background',
+    'colored background',
+    'busy background',
 ].join(', ');
 const EXPRESSION_SPRITE_FRAMING_PROMPTS = {
     [EXPRESSION_SPRITE_FRAMING.bust]: [
@@ -52,6 +57,21 @@ function getExpressionSpriteFramingPrompt(framing) {
     return EXPRESSION_SPRITE_FRAMING_PROMPTS[framing] || EXPRESSION_SPRITE_FRAMING_PROMPTS[EXPRESSION_SPRITE_FRAMING.bust];
 }
 
+function getExpressionSpriteSheetGrid(count) {
+    const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
+    return { columns, rows };
+}
+
+function formatExpressionList(expressions) {
+    return expressions.map((expression, index) => `${index + 1}. ${expression}`).join('\n');
+}
+
+function hasPromptMacro(template, macroName) {
+    const macro = new RegExp(`{{\\s*${macroName}\\s*}}`, 'i');
+    return macro.test(template);
+}
+
 function substituteExpressionSpritePrompt(template, values) {
     return Object.entries(values).reduce((prompt, [key, value]) => {
         const macro = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
@@ -59,32 +79,184 @@ function substituteExpressionSpritePrompt(template, values) {
     }, template).replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function buildPromptFromTemplate(template, values) {
+    const missingInstructions = [];
+    if (!hasPromptMacro(template, 'generationInstructions')) {
+        missingInstructions.push(values.generationInstructions);
+    }
+    if (values.sheetInstructions && !hasPromptMacro(template, 'sheetInstructions')) {
+        missingInstructions.push(values.sheetInstructions);
+    }
+
+    return [
+        missingInstructions.filter(Boolean).join('\n'),
+        substituteExpressionSpritePrompt(template, values),
+    ].filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function buildIndividualGenerationInstructions(expression, characterName) {
+    return [
+        `Create one image in a matching character expression sprite set for ${characterName}.`,
+        `Expression to show: ${expression}.`,
+    ].join('\n');
+}
+
+function buildSheetGenerationInstructions(expressions, characterName, grid) {
+    const extraCells = (grid.columns * grid.rows) - expressions.length;
+    return [
+        `Create one complete character expression sheet for ${characterName}.`,
+        `Sheet layout: ${grid.columns} columns by ${grid.rows} rows, equal-size cells, row-major order.`,
+        `Generate the first ${expressions.length} cells using these expressions in order:\n${formatExpressionList(expressions)}`,
+        extraCells > 0 ? `Leave the final ${extraCells} unused cell(s) transparent or flat white.` : '',
+        'Use a transparent background for the sheet and every cell. If transparency is not available, use a flat pure white background so it can be removed by post-processing.',
+        'No captions, labels, numbers, borders, gutters, panel outlines, or decorative dividers.',
+        'Each filled cell must contain exactly one clean sprite tile that can be cropped by equal grid coordinates.',
+    ].filter(Boolean).join('\n');
+}
+
 function buildExpressionSpritePrompt(expression, { characterName, characterCard, framing, promptTemplate } = {}) {
     const name = characterName || 'character';
     const cardDetails = String(characterCard || '').trim();
     const framingInstructions = getExpressionSpriteFramingPrompt(framing);
     const promptTemplateText = String(promptTemplate || '').trim();
+    const generationInstructions = buildIndividualGenerationInstructions(expression, name);
 
     if (promptTemplateText) {
-        return substituteExpressionSpritePrompt(promptTemplateText, {
+        return buildPromptFromTemplate(promptTemplateText, {
+            generationInstructions,
             characterName: name,
             expression,
+            expressions: expression,
             characterCard: cardDetails,
             framing: framing || EXPRESSION_SPRITE_FRAMING.bust,
             framingInstructions,
+            sheetInstructions: '',
         });
     }
 
     return [
-        `Create one image in a matching character expression sprite set for ${name}.`,
-        `Expression to show: ${expression}.`,
+        generationInstructions,
         cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
         framingInstructions,
         'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
-        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, plain white or transparent background.',
+        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
         'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
         'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
     ].filter(Boolean).join('\n');
+}
+
+function buildExpressionSpriteSheetPrompt(expressions, { characterName, characterCard, framing, promptTemplate } = {}, grid) {
+    const name = characterName || 'character';
+    const cardDetails = String(characterCard || '').trim();
+    const framingInstructions = getExpressionSpriteFramingPrompt(framing);
+    const promptTemplateText = String(promptTemplate || '').trim();
+    const sheetInstructions = buildSheetGenerationInstructions(expressions, name, grid);
+    const generationInstructions = `Create one image containing a matching character expression sheet for ${name}.`;
+
+    if (promptTemplateText) {
+        return buildPromptFromTemplate(promptTemplateText, {
+            generationInstructions,
+            characterName: name,
+            expression: 'each listed expression',
+            expressions: expressions.join(', '),
+            characterCard: cardDetails,
+            framing: framing || EXPRESSION_SPRITE_FRAMING.bust,
+            framingInstructions,
+            sheetInstructions,
+        });
+    }
+
+    return [
+        generationInstructions,
+        sheetInstructions,
+        cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
+        framingInstructions,
+        'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
+        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
+        'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
+        'Clean isolated character sprite, emotional face, production-ready expression sheet.',
+    ].filter(Boolean).join('\n');
+}
+
+let activeGenerationAbortController = null;
+let activeGenerationSerial = 0;
+
+function beginExpressionGenerationRequest() {
+    activeGenerationAbortController = new AbortController();
+    activeGenerationSerial += 1;
+    return {
+        controller: activeGenerationAbortController,
+        serial: activeGenerationSerial,
+    };
+}
+
+function endExpressionGenerationRequest(serial) {
+    if (serial === activeGenerationSerial) {
+        activeGenerationAbortController = null;
+    }
+}
+
+async function requestLocalProviderInterrupt(settings) {
+    if (!settings?.localUrl || !['local', 'comfyui'].includes(settings.provider)) return;
+
+    const baseUrl = settings.localUrl.replace(/\/$/, '');
+    const interruptUrl = settings.localType === 'comfyui'
+        ? `${baseUrl}/interrupt`
+        : `${baseUrl}/sdapi/v1/interrupt`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), LOCAL_INTERRUPT_TIMEOUT_MS);
+
+    try {
+        await fetch(interruptUrl, { method: 'POST', signal: controller.signal });
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        try {
+            await fetch(`/proxy/${interruptUrl}`, {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                signal: controller.signal,
+            });
+        } catch (proxyError) {
+            if (proxyError?.name !== 'AbortError') {
+                console.debug('[Expression Sprite Bridge] Local generation interrupt failed:', proxyError);
+            }
+        }
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function generateImageFromPrompt(prompt, negative) {
+    const generationRequest = beginExpressionGenerationRequest();
+
+    try {
+        const imageUrl = await qigWithTransientGenerationSettings({}, async () => {
+            const settings = getQigGenerationSettingsForRun();
+            const rawResult = await qigGenerateForProvider(prompt, negative, settings, generationRequest.controller.signal, {});
+            if (!rawResult) return null;
+            const entry = await qigFinalizeGeneratedEntry(rawResult, prompt, negative, settings, {});
+            return entry?.url || null;
+        });
+
+        return imageUrl || null;
+    } finally {
+        endExpressionGenerationRequest(generationRequest.serial);
+    }
+}
+
+/**
+ * Abort the active Expressions Agent QIG request, if one is running.
+ * @returns {boolean} True when a running request was asked to stop.
+ */
+export function stopExpressionSpriteGeneration() {
+    if (!activeGenerationAbortController || activeGenerationAbortController.signal.aborted) return false;
+
+    activeGenerationAbortController.abort();
+    requestLocalProviderInterrupt(getQigSettings()).catch((error) => {
+        console.debug('[Expression Sprite Bridge] Local generation interrupt skipped:', error);
+    });
+    hideSpinner();
+    return true;
 }
 
 /**
@@ -148,17 +320,47 @@ export async function generateExpressionSprite(expression, promptContext) {
         const prompt = buildExpressionSpritePrompt(expression, promptContext);
         const negative = [qigSettings.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
 
-        const imageUrl = await qigWithTransientGenerationSettings({}, async () => {
-            const settings = getQigGenerationSettingsForRun();
-            const rawResult = await qigGenerateForProvider(prompt, negative, settings, null, {});
-            if (!rawResult) return null;
-            const entry = await qigFinalizeGeneratedEntry(rawResult, prompt, negative, settings, {});
-            return entry?.url || null;
-        });
-
-        return imageUrl || null;
+        return await generateImageFromPrompt(prompt, negative);
     } catch (error) {
+        if (error?.name === 'AbortError') throw error;
         console.error('[Expression Sprite Bridge] Failed to generate sprite:', error);
+        return null;
+    } finally {
+        hideSpinner();
+    }
+}
+
+/**
+ * Generate a character expression sprite sheet using Quick Image Gen.
+ * @param {string[]} expressions - Expression labels in desired sheet order.
+ * @param {object} promptContext - Character prompt context.
+ * @param {string} promptContext.characterName - The character name to seed the prompt.
+ * @param {string} [promptContext.characterCard] - Character card details to preserve in the prompt.
+ * @param {string} [promptContext.framing] - Desired sprite framing.
+ * @param {string} [promptContext.promptTemplate] - Editable prompt template sent to Quick Image Gen.
+ * @returns {Promise<{imageUrl: string, grid: {columns: number, rows: number}}|null>} Generated sheet and grid metadata.
+ */
+export async function generateExpressionSpriteSheet(expressions, promptContext) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0 || !promptContext?.characterName) return null;
+
+    const qigSettings = getQigSettings();
+    if (!qigSettings) {
+        console.debug('[Expression Sprite Bridge] Quick Image Gen settings not available');
+        return null;
+    }
+
+    showSpinner();
+
+    try {
+        const grid = getExpressionSpriteSheetGrid(labels.length);
+        const prompt = buildExpressionSpriteSheetPrompt(labels, promptContext, grid);
+        const negative = [qigSettings.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
+        const imageUrl = await generateImageFromPrompt(prompt, negative);
+        return imageUrl ? { imageUrl, grid } : null;
+    } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        console.error('[Expression Sprite Bridge] Failed to generate sprite sheet:', error);
         return null;
     } finally {
         hideSpinner();
