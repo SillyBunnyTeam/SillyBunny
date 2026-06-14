@@ -310,6 +310,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
 | Owner | Bugfix integrator. |
 
+### `public/index.html` - in-chat agent message action buttons
+| Field | Value |
+| --- | --- |
+| Area | Extension boot and chat message UI. |
+| Divergence reason | SillyBunny ships in-chat-agent actions on every chat message (`mes_view_agent_changes`, `mes_fix_trackers`, and PR #446's `mes_run_companions`) in the static message template so the buttons exist before the extension boots. |
+| Target seam | `public/scripts/extensions/in-chat-agents/`; visibility and behavior are owned by the extension (`companion/companion-ui.js` `updateCompanionButtonVisibility()` and `index.js` button wiring). |
+| Adapter shape | Hidden static `div.mes_button` rows only (`style="display: none"`); all logic, visibility toggling, and handlers stay in the extension modules. |
+| Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-companion.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agents`, manual smoke: buttons hidden with the extension disabled, companion button visible on assistant messages once a companion agent is enabled. |
+| Rollback path | Delete the static divs; the extension degrades gracefully because `$('.mes_run_companions')` and friends simply match nothing. |
+| Last reviewed | 2026-06-12 PR #446 companion agents. |
+| Owner | Extension maintainer. |
+
 ## Candidate Entries To Add Later
 | File or area | Add entry when |
 | --- | --- |

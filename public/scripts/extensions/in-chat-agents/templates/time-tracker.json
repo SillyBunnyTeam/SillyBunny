@@ -4,6 +4,7 @@
     "description": "Track in-story time progression with day/period/hour stamps",
     "icon": "",
     "category": "tracker",
+    "subcategory": "world",
     "tags": [
         "time",
         "day",
@@ -38,5 +39,8 @@
             "normal",
             "continue"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }

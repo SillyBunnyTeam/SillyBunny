@@ -8,8 +8,10 @@ import {
 } from '../frontend-assets.js';
 
 export function setPublicAssetHeaders(res, requestPath) {
-    if (/\.(?:m?js)$/i.test(requestPath)) {
-        // SillyBunny: revalidate unversioned JS modules to avoid stale mixed frontend graphs.
+    if (/\.(?:m?js|css)$/i.test(requestPath)) {
+        // SillyBunny: revalidate unversioned JS modules and stylesheets to avoid stale mixed
+        // frontend graphs. Extension CSS pairs with always-revalidated JS, so an hour-stale
+        // stylesheet leaves new UI unstyled or invisible.
         res.setHeader('Cache-Control', 'no-cache');
         return;
     }

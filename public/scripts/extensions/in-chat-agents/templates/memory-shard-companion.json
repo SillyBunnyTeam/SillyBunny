@@ -1,0 +1,61 @@
+{
+    "id": "tpl-memory-shard-companion",
+    "name": "Memory Shard",
+    "description": "Auto-compresses history into a compact, resumable memory shard once the chat reaches ~30k tokens, feeds the latest shard back into context, and can hide the story it has absorbed",
+    "icon": "fa-brain",
+    "category": "companion",
+    "tags": [
+        "memory",
+        "summary",
+        "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Compress the recent conversation into a compact memory shard the story could be resumed from. When [Your previous notes] contains earlier shards, build on them: carry forward still-relevant facts, update what changed, drop resolved material, and merge unchanged entries. Identify emotional peaks first and map causal chains backward from them; preserve high-impact material in more detail and compress material that can be inferred.\n\nUse these sections with terse pipe-delimited lines and keywords instead of prose:\n\n## Timeline\nNumbered anchor phrases with location, oldest to newest. All other sections reference these numbers.\n\n## Characters\nName|role|3-5 trait keywords|status\n\n## Relationships\nA -> B: dimension=0-100 values | one-line note. 50 is neutral baseline; list dimensions that matter, such as trust, intimacy, tension, hostility, affection, dependency.\n\n## Events\nN. action -> consequence -> outcome, weight 1-5. Weight 5 means a permanent change to a character, relationship, or world state and keeps its key details; weight-1 filler can be omitted.\n\n## Dialogue Keys\nTimeline#. \"exact quote\" -- Speaker (context). Use confessions, threats, promises, reveals, and voice-defining lines.\n\n## Threads\nUnresolved hooks and planted callbacks: thread|status (unresolved, developing, urgent)|note\n\n## Now\nLocation, time, characters present, situation, pending actions, mood, physical state.\n\nMark uncertain facts with (?). Use sourced events, quotes, and details. Plain text keeps this easy to compact.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "markdown",
+        "contextMessages": 30,
+        "includeCharacterCard": false,
+        "includePersona": false,
+        "includeWorldInfo": false,
+        "includeHistory": true,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": true,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 32000,
+        "minContextTokens": 30000
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}

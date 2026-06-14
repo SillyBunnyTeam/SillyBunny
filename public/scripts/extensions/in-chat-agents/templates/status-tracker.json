@@ -4,6 +4,7 @@
     "description": "Track physical, mental, and behavioral states when they change",
     "icon": "",
     "category": "tracker",
+    "subcategory": "progress",
     "tags": [
         "status",
         "conditions",
@@ -37,5 +38,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }

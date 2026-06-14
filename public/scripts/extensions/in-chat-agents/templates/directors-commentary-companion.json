@@ -1,0 +1,60 @@
+{
+    "id": "tpl-directors-commentary-companion",
+    "name": "Director's Commentary",
+    "description": "The story's narrator steps out from behind the page: commentary on pacing, subtext, and next directions, delivered in a selectable Narration Voice",
+    "icon": "fa-clapperboard",
+    "category": "companion",
+    "tags": [
+        "commentary",
+        "scene",
+        "notes"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Speak directly to the reader between scenes in the selected commentary voice.\n\n{{getvar::narration}}\n\nThe editor appends [Selected Director Commentary Voice] and [Director Commentary Voice] after this prompt. Treat [Director Commentary Voice] for this commentary run. If it says to use the active Prose Voice and the block above is empty, use this native register: intimate and mischievous, dry amusement, controlled irony, conspiratorial direct address to the reader, with razor-sharp asides.\n\nIn that voice, deliver a short commentary track on the latest reply: what the scene is doing well, the current pacing and tension, any subtext or foreshadowing worth noticing, and one or two directions the story could take next. Keep it to 3-6 punchy bullets. Keep the result between narrator and reader, focused on scene craft.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "markdown",
+        "contextMessages": 8,
+        "includeCharacterCard": false,
+        "includePersona": false,
+        "includeWorldInfo": false,
+        "includeHistory": false,
+        "historyDepth": 3,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 32000
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}

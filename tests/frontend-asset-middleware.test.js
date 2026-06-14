@@ -30,6 +30,11 @@ describe('frontend asset fallback headers', () => {
         expect(getCacheControlFor('/scripts/bootstrap.mjs')).toBe('no-cache');
     });
 
+    test('revalidates unversioned stylesheets alongside their scripts', () => {
+        expect(getCacheControlFor('/style.css')).toBe('no-cache');
+        expect(getCacheControlFor('/scripts/extensions/in-chat-agents/style.css')).toBe('no-cache');
+    });
+
     test('keeps static non-code fallback assets short-lived', () => {
         expect(getCacheControlFor('/img/logo.png')).toBe('public, max-age=3600');
     });

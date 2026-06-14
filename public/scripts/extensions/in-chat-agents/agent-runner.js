@@ -27,14 +27,17 @@ import {
     getEnabledToolAgents,
     getGlobalSettings,
     getPromptTransformMode,
+    isCompanionAgent,
     isTrackerFixAgent,
     isPathfinderSubmoduleEnabled,
     saveAgent,
     isToolAgent,
     normalizePreProcessMaxTokens,
     normalizePromptTransformMaxTokens,
+    resolveCompanionConnectionProfile,
     resolveConnectionProfile,
 } from './agent-store.js';
+import { regexFromString } from '../../utils.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { getConnectionProfileDisplayName, getConnectionProfileModelName } from './profile-utils.js';
 import {
@@ -128,9 +131,53 @@ const activeAgentRequestAbortControllers = new Set();
 const activePathfinderRetrievalAbortControllers = new Set();
 let activePathfinderRetrievalToast = null;
 let activeInitialGenerationToast = null;
+let companionRuntime = null;
+
+export function registerCompanionRuntime(runtime = null) {
+    companionRuntime = runtime && typeof runtime === 'object' ? runtime : null;
+}
+
+export function getAgentGenerationCancelRevision() {
+    return agentGenerationCancelRevision;
+}
 
 function shouldDeferAgentRegularBackup() {
     return Boolean(isGenerationInProgress || internalPromptTransformDepth > 0 || isMainGenerationStillActive());
+}
+
+function getLatestUserMessageText() {
+    for (let index = chat.length - 1; index >= 0; index--) {
+        const message = chat[index];
+        if (message?.is_user) {
+            return String(message.mes ?? '');
+        }
+    }
+
+    return '';
+}
+
+function isRegexLiteral(value = '') {
+    return /^\/[\s\S]+\/[a-z]*$/i.test(String(value ?? '').trim());
+}
+
+function companionTriggerMatches(keyword, messageText) {
+    const normalizedKeyword = String(keyword ?? '').trim();
+    if (!normalizedKeyword) {
+        return false;
+    }
+
+    if (isRegexLiteral(normalizedKeyword)) {
+        try {
+            const regex = regexFromString(normalizedKeyword);
+            if (regex instanceof RegExp) {
+                return regex.test(messageText);
+            }
+        } catch (error) {
+            console.warn('[InChatAgents] Invalid Companion trigger regex:', normalizedKeyword, error);
+        }
+    }
+
+    return messageText.toLowerCase().includes(normalizedKeyword.toLowerCase());
 }
 
 function saveChatDebouncedForAgent({ deferBackup = shouldDeferAgentRegularBackup() } = {}) {
@@ -900,7 +947,7 @@ function cloneAgentExtraValue(value) {
     return value === undefined ? undefined : structuredClone(value);
 }
 
-function getAgentExtraValue(message, key) {
+export function getAgentExtraValue(message, key) {
     const swipeInfo = getActiveSwipeInfo(message);
     if (swipeInfo?.extra) {
         return swipeInfo.extra[key];
@@ -909,7 +956,7 @@ function getAgentExtraValue(message, key) {
     return message?.extra?.[key];
 }
 
-function setAgentExtraValue(message, key, value) {
+export function setAgentExtraValue(message, key, value) {
     if (!message) {
         return;
     }
@@ -923,7 +970,7 @@ function setAgentExtraValue(message, key, value) {
     }
 }
 
-function deleteAgentExtraValue(message, key) {
+export function deleteAgentExtraValue(message, key) {
     if (!message) {
         return;
     }
@@ -1693,9 +1740,13 @@ function shouldActivate(agent, generationType) {
     }
 
     if (conditions.triggerKeywords?.length > 0) {
-        const lastMessage = chat[chat.length - 1]?.mes ?? '';
-        const lowerMessage = lastMessage.toLowerCase();
-        const hasKeyword = conditions.triggerKeywords.some(keyword => lowerMessage.includes(keyword.toLowerCase()));
+        const triggerMessage = isCompanionAgent(agent)
+            ? getLatestUserMessageText()
+            : String(chat[chat.length - 1]?.mes ?? '');
+        const lowerMessage = triggerMessage.toLowerCase();
+        const hasKeyword = conditions.triggerKeywords.some(keyword => isCompanionAgent(agent)
+            ? companionTriggerMatches(keyword, triggerMessage)
+            : lowerMessage.includes(String(keyword ?? '').toLowerCase()));
         if (!hasKeyword) {
             return false;
         }
@@ -1833,7 +1884,8 @@ export function buildPromptDynamicMacros(messageText = '', message = null, agent
 
 function updateMessageRegexSnapshot(message, activeAgents, generationType) {
     message.extra ??= {};
-    const regexScriptRefs = activeAgents.flatMap(agent => {
+    const inlineAgents = activeAgents.filter(agent => !isCompanionAgent(agent));
+    const regexScriptRefs = inlineAgents.flatMap(agent => {
         const scripts = getAgentRegexScripts(agent);
         cacheAgentRegexScripts(agent?.id, scripts);
         return buildRegexScriptRefsForAgent(agent?.id, scripts);
@@ -1850,7 +1902,7 @@ function updateMessageRegexSnapshot(message, activeAgents, generationType) {
 
     const previousSnapshot = getAgentExtraValue(message, MESSAGE_EXTRA_KEY);
     const nextSnapshot = {
-        activeAgentIds: activeAgents.map(agent => agent.id),
+        activeAgentIds: inlineAgents.map(agent => agent.id),
         generationType: normalizeGenerationType(generationType),
         regexScriptRefs,
         edited: Boolean(previousSnapshot?.edited),
@@ -1911,14 +1963,14 @@ function ensureMessageRegexSnapshot(messageIndex, generationType, activationSnap
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup(), skipReloadFallback: true });
     }
 
     return true;
 }
 
 function isRegexRefreshAgentCandidate(agent, generationType, { respectGenerationTypes = true } = {}) {
-    if (!agent || getAgentRegexScripts(agent).length === 0) {
+    if (!agent || isCompanionAgent(agent) || getAgentRegexScripts(agent).length === 0) {
         return false;
     }
 
@@ -1999,7 +2051,7 @@ function refreshRegexSnapshotForAgentOnMessage(agentId, messageIndex, options = 
     }
 
     if (refresh) {
-        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup() });
+        scheduleMessageRefresh(numericMessageIndex, message, { deferBackup: shouldDeferAgentRegularBackup(), skipReloadFallback: true });
     }
 
     return true;
@@ -2025,11 +2077,14 @@ export function refreshRegexSnapshotsForAgent(agentId, { generationType = 'norma
 }
 
 function resolveAgentConnectionProfile(agent) {
-    return resolveConnectionProfile(agent?.connectionProfile);
+    return isCompanionAgent(agent)
+        ? resolveCompanionConnectionProfile(agent?.connectionProfile)
+        : resolveConnectionProfile(agent?.connectionProfile);
 }
 
 function getPromptTransformAgents(activeAgents) {
     return activeAgents.filter(agent =>
+        !isCompanionAgent(agent) &&
         (agent.phase === 'post' || agent.phase === 'both') &&
         agent.postProcess?.promptTransformEnabled &&
         String(agent.prompt ?? '').trim(),
@@ -2063,6 +2118,7 @@ function getPromptTransformAgentsForImpersonate(activeAgents) {
 function getPreGenerationInterceptAgents(activeAgents) {
     return activeAgents.filter(agent =>
         !isToolAgent(agent) &&
+        !isCompanionAgent(agent) &&
         (agent.phase === 'pre' || agent.phase === 'both') &&
         agent.preProcess?.mode === 'intercept' &&
         agent.preProcess?.interceptTiming !== POST_MAIN_GENERATION_INTERCEPT_TIMING &&
@@ -2073,6 +2129,7 @@ function getPreGenerationInterceptAgents(activeAgents) {
 function getPostMainGenerationInterceptAgents(activeAgents) {
     return activeAgents.filter(agent =>
         !isToolAgent(agent) &&
+        !isCompanionAgent(agent) &&
         (agent.phase === 'pre' || agent.phase === 'both') &&
         agent.preProcess?.mode === 'intercept' &&
         agent.preProcess?.interceptTiming === POST_MAIN_GENERATION_INTERCEPT_TIMING &&
@@ -2883,7 +2940,7 @@ async function requestProfilePromptTransform(CMRS, profileId, promptMessages, ma
     };
 }
 
-async function requestPromptTransform(agent, promptMessages, maxTokens, options = {}) {
+export async function requestPromptTransform(agent, promptMessages, maxTokens, options = {}) {
     const profileId = resolveAgentConnectionProfile(agent);
     const modelOverride = typeof agent.modelOverride === 'string' ? agent.modelOverride.trim() : '';
     const context = getContext();
@@ -3219,7 +3276,7 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
     };
 }
 
-async function refreshMessageAfterMutation(messageIndex, message, { deferBackup = false } = {}) {
+async function refreshMessageAfterMutation(messageIndex, message, { deferBackup = false, skipReloadFallback = false } = {}) {
     const context = getContext();
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
 
@@ -3230,6 +3287,15 @@ async function refreshMessageAfterMutation(messageIndex, message, { deferBackup 
             await eventSource.emit(event_types.MESSAGE_UPDATED, messageIndex);
         }
 
+        return;
+    }
+
+    // Bookkeeping-only mutations (regex snapshot adds/removals in message.extra) never change what an
+    // unrendered message will look like once it is lazy-loaded, so they must not fall through to the
+    // save+reload path below: reloading the whole chat for every off-screen message races the debounced
+    // save against clearChat() and can persist an emptied chat. Persistence is already arranged by the
+    // snapshot-update call sites that set this flag.
+    if (skipReloadFallback) {
         return;
     }
 
@@ -3250,11 +3316,17 @@ async function refreshMessageAfterMutation(messageIndex, message, { deferBackup 
     }
 }
 
-function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = false } = {}) {
-    const existingTimeout = pendingRefreshTimeouts.get(messageIndex);
-    if (existingTimeout) {
-        clearTimeout(existingTimeout);
+function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = false, skipReloadFallback = false } = {}) {
+    const existingRefresh = pendingRefreshTimeouts.get(messageIndex);
+    if (existingRefresh) {
+        clearTimeout(existingRefresh.timeoutId);
     }
+
+    // When a pending refresh for the same message is replaced, a full-fallback request must never be
+    // downgraded to a bookkeeping-only one, or a genuine text mutation could miss its refresh.
+    const mergedSkipReloadFallback = existingRefresh
+        ? (existingRefresh.skipReloadFallback && skipReloadFallback)
+        : skipReloadFallback;
 
     const timeoutId = setTimeout(async () => {
         pendingRefreshTimeouts.delete(messageIndex);
@@ -3264,10 +3336,10 @@ function scheduleMessageRefresh(messageIndex, expectedMessage, { deferBackup = f
             return;
         }
 
-        await refreshMessageAfterMutation(messageIndex, liveMessage, { deferBackup });
+        await refreshMessageAfterMutation(messageIndex, liveMessage, { deferBackup, skipReloadFallback: mergedSkipReloadFallback });
     }, 0);
 
-    pendingRefreshTimeouts.set(messageIndex, timeoutId);
+    pendingRefreshTimeouts.set(messageIndex, { timeoutId, skipReloadFallback: mergedSkipReloadFallback });
 }
 
 function clearInChatAgentExtensionPrompts() {
@@ -3297,6 +3369,7 @@ export function deactivatePathfinderRuntime() {
 
 function injectPreGenerationAgentPrompts(activeAgents, generationType) {
     const promptAgents = activeAgents.filter(agent =>
+        !isCompanionAgent(agent) &&
         (agent.phase === 'pre' || agent.phase === 'both') &&
         agent.preProcess?.mode !== 'intercept',
     );
@@ -3521,6 +3594,7 @@ async function onGenerationAfterCommands(generationType, _options, dryRun) {
     }
 
     injectPreGenerationAgentPrompts(activeAgents, generationType);
+    companionRuntime?.injectCompanionFeedbackPrompts?.(activeAgents);
 
     if (!dryRun) {
         syncToolAgentRegistrations();
@@ -3564,10 +3638,19 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         markPostProcessingRunProcessed(message, runKey, messageIndex, indexRunKey);
 
         const activeAgents = getActiveAgentsForMessage(generationType, resolvedActivationSnapshot);
+        // Companions normally run last so they see the post-transform reply; the concurrent
+        // option trades that for speed and runs them against the raw reply alongside the passes.
+        const companionStageArgs = { messageIndex, message, generationType, activeAgents };
+        const concurrentCompanionStage = getGlobalSettings().companionConcurrentWithPostGen && companionRuntime?.runCompanionStage
+            ? companionRuntime.runCompanionStage(companionStageArgs).catch(error => {
+                console.warn('[InChatAgents] Companion stage failed:', error);
+            })
+            : null;
         const promptTransformAgents = getPromptTransformAgentsForMessage(activeAgents, generationType);
         const utilityAgents = isImpersonateGenerationType(generationType)
             ? []
             : activeAgents.filter(agent =>
+                !isCompanionAgent(agent) &&
                 agent.postProcess?.enabled &&
                 agent.postProcess.type !== 'regex' &&
                 (
@@ -3713,6 +3796,16 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
 
         if (messageDisplayChanged) {
             scheduleMessageRefresh(messageIndex, message, { deferBackup: true });
+        }
+
+        if (concurrentCompanionStage) {
+            await concurrentCompanionStage;
+        } else if (companionRuntime?.runCompanionStage) {
+            try {
+                await companionRuntime.runCompanionStage(companionStageArgs);
+            } catch (error) {
+                console.warn('[InChatAgents] Companion stage failed:', error);
+            }
         }
     } finally {
         postProcessingInFlightKeys.delete(inFlightKey);
@@ -4646,6 +4739,15 @@ async function executeManualAgentRun(agentId, messageIndex, cancelRevision = age
         return null;
     }
 
+    if (isCompanionAgent(agent)) {
+        if (!companionRuntime?.runCompanionAgentOnMessage) {
+            toastr.error('Companion runtime is unavailable.');
+            return null;
+        }
+
+        return await companionRuntime.runCompanionAgentOnMessage(agent.id, messageIndex, { cancelRevision });
+    }
+
     const generationType = 'normal';
     const regexSnapshotChanged = refreshRegexSnapshotForAgentOnMessage(agent.id, messageIndex, {
         generationType,
@@ -4715,7 +4817,7 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     const generationType = 'normal';
     const enabledAgents = getEnabledAgents();
-    const trackerAgents = enabledAgents.filter(isTrackerFixAgent);
+    const trackerAgents = enabledAgents.filter(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
 
     if (trackerAgents.length === 0) {
         toastr.info('No enabled tracker agents found.');
