@@ -2731,12 +2731,14 @@ function queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage }) 
 
     const flushPromise = new Promise(resolve => mobileMessageUpdateFlushResolvers.push(resolve));
 
-    if (!pendingMobileMessageUpdateFrame && !pendingMobileMessageUpdateTimer) {
-        pendingMobileMessageUpdateTimer = window.setTimeout(() => {
-            pendingMobileMessageUpdateTimer = 0;
-            pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);
-        }, MOBILE_MESSAGE_UPDATE_DELAY_MS);
+    if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer) {
+        return flushPromise;
     }
+
+    pendingMobileMessageUpdateTimer = window.setTimeout(() => {
+        pendingMobileMessageUpdateTimer = 0;
+        pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);
+    }, MOBILE_MESSAGE_UPDATE_DELAY_MS);
 
     return flushPromise;
 }
