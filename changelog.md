@@ -57,6 +57,7 @@
 - PR #467 (2026-06-14) `fix: compact world info entry controls`
 - PR #468 (2026-06-14) `feat(expressions): add In-Chat Agent classifier with Quick Image Gen sprite generation`
 - PR #469 (2026-06-14) `feat(ica): show all enabled companions in batch selector`
+- PR #470 (2026-06-14) `feat: decouple sampling settings from chat completion presets`
 
 ## v1.6.4
 
