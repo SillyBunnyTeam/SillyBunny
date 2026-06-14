@@ -24,15 +24,22 @@ import {
     insertChoiceIntoMessageInput,
     isSuppressedCompanionResult,
 } from './companion-ui.js';
+import {
+    CHAT_ONLY_INPUT_MAX_CHARS,
+    CHATROOM_REPLY_MAX_CHARS,
+    MEMORY_SHARD_TEMPLATE_ID,
+    PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
+    appendChatOnlyUserMessage,
+    isAssistantMessage,
+    isChatOnlyAgent,
+    isChatroomAgent,
+    isPlotCompassAgent,
+    normalizeChatOnlyInput,
+    normalizeChatroomReply,
+    normalizePlotCompassObjective,
+} from './companion-shared.js';
 
 const PANEL_HISTORY_LIMIT = 5;
-const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
-const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
-const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
-const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
-const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
-const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
-const CHATROOM_REPLY_MAX_CHARS = 2000;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -321,49 +328,8 @@ function bindHandleDrag(handleElement) {
     handleElement.addEventListener('pointercancel', event => pointerEnd(event, true));
 }
 
-function isAssistantMessage(message) {
-    return Boolean(message && !message.is_user && !message.is_system);
-}
-
 function getPanelAgents() {
     return getAgents().filter(agent => isCompanionAgent(agent) && agent.category !== 'tool');
-}
-
-function isChatOnlyAgent(agent = {}) {
-    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
-    return templateId === CHAT_ONLY_TEMPLATE_ID;
-}
-
-function isPlotCompassAgent(agent = {}) {
-    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
-    return templateId === PLOT_COMPASS_TEMPLATE_ID;
-}
-
-function isChatroomAgent(agent = {}) {
-    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
-    return templateId === CHATROOM_TEMPLATE_ID;
-}
-
-function normalizeChatroomReply(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHATROOM_REPLY_MAX_CHARS);
-}
-
-function normalizeChatOnlyInput(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
-}
-
-function normalizeChatOnlyTranscript(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(-CHAT_ONLY_TRANSCRIPT_MAX_CHARS);
-}
-
-function appendChatOnlyUserMessage(transcript = '', userInput = '') {
-    const previous = normalizeChatOnlyTranscript(transcript);
-    const nextLine = `You: ${normalizeChatOnlyInput(userInput)}`;
-    return normalizeChatOnlyTranscript(previous ? `${previous}\n\n${nextLine}` : nextLine);
-}
-
-function normalizePlotCompassObjective(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
 }
 
 function getLatestAssistantIndex() {
@@ -591,7 +557,7 @@ function buildPanelAgentSection(state) {
 
 /** The memory shard can replace the history it summarizes: offer hiding everything above it. */
 function buildCompactionButton(state) {
-    const isMemoryShard = state.agent?.sourceTemplateId === 'tpl-memory-shard-companion'
+    const isMemoryShard = state.agent?.sourceTemplateId === MEMORY_SHARD_TEMPLATE_ID
         || /memory shard/i.test(String(state.agent?.name ?? state.latest?.result?.agentName ?? ''));
     if (!isMemoryShard || !state.latest || state.latest.messageIndex < 1 || state.latest.result?.status !== 'done') {
         return '';

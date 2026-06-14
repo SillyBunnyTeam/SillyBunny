@@ -21,73 +21,26 @@ import {
     runCompanionsOnMessage,
     updateCompanionResult,
 } from './companion-runner.js';
+import {
+    CHAT_ONLY_INPUT_MAX_CHARS,
+    CHATROOM_REPLY_MAX_CHARS,
+    CHATROOM_STYLE_VALUES,
+    MESSAGE_INBOX_EMPTY_OUTPUTS,
+    PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
+    appendChatOnlyUserMessage,
+    isAssistantMessage,
+    isChatOnlyAgent,
+    isChatroomAgent,
+    isMessageInboxAgent,
+    isPlotCompassAgent,
+    normalizeChatOnlyInput,
+    normalizeChatroomReply,
+    normalizePlotCompassObjective,
+} from './companion-shared.js';
 
 let companionUiInitialized = false;
 let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
-const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
-const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
-const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
-const CHATROOM_STYLE_VALUES = new Set([
-    'mixed',
-    'in-world',
-    'discord/twitch',
-    'twitter/x',
-    'reddit',
-    'ao3/wattpad',
-    'newsroom',
-    'thread-board/4chan',
-    'infomercial',
-    'custom',
-]);
-const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
-const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
-const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
-const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
-const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
-const CHATROOM_REPLY_MAX_CHARS = 2000;
-
-function normalizeChatroomReply(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHATROOM_REPLY_MAX_CHARS);
-}
-
-function getAgentTemplateId(agent = {}) {
-    return String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
-}
-
-function isMessageInboxAgent(agent = null) {
-    return getAgentTemplateId(agent) === MESSAGE_INBOX_TEMPLATE_ID;
-}
-
-function isChatroomAgent(agent = null) {
-    return getAgentTemplateId(agent) === CHATROOM_TEMPLATE_ID;
-}
-
-function isChatOnlyAgent(agent = null) {
-    return getAgentTemplateId(agent) === CHAT_ONLY_TEMPLATE_ID;
-}
-
-function isPlotCompassAgent(agent = null) {
-    return getAgentTemplateId(agent) === PLOT_COMPASS_TEMPLATE_ID;
-}
-
-function normalizeChatOnlyInput(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, CHAT_ONLY_INPUT_MAX_CHARS);
-}
-
-function normalizeChatOnlyTranscript(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(-CHAT_ONLY_TRANSCRIPT_MAX_CHARS);
-}
-
-function appendChatOnlyUserMessage(transcript = '', userInput = '') {
-    const previous = normalizeChatOnlyTranscript(transcript);
-    const nextLine = `You: ${normalizeChatOnlyInput(userInput)}`;
-    return normalizeChatOnlyTranscript(previous ? `${previous}\n\n${nextLine}` : nextLine);
-}
-
-function normalizePlotCompassObjective(value = '') {
-    return String(value ?? '').replaceAll(/\r\n?/g, '\n').trim().slice(0, PLOT_COMPASS_OBJECTIVE_MAX_CHARS);
-}
 
 function normalizeChatroomField(value = '') {
     return String(value ?? '').replaceAll('|', '/').replaceAll(/\r?\n/g, ' ').trim();
@@ -238,10 +191,6 @@ function getMarkdownConverter() {
     }
 
     return companionMarkdownConverter;
-}
-
-function isAssistantMessage(message) {
-    return Boolean(message && !message.is_user && !message.is_system);
 }
 
 function getMessageIndexFromElement(element) {

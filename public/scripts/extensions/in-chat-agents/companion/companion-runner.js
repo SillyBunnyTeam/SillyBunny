@@ -17,7 +17,6 @@ import {
     getEnabledAgents,
     getGlobalSettings,
     isCompanionAgent,
-    normalizeCompanionConfig,
     resolveCompanionConnectionProfile,
 } from '../agent-store.js';
 import {
@@ -29,6 +28,14 @@ import {
     requestPromptTransform,
     setAgentExtraValue,
 } from '../agent-runner.js';
+import {
+    CHATROOM_CUSTOM_STYLE_VALUE,
+    CHATROOM_STYLE_VALUES,
+    CHATROOM_TEMPLATE_ID,
+    DIRECTORS_COMMENTARY_TEMPLATE_ID,
+    PLOT_COMPASS_TEMPLATE_ID,
+    isAssistantMessage,
+} from './companion-shared.js';
 
 export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -36,10 +43,6 @@ export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_
 const MAX_COMPANION_RESULT_CHARS = 64 * 1024;
 const COMPANION_PROMPT_KEY_PREFIX = 'inchat_agent_companion_';
 const BATCH_MARKER_RE = /<<<(?:COMPANION|companion):([\w-]+)>>>([\s\S]*?)<<<(?:END|end):\1>>>/g;
-const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
-const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
-const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
-const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
 const CHATROOM_CUSTOM_STYLE_PROMPT_MAX_CHARS = 2000;
@@ -50,18 +53,6 @@ const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
 const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS = 2000;
-const CHATROOM_STYLE_VALUES = new Set([
-    'mixed',
-    'in-world',
-    'discord/twitch',
-    'twitter/x',
-    'reddit',
-    'ao3/wattpad',
-    'newsroom',
-    'thread-board/4chan',
-    'infomercial',
-    CHATROOM_CUSTOM_STYLE_VALUE,
-]);
 const DIRECTOR_COMMENTARY_VOICE_VALUES = new Set([
     'active',
     'conspiratorial-absurdity',
@@ -441,12 +432,9 @@ export function setCompanionResult(message, agent, update = {}) {
         [agent.id]: {
             agentName: String(agent.name ?? '').trim() || 'Companion',
             icon: String(agent.icon ?? '').trim(),
-            format: companion.format,
-            displayMode: companion.displayMode,
             status: 'pending',
             content: '',
             collapsed: Boolean(existing.collapsed),
-            updatedAt: new Date().toISOString(),
             profileLabel: getProfileLabel(agent, update.profileId),
             modelLabel: getModelLabel(agent),
             ...existing,
@@ -502,10 +490,6 @@ async function emitCompanionResultsUpdated(messageIndex, agentId = '') {
     if (typeof eventSource?.emit === 'function') {
         await eventSource.emit(COMPANION_RESULTS_UPDATED_EVENT, { messageIndex, agentId });
     }
-}
-
-function isAssistantMessage(message) {
-    return Boolean(message && !message.is_user && !message.is_system);
 }
 
 function getMessageLine(message) {
@@ -659,7 +643,7 @@ async function buildCompanionContextSections(agent, messageIndex, { extraContext
         ['System Prompt', systemPrompt],
         ['Character', characterCard],
         ['World Info', worldInfo],
-        ["Author's Note", authorsNote],
+        ['Author\'s Note', authorsNote],
         ['Your previous notes', previousNotes],
         ['Recent conversation', recentConversation],
     ]) {
@@ -756,8 +740,9 @@ function getBatchKey(agent, messageIndex) {
 }
 
 function getCompanionBatchAgentIdSet(agent) {
+    const companion = getCompanionConfig(agent);
     return new Set(
-        (Array.isArray(getCompanionConfig(agent).batchAgentIds) ? getCompanionConfig(agent).batchAgentIds : [])
+        (Array.isArray(companion.batchAgentIds) ? companion.batchAgentIds : [])
             .map(id => String(id ?? '').trim())
             .filter(Boolean),
     );
@@ -770,7 +755,6 @@ function partitionCompanionRuns(agents, messageIndex) {
     const adjacency = new Map(batchableAgents.map(agent => [agent.id, new Set()]));
 
     for (const agent of batchableAgents) {
-        const companion = getCompanionConfig(agent);
         const selectedIds = getCompanionBatchAgentIdSet(agent);
         if (selectedIds.size === 0) continue;
 
@@ -922,7 +906,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
     try {
         const promptMessages = await buildBatchPromptMessages(agents, messageIndex, generationType);
-        const maxTokens = Math.min(32000, agents.reduce((sum, agent) => sum + normalizeCompanionConfig(agent.companion).maxTokens, 0));
+        const maxTokens = Math.min(32000, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {

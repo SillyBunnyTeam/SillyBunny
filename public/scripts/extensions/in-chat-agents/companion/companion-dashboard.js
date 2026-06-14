@@ -17,11 +17,14 @@ import {
     runCompanionsOnMessage,
 } from './companion-runner.js';
 import { openCompanionPanel } from './companion-panel.js';
+import {
+    MESSAGE_INBOX_EMPTY_OUTPUTS,
+    isAssistantMessage,
+    isMessageInboxAgent,
+} from './companion-shared.js';
 
 const RECENT_NOTES_LIMIT = 20;
 const NOTE_SNIPPET_LENGTH = 120;
-const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
-const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
 
 function isSuppressedDashboardResult(agentId, result = {}) {
     if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
@@ -29,8 +32,7 @@ function isSuppressedDashboardResult(agentId, result = {}) {
     }
 
     const agent = getAgentById(agentId);
-    const templateId = String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
-    return templateId === MESSAGE_INBOX_TEMPLATE_ID;
+    return isMessageInboxAgent(agent);
 }
 
 /**
@@ -50,10 +52,6 @@ let activeDashboardPopup = null;
 
 export function configureCompanionDashboard(hooks) {
     dashboardHooks = hooks;
-}
-
-function isAssistantMessage(message) {
-    return Boolean(message && !message.is_user && !message.is_system);
 }
 
 function partitionDashboardAgents(agents = []) {
