@@ -53,6 +53,7 @@
 - PR #446 (2026-06-14) `feat: companion agents — sidecar-style auxiliary AI cards`
 - PR #455 (2026-06-12) `fix(guided-generations): honor impersonation perspective prompts`
 - PR #465 (2026-06-14) `fix: clear cookies and cache now works on iOS WebKit`
+- PR #466 (2026-06-14) `fix(chat): await deferred mobile repaint before MESSAGE_UPDATED`
 
 ## v1.6.4
 
