@@ -226,6 +226,31 @@ img.expression.default {
     margin: 0;
 }
 
+.expression_agent_spinner {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--animation-duration) ease;
+    animation: expression_agent_spinner_spin 1s linear infinite;
+}
+
+.expression_agent_spinner.active {
+    opacity: 1;
+}
+
+@keyframes expression_agent_spinner_spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .expression_settings label input {
     margin-left: 0px !important;
 }

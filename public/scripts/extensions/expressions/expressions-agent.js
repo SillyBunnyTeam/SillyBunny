@@ -11,21 +11,22 @@
  * is unavailable or has not finished yet.
  */
 
-import { getContext } from '../../extensions.js';
+import { getContext, extension_settings } from '../../extensions.js';
 import { system_message_types } from '../../../script.js';
 import { normalizeAgentExpressionLabel } from './expressions-agent-utils.js';
 
 const EXPRESSIONS_AGENT_TEMPLATE_ID = 'tpl-expressions-agent';
+const QIG_EXTENSION_NAME = 'quick-image-gen';
 
 /**
  * Cached import handles for the companion subsystem. Populated lazily because the
  * in-chat-agents extension loads after expressions (loading_order 20 vs 6).
- * @type {{agentStore?: object, companionShared?: object}}
+ * @type {{agentStore?: object, companionShared?: object, qigBridge?: object}}
  */
 const moduleCache = {
     agentStore: null,
     companionShared: null,
-    qig: null,
+    qigBridge: null,
 };
 
 /**
@@ -60,16 +61,17 @@ async function getCompanionShared() {
 }
 
 /**
- * Lazily load the Quick Image Gen extension module.
+ * Lazily load the expression sprite bridge. This avoids pulling in Quick Image Gen
+ * until a sprite actually needs to be generated.
  * @returns {Promise<object|null>}
  */
-async function getQigModule() {
-    if (moduleCache.qig) return moduleCache.qig;
+async function getQigBridge() {
+    if (moduleCache.qigBridge) return moduleCache.qigBridge;
     try {
-        moduleCache.qig = await import('../quick-image-gen/index.js');
-        return moduleCache.qig;
+        moduleCache.qigBridge = await import('./expression-sprite-bridge.js');
+        return moduleCache.qigBridge;
     } catch (error) {
-        console.debug('[Expressions Agent] quick-image-gen not available:', error.message);
+        console.debug('[Expressions Agent] expression-sprite-bridge not available:', error.message);
         return null;
     }
 }
@@ -131,6 +133,62 @@ export async function isExpressionsAgentAvailable() {
 }
 
 /**
+ * Returns the Quick Image Gen LLM override Connection Manager profile id, if any.
+ * @returns {string}
+ */
+function getQigLlmOverrideProfileId() {
+    const qigSettings = extension_settings?.[QIG_EXTENSION_NAME];
+    if (!qigSettings?.llmOverrideEnabled) return '';
+    return String(qigSettings.llmOverrideProfileId || '').trim();
+}
+
+/**
+ * Resolve the Connection Manager profile id that should be used by the Expressions Agent.
+ *
+ * When the user has enabled "Use Quick Image Gen LLM override profile" in the expression
+ * settings, the agent shares that profile so classification and QIG's LLM tasks use the
+ * same model/endpoint.
+ *
+ * @param {object} agent - The expressions agent.
+ * @returns {string}
+ */
+export function resolveExpressionsAgentProfile(agent) {
+    if (!agent) return '';
+    if (extension_settings.expressions.agentUseQigLlmProfile) {
+        const qigProfileId = getQigLlmOverrideProfileId();
+        if (qigProfileId) return qigProfileId;
+    }
+    return String(agent.connectionProfile || '');
+}
+
+/**
+ * Keep the Expressions Agent's connectionProfile in sync with the user's preference.
+ * If sharing with QIG is enabled, the agent adopts QIG's LLM override profile. If not,
+ * any previously-synced value is cleared so the agent falls back to its own setting.
+ *
+ * @returns {Promise<boolean>} True if the agent was found and updated.
+ */
+export async function syncExpressionsAgentProfile() {
+    const agent = await getExpressionsAgent();
+    if (!agent?.id) return false;
+
+    const agentStore = await getAgentStore();
+    if (!agentStore?.saveAgent) return false;
+
+    const targetProfile = extension_settings.expressions.agentUseQigLlmProfile
+        ? getQigLlmOverrideProfileId()
+        : '';
+
+    const currentProfile = String(agent.connectionProfile || '');
+    if (currentProfile === targetProfile) return true;
+
+    agent.connectionProfile = targetProfile;
+    await agentStore.saveAgent(agent);
+    console.debug('[Expressions Agent] Synced connection profile to:', targetProfile || '(none)');
+    return true;
+}
+
+/**
  * Read the expression label the companion agent stored for the latest assistant reply.
  *
  * @param {object} [context] - Optional SillyBunny context. Defaults to getContext().
@@ -164,8 +222,8 @@ export async function getAgentExpressionLabel(context, allowedExpressions) {
 export async function maybeGenerateExpressionSprite(expression) {
     if (!expression) return null;
 
-    const qig = await getQigModule();
-    if (!qig?.generateExpressionSprite) {
+    const qigBridge = await getQigBridge();
+    if (!qigBridge?.generateExpressionSprite) {
         console.debug('[Expressions Agent] Quick Image Gen sprite generator is not available');
         return null;
     }
@@ -175,10 +233,20 @@ export async function maybeGenerateExpressionSprite(expression) {
 
     try {
         console.debug(`[Expressions Agent] Requesting sprite for ${expression} from QIG`);
-        const imageUrl = await qig.generateExpressionSprite(expression, charName);
+        const imageUrl = await qigBridge.generateExpressionSprite(expression, charName);
         return imageUrl || null;
     } catch (error) {
         console.error('[Expressions Agent] Failed to generate sprite:', error);
         return null;
+    }
+}
+
+/**
+ * Remove the inline sprite-generation spinner. Safe to call on chat changes.
+ */
+export async function cleanupExpressionAgentSpinner() {
+    const qigBridge = await getQigBridge();
+    if (qigBridge?.cleanupExpressionSpriteSpinner) {
+        qigBridge.cleanupExpressionSpriteSpinner();
     }
 }

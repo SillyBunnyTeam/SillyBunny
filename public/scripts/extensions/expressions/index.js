@@ -18,7 +18,13 @@ import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
-import { getAgentExpressionLabel, isExpressionsAgentAvailable, maybeGenerateExpressionSprite } from './expressions-agent.js';
+import {
+    getAgentExpressionLabel,
+    isExpressionsAgentAvailable,
+    maybeGenerateExpressionSprite,
+    syncExpressionsAgentProfile,
+    cleanupExpressionAgentSpinner,
+} from './expressions-agent.js';
 export { MODULE_NAME };
 
 /**
@@ -602,6 +608,14 @@ async function moduleWorker({ newChat = false } = {}) {
             expression = extension_settings.expressions.fallback_expression;
         }
 
+        // SillyBunny divergence: the agent classifier is asynchronous. If it has not
+        // produced a result yet, skip updating the sprite and leave lastMessage unchanged
+        // so the next poll retries instead of flickering to the fallback expression.
+        if (usingAgent && !expression) {
+            shouldUpdateLastMessage = false;
+            return;
+        }
+
         await sendExpressionCall(spriteFolderName, expression, { force: force, vnMode: vnMode });
 
         // SillyBunny divergence: optionally generate missing sprites via Quick Image Gen.
@@ -612,7 +626,11 @@ async function moduleWorker({ newChat = false } = {}) {
                 inSpriteGeneration = true;
                 maybeGenerateExpressionSprite(expression).then(async (imageUrl) => {
                     if (imageUrl) {
-                        await uploadSpriteCommand({ label: expression, folder: spriteFolderName }, imageUrl);
+                        await uploadSpriteCommand({
+                            name: currentLastMessage.original_avatar || currentLastMessage.name,
+                            label: expression,
+                            folder: spriteFolderName,
+                        }, imageUrl);
                     }
                 }).catch((error) => {
                     console.error('[Expressions Agent] Auto sprite generation failed:', error);
@@ -620,12 +638,6 @@ async function moduleWorker({ newChat = false } = {}) {
                     inSpriteGeneration = false;
                 });
             }
-        }
-
-        // If the agent classifier has not produced a result yet, leave lastMessage
-        // unchanged so the next poll can pick up the finished classification.
-        if (usingAgent && !expression) {
-            shouldUpdateLastMessage = false;
         }
     } catch (error) {
         console.log(error);
@@ -2228,6 +2240,17 @@ function migrateSettings() {
         extension_settings.expressions.agentAutoGenerateSprites = false;
         saveSettingsDebounced();
     }
+
+    if (extension_settings.expressions.agentUseQigLlmProfile === undefined) {
+        extension_settings.expressions.agentUseQigLlmProfile = false;
+        saveSettingsDebounced();
+    }
+
+    // SillyBunny divergence: keep the expressions agent's connection profile in sync
+    // with the user's preference (share QIG LLM override profile or not).
+    syncExpressionsAgentProfile().catch((error) => {
+        console.debug('[Expressions Agent] Initial profile sync skipped:', error);
+    });
 }
 
 export async function init() {
@@ -2292,6 +2315,15 @@ export async function init() {
                 extension_settings.expressions.agentAutoGenerateSprites = !!$(this).prop('checked');
                 saveSettingsDebounced();
             });
+        $('#expressions_agent_use_qig_llm_profile')
+            .prop('checked', extension_settings.expressions.agentUseQigLlmProfile)
+            .on('input', function () {
+                extension_settings.expressions.agentUseQigLlmProfile = !!$(this).prop('checked');
+                saveSettingsDebounced();
+                syncExpressionsAgentProfile().catch((error) => {
+                    console.error('[Expressions Agent] Profile sync failed:', error);
+                });
+            });
         updateExpressionsAgentStatus();
         $('#expression_llm_prompt').val(extension_settings.expressions.llmPrompt ?? '');
         $('#expression_llm_prompt').on('input', function () {
@@ -2334,6 +2366,7 @@ export async function init() {
         removeExpression();
         spriteCache = {};
         lastExpression = {};
+        cleanupExpressionAgentSpinner();
 
         //clear expression
         let imgElement = document.getElementById('expression-image');
