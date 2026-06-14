@@ -129,7 +129,7 @@ const SHEET_BACKGROUND_BUCKET_SIZE = 16;
 const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
 const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
 const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
-const SHEET_TILE_SOURCE_INSET_RATIO = 0.02;
+const SHEET_TILE_SOURCE_INSET_RATIO = 0.045;
 const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
 /**
  * Minimum fraction of a tile's smaller dimension that foreground content must span
@@ -1393,8 +1393,6 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
         // Use a fixed, uniform output size for every tile so all sprites share the same canvas.
         const outputTileWidth = Math.max(1, Math.round(sourceTileWidth));
         const outputTileHeight = Math.max(1, Math.round(sourceTileHeight));
-        const outputInsetX = Math.min(outputTileWidth / 5, Math.max(1, outputTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
-        const outputInsetY = Math.min(outputTileHeight / 5, Math.max(1, outputTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
 
         for (let index = 0; index < tileCount; index++) {
             throwIfExpressionGenerationStopped();
@@ -1408,8 +1406,11 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
             const srcBottom = Math.round((row + 1) * sourceTileHeight);
             const srcTileWidth = Math.max(1, srcRight - srcLeft);
             const srcTileHeight = Math.max(1, srcBottom - srcTop);
-            const sourceInsetX = Math.min(srcTileWidth / 5, Math.max(1, srcTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
-            const sourceInsetY = Math.min(srcTileHeight / 5, Math.max(1, srcTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
+            // Trim the source edges to cut away any bleed from adjacent cells (gridlines,
+            // neighbour sprites, background fragments), then scale the trimmed region to
+            // fill the entire output canvas so the character is not boxed in by blank borders.
+            const sourceInsetX = Math.min(srcTileWidth / 4, Math.max(1, srcTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
+            const sourceInsetY = Math.min(srcTileHeight / 4, Math.max(1, srcTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
             const canvas = document.createElement('canvas');
             canvas.width = outputTileWidth;
             canvas.height = outputTileHeight;
@@ -1421,10 +1422,10 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
                 srcTop + sourceInsetY,
                 srcTileWidth - (sourceInsetX * 2),
                 srcTileHeight - (sourceInsetY * 2),
-                outputInsetX,
-                outputInsetY,
-                outputTileWidth - (outputInsetX * 2),
-                outputTileHeight - (outputInsetY * 2),
+                0,
+                0,
+                outputTileWidth,
+                outputTileHeight,
             );
             postProcessSpriteCanvas(canvas);
             tileUrls.push(await canvasToPngObjectUrl(canvas));
