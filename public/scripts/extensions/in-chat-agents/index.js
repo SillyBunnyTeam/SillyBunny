@@ -328,31 +328,13 @@ function normalizeCompanionBatchAgentIds(value = []) {
     return ids;
 }
 
-function getCompanionBatchCompatibilityKey(agent) {
-    const companion = getCompanionConfig(agent);
-    return JSON.stringify({
-        profile: resolveConnectionProfile(agent.connectionProfile),
-        model: String(agent.modelOverride ?? '').trim(),
-        contextMessages: companion.contextMessages,
-        includeCharacterCard: companion.includeCharacterCard,
-        includePersona: companion.includePersona,
-        includeWorldInfo: companion.includeWorldInfo,
-        includeAuthorsNote: companion.includeAuthorsNote,
-        includeSystemPrompt: companion.includeSystemPrompt,
-        includeHistory: companion.includeHistory,
-        historyDepth: companion.historyDepth,
-    });
-}
-
 function getCompanionBatchOptionsForAgent(agent) {
     if (!isCompanionAgent(agent)) return [];
 
-    const currentKey = getCompanionBatchCompatibilityKey(agent);
     return getAgents()
         .filter(candidate => candidate.id !== agent.id)
         .filter(candidate => isCompanionAgent(candidate))
         .filter(candidate => isAgentEnabledForCurrentScope(candidate))
-        .filter(candidate => getCompanionBatchCompatibilityKey(candidate) === currentKey)
         .map(candidate => ({
             id: candidate.id,
             label: String(candidate.name ?? '').trim() || candidate.id,
@@ -2706,7 +2688,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
 
         select.empty();
         if (!options.length && !selectedIds.length) {
-            select.append($('<option>').val('').text('No enabled compatible companions').prop('disabled', true));
+            select.append($('<option>').val('').text('No enabled side companions').prop('disabled', true));
             return;
         }
 

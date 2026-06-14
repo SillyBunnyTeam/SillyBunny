@@ -82,8 +82,15 @@ describe('in-chat agents generation UI wiring', () => {
         expect(extensionStyleSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));');
         expect(editorTemplateSource).toContain('Run selected companions in one request');
         expect(editorTemplateSource).toContain('Batch With Enabled Companions');
-        expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled compatible companions');
+        expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('lists all enabled side companions in batch selector regardless of compatibility', () => {
+        const source = getFunctionSource('getCompanionBatchOptionsForAgent');
+        expect(source).not.toContain('getCompanionBatchCompatibilityKey');
+        expect(source).toContain('isAgentEnabledForCurrentScope(candidate)');
+        expect(source).toContain('isCompanionAgent(candidate)');
     });
 
     test('labels companion agent cards as side execution', () => {
