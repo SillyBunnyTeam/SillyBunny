@@ -3281,7 +3281,12 @@ async function refreshMessageAfterMutation(messageIndex, message, { deferBackup 
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
 
     if (messageElement && typeof context?.updateMessageBlock === 'function') {
-        context.updateMessageBlock(messageIndex, message);
+        // Await the repaint so MESSAGE_UPDATED fires only after the DOM is actually
+        // re-rendered. On the deferred mobile path updateMessageBlock resolves after the
+        // rAF flush; otherwise it resolves synchronously. This lets DOM-mutating
+        // listeners (e.g. Dialogue Colors) re-decorate against the final DOM instead of
+        // racing the deferred render.
+        await context.updateMessageBlock(messageIndex, message);
 
         if (typeof eventSource?.emit === 'function' && event_types?.MESSAGE_UPDATED) {
             await eventSource.emit(event_types.MESSAGE_UPDATED, messageIndex);
