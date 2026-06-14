@@ -17,6 +17,14 @@ import { normalizeAgentExpressionLabel } from './expressions-agent-utils.js';
 
 const EXPRESSIONS_AGENT_TEMPLATE_ID = 'tpl-expressions-agent';
 const QIG_EXTENSION_NAME = 'quick-image-gen';
+const CHARACTER_CARD_PROMPT_LIMIT = 2400;
+const CHARACTER_CARD_FIELD_LIMITS = {
+    description: 1400,
+    creatorNotes: 650,
+    personality: 450,
+    scenario: 450,
+    charDepthPrompt: 350,
+};
 
 /**
  * Cached import handles for the companion subsystem. Populated lazily because the
@@ -91,6 +99,99 @@ function getLatestAssistantMessage(context) {
         return mes;
     }
     return null;
+}
+
+function normalizePromptText(value) {
+    return String(value || '')
+        .replace(/\r/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function truncatePromptText(value, limit) {
+    const text = normalizePromptText(value);
+    if (!text || text.length <= limit) return text;
+    return `${text.slice(0, limit).trim()}...`;
+}
+
+function normalizeLookupValue(value) {
+    return String(value || '')
+        .split(/[\\/]/)
+        .pop()
+        .replace(/\.[^/.]+$/, '')
+        .trim()
+        .toLowerCase();
+}
+
+function findCharacterIndex(context, characterName, characterAvatar) {
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    const avatarKey = normalizeLookupValue(characterAvatar);
+    const nameKey = String(characterName || '').trim().toLowerCase();
+
+    if (avatarKey) {
+        const avatarIndex = characters.findIndex(character => normalizeLookupValue(character?.avatar) === avatarKey);
+        if (avatarIndex !== -1) return avatarIndex;
+    }
+
+    if (nameKey) {
+        const nameIndex = characters.findIndex(character => String(character?.name || '').trim().toLowerCase() === nameKey);
+        if (nameIndex !== -1) return nameIndex;
+    }
+
+    const activeIndex = Number(context?.characterId);
+    if (Number.isInteger(activeIndex) && characters[activeIndex]) return activeIndex;
+
+    return -1;
+}
+
+function getCharacterCardFieldsForSprite(context, characterIndex, character = {}) {
+    if (typeof context?.getCharacterCardFields === 'function' && characterIndex !== -1) {
+        try {
+            const fields = context.getCharacterCardFields({ chid: characterIndex });
+            if (fields && typeof fields === 'object') return fields;
+        } catch (error) {
+            console.warn('[Expressions Agent] Character card lookup failed:', error);
+        }
+    }
+
+    return {
+        description: character.description,
+        personality: character.personality,
+        scenario: character.scenario,
+        creatorNotes: character.data?.creator_notes || character.creatorcomment,
+        charDepthPrompt: character.data?.extensions?.depth_prompt?.prompt,
+    };
+}
+
+function buildCharacterCardPrompt(fields = {}) {
+    const parts = [
+        ['Description', fields.description, CHARACTER_CARD_FIELD_LIMITS.description],
+        ['Creator notes', fields.creatorNotes, CHARACTER_CARD_FIELD_LIMITS.creatorNotes],
+        ['Personality', fields.personality, CHARACTER_CARD_FIELD_LIMITS.personality],
+        ['Scenario', fields.scenario, CHARACTER_CARD_FIELD_LIMITS.scenario],
+        ['Depth note', fields.charDepthPrompt, CHARACTER_CARD_FIELD_LIMITS.charDepthPrompt],
+    ]
+        .map(([label, value, limit]) => {
+            const text = truncatePromptText(value, limit);
+            return text ? `${label}: ${text}` : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+
+    return truncatePromptText(parts, CHARACTER_CARD_PROMPT_LIMIT);
+}
+
+function getExpressionSpritePromptContext(characterName, characterAvatar) {
+    const context = getContext();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    const characterIndex = findCharacterIndex(context, characterName, characterAvatar);
+    const character = characterIndex !== -1 ? characters[characterIndex] : null;
+    const fields = getCharacterCardFieldsForSprite(context, characterIndex, character || {});
+
+    return {
+        characterName: character?.name || characterName || context.name2 || 'character',
+        characterCard: buildCharacterCardPrompt(fields),
+    };
 }
 
 /**
@@ -218,9 +319,10 @@ export async function getAgentExpressionLabel(context, allowedExpressions) {
  *
  * @param {string} expression - The expression label to generate a sprite for.
  * @param {string} [characterName] - Optional character name to include in the image prompt.
+ * @param {string} [characterAvatar] - Optional avatar filename used to resolve the character card.
  * @returns {Promise<string|null>} A URL/data-URI for the generated image, or null on failure.
  */
-export async function maybeGenerateExpressionSprite(expression, characterName = null) {
+export async function maybeGenerateExpressionSprite(expression, characterName = null, characterAvatar = null) {
     if (!expression) return null;
 
     const qigBridge = await getQigBridge();
@@ -229,12 +331,11 @@ export async function maybeGenerateExpressionSprite(expression, characterName = 
         return null;
     }
 
-    const context = getContext();
-    const charName = characterName || context.name2 || 'character';
+    const promptContext = getExpressionSpritePromptContext(characterName, characterAvatar);
 
     try {
         console.debug(`[Expressions Agent] Requesting sprite for ${expression} from QIG`);
-        const imageUrl = await qigBridge.generateExpressionSprite(expression, charName);
+        const imageUrl = await qigBridge.generateExpressionSprite(expression, promptContext);
         return imageUrl || null;
     } catch (error) {
         console.error('[Expressions Agent] Failed to generate sprite:', error);

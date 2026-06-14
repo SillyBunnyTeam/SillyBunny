@@ -148,7 +148,8 @@ img.expression.default {
 }
 
 .menu_button.expression_list_delete,
-.menu_button.expression_list_upload {
+.menu_button.expression_list_upload,
+.menu_button.expression_list_regenerate {
     margin-top: 0;
     margin-bottom: 0;
 }
@@ -228,12 +229,14 @@ img.expression.default {
 }
 
 #expressions_generate_missing_sprites,
-.expression_list_generate {
+.expression_list_generate,
+.expression_list_regenerate {
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
 }
 
 #expressions_generate_missing_sprites[aria-disabled="true"],
-.expression_list_generate[aria-disabled="true"] {
+.expression_list_generate[aria-disabled="true"],
+.expression_list_regenerate[aria-disabled="true"] {
     opacity: 0.45;
     pointer-events: none;
 }

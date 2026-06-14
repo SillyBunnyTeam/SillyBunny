@@ -41,6 +41,8 @@ export { MODULE_NAME };
  * @property {string} title - The title for the image
  * @property {string} imageSrc - The image source / full path
  * @property {'success' | 'additional' | 'failure'} type - The type of the image
+ * @property {boolean} [canGenerate=false] - Whether the tile can generate a missing sprite
+ * @property {boolean} [canRegenerate=false] - Whether the tile can replace an existing sprite with a generated one
  */
 
 const MODULE_NAME = 'expressions';
@@ -625,7 +627,7 @@ async function moduleWorker({ newChat = false } = {}) {
             const hasSprite = spriteCache[spriteFolderName]?.some((e) => e.label === expression);
             if (!hasSprite) {
                 setExpressionGenerationBusy(true);
-                maybeGenerateExpressionSprite(expression, currentLastMessage.name).then(async (imageUrl) => {
+                maybeGenerateExpressionSprite(expression, currentLastMessage.name, currentLastMessage.original_avatar).then(async (imageUrl) => {
                     if (imageUrl) {
                         await uploadSpriteCommand({
                             name: currentLastMessage.original_avatar || currentLastMessage.name,
@@ -955,7 +957,7 @@ async function uploadSpriteCommand({ name, label, folder = null, spriteName = nu
 
 function setExpressionGenerationBusy(isBusy) {
     inSpriteGeneration = !!isBusy;
-    $('#expressions_generate_missing_sprites, .expression_list_generate')
+    $('#expressions_generate_missing_sprites, .expression_list_generate, .expression_list_regenerate')
         .toggleClass('disabled', inSpriteGeneration)
         .attr('aria-disabled', String(inSpriteGeneration));
 }
@@ -964,45 +966,54 @@ function getExpressionGenerationTarget(spriteFolderName) {
     const currentLastMessage = getLastCharacterMessage();
     const context = getContext();
     const folderCharacterName = String(spriteFolderName || '').split('/')[0];
+    const character = context.characters?.find(x => x.avatar === currentLastMessage.original_avatar)
+        || context.characters?.find(x => x.name === currentLastMessage.name)
+        || context.characters?.find(x => x.name === folderCharacterName || x.avatar?.replace(/\.[^/.]+$/, '') === folderCharacterName)
+        || context.characters?.[context.characterId];
 
     return {
-        characterName: currentLastMessage.name || context.name2 || folderCharacterName || 'character',
-        uploadName: currentLastMessage.original_avatar || currentLastMessage.name || folderCharacterName || context.name2,
+        characterName: currentLastMessage.name || character?.name || context.name2 || folderCharacterName || 'character',
+        characterAvatar: currentLastMessage.original_avatar || character?.avatar || null,
+        uploadName: currentLastMessage.original_avatar || currentLastMessage.name || character?.avatar || folderCharacterName || context.name2,
     };
 }
 
-async function generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast = true } = {}) {
+async function generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast = true, spriteName = null, replaceExisting = false } = {}) {
     if (!expression || !spriteFolderName) {
         toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
         return false;
     }
 
     const existingFiles = spriteCache[spriteFolderName]?.find(x => x.label === expression)?.files || [];
-    if (existingFiles.length > 0 && !extension_settings.expressions.allowMultiple) {
+    if (!replaceExisting && existingFiles.length > 0 && !extension_settings.expressions.allowMultiple) {
         toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}.`, t`Sprite Generation`);
         return false;
     }
 
-    const spriteName = existingFiles.length > 0
+    const targetSpriteName = spriteName || (existingFiles.length > 0
         ? generateUniqueSpriteName(expression, existingFiles)
-        : expression;
-    const { characterName, uploadName } = getExpressionGenerationTarget(spriteFolderName);
-    const imageUrl = await maybeGenerateExpressionSprite(expression, characterName);
+        : expression);
+    const { characterName, characterAvatar, uploadName } = getExpressionGenerationTarget(spriteFolderName);
+    const imageUrl = await maybeGenerateExpressionSprite(expression, characterName, characterAvatar);
 
     if (!imageUrl) {
         if (showToast) toastr.warning(t`Quick Image Gen did not return an image.`, t`Sprite Generation`);
         return false;
     }
 
-    await uploadSpriteCommand({
+    const uploadedSpriteName = await uploadSpriteCommand({
         name: uploadName,
         label: expression,
         folder: spriteFolderName,
-        spriteName,
+        spriteName: targetSpriteName,
     }, imageUrl);
     setExpressionGenerationBusy(inSpriteGeneration);
 
-    if (showToast) toastr.success(t`Generated sprite for ${expression}.`, t`Sprite Generation`);
+    if (!uploadedSpriteName) return false;
+    if (showToast) {
+        const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
+        toastr.success(message, t`Sprite Generation`);
+    }
     return true;
 }
 
@@ -1034,6 +1045,33 @@ async function onClickExpressionGenerate(event) {
     const spriteFolderName = $('#image_list').data('name');
 
     await withExpressionGenerationLock(async () => generateAndUploadExpressionSprite(expression, spriteFolderName));
+}
+
+async function onClickExpressionRegenerate(event) {
+    event.stopPropagation();
+
+    const expressionListItem = $(this).closest('.expression_list_item');
+    const expression = String(expressionListItem.data('expression') || '');
+    const fileName = String(expressionListItem.attr('data-filename') || '');
+    const spriteFolderName = $('#image_list').data('name');
+    const spriteName = withoutExtension(fileName);
+
+    if (!spriteName) {
+        toastr.warning(t`Choose an existing sprite before regenerating.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Regenerate Sprite`,
+        t`Replace ${fileName} for ${expression} with a new Quick Image Gen sprite? This can use provider credits.`,
+    );
+
+    if (!confirmed) return;
+
+    await withExpressionGenerationLock(async () => generateAndUploadExpressionSprite(expression, spriteFolderName, {
+        spriteName,
+        replaceExisting: true,
+    }));
 }
 
 async function onClickGenerateMissingSprites(event) {
@@ -1405,6 +1443,7 @@ function getExpressionImageData(sprite) {
         title: fileNameWithoutExtension,
         imageSrc: sprite.path,
         type: 'success',
+        canRegenerate: true,
         isCustom: extension_settings.expressions.custom?.includes(sprite.label),
     };
 }
@@ -2442,7 +2481,9 @@ export async function init() {
         $(document).on('click', '.expression_list_item', onClickExpressionImage);
         $(document).on('click', '.expression_list_upload', onClickExpressionUpload);
         $(document).on('click', '.expression_list_generate', onClickExpressionGenerate);
+        $(document).on('click', '.expression_list_regenerate', onClickExpressionRegenerate);
         $(document).on('keydown', '.expression_list_generate', onExpressionGenerationKeydown);
+        $(document).on('keydown', '.expression_list_regenerate', onExpressionGenerationKeydown);
         $(document).on('click', '.expression_list_delete', onClickExpressionDelete);
         $(window).on('resize', () => updateVisualNovelModeDebounced());
         $('#open_chat_expressions').hide();

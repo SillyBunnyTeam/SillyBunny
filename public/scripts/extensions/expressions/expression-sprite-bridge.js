@@ -16,6 +16,18 @@ import {
 
 const SPINNER_ID = 'expression-agent-spinner';
 
+function buildExpressionSpritePrompt(expression, { characterName, characterCard } = {}) {
+    const name = characterName || 'character';
+    const cardDetails = String(characterCard || '').trim();
+    return [
+        `Create one character expression sprite for ${name}.`,
+        `Expression to show: ${expression}.`,
+        cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
+        'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
+        'Portrait, character sprite, emotional face, clean isolated composition.',
+    ].filter(Boolean).join('\n');
+}
+
 /**
  * Find or create a small inline spinner inside the expression holder.
  * @returns {HTMLElement|null}
@@ -55,11 +67,13 @@ function removeSpinner() {
  * that expression sprite creation never blocks or is blocked by manual QIG usage.
  *
  * @param {string} expression - The expression label (e.g. "joy").
- * @param {string} characterName - The character name to seed the prompt.
+ * @param {object} promptContext - Character prompt context.
+ * @param {string} promptContext.characterName - The character name to seed the prompt.
+ * @param {string} [promptContext.characterCard] - Character card details to preserve in the prompt.
  * @returns {Promise<string|null>} URL/data-URI of the generated image, or null on failure.
  */
-export async function generateExpressionSprite(expression, characterName) {
-    if (!expression || !characterName) return null;
+export async function generateExpressionSprite(expression, promptContext) {
+    if (!expression || !promptContext?.characterName) return null;
 
     const qigSettings = getQigSettings();
     if (!qigSettings) {
@@ -70,7 +84,7 @@ export async function generateExpressionSprite(expression, characterName) {
     showSpinner();
 
     try {
-        const prompt = `${characterName}, ${expression} expression, portrait, character sprite, emotional face`;
+        const prompt = buildExpressionSpritePrompt(expression, promptContext);
         const negative = qigSettings.negativePrompt || '';
 
         const imageUrl = await qigWithTransientGenerationSettings({}, async () => {
