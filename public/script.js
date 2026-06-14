@@ -631,6 +631,8 @@ let pendingMobileMessageUpdateFrame = 0;
 let pendingMobileMessageUpdateTimer = 0;
 let messageUpdateQueue = null;
 let mobileMessageUpdateQueue = null;
+/** @type {Array<() => void>} Resolvers for Promises waiting on the next mobile-queue flush. */
+let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
@@ -2710,19 +2712,35 @@ function flushPendingMobileMessageUpdates() {
     pendingMobileMessageUpdateFrame = 0;
     pendingMobileMessageUpdateTimer = 0;
     getMobileMessageUpdateQueue().flush();
+    // Notify all callers awaiting this flush that the DOM is now repainted.
+    const resolvers = mobileMessageUpdateFlushResolvers.splice(0);
+    for (const resolve of resolvers) resolve();
 }
 
+/**
+ * Queues a mobile message-block update and returns a Promise that resolves after the
+ * deferred rAF flush actually repaints the DOM.  This lets async callers await the
+ * real paint completion rather than just the data write.
+ * @param {number|string} messageId
+ * @param {object} message
+ * @param {{rerenderMessage: boolean}} options
+ * @returns {Promise<void>}
+ */
 function queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage }) {
     getMobileMessageUpdateQueue().queue(messageId, message, { rerenderMessage });
 
+    const flushPromise = new Promise(resolve => mobileMessageUpdateFlushResolvers.push(resolve));
+
     if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer) {
-        return;
+        return flushPromise;
     }
 
     pendingMobileMessageUpdateTimer = window.setTimeout(() => {
         pendingMobileMessageUpdateTimer = 0;
         pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);
     }, MOBILE_MESSAGE_UPDATE_DELAY_MS);
+
+    return flushPromise;
 }
 
 function insertShowMoreFragment(referenceNode, fragment) {
@@ -3888,10 +3906,11 @@ function applyMessageBlockUpdate(messageId, message, { rerenderMessage = true } 
  * @param {object} message Message object
  * @param {object} [options={}] Optional arguments
  * @param {boolean} [options.rerenderMessage=true] Whether to re-render the message content (inside <c>.mes_text</c>)
+ * @returns {Promise<void>} Resolves once the message block DOM has been repainted (including the deferred mobile flush).
  */
-export function updateMessageBlock(messageId, message, { rerenderMessage = true } = {}) {
+export async function updateMessageBlock(messageId, message, { rerenderMessage = true } = {}) {
     if (shouldDeferMobileMessageUpdates()) {
-        queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage });
+        await queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage });
         return;
     }
 
