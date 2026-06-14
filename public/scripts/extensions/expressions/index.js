@@ -1390,10 +1390,9 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
 
         const sourceTileWidth = sourceWidth / grid.columns;
         const sourceTileHeight = sourceHeight / grid.rows;
-        const outputTileWidth = Math.max(1, Math.floor(sourceTileWidth));
-        const outputTileHeight = Math.max(1, Math.floor(sourceTileHeight));
-        const sourceInsetX = Math.min(sourceTileWidth / 5, Math.max(1, sourceTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
-        const sourceInsetY = Math.min(sourceTileHeight / 5, Math.max(1, sourceTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
+        // Use a fixed, uniform output size for every tile so all sprites share the same canvas.
+        const outputTileWidth = Math.max(1, Math.round(sourceTileWidth));
+        const outputTileHeight = Math.max(1, Math.round(sourceTileHeight));
         const outputInsetX = Math.min(outputTileWidth / 5, Math.max(1, outputTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
         const outputInsetY = Math.min(outputTileHeight / 5, Math.max(1, outputTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
 
@@ -1401,6 +1400,16 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
             throwIfExpressionGenerationStopped();
             const column = index % grid.columns;
             const row = Math.floor(index / grid.columns);
+            // Compute integer pixel boundaries per tile from cumulative edges so columns/rows
+            // tile the full image exactly with no accumulated rounding drift.
+            const srcLeft = Math.round(column * sourceTileWidth);
+            const srcRight = Math.round((column + 1) * sourceTileWidth);
+            const srcTop = Math.round(row * sourceTileHeight);
+            const srcBottom = Math.round((row + 1) * sourceTileHeight);
+            const srcTileWidth = Math.max(1, srcRight - srcLeft);
+            const srcTileHeight = Math.max(1, srcBottom - srcTop);
+            const sourceInsetX = Math.min(srcTileWidth / 5, Math.max(1, srcTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
+            const sourceInsetY = Math.min(srcTileHeight / 5, Math.max(1, srcTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
             const canvas = document.createElement('canvas');
             canvas.width = outputTileWidth;
             canvas.height = outputTileHeight;
@@ -1408,10 +1417,10 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
             if (!context) throw new Error('Canvas is not available for sprite sheet splitting.');
             context.drawImage(
                 image,
-                (column * sourceTileWidth) + sourceInsetX,
-                (row * sourceTileHeight) + sourceInsetY,
-                sourceTileWidth - (sourceInsetX * 2),
-                sourceTileHeight - (sourceInsetY * 2),
+                srcLeft + sourceInsetX,
+                srcTop + sourceInsetY,
+                srcTileWidth - (sourceInsetX * 2),
+                srcTileHeight - (sourceInsetY * 2),
                 outputInsetX,
                 outputInsetY,
                 outputTileWidth - (outputInsetX * 2),
@@ -3369,6 +3378,13 @@ export async function init() {
     });
     eventSource.on(event_types.MOVABLE_PANELS_RESET, updateVisualNovelModeDebounced);
     eventSource.on(event_types.GROUP_UPDATED, updateVisualNovelModeDebounced);
+    // Refresh the agent status when settings change (e.g. the user enables the
+    // Expressions Agent template in In-Chat Agents after this panel was opened).
+    eventSource.on(event_types.SETTINGS_UPDATED, () => {
+        if (extension_settings.expressions.api === EXPRESSION_API.agent) {
+            updateExpressionsAgentStatus();
+        }
+    });
 
     const localEnumProviders = {
         expressions: () => {
