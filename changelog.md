@@ -55,6 +55,7 @@
 - PR #465 (2026-06-14) `fix: clear cookies and cache now works on iOS WebKit`
 - PR #466 (2026-06-14) `fix(chat): await deferred mobile repaint before MESSAGE_UPDATED`
 - PR #467 (2026-06-14) `fix: compact world info entry controls`
+- PR #468 (2026-06-14) `feat(expressions): add In-Chat Agent classifier with Quick Image Gen sprite generation`
 - PR #469 (2026-06-14) `feat(ica): show all enabled companions in batch selector`
 
 ## v1.6.4
