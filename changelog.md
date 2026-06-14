@@ -6,6 +6,17 @@
 - Chat backup count is now capped to 25 by default (`backups.chat.maxTotalBackups`) instead of unlimited, preventing unbounded accumulation over time.
 - Pre-write chat backups now skip writing when the on-disk content is unchanged (duplicate detection), reducing redundant snapshots during rapid save flows like swiping.
 
+### In-Chat Agents
+- Added Companion Agents: sidecar-style auxiliary AI helpers that run alongside the main chat, reading the conversation and doing their own background job (tracking plot, watching relationships, drafting worldbuilding notes, summarizing history, and more) without interrupting the story.
+- Companions run on one of two trigger modes — auto (after matching AI replies) or manual — with optional keyword/regex conditions and a probability percentage to fire only some of the time or on specific patterns.
+- Companions can display as inline note cards (with regenerate, edit, copy, and delete actions), in a draggable slide-out side panel that docks to any screen edge, or hidden (feeding future runs without showing). The panel supports regenerate, manual note edits, jump-to-source-message, per-companion run history, a lock-open button, and a regenerate-all action.
+- Added a dedicated Companion Agents dashboard (reachable from the wand menu and an extension toolbar button) to manage every companion across all chats, create new ones, import from file, pick from bundled templates, enable/disable with one tap, and convert eligible inline agents to companion execution.
+- One-click conversion flips agents between inline and companion execution from agent cards and a bulk select-mode action, preserving prompt, regex scripts, injection, and conditions.
+- Trackers converted to companion execution get an automatic loop by default (run after every reply, raw prompt sent verbatim, latest state fed back into the next generation, state shown in the slide-out panel instead of chat cards), with a one-time migration applying the same defaults to already-converted trackers.
+- Companions are highly customizable per companion: trigger, display mode, output format (markdown/HTML/plain text), context window depth, token thresholds and limits, which context to feed (character card, persona, world info, author's note, system prompt, prior notes), self-feedback depth, raw prompt mode, shared-request batching, and per-companion model, temperature, and reasoning settings. Companions can run in parallel or sequentially.
+- Ships 11 ready-to-use companions: Continuity Companion, Relationship Lens, Director's Commentary, Actor Interview, Lorebook Scout, Memory Shard, NPC Motivator, Plot Compass, Chatroom, Message Inbox, and Chat Only.
+- Companions tied to a specific chat are removed automatically when that chat is deleted.
+
 ### Merged Staging PRs
 - PR #402 (2026-06-10) `chore: bump version to 1.6.5`
 - PR #404 (2026-06-10) `chore: route mobile rail and quick-action models through mobile-shell-lifecycle`
