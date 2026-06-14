@@ -131,6 +131,11 @@ const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
 const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
 const SHEET_TILE_SOURCE_INSET_RATIO = 0.02;
 const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
+/**
+ * Minimum fraction of a tile's smaller dimension that foreground content must span
+ * before content-aware centering is applied. Prevents centering noise/artifacts.
+ */
+const SPRITE_CENTER_MIN_CONTENT_RATIO = 0.08;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -1254,15 +1259,92 @@ function makeCanvasBackgroundTransparent(canvas) {
 }
 
 /**
- * Removes solid/near-solid background pixels from a sprite tile canvas using an
- * edge-connected flood-fill.  Only runs when the user has opted in to background
- * removal; full-bleed art (e.g. GPT Image 2) has no plain background to strip and
- * must be left untouched.
+ * Returns the axis-aligned bounding box of all pixels with alpha > threshold.
+ * Returns null when the canvas is fully transparent or too small to be useful.
+ * @param {HTMLCanvasElement} canvas
+ * @returns {{minX: number, minY: number, maxX: number, maxY: number}|null}
+ */
+function getSpriteForegroundBounds(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    const { width, height } = canvas;
+    if (!width || !height) return null;
+
+    const { data } = context.getImageData(0, 0, width, height);
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (data[((y * width) + x) * 4 + 3] > SPRITE_FOREGROUND_ALPHA_THRESHOLD) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+
+    const contentWidth = maxX - minX + 1;
+    const contentHeight = maxY - minY + 1;
+    const minDimension = Math.min(width, height);
+    if (contentWidth < minDimension * SPRITE_CENTER_MIN_CONTENT_RATIO
+        && contentHeight < minDimension * SPRITE_CENTER_MIN_CONTENT_RATIO) return null;
+
+    return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Redraws the foreground content of a canvas centered with equal padding on all sides.
+ * The canvas dimensions are preserved. Only acts when centering would move the content
+ * by more than 1px in either axis — avoids unnecessary redraws.
+ * @param {HTMLCanvasElement} canvas
+ */
+function centerSpriteContent(canvas) {
+    const bounds = getSpriteForegroundBounds(canvas);
+    if (!bounds) return;
+
+    const { width, height } = canvas;
+    const contentWidth = bounds.maxX - bounds.minX + 1;
+    const contentHeight = bounds.maxY - bounds.minY + 1;
+
+    // Where the content center currently is vs where it should be
+    const currentCenterX = bounds.minX + contentWidth / 2;
+    const currentCenterY = bounds.minY + contentHeight / 2;
+    const targetCenterX = width / 2;
+    const targetCenterY = height / 2;
+
+    const shiftX = targetCenterX - currentCenterX;
+    const shiftY = targetCenterY - currentCenterY;
+
+    // Skip if the shift is negligible
+    if (Math.abs(shiftX) <= 1 && Math.abs(shiftY) <= 1) return;
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    // Snapshot the current pixels, clear, redraw shifted
+    const snapshot = context.getImageData(0, 0, width, height);
+    context.clearRect(0, 0, width, height);
+    context.putImageData(snapshot, Math.round(shiftX), Math.round(shiftY));
+}
+
+/**
+ * Post-processes a sprite tile canvas after cropping:
+ * - Optionally removes solid/near-solid backgrounds (edge-connected flood-fill, opt-in only).
+ * - Always re-centers the visible content so off-center tiles from sheet splits align.
+ *
+ * Background removal is opt-in because full-bleed art (e.g. GPT Image 2) has no plain
+ * background to strip and the flood-fill would destroy character pixels.
  * @param {HTMLCanvasElement} canvas
  */
 function postProcessSpriteCanvas(canvas) {
-    if (!extension_settings.expressions.agentSpriteRemoveBackground) return;
-    makeCanvasBackgroundTransparent(canvas);
+    if (extension_settings.expressions.agentSpriteRemoveBackground) {
+        makeCanvasBackgroundTransparent(canvas);
+    }
+    centerSpriteContent(canvas);
 }
 
 async function postProcessSpriteImage(imageUrl) {

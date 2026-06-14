@@ -59,10 +59,12 @@ const EXPRESSION_SPRITE_FRAMING_PROMPTS = {
     [EXPRESSION_SPRITE_FRAMING.bust]: [
         'Framing: bust portrait, chest and shoulders visible, face centered, same head size in every sprite.',
         'Use a straight-on front view at eye level. Keep shoulders square to the camera and do not change the camera distance.',
+        'Position the character identically in every image: head near the top with a small even margin, body centered horizontally, same scale and crop. The character must occupy the same area of the frame each time.',
     ].join('\n'),
     [EXPRESSION_SPRITE_FRAMING.fullBody]: [
         'Framing: full body sprite, entire character visible from head to feet, centered with consistent scale.',
         'Use a straight-on front-facing standing pose at eye level. Keep the same body pose and camera distance in every sprite.',
+        'Position the character identically in every image: feet near the bottom, head near the top, centered horizontally, same scale and crop. The character must occupy the same area of the frame each time.',
     ].join('\n'),
 };
 
