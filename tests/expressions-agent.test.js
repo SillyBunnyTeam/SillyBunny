@@ -1,4 +1,3 @@
-import { describe, test, expect } from 'bun:test';
 import { normalizeAgentExpressionLabel } from '../public/scripts/extensions/expressions/expressions-agent-utils.js';
 
 describe('expressions agent bridge', () => {
