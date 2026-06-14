@@ -25,6 +25,22 @@ const CHARACTER_CARD_FIELD_LIMITS = {
     scenario: 450,
     charDepthPrompt: 350,
 };
+const EXPRESSION_SPRITE_FRAMING = {
+    bust: 'bust',
+    fullBody: 'full_body',
+};
+const DEFAULT_EXPRESSION_SPRITE_FRAMING = EXPRESSION_SPRITE_FRAMING.bust;
+export const DEFAULT_EXPRESSION_SPRITE_PROMPT = [
+    'Create one image in a matching character expression sprite set for {{characterName}}.',
+    'Expression to show: {{expression}}.',
+    'Use these character card details as the source of truth for the character\'s actual appearance:',
+    '{{characterCard}}',
+    '{{framingInstructions}}',
+    'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
+    'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, plain white or transparent background.',
+    'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
+    'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
+].join('\n');
 
 /**
  * Cached import handles for the companion subsystem. Populated lazily because the
@@ -181,6 +197,18 @@ function buildCharacterCardPrompt(fields = {}) {
     return truncatePromptText(parts, CHARACTER_CARD_PROMPT_LIMIT);
 }
 
+function getExpressionSpriteFraming() {
+    const framing = extension_settings?.expressions?.agentSpriteFraming;
+    return Object.values(EXPRESSION_SPRITE_FRAMING).includes(framing)
+        ? framing
+        : DEFAULT_EXPRESSION_SPRITE_FRAMING;
+}
+
+function getExpressionSpritePromptTemplate() {
+    const prompt = String(extension_settings?.expressions?.agentSpritePrompt || '').trim();
+    return prompt || DEFAULT_EXPRESSION_SPRITE_PROMPT;
+}
+
 function getExpressionSpritePromptContext(characterName, characterAvatar) {
     const context = getContext();
     const characters = Array.isArray(context?.characters) ? context.characters : [];
@@ -191,6 +219,8 @@ function getExpressionSpritePromptContext(characterName, characterAvatar) {
     return {
         characterName: character?.name || characterName || context.name2 || 'character',
         characterCard: buildCharacterCardPrompt(fields),
+        framing: getExpressionSpriteFraming(),
+        promptTemplate: getExpressionSpritePromptTemplate(),
     };
 }
 

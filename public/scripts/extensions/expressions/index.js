@@ -19,6 +19,7 @@ import { Popup, POPUP_RESULT } from '../../popup.js';
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import {
+    DEFAULT_EXPRESSION_SPRITE_PROMPT,
     getAgentExpressionLabel,
     isExpressionsAgentAvailable,
     maybeGenerateExpressionSprite,
@@ -101,6 +102,14 @@ const PROMPT_TYPE = {
     raw: 'raw',
     full: 'full',
 };
+
+/** @enum {string} */
+const EXPRESSION_SPRITE_FRAMING = {
+    bust: 'bust',
+    fullBody: 'full_body',
+};
+
+const DEFAULT_EXPRESSION_SPRITE_FRAMING = EXPRESSION_SPRITE_FRAMING.bust;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -2422,6 +2431,16 @@ function migrateSettings() {
         saveSettingsDebounced();
     }
 
+    if (!Object.values(EXPRESSION_SPRITE_FRAMING).includes(extension_settings.expressions.agentSpriteFraming)) {
+        extension_settings.expressions.agentSpriteFraming = DEFAULT_EXPRESSION_SPRITE_FRAMING;
+        saveSettingsDebounced();
+    }
+
+    if (extension_settings.expressions.agentSpritePrompt === undefined) {
+        extension_settings.expressions.agentSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT;
+        saveSettingsDebounced();
+    }
+
     // SillyBunny divergence: keep the expressions agent's connection profile in sync
     // with the user's preference (share QIG LLM override profile or not).
     syncExpressionsAgentProfile().catch((error) => {
@@ -2512,6 +2531,24 @@ export async function init() {
                     console.error('[Expressions Agent] Profile sync failed:', error);
                 });
             });
+        $('#expressions_agent_sprite_framing')
+            .val(extension_settings.expressions.agentSpriteFraming)
+            .on('change', function () {
+                const framing = String($(this).val() || '');
+                extension_settings.expressions.agentSpriteFraming = Object.values(EXPRESSION_SPRITE_FRAMING).includes(framing)
+                    ? framing
+                    : DEFAULT_EXPRESSION_SPRITE_FRAMING;
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_prompt')
+            .val(extension_settings.expressions.agentSpritePrompt || DEFAULT_EXPRESSION_SPRITE_PROMPT)
+            .on('input', function () {
+                extension_settings.expressions.agentSpritePrompt = String($(this).val());
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_prompt_restore').on('click', function () {
+            $('#expressions_agent_sprite_prompt').val(DEFAULT_EXPRESSION_SPRITE_PROMPT).trigger('input');
+        });
         updateExpressionsAgentStatus();
         $('#expression_llm_prompt').val(extension_settings.expressions.llmPrompt ?? '');
         $('#expression_llm_prompt').on('input', function () {

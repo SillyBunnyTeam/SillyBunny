@@ -15,16 +15,75 @@ import {
 } from '../quick-image-gen/index.js';
 
 const SPINNER_ID = 'expression-agent-spinner';
+const EXPRESSION_SPRITE_FRAMING = {
+    bust: 'bust',
+    fullBody: 'full_body',
+};
+const EXPRESSION_SPRITE_NEGATIVE = [
+    'three-quarter view',
+    '3/4 view',
+    'side view',
+    'profile view',
+    'looking away',
+    'rotated shoulders',
+    'tilted head',
+    'tilted camera',
+    'dutch angle',
+    'top-down view',
+    'low angle',
+    'different crop',
+    'different zoom',
+    'different outfit',
+    'different hairstyle',
+    'different accessories',
+].join(', ');
+const EXPRESSION_SPRITE_FRAMING_PROMPTS = {
+    [EXPRESSION_SPRITE_FRAMING.bust]: [
+        'Framing: bust portrait, chest and shoulders visible, face centered, same head size in every sprite.',
+        'Use a straight-on front view at eye level. Keep shoulders square to the camera and do not change the camera distance.',
+    ].join('\n'),
+    [EXPRESSION_SPRITE_FRAMING.fullBody]: [
+        'Framing: full body sprite, entire character visible from head to feet, centered with consistent scale.',
+        'Use a straight-on front-facing standing pose at eye level. Keep the same body pose and camera distance in every sprite.',
+    ].join('\n'),
+};
 
-function buildExpressionSpritePrompt(expression, { characterName, characterCard } = {}) {
+function getExpressionSpriteFramingPrompt(framing) {
+    return EXPRESSION_SPRITE_FRAMING_PROMPTS[framing] || EXPRESSION_SPRITE_FRAMING_PROMPTS[EXPRESSION_SPRITE_FRAMING.bust];
+}
+
+function substituteExpressionSpritePrompt(template, values) {
+    return Object.entries(values).reduce((prompt, [key, value]) => {
+        const macro = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
+        return prompt.replace(macro, () => String(value ?? ''));
+    }, template).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function buildExpressionSpritePrompt(expression, { characterName, characterCard, framing, promptTemplate } = {}) {
     const name = characterName || 'character';
     const cardDetails = String(characterCard || '').trim();
+    const framingInstructions = getExpressionSpriteFramingPrompt(framing);
+    const promptTemplateText = String(promptTemplate || '').trim();
+
+    if (promptTemplateText) {
+        return substituteExpressionSpritePrompt(promptTemplateText, {
+            characterName: name,
+            expression,
+            characterCard: cardDetails,
+            framing: framing || EXPRESSION_SPRITE_FRAMING.bust,
+            framingInstructions,
+        });
+    }
+
     return [
-        `Create one character expression sprite for ${name}.`,
+        `Create one image in a matching character expression sprite set for ${name}.`,
         `Expression to show: ${expression}.`,
         cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
+        framingInstructions,
         'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
-        'Portrait, character sprite, emotional face, clean isolated composition.',
+        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, plain white or transparent background.',
+        'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
+        'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
     ].filter(Boolean).join('\n');
 }
 
@@ -70,6 +129,8 @@ function removeSpinner() {
  * @param {object} promptContext - Character prompt context.
  * @param {string} promptContext.characterName - The character name to seed the prompt.
  * @param {string} [promptContext.characterCard] - Character card details to preserve in the prompt.
+ * @param {string} [promptContext.framing] - Desired sprite framing.
+ * @param {string} [promptContext.promptTemplate] - Editable prompt template sent to Quick Image Gen.
  * @returns {Promise<string|null>} URL/data-URI of the generated image, or null on failure.
  */
 export async function generateExpressionSprite(expression, promptContext) {
@@ -85,7 +146,7 @@ export async function generateExpressionSprite(expression, promptContext) {
 
     try {
         const prompt = buildExpressionSpritePrompt(expression, promptContext);
-        const negative = qigSettings.negativePrompt || '';
+        const negative = [qigSettings.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
 
         const imageUrl = await qigWithTransientGenerationSettings({}, async () => {
             const settings = getQigGenerationSettingsForRun();

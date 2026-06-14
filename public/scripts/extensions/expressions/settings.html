@@ -44,6 +44,24 @@
                     <input id="expressions_agent_use_qig_llm_profile" type="checkbox">
                     <span data-i18n="Share Quick Image Gen LLM override profile">Share Quick Image Gen LLM override profile</span>
                 </label>
+                <div class="expression_agent_generation_controls flex-container flexFlowColumn">
+                    <label for="expressions_agent_sprite_framing" data-i18n="Sprite framing">Sprite framing</label>
+                    <small data-i18n="Keeps generated expressions at a consistent front-facing camera angle and crop.">Keeps generated expressions at a consistent front-facing camera angle and crop.</small>
+                    <select id="expressions_agent_sprite_framing" class="flex1 margin0">
+                        <option value="bust" data-i18n="Bust portrait (consistent close-up)">Bust portrait (consistent close-up)</option>
+                        <option value="full_body" data-i18n="Full body (consistent standing pose)">Full body (consistent standing pose)</option>
+                    </select>
+                </div>
+                <div class="expression_agent_prompt_block flex-container flexFlowColumn">
+                    <label for="expressions_agent_sprite_prompt" class="title_restorable">
+                        <span data-i18n="Quick Image Gen Prompt">Quick Image Gen Prompt</span>
+                        <div id="expressions_agent_sprite_prompt_restore" title="Restore default value" class="right_menu_button">
+                            <i class="fa-solid fa-clock-rotate-left fa-sm"></i>
+                        </div>
+                    </label>
+                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{characterName}}, {{expression}}, {{characterCard}}, {{framingInstructions}}.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{characterName}}, {{expression}}, {{characterCard}}, {{framingInstructions}}.</small>
+                    <textarea id="expressions_agent_sprite_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="8" placeholder="Use &lcub;&lcub;characterName&rcub;&rcub;, &lcub;&lcub;expression&rcub;&rcub;, &lcub;&lcub;characterCard&rcub;&rcub;, and &lcub;&lcub;framingInstructions&rcub;&rcub; macros."></textarea>
+                </div>
                 <p class="expression_agent_hint hint" data-i18n="Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.">
                     Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.
                 </p>

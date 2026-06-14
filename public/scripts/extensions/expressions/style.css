@@ -228,6 +228,15 @@ img.expression.default {
     margin: 0;
 }
 
+.expression_agent_generation_controls,
+.expression_agent_prompt_block {
+    gap: 0.25rem;
+}
+
+#expressions_agent_sprite_prompt {
+    min-height: 8em;
+}
+
 #expressions_generate_missing_sprites,
 .expression_list_generate,
 .expression_list_regenerate {
