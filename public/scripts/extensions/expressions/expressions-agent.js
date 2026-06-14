@@ -48,7 +48,8 @@ export const DEFAULT_EXPRESSION_SPRITE_PROMPT = [
     '{{characterCard}}',
     '{{framingInstructions}}',
     'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
-    'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
+    'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, true transparent background.',
+    'If true alpha transparency is unavailable, use flat pure white only. Never draw a checkerboard or transparency grid.',
     'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
     'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
 ].join('\n');

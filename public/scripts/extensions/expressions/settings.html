@@ -131,6 +131,10 @@
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                         <span data-i18n="Generate missing sprites">Generate missing sprites</span>
                     </div>
+                    <div id="expressions_upload_sprite_sheet" class="menu_button" role="button" tabindex="0" title="Upload a character sheet and split it into missing sprites" data-i18n="[title]Upload a character sheet and split it into missing sprites">
+                        <i class="fa-solid fa-table-cells-large"></i>
+                        <span data-i18n="Upload character sheet">Upload character sheet</span>
+                    </div>
                     <div id="expressions_stop_sprite_generation" class="menu_button" role="button" tabindex="0" title="Stop the current Quick Image Gen sprite generation" data-i18n="[title]Stop the current Quick Image Gen sprite generation">
                         <i class="fa-solid fa-stop"></i>
                         <span data-i18n="Stop generation">Stop generation</span>
@@ -138,6 +142,10 @@
                     <div id="expression_upload_pack_button" class="menu_button">
                         <i class="fa-solid fa-file-zipper"></i>
                         <span data-i18n="Upload sprite pack (ZIP)">Upload sprite pack (ZIP)</span>
+                    </div>
+                    <div id="expressions_remove_all_sprites" class="menu_button" role="button" tabindex="0" title="Remove every sprite image in this set" data-i18n="[title]Remove every sprite image in this set">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span data-i18n="Remove all sprites">Remove all sprites</span>
                     </div>
                     <div id="expression_override_cleanup_button" class="menu_button">
                         <i class="fa-solid fa-trash-can"></i>
@@ -169,5 +177,6 @@
     <form>
         <input type="file" id="expression_upload_pack" name="expression_upload_pack" accept="application/zip" hidden>
         <input type="file" id="expression_upload" name="expression_upload" accept="image/*" hidden>
+        <input type="file" id="expression_upload_sheet" name="expression_upload_sheet" accept="image/*" hidden>
     </form>
 </div>

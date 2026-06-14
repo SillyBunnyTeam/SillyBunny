@@ -41,6 +41,15 @@ const EXPRESSION_SPRITE_NEGATIVE = [
     'opaque background',
     'colored background',
     'busy background',
+    'checkerboard background',
+    'transparent checkerboard',
+    'transparency grid',
+    'alpha checkerboard',
+    'gray checkerboard',
+    'captions',
+    'labels',
+    'text',
+    'expression names',
 ].join(', ');
 const EXPRESSION_SPRITE_FRAMING_PROMPTS = {
     [EXPRESSION_SPRITE_FRAMING.bust]: [
@@ -108,8 +117,9 @@ function buildSheetGenerationInstructions(expressions, characterName, grid) {
         `Sheet layout: ${grid.columns} columns by ${grid.rows} rows, equal-size cells, row-major order.`,
         `Generate the first ${expressions.length} cells using these expressions in order:\n${formatExpressionList(expressions)}`,
         extraCells > 0 ? `Leave the final ${extraCells} unused cell(s) transparent or flat white.` : '',
-        'Use a transparent background for the sheet and every cell. If transparency is not available, use a flat pure white background so it can be removed by post-processing.',
-        'No captions, labels, numbers, borders, gutters, panel outlines, or decorative dividers.',
+        'Use true alpha transparency for the sheet and every cell. If true transparency is not available, use a flat pure white background only.',
+        'Do not draw a checkerboard, transparency grid, gray squares, paper texture, or any background pattern.',
+        'No captions, labels, numbers, expression names, borders, gutters, panel outlines, or decorative dividers.',
         'Each filled cell must contain exactly one clean sprite tile that can be cropped by equal grid coordinates.',
     ].filter(Boolean).join('\n');
 }
@@ -139,7 +149,8 @@ function buildExpressionSpritePrompt(expression, { characterName, characterCard,
         cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
         framingInstructions,
         'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
-        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
+        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, true transparent background.',
+        'If true transparency is not available, use flat pure white only. Never draw a checkerboard or transparency grid.',
         'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
         'Clean isolated character sprite, emotional face, production-ready expression sheet tile.',
     ].filter(Boolean).join('\n');
@@ -172,7 +183,8 @@ function buildExpressionSpriteSheetPrompt(expressions, { characterName, characte
         cardDetails ? `Use these character card details as the source of truth for the character's actual appearance:\n${cardDetails}` : '',
         framingInstructions,
         'Preserve the same character identity, species, body, hair, eyes, clothing, accessories, colors, and style described in the card.',
-        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, transparent background.',
+        'Consistency rules: same front-facing angle, same crop, same scale, same head and body position, same outfit, same hairstyle, same accessories, true transparent background.',
+        'If true transparency is not available, use flat pure white only. Never draw a checkerboard or transparency grid.',
         'Only the facial expression should change. Keep pose, camera, composition, and silhouette stable across all generated expressions.',
         'Clean isolated character sprite, emotional face, production-ready expression sheet.',
     ].filter(Boolean).join('\n');

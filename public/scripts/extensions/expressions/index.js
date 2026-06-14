@@ -123,6 +123,11 @@ const EXPRESSION_SPRITE_GENERATION_MODE = {
 const DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE = EXPRESSION_SPRITE_GENERATION_MODE.individual;
 const SHEET_BACKGROUND_RGB_THRESHOLD = 238;
 const SHEET_BACKGROUND_CHANNEL_SPREAD = 28;
+const SHEET_BACKGROUND_NEUTRAL_SPREAD = 48;
+const SHEET_BACKGROUND_BUCKET_SIZE = 16;
+const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
+const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
+const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -982,7 +987,7 @@ async function uploadSpriteCommand({ name, label, folder = null, spriteName = nu
 
 function setExpressionGenerationBusy(isBusy) {
     inSpriteGeneration = !!isBusy;
-    $('#expressions_generate_missing_sprites, .expression_list_generate, .expression_list_regenerate')
+    $('#expressions_generate_missing_sprites, #expressions_upload_sprite_sheet, #expressions_remove_all_sprites, .expression_list_generate, .expression_list_regenerate')
         .toggleClass('disabled', inSpriteGeneration)
         .attr('aria-disabled', String(inSpriteGeneration));
     $('#expressions_stop_sprite_generation')
@@ -1080,6 +1085,13 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
     return true;
 }
 
+function getExpressionSpriteSheetGrid(tileCount) {
+    const count = Math.max(1, Number(tileCount) || 1);
+    const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
+    return { columns, rows };
+}
+
 function loadImageElement(src) {
     return new Promise((resolve, reject) => {
         const image = new Image();
@@ -1101,20 +1113,95 @@ function canvasToPngObjectUrl(canvas) {
     });
 }
 
-function isSheetBackgroundPixel(data, pixelIndex) {
-    const red = data[pixelIndex];
-    const green = data[pixelIndex + 1];
-    const blue = data[pixelIndex + 2];
-    const alpha = data[pixelIndex + 3];
+function getPixelChannels(data, pixelIndex) {
+    return {
+        red: data[pixelIndex],
+        green: data[pixelIndex + 1],
+        blue: data[pixelIndex + 2],
+        alpha: data[pixelIndex + 3],
+    };
+}
+
+function getChannelSpread(red, green, blue) {
+    return Math.max(red, green, blue) - Math.min(red, green, blue);
+}
+
+function isNeutralSheetPixel(red, green, blue) {
+    return getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_NEUTRAL_SPREAD;
+}
+
+function getAverageLightness(red, green, blue) {
+    return (red + green + blue) / 3;
+}
+
+function getSheetBackgroundPalette(data, width, height) {
+    const buckets = new Map();
+    const addPixel = (x, y) => {
+        const pixelIndex = ((y * width) + x) * 4;
+        const { red, green, blue, alpha } = getPixelChannels(data, pixelIndex);
+        if (alpha < 24 || !isNeutralSheetPixel(red, green, blue)) return;
+        if (getAverageLightness(red, green, blue) < SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS) return;
+
+        const key = [
+            Math.floor(red / SHEET_BACKGROUND_BUCKET_SIZE),
+            Math.floor(green / SHEET_BACKGROUND_BUCKET_SIZE),
+            Math.floor(blue / SHEET_BACKGROUND_BUCKET_SIZE),
+        ].join(',');
+        const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
+        bucket.count += 1;
+        bucket.red += red;
+        bucket.green += green;
+        bucket.blue += blue;
+        buckets.set(key, bucket);
+    };
+
+    for (let x = 0; x < width; x++) {
+        addPixel(x, 0);
+        addPixel(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        addPixel(0, y);
+        addPixel(width - 1, y);
+    }
+
+    const sortedBuckets = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    const maxCount = sortedBuckets[0]?.count || 0;
+    const minCount = Math.max(4, Math.floor(maxCount * 0.08));
+    return sortedBuckets
+        .filter(bucket => bucket.count >= minCount)
+        .slice(0, SHEET_BACKGROUND_PALETTE_LIMIT)
+        .map(bucket => ({
+            red: bucket.red / bucket.count,
+            green: bucket.green / bucket.count,
+            blue: bucket.blue / bucket.count,
+        }));
+}
+
+function isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette) {
+    const maxDistanceSquared = SHEET_BACKGROUND_COLOR_DISTANCE ** 2;
+    return backgroundPalette.some(color => {
+        const redDistance = red - color.red;
+        const greenDistance = green - color.green;
+        const blueDistance = blue - color.blue;
+        return ((redDistance ** 2) + (greenDistance ** 2) + (blueDistance ** 2)) <= maxDistanceSquared;
+    });
+}
+
+function isSheetBackgroundPixel(data, pixelIndex, backgroundPalette = []) {
+    const { red, green, blue, alpha } = getPixelChannels(data, pixelIndex);
     if (alpha === 0) return true;
     if (alpha < 24) return true;
 
-    const maxChannel = Math.max(red, green, blue);
-    const minChannel = Math.min(red, green, blue);
-    return red >= SHEET_BACKGROUND_RGB_THRESHOLD
+    const isFlatLightBackground = red >= SHEET_BACKGROUND_RGB_THRESHOLD
         && green >= SHEET_BACKGROUND_RGB_THRESHOLD
         && blue >= SHEET_BACKGROUND_RGB_THRESHOLD
-        && (maxChannel - minChannel) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
+        && getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
+
+    return isFlatLightBackground
+        || (isNeutralSheetPixel(red, green, blue)
+            && getAverageLightness(red, green, blue) >= SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS
+            && isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette));
 }
 
 function makeCanvasBackgroundTransparent(canvas) {
@@ -1126,6 +1213,7 @@ function makeCanvasBackgroundTransparent(canvas) {
 
     const imageData = context.getImageData(0, 0, width, height);
     const { data } = imageData;
+    const backgroundPalette = getSheetBackgroundPalette(data, width, height);
     const visited = new Uint8Array(width * height);
     const stack = [];
     const enqueue = (x, y) => {
@@ -1133,7 +1221,7 @@ function makeCanvasBackgroundTransparent(canvas) {
         const pixel = (y * width) + x;
         if (visited[pixel]) return;
         visited[pixel] = 1;
-        if (isSheetBackgroundPixel(data, pixel * 4)) stack.push(pixel);
+        if (isSheetBackgroundPixel(data, pixel * 4, backgroundPalette)) stack.push(pixel);
     };
 
     for (let x = 0; x < width; x++) {
@@ -1215,26 +1303,23 @@ async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
     }
 }
 
-async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderName) {
+async function splitAndUploadExpressionSpriteSheet(imageUrl, grid, expressions, spriteFolderName, { splitErrorMessage = t`Sprite sheet could not be split into expression sprites.` } = {}) {
     const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
     if (labels.length === 0) return { generatedCount: 0, failedCount: 0 };
 
-    const { characterName, characterAvatar, uploadName } = getExpressionGenerationTarget(spriteFolderName);
-    throwIfExpressionGenerationStopped();
-    const sheet = await maybeGenerateExpressionSpriteSheet(labels, characterName, characterAvatar);
-    throwIfExpressionGenerationStopped();
-    if (!sheet?.imageUrl) {
+    if (!imageUrl || !grid?.columns || !grid?.rows) {
         return { generatedCount: 0, failedCount: labels.length };
     }
 
+    const { uploadName } = getExpressionGenerationTarget(spriteFolderName);
     /** @type {string[]} */
     let tileUrls = [];
     try {
-        tileUrls = await splitSpriteSheetImage(sheet.imageUrl, sheet.grid, labels.length);
+        tileUrls = await splitSpriteSheetImage(imageUrl, grid, labels.length);
     } catch (error) {
         if (isExpressionGenerationAbortError(error)) throw error;
-        console.error('[Expressions] Failed to split generated sprite sheet:', error);
-        toastr.warning(t`Generated sheet could not be split into expression sprites.`, t`Sprite Generation`);
+        console.error('[Expressions] Failed to split sprite sheet:', error);
+        toastr.warning(splitErrorMessage, t`Sprite Generation`);
         return { generatedCount: 0, failedCount: labels.length };
     }
 
@@ -1264,6 +1349,23 @@ async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderN
     return { generatedCount, failedCount };
 }
 
+async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderName) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0) return { generatedCount: 0, failedCount: 0 };
+
+    const { characterName, characterAvatar } = getExpressionGenerationTarget(spriteFolderName);
+    throwIfExpressionGenerationStopped();
+    const sheet = await maybeGenerateExpressionSpriteSheet(labels, characterName, characterAvatar);
+    throwIfExpressionGenerationStopped();
+    if (!sheet?.imageUrl) {
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    return splitAndUploadExpressionSpriteSheet(sheet.imageUrl, sheet.grid, labels, spriteFolderName, {
+        splitErrorMessage: t`Generated sheet could not be split into expression sprites.`,
+    });
+}
+
 async function withExpressionGenerationLock(task) {
     if (inSpriteGeneration) {
         toastr.info(t`Sprite generation is already running.`, t`Sprite Generation`);
@@ -1288,6 +1390,35 @@ async function getMissingSpriteLabels(spriteFolderName) {
     await validateImages(spriteFolderName);
     const labels = await getExpressionsList();
     return labels.filter(label => !(spriteCache[spriteFolderName]?.find(x => x.label === label)?.files?.length > 0));
+}
+
+function getSpriteFilesForFolder(spriteFolderName) {
+    const seen = new Set();
+    return (spriteCache[spriteFolderName] || [])
+        .flatMap(sprite => (sprite.files || []).map(file => ({
+            label: file.expression || sprite.label,
+            fileName: file.fileName,
+            spriteName: withoutExtension(file.fileName || ''),
+        })))
+        .filter(file => {
+            if (!file.label || !file.spriteName) return false;
+            const key = `${file.label}/${file.spriteName}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+async function deleteExpressionSpriteFile(name, label, spriteName) {
+    const result = await fetch('/api/sprites/delete', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ name, label, spriteName }),
+    });
+
+    if (!result.ok) {
+        throw new Error(`Sprite delete failed with status ${result.status}`);
+    }
 }
 
 async function onClickExpressionGenerate(event) {
@@ -1330,6 +1461,130 @@ async function onClickExpressionRegenerate(event) {
 async function onClickStopExpressionGeneration(event) {
     event.stopPropagation();
     await requestExpressionGenerationStop();
+}
+
+async function onClickRemoveAllSprites(event) {
+    event.stopPropagation();
+
+    if (inSpriteGeneration) {
+        toastr.info(t`Stop sprite generation before removing sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    const name = $('#image_list').data('name');
+    if (!name) {
+        toastr.warning(t`Open a chat before removing expression sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    await validateImages(name);
+    const spriteFiles = getSpriteFilesForFolder(name);
+    if (spriteFiles.length === 0) {
+        toastr.info(t`This sprite set has no images to remove.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Remove All Sprites`,
+        t`Remove ${spriteFiles.length} sprite image(s) from ${name}? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    const deleteToast = toastr.info(t`Removing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    try {
+        for (const file of spriteFiles) {
+            try {
+                await deleteExpressionSpriteFile(name, file.label, file.spriteName);
+                deletedCount++;
+            } catch (error) {
+                failedCount++;
+                console.error(`[${MODULE_NAME}] Failed to delete sprite ${file.fileName}:`, error);
+            }
+        }
+    } finally {
+        toastr.clear(deleteToast);
+        delete spriteCache[name];
+        await fetchImagesNoCache();
+        await validateImages(name);
+    }
+
+    if (deletedCount > 0) {
+        toastr.success(t`Removed ${deletedCount} expression sprite(s).`, t`Sprite Generation`);
+    }
+
+    if (failedCount > 0) {
+        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite Generation`);
+    }
+}
+
+async function onClickUploadSpriteSheet(event) {
+    event.stopPropagation();
+
+    const spriteFolderName = $('#image_list').data('name');
+    if (!spriteFolderName) {
+        toastr.warning(t`Open a chat before uploading a character sheet.`, t`Sprite Generation`);
+        return;
+    }
+
+    const missingLabels = await getMissingSpriteLabels(spriteFolderName);
+    if (missingLabels.length === 0) {
+        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        return;
+    }
+
+    const grid = getExpressionSpriteSheetGrid(missingLabels.length);
+    const confirmed = await Popup.show.confirm(
+        t`Upload Character Sheet`,
+        t`Upload a character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}. The extension will split it as a ${grid.columns} x ${grid.rows} grid, left-to-right, top-to-bottom in this order: ${missingLabels.join(', ')}.`,
+    );
+
+    if (!confirmed) return;
+
+    const handleSheetUploadChange = async (e) => {
+        const input = e.target;
+        const file = input.files?.[0];
+
+        try {
+            if (!file) return;
+
+            await withExpressionGenerationLock(async () => {
+                const uploadToast = toastr.info(t`Splitting uploaded character sheet...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+                const sourceUrl = URL.createObjectURL(file);
+                let generatedCount = 0;
+                let failedCount = 0;
+
+                try {
+                    const result = await splitAndUploadExpressionSpriteSheet(sourceUrl, grid, missingLabels, spriteFolderName, {
+                        splitErrorMessage: t`Uploaded sheet could not be split into expression sprites.`,
+                    });
+                    generatedCount = result.generatedCount;
+                    failedCount = result.failedCount;
+                } finally {
+                    URL.revokeObjectURL(sourceUrl);
+                    toastr.clear(uploadToast);
+                }
+
+                if (generatedCount > 0) {
+                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+                }
+
+                if (failedCount > 0) {
+                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite Generation`);
+                }
+            });
+        } finally {
+            input.form?.reset();
+        }
+    };
+
+    $('#expression_upload_sheet')
+        .off('change')
+        .on('change', handleSheetUploadChange)
+        .trigger('click');
 }
 
 async function onClickGenerateMissingSprites(event) {
@@ -2582,11 +2837,7 @@ async function onClickExpressionDelete(event) {
     const name = $('#image_list').data('name');
 
     try {
-        await fetch('/api/sprites/delete', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name, label: expression, spriteName: fileName }),
-        });
+        await deleteExpressionSpriteFile(name, expression, fileName);
     } catch (error) {
         toastr.error('Failed to delete image. Try again later.');
     }
@@ -2698,10 +2949,15 @@ function migrateSettings() {
         saveSettingsDebounced();
     }
 
-    const previousDefaultSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT.replace('transparent background.', 'plain white or transparent background.');
+    const previousDefaultSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT.replace(
+        'true transparent background.\nIf true alpha transparency is unavailable, use flat pure white only. Never draw a checkerboard or transparency grid.',
+        'transparent background.',
+    );
+    const previousPlainBackgroundDefaultSpritePrompt = previousDefaultSpritePrompt.replace('transparent background.', 'plain white or transparent background.');
     if (extension_settings.expressions.agentSpritePrompt === undefined
         || extension_settings.expressions.agentSpritePrompt === LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT
-        || extension_settings.expressions.agentSpritePrompt === previousDefaultSpritePrompt) {
+        || extension_settings.expressions.agentSpritePrompt === previousDefaultSpritePrompt
+        || extension_settings.expressions.agentSpritePrompt === previousPlainBackgroundDefaultSpritePrompt) {
         extension_settings.expressions.agentSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT;
         saveSettingsDebounced();
     }
@@ -2741,8 +2997,14 @@ export async function init() {
         $('#expressions_generate_missing_sprites')
             .on('click', onClickGenerateMissingSprites)
             .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_upload_sprite_sheet')
+            .on('click', onClickUploadSpriteSheet)
+            .on('keydown', onExpressionGenerationKeydown);
         $('#expressions_stop_sprite_generation')
             .on('click', onClickStopExpressionGeneration)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_remove_all_sprites')
+            .on('click', onClickRemoveAllSprites)
             .on('keydown', onExpressionGenerationKeydown);
         setExpressionGenerationBusy(inSpriteGeneration);
         $('#expression_translate').prop('checked', extension_settings.expressions.translate).on('input', function () {

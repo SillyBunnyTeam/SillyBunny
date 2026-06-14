@@ -238,6 +238,7 @@ img.expression.default {
 }
 
 #expressions_generate_missing_sprites,
+#expressions_upload_sprite_sheet,
 .expression_list_generate,
 .expression_list_regenerate {
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
@@ -248,11 +249,17 @@ img.expression.default {
     color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
 }
 
+#expressions_remove_all_sprites {
+    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
 #expressions_stop_sprite_generation.active {
     display: flex;
 }
 
 #expressions_generate_missing_sprites[aria-disabled="true"],
+#expressions_upload_sprite_sheet[aria-disabled="true"],
+#expressions_remove_all_sprites[aria-disabled="true"],
 .expression_list_generate[aria-disabled="true"],
 .expression_list_regenerate[aria-disabled="true"] {
     opacity: 0.45;
