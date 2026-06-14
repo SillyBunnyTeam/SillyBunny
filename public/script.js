@@ -997,7 +997,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260609d', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260614a', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -11120,6 +11120,30 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
 
     if (globalThis.navigator?.serviceWorker && typeof globalThis.navigator.serviceWorker.getRegistrations === 'function') {
         try {
+            // SillyBunny: on iOS WebKit the controlling service worker stays attached to this
+            // page after unregister() until the page unloads. Without an explicit purge the SW
+            // re-fills its caches during the reload navigation, undoing the clear. We message
+            // the controller to delete all sillybunny-cache-* caches before unregistering.
+            const controller = globalThis.navigator.serviceWorker.controller;
+            if (controller) {
+                await new Promise((resolve) => {
+                    const channel = new MessageChannel();
+                    const timeout = globalThis.setTimeout(() => {
+                        // Best-effort: don't block the clear if the SW doesn't respond in time.
+                        console.warn('[Cache] Service worker did not acknowledge cache purge; proceeding anyway.');
+                        resolve();
+                    }, 3000);
+                    channel.port1.onmessage = (event) => {
+                        globalThis.clearTimeout(timeout);
+                        if (event.data?.type === 'SB_CLEAR_CACHES_DONE' && !event.data.ok) {
+                            console.warn('[Cache] Service worker reported a partial cache purge failure.');
+                        }
+                        resolve();
+                    };
+                    controller.postMessage({ type: 'SB_CLEAR_CACHES' }, [channel.port2]);
+                });
+            }
+
             const registrations = await globalThis.navigator.serviceWorker.getRegistrations();
             await Promise.all(registrations.map(registration => registration.unregister()));
         } catch (error) {
@@ -11134,16 +11158,18 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
 
     droppedStores.forEach((result, index) => {
         if (result.status === 'rejected') {
-            console.error(`Failed to clear IndexedDB cache store: ${FRONTEND_CACHE_INSTANCE_NAMES[index]}`, result.reason);
-            cacheErrors.push(result.reason);
+            // SillyBunny: IDB drops are best-effort. iOS WebKit with ITP or storage pressure
+            // can reject localforage.dropInstance() — log but don't abort the clear so that
+            // cookie expiry and the reload still happen.
+            console.warn(`Failed to clear IndexedDB cache store: ${FRONTEND_CACHE_INSTANCE_NAMES[index]}`, result.reason);
         }
     });
 
     try {
         sessionStorage.clear();
     } catch (error) {
-        console.error('Failed to clear session storage', error);
-        cacheErrors.push(error);
+        // SillyBunny: sessionStorage may be blocked by iOS ITP in private browsing; non-fatal.
+        console.warn('Failed to clear session storage', error);
     }
 
     if (cacheErrors.length > 0) {

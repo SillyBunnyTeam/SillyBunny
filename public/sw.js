@@ -1,4 +1,4 @@
-const SB_SW_CACHE_VERSION = 'sillybunny-cache-v20260610a';
+const SB_SW_CACHE_VERSION = 'sillybunny-cache-v20260614a';
 const SB_STATIC_CACHE = `${SB_SW_CACHE_VERSION}-static`;
 const SB_SHELL_CACHE = `${SB_SW_CACHE_VERSION}-shell`;
 const SB_FRONTEND_ASSET_PREFIX = '/frontend-assets/';
@@ -108,6 +108,39 @@ async function networkFirst(request) {
 
 self.addEventListener('install', () => {
     self.skipWaiting();
+});
+
+// SillyBunny: iOS WebKit keeps the current page controlled by this service worker until the
+// page unloads, even after registration.unregister(). Without this the SW would re-populate
+// its caches during the pre-reload window and the reload navigation itself, undoing a cache
+// clear. The page posts { type: 'SB_CLEAR_CACHES' } and waits for the matching reply before
+// reloading.
+async function deleteSillyBunnyCaches() {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames
+        .filter(cacheName => cacheName.startsWith('sillybunny-cache-'))
+        .map(cacheName => caches.delete(cacheName)));
+}
+
+self.addEventListener('message', (event) => {
+    if (event.data?.type !== 'SB_CLEAR_CACHES') {
+        return;
+    }
+
+    event.waitUntil((async () => {
+        let ok = true;
+        try {
+            await deleteSillyBunnyCaches();
+        } catch (error) {
+            console.error('SillyBunny service worker failed to clear caches on request.', error);
+            ok = false;
+        }
+
+        const port = event.ports?.[0];
+        if (port) {
+            port.postMessage({ type: 'SB_CLEAR_CACHES_DONE', ok });
+        }
+    })());
 });
 
 self.addEventListener('activate', (event) => {
