@@ -39,6 +39,7 @@
 - PR #443 (2026-06-12) `fix(ica): keep tracker fix button discoverable`
 - PR #444 (2026-06-12) `fix(ica): recognize legacy tracker agents`
 - PR #445 (2026-06-12) `fix(ica): include pre trackers in repair controls`
+- PR #446 (2026-06-14) `feat: companion agents — sidecar-style auxiliary AI cards`
 - PR #455 (2026-06-12) `fix(guided-generations): honor impersonation perspective prompts`
 
 ## v1.6.4
