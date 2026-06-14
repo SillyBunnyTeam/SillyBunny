@@ -54,6 +54,7 @@
 - PR #455 (2026-06-12) `fix(guided-generations): honor impersonation perspective prompts`
 - PR #465 (2026-06-14) `fix: clear cookies and cache now works on iOS WebKit`
 - PR #466 (2026-06-14) `fix(chat): await deferred mobile repaint before MESSAGE_UPDATED`
+- PR #469 (2026-06-14) `feat(ica): show all enabled companions in batch selector`
 
 ## v1.6.4
 
