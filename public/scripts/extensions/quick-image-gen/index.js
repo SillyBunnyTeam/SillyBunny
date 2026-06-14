@@ -15912,3 +15912,15 @@ async function handleMetadataDrop(e) {
 
 // Export module info for SillyTavern
 export { extensionName };
+
+// SillyBunny divergence: minimal helper exports for the Expressions Agent bridge.
+// These are kept intentionally small so upstream syncs only need to preserve this
+// one export block. The actual sprite-generation logic lives outside QIG in
+// public/scripts/extensions/expressions/expression-sprite-bridge.js.
+export {
+    getSettings,
+    getGenerationSettingsForRun,
+    generateForProvider,
+    finalizeGeneratedEntry,
+    withTransientGenerationSettings,
+};

@@ -1351,6 +1351,70 @@
         }
     },
     {
+        "id": "tpl-expressions-agent",
+        "name": "Expressions Agent",
+        "description": "Classifies the emotional tone of the latest assistant reply so the character sprite can match it. Optionally triggers new sprite generation when an emotion has no sprite yet.",
+        "icon": "fa-face-smile-beam",
+        "category": "companion",
+        "tags": [
+            "expressions",
+            "emotions",
+            "sprites",
+            "classification"
+        ],
+        "version": 1,
+        "author": "SillyBunny",
+        "prompt": "Read the latest assistant reply and classify its dominant emotional tone for a character sprite expression.\n\nOutput ONLY the single most appropriate label from this exact list:\nadmiration, amusement, anger, annoyance, approval, caring, confusion, curiosity, desire, disappointment, disapproval, disgust, embarrassment, excitement, fear, gratitude, grief, joy, love, nervousness, optimism, pride, realization, relief, remorse, sadness, surprise, neutral\n\nRules:\n- Return exactly one word from the list above, nothing else.\n- Prioritise the speaker's visible emotional state in the scene.\n- If multiple emotions apply, choose the strongest one.\n- If the reply is calm, factual, or emotionally neutral, return neutral.\n- Do not explain, punctuate, or wrap the answer in quotes.",
+        "phase": "post",
+        "execution": "companion",
+        "companion": {
+            "trigger": "auto",
+            "displayMode": "panel",
+            "format": "text",
+            "rawPrompt": true,
+            "contextMessages": 4,
+            "includeCharacterCard": true,
+            "includePersona": false,
+            "includeWorldInfo": false,
+            "includeAuthorsNote": false,
+            "includeSystemPrompt": false,
+            "includeHistory": false,
+            "historyDepth": 0,
+            "feedback": {
+                "enabled": false,
+                "depth": 0
+            },
+            "batch": false,
+            "maxTokens": 32000
+        },
+        "injection": {
+            "position": 0,
+            "depth": 4,
+            "role": 0,
+            "order": 100,
+            "scan": false
+        },
+        "postProcess": {
+            "enabled": false,
+            "type": "regex",
+            "regexFind": "",
+            "regexReplace": "",
+            "regexFlags": "g",
+            "appendText": "",
+            "extractPattern": "",
+            "extractVariable": ""
+        },
+        "enabled": false,
+        "conditions": {
+            "triggerKeywords": [],
+            "triggerProbability": 100,
+            "generationTypes": [
+                "normal",
+                "continue"
+            ]
+        }
+    },
+    {
         "id": "tpl-continuity-companion",
         "name": "Continuity Companion",
         "description": "Side note card for contradictions, unresolved setup, and state changes that may matter next",

@@ -148,7 +148,8 @@ img.expression.default {
 }
 
 .menu_button.expression_list_delete,
-.menu_button.expression_list_upload {
+.menu_button.expression_list_upload,
+.menu_button.expression_list_regenerate {
     margin-top: 0;
     margin-bottom: 0;
 }
@@ -195,6 +196,106 @@ img.expression.default {
     align-items: center;
     flex-direction: row;
     margin-left: 0px;
+}
+
+.expression_agent_block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, var(--SmartThemeQuoteColor)) 42%, transparent);
+    border-radius: var(--border-radius, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor)) 72%, transparent);
+}
+
+.expression_agent_status {
+    gap: 0.2rem;
+}
+
+.expression_agent_status small {
+    opacity: 0.85;
+}
+
+.expression_agent_status small.available {
+    color: color-mix(in srgb, var(--color-success, var(--sb-success, #4caf50)) 90%, white 10%);
+}
+
+.expression_agent_status small.unavailable {
+    color: color-mix(in srgb, var(--color-warning, var(--sb-warning, #ff9800)) 90%, white 10%);
+}
+
+.expression_agent_hint {
+    margin: 0;
+}
+
+.expression_agent_generation_controls,
+.expression_agent_prompt_block {
+    gap: 0.25rem;
+}
+
+#expressions_agent_sprite_prompt {
+    min-height: 8em;
+}
+
+#expressions_generate_missing_sprites,
+#expressions_upload_sprite_sheet,
+#expressions_redo_sprite_cleanup,
+.expression_list_generate,
+.expression_list_regenerate {
+    color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
+#expressions_stop_sprite_generation {
+    display: none;
+    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
+#expressions_remove_all_sprites {
+    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
+}
+
+#expressions_stop_sprite_generation.active {
+    display: flex;
+}
+
+#expressions_generate_missing_sprites[aria-disabled="true"],
+#expressions_upload_sprite_sheet[aria-disabled="true"],
+#expressions_redo_sprite_cleanup[aria-disabled="true"],
+#expressions_remove_all_sprites[aria-disabled="true"],
+.expression_list_generate[aria-disabled="true"],
+.expression_list_regenerate[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#image_list .expression_list_item[data-expression-type="failure"] .expression_list_delete {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.expression_agent_spinner {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--animation-duration) ease;
+    animation: expression_agent_spinner_spin 1s linear infinite;
+}
+
+.expression_agent_spinner.active {
+    opacity: 1;
+}
+
+@keyframes expression_agent_spinner_spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .expression_settings label input {

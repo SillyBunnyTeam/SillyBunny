@@ -53,7 +53,8 @@
             "tpl-plot-compass-companion",
             "tpl-chatroom-companion",
             "tpl-chat-only-companion",
-            "tpl-message-inbox-companion"
+            "tpl-message-inbox-companion",
+            "tpl-expressions-agent"
         ]
     }
 ]

@@ -18,6 +18,17 @@ import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
+import {
+    DEFAULT_EXPRESSION_SPRITE_PROMPT,
+    LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT,
+    getAgentExpressionLabel,
+    isExpressionsAgentAvailable,
+    maybeGenerateExpressionSprite,
+    maybeGenerateExpressionSpriteSheet,
+    stopExpressionSpriteGeneration,
+    syncExpressionsAgentProfile,
+    cleanupExpressionAgentSpinner,
+} from './expressions-agent.js';
 export { MODULE_NAME };
 
 /**
@@ -34,6 +45,8 @@ export { MODULE_NAME };
  * @property {string} title - The title for the image
  * @property {string} imageSrc - The image source / full path
  * @property {'success' | 'additional' | 'failure'} type - The type of the image
+ * @property {boolean} [canGenerate=false] - Whether the tile can generate a missing sprite
+ * @property {boolean} [canRegenerate=false] - Whether the tile can replace an existing sprite with a generated one
  */
 
 const MODULE_NAME = 'expressions';
@@ -83,6 +96,7 @@ const EXPRESSION_API = {
     extras: 1,
     llm: 2,
     webllm: 3,
+    agent: 4,
     none: 99,
 };
 
@@ -92,6 +106,37 @@ const PROMPT_TYPE = {
     full: 'full',
 };
 
+/** @enum {string} */
+const EXPRESSION_SPRITE_FRAMING = {
+    bust: 'bust',
+    fullBody: 'full_body',
+};
+
+const DEFAULT_EXPRESSION_SPRITE_FRAMING = EXPRESSION_SPRITE_FRAMING.bust;
+
+/** @enum {string} */
+const EXPRESSION_SPRITE_GENERATION_MODE = {
+    individual: 'individual',
+    sheet: 'sheet',
+};
+
+const DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE = EXPRESSION_SPRITE_GENERATION_MODE.individual;
+const DEFAULT_EXPRESSION_SPRITE_REMOVE_BACKGROUND = false;
+const SHEET_BACKGROUND_RGB_THRESHOLD = 238;
+const SHEET_BACKGROUND_CHANNEL_SPREAD = 28;
+const SHEET_BACKGROUND_NEUTRAL_SPREAD = 48;
+const SHEET_BACKGROUND_BUCKET_SIZE = 16;
+const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
+const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
+const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
+const SHEET_TILE_SOURCE_INSET_RATIO = 0.045;
+const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
+/**
+ * Minimum fraction of a tile's smaller dimension that foreground content must span
+ * before content-aware centering is applied. Prevents centering noise/artifacts.
+ */
+const SPRITE_CENTER_MIN_CONTENT_RATIO = 0.08;
+
 let expressionsList = null;
 let lastCharacter = undefined;
 let lastMessage = null;
@@ -99,6 +144,8 @@ let lastMessage = null;
 let spriteCache = {};
 let inApiCall = false;
 let lastServerResponseTime = 0;
+let inSpriteGeneration = false;
+let expressionGenerationCancelRequested = false;
 
 /** @type {{[characterName: string]: string}} */
 export let lastExpression = {};
@@ -113,6 +160,7 @@ function getPlaceholderImage(expression, isCustom = false) {
     return {
         expression: expression,
         isCustom: isCustom,
+        canGenerate: true,
         title: 'No Image',
         type: 'failure',
         fileName: 'No-Image-Placeholder.svg',
@@ -563,8 +611,8 @@ async function moduleWorker({ newChat = false } = {}) {
         return;
     }
 
-    // API is busy
-    if (inApiCall) {
+    // API is busy (only relevant for synchronous classifiers, not the agent companion)
+    if (inApiCall && extension_settings.expressions.api !== EXPRESSION_API.agent) {
         console.debug('Classification API is busy');
         return;
     }
@@ -580,8 +628,11 @@ async function moduleWorker({ newChat = false } = {}) {
         }
     }
 
+    const usingAgent = extension_settings.expressions.api === EXPRESSION_API.agent;
+    let shouldUpdateLastMessage = true;
+
     try {
-        inApiCall = true;
+        if (!usingAgent) inApiCall = true;
         let expression = await getExpressionLabel(currentLastMessage.mes);
 
         // If we're not already overriding the folder name, account for group chats.
@@ -596,14 +647,48 @@ async function moduleWorker({ newChat = false } = {}) {
             expression = extension_settings.expressions.fallback_expression;
         }
 
+        // SillyBunny divergence: the agent classifier is asynchronous. If it has not
+        // produced a result yet, skip updating the sprite and leave lastMessage unchanged
+        // so the next poll retries instead of flickering to the fallback expression.
+        if (usingAgent && !expression) {
+            shouldUpdateLastMessage = false;
+            return;
+        }
+
         await sendExpressionCall(spriteFolderName, expression, { force: force, vnMode: vnMode });
+
+        // SillyBunny divergence: optionally generate missing sprites via Quick Image Gen.
+        // This runs after the expression is displayed so it never blocks the UI update.
+        if (usingAgent && expression && extension_settings.expressions.agentAutoGenerateSprites && !inSpriteGeneration) {
+            const hasSprite = spriteCache[spriteFolderName]?.some((e) => e.label === expression);
+            if (!hasSprite) {
+                setExpressionGenerationBusy(true);
+                maybeGenerateExpressionSprite(expression, currentLastMessage.name, currentLastMessage.original_avatar).then(async (imageUrl) => {
+                    throwIfExpressionGenerationStopped();
+                    if (imageUrl) {
+                        await uploadSpriteCommand({
+                            name: currentLastMessage.original_avatar || currentLastMessage.name,
+                            label: expression,
+                            folder: spriteFolderName,
+                        }, imageUrl);
+                    }
+                }).catch((error) => {
+                    if (isExpressionGenerationAbortError(error)) return;
+                    console.error('[Expressions Agent] Auto sprite generation failed:', error);
+                }).finally(() => {
+                    setExpressionGenerationBusy(false);
+                });
+            }
+        }
     } catch (error) {
         console.log(error);
     } finally {
         inApiCall = false;
-        lastCharacter = context.groupId || context.characterId;
-        lastMessage = currentLastMessage.mes;
-        lastServerResponseTime = Date.now();
+        if (shouldUpdateLastMessage) {
+            lastCharacter = context.groupId || context.characterId;
+            lastMessage = currentLastMessage.mes;
+            lastServerResponseTime = Date.now();
+        }
     }
 }
 
@@ -908,6 +993,936 @@ async function uploadSpriteCommand({ name, label, folder = null, spriteName = nu
     return spriteName;
 }
 
+function setExpressionGenerationBusy(isBusy) {
+    inSpriteGeneration = !!isBusy;
+    $('#expressions_generate_missing_sprites, #expressions_upload_sprite_sheet, #expressions_redo_sprite_cleanup, #expressions_remove_all_sprites, .expression_list_generate, .expression_list_regenerate')
+        .toggleClass('disabled', inSpriteGeneration)
+        .attr('aria-disabled', String(inSpriteGeneration));
+    $('#expressions_stop_sprite_generation')
+        .toggleClass('active', inSpriteGeneration)
+        .attr('aria-disabled', String(!inSpriteGeneration));
+
+    if (!inSpriteGeneration) {
+        expressionGenerationCancelRequested = false;
+    }
+}
+
+function isExpressionGenerationAbortError(error) {
+    return error?.name === 'AbortError';
+}
+
+function throwIfExpressionGenerationStopped() {
+    if (expressionGenerationCancelRequested) {
+        throw new DOMException('Expression sprite generation stopped by user', 'AbortError');
+    }
+}
+
+async function requestExpressionGenerationStop() {
+    if (!inSpriteGeneration) {
+        toastr.info(t`No sprite generation is running.`, t`Sprite Generation`);
+        return;
+    }
+
+    expressionGenerationCancelRequested = true;
+    const stopped = await stopExpressionSpriteGeneration();
+    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite Generation`);
+}
+
+function getExpressionSpriteGenerationMode() {
+    const mode = extension_settings.expressions.agentSpriteGenerationMode;
+    return Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(mode)
+        ? mode
+        : DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
+}
+
+function getExpressionGenerationTarget(spriteFolderName) {
+    const currentLastMessage = getLastCharacterMessage();
+    const context = getContext();
+    const folderCharacterName = String(spriteFolderName || '').split('/')[0];
+    const character = context.characters?.find(x => x.avatar === currentLastMessage.original_avatar)
+        || context.characters?.find(x => x.name === currentLastMessage.name)
+        || context.characters?.find(x => x.name === folderCharacterName || x.avatar?.replace(/\.[^/.]+$/, '') === folderCharacterName)
+        || context.characters?.[context.characterId];
+
+    return {
+        characterName: currentLastMessage.name || character?.name || context.name2 || folderCharacterName || 'character',
+        characterAvatar: currentLastMessage.original_avatar || character?.avatar || null,
+        uploadName: currentLastMessage.original_avatar || currentLastMessage.name || character?.avatar || folderCharacterName || context.name2,
+    };
+}
+
+async function generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast = true, spriteName = null, replaceExisting = false } = {}) {
+    if (!expression || !spriteFolderName) {
+        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        return false;
+    }
+
+    const existingFiles = spriteCache[spriteFolderName]?.find(x => x.label === expression)?.files || [];
+    if (!replaceExisting && existingFiles.length > 0 && !extension_settings.expressions.allowMultiple) {
+        toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}.`, t`Sprite Generation`);
+        return false;
+    }
+
+    const targetSpriteName = spriteName || (existingFiles.length > 0
+        ? generateUniqueSpriteName(expression, existingFiles)
+        : expression);
+    const { characterName, characterAvatar, uploadName } = getExpressionGenerationTarget(spriteFolderName);
+    throwIfExpressionGenerationStopped();
+    const imageUrl = await maybeGenerateExpressionSprite(expression, characterName, characterAvatar);
+    throwIfExpressionGenerationStopped();
+
+    if (!imageUrl) {
+        if (showToast) toastr.warning(t`Quick Image Gen did not return an image.`, t`Sprite Generation`);
+        return false;
+    }
+
+    // Run background removal / centering on individually generated sprites too, not just sheet
+    // tiles. Without this, the "Remove background" option never applies to single sprites.
+    let uploadUrl = imageUrl;
+    let processedUrl = null;
+    if (extension_settings.expressions.agentSpriteRemoveBackground) {
+        try {
+            processedUrl = await postProcessSpriteImage(imageUrl);
+            uploadUrl = processedUrl;
+        } catch (error) {
+            if (isExpressionGenerationAbortError(error)) throw error;
+            console.error('[Expressions] Failed to post-process generated sprite:', error);
+        }
+    }
+
+    try {
+        const uploadedSpriteName = await uploadSpriteCommand({
+            name: uploadName,
+            label: expression,
+            folder: spriteFolderName,
+            spriteName: targetSpriteName,
+        }, uploadUrl);
+        throwIfExpressionGenerationStopped();
+        setExpressionGenerationBusy(inSpriteGeneration);
+
+        if (!uploadedSpriteName) return false;
+        if (showToast) {
+            const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
+            toastr.success(message, t`Sprite Generation`);
+        }
+        return true;
+    } finally {
+        if (processedUrl) URL.revokeObjectURL(processedUrl);
+    }
+}
+
+function getExpressionSpriteSheetGrid(tileCount) {
+    const count = Math.max(1, Number(tileCount) || 1);
+    const columns = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / columns);
+    return { columns, rows };
+}
+
+function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Failed to load generated sprite sheet image.'));
+        image.src = src;
+    });
+}
+
+function canvasToPngObjectUrl(canvas) {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error('Failed to split generated sprite sheet.'));
+                return;
+            }
+            resolve(URL.createObjectURL(blob));
+        }, 'image/png');
+    });
+}
+
+function getPixelChannels(data, pixelIndex) {
+    return {
+        red: data[pixelIndex],
+        green: data[pixelIndex + 1],
+        blue: data[pixelIndex + 2],
+        alpha: data[pixelIndex + 3],
+    };
+}
+
+function getChannelSpread(red, green, blue) {
+    return Math.max(red, green, blue) - Math.min(red, green, blue);
+}
+
+function isNeutralSheetPixel(red, green, blue) {
+    return getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_NEUTRAL_SPREAD;
+}
+
+function getAverageLightness(red, green, blue) {
+    return (red + green + blue) / 3;
+}
+
+function getSheetBackgroundPalette(data, width, height) {
+    const buckets = new Map();
+    const addPixel = (x, y) => {
+        const pixelIndex = ((y * width) + x) * 4;
+        const { red, green, blue, alpha } = getPixelChannels(data, pixelIndex);
+        if (alpha < 24 || !isNeutralSheetPixel(red, green, blue)) return;
+        if (getAverageLightness(red, green, blue) < SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS) return;
+
+        const key = [
+            Math.floor(red / SHEET_BACKGROUND_BUCKET_SIZE),
+            Math.floor(green / SHEET_BACKGROUND_BUCKET_SIZE),
+            Math.floor(blue / SHEET_BACKGROUND_BUCKET_SIZE),
+        ].join(',');
+        const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
+        bucket.count += 1;
+        bucket.red += red;
+        bucket.green += green;
+        bucket.blue += blue;
+        buckets.set(key, bucket);
+    };
+
+    for (let x = 0; x < width; x++) {
+        addPixel(x, 0);
+        addPixel(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        addPixel(0, y);
+        addPixel(width - 1, y);
+    }
+
+    const sortedBuckets = Array.from(buckets.values()).sort((a, b) => b.count - a.count);
+    const maxCount = sortedBuckets[0]?.count || 0;
+    const minCount = Math.max(4, Math.floor(maxCount * 0.08));
+    return sortedBuckets
+        .filter(bucket => bucket.count >= minCount)
+        .slice(0, SHEET_BACKGROUND_PALETTE_LIMIT)
+        .map(bucket => ({
+            red: bucket.red / bucket.count,
+            green: bucket.green / bucket.count,
+            blue: bucket.blue / bucket.count,
+        }));
+}
+
+function isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette) {
+    const maxDistanceSquared = SHEET_BACKGROUND_COLOR_DISTANCE ** 2;
+    return backgroundPalette.some(color => {
+        const redDistance = red - color.red;
+        const greenDistance = green - color.green;
+        const blueDistance = blue - color.blue;
+        return ((redDistance ** 2) + (greenDistance ** 2) + (blueDistance ** 2)) <= maxDistanceSquared;
+    });
+}
+
+function isSheetBackgroundPixel(data, pixelIndex, backgroundPalette = []) {
+    const { red, green, blue, alpha } = getPixelChannels(data, pixelIndex);
+    if (alpha === 0) return true;
+    if (alpha < SPRITE_FOREGROUND_ALPHA_THRESHOLD) return true;
+
+    const isFlatLightBackground = red >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && green >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && blue >= SHEET_BACKGROUND_RGB_THRESHOLD
+        && getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
+
+    return isFlatLightBackground
+        || (isNeutralSheetPixel(red, green, blue)
+            && getAverageLightness(red, green, blue) >= SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS
+            && isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette));
+}
+
+function makeCanvasBackgroundTransparent(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const { width, height } = canvas;
+    if (!width || !height) return;
+
+    const imageData = context.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const backgroundPalette = getSheetBackgroundPalette(data, width, height);
+
+    // Determine whether to also do a global flat-white pass.
+    // When the character fills the entire tile boundary (e.g. after scale-to-fill), no edge
+    // pixel qualifies as background and the edge-seeded flood-fill removes nothing.  Detect
+    // this situation by checking the four corners; if at least two corners have flat-white (or
+    // very light neutral) pixels we know the background is present in the image and fall back to
+    // a global removal of pixels that match the flat-light threshold.  We only do this when the
+    // edge palette came back empty, to avoid clobbering interior whites when a proper edge-based
+    // palette was found.
+    const CORNER_INSET = Math.max(2, Math.round(Math.min(width, height) * 0.03));
+    const sampleCorners = [
+        [CORNER_INSET, CORNER_INSET],
+        [width - 1 - CORNER_INSET, CORNER_INSET],
+        [CORNER_INSET, height - 1 - CORNER_INSET],
+        [width - 1 - CORNER_INSET, height - 1 - CORNER_INSET],
+    ];
+    const cornerIsBackground = sampleCorners.map(([cx, cy]) => {
+        const i = ((cy * width) + cx) * 4;
+        return isSheetBackgroundPixel(data, i, backgroundPalette);
+    });
+    const backgroundCornerCount = cornerIsBackground.filter(Boolean).length;
+    const useGlobalFlatWhitePass = backgroundPalette.length === 0 && backgroundCornerCount >= 2;
+
+    const visited = new Uint8Array(width * height);
+    const stack = [];
+    const enqueue = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const pixel = (y * width) + x;
+        if (visited[pixel]) return;
+        visited[pixel] = 1;
+        if (isSheetBackgroundPixel(data, pixel * 4, backgroundPalette)) stack.push(pixel);
+    };
+
+    for (let x = 0; x < width; x++) {
+        enqueue(x, 0);
+        enqueue(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y++) {
+        enqueue(0, y);
+        enqueue(width - 1, y);
+    }
+
+    while (stack.length > 0) {
+        throwIfExpressionGenerationStopped();
+        const pixel = stack.pop();
+        const x = pixel % width;
+        const y = Math.floor(pixel / width);
+        data[(pixel * 4) + 3] = 0;
+
+        enqueue(x + 1, y);
+        enqueue(x - 1, y);
+        enqueue(x, y + 1);
+        enqueue(x, y - 1);
+    }
+
+    // Global flat-white pass: when the edge-seeded flood-fill found no background (character
+    // fills the full tile boundary) but at least two corners are flat-white/light, do a full
+    // image sweep removing all flat-light background pixels.  This handles interior background
+    // regions not connected to any edge.  We use a stricter threshold than the edge-seeded pass
+    // (RGB >= 250, spread <= 10) to avoid clobbering highlights, pale skin, or teeth — we only
+    // want to remove pixels that are essentially pure white.
+    if (useGlobalFlatWhitePass) {
+        for (let pixel = 0; pixel < width * height; pixel++) {
+            throwIfExpressionGenerationStopped();
+            const i = pixel * 4;
+            if (data[i + 3] === 0) continue;
+            const { red, green, blue } = getPixelChannels(data, i);
+            if (red >= 250 && green >= 250 && blue >= 250 && getChannelSpread(red, green, blue) <= 10) {
+                data[i + 3] = 0;
+            }
+        }
+    }
+
+    context.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Returns the axis-aligned bounding box of all pixels with alpha > threshold.
+ * Returns null when the canvas is fully transparent or too small to be useful.
+ * @param {HTMLCanvasElement} canvas
+ * @returns {{minX: number, minY: number, maxX: number, maxY: number}|null}
+ */
+function getSpriteForegroundBounds(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+
+    const { width, height } = canvas;
+    if (!width || !height) return null;
+
+    const { data } = context.getImageData(0, 0, width, height);
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (data[((y * width) + x) * 4 + 3] > SPRITE_FOREGROUND_ALPHA_THRESHOLD) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+
+    const contentWidth = maxX - minX + 1;
+    const contentHeight = maxY - minY + 1;
+    const minDimension = Math.min(width, height);
+    if (contentWidth < minDimension * SPRITE_CENTER_MIN_CONTENT_RATIO
+        && contentHeight < minDimension * SPRITE_CENTER_MIN_CONTENT_RATIO) return null;
+
+    return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Redraws the foreground content of a canvas centered with equal padding on all sides.
+ * The canvas dimensions are preserved. Only acts when centering would move the content
+ * by more than 1px in either axis — avoids unnecessary redraws.
+ * @param {HTMLCanvasElement} canvas
+ */
+function centerSpriteContent(canvas) {
+    const bounds = getSpriteForegroundBounds(canvas);
+    if (!bounds) return;
+
+    const { width, height } = canvas;
+    const contentWidth = bounds.maxX - bounds.minX + 1;
+    const contentHeight = bounds.maxY - bounds.minY + 1;
+
+    // Where the content center currently is vs where it should be
+    const currentCenterX = bounds.minX + contentWidth / 2;
+    const currentCenterY = bounds.minY + contentHeight / 2;
+    const targetCenterX = width / 2;
+    const targetCenterY = height / 2;
+
+    const shiftX = targetCenterX - currentCenterX;
+    const shiftY = targetCenterY - currentCenterY;
+
+    // Skip if the shift is negligible
+    if (Math.abs(shiftX) <= 1 && Math.abs(shiftY) <= 1) return;
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    // Snapshot the current pixels, clear, redraw shifted
+    const snapshot = context.getImageData(0, 0, width, height);
+    context.clearRect(0, 0, width, height);
+    context.putImageData(snapshot, Math.round(shiftX), Math.round(shiftY));
+}
+
+/**
+ * Post-processes a sprite tile canvas after cropping:
+ * - Optionally removes solid/near-solid backgrounds (edge-connected flood-fill, opt-in only).
+ * - Always re-centers the visible content so off-center tiles from sheet splits align.
+ *
+ * Background removal is opt-in because full-bleed art (e.g. GPT Image 2) has no plain
+ * background to strip and the flood-fill would destroy character pixels.
+ * @param {HTMLCanvasElement} canvas
+ */
+function postProcessSpriteCanvas(canvas) {
+    if (extension_settings.expressions.agentSpriteRemoveBackground) {
+        makeCanvasBackgroundTransparent(canvas);
+    }
+    centerSpriteContent(canvas);
+}
+
+async function postProcessSpriteImage(imageUrl) {
+    throwIfExpressionGenerationStopped();
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch expression sprite: ${response.status}`);
+
+    const blob = await response.blob();
+    const sourceUrl = URL.createObjectURL(blob);
+    try {
+        const image = await loadImageElement(sourceUrl);
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        if (!width || !height) throw new Error('Expression sprite has invalid dimensions.');
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Canvas is not available for expression sprite cleanup.');
+        context.drawImage(image, 0, 0, width, height);
+        postProcessSpriteCanvas(canvas);
+        return await canvasToPngObjectUrl(canvas);
+    } finally {
+        URL.revokeObjectURL(sourceUrl);
+    }
+}
+
+async function splitSpriteSheetImage(imageUrl, grid, tileCount) {
+    throwIfExpressionGenerationStopped();
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch generated sprite sheet: ${response.status}`);
+
+    const blob = await response.blob();
+    const sourceUrl = URL.createObjectURL(blob);
+    const tileUrls = [];
+
+    try {
+        const image = await loadImageElement(sourceUrl);
+        const sourceWidth = image.naturalWidth || image.width;
+        const sourceHeight = image.naturalHeight || image.height;
+        if (!sourceWidth || !sourceHeight) throw new Error('Generated sprite sheet has invalid dimensions.');
+
+        const sourceTileWidth = sourceWidth / grid.columns;
+        const sourceTileHeight = sourceHeight / grid.rows;
+        // Use a fixed, uniform output size for every tile so all sprites share the same canvas.
+        const outputTileWidth = Math.max(1, Math.round(sourceTileWidth));
+        const outputTileHeight = Math.max(1, Math.round(sourceTileHeight));
+
+        for (let index = 0; index < tileCount; index++) {
+            throwIfExpressionGenerationStopped();
+            const column = index % grid.columns;
+            const row = Math.floor(index / grid.columns);
+            // Compute integer pixel boundaries per tile from cumulative edges so columns/rows
+            // tile the full image exactly with no accumulated rounding drift.
+            const srcLeft = Math.round(column * sourceTileWidth);
+            const srcRight = Math.round((column + 1) * sourceTileWidth);
+            const srcTop = Math.round(row * sourceTileHeight);
+            const srcBottom = Math.round((row + 1) * sourceTileHeight);
+            const srcTileWidth = Math.max(1, srcRight - srcLeft);
+            const srcTileHeight = Math.max(1, srcBottom - srcTop);
+            // Trim the source edges to cut away any bleed from adjacent cells (gridlines,
+            // neighbour sprites, background fragments), then scale the trimmed region to
+            // fill the entire output canvas so the character is not boxed in by blank borders.
+            const sourceInsetX = Math.min(srcTileWidth / 4, Math.max(1, srcTileWidth * SHEET_TILE_SOURCE_INSET_RATIO));
+            const sourceInsetY = Math.min(srcTileHeight / 4, Math.max(1, srcTileHeight * SHEET_TILE_SOURCE_INSET_RATIO));
+            const canvas = document.createElement('canvas');
+            canvas.width = outputTileWidth;
+            canvas.height = outputTileHeight;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('Canvas is not available for sprite sheet splitting.');
+            context.drawImage(
+                image,
+                srcLeft + sourceInsetX,
+                srcTop + sourceInsetY,
+                srcTileWidth - (sourceInsetX * 2),
+                srcTileHeight - (sourceInsetY * 2),
+                0,
+                0,
+                outputTileWidth,
+                outputTileHeight,
+            );
+            postProcessSpriteCanvas(canvas);
+            tileUrls.push(await canvasToPngObjectUrl(canvas));
+        }
+
+        return tileUrls;
+    } catch (error) {
+        tileUrls.forEach(url => URL.revokeObjectURL(url));
+        throw error;
+    } finally {
+        URL.revokeObjectURL(sourceUrl);
+    }
+}
+
+async function splitAndUploadExpressionSpriteSheet(imageUrl, grid, expressions, spriteFolderName, { splitErrorMessage = t`Sprite sheet could not be split into expression sprites.` } = {}) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0) return { generatedCount: 0, failedCount: 0 };
+
+    if (!imageUrl || !grid?.columns || !grid?.rows) {
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    const { uploadName } = getExpressionGenerationTarget(spriteFolderName);
+    /** @type {string[]} */
+    let tileUrls = [];
+    try {
+        tileUrls = await splitSpriteSheetImage(imageUrl, grid, labels.length);
+    } catch (error) {
+        if (isExpressionGenerationAbortError(error)) throw error;
+        console.error('[Expressions] Failed to split sprite sheet:', error);
+        toastr.warning(splitErrorMessage, t`Sprite Generation`);
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    let generatedCount = 0;
+    let failedCount = Math.max(0, labels.length - tileUrls.length);
+
+    try {
+        for (let index = 0; index < labels.length && index < tileUrls.length; index++) {
+            throwIfExpressionGenerationStopped();
+            const expression = labels[index];
+            const uploadedSpriteName = await uploadSpriteCommand({
+                name: uploadName,
+                label: expression,
+                folder: spriteFolderName,
+                spriteName: expression,
+            }, tileUrls[index]);
+            throwIfExpressionGenerationStopped();
+            setExpressionGenerationBusy(inSpriteGeneration);
+
+            if (uploadedSpriteName) generatedCount++;
+            else failedCount++;
+        }
+    } finally {
+        tileUrls.forEach(url => URL.revokeObjectURL(url));
+    }
+
+    return { generatedCount, failedCount };
+}
+
+async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderName) {
+    const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
+    if (labels.length === 0) return { generatedCount: 0, failedCount: 0 };
+
+    const { characterName, characterAvatar } = getExpressionGenerationTarget(spriteFolderName);
+    throwIfExpressionGenerationStopped();
+    const sheet = await maybeGenerateExpressionSpriteSheet(labels, characterName, characterAvatar);
+    throwIfExpressionGenerationStopped();
+    if (!sheet?.imageUrl) {
+        return { generatedCount: 0, failedCount: labels.length };
+    }
+
+    return splitAndUploadExpressionSpriteSheet(sheet.imageUrl, sheet.grid, labels, spriteFolderName, {
+        splitErrorMessage: t`Generated sheet could not be split into expression sprites.`,
+    });
+}
+
+async function withExpressionGenerationLock(task) {
+    if (inSpriteGeneration) {
+        toastr.info(t`Sprite generation is already running.`, t`Sprite Generation`);
+        return null;
+    }
+
+    setExpressionGenerationBusy(true);
+    try {
+        return await task();
+    } catch (error) {
+        if (isExpressionGenerationAbortError(error)) {
+            toastr.info(t`Sprite generation stopped.`, t`Sprite Generation`);
+            return null;
+        }
+        throw error;
+    } finally {
+        setExpressionGenerationBusy(false);
+    }
+}
+
+async function getMissingSpriteLabels(spriteFolderName) {
+    await validateImages(spriteFolderName);
+    const labels = await getExpressionsList();
+    return labels.filter(label => !(spriteCache[spriteFolderName]?.find(x => x.label === label)?.files?.length > 0));
+}
+
+function getSpriteFilesForFolder(spriteFolderName) {
+    const seen = new Set();
+    return (spriteCache[spriteFolderName] || [])
+        .flatMap(sprite => (sprite.files || []).map(file => ({
+            label: file.expression || sprite.label,
+            fileName: file.fileName,
+            imageSrc: file.imageSrc,
+            spriteName: withoutExtension(file.fileName || ''),
+        })))
+        .filter(file => {
+            if (!file.label || !file.spriteName || !file.imageSrc) return false;
+            const key = `${file.label}/${file.spriteName}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+async function deleteExpressionSpriteFile(name, label, spriteName) {
+    const result = await fetch('/api/sprites/delete', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ name, label, spriteName }),
+    });
+
+    if (!result.ok) {
+        throw new Error(`Sprite delete failed with status ${result.status}`);
+    }
+}
+
+async function reprocessExpressionSpriteFile(name, uploadName, file) {
+    let processedUrl = null;
+    try {
+        processedUrl = await postProcessSpriteImage(file.imageSrc);
+        throwIfExpressionGenerationStopped();
+        const uploadedSpriteName = await uploadSpriteCommand({
+            name: uploadName,
+            label: file.label,
+            folder: name,
+            spriteName: file.spriteName,
+        }, processedUrl);
+        throwIfExpressionGenerationStopped();
+        setExpressionGenerationBusy(inSpriteGeneration);
+        return Boolean(uploadedSpriteName);
+    } finally {
+        if (processedUrl) URL.revokeObjectURL(processedUrl);
+    }
+}
+
+async function onClickExpressionGenerate(event) {
+    event.stopPropagation();
+
+    const expressionListItem = $(this).closest('.expression_list_item');
+    const expression = String(expressionListItem.data('expression') || '');
+    const spriteFolderName = $('#image_list').data('name');
+
+    await withExpressionGenerationLock(async () => generateAndUploadExpressionSprite(expression, spriteFolderName));
+}
+
+async function onClickExpressionRegenerate(event) {
+    event.stopPropagation();
+
+    const expressionListItem = $(this).closest('.expression_list_item');
+    const expression = String(expressionListItem.data('expression') || '');
+    const fileName = String(expressionListItem.attr('data-filename') || '');
+    const spriteFolderName = $('#image_list').data('name');
+    const spriteName = withoutExtension(fileName);
+
+    if (!spriteName) {
+        toastr.warning(t`Choose an existing sprite before regenerating.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Regenerate Sprite`,
+        t`Replace ${fileName} for ${expression} with a new Quick Image Gen sprite? This can use provider credits.`,
+    );
+
+    if (!confirmed) return;
+
+    await withExpressionGenerationLock(async () => generateAndUploadExpressionSprite(expression, spriteFolderName, {
+        spriteName,
+        replaceExisting: true,
+    }));
+}
+
+async function onClickStopExpressionGeneration(event) {
+    event.stopPropagation();
+    await requestExpressionGenerationStop();
+}
+
+async function onClickRemoveAllSprites(event) {
+    event.stopPropagation();
+
+    if (inSpriteGeneration) {
+        toastr.info(t`Stop sprite generation before removing sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    const name = $('#image_list').data('name');
+    if (!name) {
+        toastr.warning(t`Open a chat before removing expression sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    await validateImages(name);
+    const spriteFiles = getSpriteFilesForFolder(name);
+    if (spriteFiles.length === 0) {
+        toastr.info(t`This sprite set has no images to remove.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Remove All Sprites`,
+        t`Remove ${spriteFiles.length} sprite image(s) from ${name}? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    const deleteToast = toastr.info(t`Removing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    try {
+        for (const file of spriteFiles) {
+            try {
+                await deleteExpressionSpriteFile(name, file.label, file.spriteName);
+                deletedCount++;
+            } catch (error) {
+                failedCount++;
+                console.error(`[${MODULE_NAME}] Failed to delete sprite ${file.fileName}:`, error);
+            }
+        }
+    } finally {
+        toastr.clear(deleteToast);
+        delete spriteCache[name];
+        await fetchImagesNoCache();
+        await validateImages(name);
+    }
+
+    if (deletedCount > 0) {
+        toastr.success(t`Removed ${deletedCount} expression sprite(s).`, t`Sprite Generation`);
+    }
+
+    if (failedCount > 0) {
+        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite Generation`);
+    }
+}
+
+async function onClickRedoSpriteCleanup(event) {
+    event.stopPropagation();
+
+    const name = $('#image_list').data('name');
+    if (!name) {
+        toastr.warning(t`Open a chat before cleaning expression sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    await validateImages(name);
+    const spriteFiles = getSpriteFilesForFolder(name);
+    if (spriteFiles.length === 0) {
+        toastr.info(t`This sprite set has no images to clean.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Redo Crop and Transparency`,
+        t`Reprocess ${spriteFiles.length} sprite image(s) in ${name} with the improved crop and transparency cleanup? Existing sprite files will be overwritten.`,
+    );
+
+    if (!confirmed) return;
+
+    await withExpressionGenerationLock(async () => {
+        const cleanupToast = toastr.info(t`Cleaning expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const { uploadName } = getExpressionGenerationTarget(name);
+        let cleanedCount = 0;
+        let failedCount = 0;
+
+        try {
+            for (const file of spriteFiles) {
+                try {
+                    throwIfExpressionGenerationStopped();
+                    const cleaned = await reprocessExpressionSpriteFile(name, uploadName, file);
+                    if (cleaned) cleanedCount++;
+                    else failedCount++;
+                } catch (error) {
+                    if (isExpressionGenerationAbortError(error)) throw error;
+                    failedCount++;
+                    console.error(`[${MODULE_NAME}] Failed to clean sprite ${file.fileName}:`, error);
+                }
+            }
+        } finally {
+            toastr.clear(cleanupToast);
+            delete spriteCache[name];
+            await fetchImagesNoCache();
+            await validateImages(name);
+        }
+
+        if (cleanedCount > 0) {
+            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s).`, t`Sprite Generation`);
+        }
+
+        if (failedCount > 0) {
+            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite Generation`);
+        }
+    });
+}
+
+async function onClickUploadSpriteSheet(event) {
+    event.stopPropagation();
+
+    const spriteFolderName = $('#image_list').data('name');
+    if (!spriteFolderName) {
+        toastr.warning(t`Open a chat before uploading a character sheet.`, t`Sprite Generation`);
+        return;
+    }
+
+    const missingLabels = await getMissingSpriteLabels(spriteFolderName);
+    if (missingLabels.length === 0) {
+        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        return;
+    }
+
+    const grid = getExpressionSpriteSheetGrid(missingLabels.length);
+    const confirmed = await Popup.show.confirm(
+        t`Upload Character Sheet`,
+        t`Upload a character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}. The extension will split it as a ${grid.columns} x ${grid.rows} grid, left-to-right, top-to-bottom in this order: ${missingLabels.join(', ')}.`,
+    );
+
+    if (!confirmed) return;
+
+    const handleSheetUploadChange = async (e) => {
+        const input = e.target;
+        const file = input.files?.[0];
+
+        try {
+            if (!file) return;
+
+            await withExpressionGenerationLock(async () => {
+                const uploadToast = toastr.info(t`Splitting uploaded character sheet...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+                const sourceUrl = URL.createObjectURL(file);
+                let generatedCount = 0;
+                let failedCount = 0;
+
+                try {
+                    const result = await splitAndUploadExpressionSpriteSheet(sourceUrl, grid, missingLabels, spriteFolderName, {
+                        splitErrorMessage: t`Uploaded sheet could not be split into expression sprites.`,
+                    });
+                    generatedCount = result.generatedCount;
+                    failedCount = result.failedCount;
+                } finally {
+                    URL.revokeObjectURL(sourceUrl);
+                    toastr.clear(uploadToast);
+                }
+
+                if (generatedCount > 0) {
+                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+                }
+
+                if (failedCount > 0) {
+                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite Generation`);
+                }
+            });
+        } finally {
+            input.form?.reset();
+        }
+    };
+
+    $('#expression_upload_sheet')
+        .off('change')
+        .on('change', handleSheetUploadChange)
+        .trigger('click');
+}
+
+async function onClickGenerateMissingSprites(event) {
+    event.stopPropagation();
+
+    const spriteFolderName = $('#image_list').data('name');
+    if (!spriteFolderName) {
+        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        return;
+    }
+
+    const missingLabels = await getMissingSpriteLabels(spriteFolderName);
+    if (missingLabels.length === 0) {
+        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        return;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Generate Missing Sprites`,
+        getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1
+            ? t`Generate one character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}, then split it into individual expression images? This can use provider credits.`
+            : t`Generate ${missingLabels.length} missing sprite(s) for ${spriteFolderName} with Quick Image Gen? This may take a while and can use provider credits.`,
+    );
+
+    if (!confirmed) return;
+
+    await withExpressionGenerationLock(async () => {
+        const generationToast = toastr.info(t`Generating missing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        let generatedCount = 0;
+        let failedCount = 0;
+
+        try {
+            if (getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1) {
+                const result = await generateAndUploadExpressionSpriteSheet(missingLabels, spriteFolderName);
+                generatedCount = result.generatedCount;
+                failedCount = result.failedCount;
+            } else {
+                for (const expression of missingLabels) {
+                    const generated = await generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast: false });
+                    if (generated) generatedCount++;
+                    else failedCount++;
+                }
+            }
+        } finally {
+            toastr.clear(generationToast);
+        }
+
+        if (generatedCount > 0) {
+            toastr.success(t`Generated ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+        }
+
+        if (failedCount > 0) {
+            toastr.warning(t`${failedCount} expression sprite(s) could not be generated. Check Quick Image Gen settings and the console.`, t`Sprite Generation`);
+        }
+    });
+}
+
+function onExpressionGenerationKeydown(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    $(event.currentTarget).trigger('click');
+}
+
 /**
  * Processes the classification text to reduce the amount of text sent to the API.
  * Quotes and asterisks are to be removed. If the text is less than 300 characters, it is returned as is.
@@ -1134,6 +2149,15 @@ export async function getExpressionLabel(text, expressionsApi = extension_settin
                     return data.classification[0].label;
                 }
             } break;
+            // SillyBunny divergence: In-Chat Agent companion classifier.
+            // Reads the emotion the companion agent already classified for the latest
+            // assistant reply instead of making a blocking API call here.
+            case EXPRESSION_API.agent: {
+                const agentLabel = await getAgentExpressionLabel(undefined, await getExpressionsList({ filterAvailable: false }));
+                if (agentLabel) return agentLabel;
+                // Not ready yet (agent pending/missing) - return empty so the fallback is used.
+                return '';
+            }
             // None
             case EXPRESSION_API.none: {
                 // Return empty, the fallback expression will be used
@@ -1215,6 +2239,7 @@ function getExpressionImageData(sprite) {
         title: fileNameWithoutExtension,
         imageSrc: sprite.path,
         type: 'success',
+        canRegenerate: true,
         isCustom: extension_settings.expressions.custom?.includes(sprite.label),
     };
 }
@@ -1747,10 +2772,28 @@ function onExpressionApiChanged() {
         extension_settings.expressions.api = Number(tempApi);
         $('.expression_llm_prompt_block').toggle([EXPRESSION_API.llm, EXPRESSION_API.webllm].includes(extension_settings.expressions.api));
         $('.expression_prompt_type_block').toggle(extension_settings.expressions.api === EXPRESSION_API.llm);
+        $('.expression_agent_block').toggle(extension_settings.expressions.api === EXPRESSION_API.agent);
+        if (extension_settings.expressions.api === EXPRESSION_API.agent) {
+            updateExpressionsAgentStatus();
+        }
         expressionsList = null;
         spriteCache = {};
         moduleWorker();
         saveSettingsDebounced();
+    }
+}
+
+async function updateExpressionsAgentStatus() {
+    const statusEl = $('#expressions_agent_status_text');
+    if (!statusEl.length) return;
+
+    const available = await isExpressionsAgentAvailable();
+    if (available) {
+        statusEl.text(t`Expressions Agent is enabled and ready.`);
+        statusEl.removeClass('unavailable').addClass('available');
+    } else {
+        statusEl.text(t`Expressions Agent template is not enabled. Open the In-Chat Agents dashboard to enable it.`);
+        statusEl.removeClass('available').addClass('unavailable');
     }
 }
 
@@ -2069,11 +3112,7 @@ async function onClickExpressionDelete(event) {
     const name = $('#image_list').data('name');
 
     try {
-        await fetch('/api/sprites/delete', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name, label: expression, spriteName: fileName }),
-        });
+        await deleteExpressionSpriteFile(name, expression, fileName);
     } catch (error) {
         toastr.error('Failed to delete image. Try again later.');
     }
@@ -2164,6 +3203,50 @@ function migrateSettings() {
         extension_settings.expressions.promptType = PROMPT_TYPE.raw;
         saveSettingsDebounced();
     }
+
+    if (extension_settings.expressions.agentAutoGenerateSprites === undefined) {
+        extension_settings.expressions.agentAutoGenerateSprites = false;
+        saveSettingsDebounced();
+    }
+
+    if (extension_settings.expressions.agentUseQigLlmProfile === undefined) {
+        extension_settings.expressions.agentUseQigLlmProfile = false;
+        saveSettingsDebounced();
+    }
+
+    if (!Object.values(EXPRESSION_SPRITE_FRAMING).includes(extension_settings.expressions.agentSpriteFraming)) {
+        extension_settings.expressions.agentSpriteFraming = DEFAULT_EXPRESSION_SPRITE_FRAMING;
+        saveSettingsDebounced();
+    }
+
+    if (!Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(extension_settings.expressions.agentSpriteGenerationMode)) {
+        extension_settings.expressions.agentSpriteGenerationMode = DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
+        saveSettingsDebounced();
+    }
+
+    if (typeof extension_settings.expressions.agentSpriteRemoveBackground !== 'boolean') {
+        extension_settings.expressions.agentSpriteRemoveBackground = DEFAULT_EXPRESSION_SPRITE_REMOVE_BACKGROUND;
+        saveSettingsDebounced();
+    }
+
+    const previousDefaultSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT.replace(
+        'true transparent background.\nIf true alpha transparency is unavailable, use flat pure white only. Never draw a checkerboard or transparency grid.',
+        'transparent background.',
+    );
+    const previousPlainBackgroundDefaultSpritePrompt = previousDefaultSpritePrompt.replace('transparent background.', 'plain white or transparent background.');
+    if (extension_settings.expressions.agentSpritePrompt === undefined
+        || extension_settings.expressions.agentSpritePrompt === LEGACY_DEFAULT_EXPRESSION_SPRITE_PROMPT
+        || extension_settings.expressions.agentSpritePrompt === previousDefaultSpritePrompt
+        || extension_settings.expressions.agentSpritePrompt === previousPlainBackgroundDefaultSpritePrompt) {
+        extension_settings.expressions.agentSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT;
+        saveSettingsDebounced();
+    }
+
+    // SillyBunny divergence: keep the expressions agent's connection profile in sync
+    // with the user's preference (share QIG LLM override profile or not).
+    syncExpressionsAgentProfile().catch((error) => {
+        console.debug('[Expressions Agent] Initial profile sync skipped:', error);
+    });
 }
 
 export async function init() {
@@ -2191,6 +3274,22 @@ export async function init() {
         $('#expressions_container').append(template);
         $('#expression_override_button').on('click', onClickExpressionOverrideButton);
         $('#expression_upload_pack_button').on('click', onClickExpressionUploadPackButton);
+        $('#expressions_generate_missing_sprites')
+            .on('click', onClickGenerateMissingSprites)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_upload_sprite_sheet')
+            .on('click', onClickUploadSpriteSheet)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_redo_sprite_cleanup')
+            .on('click', onClickRedoSpriteCleanup)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_stop_sprite_generation')
+            .on('click', onClickStopExpressionGeneration)
+            .on('keydown', onExpressionGenerationKeydown);
+        $('#expressions_remove_all_sprites')
+            .on('click', onClickRemoveAllSprites)
+            .on('keydown', onExpressionGenerationKeydown);
+        setExpressionGenerationBusy(inSpriteGeneration);
         $('#expression_translate').prop('checked', extension_settings.expressions.translate).on('input', function () {
             extension_settings.expressions.translate = !!$(this).prop('checked');
             saveSettingsDebounced();
@@ -2214,6 +3313,10 @@ export async function init() {
         });
         $(document).on('click', '.expression_list_item', onClickExpressionImage);
         $(document).on('click', '.expression_list_upload', onClickExpressionUpload);
+        $(document).on('click', '.expression_list_generate', onClickExpressionGenerate);
+        $(document).on('click', '.expression_list_regenerate', onClickExpressionRegenerate);
+        $(document).on('keydown', '.expression_list_generate', onExpressionGenerationKeydown);
+        $(document).on('keydown', '.expression_list_regenerate', onExpressionGenerationKeydown);
         $(document).on('click', '.expression_list_delete', onClickExpressionDelete);
         $(window).on('resize', () => updateVisualNovelModeDebounced());
         $('#open_chat_expressions').hide();
@@ -2221,6 +3324,61 @@ export async function init() {
         await renderAdditionalExpressionSettings();
         $('#expression_api').val(extension_settings.expressions.api ?? EXPRESSION_API.none);
         $('.expression_llm_prompt_block').toggle([EXPRESSION_API.llm, EXPRESSION_API.webllm].includes(extension_settings.expressions.api));
+        $('.expression_agent_block').toggle(extension_settings.expressions.api === EXPRESSION_API.agent);
+        $('#expressions_agent_auto_generate_sprites')
+            .prop('checked', extension_settings.expressions.agentAutoGenerateSprites)
+            .on('input', function () {
+                extension_settings.expressions.agentAutoGenerateSprites = !!$(this).prop('checked');
+                if (extension_settings.expressions.agentAutoGenerateSprites && extension_settings.expressions.api !== EXPRESSION_API.agent) {
+                    $('#expression_api').val(EXPRESSION_API.agent).trigger('change');
+                    toastr.info(t`Classifier API switched to In-Chat Agent for expression auto-generation.`, t`Expressions Agent`);
+                    return;
+                }
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_use_qig_llm_profile')
+            .prop('checked', extension_settings.expressions.agentUseQigLlmProfile)
+            .on('input', function () {
+                extension_settings.expressions.agentUseQigLlmProfile = !!$(this).prop('checked');
+                saveSettingsDebounced();
+                syncExpressionsAgentProfile().catch((error) => {
+                    console.error('[Expressions Agent] Profile sync failed:', error);
+                });
+            });
+        $('#expressions_agent_sprite_generation_mode')
+            .val(getExpressionSpriteGenerationMode())
+            .on('change', function () {
+                const mode = String($(this).val() || '');
+                extension_settings.expressions.agentSpriteGenerationMode = Object.values(EXPRESSION_SPRITE_GENERATION_MODE).includes(mode)
+                    ? mode
+                    : DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE;
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_framing')
+            .val(extension_settings.expressions.agentSpriteFraming)
+            .on('change', function () {
+                const framing = String($(this).val() || '');
+                extension_settings.expressions.agentSpriteFraming = Object.values(EXPRESSION_SPRITE_FRAMING).includes(framing)
+                    ? framing
+                    : DEFAULT_EXPRESSION_SPRITE_FRAMING;
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_remove_background')
+            .prop('checked', !!extension_settings.expressions.agentSpriteRemoveBackground)
+            .on('input', function () {
+                extension_settings.expressions.agentSpriteRemoveBackground = !!$(this).prop('checked');
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_prompt')
+            .val(extension_settings.expressions.agentSpritePrompt || DEFAULT_EXPRESSION_SPRITE_PROMPT)
+            .on('input', function () {
+                extension_settings.expressions.agentSpritePrompt = String($(this).val());
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_prompt_restore').on('click', function () {
+            $('#expressions_agent_sprite_prompt').val(DEFAULT_EXPRESSION_SPRITE_PROMPT).trigger('input');
+        });
+        updateExpressionsAgentStatus();
         $('#expression_llm_prompt').val(extension_settings.expressions.llmPrompt ?? '');
         $('#expression_llm_prompt').on('input', function () {
             extension_settings.expressions.llmPrompt = String($(this).val());
@@ -2262,6 +3420,7 @@ export async function init() {
         removeExpression();
         spriteCache = {};
         lastExpression = {};
+        cleanupExpressionAgentSpinner();
 
         //clear expression
         let imgElement = document.getElementById('expression-image');
@@ -2279,6 +3438,13 @@ export async function init() {
     });
     eventSource.on(event_types.MOVABLE_PANELS_RESET, updateVisualNovelModeDebounced);
     eventSource.on(event_types.GROUP_UPDATED, updateVisualNovelModeDebounced);
+    // Refresh the agent status when settings change (e.g. the user enables the
+    // Expressions Agent template in In-Chat Agents after this panel was opened).
+    eventSource.on(event_types.SETTINGS_UPDATED, () => {
+        if (extension_settings.expressions.api === EXPRESSION_API.agent) {
+            updateExpressionsAgentStatus();
+        }
+    });
 
     const localEnumProviders = {
         expressions: () => {
