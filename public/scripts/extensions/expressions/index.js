@@ -121,6 +121,7 @@ const EXPRESSION_SPRITE_GENERATION_MODE = {
 };
 
 const DEFAULT_EXPRESSION_SPRITE_GENERATION_MODE = EXPRESSION_SPRITE_GENERATION_MODE.individual;
+const DEFAULT_EXPRESSION_SPRITE_REMOVE_BACKGROUND = false;
 const SHEET_BACKGROUND_RGB_THRESHOLD = 238;
 const SHEET_BACKGROUND_CHANNEL_SPREAD = 28;
 const SHEET_BACKGROUND_NEUTRAL_SPREAD = 48;
@@ -128,14 +129,8 @@ const SHEET_BACKGROUND_BUCKET_SIZE = 16;
 const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
 const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
 const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
-const SHEET_TILE_SOURCE_INSET_RATIO = 0.06;
+const SHEET_TILE_SOURCE_INSET_RATIO = 0.02;
 const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
-const SPRITE_EDGE_BLEED_RATIO = 0.035;
-const SPRITE_EDGE_COMPONENT_KEEP_RATIO = 0.12;
-const SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO = 0.075;
-const SPRITE_STRAY_COMPONENT_NEAR_MAIN_RATIO = 0.06;
-const SPRITE_STRAY_COMPONENT_KEEP_RATIO = 0.45;
-const SPRITE_RESIDUAL_EDGE_BAND_RATIO = 0.07;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -1258,160 +1253,16 @@ function makeCanvasBackgroundTransparent(canvas) {
     context.putImageData(imageData, 0, 0);
 }
 
-function getSpriteForegroundComponents(data, width, height) {
-    const labels = new Int32Array(width * height);
-    const components = [];
-    const isForeground = pixel => data[(pixel * 4) + 3] >= SPRITE_FOREGROUND_ALPHA_THRESHOLD;
-
-    for (let startPixel = 0; startPixel < labels.length; startPixel++) {
-        if (labels[startPixel] || !isForeground(startPixel)) continue;
-
-        const label = components.length + 1;
-        const stack = [startPixel];
-        const component = {
-            label,
-            count: 0,
-            minX: width,
-            minY: height,
-            maxX: 0,
-            maxY: 0,
-        };
-        labels[startPixel] = label;
-
-        while (stack.length > 0) {
-            const pixel = stack.pop();
-            const x = pixel % width;
-            const y = Math.floor(pixel / width);
-            component.count += 1;
-            component.minX = Math.min(component.minX, x);
-            component.minY = Math.min(component.minY, y);
-            component.maxX = Math.max(component.maxX, x);
-            component.maxY = Math.max(component.maxY, y);
-
-            const neighbors = [pixel - 1, pixel + 1, pixel - width, pixel + width];
-            for (const neighbor of neighbors) {
-                if (neighbor < 0 || neighbor >= labels.length || labels[neighbor] || !isForeground(neighbor)) continue;
-                const neighborX = neighbor % width;
-                const sameRow = Math.abs(neighborX - x) <= 1;
-                if (!sameRow && Math.abs(neighbor - pixel) === 1) continue;
-                labels[neighbor] = label;
-                stack.push(neighbor);
-            }
-        }
-
-        components.push(component);
-    }
-
-    return { labels, components };
-}
-
-function getBoxDistance(a, b) {
-    const xDistance = Math.max(0, Math.max(a.minX - b.maxX, b.minX - a.maxX));
-    const yDistance = Math.max(0, Math.max(a.minY - b.maxY, b.minY - a.maxY));
-    return Math.sqrt((xDistance ** 2) + (yDistance ** 2));
-}
-
-function removeResidualEdgeBackground(canvas) {
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    const { width, height } = canvas;
-    if (!width || !height) return;
-
-    const imageData = context.getImageData(0, 0, width, height);
-    const { data } = imageData;
-    const backgroundPalette = getSheetBackgroundPalette(data, width, height);
-    const band = Math.max(1, Math.round(Math.min(width, height) * SPRITE_RESIDUAL_EDGE_BAND_RATIO));
-    let changed = false;
-
-    const clearIfBackground = (x, y) => {
-        if (x < 0 || y < 0 || x >= width || y >= height) return;
-        const pixelIndex = ((y * width) + x) * 4;
-        if (data[pixelIndex + 3] === 0) return;
-        const { red, green, blue } = getPixelChannels(data, pixelIndex);
-        const isFlatLight = red >= SHEET_BACKGROUND_RGB_THRESHOLD
-            && green >= SHEET_BACKGROUND_RGB_THRESHOLD
-            && blue >= SHEET_BACKGROUND_RGB_THRESHOLD
-            && getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
-        const isNeutralBackground = isNeutralSheetPixel(red, green, blue)
-            && getAverageLightness(red, green, blue) >= SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS
-            && (backgroundPalette.length === 0 || isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette));
-        if (!isFlatLight && !isNeutralBackground) return;
-        data[pixelIndex + 3] = 0;
-        changed = true;
-    };
-
-    for (let offset = 0; offset < band; offset++) {
-        for (let x = 0; x < width; x++) {
-            clearIfBackground(x, offset);
-            clearIfBackground(x, height - 1 - offset);
-        }
-        for (let y = 0; y < height; y++) {
-            clearIfBackground(offset, y);
-            clearIfBackground(width - 1 - offset, y);
-        }
-    }
-
-    if (changed) context.putImageData(imageData, 0, 0);
-}
-
-function removeStrayComponents(canvas) {
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    const { width, height } = canvas;
-    if (!width || !height) return;
-
-    const imageData = context.getImageData(0, 0, width, height);
-    const { data } = imageData;
-    const { labels, components } = getSpriteForegroundComponents(data, width, height);
-    if (components.length <= 1) return;
-
-    const mainComponent = components.reduce((largest, component) => component.count > largest.count ? component : largest, components[0]);
-    const edgeBand = Math.max(1, Math.round(Math.min(width, height) * SPRITE_EDGE_BLEED_RATIO));
-    const edgeNearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO));
-    const strayNearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_STRAY_COMPONENT_NEAR_MAIN_RATIO));
-    const edgeMinKeepCount = Math.max(24, mainComponent.count * SPRITE_EDGE_COMPONENT_KEEP_RATIO);
-    const strayMaxKeepCount = mainComponent.count * SPRITE_STRAY_COMPONENT_KEEP_RATIO;
-    const removeLabels = new Set();
-
-    for (const component of components) {
-        if (component === mainComponent) continue;
-
-        const distanceToMain = getBoxDistance(component, mainComponent);
-        const touchesEdge = component.minX <= edgeBand
-            || component.minY <= edgeBand
-            || component.maxX >= width - 1 - edgeBand
-            || component.maxY >= height - 1 - edgeBand;
-
-        // Edge-hugging fragments: bleed from neighbouring sheet cells.
-        if (touchesEdge && component.count < edgeMinKeepCount && distanceToMain > edgeNearMainDistance) {
-            removeLabels.add(component.label);
-            continue;
-        }
-
-        // Detached blobs anywhere in the tile that are clearly separate from the
-        // main sprite are leaked neighbour-sprite parts, not the character.
-        if (distanceToMain > strayNearMainDistance && component.count < strayMaxKeepCount) {
-            removeLabels.add(component.label);
-        }
-    }
-
-    if (removeLabels.size === 0) return;
-
-    for (let pixel = 0; pixel < labels.length; pixel++) {
-        if (removeLabels.has(labels[pixel])) {
-            data[(pixel * 4) + 3] = 0;
-        }
-    }
-
-    context.putImageData(imageData, 0, 0);
-}
-
+/**
+ * Removes solid/near-solid background pixels from a sprite tile canvas using an
+ * edge-connected flood-fill.  Only runs when the user has opted in to background
+ * removal; full-bleed art (e.g. GPT Image 2) has no plain background to strip and
+ * must be left untouched.
+ * @param {HTMLCanvasElement} canvas
+ */
 function postProcessSpriteCanvas(canvas) {
+    if (!extension_settings.expressions.agentSpriteRemoveBackground) return;
     makeCanvasBackgroundTransparent(canvas);
-    removeResidualEdgeBackground(canvas);
-    removeStrayComponents(canvas);
 }
 
 async function postProcessSpriteImage(imageUrl) {
@@ -3222,6 +3073,11 @@ function migrateSettings() {
         saveSettingsDebounced();
     }
 
+    if (typeof extension_settings.expressions.agentSpriteRemoveBackground !== 'boolean') {
+        extension_settings.expressions.agentSpriteRemoveBackground = DEFAULT_EXPRESSION_SPRITE_REMOVE_BACKGROUND;
+        saveSettingsDebounced();
+    }
+
     const previousDefaultSpritePrompt = DEFAULT_EXPRESSION_SPRITE_PROMPT.replace(
         'true transparent background.\nIf true alpha transparency is unavailable, use flat pure white only. Never draw a checkerboard or transparency grid.',
         'transparent background.',
@@ -3354,6 +3210,12 @@ export async function init() {
                 extension_settings.expressions.agentSpriteFraming = Object.values(EXPRESSION_SPRITE_FRAMING).includes(framing)
                     ? framing
                     : DEFAULT_EXPRESSION_SPRITE_FRAMING;
+                saveSettingsDebounced();
+            });
+        $('#expressions_agent_sprite_remove_background')
+            .prop('checked', !!extension_settings.expressions.agentSpriteRemoveBackground)
+            .on('input', function () {
+                extension_settings.expressions.agentSpriteRemoveBackground = !!$(this).prop('checked');
                 saveSettingsDebounced();
             });
         $('#expressions_agent_sprite_prompt')

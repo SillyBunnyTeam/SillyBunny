@@ -57,6 +57,10 @@
                         <option value="bust" data-i18n="Bust portrait (consistent close-up)">Bust portrait (consistent close-up)</option>
                         <option value="full_body" data-i18n="Full body (consistent standing pose)">Full body (consistent standing pose)</option>
                     </select>
+                    <label class="checkbox_label" for="expressions_agent_sprite_remove_background" title="Only enable for sheets drawn on a plain white or solid-color background. Leave off for full-bleed art (e.g. GPT Image 2), which has no background to strip." data-i18n="[title]Only enable for sheets drawn on a plain white or solid-color background. Leave off for full-bleed art (e.g. GPT Image 2), which has no background to strip.">
+                        <input id="expressions_agent_sprite_remove_background" type="checkbox">
+                        <span data-i18n="Remove background (white/solid-color sheets only)">Remove background (white/solid-color sheets only)</span>
+                    </label>
                 </div>
                 <div class="expression_agent_prompt_block flex-container flexFlowColumn">
                     <label for="expressions_agent_sprite_prompt" class="title_restorable">
