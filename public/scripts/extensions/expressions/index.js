@@ -18,6 +18,7 @@ import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
+import { getAgentExpressionLabel, isExpressionsAgentAvailable, maybeGenerateExpressionSprite } from './expressions-agent.js';
 export { MODULE_NAME };
 
 /**
@@ -83,6 +84,7 @@ const EXPRESSION_API = {
     extras: 1,
     llm: 2,
     webllm: 3,
+    agent: 4,
     none: 99,
 };
 
@@ -99,6 +101,7 @@ let lastMessage = null;
 let spriteCache = {};
 let inApiCall = false;
 let lastServerResponseTime = 0;
+let inSpriteGeneration = false;
 
 /** @type {{[characterName: string]: string}} */
 export let lastExpression = {};
@@ -563,8 +566,8 @@ async function moduleWorker({ newChat = false } = {}) {
         return;
     }
 
-    // API is busy
-    if (inApiCall) {
+    // API is busy (only relevant for synchronous classifiers, not the agent companion)
+    if (inApiCall && extension_settings.expressions.api !== EXPRESSION_API.agent) {
         console.debug('Classification API is busy');
         return;
     }
@@ -580,8 +583,11 @@ async function moduleWorker({ newChat = false } = {}) {
         }
     }
 
+    const usingAgent = extension_settings.expressions.api === EXPRESSION_API.agent;
+    let shouldUpdateLastMessage = true;
+
     try {
-        inApiCall = true;
+        if (!usingAgent) inApiCall = true;
         let expression = await getExpressionLabel(currentLastMessage.mes);
 
         // If we're not already overriding the folder name, account for group chats.
@@ -597,13 +603,39 @@ async function moduleWorker({ newChat = false } = {}) {
         }
 
         await sendExpressionCall(spriteFolderName, expression, { force: force, vnMode: vnMode });
+
+        // SillyBunny divergence: optionally generate missing sprites via Quick Image Gen.
+        // This runs after the expression is displayed so it never blocks the UI update.
+        if (usingAgent && expression && extension_settings.expressions.agentAutoGenerateSprites && !inSpriteGeneration) {
+            const hasSprite = spriteCache[spriteFolderName]?.some((e) => e.label === expression);
+            if (!hasSprite) {
+                inSpriteGeneration = true;
+                maybeGenerateExpressionSprite(expression).then(async (imageUrl) => {
+                    if (imageUrl) {
+                        await uploadSpriteCommand({ label: expression, folder: spriteFolderName }, imageUrl);
+                    }
+                }).catch((error) => {
+                    console.error('[Expressions Agent] Auto sprite generation failed:', error);
+                }).finally(() => {
+                    inSpriteGeneration = false;
+                });
+            }
+        }
+
+        // If the agent classifier has not produced a result yet, leave lastMessage
+        // unchanged so the next poll can pick up the finished classification.
+        if (usingAgent && !expression) {
+            shouldUpdateLastMessage = false;
+        }
     } catch (error) {
         console.log(error);
     } finally {
         inApiCall = false;
-        lastCharacter = context.groupId || context.characterId;
-        lastMessage = currentLastMessage.mes;
-        lastServerResponseTime = Date.now();
+        if (shouldUpdateLastMessage) {
+            lastCharacter = context.groupId || context.characterId;
+            lastMessage = currentLastMessage.mes;
+            lastServerResponseTime = Date.now();
+        }
     }
 }
 
@@ -1134,6 +1166,15 @@ export async function getExpressionLabel(text, expressionsApi = extension_settin
                     return data.classification[0].label;
                 }
             } break;
+            // SillyBunny divergence: In-Chat Agent companion classifier.
+            // Reads the emotion the companion agent already classified for the latest
+            // assistant reply instead of making a blocking API call here.
+            case EXPRESSION_API.agent: {
+                const agentLabel = await getAgentExpressionLabel(undefined, await getExpressionsList({ filterAvailable: false }));
+                if (agentLabel) return agentLabel;
+                // Not ready yet (agent pending/missing) - return empty so the fallback is used.
+                return '';
+            }
             // None
             case EXPRESSION_API.none: {
                 // Return empty, the fallback expression will be used
@@ -1747,10 +1788,28 @@ function onExpressionApiChanged() {
         extension_settings.expressions.api = Number(tempApi);
         $('.expression_llm_prompt_block').toggle([EXPRESSION_API.llm, EXPRESSION_API.webllm].includes(extension_settings.expressions.api));
         $('.expression_prompt_type_block').toggle(extension_settings.expressions.api === EXPRESSION_API.llm);
+        $('.expression_agent_block').toggle(extension_settings.expressions.api === EXPRESSION_API.agent);
+        if (extension_settings.expressions.api === EXPRESSION_API.agent) {
+            updateExpressionsAgentStatus();
+        }
         expressionsList = null;
         spriteCache = {};
         moduleWorker();
         saveSettingsDebounced();
+    }
+}
+
+async function updateExpressionsAgentStatus() {
+    const statusEl = $('#expressions_agent_status_text');
+    if (!statusEl.length) return;
+
+    const available = await isExpressionsAgentAvailable();
+    if (available) {
+        statusEl.text(t`Expressions Agent is enabled and ready.`);
+        statusEl.removeClass('unavailable').addClass('available');
+    } else {
+        statusEl.text(t`Expressions Agent template is not enabled. Open the In-Chat Agents dashboard to enable it.`);
+        statusEl.removeClass('available').addClass('unavailable');
     }
 }
 
@@ -2164,6 +2223,11 @@ function migrateSettings() {
         extension_settings.expressions.promptType = PROMPT_TYPE.raw;
         saveSettingsDebounced();
     }
+
+    if (extension_settings.expressions.agentAutoGenerateSprites === undefined) {
+        extension_settings.expressions.agentAutoGenerateSprites = false;
+        saveSettingsDebounced();
+    }
 }
 
 export async function init() {
@@ -2221,6 +2285,14 @@ export async function init() {
         await renderAdditionalExpressionSettings();
         $('#expression_api').val(extension_settings.expressions.api ?? EXPRESSION_API.none);
         $('.expression_llm_prompt_block').toggle([EXPRESSION_API.llm, EXPRESSION_API.webllm].includes(extension_settings.expressions.api));
+        $('.expression_agent_block').toggle(extension_settings.expressions.api === EXPRESSION_API.agent);
+        $('#expressions_agent_auto_generate_sprites')
+            .prop('checked', extension_settings.expressions.agentAutoGenerateSprites)
+            .on('input', function () {
+                extension_settings.expressions.agentAutoGenerateSprites = !!$(this).prop('checked');
+                saveSettingsDebounced();
+            });
+        updateExpressionsAgentStatus();
         $('#expression_llm_prompt').val(extension_settings.expressions.llmPrompt ?? '');
         $('#expression_llm_prompt').on('input', function () {
             extension_settings.expressions.llmPrompt = String($(this).val());

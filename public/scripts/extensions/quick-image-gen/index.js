@@ -15910,5 +15910,41 @@ async function handleMetadataDrop(e) {
     }
 }
 
+/**
+ * SillyBunny divergence: generate a single expression sprite for the Expressions Agent.
+ * Uses the currently configured provider/profile so users can reuse their Quick Image Gen
+ * connection settings for on-the-fly sprite creation.
+ *
+ * @param {string} expression - The expression label (e.g. "joy").
+ * @param {string} characterName - The character name to seed the prompt.
+ * @returns {Promise<string|null>} URL of the generated image, or null on failure.
+ */
+export async function generateExpressionSprite(expression, characterName) {
+    if (!expression || !characterName) return null;
+    if (isGenerating) {
+        console.debug('[Quick Image Gen] Expression sprite generation skipped: generation already in progress');
+        return null;
+    }
+
+    const s = getGenerationSettingsForRun();
+    const prompt = `${characterName}, ${expression} expression, portrait, character sprite, emotional face`;
+    const negative = s.negativePrompt || '';
+
+    try {
+        isGenerating = true;
+        showStatus(`🎨 Generating ${expression} sprite...`);
+        const rawResult = await generateForProvider(prompt, negative, s, null, {});
+        if (!rawResult) return null;
+        const entry = await finalizeGeneratedEntry(rawResult, prompt, negative, s, {});
+        return entry?.url || null;
+    } catch (error) {
+        console.error('[Quick Image Gen] Expression sprite generation failed:', error);
+        return null;
+    } finally {
+        isGenerating = false;
+        hideStatus();
+    }
+}
+
 // Export module info for SillyTavern
 export { extensionName };

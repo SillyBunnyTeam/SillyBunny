@@ -197,6 +197,35 @@ img.expression.default {
     margin-left: 0px;
 }
 
+.expression_agent_block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: var(--border-radius, 8px);
+    background-color: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.25));
+}
+
+.expression_agent_status {
+    gap: 0.15rem;
+}
+
+.expression_agent_status small {
+    opacity: 0.85;
+}
+
+.expression_agent_status small.available {
+    color: color-mix(in srgb, var(--color-success, var(--sb-success, #4caf50)) 90%, white 10%);
+}
+
+.expression_agent_status small.unavailable {
+    color: color-mix(in srgb, var(--color-warning, var(--sb-warning, #ff9800)) 90%, white 10%);
+}
+
+.expression_agent_hint {
+    margin: 0;
+}
+
 .expression_settings label input {
     margin-left: 0px !important;
 }

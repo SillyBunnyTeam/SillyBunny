@@ -14,6 +14,7 @@ export const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 export const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
 export const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 export const MEMORY_SHARD_TEMPLATE_ID = 'tpl-memory-shard-companion';
+export const EXPRESSIONS_AGENT_TEMPLATE_ID = 'tpl-expressions-agent';
 
 export const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 export const CHATROOM_STYLE_VALUES = new Set([
@@ -60,6 +61,10 @@ export function isChatOnlyAgent(agent = null) {
 
 export function isPlotCompassAgent(agent = null) {
     return getAgentTemplateId(agent) === PLOT_COMPASS_TEMPLATE_ID;
+}
+
+export function isExpressionsAgent(agent = null) {
+    return getAgentTemplateId(agent) === EXPRESSIONS_AGENT_TEMPLATE_ID;
 }
 
 export function normalizeChatOnlyInput(value = '') {
