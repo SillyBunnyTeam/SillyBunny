@@ -533,6 +533,18 @@ label[for="bind_preset_to_connection"]:has(input:checked) {
     color: var(--active);
 }
 
+#bind_preset_to_sampling:checked~.toggleOff {
+    display: none;
+}
+
+#bind_preset_to_sampling:not(:checked)~.toggleOn {
+    display: none;
+}
+
+label[for="bind_preset_to_sampling"]:has(input:checked) {
+    color: var(--active);
+}
+
 #openai_settings input[type="checkbox"]:not(:checked)~[data-cc-toggle],
 #openai_settings input[type="checkbox"]:not(:checked)~*:has([data-cc-toggle]) {
     display: none;
