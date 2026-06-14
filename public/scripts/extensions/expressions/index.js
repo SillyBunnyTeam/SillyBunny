@@ -128,11 +128,14 @@ const SHEET_BACKGROUND_BUCKET_SIZE = 16;
 const SHEET_BACKGROUND_PALETTE_LIMIT = 5;
 const SHEET_BACKGROUND_COLOR_DISTANCE = 58;
 const SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS = 36;
-const SHEET_TILE_SOURCE_INSET_RATIO = 0.025;
+const SHEET_TILE_SOURCE_INSET_RATIO = 0.06;
 const SPRITE_FOREGROUND_ALPHA_THRESHOLD = 24;
 const SPRITE_EDGE_BLEED_RATIO = 0.035;
 const SPRITE_EDGE_COMPONENT_KEEP_RATIO = 0.12;
 const SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO = 0.075;
+const SPRITE_STRAY_COMPONENT_NEAR_MAIN_RATIO = 0.06;
+const SPRITE_STRAY_COMPONENT_KEEP_RATIO = 0.45;
+const SPRITE_RESIDUAL_EDGE_BAND_RATIO = 0.07;
 
 let expressionsList = null;
 let lastCharacter = undefined;
@@ -1308,7 +1311,51 @@ function getBoxDistance(a, b) {
     return Math.sqrt((xDistance ** 2) + (yDistance ** 2));
 }
 
-function removeEdgeBleedArtifacts(canvas) {
+function removeResidualEdgeBackground(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const { width, height } = canvas;
+    if (!width || !height) return;
+
+    const imageData = context.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const backgroundPalette = getSheetBackgroundPalette(data, width, height);
+    const band = Math.max(1, Math.round(Math.min(width, height) * SPRITE_RESIDUAL_EDGE_BAND_RATIO));
+    let changed = false;
+
+    const clearIfBackground = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const pixelIndex = ((y * width) + x) * 4;
+        if (data[pixelIndex + 3] === 0) return;
+        const { red, green, blue } = getPixelChannels(data, pixelIndex);
+        const isFlatLight = red >= SHEET_BACKGROUND_RGB_THRESHOLD
+            && green >= SHEET_BACKGROUND_RGB_THRESHOLD
+            && blue >= SHEET_BACKGROUND_RGB_THRESHOLD
+            && getChannelSpread(red, green, blue) <= SHEET_BACKGROUND_CHANNEL_SPREAD;
+        const isNeutralBackground = isNeutralSheetPixel(red, green, blue)
+            && getAverageLightness(red, green, blue) >= SHEET_BACKGROUND_MIN_NEUTRAL_LIGHTNESS
+            && (backgroundPalette.length === 0 || isCloseToSheetBackgroundPalette(red, green, blue, backgroundPalette));
+        if (!isFlatLight && !isNeutralBackground) return;
+        data[pixelIndex + 3] = 0;
+        changed = true;
+    };
+
+    for (let offset = 0; offset < band; offset++) {
+        for (let x = 0; x < width; x++) {
+            clearIfBackground(x, offset);
+            clearIfBackground(x, height - 1 - offset);
+        }
+        for (let y = 0; y < height; y++) {
+            clearIfBackground(offset, y);
+            clearIfBackground(width - 1 - offset, y);
+        }
+    }
+
+    if (changed) context.putImageData(imageData, 0, 0);
+}
+
+function removeStrayComponents(canvas) {
     const context = canvas.getContext('2d');
     if (!context) return;
 
@@ -1322,20 +1369,32 @@ function removeEdgeBleedArtifacts(canvas) {
 
     const mainComponent = components.reduce((largest, component) => component.count > largest.count ? component : largest, components[0]);
     const edgeBand = Math.max(1, Math.round(Math.min(width, height) * SPRITE_EDGE_BLEED_RATIO));
-    const nearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO));
-    const minKeepCount = Math.max(24, mainComponent.count * SPRITE_EDGE_COMPONENT_KEEP_RATIO);
+    const edgeNearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_EDGE_COMPONENT_NEAR_MAIN_RATIO));
+    const strayNearMainDistance = Math.max(2, Math.round(Math.min(width, height) * SPRITE_STRAY_COMPONENT_NEAR_MAIN_RATIO));
+    const edgeMinKeepCount = Math.max(24, mainComponent.count * SPRITE_EDGE_COMPONENT_KEEP_RATIO);
+    const strayMaxKeepCount = mainComponent.count * SPRITE_STRAY_COMPONENT_KEEP_RATIO;
     const removeLabels = new Set();
 
     for (const component of components) {
         if (component === mainComponent) continue;
+
+        const distanceToMain = getBoxDistance(component, mainComponent);
         const touchesEdge = component.minX <= edgeBand
             || component.minY <= edgeBand
             || component.maxX >= width - 1 - edgeBand
             || component.maxY >= height - 1 - edgeBand;
-        if (!touchesEdge) continue;
-        if (component.count >= minKeepCount) continue;
-        if (getBoxDistance(component, mainComponent) <= nearMainDistance) continue;
-        removeLabels.add(component.label);
+
+        // Edge-hugging fragments: bleed from neighbouring sheet cells.
+        if (touchesEdge && component.count < edgeMinKeepCount && distanceToMain > edgeNearMainDistance) {
+            removeLabels.add(component.label);
+            continue;
+        }
+
+        // Detached blobs anywhere in the tile that are clearly separate from the
+        // main sprite are leaked neighbour-sprite parts, not the character.
+        if (distanceToMain > strayNearMainDistance && component.count < strayMaxKeepCount) {
+            removeLabels.add(component.label);
+        }
     }
 
     if (removeLabels.size === 0) return;
@@ -1351,7 +1410,8 @@ function removeEdgeBleedArtifacts(canvas) {
 
 function postProcessSpriteCanvas(canvas) {
     makeCanvasBackgroundTransparent(canvas);
-    removeEdgeBleedArtifacts(canvas);
+    removeResidualEdgeBackground(canvas);
+    removeStrayComponents(canvas);
 }
 
 async function postProcessSpriteImage(imageUrl) {
