@@ -513,7 +513,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.5';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.7.0';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -556,7 +556,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.5:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.7.0:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
