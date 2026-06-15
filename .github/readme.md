@@ -23,25 +23,25 @@ These screenshots show the graphical shell UI across Workspace, Customize, Agent
 
 | Desktop Workspace Menu | Desktop Customize Menu |
 | :---: | :---: |
-| <img src="screenshots/sillybunny-ui-desktop-navigate-v1.6.0.png" alt="Desktop Workspace Menu" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-customize-v1.6.0.png" alt="Desktop Customize Menu" width="100%"> |
+| <img src="screenshots/sillybunny-ui-desktop-navigate-v1.6.5.png" alt="Desktop Workspace Menu" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-customize-v1.6.5.png" alt="Desktop Customize Menu" width="100%"> |
 
 | Desktop Agents Menu | Desktop Characters Menu |
 | :---: | :---: |
-| <img src="screenshots/sillybunny-ui-desktop-agents-v1.6.0.png" alt="Desktop Agents Menu" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-characters-v1.6.0.png" alt="Desktop Characters Menu" width="100%"> |
+| <img src="screenshots/sillybunny-ui-desktop-agents-v1.6.5.png" alt="Desktop Agents Menu" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-characters-v1.6.5.png" alt="Desktop Characters Menu" width="100%"> |
 
 | Desktop Search | Desktop Chat |
 | :---: | :---: |
-| <img src="screenshots/sillybunny-ui-desktop-search-v1.6.0.png" alt="Desktop Search" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-in-chat-v1.6.0.png" alt="Desktop Bunny Guide Chat" width="100%"> |
+| <img src="screenshots/sillybunny-ui-desktop-search-v1.6.5.png" alt="Desktop Search" width="100%"> | <img src="screenshots/sillybunny-ui-desktop-in-chat-v1.6.5.png" alt="Desktop Bunny Guide Chat" width="100%"> |
 
 #### Mobile
 
 | Mobile Workspace Menu | Mobile Customize Menu | Mobile Agents Menu |
 | :---: | :---: | :---: |
-| <img src="screenshots/sillybunny-ui-mobile-navigate-v1.6.0.png" alt="Mobile Workspace Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-customize-v1.6.0.png" alt="Mobile Customize Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-agents-v1.6.0.png" alt="Mobile Agents Menu" width="100%"> |
+| <img src="screenshots/sillybunny-ui-mobile-navigate-v1.6.5.png" alt="Mobile Workspace Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-customize-v1.6.5.png" alt="Mobile Customize Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-agents-v1.6.5.png" alt="Mobile Agents Menu" width="100%"> |
 
 | Mobile Characters Menu | Mobile Search | Mobile Chat |
 | :---: | :---: | :---: |
-| <img src="screenshots/sillybunny-ui-mobile-characters-v1.6.0.png" alt="Mobile Characters Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-search-v1.6.0.png" alt="Mobile Search" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-in-chat-v1.6.0.png" alt="Mobile Bunny Guide Chat" width="100%"> |
+| <img src="screenshots/sillybunny-ui-mobile-characters-v1.6.5.png" alt="Mobile Characters Menu" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-search-v1.6.5.png" alt="Mobile Search" width="100%"> | <img src="screenshots/sillybunny-ui-mobile-in-chat-v1.6.5.png" alt="Mobile Bunny Guide Chat" width="100%"> |
 
 </details>
 
