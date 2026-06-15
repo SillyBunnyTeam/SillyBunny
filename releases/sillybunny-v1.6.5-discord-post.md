@@ -57,5 +57,6 @@ Companion Agents are extra AI helpers that sit beside the main chat. They read t
 **How to update**
 - Built-in updater: open Customize > Server and update from there.
 - Git clone: run `git pull`.
+- Docker: run git pull, then sudo docker compose up -d --build (the --build is required to rebuild the local image).
 - Launcher users: close and reopen Start.bat, Start.command, or start.sh.
 - ZIP users: grab the new release directly.
