@@ -2076,29 +2076,35 @@ export function flattenSchema(schema, api) {
 export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    const retryDelaysMs = [50, 125, 250];
+    let lastError;
+    const runWithWindowsRetries = (operation) => {
+        for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+            try {
+                operation();
+                return true;
+            } catch (error) {
+                if (!isRetryableWindowsWriteError(error)) {
+                    throw error;
+                }
+
+                lastError = error;
+                if (attempt < retryDelaysMs.length) {
+                    sleepSync(retryDelaysMs[attempt]);
+                }
+            }
+        }
+
+        return false;
+    };
     const directory = path.dirname(filePath);
     //Ensure the directory exists.
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
     }
 
-    const retryDelaysMs = [50, 125, 250];
-    let lastError;
-
-    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
-        try {
-            writeFileAtomicSync(filePath, data, options);
-            return;
-        } catch (error) {
-            if (!isRetryableWindowsWriteError(error)) {
-                throw error;
-            }
-
-            lastError = error;
-            if (attempt < retryDelaysMs.length) {
-                sleepSync(retryDelaysMs[attempt]);
-            }
-        }
+    if (runWithWindowsRetries(() => writeFileAtomicSync(filePath, data, options))) {
+        return;
     }
 
     if (lastError) {
@@ -2107,26 +2113,39 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
 
     // SillyBunny: keep the existing file intact while retrying a Windows-safe replacement.
     const tempFilePath = `${filePath}.tmp`;
-    fs.writeFileSync(tempFilePath, data, options);
-
-    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+    const cleanupTempFile = () => {
         try {
-            fs.renameSync(tempFilePath, filePath);
-            return;
+            if (fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
         } catch (error) {
-            if (!isRetryableWindowsWriteError(error)) {
-                throw error;
-            }
-
-            lastError = error;
-            if (attempt < retryDelaysMs.length) {
-                sleepSync(retryDelaysMs[attempt]);
-            }
+            console.warn(`Failed to clean up temp write file for ${filePath}.`, error?.code);
         }
-    }
+    };
 
-    console.warn(`Temp file rename failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
-    fs.writeFileSync(filePath, data, options);
+    try {
+        if (!runWithWindowsRetries(() => fs.writeFileSync(tempFilePath, data, options))) {
+            throw lastError;
+        }
+
+        if (runWithWindowsRetries(() => fs.renameSync(tempFilePath, filePath))) {
+            return;
+        }
+
+        console.warn(`Temp file rename failed for ${filePath}. Falling back to a copy replacement.`, lastError?.code);
+        if (runWithWindowsRetries(() => fs.copyFileSync(tempFilePath, filePath))) {
+            return;
+        }
+
+        console.warn(`Temp file copy failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
+        if (runWithWindowsRetries(() => fs.writeFileSync(filePath, data, options))) {
+            return;
+        }
+
+        throw lastError;
+    } finally {
+        cleanupTempFile();
+    }
 }
 
 /**

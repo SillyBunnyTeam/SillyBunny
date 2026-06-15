@@ -56,10 +56,11 @@ describe('tryWriteFileSync atomic fallback', () => {
         expect(renameSpy.mock.calls.at(-1)).toEqual([`${filePath}.tmp`, filePath]);
     });
 
-    test('uses direct write only after the temp-file rename retries are exhausted', () => {
+    test('copies the temp file when temp-file rename retries are exhausted', () => {
         const filePath = createTargetPath();
         mockWritableTarget();
         const writeFileSpy = jest.spyOn(fs, 'writeFileSync');
+        const copyFileSpy = jest.spyOn(fs, 'copyFileSync');
         jest.spyOn(fs, 'renameSync').mockImplementation(() => {
             throw createWindowsFileLockError('EBUSY');
         });
@@ -67,7 +68,30 @@ describe('tryWriteFileSync atomic fallback', () => {
 
         tryWriteFileSync(filePath, 'payload', 'utf8');
 
+        expect(writeFileSpy.mock.calls.map(call => call[0])).toEqual([`${filePath}.tmp`]);
+        expect(copyFileSpy).toHaveBeenCalledWith(`${filePath}.tmp`, filePath);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Temp file rename failed'), 'EBUSY');
+        expect(fs.existsSync(`${filePath}.tmp`)).toBe(false);
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('payload');
+    });
+
+    test('uses direct write only after temp-file rename and copy retries are exhausted', () => {
+        const filePath = createTargetPath();
+        mockWritableTarget();
+        const writeFileSpy = jest.spyOn(fs, 'writeFileSync');
+        jest.spyOn(fs, 'renameSync').mockImplementation(() => {
+            throw createWindowsFileLockError('EBUSY');
+        });
+        jest.spyOn(fs, 'copyFileSync').mockImplementation(() => {
+            throw createWindowsFileLockError('EPERM');
+        });
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        tryWriteFileSync(filePath, 'payload', 'utf8');
+
         expect(writeFileSpy.mock.calls.map(call => call[0])).toEqual([`${filePath}.tmp`, filePath]);
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Temp file rename failed'), 'EBUSY');
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Temp file copy failed'), 'EPERM');
+        expect(fs.existsSync(`${filePath}.tmp`)).toBe(false);
     });
 });
