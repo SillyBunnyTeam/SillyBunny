@@ -78,6 +78,7 @@
 - PR #491 (2026-06-15) `fix: remove constant "Model sampling profile loaded" toast`
 - PR #492 (2026-06-15) `feat: Add hide toggle option and direct hide button for bottom chat bar`
 - PR #493 (2026-06-15) `chore: add docker instructions to contributing guide`
+- PR #494 (2026-06-15) `chore: Add ADHDBunny-UI to Launchpad optional installs`
 
 ## v1.6.4
 
