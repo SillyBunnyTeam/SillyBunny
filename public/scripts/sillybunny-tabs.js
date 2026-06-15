@@ -4499,7 +4499,8 @@ async function fetchGroupChatFiles(chatContext) {
                     return normalizeChatInfo({ file_name: chatId });
                 }
 
-                return normalizeChatInfo(await response.json());
+                const chatInfo = normalizeChatInfo(await response.json());
+                return chatInfo.fileName ? chatInfo : normalizeChatInfo({ file_name: chatId });
             } catch {
                 return normalizeChatInfo({ file_name: chatId });
             }
