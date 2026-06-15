@@ -189,14 +189,44 @@ async function captureScreenshots(viewportType) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
 
+    // Log browser errors
+    page.on('console', msg => {
+        if (msg.type() === 'error') {
+            console.log(`      [Browser Error] ${msg.text()}`);
+        }
+    });
+
     try {
         // Navigate to SillyBunny
         console.log(`   Navigating to ${baseURL}...`);
         await page.goto(baseURL, { waitUntil: 'networkidle', timeout: 30000 });
 
         // Wait for app to initialize
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(6000);
         await dismissOnboardingIfPresent(page);
+
+        if (viewportType === 'desktop') {
+            console.log('   Overriding desktop shell dimensions to maximize drawer view...');
+            await page.evaluate(() => {
+                const style = document.createElement('style');
+                style.innerHTML = `
+                    #left-nav-panel.openDrawer,
+                    #user-settings-block.openDrawer {
+                        width: 900px !important;
+                        max-width: 900px !important;
+                        height: 950px !important;
+                        max-height: 950px !important;
+                    }
+                    #right-nav-panel.openDrawer {
+                        width: 450px !important;
+                        max-width: 450px !important;
+                        height: 950px !important;
+                        max-height: 950px !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            });
+        }
 
         // Capture each section
         for (const section of sections) {
