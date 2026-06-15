@@ -41,10 +41,10 @@
         }
 
         .sb-settings-tab-btn.active {
-            background: var(--sb-primary-accent, #c9c6a8);
-            color: var(--sb-shadow-ink, #050607);
-            border-color: var(--sb-primary-accent, #c9c6a8);
-            box-shadow: 0 4px 12px color-mix(in srgb, var(--sb-primary-accent, #c9c6a8) 25%, transparent);
+            background: var(--color-primary, var(--sb-accent, #c9c6a8));
+            color: var(--sb-on-accent, #050607);
+            border-color: var(--color-primary, var(--sb-accent, #c9c6a8));
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary, var(--sb-accent, #c9c6a8)) 25%, transparent);
         }
 
         /* Content grid layout on desktop */
@@ -76,25 +76,35 @@
         /* Declarative visibility rules based on active tab */
         #user-settings-block-content:not([data-search-active="true"])[data-active-tab="appearance"] .inline-drawer:not([data-settings-tab="appearance"]),
         #user-settings-block-content:not([data-search-active="true"])[data-active-tab="chat-writing"] .inline-drawer:not([data-settings-tab="chat-writing"]),
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer:not([data-settings-tab="system-device"]) {
-            display: none !important;
-        }
-
-        /* Cache & Account tab visibility: hide all drawers, since there are no drawers under this tab */
-        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer {
-            display: none !important;
-        }
-
-        /* Hide account controls and cache utility rows unless on Cache & Account tab */
-        #user-settings-block:not([data-active-tab="cache-account"]) #account_controls,
-        #user-settings-block:not([data-active-tab="cache-account"]) #user-settings-utility-actions {
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="system-device"] .inline-drawer:not([data-settings-tab="system-device"]),
+        #user-settings-block-content:not([data-search-active="true"])[data-active-tab="cache-account"] .inline-drawer:not([data-settings-tab="cache-account"]) {
             display: none !important;
         }
 
         /* Highlighting of search results inside inactive tabs */
         .highlighted-drawer {
-            border-color: var(--sb-primary-accent, #c9c6a8) !important;
-            box-shadow: 0 0 10px color-mix(in srgb, var(--sb-primary-accent, #c9c6a8) 30%, transparent) !important;
+            border-color: var(--color-primary, var(--sb-accent, #c9c6a8)) !important;
+            box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary, var(--sb-accent, #c9c6a8)) 30%, transparent) !important;
+        }
+
+        /* Style for account and cache drawers when placed inside the content block */
+        #sb-account-settings-drawer #account_controls,
+        #sb-cache-settings-drawer #user-settings-utility-actions {
+            background: none !important;
+            border: none !important;
+            padding: 8px 0 !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            width: 100% !important;
+        }
+
+        #sb-cache-settings-drawer #user-settings-utility-actions {
+            flex-direction: column !important;
+            align-items: stretch !important;
+        }
+
+        #sb-cache-settings-drawer #user-settings-utility-actions .sb-settings-utility-note {
+            margin-bottom: 12px !important;
         }
     `;
 
@@ -133,7 +143,27 @@
             });
             if (themeColorsDrawer) {
                 themeColorsDrawer.id = 'sb-theme-colors-drawer';
+                themeColorsDrawer.classList.add('sb-settings-subdrawer');
                 col1.appendChild(themeColorsDrawer);
+            }
+
+            // Promote Avatar & Chat Styles inline-drawer
+            const avatarChatBlock = document.querySelector('[name="AvatarAndChatDisplay"]');
+            if (avatarChatBlock && col1 && !document.getElementById('sb-avatar-chat-styles-drawer')) {
+                const avatarChatDrawer = document.createElement('div');
+                avatarChatDrawer.id = 'sb-avatar-chat-styles-drawer';
+                avatarChatDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+                avatarChatDrawer.innerHTML = `
+                    <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Customize avatar shapes and chat bubble layouts.">
+                        <b><i class="fa-solid fa-wand-magic-sparkles"></i> <span>Avatar &amp; Chat Styles</span></b>
+                        <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                    </div>
+                    <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
+                    </div>
+                `;
+                avatarChatBlock.parentNode.insertBefore(avatarChatDrawer, avatarChatBlock);
+                avatarChatDrawer.querySelector('.inline-drawer-content').appendChild(avatarChatBlock);
+                col1.appendChild(avatarChatDrawer);
             }
         }
 
@@ -217,11 +247,57 @@
         }
     }
 
+    function promoteCacheAccount() {
+        const col1 = document.querySelector('[name="UserSettingsFirstColumn"]');
+        const col2 = document.querySelector('[name="UserSettingsSecondColumn"]');
+        const accountControls = document.getElementById('account_controls');
+        const cacheActions = document.getElementById('user-settings-utility-actions');
+
+        // Create Account Controls drawer in Col 1
+        if (accountControls && col1 && !document.getElementById('sb-account-settings-drawer')) {
+            const accountDrawer = document.createElement('div');
+            accountDrawer.id = 'sb-account-settings-drawer';
+            accountDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+            accountDrawer.setAttribute('data-settings-tab', 'cache-account');
+            accountDrawer.innerHTML = `
+                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Manage your user account, login sessions, and administrative controls.">
+                    <b><i class="fa-solid fa-user-shield"></i> <span>Account Settings</span></b>
+                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                </div>
+                <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:block">
+                </div>
+            `;
+            accountControls.parentNode.insertBefore(accountDrawer, accountControls);
+            accountDrawer.querySelector('.inline-drawer-content').appendChild(accountControls);
+            col1.appendChild(accountDrawer);
+        }
+
+        // Create Cache Utilities drawer in Col 2
+        if (cacheActions && col2 && !document.getElementById('sb-cache-settings-drawer')) {
+            const cacheDrawer = document.createElement('div');
+            cacheDrawer.id = 'sb-cache-settings-drawer';
+            cacheDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+            cacheDrawer.setAttribute('data-settings-tab', 'cache-account');
+            cacheDrawer.innerHTML = `
+                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Clear temporary files, browser cache, and other local data.">
+                    <b><i class="fa-solid fa-broom"></i> <span>Cache &amp; Storage Utilities</span></b>
+                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                </div>
+                <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:block">
+                </div>
+            `;
+            cacheActions.parentNode.insertBefore(cacheDrawer, cacheActions);
+            cacheDrawer.querySelector('.inline-drawer-content').appendChild(cacheActions);
+            col2.appendChild(cacheDrawer);
+        }
+    }
+
     function tagDrawersWithCategories() {
         const mappings = {
             // Appearance Tab
             'AppearanceSection': 'appearance',
             'sb-theme-colors-drawer': 'appearance',
+            'sb-avatar-chat-styles-drawer': 'appearance',
             'AppearanceLayoutSection': 'appearance',
             'ThemeTogglesSection': 'appearance',
             'CustomCSS-block': 'appearance',
@@ -240,6 +316,10 @@
             'MobileSection': 'system-device',
             'sb-ios-webkit-streaming-drawer': 'system-device',
             'sb-aggressive-dom-unload-drawer': 'system-device',
+
+            // Cache & Account Tab
+            'sb-account-settings-drawer': 'cache-account',
+            'sb-cache-settings-drawer': 'cache-account',
         };
 
         for (const [idOrName, tab] of Object.entries(mappings)) {
@@ -326,6 +406,7 @@
         try {
             injectStyles();
             promoteNestedDrawers();
+            promoteCacheAccount();
             tagDrawersWithCategories();
             createTabBar();
             setupSearchIntegration();
