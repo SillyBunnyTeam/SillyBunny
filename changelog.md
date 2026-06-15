@@ -77,6 +77,7 @@
 - PR #490 (2026-06-15) `docs(readme): refresh screenshots for 1.6.5`
 - PR #491 (2026-06-15) `fix: remove constant "Model sampling profile loaded" toast`
 - PR #492 (2026-06-15) `feat: Add hide toggle option and direct hide button for bottom chat bar`
+- PR #493 (2026-06-15) `chore: add docker instructions to contributing guide`
 
 ## v1.6.4
 
