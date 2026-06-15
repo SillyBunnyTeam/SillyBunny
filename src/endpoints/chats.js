@@ -660,6 +660,26 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
     }
 }
 
+export async function getListableGroupChatInfo(chatFilePath, id) {
+    const chatInfo = await getChatInfo(chatFilePath);
+    const fileName = String(chatInfo?.file_name ?? '').trim();
+
+    if (fileName) {
+        return chatInfo;
+    }
+
+    const fallbackFileName = sanitize(`${id}.jsonl`);
+    const fallbackFileId = path.parse(fallbackFileName).name;
+    const normalizedChatInfo = chatInfo && typeof chatInfo === 'object' ? chatInfo : {};
+
+    // SillyBunny: keep corrupted group chats visible so chat selectors do not enter empty-list retry storms.
+    return {
+        ...normalizedChatInfo,
+        file_id: String(normalizedChatInfo.file_id ?? '').trim() || fallbackFileId,
+        file_name: fallbackFileName,
+    };
+}
+
 export const router = express.Router();
 
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
@@ -1116,7 +1136,7 @@ router.post('/group/info', async (request, response) => {
             return response.status(404).send({ error: 'not_found' });
         }
 
-        const chatInfo = await getChatInfo(chatFilePath);
+        const chatInfo = await getListableGroupChatInfo(chatFilePath, id);
         return response.send(chatInfo);
     } catch (error) {
         console.error(error);
