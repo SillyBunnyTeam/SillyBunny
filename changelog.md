@@ -72,6 +72,7 @@
 - PR #485 (2026-06-15) `feat: Add quick delete shortcut button to message actions`
 - PR #486 (2026-06-15) `feat: Add categorized settings tabs with desktop grid wrapping`
 - PR #487 (2026-06-15) `fix: preserve user backend on settings load instead of switching to reverse proxy source`
+- PR #488 (2026-06-15) `fix(ui): fix mobile cache utility layout`
 
 ## v1.6.4
 
