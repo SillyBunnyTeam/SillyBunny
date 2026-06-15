@@ -391,8 +391,8 @@ const SB_THEMES = Object.freeze([
         label: 'Clean Minimal',
     },
     {
-        id: 'gnome-adwaita',
-        label: 'GNOME Adwaita',
+        id: 'macos-minimal',
+        label: 'macOS Minimal',
     },
     {
         id: 'cozy-warm',

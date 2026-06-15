@@ -293,25 +293,38 @@
     --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 2.5%, transparent);
 }
 
-:root[data-sb-theme='gnome-adwaita'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #2d2d2d 5%);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, #242424 8%);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #1e1e1e 4%);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, #2d2d2d 6%);
-    --sb-shell-header-glow: rgba(0, 0, 0, 0.1);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, #3584e4 88%);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 80%, #3a3a3a 20%);
-    --sb-shell-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #303030 5%);
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, #3a3a3a 8%);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, #4a4a4a 15%);
-    --sb-focus-ring: #3584e4;
-    --sb-ambient-a: transparent;
-    --sb-ambient-b: transparent;
-    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #2d2d2d 5%);
-    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #242424 4%);
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #1e1e1e 5%);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #2d2d2d 5%);
+:root[data-sb-theme='macos-minimal'] {
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, rgba(255, 255, 255, 0.04));
+    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
+    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, rgba(0, 0, 0, 0.05));
+    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, rgba(255, 255, 255, 0.05));
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(255, 255, 255, 0.15));
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.18));
+    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(255, 255, 255, 0.1);
+    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
+    --sb-button-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, rgba(255, 255, 255, 0.06));
+    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, rgba(255, 255, 255, 0.14));
+    --sb-focus-ring: var(--SmartThemeQuoteColor);
+    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
+    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, rgba(255, 255, 255, 0.04));
+    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, rgba(255, 255, 255, 0.03));
+    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 85%, transparent);
+    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
+}
+
+:root[data-sb-theme='macos-minimal'][data-sb-surface-tone='light'] {
+    --sb-shell-surface: color-mix(in srgb, #ffffff 92%, var(--SmartThemeBlurTintColor));
+    --sb-shell-main-bg: color-mix(in srgb, #ffffff 95%, var(--SmartThemeBlurTintColor));
+    --sb-shell-nav-bg: color-mix(in srgb, #f5f5f7 90%, var(--SmartThemeBlurTintColor));
+    --sb-shell-header-bg: color-mix(in srgb, #ffffff 94%, var(--SmartThemeBlurTintColor));
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 35%, rgba(0, 0, 0, 0.06));
+    --sb-shell-shadow: 0 16px 48px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+    --sb-card-bg: color-mix(in srgb, #ffffff 90%, var(--SmartThemeBlurTintColor));
+    --sb-button-bg: color-mix(in srgb, #ffffff 60%, var(--SmartThemeBlurTintColor));
+    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(0, 0, 0, 0.05));
 }
 
 :root[data-sb-theme='cozy-warm'] {
