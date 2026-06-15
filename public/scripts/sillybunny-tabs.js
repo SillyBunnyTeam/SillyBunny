@@ -383,19 +383,28 @@ const SB_INIT_MAX_RETRIES = 30;
 
 const SB_THEMES = Object.freeze([
     {
-        id: 'modern-glass',
-        label: 'Modern Glass',
-        description: 'A theme with a premium, modern glassy aesthetic.',
+        id: 'windows-aero',
+        label: 'Windows Aero',
     },
     {
         id: 'clean-minimal',
         label: 'Clean Minimal',
-        description: 'A minimal theme with flatter surfaces, calmer contrast, and lower visual noise.',
     },
     {
-        id: 'bold-stylized',
-        label: 'Bold Stylized',
-        description: 'A theme that highlights accent colours and provides stronger contrast',
+        id: 'macos-minimal',
+        label: 'macOS Minimal',
+    },
+    {
+        id: 'cozy-warm',
+        label: 'Cozy Warm',
+    },
+    {
+        id: 'hypr-glow',
+        label: 'Hypr Glow',
+    },
+    {
+        id: 'slate-flat',
+        label: 'Slate Flat',
     },
 ]);
 
@@ -11759,7 +11768,7 @@ function injectThemePicker() {
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
     const header = createElement('div', { className: 'sb-theme-card-header' });
     const title = createElement('strong', { text: 'Shell Style' });
-    const description = createElement('p', { text: 'Switch the navigation shell between three built-in visual directions.' });
+    const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
     const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
         title: 'Background Visibility',
@@ -11838,7 +11847,6 @@ function injectThemePicker() {
 
         button.innerHTML = `
             <span class="sb-theme-option-label">${theme.label}</span>
-            <span class="sb-theme-option-meta">${theme.description}</span>
         `;
 
         button.addEventListener('click', () => setShellTheme(theme.id));
