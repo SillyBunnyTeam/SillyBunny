@@ -288,59 +288,68 @@
 }
 
 :root[data-sb-theme='bold-stylized'] {
-    --sb-shell-surface: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent), color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent));
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent), color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent), color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent));
-    --sb-shell-header-bg: linear-gradient(120deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent));
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
-    --sb-shell-tab-active-bg: linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent), color-mix(in srgb, var(--SmartThemeUnderlineColor) 12%, transparent));
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 82%, transparent);
-    --sb-shell-shadow: 0 34px 96px rgba(0, 0, 0, 0.38);
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
-    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, white 30%);
-    --sb-positive-fg: color-mix(in srgb, var(--SmartThemeQuoteColor) 82%, white 18%);
-    --sb-positive-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeUnderlineColor) 10%, transparent);
-    --sb-topbar-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent));
-    --sb-chatbar-surface-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent));
-    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
+    --sb-shell-surface: #111019;
+    --sb-shell-main-bg: #0d0c12;
+    --sb-shell-nav-bg: #161522;
+    --sb-shell-header-bg: #1d1b2e;
+    --sb-shell-header-glow: #e024a5;
+    --sb-shell-tab-active-bg: #e024a5;
+    --sb-shell-border: #f43f5e;
+    --sb-shell-shadow: 6px 6px 0px #1e1b4b, -6px -6px 0px #312e81;
+    --sb-card-bg: #181628;
+    --sb-button-bg: #2d2640;
+    --sb-button-hover: #e024a5;
+    --sb-focus-ring: #f43f5e;
+    --sb-positive-fg: #f43f5e;
+    --sb-positive-bg: #2e1223;
+    --sb-ambient-a: rgba(244, 63, 94, 0.15);
+    --sb-ambient-b: rgba(224, 36, 165, 0.1);
+    --sb-topbar-surface-bg: #13121f;
+    --sb-chatbar-surface-bg: #13121f;
+    --sb-mobile-overlay-bg: #0d0c12;
+    --sb-mobile-panel-bg: #111019;
 }
 
 :root[data-sb-theme='cozy-warm'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, #3c332a 3%);
-    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, #3c332a 3%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c332a 5%));
-    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c332a 4%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 93%, #3c332a 7%));
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, #3c332a 6%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 74%, #4f3f32 26%);
-    --sb-shell-shadow: 0 24px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 22%, transparent);
-    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent));
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
+    --sb-shell-surface: #1e1510;
+    --sb-shell-main-bg: #18110c;
+    --sb-shell-nav-bg: #261b14;
+    --sb-shell-header-bg: #2e1c12;
+    --sb-shell-header-glow: rgba(217, 119, 6, 0.3);
+    --sb-shell-tab-active-bg: #452c1e;
+    --sb-shell-border: #5c3e29;
+    --sb-shell-shadow: 0 16px 48px rgba(24, 17, 12, 0.6);
+    --sb-card-bg: #251a14;
+    --sb-button-bg: #35251d;
+    --sb-button-hover: #d97706;
+    --sb-focus-ring: #d97706;
+    --sb-ambient-a: rgba(217, 119, 6, 0.12);
+    --sb-ambient-b: rgba(180, 83, 9, 0.08);
+    --sb-topbar-surface-bg: #1e1510;
+    --sb-chatbar-surface-bg: #1a120d;
+    --sb-mobile-overlay-bg: #18110c;
+    --sb-mobile-panel-bg: #1e1510;
 }
 
 :root[data-sb-theme='neon-cyber'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 99%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, transparent);
-    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
-    --sb-shell-shadow: 0 0 15px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
-    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 85%, transparent);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    --sb-shell-surface: #0a0a12;
+    --sb-shell-main-bg: #030307;
+    --sb-shell-nav-bg: #0f0f1c;
+    --sb-shell-header-bg: #14142b;
+    --sb-shell-header-glow: rgba(0, 240, 255, 0.4);
+    --sb-shell-tab-active-bg: #ff007f;
+    --sb-shell-border: #00f0ff;
+    --sb-shell-shadow: 0 0 20px rgba(0, 240, 255, 0.25), 0 0 4px rgba(255, 0, 127, 0.2);
+    --sb-card-bg: #0c0c17;
+    --sb-button-bg: #16162a;
+    --sb-button-hover: #00f0ff;
+    --sb-focus-ring: #ff007f;
+    --sb-ambient-a: rgba(0, 240, 255, 0.2);
+    --sb-ambient-b: rgba(255, 0, 127, 0.15);
+    --sb-topbar-surface-bg: #090911;
+    --sb-chatbar-surface-bg: #07070d;
+    --sb-mobile-overlay-bg: #030307;
+    --sb-mobile-panel-bg: #0a0a12;
 }
 
 :root[data-sb-theme='slate-flat'] {
