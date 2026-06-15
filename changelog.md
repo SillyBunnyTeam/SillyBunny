@@ -2,20 +2,66 @@
 
 ## v1.6.5
 
-### Fixed
-- Chat backup count is now capped to 25 by default (`backups.chat.maxTotalBackups`) instead of unlimited, preventing unbounded accumulation over time.
-- Pre-write chat backups now skip writing when the on-disk content is unchanged (duplicate detection), reducing redundant snapshots during rapid save flows like swiping.
+Date: 2026-06-15
 
-### In-Chat Agents
+This update introduces Companion Agents, sidecar-style auxiliary AI helpers that run alongside the main chat. It also adds an In-Chat Agent expression classifier with Quick Image Gen sprite generation, decoupled sampling settings, categorized settings tabs, more shell styles, and a large round of iOS, Windows, mobile, and stability fixes on top of 1.6.4.
+
+### Added
 - Added Companion Agents: sidecar-style auxiliary AI helpers that run alongside the main chat, reading the conversation and doing their own background job (tracking plot, watching relationships, drafting worldbuilding notes, summarizing history, and more) without interrupting the story.
-- Companions run on one of two trigger modes — auto (after matching AI replies) or manual — with optional keyword/regex conditions and a probability percentage to fire only some of the time or on specific patterns.
+- Companions run on one of two trigger modes, auto (after matching AI replies) or manual, with optional keyword/regex conditions and a probability percentage to fire only some of the time or on specific patterns.
 - Companions can display as inline note cards (with regenerate, edit, copy, and delete actions), in a draggable slide-out side panel that docks to any screen edge, or hidden (feeding future runs without showing). The panel supports regenerate, manual note edits, jump-to-source-message, per-companion run history, a lock-open button, and a regenerate-all action.
 - Added a dedicated Companion Agents dashboard (reachable from the wand menu and an extension toolbar button) to manage every companion across all chats, create new ones, import from file, pick from bundled templates, enable/disable with one tap, and convert eligible inline agents to companion execution.
 - One-click conversion flips agents between inline and companion execution from agent cards and a bulk select-mode action, preserving prompt, regex scripts, injection, and conditions.
 - Trackers converted to companion execution get an automatic loop by default (run after every reply, raw prompt sent verbatim, latest state fed back into the next generation, state shown in the slide-out panel instead of chat cards), with a one-time migration applying the same defaults to already-converted trackers.
-- Companions are highly customizable per companion: trigger, display mode, output format (markdown/HTML/plain text), context window depth, token thresholds and limits, which context to feed (character card, persona, world info, author's note, system prompt, prior notes), self-feedback depth, raw prompt mode, shared-request batching, and per-companion model, temperature, and reasoning settings. Companions can run in parallel or sequentially.
+- Companions are configurable per companion: trigger, display mode, output format (markdown/HTML/plain text), context window depth, token thresholds and limits, which context to feed (character card, persona, world info, author's note, system prompt, prior notes), self-feedback depth, raw prompt mode, shared-request batching, and per-companion model, temperature, and reasoning settings. Companions can run in parallel or sequentially.
+- The batch companion selector lists every enabled companion so you can run any combination on demand.
 - Ships 11 ready-to-use companions: Continuity Companion, Relationship Lens, Director's Commentary, Actor Interview, Lorebook Scout, Memory Shard, NPC Motivator, Plot Compass, Chatroom, Message Inbox, and Chat Only.
 - Companions tied to a specific chat are removed automatically when that chat is deleted.
+- Added an In-Chat Agent expression classifier that drives Quick Image Gen sprite generation, so agents can pick a character expression and generate a matching sprite.
+- Added a Fix Trackers button that re-runs tracker agents to rebuild tracker state, with repair controls that stay visible for every enabled tracker, including legacy and pre trackers.
+- Sampling settings can now be decoupled from chat completion presets so model sampling profiles load on their own.
+- Added a quick delete shortcut button to the message actions.
+- Added categorized settings tabs that wrap into a grid on desktop.
+- Added more shell styles and reduced option padding in Customize.
+- Added a hide toggle and a direct hide button for the bottom chat bar.
+- Added ADHDBunny-UI to the Launchpad optional installs.
+
+### Improved
+- Prose Polisher maximum output tokens raised to 32000.
+- Synced the bundled Quick Image Gen extension to v2.1.0.
+- World info entry controls are now more compact.
+- Extension load diagnostics give clearer detail when an extension fails to load.
+- Mobile rail and quick-action model selection now route through the mobile-shell-lifecycle module for steadier narrow-screen behavior.
+
+### Fixed
+- Chat backup count is now capped to 25 by default (`backups.chat.maxTotalBackups`) instead of unlimited, preventing unbounded accumulation over time.
+- Pre-write chat backups now skip writing when the on-disk content is unchanged (duplicate detection), reducing redundant snapshots during rapid save flows like swiping.
+- SillyBunny to SillyTavern version mapping is corrected so extensions check compatibility against the right version.
+- sillybunny-theme media queries now align to the 768px breakpoint instead of 760px.
+- iOS WebKit boot failures are now surfaced instead of failing silently, with hardened frontend boot recovery.
+- Clear cookies and cache now works on iOS WebKit.
+- iOS chat overscroll blanking and keyboard composer displacement are fixed.
+- Public JS revalidation caching is restored.
+- script.js now loads under its bare URL to restore a single module identity, and is no longer double-evaluated through versioned module URLs.
+- Generated install metadata is restored before updates run.
+- Frontend restart now works on Windows through a unified graceful shutdown, server.js is self-supervising so restart works everywhere, and shutdown exit codes stay numeric.
+- Windows write fallback is hardened, and direct writes are avoided after Windows temp rename failures.
+- Character saves are protected from a stale frontend, pending character saves are canceled when switching characters, and the editor form no longer resets when selecting a character.
+- Stale CSRF tokens are refreshed, and group chat loads retry after a CSRF refresh.
+- OpenAI preset selection is preserved on backend switch, and the user backend is preserved on settings load instead of switching to the reverse proxy source.
+- Stale settings overwrites are now prevented.
+- Agent enable/disable toggle now responds on mobile.
+- Stuck mobile message updates are force-flushed, and a deferred mobile repaint is awaited before MESSAGE_UPDATED.
+- Mobile keyboard no longer hides the composer.
+- MovingUI panels are stabilized on desktop.
+- Save and Clear profile buttons no longer squish, and the sampling profile button keeps its text width.
+- Mobile cache utility layout is fixed.
+- Top-bar drawer hiding is scoped to native drawers, and extensions can hook the Characters top-bar button, for better extension compatibility.
+- Guided Generations now honors impersonation perspective prompts.
+- The constant "Model sampling profile loaded" toast is removed.
+
+### Removed
+- No user-facing features were removed in this release.
 
 ### Merged Staging PRs
 - PR #402 (2026-06-10) `chore: bump version to 1.6.5`
