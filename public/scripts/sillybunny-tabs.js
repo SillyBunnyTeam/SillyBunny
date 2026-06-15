@@ -383,16 +383,16 @@ const SB_INIT_MAX_RETRIES = 30;
 
 const SB_THEMES = Object.freeze([
     {
-        id: 'modern-glass',
-        label: 'Modern Glass',
+        id: 'windows-aero',
+        label: 'Windows Aero',
     },
     {
         id: 'clean-minimal',
         label: 'Clean Minimal',
     },
     {
-        id: 'bold-stylized',
-        label: 'Bold Stylized',
+        id: 'gnome-adwaita',
+        label: 'GNOME Adwaita',
     },
     {
         id: 'cozy-warm',
