@@ -66,6 +66,7 @@
 - PR #479 (2026-06-15) `fix: preserve OpenAI preset selection on backend switch`
 - PR #480 (2026-06-15) `fix: mobile keyboard hides composer`
 - PR #481 (2026-06-15) `fix: stabilize MovingUI panels on desktop`
+- PR #482 (2026-06-15) `fix: prevent Save/Clear profile buttons from squishing`
 
 ## v1.6.4
 
