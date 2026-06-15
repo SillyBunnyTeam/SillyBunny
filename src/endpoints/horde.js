@@ -15,7 +15,7 @@ export const router = express.Router();
  */
 async function getClientAgent() {
     const version = await getVersion();
-    return version?.agent || 'SillyBunny:1.6.5:platberlitz';
+    return version?.agent || 'SillyBunny:1.7.0:platberlitz';
 }
 
 /**
