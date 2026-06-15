@@ -3611,12 +3611,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-radius: var(--sb-radius-md, 16px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
     background: transparent;
-    padding: 14px 14px 16px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    align-items: flex-start;
-    text-align: left;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
     color: var(--SmartThemeBodyColor);
     font: inherit;
     cursor: pointer;
@@ -3625,7 +3626,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 :root[data-sb-compact-mode='true'] .sb-theme-option {
     gap: 5px;
-    padding: 10px 12px;
+    padding: 6px 10px;
 }
 
 .sb-theme-option::before {
