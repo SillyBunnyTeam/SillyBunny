@@ -6602,7 +6602,7 @@ function loadOpenAISettings(data, settings) {
     applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);
     syncMaxContextUnlockedControl(oai_settings);
 
-    $(`#settings_preset_openai option[value="${openai_setting_names[oai_settings.preset_settings_openai]}"]`).prop('selected', true);
+    restoreOpenAIPresetSelection();
     $('#bind_preset_to_connection').prop('checked', oai_settings.bind_preset_to_connection);
     $('#bind_preset_to_sampling').prop('checked', shouldIncludeSamplingFieldsInPreset(oai_settings));
     updateBindPresetToConnectionHelp();
@@ -7441,6 +7441,17 @@ async function onLogitBiasPresetDeleteClick() {
 
     biasCache = undefined;
     saveSettingsDebounced();
+}
+
+function restoreOpenAIPresetSelection(presetName = oai_settings.preset_settings_openai) {
+    const presetValue = openai_setting_names?.[presetName];
+
+    if (presetValue === undefined) {
+        return;
+    }
+
+    oai_settings.preset_settings_openai = presetName;
+    $('#settings_preset_openai').val(String(presetValue));
 }
 
 // Load OpenAI preset settings
@@ -9835,6 +9846,7 @@ export function initOpenAI() {
     });
 
     $('#chat_completion_source').on('change', function () {
+        const presetName = oai_settings.preset_settings_openai;
         cancelStatusCheck('Chat Completion source changed');
         model_list = [];
         oai_settings.chat_completion_source = String($(this).find(':selected').val());
@@ -9842,6 +9854,8 @@ export function initOpenAI() {
         toggleChatCompletionForms();
         applyConfigurableContextLimit();
         syncProxyPresetToBoundSource(oai_settings.chat_completion_source);
+        // SillyBunny: source switches should not reset the selected settings preset.
+        restoreOpenAIPresetSelection(presetName);
         saveSettingsDebounced();
         reconnectOpenAi();
         forceCharacterEditorTokenize();
