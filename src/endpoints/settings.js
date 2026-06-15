@@ -6,6 +6,7 @@ import _ from 'lodash';
 import bytes from 'bytes';
 
 import { SETTINGS_FILE } from '../constants.js';
+import { prepareSettingsSave } from '../settings-version.js';
 import {
     getConfigValue,
     generateTimestamp,
@@ -257,12 +258,30 @@ export const router = express.Router();
 router.post('/save', function (request, response) {
     try {
         const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
-        tryWriteFileSync(pathToSettings, JSON.stringify(request.body, null, 4));
+
+        if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+            return response.status(400).send({ error: 'invalid_settings' });
+        }
+
+        const currentSettings = fs.existsSync(pathToSettings)
+            ? JSON.parse(fs.readFileSync(pathToSettings, 'utf8'))
+            : {};
+
+        // SillyBunny: prevent one open device or tab from overwriting newer settings from another.
+        const preparedSave = prepareSettingsSave(request.body, currentSettings);
+        if (!preparedSave.ok) {
+            return response.status(409).send({
+                error: 'settings_conflict',
+                version: preparedSave.currentVersion,
+            });
+        }
+
+        tryWriteFileSync(pathToSettings, JSON.stringify(preparedSave.settings, null, 4));
         triggerAutoSave(request.user.profile.handle);
-        response.send({ result: 'ok' });
+        response.send({ result: 'ok', version: preparedSave.version });
     } catch (err) {
         console.error(err);
-        response.send(err);
+        response.status(500).send({ error: 'settings_save_failed' });
     }
 });
 
