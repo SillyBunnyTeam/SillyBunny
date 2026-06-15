@@ -68,6 +68,7 @@
 - PR #481 (2026-06-15) `fix: stabilize MovingUI panels on desktop`
 - PR #482 (2026-06-15) `fix: prevent Save/Clear profile buttons from squishing`
 - PR #483 (2026-06-15) `feat: prevent stale settings overwrites`
+- PR #484 (2026-06-15) `fix(ui): preserve sampling profile button text width`
 
 ## v1.6.4
 
