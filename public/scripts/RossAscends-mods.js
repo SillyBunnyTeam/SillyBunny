@@ -573,8 +573,12 @@ export function dragElement($elmnt) {
         else if (maxX >= winWidth) setMovingUIStyle($elmnt, 'left', winWidth - maxX + left - 1, 'important');
     }
 
+    let isObserving = false;
+
     // Observer for style changes (position/size)
     const observer = new MutationObserver((mutations) => {
+        if (isObserving) return;
+
         const $target = $(mutations[0].target);
         if (
             !$target.is(':visible') ||
@@ -588,6 +592,8 @@ export function dragElement($elmnt) {
             observer.disconnect();
             return;
         }
+
+        isObserving = true;
 
         const element = /** @type {HTMLElement} */ ($target[0]);
         const style = getComputedStyle(element);
@@ -633,20 +639,13 @@ export function dragElement($elmnt) {
             //    $elmnt.css('width', width - 1 + 'px');
             // }
             setMovingUIStyles($elmnt, { left, top }, 'important');
-            $elmnt.off('mouseup').on('mouseup', () => {
-                if (
-                    power_user.movingUIState[stateKey].width === $elmnt.width() &&
-                    power_user.movingUIState[stateKey].height === $elmnt.height()
-                ) return;
-                savePositionAndSize();
-                observer.disconnect();
-            });
         } else if (actionType === 'drag') {
             clampToViewport();
         }
 
         // Always update position in state
         savePositionAndSize();
+        isObserving = false;
     });
 
     // Mouse event handlers
@@ -713,10 +712,19 @@ export function dragElement($elmnt) {
         }
     });
 
-    $elmnt.off('mouseup').on('mouseup', () => {
+    $(document).on('mouseup', () => {
+        if (isMouseDown && actionType === 'resize') {
+            if (
+                power_user.movingUIState[stateKey].width !== $elmnt.width() ||
+                power_user.movingUIState[stateKey].height !== $elmnt.height()
+            ) {
+                savePositionAndSize();
+            }
+            observer.disconnect();
+        }
         isMouseDown = false;
         actionType = null;
-        observer.disconnect();
+        isObserving = false;
     });
 }
 
