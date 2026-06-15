@@ -67,6 +67,7 @@ import {
     setCharacterSettingsOverrides,
     system_avatar,
     getRequestHeaders,
+    refreshCsrfToken,
     isChatSaving,
     setExternalAbortController,
     baseChatReplace,
@@ -92,6 +93,7 @@ import { POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
+import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { chat_completion_sources, oai_settings } from './openai.js';
 
 export {
@@ -1642,15 +1644,17 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
         character_name: 'unused',
     };
     const chatMessages = Array.isArray(chatData) ? chatData : cloneGroupChatSavePayload(chat);
-    const saveGroupChatRequest = await compressRequest({
+    const savePayload = JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup) });
+    const buildSaveGroupChatRequest = () => compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup) }),
+        body: savePayload,
     });
-    const response = await fetch('/api/chats/group/save', saveGroupChatRequest);
+    // SillyBunny: rebuild compressed save requests after refreshing a stale CSRF token.
+    const response = await fetchWithCsrfRetry('/api/chats/group/save', buildSaveGroupChatRequest, { refreshCsrfToken });
 
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         const isIntegrityError = errorData?.error === 'integrity' && !force;
         if (!isIntegrityError) {
             toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group Chat could not be saved`);

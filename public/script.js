@@ -938,6 +938,7 @@ var css_send_form_display = $('<div id=send_form></div>').css('display');
 var kobold_horde_model = '';
 
 export let token;
+let csrfTokenRefreshPromise = null;
 
 
 /** The tag of the active character. (NOT the id) */
@@ -958,6 +959,38 @@ export function getRequestHeaders({ omitContentType = false } = {}) {
     }
 
     return headers;
+}
+
+/**
+ * Refreshes the CSRF token used by fetch and jQuery requests.
+ * @returns {Promise<string>} The refreshed CSRF token.
+ */
+export async function refreshCsrfToken() {
+    if (!csrfTokenRefreshPromise) {
+        // SillyBunny: recover from server restarts that rotate the CSRF secret without a full page reload.
+        csrfTokenRefreshPromise = (async () => {
+            const tokenResponse = await fetch('/csrf-token', {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                },
+            });
+
+            if (!tokenResponse.ok) {
+                throw new Error(`Failed to refresh CSRF token: ${tokenResponse.status}`);
+            }
+
+            const tokenData = await tokenResponse.json();
+            token = tokenData.token;
+            return token;
+        })().finally(() => {
+            csrfTokenRefreshPromise = null;
+        });
+    }
+
+    return csrfTokenRefreshPromise;
 }
 
 export function getSlideToggleOptions() {
@@ -1079,16 +1112,7 @@ async function firstLoadInit() {
     };
 
     try {
-        const tokenResponse = await fetch('/csrf-token', {
-            cache: 'no-store',
-            credentials: 'same-origin',
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-            },
-        });
-        const tokenData = await tokenResponse.json();
-        token = tokenData.token;
+        await refreshCsrfToken();
 
         registerPromptManagerMigration();
         initDomHandlers();

@@ -4,9 +4,10 @@ import {
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
+import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
-import { flushCharacterSaveDebounced, getOneCharacter, saveSettingsDebounced } from '../script.js';
+import { flushCharacterSaveDebounced, getOneCharacter, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -4485,11 +4486,11 @@ async function fetchGroupChatFiles(chatContext) {
 
         const chats = await Promise.all(groupChats.map(async chatId => {
             try {
-                const response = await fetch('/api/chats/group/info', {
+                const response = await fetchWithCsrfRetry('/api/chats/group/info', () => ({
                     method: 'POST',
-                    headers,
+                    headers: getRequestHeadersFromContext(chatContext.context),
                     body: JSON.stringify({ id: chatId }),
-                });
+                }), { refreshCsrfToken });
 
                 if (!response.ok) {
                     if (response.status === 404) {
@@ -9156,20 +9157,25 @@ async function requestServerAdmin(endpoint, body = {}) {
 }
 
 async function requestUserPrivateAction(endpoint, { body = {}, useFormData = false } = {}) {
-    const requestHeaders = await waitForAuthorizedRequestHeaders();
-    const headers = useFormData
-        ? (() => {
-            const multipartHeaders = { ...requestHeaders };
-            delete multipartHeaders['Content-Type'];
-            delete multipartHeaders['content-type'];
-            return multipartHeaders;
-        })()
-        : requestHeaders;
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: useFormData ? body : JSON.stringify(body),
-    });
+    const buildRequest = async () => {
+        const requestHeaders = await waitForAuthorizedRequestHeaders();
+        const headers = useFormData
+            ? (() => {
+                const multipartHeaders = { ...requestHeaders };
+                delete multipartHeaders['Content-Type'];
+                delete multipartHeaders['content-type'];
+                return multipartHeaders;
+            })()
+            : requestHeaders;
+
+        return {
+            method: 'POST',
+            headers,
+            body: useFormData ? body : JSON.stringify(body),
+        };
+    };
+
+    const response = await fetchWithCsrfRetry(endpoint, buildRequest, { refreshCsrfToken });
 
     const text = await response.text();
     let data = null;
