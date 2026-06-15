@@ -288,68 +288,68 @@
 }
 
 :root[data-sb-theme='bold-stylized'] {
-    --sb-shell-surface: #111019;
-    --sb-shell-main-bg: #0d0c12;
-    --sb-shell-nav-bg: #161522;
-    --sb-shell-header-bg: #1d1b2e;
-    --sb-shell-header-glow: #e024a5;
-    --sb-shell-tab-active-bg: #e024a5;
-    --sb-shell-border: #f43f5e;
-    --sb-shell-shadow: 6px 6px 0px #1e1b4b, -6px -6px 0px #312e81;
-    --sb-card-bg: #181628;
-    --sb-button-bg: #2d2640;
-    --sb-button-hover: #e024a5;
-    --sb-focus-ring: #f43f5e;
-    --sb-positive-fg: #f43f5e;
-    --sb-positive-bg: #2e1223;
-    --sb-ambient-a: rgba(244, 63, 94, 0.15);
-    --sb-ambient-b: rgba(224, 36, 165, 0.1);
-    --sb-topbar-surface-bg: #13121f;
-    --sb-chatbar-surface-bg: #13121f;
-    --sb-mobile-overlay-bg: #0d0c12;
-    --sb-mobile-panel-bg: #111019;
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, var(--SmartThemeBodyColor) 3%);
+    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
+    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, var(--SmartThemeBodyColor) 2%);
+    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, var(--SmartThemeBlurTintColor));
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-shell-shadow: 4px 4px 0px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
+    --sb-card-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, var(--SmartThemeBlurTintColor));
+    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    --sb-focus-ring: var(--SmartThemeQuoteColor);
+    --sb-positive-fg: var(--SmartThemeQuoteColor);
+    --sb-positive-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent);
+    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
+    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
+    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
+    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
 }
 
 :root[data-sb-theme='cozy-warm'] {
-    --sb-shell-surface: #1e1510;
-    --sb-shell-main-bg: #18110c;
-    --sb-shell-nav-bg: #261b14;
-    --sb-shell-header-bg: #2e1c12;
-    --sb-shell-header-glow: rgba(217, 119, 6, 0.3);
-    --sb-shell-tab-active-bg: #452c1e;
-    --sb-shell-border: #5c3e29;
-    --sb-shell-shadow: 0 16px 48px rgba(24, 17, 12, 0.6);
-    --sb-card-bg: #251a14;
-    --sb-button-bg: #35251d;
-    --sb-button-hover: #d97706;
-    --sb-focus-ring: #d97706;
-    --sb-ambient-a: rgba(217, 119, 6, 0.12);
-    --sb-ambient-b: rgba(180, 83, 9, 0.08);
-    --sb-topbar-surface-bg: #1e1510;
-    --sb-chatbar-surface-bg: #1a120d;
-    --sb-mobile-overlay-bg: #18110c;
-    --sb-mobile-panel-bg: #1e1510;
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
+    --sb-shell-main-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, #3c2f25 6%));
+    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%), color-mix(in srgb, var(--SmartThemeBlurTintColor) 91%, #3c2f25 9%));
+    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, #3c2f25 8%);
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
+    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, rgba(217, 119, 6, 0.1));
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 75%, #5c4533 25%);
+    --sb-shell-shadow: 0 20px 48px color-mix(in srgb, var(--SmartThemeShadowColor) 15%, transparent);
+    --sb-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--SmartThemeBlurTintColor)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent));
+    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, rgba(217, 119, 6, 0.05));
+    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, rgba(217, 119, 6, 0.15));
+    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, #d97706 20%);
+    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
+    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
+    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, #3c2f25 4%);
+    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
+    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
 }
 
 :root[data-sb-theme='neon-cyber'] {
-    --sb-shell-surface: #0a0a12;
-    --sb-shell-main-bg: #030307;
-    --sb-shell-nav-bg: #0f0f1c;
-    --sb-shell-header-bg: #14142b;
-    --sb-shell-header-glow: rgba(0, 240, 255, 0.4);
-    --sb-shell-tab-active-bg: #ff007f;
-    --sb-shell-border: #00f0ff;
-    --sb-shell-shadow: 0 0 20px rgba(0, 240, 255, 0.25), 0 0 4px rgba(255, 0, 127, 0.2);
-    --sb-card-bg: #0c0c17;
-    --sb-button-bg: #16162a;
-    --sb-button-hover: #00f0ff;
-    --sb-focus-ring: #ff007f;
-    --sb-ambient-a: rgba(0, 240, 255, 0.2);
-    --sb-ambient-b: rgba(255, 0, 127, 0.15);
-    --sb-topbar-surface-bg: #090911;
-    --sb-chatbar-surface-bg: #07070d;
-    --sb-mobile-overlay-bg: #030307;
-    --sb-mobile-panel-bg: #0a0a12;
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
+    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
+    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
+    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
+    --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+    --sb-shell-shadow: 0 0 12px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
+    --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    --sb-focus-ring: var(--SmartThemeQuoteColor);
+    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent);
+    --sb-topbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    --sb-chatbar-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
+    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
 }
 
 :root[data-sb-theme='slate-flat'] {
