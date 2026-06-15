@@ -60,6 +60,7 @@
 - PR #470 (2026-06-14) `feat: decouple sampling settings from chat completion presets`
 - PR #474 (2026-06-15) `fix: harden Windows write fallback`
 - PR #475 (2026-06-15) `fix: refresh stale CSRF tokens`
+- PR #476 (2026-06-15) `fix: retry group chat loads after CSRF refresh`
 
 ## v1.6.4
 
