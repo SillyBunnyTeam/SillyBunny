@@ -69,6 +69,7 @@
 - PR #482 (2026-06-15) `fix: prevent Save/Clear profile buttons from squishing`
 - PR #483 (2026-06-15) `feat: prevent stale settings overwrites`
 - PR #484 (2026-06-15) `fix(ui): preserve sampling profile button text width`
+- PR #485 (2026-06-15) `feat: Add quick delete shortcut button to message actions`
 
 ## v1.6.4
 
