@@ -198,14 +198,14 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 
 * **Trackers:** Achievements, CYOA Choices, Direction Menu, Event, Item, NPC Profiles, Parallel Off-Screen, Relationship, Reputation, Scene, Secrets, Status, Time, and World Detail.
 * **Randomizers:** Chaos Mode, Combined Director's Cut, Dead Dove Escalation, Genre, Grounded Complication, Intimacy & Kink, Scene Driving Force, and Scene Pressure Cocktail.
-* **Content:** Difficulty Increase, Don't Write for User, Friction Mode, Grounded Prose, HTML Toggle, NPC Motivator by Sheep, and Write for User.
+* **Content:** Difficulty Increase, Don't Write for User, Friction Mode, Grounded Prose, HTML Toggle, and Write for User.
 * **Post Generation Editors:** Prose Polisher
 * **Additional Agents:** Pathfinder (an agentic lorebook navigator with 8 tools for retrieval, memory maintenance, and tree building).
 
 **Agent Behaviors and Settings**
 * Agentic prompts feature inline run-order editing, click-to-edit functionality, and fullscreen prompt editors.
 * Agents use the main connection profile by default with an 8192 max token limit. Separate connection profile support is available when explicitly selected.
-* Pre-Generation Intercepts can replace the outgoing context, wrap or append helper output, or add tagged patches before the main model replies. Multiple interceptors run in agent order, and NPC Motivator by Sheep is bundled as a starter intercept template.
+* Pre-generation interceptors can replace the outgoing context, wrap or append helper output, or add tagged patches. Multiple interceptors run in agent order.
 * Bundled trackers, including CYOA Choices, are configured for pre-generation. The main model emits clickable options directly in the response.
 * All bundled tracker and menu agents default to the User injection role to maintain compatibility with models that deprioritize System injections.
 * Built-in groups are available for the full preset, trackers only, and randomizers only.
@@ -214,7 +214,7 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 ### Bundled Goodies & Tutorials
 SillyBunny includes some extras by default to help you get started right away:
 * A tutorial that guides you through the SillyBunny interface.
-* Pre-bundled roleplay presets from purachina and Geechan, including Pura's Director Preset V13.1, Geechan's Universal Roleplay V5.2, and Geechan's Universal Online Chat V1.0.
+* Pre-bundled roleplay presets from purachina and Geechan, including Pura's Director Preset V13.3, Geechan's Universal Roleplay V5.2, and Geechan's Universal Online Chat V1.0.
 * Pre-bundled workflow extensions including Guided Generations, Input History, Quick Image Gen, and Prompt Inspector.
 * A character card conversion preset from TLD to help you generate character cards from scratch, or convert from existing cards to a better format.
 * A friendly quick-start guide with bundled workflow helpers plus optional recommended extensions such as Summary Sharder, Dialogue Colours, and CSS Snippets.
