@@ -3401,6 +3401,15 @@ input[type='range']::-moz-range-thumb {
     line-height: 1.35;
 }
 
+/* The Save/Clear profile buttons sit in a centered, full-width flex row inside
+   #openai_api-presets on mobile. .menu_button defaults to flex-shrink:1 with a
+   small square min-width, so they collapse below their nowrap label width and
+   the text overlaps. Pin them to content width so the row wraps instead. */
+#model_sampling_profiles_container .flex-container.gap3px > .menu_button {
+    flex: 0 0 auto;
+    min-width: fit-content;
+}
+
 .sb-setting-inline-center select {
     flex: 0 0 auto;
     width: min(100%, 220px);
