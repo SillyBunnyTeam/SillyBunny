@@ -243,24 +243,24 @@
 }
 
 :root[data-sb-theme='windows-aero'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 25%, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent));
-    --sb-shell-main-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.03) 100%);
-    --sb-shell-nav-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 100%);
-    --sb-shell-header-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.12) 40%, rgba(255, 255, 255, 0.02) 100%);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
-    --sb-shell-tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28), color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent));
-    --sb-shell-border: rgba(255, 255, 255, 0.42);
-    --sb-shell-shadow: 0 16px 40px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent), 0 2px 10px rgba(255, 255, 255, 0.25);
-    --sb-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
-    --sb-button-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
-    --sb-button-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.32), color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent));
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 55%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent));
+    --sb-shell-main-bg: linear-gradient(135deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 58%, rgba(255, 255, 255, 0.16)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, rgba(255, 255, 255, 0.04)));
+    --sb-shell-nav-bg: linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 62%, rgba(255, 255, 255, 0.12)), color-mix(in srgb, var(--SmartThemeBlurTintColor) 56%, rgba(255, 255, 255, 0.03)));
+    --sb-shell-header-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 55%, color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent)) 40%, color-mix(in srgb, var(--SmartThemeBlurTintColor) 48%, rgba(255, 255, 255, 0.02)) 100%);
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, transparent);
+    --sb-shell-tab-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.24), color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, transparent));
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 45%, rgba(255, 255, 255, 0.35));
+    --sb-shell-shadow: 0 16px 40px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent), 0 2px 10px rgba(255, 255, 255, 0.25);
+    --sb-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), color-mix(in srgb, var(--SmartThemeBlurTintColor) 54%, color-mix(in srgb, var(--SmartThemeQuoteColor) 6%, transparent)));
+    --sb-button-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05));
+    --sb-button-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.28), color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent));
     --sb-focus-ring: var(--SmartThemeQuoteColor);
-    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    --sb-topbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.03));
-    --sb-chatbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
-    --sb-mobile-overlay-bg: rgba(255, 255, 255, 0.08);
-    --sb-mobile-panel-bg: rgba(255, 255, 255, 0.12);
+    --sb-ambient-a: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+    --sb-ambient-b: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --sb-topbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), color-mix(in srgb, var(--SmartThemeBlurTintColor) 54%, color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent)));
+    --sb-chatbar-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)));
+    --sb-mobile-overlay-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 56%, transparent);
+    --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 52%, transparent);
 }
 
 :root[data-sb-theme='windows-aero'][data-sb-surface-tone='light'] {
