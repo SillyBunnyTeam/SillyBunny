@@ -55,4 +55,11 @@ describe('OpenAI sampling profile wiring', () => {
         expect(openAiSource).toContain('function syncModelSamplingProfilesUI()');
         expect(openAiSource).not.toContain('function updateModelSamplingProfilesHelp()');
     });
+
+    test('keeps model sampling profile actions as text buttons', () => {
+        expect(indexHtml).toContain('id="model_sampling_profile_save" class="menu_button"');
+        expect(indexHtml).toContain('id="model_sampling_profile_clear" class="menu_button"');
+        expect(indexHtml).not.toContain('id="model_sampling_profile_save" class="menu_button menu_button_icon"');
+        expect(indexHtml).not.toContain('id="model_sampling_profile_clear" class="menu_button menu_button_icon"');
+    });
 });

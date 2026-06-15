@@ -122,4 +122,24 @@ describe('OpenAI proxy preset wiring', () => {
         // Proxy preset must be applied before reconnecting so the reconnect uses the bound proxy.
         expect(reconnectIndex).toBeGreaterThan(syncCallIndex);
     });
+
+    test('preserves the selected settings preset when switching backends', () => {
+        const restoreSource = getFunctionSource('restoreOpenAIPresetSelection');
+        const initSource = getFunctionSource('initOpenAI');
+        const sourceChangeIndex = initSource.indexOf('$(\'#chat_completion_source\').on(\'change\'');
+        const capturePresetIndex = initSource.indexOf('const presetName = oai_settings.preset_settings_openai;', sourceChangeIndex);
+        const sourceUpdateIndex = initSource.indexOf('oai_settings.chat_completion_source = String($(this).find(\':selected\').val());', sourceChangeIndex);
+        const syncCallIndex = initSource.indexOf('syncProxyPresetToBoundSource(oai_settings.chat_completion_source);', sourceChangeIndex);
+        const restoreCallIndex = initSource.indexOf('restoreOpenAIPresetSelection(presetName);', sourceChangeIndex);
+        const saveIndex = initSource.indexOf('saveSettingsDebounced();', sourceChangeIndex);
+
+        expect(restoreSource).toContain('const presetValue = openai_setting_names?.[presetName];');
+        expect(restoreSource).toContain('oai_settings.preset_settings_openai = presetName;');
+        expect(restoreSource).toContain('$(\'#settings_preset_openai\').val(String(presetValue));');
+
+        expect(capturePresetIndex).toBeGreaterThan(sourceChangeIndex);
+        expect(sourceUpdateIndex).toBeGreaterThan(capturePresetIndex);
+        expect(restoreCallIndex).toBeGreaterThan(syncCallIndex);
+        expect(saveIndex).toBeGreaterThan(restoreCallIndex);
+    });
 });
