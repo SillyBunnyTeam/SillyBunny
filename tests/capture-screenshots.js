@@ -205,29 +205,6 @@ async function captureScreenshots(viewportType) {
         await page.waitForTimeout(6000);
         await dismissOnboardingIfPresent(page);
 
-        if (viewportType === 'desktop') {
-            console.log('   Overriding desktop shell dimensions to maximize drawer view...');
-            await page.evaluate(() => {
-                const style = document.createElement('style');
-                style.innerHTML = `
-                    #left-nav-panel.openDrawer,
-                    #user-settings-block.openDrawer {
-                        width: 900px !important;
-                        max-width: 900px !important;
-                        height: 950px !important;
-                        max-height: 950px !important;
-                    }
-                    #right-nav-panel.openDrawer {
-                        width: 450px !important;
-                        max-width: 450px !important;
-                        height: 950px !important;
-                        max-height: 950px !important;
-                    }
-                `;
-                document.head.appendChild(style);
-            });
-        }
-
         // Capture each section
         for (const section of sections) {
             const filename = `sillybunny-ui-${viewportType}-${section.name}-v${version}.png`;
