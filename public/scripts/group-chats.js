@@ -1107,11 +1107,11 @@ async function regenerateGroup() {
  * @returns {Promise<ChatFile>} Array of chat messages
  */
 async function loadGroupChat(chatId) {
-    const response = await fetch('/api/chats/group/get', {
+    const response = await fetchWithCsrfRetry('/api/chats/group/get', () => ({
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify({ id: chatId }),
-    });
+    }), { refreshCsrfToken });
 
     if (response.ok) {
         const data = await response.json();
@@ -1135,11 +1135,11 @@ async function groupChatExists(chatId) {
     }
 
     try {
-        const response = await fetch('/api/chats/group/info', {
+        const response = await fetchWithCsrfRetry('/api/chats/group/info', () => ({
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ id: chatId }),
-        });
+        }), { refreshCsrfToken });
 
         if (response.ok) {
             return 'present';
