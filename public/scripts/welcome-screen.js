@@ -85,6 +85,10 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
         id: 'third-party/SillyTavern-Tooltips',
         repoUrl: 'https://github.com/LenAnderson/SillyTavern-Tooltips',
     }),
+    adhdBunnyUi: Object.freeze({
+        id: 'third-party/ADHDBunny-UI',
+        repoUrl: 'https://github.com/OnlyJimmy/ADHDBunny-UI',
+    }),
 });
 
 const WELCOME_TUTORIAL_STEPS = Object.freeze([
@@ -974,6 +978,13 @@ function buildStarterPackItems() {
                 icon: 'fa-circle-info',
                 chips: ['Extension', 'Recommended', 'Help'],
                 extensionName: STARTER_PACK_EXTENSIONS.tooltips.id,
+            }),
+            buildExtensionStarterPackItem({
+                title: 'ADHDBunny UI',
+                body: 'A desktop-first SillyBunny UI overhaul designed to keep chat central while making common tools easier to reach and reducing workspace distractions.',
+                icon: 'fa-rabbit',
+                chips: ['Extension', 'Workspace', 'Desktop-first', 'Opt-in'],
+                extensionName: STARTER_PACK_EXTENSIONS.adhdBunnyUi.id,
             }),
         ],
     };
