@@ -59,6 +59,7 @@
 - PR #469 (2026-06-14) `feat(ica): show all enabled companions in batch selector`
 - PR #470 (2026-06-14) `feat: decouple sampling settings from chat completion presets`
 - PR #474 (2026-06-15) `fix: harden Windows write fallback`
+- PR #475 (2026-06-15) `fix: refresh stale CSRF tokens`
 
 ## v1.6.4
 
