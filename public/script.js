@@ -912,6 +912,12 @@ let this_edit_mes_id = undefined;
 
 //settings
 export let settings;
+// SillyBunny: version-tokened settings saves avoid stale overwrites across open devices/tabs.
+let lastServerSettingsVersion = 0;
+let settingsSaveQueue = Promise.resolve();
+let settingsConflictReloadRequired = false;
+let settingsConflictPromptOpen = false;
+let settingsConflictPromptDismissed = false;
 export let amount_gen = 80; //default max length of AI generated responses
 export let max_context = 2048;
 
@@ -10909,6 +10915,45 @@ function reloadLoop() {
     }
 }
 
+function normalizeSettingsVersion(version) {
+    version = Number(version);
+    return Number.isSafeInteger(version) && version >= 0 ? version : 0;
+}
+
+async function promptSettingsConflictReload() {
+    if (settingsConflictPromptOpen) {
+        return;
+    }
+
+    if (settingsConflictPromptDismissed) {
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+        return;
+    }
+
+    settingsConflictPromptOpen = true;
+
+    try {
+        const confirmation = await Popup.show.confirm(
+            t`Settings changed on another device`,
+            t`Another device or browser tab saved newer settings. Reload SillyBunny before saving again to prevent overwriting those changes.`,
+            {
+                okButton: t`Reload now`,
+                cancelButton: t`Keep editing`,
+            },
+        );
+
+        if (confirmation === POPUP_RESULT.AFFIRMATIVE) {
+            window.location.reload();
+            return;
+        }
+
+        settingsConflictPromptDismissed = true;
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+    } finally {
+        settingsConflictPromptOpen = false;
+    }
+}
+
 //MARK: getSettings()
 ///////////////////////////////////////////
 export async function getSettings(initLoaderHandle = null) {
@@ -10928,6 +10973,9 @@ export async function getSettings(initLoaderHandle = null) {
     const data = await response.json();
     if (data.result != 'file not find' && data.settings) {
         settings = JSON.parse(data.settings);
+        lastServerSettingsVersion = normalizeSettingsVersion(settings._version);
+        settingsConflictReloadRequired = false;
+        settingsConflictPromptDismissed = false;
         if (settings.username !== undefined && settings.username !== '') {
             name1 = settings.username;
             $('#your_name').text(name1);
@@ -11058,9 +11106,20 @@ export async function getSettings(initLoaderHandle = null) {
 
 //MARK: saveSettings()
 export async function saveSettings(loopCounter = 0) {
+    const saveTask = settingsSaveQueue.then(() => saveSettingsInner(loopCounter));
+    settingsSaveQueue = saveTask.catch(() => {});
+    return saveTask;
+}
+
+async function saveSettingsInner(loopCounter = 0) {
     if (!settingsReady) {
         console.warn('Settings not ready, scheduling another save');
         saveSettingsDebounced();
+        return;
+    }
+
+    if (settingsConflictReloadRequired) {
+        await promptSettingsConflictReload();
         return;
     }
 
@@ -11076,6 +11135,7 @@ export async function saveSettings(loopCounter = 0) {
     }
 
     const payload = {
+        _version: lastServerSettingsVersion,
         firstRun: firstRun,
         accountStorage: accountStorage.getState(),
         currentVersion: currentVersion,
@@ -11111,9 +11171,27 @@ export async function saveSettings(loopCounter = 0) {
         });
         const result = await fetch('/api/settings/save', saveSettingsRequest);
 
+        if (result.status === 409) {
+            const conflict = await result.json().catch(() => ({}));
+            lastServerSettingsVersion = normalizeSettingsVersion(conflict?.version);
+            settingsConflictReloadRequired = true;
+            settingsConflictPromptDismissed = false;
+            await promptSettingsConflictReload();
+            return;
+        }
+
         if (!result.ok) {
             throw new Error(`Failed to save settings: ${result.statusText}`);
         }
+
+        const saveResult = await result.json().catch(() => ({}));
+        const savedSettingsVersion = normalizeSettingsVersion(saveResult?.version);
+        if (savedSettingsVersion <= payload._version) {
+            throw new Error('Settings save returned an invalid version token');
+        }
+
+        lastServerSettingsVersion = savedSettingsVersion;
+        payload._version = lastServerSettingsVersion;
 
         settings = payload;
         await eventSource.emit(event_types.SETTINGS_UPDATED);
