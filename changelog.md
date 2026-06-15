@@ -74,6 +74,7 @@
 - PR #487 (2026-06-15) `fix: preserve user backend on settings load instead of switching to reverse proxy source`
 - PR #488 (2026-06-15) `fix(ui): fix mobile cache utility layout`
 - PR #489 (2026-06-15) `feat: UI Improvement: Add more Shell Styles and reduce option padding`
+- PR #490 (2026-06-15) `docs(readme): refresh screenshots for 1.6.5`
 
 ## v1.6.4
 
