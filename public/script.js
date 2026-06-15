@@ -608,6 +608,7 @@ export const chatElement = $('#chat');
 const MOBILE_CHAT_RENDER_MEDIA_QUERY = '(max-width: 1000px)';
 const MOBILE_CHAT_RENDER_BATCH_SIZE = 8;
 const MOBILE_MESSAGE_UPDATE_DELAY_MS = 24;
+const MOBILE_MESSAGE_UPDATE_FLUSH_TIMEOUT_MS = 3000;
 const MOBILE_MEDIA_SCROLL_MAX_DELAY_MS = 300;
 const MOBILE_SEND_SCROLL_IMMUNITY_MS = 1500;
 const MOBILE_SEND_SCROLL_SETTLE_MS = 200;
@@ -629,6 +630,7 @@ let entitySelectionPulseId = 0;
 let showMoreTouchMoved = false;
 let pendingMobileMessageUpdateFrame = 0;
 let pendingMobileMessageUpdateTimer = 0;
+let pendingMobileMessageUpdateFlushTimeout = 0;
 let messageUpdateQueue = null;
 let mobileMessageUpdateQueue = null;
 /** @type {Array<() => void>} Resolvers for Promises waiting on the next mobile-queue flush. */
@@ -2735,10 +2737,32 @@ async function applySwipeReplacementViewportUpdate(viewportUpdate) {
 function flushPendingMobileMessageUpdates() {
     pendingMobileMessageUpdateFrame = 0;
     pendingMobileMessageUpdateTimer = 0;
+    if (pendingMobileMessageUpdateFlushTimeout) {
+        clearTimeout(pendingMobileMessageUpdateFlushTimeout);
+        pendingMobileMessageUpdateFlushTimeout = 0;
+    }
     getMobileMessageUpdateQueue().flush();
     // Notify all callers awaiting this flush that the DOM is now repainted.
     const resolvers = mobileMessageUpdateFlushResolvers.splice(0);
     for (const resolve of resolvers) resolve();
+}
+
+function scheduleMobileMessageUpdateFlushTimeout() {
+    if (pendingMobileMessageUpdateFlushTimeout) {
+        return;
+    }
+
+    pendingMobileMessageUpdateFlushTimeout = window.setTimeout(() => {
+        if (pendingMobileMessageUpdateFrame) {
+            cancelAnimationFrame(pendingMobileMessageUpdateFrame);
+            pendingMobileMessageUpdateFrame = 0;
+        }
+        if (pendingMobileMessageUpdateTimer) {
+            clearTimeout(pendingMobileMessageUpdateTimer);
+            pendingMobileMessageUpdateTimer = 0;
+        }
+        flushPendingMobileMessageUpdates();
+    }, MOBILE_MESSAGE_UPDATE_FLUSH_TIMEOUT_MS);
 }
 
 /**
@@ -2754,6 +2778,7 @@ function queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage }) 
     getMobileMessageUpdateQueue().queue(messageId, message, { rerenderMessage });
 
     const flushPromise = new Promise(resolve => mobileMessageUpdateFlushResolvers.push(resolve));
+    scheduleMobileMessageUpdateFlushTimeout();
 
     if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer) {
         return flushPromise;

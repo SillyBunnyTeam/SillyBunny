@@ -371,6 +371,11 @@ describe('chat render lifecycle script wiring', () => {
         expect(queueSource).toContain('if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer)');
         expect(queueSource).toContain('pendingMobileMessageUpdateTimer = window.setTimeout(() =>');
         expect(queueSource).toContain('pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);');
+        expect(queueSource).toContain('scheduleMobileMessageUpdateFlushTimeout();');
+
+        const timeoutSource = getSource(findFunctionDeclaration('scheduleMobileMessageUpdateFlushTimeout'));
+        expect(timeoutSource).toContain('pendingMobileMessageUpdateFlushTimeout = window.setTimeout(() =>');
+        expect(timeoutSource).toContain('flushPendingMobileMessageUpdates();');
     });
 
     test('streaming start keeps viewport routing behind the lifecycle rollout guard', () => {
