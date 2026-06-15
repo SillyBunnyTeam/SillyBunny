@@ -62,6 +62,7 @@
 - PR #475 (2026-06-15) `fix: refresh stale CSRF tokens`
 - PR #476 (2026-06-15) `fix: retry group chat loads after CSRF refresh`
 - PR #477 (2026-06-15) `fix(chat): force flush stuck mobile message updates`
+- PR #478 (2026-06-15) `fix: avoid direct writes after Windows temp rename failures`
 
 ## v1.6.4
 
