@@ -61,6 +61,7 @@
 - PR #474 (2026-06-15) `fix: harden Windows write fallback`
 - PR #475 (2026-06-15) `fix: refresh stale CSRF tokens`
 - PR #476 (2026-06-15) `fix: retry group chat loads after CSRF refresh`
+- PR #477 (2026-06-15) `fix(chat): force flush stuck mobile message updates`
 
 ## v1.6.4
 
