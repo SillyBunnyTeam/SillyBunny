@@ -104,7 +104,12 @@
         }
 
         #sb-cache-settings-drawer #user-settings-utility-actions .sb-settings-utility-note {
+            flex: 0 0 auto !important;
             margin-bottom: 12px !important;
+        }
+
+        #sb-cache-settings-drawer #user-settings-utility-actions .sb-settings-utility-action {
+            flex: 0 0 auto !important;
         }
     `;
 
