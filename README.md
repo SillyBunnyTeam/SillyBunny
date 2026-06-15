@@ -212,7 +212,8 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 ### Bundled Goodies & Tutorials
 SillyBunny includes some extras by default to help you get started right away:
 * A tutorial that guides you through the SillyBunny interface.
-* Pre-bundled roleplay presets from purachina and Geechan.
+* Pre-bundled roleplay presets from purachina and Geechan, including Pura's Director Preset V13.3, Geechan's Universal Roleplay V5.2, and Geechan's Universal Online Chat V1.0.
+* Pre-bundled workflow extensions including Guided Generations, Input History, Quick Image Gen, and Prompt Inspector.
 * A character card conversion preset from TLD to help you generate character cards from scratch, or convert from existing cards to a better format.
 * A friendly quick-start guide with bundled workflow helpers plus optional recommended extensions such as Summary Sharder, Dialogue Colours, and CSS Snippets.
 * Two custom assistants to help you get started - Bunny Guide, and Assistant Nahida.
