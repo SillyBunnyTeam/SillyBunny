@@ -64,6 +64,7 @@
 - PR #477 (2026-06-15) `fix(chat): force flush stuck mobile message updates`
 - PR #478 (2026-06-15) `fix: avoid direct writes after Windows temp rename failures`
 - PR #479 (2026-06-15) `fix: preserve OpenAI preset selection on backend switch`
+- PR #480 (2026-06-15) `fix: mobile keyboard hides composer`
 
 ## v1.6.4
 
