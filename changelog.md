@@ -70,6 +70,7 @@
 - PR #483 (2026-06-15) `feat: prevent stale settings overwrites`
 - PR #484 (2026-06-15) `fix(ui): preserve sampling profile button text width`
 - PR #485 (2026-06-15) `feat: Add quick delete shortcut button to message actions`
+- PR #486 (2026-06-15) `feat: Add categorized settings tabs with desktop grid wrapping`
 - PR #487 (2026-06-15) `fix: preserve user backend on settings load instead of switching to reverse proxy source`
 
 ## v1.6.4
