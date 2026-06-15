@@ -2102,8 +2102,30 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
     }
 
     if (lastError) {
-        console.debug(`Atomic write failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
+        console.debug(`Atomic write failed for ${filePath}. Falling back to a temp file rename.`, lastError?.code);
     }
+
+    // SillyBunny: keep the existing file intact while retrying a Windows-safe replacement.
+    const tempFilePath = `${filePath}.tmp`;
+    fs.writeFileSync(tempFilePath, data, options);
+
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+        try {
+            fs.renameSync(tempFilePath, filePath);
+            return;
+        } catch (error) {
+            if (!isRetryableWindowsWriteError(error)) {
+                throw error;
+            }
+
+            lastError = error;
+            if (attempt < retryDelaysMs.length) {
+                sleepSync(retryDelaysMs[attempt]);
+            }
+        }
+    }
+
+    console.warn(`Temp file rename failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
     fs.writeFileSync(filePath, data, options);
 }
 
