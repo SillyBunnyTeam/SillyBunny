@@ -463,4 +463,21 @@ describe('chat integrity rotation', () => {
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });
+
+    test('retries group chat load requests after stale CSRF before integrity metadata is initialized', async () => {
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+        const loadGroupChatBody = groupChatSource.slice(
+            groupChatSource.indexOf('async function loadGroupChat(chatId)'),
+            groupChatSource.indexOf('/**\n * Checks whether a group chat file currently exists on the server.'),
+        );
+        const groupChatExistsBody = groupChatSource.slice(
+            groupChatSource.indexOf('async function groupChatExists(chatId)'),
+            groupChatSource.indexOf('/**\n * Validates a group by checking if all members exist'),
+        );
+
+        expect(loadGroupChatBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/get\'');
+        expect(loadGroupChatBody).toContain('{ refreshCsrfToken }');
+        expect(groupChatExistsBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/info\'');
+        expect(groupChatExistsBody).toContain('{ refreshCsrfToken }');
+    });
 });
