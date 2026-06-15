@@ -16701,6 +16701,21 @@ jQuery(async function () {
         }
     });
 
+    $(document).on('click', '.mes_delete', async function () {
+        if (is_delete_mode) {
+            return;
+        }
+        const mesId = Number($(this).closest('.mes').attr('mesid'));
+        const message = chat[mesId];
+        if (!message) {
+            return;
+        }
+        const selectedSwipe = message.swipe_id ?? undefined;
+        const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
+        const canDeleteSwipe = !message.is_user && swipesArray.length > 1 && mesId === chat.length - 1 && selectedSwipe !== undefined;
+        await deleteMessage(mesId, canDeleteSwipe ? selectedSwipe : undefined, true);
+    });
+
     $(document).on('click', '.mes_edit_cancel', async function () {
         await messageEditCancel.call(this, this_edit_mes_id);
     });
