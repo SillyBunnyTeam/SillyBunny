@@ -1486,6 +1486,15 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     display: none !important;
 }
 
+#chat .mes .mes_delete {
+    color: var(--sb-color-danger);
+}
+
+#chat .mes .mes_delete:hover {
+    color: color-mix(in srgb, var(--sb-color-danger) 80%, white);
+    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+}
+
 #chat .mes .mes_view_agent_changes {
     width: var(--sb-message-icon-size) !important;
     inline-size: var(--sb-message-icon-size) !important;
