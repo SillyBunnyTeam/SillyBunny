@@ -6766,8 +6766,7 @@ function maybeApplyModelSamplingProfile() {
         return;
     }
     applySamplingSettings(profile);
-    const modelLabel = getChatCompletionModel();
-    toastr.info(t`Applied sampling profile for ${modelLabel}.`, t`Model sampling profile loaded`, { timeOut: 3000 });
+    // SillyBunny: Removed constant "Model sampling profile loaded" toast to reduce UI noise
 }
 
 function maybeShowPresetConnectionBindingReminder(previousPresetName, nextPresetName) {
