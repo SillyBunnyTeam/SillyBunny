@@ -54,6 +54,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     compactMode: 'sb-compact-mode',
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
+    bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
 });
 
 const SB_SHORTCUT_TARGETS = Object.freeze([
@@ -775,6 +776,7 @@ const sbState = {
         massDeleteButton: null,
         autoNameButton: null,
         secondaryOpen: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatSecondaryOpen), true),
+        visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), true),
         searchOpen: false,
         bindingRetryTimer: 0,
         boundEventSource: null,
@@ -1336,6 +1338,7 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
         safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
         sbState.shellSizing.snapToChatWidth,
@@ -11404,6 +11407,42 @@ function createCompactModeSettingsGroup(mode = 'mobile') {
     return group;
 }
 
+function createBottomChatBarSettingsGroup(mode = 'mobile') {
+    const inputId = mode === 'desktop' ? 'sb-desktop-bottom-bar-visible-input' : 'sb-mobile-bottom-bar-visible-input';
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-compact-mode-group',
+    });
+    const label = createElement('label', {
+        className: 'sb-compact-mode-option',
+        attrs: {
+            for: inputId,
+        },
+    });
+    const checkbox = createElement('input', {
+        id: inputId,
+        className: 'sb-compact-mode-checkbox sb-bottom-bar-visible-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-bottom-bar-visible-input': mode,
+        },
+    });
+    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
+    const title = createElement('strong', { text: 'Show Bottom Chat Bar' });
+    const description = createElement('small', {
+        text: 'Display the bottom bar with the chat switcher, persona picker, and chat actions.',
+    });
+
+    checkbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setBottomChatBarVisible(input instanceof HTMLInputElement && input.checked);
+    });
+
+    copy.append(title, description);
+    label.append(checkbox, copy);
+    group.appendChild(label);
+    return group;
+}
+
 function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, icon, onChange }) {
     const choice = createElement('label', {
         className: 'sb-mobile-nav-choice',
@@ -11828,6 +11867,8 @@ function injectThemePicker() {
     const mobileSettingsDivider = createMobileNavDivider();
     const desktopCompactModeSettingsGroup = createCompactModeSettingsGroup('desktop');
     const mobileCompactModeSettingsGroup = createCompactModeSettingsGroup('mobile');
+    const desktopBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('desktop');
+    const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
@@ -11863,6 +11904,7 @@ function injectThemePicker() {
             desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
+            desktopBottomChatBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -11873,6 +11915,7 @@ function injectThemePicker() {
             mobileSettingsDivider,
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
+            mobileBottomChatBarSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
@@ -11885,6 +11928,7 @@ function injectThemePicker() {
             desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
+            desktopBottomChatBarSettingsGroup,
             desktopQuickActionSettingsGroup,
         );
     }
@@ -11895,6 +11939,7 @@ function injectThemePicker() {
             mobileSettingsDivider,
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
+            mobileBottomChatBarSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
@@ -12009,6 +12054,15 @@ function updateThemePickerUi() {
 
         input.checked = sbState.compactMode;
         input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.compactMode);
+    }
+
+    for (const input of document.querySelectorAll('[data-sb-bottom-bar-visible-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = sbState.bottomChatBar.visible;
+        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.bottomChatBar.visible);
     }
 
     for (const input of document.querySelectorAll('input[name="sb-desktop-nav-layout"]')) {
@@ -14468,10 +14522,13 @@ function buildBottomChatBar() {
     const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass delete chats' }, () => { void handleMassDeleteChats(); });
     const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
     const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
+    const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide bottom chat bar' }, () => {
+        setBottomChatBarVisible(false);
+    });
     const deleteBtn = createBottomChatButton({ icon: 'fa-trash', title: 'Delete chat' }, () => { void handleDeleteChat(); });
 
     navCluster.append(topBtn, bottomBtn);
-    managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, deleteBtn);
+    managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, hideBtn, deleteBtn);
     secondaryRow.append(managementCluster);
     container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow);
 
@@ -14490,9 +14547,11 @@ function buildBottomChatBar() {
         managerButton: chatManagerBtn,
         massDeleteButton: massDeleteBtn,
         autoNameButton: autoNameBtn,
+        hideButton: hideBtn,
     });
     syncBottomChatBarSecondaryState();
     syncBottomChatBarSearchState();
+    setBottomChatBarVisible(sbState.bottomChatBar.visible, { persist: false });
 
     // Defer initial persona bubble update in case user_avatar isn't ready yet
     setTimeout(() => updatePersonaBubble(personaBubble), 100);
@@ -14761,6 +14820,42 @@ function getBottomChatBarState() {
     return sbState.bottomChatBar;
 }
 
+function setBottomChatBarVisible(shouldShow, { persist = true } = {}) {
+    const nextVisible = Boolean(shouldShow);
+    const bottomChatBarState = getBottomChatBarState();
+    bottomChatBarState.visible = nextVisible;
+
+    const container = document.getElementById('sb-bottom-chat-bar');
+    if (container instanceof HTMLElement) {
+        container.classList.toggle('displayNone', !nextVisible);
+    }
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.bottomChatBarVisible, String(nextVisible));
+    }
+
+    for (const input of document.querySelectorAll('[data-sb-bottom-bar-visible-input]')) {
+        if (input instanceof HTMLInputElement) {
+            input.checked = nextVisible;
+            input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', nextVisible);
+        }
+    }
+
+    const optionIcon = document.querySelector('#option_toggle_bottom_bar i');
+    const optionSpan = document.querySelector('#option_toggle_bottom_bar span');
+    if (optionIcon instanceof HTMLElement) {
+        optionIcon.className = `fa-lg fa-solid ${nextVisible ? 'fa-eye-slash' : 'fa-eye'}`;
+    }
+    if (optionSpan instanceof HTMLElement) {
+        optionSpan.textContent = nextVisible ? 'Hide Bottom Bar' : 'Show Bottom Bar';
+        optionSpan.setAttribute('data-i18n', nextVisible ? 'Hide Bottom Bar' : 'Show Bottom Bar');
+    }
+}
+
+function toggleBottomChatBarVisibility() {
+    setBottomChatBarVisible(!getBottomChatBarState().visible);
+}
+
 function scheduleBottomChatBarBindingRetry(delay = 240) {
     const bottomChatBarState = getBottomChatBarState();
 
@@ -14803,6 +14898,15 @@ function bindBottomChatBarEvents() {
     const context = getSillyTavernContext();
     const eventSource = context?.eventSource;
     const eventTypes = context?.eventTypes ?? context?.event_types;
+
+    const toggleOption = document.getElementById('option_toggle_bottom_bar');
+    if (toggleOption instanceof HTMLElement && !toggleOption.dataset.sbBound) {
+        toggleOption.addEventListener('click', (event) => {
+            event.preventDefault();
+            toggleBottomChatBarVisibility();
+        });
+        toggleOption.dataset.sbBound = 'true';
+    }
 
     bindBottomChatBarWindowEvents();
 
