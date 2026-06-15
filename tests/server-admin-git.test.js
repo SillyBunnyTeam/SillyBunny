@@ -2,9 +2,9 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import {
     getBranchDisplayNames,
+    getGeneratedInstallChangePaths,
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
-    hasOnlyBunLockChange,
     NON_GIT_REPOSITORY_MESSAGE,
     isGitRepository,
     isRuntimeBranch,
@@ -59,10 +59,30 @@ describe('server admin git helpers', () => {
         expect(isRuntimeBranch('main')).toBe(false);
     });
 
-    test('detects only a generated bun.lock status change', () => {
-        expect(hasOnlyBunLockChange([{ path: 'bun.lock', index: ' ', working_dir: 'M' }])).toBe(true);
-        expect(hasOnlyBunLockChange([{ path: 'bun.lock' }, { path: 'package.json' }])).toBe(false);
-        expect(hasOnlyBunLockChange([{ path: 'package-lock.json' }])).toBe(false);
+    test('detects only generated install metadata changes', () => {
+        expect(getGeneratedInstallChangePaths([{ path: 'bun.lock', index: ' ', working_dir: 'M' }])).toEqual(['bun.lock']);
+        expect(getGeneratedInstallChangePaths([{ path: 'bun.lock' }, { path: 'package.json' }])).toEqual(['bun.lock', 'package.json']);
+        expect(getGeneratedInstallChangePaths([{ path: 'package-lock.json' }])).toEqual(['package-lock.json']);
+    });
+
+    test('detects deleted generated install metadata changes', () => {
+        expect(getGeneratedInstallChangePaths([
+            { path: 'bun.lock', index: ' ', working_dir: 'D' },
+            { path: 'package.json', index: ' ', working_dir: 'D' },
+        ])).toEqual(['bun.lock', 'package.json']);
+    });
+
+    test('rejects generated install metadata mixed with other changes', () => {
+        expect(getGeneratedInstallChangePaths([{ path: 'bun.lock' }, { path: 'public/script.js' }])).toEqual([]);
+        expect(getGeneratedInstallChangePaths([
+            { path: 'bun.lock', index: ' ', working_dir: 'M' },
+            { path: 'public/script.js', index: '?', working_dir: '?' },
+        ])).toEqual([]);
+    });
+
+    test('rejects empty and untracked generated install metadata changes', () => {
+        expect(getGeneratedInstallChangePaths([])).toEqual([]);
+        expect(getGeneratedInstallChangePaths([{ path: 'package-lock.json', index: '?', working_dir: '?' }])).toEqual([]);
     });
 
     test('explains how non-Git installs update', () => {

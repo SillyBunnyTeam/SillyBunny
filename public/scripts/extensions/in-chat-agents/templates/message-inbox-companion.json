@@ -1,0 +1,167 @@
+{
+    "id": "tpl-message-inbox-companion",
+    "name": "Message Inbox",
+    "description": "Shows in-story texts or letters sent to the user as a phone inbox or parchment companion view, and stays hidden when no message arrives",
+    "icon": "fa-mobile-screen-button",
+    "category": "companion",
+    "tags": [
+        "messages",
+        "phone",
+        "letters"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Inspect the latest assistant reply for diegetic messages sent to the user character. Recent context helps identify names, setting, and whether the world uses phones or letters.\n\nRender a card when the latest assistant reply says someone sent the user character a readable text, DM, phone notification with content, magical message, courier note, sealed letter, scroll, or similar written remote message. Spoken dialogue, narration, thoughts, choices, Chatroom reactions, tracker text, and vague phone buzzes are background rather than inbox items. For empty turns, output: phone-none\n\nChoose the interface:\n- Use phone-start for modern, sci-fi, urban, contemporary, cyberpunk, or any setting where phones, DMs, terminals, comms, watches, or digital notifications fit.\n- Use letter-start for fantasy, medieval, ancient, parchment, magic, courtly, courier, raven, scroll, sealed-note, or otherwise pre-phone settings. When the setting has an unclear device level, prefer the parchment letter view.\n\nPhone mode format:\nFirst line: phone-start|thread-title|status\nMessage lines: phone-text|sender|meta|message\nFinal line: phone-end\n\nParchment mode format:\nFirst line: letter-start|title-or-seal|status\nLetter lines: letter-text|sender|meta|message\nFinal line: letter-end\n\nAllowed responses are phone-none, phone mode, or parchment mode. Use / instead of | inside fields. Keep each message field on one line. Keep messages faithful to the actual roleplay text, preserving sender intent and tone. Shorten when needed for readability. Use 1-6 phone messages or 1-4 letter lines. Prefer the named sender from the scene; use Unknown when the sender is truly unclear. Status can be just now, unread, delivered, sealed, urgent, by raven, by courier, spell-sent, or another short in-world status.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "auto",
+        "displayMode": "panel",
+        "format": "html",
+        "rawPrompt": true,
+        "contextMessages": 8,
+        "includeCharacterCard": true,
+        "includePersona": false,
+        "includeWorldInfo": true,
+        "includeAuthorsNote": true,
+        "includeSystemPrompt": false,
+        "includeHistory": false,
+        "historyDepth": 1,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 32000
+    },
+    "regexScripts": [
+        {
+            "id": "message-inbox-phone-shell-open",
+            "scriptName": "Message Inbox phone shell",
+            "findRegex": "/^(?:PHONE_START|phone-start)\\|([^\\n|]+)\\|([^\\n|]*)$/gm",
+            "replaceString": "<div style=\"margin:10px auto;max-width:360px;padding:12px;border-radius:30px;border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 26%, transparent);background:linear-gradient(145deg,oklch(18% .025 260 / .96),color-mix(in srgb,var(--SmartThemeBlurTintColor) 74%, oklch(24% .04 250)));box-shadow:0 18px 42px color-mix(in srgb,var(--SmartThemeShadowColor) 28%, transparent);font-family:var(--mainFontFamily, system-ui, sans-serif);color:var(--SmartThemeBodyColor);line-height:1.42\"><div style=\"width:84px;height:14px;border-radius:999px;margin:0 auto 11px;background:color-mix(in srgb,var(--SmartThemeBodyColor) 18%, transparent);border:1px solid color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent)\"></div><div style=\"padding:12px;border-radius:23px;background:linear-gradient(180deg,color-mix(in srgb,var(--SmartThemeBodyColor) 8%, transparent),color-mix(in srgb,var(--SmartThemeQuoteColor) 8%, transparent));border:1px solid color-mix(in srgb,var(--SmartThemeBodyColor) 10%, transparent)\"><div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px\"><div style=\"font-weight:800;letter-spacing:.01em\">$1</div><small style=\"opacity:.72;text-align:right\">$2</small></div><div style=\"display:flex;flex-direction:column;gap:8px\">",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "message-inbox-phone-text-row",
+            "scriptName": "Message Inbox phone text row",
+            "findRegex": "/^(?:PHONE_TEXT|phone-text)\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+            "replaceString": "<div style=\"display:flex;flex-direction:column;align-items:flex-start;gap:3px\"><small style=\"max-width:90%;opacity:.68;font-size:.74em;padding-left:7px\"><b style=\"opacity:.95\">$1</b><span> - $2</span></small><span style=\"max-width:88%;padding:9px 12px;border-radius:18px 18px 18px 6px;background:linear-gradient(135deg,color-mix(in srgb,var(--SmartThemeQuoteColor) 26%, transparent),color-mix(in srgb,var(--SmartThemeBodyColor) 9%, transparent));border:1px solid color-mix(in srgb,var(--SmartThemeQuoteColor) 20%, transparent);box-shadow:0 6px 14px color-mix(in srgb,var(--SmartThemeShadowColor) 14%, transparent);word-break:break-word\">$3</span></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "message-inbox-phone-shell-close",
+            "scriptName": "Message Inbox phone shell close",
+            "findRegex": "/^(?:PHONE_END|phone-end)$/gm",
+            "replaceString": "</div></div></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "message-inbox-letter-shell-open",
+            "scriptName": "Message Inbox parchment shell",
+            "findRegex": "/^(?:LETTER_START|letter-start)\\|([^\\n|]+)\\|([^\\n|]*)$/gm",
+            "replaceString": "<div style=\"margin:10px 0;padding:18px 20px;border-radius:16px;border:1px solid oklch(60% .08 72 / .52);background:linear-gradient(135deg,oklch(88% .045 84 / .98),oklch(73% .07 72 / .95));box-shadow:0 15px 34px color-mix(in srgb,var(--SmartThemeShadowColor) 25%, transparent);font-family:Georgia,'Times New Roman',serif;color:oklch(25% .055 65);line-height:1.5;position:relative;overflow:hidden\"><div style=\"position:absolute;inset:0;background:radial-gradient(circle at 15% 20%,oklch(98% .03 90 / .34),transparent 32%),radial-gradient(circle at 90% 5%,oklch(54% .07 52 / .12),transparent 28%);pointer-events:none\"></div><div style=\"position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid oklch(48% .08 68 / .28)\"><div style=\"font-weight:800;font-size:1.08em;letter-spacing:.015em\">$1</div><small style=\"opacity:.75;text-align:right\">$2</small></div><div style=\"position:relative;display:flex;flex-direction:column;gap:10px;margin-top:12px\">",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "message-inbox-letter-text-row",
+            "scriptName": "Message Inbox parchment text row",
+            "findRegex": "/^(?:LETTER_TEXT|letter-text)\\|([^|\\n]+)\\|([^|\\n]*)\\|([^\\n]*)$/gm",
+            "replaceString": "<div style=\"padding:3px 0 0\"><div style=\"display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px;color:oklch(30% .07 55)\"><b>$1</b><small style=\"opacity:.68;text-align:right\">$2</small></div><div style=\"padding:10px 12px;border-radius:10px;background:oklch(96% .035 88 / .38);border:1px solid oklch(58% .075 72 / .24);box-shadow:inset 0 0 24px oklch(58% .07 70 / .08);word-break:break-word\">$3</div></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        },
+        {
+            "id": "message-inbox-letter-shell-close",
+            "scriptName": "Message Inbox parchment shell close",
+            "findRegex": "/^(?:LETTER_END|letter-end)$/gm",
+            "replaceString": "</div></div>",
+            "trimStrings": [],
+            "placement": [
+                2
+            ],
+            "disabled": false,
+            "markdownOnly": true,
+            "promptOnly": false,
+            "runOnEdit": true,
+            "substituteRegex": 0,
+            "minDepth": null,
+            "maxDepth": null
+        }
+    ],
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 112,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}

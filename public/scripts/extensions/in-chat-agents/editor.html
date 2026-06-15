@@ -11,6 +11,7 @@
                     <option value="tracker">Tracker</option>
                     <option value="randomizer">Randomizer</option>
                     <option value="content">Content</option>
+                    <option value="companion">Companion</option>
                     <option value="custom">Custom</option>
                 </select>
             </label>
@@ -21,6 +22,15 @@
                     <option value="both">Both</option>
                 </select>
             </label>
+        </div>
+        <div class="ica--editor-row">
+            <label>Execution
+                <select id="ica--editor-execution" class="text_pole">
+                    <option value="inline">Inline: inject, intercept, regex, or rewrite the reply</option>
+                    <option value="companion">Companion: run separately and save a note card</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Companion execution never edits the assistant message. Tracker agents can use companion execution when you want their output as a side note instead of inline text.</div>
         </div>
         <div class="ica--editor-row">
             <label>Description
@@ -63,6 +73,152 @@
             </label>
         </div>
         <textarea id="ica--editor-prompt" class="text_pole textarea_compact" rows="8" placeholder="Write your agent prompt here. Supports macros: &#123;&#123;char&#125;&#125;, &#123;&#123;user&#125;&#125;, &#123;&#123;random::a::b::c&#125;&#125;, etc."></textarea>
+    </div>
+
+    <div class="ica--editor-section ica--companion-editor-section" id="ica--companion-section" style="display:none">
+        <div class="ica--editor-section-header">
+            <strong>Companion Settings</strong>
+            <div class="ica--editor-section-actions">
+                <button type="button" id="ica--editor-companion-maker" class="menu_button menu_button_icon" title="Create a companion prompt with AI">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>AI Maker</span>
+                </button>
+                <button type="button" id="ica--editor-companion-preview-feedback" class="menu_button menu_button_icon" title="Preview feedback notes injected into the next generation">
+                    <i class="fa-solid fa-eye"></i>
+                    <span>Preview Feedback</span>
+                </button>
+            </div>
+        </div>
+        <div class="ica--regex-note">Companions run after the main reply and render below it. Use Hidden when the note should only feed future prompts through feedback.</div>
+        <div class="ica--editor-row" id="ica--chatroom-style-row" style="display:none">
+            <label>Chatroom Style
+                <select id="ica--editor-chatroom-style" class="text_pole">
+                    <option value="mixed">Mixed</option>
+                    <option value="in-world">In-world</option>
+                    <option value="discord/twitch">Discord / Twitch</option>
+                    <option value="twitter/x">Twitter / X</option>
+                    <option value="reddit">Reddit</option>
+                    <option value="ao3/wattpad">AO3 / Wattpad</option>
+                    <option value="newsroom">Newsroom</option>
+                    <option value="thread-board/4chan">Thread-board / 4chan</option>
+                    <option value="infomercial">Infomercial</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Injected into Chatroom runs, so the output can stay compact and render through bundled regex.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--chatroom-custom-style-row" style="display:none">
+            <label>Active Custom Style
+                <select id="ica--editor-chatroom-custom-style-name" class="text_pole">
+                    <option value="">Add styles below</option>
+                </select>
+            </label>
+            <label>Custom Style Library
+                <textarea id="ica--editor-chatroom-custom-styles" class="text_pole textarea_compact" rows="5" placeholder="Radio Call-In: local radio host, regular callers, fake ads, timestamps, and running jokes tied to the scene&#10;Forum Mods: old forum thread with moderators, power users, quote replies, and derail warnings"></textarea>
+            </label>
+            <div class="ica--regex-note">Add one reusable style per line as Name: instructions, then pick which one this Chatroom uses.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--chatroom-extra-characters-row" style="display:none">
+            <label>Extra Character Reactors
+                <select id="ica--editor-chatroom-extra-character-avatars" class="text_pole" multiple size="6"></select>
+            </label>
+            <div class="ica--regex-note">Select character cards outside the current chat or group. Chatroom can use them as in-world commenters, not as active scene participants.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--director-voice-row" style="display:none">
+            <label>Director Voice
+                <select id="ica--editor-director-voice" class="text_pole">
+                    <option value="active">Active Narration Voice</option>
+                    <option value="conspiratorial-absurdity">Conspiratorial Absurdity</option>
+                    <option value="bureaucratic-irony">Bureaucratic Irony</option>
+                    <option value="cosmic-playbook">Cosmic Playbook</option>
+                    <option value="beige-undercurrents">Beige Undercurrents</option>
+                    <option value="gossipy-voyeurism">Gossipy Voyeurism</option>
+                    <option value="cruel-realism">Cruel Realism</option>
+                    <option value="solemn-witness">Solemn Witness</option>
+                    <option value="grand-satirical-stage">Grand Satirical Stage</option>
+                    <option value="randomised">Randomised</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <div class="ica--regex-note">Choose one of the preset Narration Voices or use your active preset variable.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--director-custom-voice-row" style="display:none">
+            <label>Active Custom Voice
+                <select id="ica--editor-director-custom-voice-name" class="text_pole">
+                    <option value="">Add voices below</option>
+                </select>
+            </label>
+            <label>Custom Voice Library
+                <textarea id="ica--editor-director-custom-voices" class="text_pole textarea_compact" rows="5" placeholder="Noir Whisper: clipped cigarette-smoke asides, suspicious empathy, and fatalistic punchlines&#10;Fairy-Tale Lecturer: storybook moralizing, soft menace, and elegant little warnings"></textarea>
+            </label>
+            <div class="ica--regex-note">Add one reusable voice per line as Name: instructions, then pick which one Director's Commentary uses.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--plot-compass-objective-row" style="display:none">
+            <label>Plot Objective
+                <textarea id="ica--editor-plot-compass-objective" class="text_pole textarea_compact" rows="3" placeholder="Example: steer the story toward the hidden tower without forcing the scene"></textarea>
+            </label>
+            <div class="ica--regex-note">Injected into Plot Compass runs and editable any time from this agent's settings.</div>
+        </div>
+        <div class="ica--companion-core-grid">
+            <label>Trigger
+                <select id="ica--editor-companion-trigger" class="text_pole">
+                    <option value="auto">Auto after matching replies</option>
+                    <option value="manual">Manual only</option>
+                </select>
+            </label>
+            <label>Display
+                <select id="ica--editor-companion-displayMode" class="text_pole">
+                    <option value="card">Show note card</option>
+                    <option value="panel">Tracker panel only</option>
+                    <option value="hidden">Hidden feedback note</option>
+                </select>
+            </label>
+            <label>Format
+                <select id="ica--editor-companion-format" class="text_pole">
+                    <option value="markdown">Markdown</option>
+                    <option value="html">Safe HTML</option>
+                    <option value="text">Plain text</option>
+                </select>
+            </label>
+            <label>Context Messages
+                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
+            </label>
+            <label title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
+                <input type="number" id="ica--editor-companion-minContextTokens" class="text_pole" min="0" max="200000" step="1000" value="0" />
+            </label>
+            <label>History Depth
+                <input type="number" id="ica--editor-companion-historyDepth" class="text_pole" min="1" max="10" value="3" />
+            </label>
+            <label>Max Tokens
+                <input type="number" id="ica--editor-companion-maxTokens" class="text_pole" min="16" max="32000" value="32000" />
+            </label>
+        </div>
+        <div class="ica--companion-toggle-grid">
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeCharacterCard" /><span>Include character card</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includePersona" /><span>Include persona</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeWorldInfo" /><span>Include World Info</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAuthorsNote" /><span>Include Author's Note</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeSystemPrompt" /><span>Include System Prompt</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
+            <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
+            <label>Feedback Depth
+                <input type="number" id="ica--editor-companion-feedbackDepth" class="text_pole" min="1" max="10" value="1" />
+            </label>
+            <div class="ica--regex-note">Feedback notes use the agent's Position, Depth, Role, and World Info scan fields from Pre-Generation Settings.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-batch-row">
+            <label class="checkbox_label" title="When selected companions use the same profile, model, and context settings, they share one model request."><input type="checkbox" id="ica--editor-companion-batch" /><span>Run selected companions in one request</span></label>
+            <div class="ica--regex-note">Off by default. Turn it on to fetch currently enabled side companions, then pick which ones can share this agent's request.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-batch-select-row" style="display:none">
+            <label>Batch With Enabled Companions
+                <select id="ica--editor-companion-batchAgentIds" class="text_pole" multiple size="5"></select>
+            </label>
+            <div class="ica--regex-note">Only selected companions can batch together. Agents with different models, profiles, or context settings still run separately.</div>
+        </div>
     </div>
 
     <div class="ica--editor-section" id="ica--tracker-builder-section" style="display:none">
@@ -221,7 +377,7 @@
                     </select>
                 </label>
                 <label class="flex1">Max Tokens
-                    <input type="number" id="ica--editor-pp-promptMaxTokens" class="text_pole" min="16" max="16000" value="8192" />
+                    <input type="number" id="ica--editor-pp-promptMaxTokens" class="text_pole" min="16" max="32000" value="8192" />
                 </label>
             </div>
             <label class="checkbox_label">

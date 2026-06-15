@@ -37,5 +37,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }

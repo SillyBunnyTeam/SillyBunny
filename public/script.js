@@ -40,6 +40,7 @@ import {
 import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-status.js';
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
+import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
 
 import {
     world_info,
@@ -512,7 +513,7 @@ export let isChatSaving = false;
 export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.4';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.6.5';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -555,7 +556,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.6.4:platberlitz'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v1.6.5:platberlitz'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -607,6 +608,7 @@ export const chatElement = $('#chat');
 const MOBILE_CHAT_RENDER_MEDIA_QUERY = '(max-width: 1000px)';
 const MOBILE_CHAT_RENDER_BATCH_SIZE = 8;
 const MOBILE_MESSAGE_UPDATE_DELAY_MS = 24;
+const MOBILE_MESSAGE_UPDATE_FLUSH_TIMEOUT_MS = 3000;
 const MOBILE_MEDIA_SCROLL_MAX_DELAY_MS = 300;
 const MOBILE_SEND_SCROLL_IMMUNITY_MS = 1500;
 const MOBILE_SEND_SCROLL_SETTLE_MS = 200;
@@ -628,8 +630,11 @@ let entitySelectionPulseId = 0;
 let showMoreTouchMoved = false;
 let pendingMobileMessageUpdateFrame = 0;
 let pendingMobileMessageUpdateTimer = 0;
+let pendingMobileMessageUpdateFlushTimeout = 0;
 let messageUpdateQueue = null;
 let mobileMessageUpdateQueue = null;
+/** @type {Array<() => void>} Resolvers for Promises waiting on the next mobile-queue flush. */
+let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
@@ -705,6 +710,14 @@ export async function flushCharacterSaveDebounced() {
     }
 
     await characterSavePromise;
+}
+
+export function cancelCharacterSaveDebounced() {
+    if (pendingCharacterSaveTimer) {
+        console.debug('Debounced character save cancelled');
+        clearTimeout(pendingCharacterSaveTimer);
+        pendingCharacterSaveTimer = null;
+    }
 }
 
 /**
@@ -899,6 +912,12 @@ let this_edit_mes_id = undefined;
 
 //settings
 export let settings;
+// SillyBunny: version-tokened settings saves avoid stale overwrites across open devices/tabs.
+let lastServerSettingsVersion = 0;
+let settingsSaveQueue = Promise.resolve();
+let settingsConflictReloadRequired = false;
+let settingsConflictPromptOpen = false;
+let settingsConflictPromptDismissed = false;
 export let amount_gen = 80; //default max length of AI generated responses
 export let max_context = 2048;
 
@@ -927,6 +946,7 @@ var css_send_form_display = $('<div id=send_form></div>').css('display');
 var kobold_horde_model = '';
 
 export let token;
+let csrfTokenRefreshPromise = null;
 
 
 /** The tag of the active character. (NOT the id) */
@@ -947,6 +967,38 @@ export function getRequestHeaders({ omitContentType = false } = {}) {
     }
 
     return headers;
+}
+
+/**
+ * Refreshes the CSRF token used by fetch and jQuery requests.
+ * @returns {Promise<string>} The refreshed CSRF token.
+ */
+export async function refreshCsrfToken() {
+    if (!csrfTokenRefreshPromise) {
+        // SillyBunny: recover from server restarts that rotate the CSRF secret without a full page reload.
+        csrfTokenRefreshPromise = (async () => {
+            const tokenResponse = await fetch('/csrf-token', {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                },
+            });
+
+            if (!tokenResponse.ok) {
+                throw new Error(`Failed to refresh CSRF token: ${tokenResponse.status}`);
+            }
+
+            const tokenData = await tokenResponse.json();
+            token = tokenData.token;
+            return token;
+        })().finally(() => {
+            csrfTokenRefreshPromise = null;
+        });
+    }
+
+    return csrfTokenRefreshPromise;
 }
 
 export function getSlideToggleOptions() {
@@ -988,7 +1040,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260609d', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20260614a', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -1068,16 +1120,7 @@ async function firstLoadInit() {
     };
 
     try {
-        const tokenResponse = await fetch('/csrf-token', {
-            cache: 'no-store',
-            credentials: 'same-origin',
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-            },
-        });
-        const tokenData = await tokenResponse.json();
-        token = tokenData.token;
+        await refreshCsrfToken();
 
         registerPromptManagerMigration();
         initDomHandlers();
@@ -1268,6 +1311,7 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             return false;
         }
 
+        cancelCharacterSaveDebounced();
         setCharacterId(undefined);
         setCharacterName('');
         resetSelectedGroup();
@@ -2699,20 +2743,59 @@ async function applySwipeReplacementViewportUpdate(viewportUpdate) {
 function flushPendingMobileMessageUpdates() {
     pendingMobileMessageUpdateFrame = 0;
     pendingMobileMessageUpdateTimer = 0;
+    if (pendingMobileMessageUpdateFlushTimeout) {
+        clearTimeout(pendingMobileMessageUpdateFlushTimeout);
+        pendingMobileMessageUpdateFlushTimeout = 0;
+    }
     getMobileMessageUpdateQueue().flush();
+    // Notify all callers awaiting this flush that the DOM is now repainted.
+    const resolvers = mobileMessageUpdateFlushResolvers.splice(0);
+    for (const resolve of resolvers) resolve();
 }
 
+function scheduleMobileMessageUpdateFlushTimeout() {
+    if (pendingMobileMessageUpdateFlushTimeout) {
+        return;
+    }
+
+    pendingMobileMessageUpdateFlushTimeout = window.setTimeout(() => {
+        if (pendingMobileMessageUpdateFrame) {
+            cancelAnimationFrame(pendingMobileMessageUpdateFrame);
+            pendingMobileMessageUpdateFrame = 0;
+        }
+        if (pendingMobileMessageUpdateTimer) {
+            clearTimeout(pendingMobileMessageUpdateTimer);
+            pendingMobileMessageUpdateTimer = 0;
+        }
+        flushPendingMobileMessageUpdates();
+    }, MOBILE_MESSAGE_UPDATE_FLUSH_TIMEOUT_MS);
+}
+
+/**
+ * Queues a mobile message-block update and returns a Promise that resolves after the
+ * deferred rAF flush actually repaints the DOM.  This lets async callers await the
+ * real paint completion rather than just the data write.
+ * @param {number|string} messageId
+ * @param {object} message
+ * @param {{rerenderMessage: boolean}} options
+ * @returns {Promise<void>}
+ */
 function queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage }) {
     getMobileMessageUpdateQueue().queue(messageId, message, { rerenderMessage });
 
+    const flushPromise = new Promise(resolve => mobileMessageUpdateFlushResolvers.push(resolve));
+    scheduleMobileMessageUpdateFlushTimeout();
+
     if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer) {
-        return;
+        return flushPromise;
     }
 
     pendingMobileMessageUpdateTimer = window.setTimeout(() => {
         pendingMobileMessageUpdateTimer = 0;
         pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);
     }, MOBILE_MESSAGE_UPDATE_DELAY_MS);
+
+    return flushPromise;
 }
 
 function insertShowMoreFragment(referenceNode, fragment) {
@@ -3878,10 +3961,11 @@ function applyMessageBlockUpdate(messageId, message, { rerenderMessage = true } 
  * @param {object} message Message object
  * @param {object} [options={}] Optional arguments
  * @param {boolean} [options.rerenderMessage=true] Whether to re-render the message content (inside <c>.mes_text</c>)
+ * @returns {Promise<void>} Resolves once the message block DOM has been repainted (including the deferred mobile flush).
  */
-export function updateMessageBlock(messageId, message, { rerenderMessage = true } = {}) {
+export async function updateMessageBlock(messageId, message, { rerenderMessage = true } = {}) {
     if (shouldDeferMobileMessageUpdates()) {
-        queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage });
+        await queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage });
         return;
     }
 
@@ -10831,6 +10915,45 @@ function reloadLoop() {
     }
 }
 
+function normalizeSettingsVersion(version) {
+    version = Number(version);
+    return Number.isSafeInteger(version) && version >= 0 ? version : 0;
+}
+
+async function promptSettingsConflictReload() {
+    if (settingsConflictPromptOpen) {
+        return;
+    }
+
+    if (settingsConflictPromptDismissed) {
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+        return;
+    }
+
+    settingsConflictPromptOpen = true;
+
+    try {
+        const confirmation = await Popup.show.confirm(
+            t`Settings changed on another device`,
+            t`Another device or browser tab saved newer settings. Reload SillyBunny before saving again to prevent overwriting those changes.`,
+            {
+                okButton: t`Reload now`,
+                cancelButton: t`Keep editing`,
+            },
+        );
+
+        if (confirmation === POPUP_RESULT.AFFIRMATIVE) {
+            window.location.reload();
+            return;
+        }
+
+        settingsConflictPromptDismissed = true;
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+    } finally {
+        settingsConflictPromptOpen = false;
+    }
+}
+
 //MARK: getSettings()
 ///////////////////////////////////////////
 export async function getSettings(initLoaderHandle = null) {
@@ -10850,6 +10973,9 @@ export async function getSettings(initLoaderHandle = null) {
     const data = await response.json();
     if (data.result != 'file not find' && data.settings) {
         settings = JSON.parse(data.settings);
+        lastServerSettingsVersion = normalizeSettingsVersion(settings._version);
+        settingsConflictReloadRequired = false;
+        settingsConflictPromptDismissed = false;
         if (settings.username !== undefined && settings.username !== '') {
             name1 = settings.username;
             $('#your_name').text(name1);
@@ -10980,9 +11106,20 @@ export async function getSettings(initLoaderHandle = null) {
 
 //MARK: saveSettings()
 export async function saveSettings(loopCounter = 0) {
+    const saveTask = settingsSaveQueue.then(() => saveSettingsInner(loopCounter));
+    settingsSaveQueue = saveTask.catch(() => {});
+    return saveTask;
+}
+
+async function saveSettingsInner(loopCounter = 0) {
     if (!settingsReady) {
         console.warn('Settings not ready, scheduling another save');
         saveSettingsDebounced();
+        return;
+    }
+
+    if (settingsConflictReloadRequired) {
+        await promptSettingsConflictReload();
         return;
     }
 
@@ -10998,6 +11135,7 @@ export async function saveSettings(loopCounter = 0) {
     }
 
     const payload = {
+        _version: lastServerSettingsVersion,
         firstRun: firstRun,
         accountStorage: accountStorage.getState(),
         currentVersion: currentVersion,
@@ -11033,9 +11171,27 @@ export async function saveSettings(loopCounter = 0) {
         });
         const result = await fetch('/api/settings/save', saveSettingsRequest);
 
+        if (result.status === 409) {
+            const conflict = await result.json().catch(() => ({}));
+            lastServerSettingsVersion = normalizeSettingsVersion(conflict?.version);
+            settingsConflictReloadRequired = true;
+            settingsConflictPromptDismissed = false;
+            await promptSettingsConflictReload();
+            return;
+        }
+
         if (!result.ok) {
             throw new Error(`Failed to save settings: ${result.statusText}`);
         }
+
+        const saveResult = await result.json().catch(() => ({}));
+        const savedSettingsVersion = normalizeSettingsVersion(saveResult?.version);
+        if (savedSettingsVersion <= payload._version) {
+            throw new Error('Settings save returned an invalid version token');
+        }
+
+        lastServerSettingsVersion = savedSettingsVersion;
+        payload._version = lastServerSettingsVersion;
 
         settings = payload;
         await eventSource.emit(event_types.SETTINGS_UPDATED);
@@ -11110,6 +11266,30 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
 
     if (globalThis.navigator?.serviceWorker && typeof globalThis.navigator.serviceWorker.getRegistrations === 'function') {
         try {
+            // SillyBunny: on iOS WebKit the controlling service worker stays attached to this
+            // page after unregister() until the page unloads. Without an explicit purge the SW
+            // re-fills its caches during the reload navigation, undoing the clear. We message
+            // the controller to delete all sillybunny-cache-* caches before unregistering.
+            const controller = globalThis.navigator.serviceWorker.controller;
+            if (controller) {
+                await new Promise((resolve) => {
+                    const channel = new MessageChannel();
+                    const timeout = globalThis.setTimeout(() => {
+                        // Best-effort: don't block the clear if the SW doesn't respond in time.
+                        console.warn('[Cache] Service worker did not acknowledge cache purge; proceeding anyway.');
+                        resolve();
+                    }, 3000);
+                    channel.port1.onmessage = (event) => {
+                        globalThis.clearTimeout(timeout);
+                        if (event.data?.type === 'SB_CLEAR_CACHES_DONE' && !event.data.ok) {
+                            console.warn('[Cache] Service worker reported a partial cache purge failure.');
+                        }
+                        resolve();
+                    };
+                    controller.postMessage({ type: 'SB_CLEAR_CACHES' }, [channel.port2]);
+                });
+            }
+
             const registrations = await globalThis.navigator.serviceWorker.getRegistrations();
             await Promise.all(registrations.map(registration => registration.unregister()));
         } catch (error) {
@@ -11124,16 +11304,18 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
 
     droppedStores.forEach((result, index) => {
         if (result.status === 'rejected') {
-            console.error(`Failed to clear IndexedDB cache store: ${FRONTEND_CACHE_INSTANCE_NAMES[index]}`, result.reason);
-            cacheErrors.push(result.reason);
+            // SillyBunny: IDB drops are best-effort. iOS WebKit with ITP or storage pressure
+            // can reject localforage.dropInstance() — log but don't abort the clear so that
+            // cookie expiry and the reload still happen.
+            console.warn(`Failed to clear IndexedDB cache store: ${FRONTEND_CACHE_INSTANCE_NAMES[index]}`, result.reason);
         }
     });
 
     try {
         sessionStorage.clear();
     } catch (error) {
-        console.error('Failed to clear session storage', error);
-        cacheErrors.push(error);
+        // SillyBunny: sessionStorage may be blocked by iOS ITP in private browsing; non-fatal.
+        console.warn('Failed to clear session storage', error);
     }
 
     if (cacheErrors.length > 0) {
@@ -13291,7 +13473,7 @@ export function select_rm_info(type, charId, previousCharId = null) {
 export function select_selected_character(chid, { switchMenu = true } = {}) {
     //character select
     //console.log('select_selected_character() -- starting with input of -- ' + chid + ' (name:' + characters[chid].name + ')');
-    select_rm_create({ switchMenu });
+    select_rm_create({ switchMenu, resetForm: false });
     switchMenu && setMenuType('character_edit');
     $('#delete_button').css('display', 'flex');
     $('#export_button').css('display', 'flex');
@@ -13313,6 +13495,7 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     }
 
     $('#add_avatar_button').val('');
+    $('#avatar_div').css('display', 'flex');
 
     $('#character_name_pole').val(characters[chid].name);
     $('#description_textarea').val(characters[chid].description);
@@ -13376,12 +13559,13 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
  * Selects the right menu for creating a new character.
  * @param {object} [options] Options for the switch
  * @param {boolean} [options.switchMenu=true] Whether to switch the menu
+ * @param {boolean} [options.resetForm=true] Whether to reset the editor form to create defaults
  */
-function select_rm_create({ switchMenu = true } = {}) {
-    switchMenu && setMenuType('create');
+function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
+    resetForm && switchMenu && setMenuType('create');
 
     //console.log('select_rm_Create() -- selected button: '+selected_button);
-    if (selected_button == 'create' && create_save.avatar) {
+    if (resetForm && selected_button == 'create' && create_save.avatar) {
         const addAvatarInput = /** @type {HTMLInputElement} */ ($('#add_avatar_button').get(0));
         addAvatarInput.files = create_save.avatar;
         read_avatar_load(addAvatarInput);
@@ -13397,6 +13581,11 @@ function select_rm_create({ switchMenu = true } = {}) {
     $('#create_button').attr('value', 'Create');
     $('#dupe_button').hide();
     $('#char_connections_button').hide();
+
+    if (!resetForm) {
+        focusUiSurface(document.getElementById('right-nav-panel'));
+        return;
+    }
 
     //create text poles
     $('#rm_button_back').css('display', '');
@@ -14310,6 +14499,25 @@ export async function createOrEditCharacter(e) {
                 formData.append('alternate_greetings', value);
             }
 
+            const editedAvatar = String(formData.get('avatar_url') ?? '');
+            const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];
+            const suspiciousEmptyDefinitionSave = getSuspiciousEmptyCharacterDefinitionSave(editedCharacter, getCharacterDefinitionFormValues(formData));
+
+            if (suspiciousEmptyDefinitionSave) {
+                const fieldList = suspiciousEmptyDefinitionSave.emptiedFieldLabels.join(', ');
+                const confirmation = await callGenericPopup(
+                    t`SillyBunny is about to save this character with previously populated definition fields empty: ${fieldList}. This can happen after a stale frontend load. Reload the page unless you intentionally cleared these fields. Continue saving?`,
+                    POPUP_TYPE.CONFIRM,
+                );
+
+                if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
+                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character save blocked`);
+                    return;
+                }
+
+                formData.set('allow_empty_definition_save', 'true');
+            }
+
             const fetchResult = await fetch(url, {
                 method: 'POST',
                 headers: headers,
@@ -14318,7 +14526,7 @@ export async function createOrEditCharacter(e) {
             });
 
             if (!fetchResult.ok) {
-                throw new Error('Fetch result is not ok');
+                throw new Error(await fetchResult.text() || 'Fetch result is not ok');
             }
 
             await getOneCharacter(formData.get('avatar_url'));
@@ -14351,7 +14559,10 @@ export async function createOrEditCharacter(e) {
             }
         } catch (error) {
             console.log(error);
-            toastr.error(t`Something went wrong while saving the character, or the image file provided was in an invalid format. Double check that the image is not a webp.`);
+            const message = error instanceof Error && error.message
+                ? error.message
+                : t`Something went wrong while saving the character, or the image file provided was in an invalid format. Double check that the image is not a webp.`;
+            toastr.error(message);
         }
     }
 }
@@ -16488,6 +16699,21 @@ jQuery(async function () {
                 },
             });
         }
+    });
+
+    $(document).on('click', '.mes_delete', async function () {
+        if (is_delete_mode) {
+            return;
+        }
+        const mesId = Number($(this).closest('.mes').attr('mesid'));
+        const message = chat[mesId];
+        if (!message) {
+            return;
+        }
+        const selectedSwipe = message.swipe_id ?? undefined;
+        const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
+        const canDeleteSwipe = !message.is_user && swipesArray.length > 1 && mesId === chat.length - 1 && selectedSwipe !== undefined;
+        await deleteMessage(mesId, canDeleteSwipe ? selectedSwipe : undefined, true);
     });
 
     $(document).on('click', '.mes_edit_cancel', async function () {

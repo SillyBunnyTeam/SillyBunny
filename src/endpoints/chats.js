@@ -27,7 +27,7 @@ import {
 } from '../util.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
-const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
+const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 const throttleInterval = Number(getConfigValue('backups.chat.throttleInterval', 10_000, 'number'));
 const checkIntegrity = !!getConfigValue('backups.chat.checkIntegrity', true, 'boolean');
 const isBackupLoggingEnabled = !!getConfigValue('backups.chat.logging', false, 'boolean');
@@ -118,6 +118,18 @@ function isDuplicateRegularChatBackup(directory, backupPrefix, data) {
         && normalizeSerializedChatForBackupComparison(latestBackupData) === normalizeSerializedChatForBackupComparison(data);
 }
 
+function isDuplicatePreWriteBackup(directory, backupPrefix, data) {
+    const prefix = `${backupPrefix}`;
+    const latestBackupFile = getLatestBackupFilePath(directory, prefix);
+    if (!latestBackupFile) {
+        return false;
+    }
+
+    const latestBackupData = tryReadFileSync(latestBackupFile);
+    return Boolean(latestBackupData)
+        && normalizeSerializedChatForBackupComparison(latestBackupData) === normalizeSerializedChatForBackupComparison(data);
+}
+
 /**
  * Saves a chat to the backups directory.
  * @param {string} directory The user's backup directory.
@@ -190,8 +202,21 @@ function backupChatPreWrite(directory, name, data, handle = '') {
             logBackupEvent('chat-backup-skipped', { type: 'pre-write', handle, chat: originalName, reason: 'missing-directory' });
         }
         name = sanitize(name).replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
         const sizeDetails = getSerializedBackupSizeDetails(data);
+
+        if (isDuplicatePreWriteBackup(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_`, data)) {
+            logBackupEvent('chat-backup-skipped', {
+                type: 'pre-write',
+                handle,
+                chat: originalName,
+                sanitizedName: name,
+                reason: 'duplicate',
+                ...sizeDetails,
+            });
+            return;
+        }
+
+        const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
 
         tryWriteFileSync(backupFile, data);
         logBackupEvent('chat-backup-written', {
@@ -633,6 +658,26 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
         console.error('Failed to read chat info:', pathToFile, error);
         return {};
     }
+}
+
+export async function getListableGroupChatInfo(chatFilePath, id) {
+    const chatInfo = await getChatInfo(chatFilePath);
+    const fileName = String(chatInfo?.file_name ?? '').trim();
+
+    if (fileName) {
+        return chatInfo;
+    }
+
+    const fallbackFileName = sanitize(`${id}.jsonl`);
+    const fallbackFileId = path.parse(fallbackFileName).name;
+    const normalizedChatInfo = chatInfo && typeof chatInfo === 'object' ? chatInfo : {};
+
+    // SillyBunny: keep corrupted group chats visible so chat selectors do not enter empty-list retry storms.
+    return {
+        ...normalizedChatInfo,
+        file_id: String(normalizedChatInfo.file_id ?? '').trim() || fallbackFileId,
+        file_name: fallbackFileName,
+    };
 }
 
 export const router = express.Router();
@@ -1091,7 +1136,7 @@ router.post('/group/info', async (request, response) => {
             return response.status(404).send({ error: 'not_found' });
         }
 
-        const chatInfo = await getChatInfo(chatFilePath);
+        const chatInfo = await getListableGroupChatInfo(chatFilePath, id);
         return response.send(chatInfo);
     } catch (error) {
         console.error(error);

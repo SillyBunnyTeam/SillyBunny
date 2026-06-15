@@ -4,6 +4,7 @@
     "description": "Post-generation prose cleanup that rewrites repetitive tropes and cliched wording. Created by Geechan.",
     "icon": "",
     "category": "content",
+    "subcategory": "prose-quality",
     "tags": [
         "prose",
         "editing",
@@ -32,7 +33,7 @@
         "promptTransformEnabled": true,
         "promptTransformShowNotifications": true,
         "promptTransformMode": "rewrite",
-        "promptTransformMaxTokens": 8192
+        "promptTransformMaxTokens": 32000
     },
     "enabled": false,
     "conditions": {

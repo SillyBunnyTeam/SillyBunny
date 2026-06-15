@@ -1,7 +1,5 @@
 <div id="ica--settings" class="ica--settings">
     <div class="ica--inner">
-        <p class="ica--subtitle">Modular agents that inject content into the main model's generation; 30 bundled agents across 4 categories (trackers; randomizers; content helpers; tools); plus room for your own. Click <b>Templates</b> to browse and install all bundled agents. Toggle them on, tweak their prompts, or use the robot button on a card to manually apply that agent to the last assistant reply.</p>
-
         <div class="ica--templates-callout">
             <div class="ica--templates-callout-copy">
                 <strong>Bundled trackers live in Templates</strong>
@@ -30,6 +28,18 @@
                     <i class="fa-solid fa-book-open"></i>
                     <span>Templates</span>
                 </div>
+                <button type="button" id="ica--fixTrackers" class="menu_button menu_button_icon" title="Re-run enabled tracker agents on the last assistant reply">
+                    <i class="fa-solid fa-wrench"></i>
+                    <span>Fix Trackers</span>
+                </button>
+                <button type="button" id="ica--companionsDashboard" class="menu_button menu_button_icon" title="Open the Companions dashboard: manage, run, and convert companion agents">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>Companions</span>
+                </button>
+                <button type="button" id="ica--convertAllTrackers" class="menu_button menu_button_icon" title="Convert every inline tracker agent to companion execution (auto loop, tracker panel)">
+                    <i class="fa-solid fa-people-arrows"></i>
+                    <span>Trackers → Companions</span>
+                </button>
                 <div id="ica--cancelGeneration" class="menu_button menu_button_icon caution" title="Stop the active agent generation" style="display:none">
                     <i class="fa-solid fa-stop"></i>
                     <span>Cancel Agent</span>
@@ -74,6 +84,10 @@
                     <i class="fa-solid fa-user"></i>
                     <span>User</span>
                 </button>
+                <button type="button" id="ica--bulkConvertCompanion" class="menu_button menu_button_icon" title="Convert selected agents to companion execution (side note cards under replies)">
+                    <i class="fa-solid fa-user-astronaut"></i>
+                    <span>To Companion</span>
+                </button>
                 <button type="button" id="ica--bulkEditProps" class="menu_button menu_button_icon" title="Bulk-edit properties for selected agents">
                     <i class="fa-solid fa-sliders"></i>
                     <span>Edit</span>
@@ -89,6 +103,14 @@
             </div>
         </div>
 
+        <div id="ica--agentTabs" class="ica--agent-tabs" role="tablist" aria-label="Agent list tabs">
+            <button type="button" class="ica--agent-tab is-active" data-tab="all" role="tab" aria-selected="true">All</button>
+            <button type="button" class="ica--agent-tab" data-tab="quick" role="tab" aria-selected="false"><i class="fa-solid fa-star fa-xs"></i> Quick Access</button>
+            <button type="button" class="ica--agent-tab" data-tab="pre" role="tab" aria-selected="false">Pre</button>
+            <button type="button" class="ica--agent-tab" data-tab="post" role="tab" aria-selected="false">Post</button>
+            <button type="button" class="ica--agent-tab" data-tab="companion" role="tab" aria-selected="false"><i class="fa-solid fa-user-astronaut fa-xs"></i> Companions</button>
+        </div>
+
         <div class="ica--filter">
             <input type="text" id="ica--search" class="text_pole" placeholder="Search agents..." />
             <select id="ica--categoryFilter" class="text_pole">
@@ -96,6 +118,7 @@
                 <option value="tracker">Tracker</option>
                 <option value="randomizer">Randomizer</option>
                 <option value="content">Content</option>
+                <option value="companion">Companion</option>
                 <option value="custom">Custom</option>
             </select>
         </div>
@@ -110,6 +133,13 @@
                 </select>
             </label>
             <label class="ica--profile-label">
+                <span>Companion Connection Profile</span>
+                <select id="ica--companionConnectionProfile" class="text_pole" title="Which connection profile Companion agents (trackers, notes) use when they do not have their own editor profile override. Leave empty to share the default above.">
+                    <option value="">Use Default Connection Profile</option>
+                </select>
+                <small class="ica--profile-help">Point this at a cheap, fast model — companions run on every reply.</small>
+            </label>
+            <label class="ica--profile-label">
                 <span>Append Agents Execution</span>
                 <select id="ica--appendAgentsExecutionMode" class="text_pole" title="Run append-mode agents in parallel (faster, may hit rate limits) or sequentially (slower, avoids rate limits).">
                     <option value="parallel">Parallel (faster)</option>
@@ -119,6 +149,17 @@
                     Sequential runs append-mode agents one after another in Order ascending.
                     Order is shown on each agent card.
                 </small>
+            </label>
+            <label class="ica--profile-label">
+                <span>Companion Execution</span>
+                <select id="ica--companionExecutionMode" class="text_pole" title="Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting.">
+                    <option value="parallel">Parallel (faster)</option>
+                    <option value="sequential">Sequential (rate-limit friendly)</option>
+                </select>
+            </label>
+            <label class="checkbox_label" title="Run companion agents at the same time as post-generation passes instead of after them. Faster, but companions see the reply before post passes edit it.">
+                <input type="checkbox" id="ica--companionConcurrent" />
+                <span>Run Companions Alongside Post-Gen Passes</span>
             </label>
             <label class="ica--profile-label ica--helper-prefill-label">
                 <span>Helper Prefill Messages</span>

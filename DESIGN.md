@@ -66,6 +66,11 @@ spacing:
   "2xl": "24px"
   "3xl": "32px"
   "4xl": "40px"
+breakpoints:
+  compact-desktop-max: "1000px"
+  mobile-max: "768px"
+  narrow-mobile-max: "620px"
+  small-mobile-max: "420px"
 components:
   button-primary:
     backgroundColor: "{colors.warm-signal}"
@@ -238,6 +243,19 @@ The shell is the signature product component. It turns upstream drawers into Wor
 - **Desktop:** Top bar and shell panels use layered surfaces, horizontal tab rows, direct icon/text labels, and global search.
 - **Mobile:** Navigation uses stable `dvh`/safe-area-aware sizing, visible buttons, touch-friendly controls, and `-webkit-overflow-scrolling: touch` where scroll containers need momentum.
 - **Active State:** Active tabs use a tonal accent background, thin border, and an inset bottom accent, not a thick side stripe.
+
+### Breakpoints
+
+Canonical responsive breakpoints are **1000 / 768 / 620 / 420**.
+
+| Breakpoint | Contract |
+| --- | --- |
+| `1000px` | Compact desktop ceiling. Upstream `style.css` 1000px blocks may apply. |
+| `768px` | Mobile shell ceiling. Fork mobile chrome and mobile stylesheet gates stop here. |
+| `620px` | Narrow mobile tuning for dense phone layouts. |
+| `420px` | Small mobile tuning for the tightest phone layouts. |
+
+Compact desktop is `769px` through `1000px`: no fork mobile chrome. The 820x1180 smoke checkpoint pins this contract.
 
 ### Signature Components
 

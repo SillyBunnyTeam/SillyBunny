@@ -95,11 +95,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Mobile shell, chat navigation, and preset/API sync. |
 | Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, search shortcut focus, viewport-reset dispatches, and mirrored connection-profile controls that interact with chat and API state. |
 | Target seam | `public/scripts/chat-render-lifecycle/` for chat scroll requests; `public/scripts/mobile-shell-lifecycle/` for drawer/nav/viewport behavior; `public/scripts/preset-api-sync-lifecycle/` for active API and connection-profile mirror decisions. |
-| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for drawer bounds, viewport sync order, drawer-bound scheduling, overlay exclusivity, nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, and connection-profile mirror state. |
-| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-drawer-bounds.test.js`, `tests/mobile-shell-lifecycle-viewport-sync.test.js`, `tests/mobile-shell-lifecycle-overlay-exclusion.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
-| Validation | `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json mobile-shell-lifecycle-drawer-bounds.test.js mobile-shell-lifecycle-viewport-sync.test.js mobile-shell-lifecycle-overlay-exclusion.test.js mobile-shell-lifecycle-wiring.test.js mobile-shell-lifecycle.test.js` from `tests/`, full `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json` from `tests/`, `npm run check:frontend-budgets`, `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4567 npm run test:e2e -- mobile-shell-smoke.e2e.js` from `tests/`. |
+| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for drawer bounds, viewport sync order, drawer-bound scheduling, overlay exclusivity, rail quick-action normalization and visibility, inline drawer auto-close and persistence keys, nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, and connection-profile mirror state. |
+| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-drawer-bounds.test.js`, `tests/mobile-shell-lifecycle-viewport-sync.test.js`, `tests/mobile-shell-lifecycle-overlay-exclusion.test.js`, `tests/mobile-shell-lifecycle-rail-model.test.js`, `tests/mobile-shell-lifecycle-inline-drawers.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
+| Validation | `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json mobile-shell-lifecycle-drawer-bounds.test.js mobile-shell-lifecycle-viewport-sync.test.js mobile-shell-lifecycle-overlay-exclusion.test.js mobile-shell-lifecycle-rail-model.test.js mobile-shell-lifecycle-inline-drawers.test.js mobile-shell-lifecycle-wiring.test.js mobile-shell-lifecycle.test.js` from `tests/`, full `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json` from `tests/`, `npm run check:frontend-budgets`, `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4567 npm run test:e2e -- mobile-shell-smoke.e2e.js` from `tests/`. |
 | Rollback path | Keep shell calls narrow so a bad adapter route can be reverted without removing shell UI. |
-| Last reviewed | 2026-06-10 overlay exclusivity lifecycle seam. |
+| Last reviewed | 2026-06-10 inline drawer lifecycle seam. |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/scripts/browser-fixes.js` - mobile viewport reset guard
@@ -197,14 +197,27 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Settings and frontend boot. |
-| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. |
+| Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. `script.js` must NEVER carry a `?v=` query: every module imports `../script.js` bare, and a versioned tag URL splits ES-module identity so `script.js` evaluates twice and registers every delegated handler twice (all inline-drawer toggles break). Stale-cache protection comes from `src/middleware/frontend-assets.js` serving JS with `Cache-Control: no-cache`, not from URL versioning. |
 | Target seam | `public/scripts/ooc-blocks.js` for retention behavior; `public/css/sillybunny-chat-styles.css` and `public/scripts/power-user.js` for core transparency behavior. |
 | Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. |
-| Protecting tests | `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
+| Protecting tests | `tests/script-module-identity.test.js`, `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- script-module-identity.test.js frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
 | Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
-| Last reviewed | 2026-06-06 Bug 1 transparency migration. |
+| Last reviewed | 2026-06-11 script.js module-identity regression fix (double-evaluated frontend after #413 re-versioned the tag; inline drawers dead). |
 | Owner | Refactor integrator. |
+
+### `public/index.html` - mobile stylesheet media gates
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell and frontend boot. |
+| Divergence reason | SillyBunny keeps upstream `mobile-styles.css` and the fork mobile shell stylesheet gated to `max-width: 768px` so compact desktop widths use desktop chrome while still receiving upstream 1000px layout rules. |
+| Target seam | None; this is static boot markup. |
+| Adapter shape | Keep the `css/mobile-styles.css` and `css/sillybunny-mobile-shell.css` stylesheet links on `media="(max-width: 768px)"`, loaded after upstream `style.css` and before `css/user.css`. |
+| Protecting tests | `tests/mobile-css-budgets.test.js` (`mobile sheets keep their (max-width: 768px) media gates`, `fork sheets load after upstream styles and before user.css`) and the 820x1180 compact desktop smoke checkpoint in `tests/mobile-shell-smoke.e2e.js`. |
+| Validation | `npm run test:unit --prefix tests -- mobile-css-budgets.test.js`, mobile smoke pack before CSS consolidation PRs. |
+| Rollback path | Restore prior stylesheet link gates and load order if compact desktop or mobile shell boot behavior regresses. |
+| Last reviewed | 2026-06-11 PR 2.1 mobile breakpoint ledger. |
+| Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
@@ -249,13 +262,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Generation lifecycle and settings. |
-| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. |
+| Divergence reason | SillyBunny impersonate generations on chat-completion backends need a first-person user-voice control prompt even when the editable impersonation fields are empty. Guided Generations must also let custom impersonation prompts control first-, second-, or third-person perspective without a conflicting first-person-only frame. |
 | Target seam | Core chat-completion prompt preparation in `public/scripts/openai.js`; Guided Generations adds its own fork-side system frame. |
-| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. |
+| Adapter shape | Keep fallback selection in tiny helpers, use the default impersonation prompt for empty system directives, use a default Claude user-speaker prefill, and respect prompt-manager disabling when adding the impersonate control prompt. Keep Guided Generations' impersonate frame person-neutral and make the user-configured guide authoritative for perspective and narration style. |
 | Protecting tests | `tests/openai-impersonate-defaults.test.js`, `tests/guided-generations-steering.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- openai-impersonate-defaults.test.js guided-generations-steering.test.js`, `node --check public/scripts/openai.js`, live chat-completion impersonate smoke when API access is available. |
 | Rollback path | Restore empty-string behavior for impersonation prompt/prefill and remove the prompt-manager guard if provider behavior regresses. |
-| Last reviewed | 2026-06-06 Bug 6 impersonate first-person defaults. |
+| Last reviewed | 2026-06-13 Guided Impersonate person-neutral steering. |
 | Owner | Refactor integrator and settings owner. |
 
 ### `public/css/sillybunny-tabs.css`, `public/css/sillybunny-mobile-shell.css`, `public/css/select2-overrides.css`, `public/css/welcome.css`, `public/style.css`, `public/script.js`, `public/sw.js`, and `public/index.html` - menu polish assets
@@ -283,6 +296,32 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert lifecycle calls in `PromptManager.js` while leaving prompt data and service settings untouched. |
 | Last reviewed | 2026-05-28 prompt manager lifecycle wiring. |
 | Owner | Refactor integrator and prompt manager owner. |
+
+### `src/endpoints/backends/chat-completions.js`, `public/scripts/openai.js`, and `public/index.html` - claude-fable-5 request compatibility
+| Field | Value |
+| --- | --- |
+| Area | Generation lifecycle and settings (Claude chat-completion request builders). |
+| Divergence reason | `claude-fable-5` rejects `temperature`/`top_p`/`top_k`, explicit `thinking:{type:'disabled'}`, and assistant prefill with HTTP 400, and upstream's Claude model gating, dropdown, 1M-context regex, and vision list do not know the model. SillyBunny gates fable into the existing per-model flags, strips the removed samplers on both the native and OpenAI-compatible paths, and forwards real upstream error bodies on non-streaming failures instead of a generic 500. |
+| Target seam | None yet; the core fix follows upstream's existing per-model regex/delete-block patterns so it can be contributed to SillyTavern and dropped here on a future upstream sync. |
+| Adapter shape | `isFableModel` flag OR'd into existing gating regexes plus a sampler delete-block in `sendClaudeRequest`; a source-aware delete-block in `createGenerationParameters`; one dropdown option, one regex alternation, one vision-list entry; error passthrough kept as a separate commit. |
+| Protecting tests | None yet; current protection is static validation and the PR #403 relay isolation test record (minimal 200, +samplers 400, adaptive+effort 200, thinking-disabled 400, system-message 400 on non-converting relay). Add focused unit coverage if fable gating grows beyond regex alternations. |
+| Validation | `npm run lint`, `node --check src/endpoints/backends/chat-completions.js`, `node --check public/scripts/openai.js`, direct relay curls against `https://api.linkapi.ai/v1/messages` and `/chat/completions` (2026-06-10), regression check that opus-4-6/sonnet-4-6/sonnet-4-5 payloads are unchanged. |
+| Rollback path | Revert the fable regex alternations and delete-blocks to restore stock behavior (fable then 400s again on samplers); the error passthrough commit can be reverted independently. |
+| Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
+| Owner | Bugfix integrator. |
+
+### `public/index.html` - in-chat agent message action buttons
+| Field | Value |
+| --- | --- |
+| Area | Extension boot and chat message UI. |
+| Divergence reason | SillyBunny ships in-chat-agent actions on every chat message (`mes_view_agent_changes`, `mes_fix_trackers`, and PR #446's `mes_run_companions`) in the static message template so the buttons exist before the extension boots. |
+| Target seam | `public/scripts/extensions/in-chat-agents/`; visibility and behavior are owned by the extension (`companion/companion-ui.js` `updateCompanionButtonVisibility()` and `index.js` button wiring). |
+| Adapter shape | Hidden static `div.mes_button` rows only (`style="display: none"`); all logic, visibility toggling, and handlers stay in the extension modules. |
+| Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-companion.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agents`, manual smoke: buttons hidden with the extension disabled, companion button visible on assistant messages once a companion agent is enabled. |
+| Rollback path | Delete the static divs; the extension degrades gracefully because `$('.mes_run_companions')` and friends simply match nothing. |
+| Last reviewed | 2026-06-12 PR #446 companion agents. |
+| Owner | Extension maintainer. |
 
 ## Candidate Entries To Add Later
 | File or area | Add entry when |

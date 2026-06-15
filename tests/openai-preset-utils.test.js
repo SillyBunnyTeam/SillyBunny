@@ -2,10 +2,14 @@ import { describe, expect, test } from '@jest/globals';
 import {
     buildChatCompletionPreset,
     buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingSettingsSnapshot,
     buildReverseProxyPresetForSave,
     getChatCompletionConnectionPresetKeys,
+    getChatCompletionSamplingPresetKeys,
+    getChatCompletionSamplingSettingsKeys,
     normalizeReverseProxyPreset,
     shouldIncludeConnectionFieldsInPreset,
+    shouldIncludeSamplingFieldsInPreset,
 } from '../public/scripts/openai-preset-utils.js';
 
 const settingsMap = {
@@ -17,9 +21,20 @@ const settingsMap = {
     prompts: ['', 'prompts', false, false],
 };
 
+const settingsMapWithSampling = {
+    chat_completion_source: ['#chat_completion_source', 'chat_completion_source', false, true, false],
+    temperature: ['#temp_openai', 'temp_openai', false, false, true],
+    frequency_penalty: ['#freq_pen_openai', 'freq_pen_openai', false, false, true],
+    openai_model: ['#model_openai_select', 'openai_model', false, true, false],
+    assistant_prefill: ['#claude_assistant_prefill', 'assistant_prefill', false, false, false],
+    custom_url: ['#custom_api_url_text', 'custom_url', false, true, false],
+    prompts: ['', 'prompts', false, false, false],
+};
+
 const settings = {
     chat_completion_source: 'custom',
     temp_openai: 0.72,
+    freq_pen_openai: 0.1,
     openai_model: 'mimo-model',
     assistant_prefill: '',
     custom_url: 'http://127.0.0.1:8080/v1',
@@ -165,6 +180,82 @@ describe('Chat Completion preset utilities', () => {
             url: '',
             password: '',
             source: '',
+        });
+    });
+
+    test('can build a preset without sampling fields', () => {
+        expect(buildChatCompletionPreset(settings, settingsMapWithSampling, { includeSampling: false })).toEqual({
+            chat_completion_source: 'custom',
+            openai_model: 'mimo-model',
+            assistant_prefill: '',
+            custom_url: 'http://127.0.0.1:8080/v1',
+            prompts: [{ identifier: 'main', content: 'Prompt after edit' }],
+        });
+    });
+
+    test('can build a preset without both connection and sampling fields', () => {
+        expect(buildChatCompletionPreset(settings, settingsMapWithSampling, { includeConnection: false, includeSampling: false })).toEqual({
+            assistant_prefill: '',
+            prompts: [{ identifier: 'main', content: 'Prompt after edit' }],
+        });
+    });
+
+    test('lists sampling preset keys using preset field names', () => {
+        expect(getChatCompletionSamplingPresetKeys(settingsMapWithSampling)).toEqual([
+            'temperature',
+            'frequency_penalty',
+        ]);
+    });
+
+    test('lists sampling settings keys using live setting names', () => {
+        expect(getChatCompletionSamplingSettingsKeys(settingsMapWithSampling)).toEqual([
+            'temp_openai',
+            'freq_pen_openai',
+        ]);
+    });
+
+    test('builds model sampling snapshots from sampling flags', () => {
+        expect(buildChatCompletionSamplingSettingsSnapshot(settings, settingsMapWithSampling)).toEqual({
+            temp_openai: 0.72,
+            freq_pen_openai: 0.1,
+        });
+    });
+
+    test('returns empty sampling keys for maps without sampling flags', () => {
+        expect(getChatCompletionSamplingPresetKeys(settingsMap)).toEqual([]);
+        expect(getChatCompletionSamplingSettingsKeys(settingsMap)).toEqual([]);
+        expect(buildChatCompletionSamplingSettingsSnapshot(settings, settingsMap)).toEqual({});
+    });
+
+    test('includes sampling fields by default when bind_preset_to_sampling is not set', () => {
+        expect(shouldIncludeSamplingFieldsInPreset({})).toBe(true);
+        expect(shouldIncludeSamplingFieldsInPreset({ bind_preset_to_sampling: undefined })).toBe(true);
+        expect(shouldIncludeSamplingFieldsInPreset({ bind_preset_to_sampling: true })).toBe(true);
+    });
+
+    test('excludes sampling fields when bind_preset_to_sampling is false', () => {
+        expect(shouldIncludeSamplingFieldsInPreset({ bind_preset_to_sampling: false })).toBe(false);
+    });
+
+    test('builds preset manager save snapshots respecting sampling binding', () => {
+        expect(buildChatCompletionPresetForSave({
+            ...settings,
+            bind_preset_to_connection: false,
+            bind_preset_to_sampling: false,
+        }, settingsMapWithSampling)).toEqual({
+            assistant_prefill: '',
+            prompts: [{ identifier: 'main', content: 'Prompt after edit' }],
+        });
+
+        expect(buildChatCompletionPresetForSave({
+            ...settings,
+            bind_preset_to_connection: false,
+            bind_preset_to_sampling: true,
+        }, settingsMapWithSampling)).toEqual({
+            temperature: 0.72,
+            frequency_penalty: 0.1,
+            assistant_prefill: '',
+            prompts: [{ identifier: 'main', content: 'Prompt after edit' }],
         });
     });
 });

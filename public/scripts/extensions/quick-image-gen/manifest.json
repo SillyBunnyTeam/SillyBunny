@@ -5,8 +5,8 @@
   "optional": [],
   "js": "index.js",
   "css": "style.css",
-  "author": "platberlitz (vendored by TLD)",
-  "version": "2.0.10",
+  "author": "platberlitz",
+  "version": "2.1.0",
   "homePage": "https://github.com/platberlitz/sillytavern-image-gen",
   "auto_update": true,
   "manifest_version": 3

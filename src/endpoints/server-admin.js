@@ -11,9 +11,9 @@ import simpleGit from 'simple-git';
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
     getBranchDisplayNames,
+    getGeneratedInstallChangePaths,
     getRemoteBranchesFromSummary,
     getStatusDisplayBranch,
-    hasOnlyBunLockChange,
     NON_GIT_REPOSITORY_MESSAGE,
     isRuntimeBranch,
     isGitRepository,
@@ -26,11 +26,16 @@ import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
 import { getThumbnailDimensions, setThumbnailDimensions } from './image-metadata.js';
 import { getThumbnailRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
+import { requestGracefulExit } from '../shutdown.js';
+import { getServerBootId } from '../server-boot-marker.js';
+import {
+    LAUNCHER_ENV as RESTART_LAUNCHER_ENV,
+    RESTART_EXIT_CODE,
+    SUPERVISED_ENV as RESTART_SUPERVISED_ENV,
+} from '../server-supervisor.js';
 
 const GIT_OPTIONS = Object.freeze({ timeout: { block: 10 * 60 * 1000 } });
 const RESTART_RESPONSE_DELAY_MS = 200;
-const RESTART_EXIT_CODE = 75;
-const RESTART_LAUNCHER_ENV = 'SILLYBUNNY_LAUNCHER';
 const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
     claude: Object.freeze({
         enableSystemPromptCache: false,
@@ -294,70 +299,46 @@ function applyChatCompletionConfigState(document, settings) {
     document.setIn(['gemini', 'enableSystemPromptCache'], settings.gemini.enableSystemPromptCache);
 }
 
-function getRestartPayload() {
-    const payload = {
-        parentPid: process.pid,
-        cwd: serverDirectory,
-        command: [process.argv[0], ...process.argv.slice(1)],
-        envPatch: isNativeTermuxEnvironment() ? { SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' } : {},
-        visibleRelaunch: process.platform === 'win32',
-    };
-
-    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
-}
-
 function getZipUpdatePayload(stagedUpdate) {
     const payload = {
         parentPid: process.pid,
+        supervisorPid: process.env[RESTART_SUPERVISED_ENV] === '1' ? process.ppid : null,
         installDir: serverDirectory,
         stagingRoot: stagedUpdate.stagingRoot,
         releaseRoot: stagedUpdate.releaseRoot,
         version: stagedUpdate.version,
         assetName: stagedUpdate.assetName,
         command: [process.argv[0], ...process.argv.slice(1)],
-        envPatch: { SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' },
+        // Clear the supervision markers so the relaunched server.js starts a
+        // fresh supervisor instead of expecting a loop that no longer exists.
+        envPatch: {
+            SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1',
+            [RESTART_SUPERVISED_ENV]: '',
+            [RESTART_LAUNCHER_ENV]: '',
+        },
         visibleRelaunch: process.platform === 'win32',
     };
 
     return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }
 
-function isLauncherManagedRestart() {
-    return process.env[RESTART_LAUNCHER_ENV] === '1';
+function isManagedRestart() {
+    return process.env[RESTART_LAUNCHER_ENV] === '1' || process.env[RESTART_SUPERVISED_ENV] === '1';
 }
 
 function scheduleRestart(response) {
-    if (isLauncherManagedRestart()) {
-        response.once('finish', () => {
-            setTimeout(() => {
-                console.info(`Restart requested; exiting with code ${RESTART_EXIT_CODE} for launcher relaunch.`);
-                process.exit(RESTART_EXIT_CODE);
-            }, RESTART_RESPONSE_DELAY_MS);
-        });
-        return;
+    // Either a launcher script (Start.bat/start.sh) or the server.js
+    // supervisor watches for the restart exit code. Direct launches are
+    // supervised since server.js became self-supervising, so exiting with the
+    // restart code is sufficient on every platform.
+    if (!isManagedRestart()) {
+        console.warn(`No launcher or supervisor detected; the process will exit with code ${RESTART_EXIT_CODE} and must be restarted by its service manager.`);
     }
-
-    const helperScriptPath = path.join(serverDirectory, 'src', 'restart-helper.js');
-    const helper = spawn(process.argv[0], [helperScriptPath, getRestartPayload()], {
-        cwd: serverDirectory,
-        detached: true,
-        stdio: process.platform === 'win32' ? ['ignore', 'inherit', 'inherit'] : 'ignore',
-        env: process.env,
-        windowsHide: false,
-    });
-
-    helper.once('error', (error) => {
-        console.error('Failed to start restart helper.', error);
-    });
-    helper.unref();
 
     response.once('finish', () => {
         setTimeout(() => {
-            try {
-                process.kill(process.pid, 'SIGTERM');
-            } catch (error) {
-                console.error('Failed to stop current process during restart.', error);
-            }
+            console.info(`Restart requested; exiting with code ${RESTART_EXIT_CODE} for relaunch.`);
+            requestGracefulExit(RESTART_EXIT_CODE);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -379,8 +360,8 @@ function scheduleZipUpdate(response, stagedUpdate) {
 
     response.once('finish', () => {
         setTimeout(() => {
-            console.info('ZIP update staged; exiting current server so the helper can replace files safely.');
-            process.exit(0);
+            console.info('ZIP update staged; initiating graceful shutdown so the helper can replace files safely.');
+            requestGracefulExit(0);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -397,19 +378,22 @@ async function restoreAutoStash(git, { reason = 'after update failure' } = {}) {
     }
 }
 
-async function restoreGeneratedBunLockChange(git, gitStatus) {
-    if (!hasOnlyBunLockChange(gitStatus?.files)) {
+async function restoreGeneratedInstallFileChanges(git, gitStatus) {
+    const generatedPaths = getGeneratedInstallChangePaths(gitStatus?.files);
+
+    if (!generatedPaths.length) {
         return gitStatus;
     }
 
     try {
-        await git.raw(['restore', '--staged', '--worktree', '--', 'bun.lock']);
+        await git.raw(['restore', '--staged', '--worktree', '--', ...generatedPaths]);
     } catch {
-        await git.raw(['reset', 'HEAD', '--', 'bun.lock']);
-        await git.raw(['checkout', '--', 'bun.lock']);
+        await git.raw(['reset', 'HEAD', '--', ...generatedPaths]);
+        await git.raw(['checkout', '--', ...generatedPaths]);
     }
 
-    console.info('Restored tracked bun.lock before checking for updates.');
+    // SillyBunny: Windows launchers can rewrite install metadata while recovering from stale Bun locks.
+    console.info(`Restored generated install file changes before checking for updates: ${generatedPaths.join(', ')}.`);
 
     return await git.status();
 }
@@ -510,7 +494,7 @@ async function getRepositoryStatus() {
     status.branch = toTrimmedString(await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => ''));
     status.currentCommit = toTrimmedString(await git.revparse(['--short', 'HEAD']).catch(() => ''));
 
-    const gitStatus = await restoreGeneratedBunLockChange(git, await git.status());
+    const gitStatus = await restoreGeneratedInstallFileChanges(git, await git.status());
     status.hasLocalChanges = !gitStatus.isClean();
     status.changedFilesCount = gitStatus.files.length;
     status.changedFiles = gitStatus.files.slice(0, 12).map(file => ({
@@ -782,6 +766,7 @@ router.post('/restart', requireAdminMiddleware, async (_request, response) => {
         response.status(202).json({
             ok: true,
             restarting: true,
+            serverBootId: getServerBootId(),
             message: `${APP_NAME} is restarting.`,
         });
     } catch (error) {

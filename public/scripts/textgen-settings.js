@@ -162,7 +162,18 @@ const SAMPLER_VISIBILITY_EXTENSION_KEY = 'samplerVisibility';
 // (7 days later) The future has come.
 const MANCER_SERVER_KEY = 'mancer_server';
 const MANCER_SERVER_DEFAULT = 'https://neuro.mancer.tech';
-export let MANCER_SERVER = localStorage.getItem(MANCER_SERVER_KEY) ?? MANCER_SERVER_DEFAULT;
+
+function getStoredMancerServer() {
+    try {
+        return localStorage.getItem(MANCER_SERVER_KEY);
+    } catch (error) {
+        // SillyBunny: iOS WebKit can throw on localStorage before the boot UI exists.
+        console.warn('Unable to read stored Mancer server.', error);
+        return null;
+    }
+}
+
+export let MANCER_SERVER = getStoredMancerServer() ?? MANCER_SERVER_DEFAULT;
 export let TOGETHERAI_SERVER = 'https://api.together.xyz';
 export let INFERMATICAI_SERVER = 'https://api.totalgpt.ai';
 export let DREAMGEN_SERVER = 'https://dreamgen.com';

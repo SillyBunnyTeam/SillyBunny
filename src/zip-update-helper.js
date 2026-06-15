@@ -270,6 +270,13 @@ async function main() {
     fs.mkdirSync(backupRoot, { recursive: true });
     appendLog(logPath, `Waiting for parent process ${parentPid} to exit before applying ZIP update.`);
     await waitForParentExit(parentPid);
+
+    const supervisorPid = Number(payload?.supervisorPid);
+    if (Number.isFinite(supervisorPid) && supervisorPid > 0) {
+        appendLog(logPath, `Waiting for supervisor process ${supervisorPid} to exit before applying ZIP update.`);
+        await waitForParentExit(supervisorPid);
+    }
+
     await delay(800);
 
     try {

@@ -205,6 +205,11 @@ html {
        fixed-layout app and strand a black bar at the bottom. */
     overflow: hidden;
     overflow: clip;
+    /* SillyBunny: iOS Safari will otherwise rubber-band scroll the whole app
+       (black gap, blank chat) when a drag lands above #chat or touches the
+       top-bar, because the shell is positioned fixed-ish and not overflow-y
+       scrollable. `none` prevents any scroll chaining off the document. */
+    overscroll-behavior: none;
 }
 
 body {
@@ -225,6 +230,8 @@ body {
     overflow: hidden;
     overflow: clip;
     color-scheme: only light;
+    /* SillyBunny: paired with html; stops scroll chaining off the document. */
+    overscroll-behavior: none;
 }
 
 /* SillyBunny: Firefox ignores WebKit scrollbar pseudo-elements. */
@@ -963,6 +970,10 @@ body .panelControlBar {
     z-index: 30;
     flex-grow: 1;
     overflow-anchor: none;
+    /* SillyBunny: keep iOS touch rubber-band inside #chat only; paired with
+       html/body `overscroll-behavior: none` this blocks the page-level
+       overscroll that blanks the whole conversation. */
+    overscroll-behavior-y: contain;
 }
 
 #form_sheld {

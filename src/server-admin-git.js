@@ -1,6 +1,6 @@
 const ORIGIN_REMOTE_PREFIX = 'origin/';
 const RUNTIME_BRANCH_PREFIX = 'runtime/';
-const BUN_LOCK_FILE = 'bun.lock';
+const GENERATED_INSTALL_FILES = Object.freeze(['bun.lock', 'package-lock.json', 'package.json']);
 
 export const NON_GIT_REPOSITORY_MESSAGE = 'This install is not running from a Git repository. Use Customize > Server to check for a release ZIP update, or install with git clone for Git updates.';
 
@@ -45,12 +45,20 @@ export function getRemoteBranchesFromSummary(branchSummary) {
         .filter(branch => branch && !branch.endsWith('/HEAD') && !branch.includes('/HEAD -> ')));
 }
 
-export function hasOnlyBunLockChange(files) {
-    const changedPaths = (Array.isArray(files) ? files : [])
-        .map(file => String(file?.path ?? file ?? '').trim().replaceAll('\\', '/'))
-        .filter(Boolean);
+export function getGeneratedInstallChangePaths(files) {
+    const fileEntries = Array.isArray(files) ? files : [];
+    const changedEntries = fileEntries
+        .map(file => ({
+            path: String(file?.path ?? file ?? '').trim().replaceAll('\\', '/'),
+            isUntracked: file?.index === '?' || file?.working_dir === '?',
+        }))
+        .filter(file => file.path);
 
-    return changedPaths.length === 1 && changedPaths[0] === BUN_LOCK_FILE;
+    if (!changedEntries.length || changedEntries.some(file => file.isUntracked || !GENERATED_INSTALL_FILES.includes(file.path))) {
+        return [];
+    }
+
+    return uniqueSorted(changedEntries.map(file => file.path));
 }
 
 export function getBranchDisplayNames(remoteBranches) {

@@ -22,6 +22,29 @@ import {
  */
 
 /**
+ * @typedef {object} AgentCompanionFeedback
+ * @property {boolean} enabled
+ * @property {number} depth
+ */
+
+/**
+ * @typedef {object} AgentCompanionConfig
+ * @property {'auto'|'manual'} trigger
+ * @property {'card'|'hidden'} displayMode
+ * @property {'markdown'|'html'|'text'} format
+ * @property {number} contextMessages
+ * @property {boolean} includeCharacterCard
+ * @property {boolean} includePersona
+ * @property {boolean} includeWorldInfo
+ * @property {boolean} includeHistory
+ * @property {number} historyDepth
+ * @property {AgentCompanionFeedback} feedback
+ * @property {boolean} batch
+ * @property {string[]} batchAgentIds
+ * @property {number} maxTokens
+ */
+
+/**
  * @typedef {object} AgentPreProcess
  * @property {'inject'|'intercept'} mode - Inject is the existing setExtensionPrompt flow; intercept rewrites the assembled outgoing context.
  * @property {'pre-generation'|'post-main-generation'} interceptTiming - When intercept mode runs.
@@ -81,13 +104,15 @@ import {
  * @property {string} name
  * @property {string} description
  * @property {string} icon
- * @property {'content'|'tracker'|'randomizer'|'custom'|'tool'} category
+ * @property {'content'|'tracker'|'randomizer'|'custom'|'tool'|'companion'} category
+ * @property {'inline'|'companion'} execution
  * @property {string[]} tags
  * @property {number} version
  * @property {string} author
  * @property {string} prompt
  * @property {'pre'|'post'|'both'} phase
  * @property {AgentInjection} injection
+ * @property {AgentCompanionConfig} companion
  * @property {AgentPreProcess} preProcess
  * @property {AgentPostProcess} postProcess
  * @property {AgentRegexScript[]} regexScripts
@@ -133,8 +158,11 @@ let globalSettings = {
     enabledAgentIdsByChatType: createDefaultScopedEnabledAgentIds(),
     scopedEnabledAgentIdsInitialized: false,
     connectionProfile: '',
+    companionConnectionProfile: '',
     promptTransformShowNotifications: true,
     appendAgentsExecutionMode: 'parallel',
+    companionExecutionMode: 'parallel',
+    companionConcurrentWithPostGen: false,
     helperPrefillMessages: '',
 };
 
@@ -434,6 +462,46 @@ export function resolveConnectionProfile(profileId = '') {
     return getActiveConnectionProfile();
 }
 
+/**
+ * Resolves the connection profile for a Companion run: the agent's own override wins,
+ * then the dedicated companion default, then the regular extension default chain.
+ * Keeps cheap auxiliary models separate from the post-generation default.
+ * @param {string} profileId Agent-level profile override
+ * @returns {string}
+ */
+export function resolveCompanionConnectionProfile(profileId = '') {
+    const explicitProfileId = normalizeConnectionProfileId(profileId);
+    if (explicitProfileId) {
+        return explicitProfileId;
+    }
+
+    const companionProfileId = normalizeConnectionProfileId(globalSettings.companionConnectionProfile);
+    if (companionProfileId) {
+        return companionProfileId;
+    }
+
+    return getActiveConnectionProfile();
+}
+
+/**
+ * Checks whether an agent belongs on the given agent-list tab.
+ * @param {InChatAgent} agent
+ * @param {'all'|'pre'|'post'|'companion'|string} tab
+ * @returns {boolean}
+ */
+export function agentMatchesListTab(agent, tab) {
+    switch (tab) {
+        case 'pre':
+            return !isCompanionAgent(agent) && ['pre', 'both'].includes(agent?.phase);
+        case 'post':
+            return !isCompanionAgent(agent) && ['post', 'both'].includes(agent?.phase);
+        case 'companion':
+            return isCompanionAgent(agent);
+        default:
+            return true;
+    }
+}
+
 export const LEGACY_AGENT_MAX_TOKENS = 2000;
 export const DEFAULT_AGENT_MAX_TOKENS = 8192;
 export const PATHFINDER_TEMPLATE_ID = 'tpl-pathfinder';
@@ -565,6 +633,131 @@ function chooseSameTemplateAgentToKeep(agents, template) {
     return agents.find(agent => agent?.enabled) ?? agents[0] ?? null;
 }
 
+function chooseBundledTemplateAgentToKeep(agents, template) {
+    const templateId = String(template?.id ?? '').trim();
+    const templatePrompt = String(template?.prompt ?? '').trim();
+    const withCurrentPrompt = agents.find(agent =>
+        String(agent?.sourceTemplateId ?? '').trim() === templateId &&
+        String(agent?.prompt ?? '').trim() === templatePrompt,
+    );
+    if (withCurrentPrompt) {
+        return withCurrentPrompt;
+    }
+
+    const currentPromptAgent = agents.find(agent => String(agent?.prompt ?? '').trim() === templatePrompt);
+    if (currentPromptAgent) {
+        return currentPromptAgent;
+    }
+
+    const sourceBackedEnabled = agents.find(agent => String(agent?.sourceTemplateId ?? '').trim() === templateId && agent?.enabled);
+    if (sourceBackedEnabled) {
+        return sourceBackedEnabled;
+    }
+
+    return agents.find(agent => String(agent?.sourceTemplateId ?? '').trim() === templateId)
+        ?? agents.find(agent => agent?.enabled)
+        ?? agents[0]
+        ?? null;
+}
+
+function cloneSettings(settings = {}) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return {};
+    }
+
+    return structuredClone(settings);
+}
+
+export function buildLatestBundledAgentSnapshot(agent, template) {
+    const latest = normalizeAgent({
+        ...createDefaultAgent(),
+        ...structuredClone(template ?? {}),
+        id: typeof agent?.id === 'string' && agent.id.trim() ? agent.id.trim() : uuidv4(),
+        sourceTemplateId: String(template?.id ?? agent?.sourceTemplateId ?? '').trim(),
+        enabled: Boolean(agent?.enabled),
+        favorite: Boolean(agent?.favorite),
+        connectionProfile: typeof agent?.connectionProfile === 'string' ? agent.connectionProfile : '',
+        modelOverride: typeof agent?.modelOverride === 'string' ? agent.modelOverride : '',
+        settings: cloneSettings(agent?.settings),
+        phaseLocked: false,
+    });
+
+    latest.injection = {
+        ...latest.injection,
+        order: Number.isFinite(Number(agent?.injection?.order))
+            ? Number(agent.injection.order)
+            : latest.injection.order,
+    };
+
+    // Preserve the stored agent's companion config so user customizations
+    // (trigger, displayMode, context toggles, format, etc.) survive template
+    // refreshes. Template companion config changes should be propagated via
+    // targeted version migrations in index.js instead.
+    if (agent?.companion && typeof agent.companion === 'object' && !Array.isArray(agent.companion)) {
+        latest.companion = normalizeCompanionConfig(agent.companion);
+    }
+
+    return latest;
+}
+
+function normalizedAgentJson(agent) {
+    return JSON.stringify(normalizeAgent(agent ?? {}));
+}
+
+export function getBundledAgentLatestTemplatePlan(agentList = [], templateList = []) {
+    const groupsByTemplateId = new Map();
+    const templatesById = new Map();
+
+    for (const agent of agentList) {
+        if (!agent || agent.phaseLocked) {
+            continue;
+        }
+
+        const template = findTemplateForAgentSnapshot(agent, templateList);
+        const templateId = String(template?.id ?? '').trim();
+        if (!templateId) {
+            continue;
+        }
+
+        templatesById.set(templateId, template);
+        if (!groupsByTemplateId.has(templateId)) {
+            groupsByTemplateId.set(templateId, []);
+        }
+        groupsByTemplateId.get(templateId).push(agent);
+    }
+
+    const redundantIds = new Set(getRedundantBundledAgentDuplicateIds(agentList, templateList));
+    const updates = [];
+
+    for (const [templateId, grouped] of groupsByTemplateId.entries()) {
+        const template = templatesById.get(templateId);
+        const keepAgent = chooseBundledTemplateAgentToKeep(grouped, template);
+        if (!keepAgent?.id) {
+            continue;
+        }
+
+        for (const agent of grouped) {
+            if (agent?.id && agent.id !== keepAgent.id && !agent.phaseLocked) {
+                redundantIds.add(agent.id);
+            }
+        }
+
+        const latestAgent = buildLatestBundledAgentSnapshot(keepAgent, template);
+        if (normalizedAgentJson(latestAgent) !== normalizedAgentJson(keepAgent)) {
+            updates.push({
+                agentId: keepAgent.id,
+                templateId,
+                agent: latestAgent,
+            });
+        }
+    }
+
+    return {
+        updates,
+        redundantIds: [...redundantIds].filter(id => !updates.some(update => update.agentId === id)),
+    };
+}
+
 export function getRedundantBundledAgentDuplicateIds(agentList = [], templateList = []) {
     const groupedAgents = new Map();
 
@@ -669,14 +862,139 @@ export function normalizePreProcessMaxTokens(value) {
     return Math.max(16, Math.min(16000, Number(value)));
 }
 
+function clampNumber(value, fallback, min, max) {
+    if (!Number.isFinite(Number(value))) {
+        return fallback;
+    }
+
+    return Math.max(min, Math.min(max, Number(value)));
+}
+
+function normalizeStringIdList(value = [], limit = 50) {
+    const rawValues = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,]/);
+    const seenIds = new Set();
+    const ids = [];
+
+    for (const rawValue of rawValues) {
+        const id = String(rawValue ?? '').trim().slice(0, 128);
+        const key = id.toLowerCase();
+        if (!id || seenIds.has(key)) continue;
+
+        seenIds.add(key);
+        ids.push(id);
+        if (ids.length >= limit) break;
+    }
+
+    return ids;
+}
+
+/**
+ * Creates the default Companion execution config.
+ * @returns {AgentCompanionConfig}
+ */
+export function createDefaultCompanionConfig() {
+    return {
+        trigger: 'auto',
+        // Companions live in the slide-out panel by default; in-chat cards are an opt-in.
+        displayMode: 'panel',
+        format: 'markdown',
+        rawPrompt: false,
+        inlinePhase: '',
+        minContextTokens: 0,
+        contextMessages: 10,
+        includeCharacterCard: true,
+        includePersona: true,
+        includeWorldInfo: true,
+        includeAuthorsNote: true,
+        includeSystemPrompt: true,
+        includeHistory: true,
+        historyDepth: 3,
+        feedback: {
+            enabled: false,
+            depth: 1,
+        },
+        batch: false,
+        batchAgentIds: [],
+        maxTokens: 32000,
+    };
+}
+
+/**
+ * Normalizes Companion execution settings loaded from disk or import.
+ * @param {Partial<AgentCompanionConfig>} raw
+ * @returns {AgentCompanionConfig}
+ */
+export function normalizeCompanionConfig(raw = {}) {
+    const defaults = createDefaultCompanionConfig();
+    const rawConfig = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const rawFeedback = rawConfig.feedback && typeof rawConfig.feedback === 'object' && !Array.isArray(rawConfig.feedback)
+        ? rawConfig.feedback
+        : {};
+
+    return {
+        ...defaults,
+        trigger: ['auto', 'manual'].includes(String(rawConfig.trigger))
+            ? String(rawConfig.trigger)
+            : defaults.trigger,
+        displayMode: ['card', 'panel', 'hidden'].includes(String(rawConfig.displayMode))
+            ? String(rawConfig.displayMode)
+            : defaults.displayMode,
+        format: ['markdown', 'html', 'text'].includes(String(rawConfig.format))
+            ? String(rawConfig.format)
+            : defaults.format,
+        rawPrompt: Boolean(rawConfig.rawPrompt),
+        inlinePhase: ['pre', 'post', 'both'].includes(String(rawConfig.inlinePhase)) ? String(rawConfig.inlinePhase) : '',
+        minContextTokens: clampNumber(rawConfig.minContextTokens, defaults.minContextTokens, 0, 200000),
+        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
+        includeCharacterCard: rawConfig.includeCharacterCard === undefined ? defaults.includeCharacterCard : Boolean(rawConfig.includeCharacterCard),
+        includePersona: rawConfig.includePersona === undefined ? defaults.includePersona : Boolean(rawConfig.includePersona),
+        includeWorldInfo: rawConfig.includeWorldInfo === undefined ? defaults.includeWorldInfo : Boolean(rawConfig.includeWorldInfo),
+        includeAuthorsNote: rawConfig.includeAuthorsNote === undefined ? defaults.includeAuthorsNote : Boolean(rawConfig.includeAuthorsNote),
+        includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
+        includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
+        historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
+        feedback: {
+            enabled: Boolean(rawFeedback.enabled),
+            depth: clampNumber(rawFeedback.depth, defaults.feedback.depth, 1, 10),
+        },
+        batch: Boolean(rawConfig.batch),
+        batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
+        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 32000),
+    };
+}
+
 const TRACKER_CATEGORY_TEMPLATE_IDS = new Set([
+    'tpl-achievements-tracker',
     'tpl-cyoa-choices',
     'tpl-direction-menu',
+    'tpl-event-tracker',
+    'tpl-item-tracker',
+    'tpl-parallel-tracker',
+    'tpl-relationship-tracker',
+    'tpl-reputation-tracker',
+    'tpl-scene-tracker',
+    'tpl-secrets-tracker',
+    'tpl-status-tracker',
+    'tpl-time-tracker',
+    'tpl-world-detail',
 ]);
 
 const TRACKER_CATEGORY_NAMES = new Set([
+    'achievements tracker',
     'cyoa choices',
     'direction menu',
+    'event tracker',
+    'item tracker',
+    'parallel off-screen',
+    'relationship tracker',
+    'reputation tracker',
+    'scene tracker',
+    'secrets tracker',
+    'status tracker',
+    'time tracker',
+    'world detail',
 ]);
 
 export function normalizeAgentCategory(category = '', sourceTemplateId = '', name = '') {
@@ -691,7 +1009,7 @@ export function normalizeAgentCategory(category = '', sourceTemplateId = '', nam
     }
 
     const normalizedCategory = typeof category === 'string' ? category.trim().toLowerCase() : '';
-    if (['content', 'tracker', 'randomizer', 'custom', 'tool'].includes(normalizedCategory)) {
+    if (['content', 'tracker', 'randomizer', 'custom', 'tool', 'companion'].includes(normalizedCategory)) {
         return normalizedCategory;
     }
 
@@ -706,6 +1024,7 @@ export const AGENT_CATEGORIES = {
     randomizer: { label: 'Randomizer', icon: 'fa-dice' },
     content: { label: 'Content', icon: 'fa-film' },
     tool: { label: 'Tool', icon: 'fa-screwdriver-wrench' },
+    companion: { label: 'Companion', icon: 'fa-user-astronaut' },
     custom: { label: 'Custom', icon: 'fa-puzzle-piece' },
 };
 
@@ -774,6 +1093,21 @@ export function getAgentRegexScripts(rawAgent = {}) {
     return legacyScript ? [legacyScript] : [];
 }
 
+export function isTrackerFixAgent(agent = {}) {
+    if (agent?.category !== 'tracker') {
+        return false;
+    }
+
+    if (agent.phase === 'post' || agent.phase === 'both') {
+        return true;
+    }
+
+    return agent.phase === 'pre' && (
+        (agent.postProcess?.enabled && agent.postProcess.type === 'extract') ||
+        getAgentRegexScripts(agent).length > 0
+    );
+}
+
 function cacheAgentRegexScriptsForAgent(agent) {
     cacheAgentRegexScripts(agent?.id, getAgentRegexScripts(agent));
 }
@@ -796,6 +1130,7 @@ export function createDefaultAgent() {
         description: '',
         icon: '',
         category: 'custom',
+        execution: 'inline',
         tags: [],
         version: 1,
         author: '',
@@ -811,6 +1146,7 @@ export function createDefaultAgent() {
             order: 100,
             scan: false,
         },
+        companion: createDefaultCompanionConfig(),
         preProcess: {
             mode: 'inject',
             interceptTiming: 'pre-generation',
@@ -883,6 +1219,10 @@ export function normalizeAgent(rawAgent = {}) {
     const rawPreProcess = rawAgent.preProcess && typeof rawAgent.preProcess === 'object' ? rawAgent.preProcess : {};
     const rawPostProcess = rawAgent.postProcess && typeof rawAgent.postProcess === 'object' ? rawAgent.postProcess : {};
     const conditions = rawAgent.conditions && typeof rawAgent.conditions === 'object' ? rawAgent.conditions : {};
+    const normalizedCategory = normalizeAgentCategory(rawAgent.category, rawAgent.sourceTemplateId, rawAgent.name);
+    const execution = rawAgent.execution === 'companion' || normalizedCategory === 'companion'
+        ? 'companion'
+        : defaults.execution;
 
     return {
         ...defaults,
@@ -891,7 +1231,8 @@ export function normalizeAgent(rawAgent = {}) {
         name: typeof rawAgent.name === 'string' ? rawAgent.name : defaults.name,
         description: typeof rawAgent.description === 'string' ? rawAgent.description : defaults.description,
         icon: typeof rawAgent.icon === 'string' ? rawAgent.icon : defaults.icon,
-        category: normalizeAgentCategory(rawAgent.category, rawAgent.sourceTemplateId, rawAgent.name),
+        category: normalizedCategory,
+        execution,
         tags: Array.isArray(rawAgent.tags)
             ? rawAgent.tags.map(tag => String(tag ?? '').trim()).filter(Boolean)
             : defaults.tags,
@@ -906,6 +1247,7 @@ export function normalizeAgent(rawAgent = {}) {
             ...defaults.injection,
             ...(rawAgent.injection ?? {}),
         },
+        companion: normalizeCompanionConfig(rawAgent.companion),
         preProcess: {
             ...defaults.preProcess,
             ...rawPreProcess,
@@ -1047,6 +1389,150 @@ export function getEnabledToolAgents() {
  */
 export function isToolAgent(agent) {
     return agent?.category === 'tool';
+}
+
+/**
+ * Checks if an agent should run through Companion execution.
+ * @param {InChatAgent} agent
+ * @returns {boolean}
+ */
+export function isCompanionAgent(agent) {
+    return agent?.execution === 'companion' || agent?.category === 'companion';
+}
+
+/**
+ * Returns a normalized Companion config for an agent.
+ * @param {Partial<InChatAgent>} agent
+ * @returns {AgentCompanionConfig}
+ */
+export function getCompanionConfig(agent = {}) {
+    return normalizeCompanionConfig(agent?.companion);
+}
+
+function buildCompanionContextAccessDefaults() {
+    return {
+        includeCharacterCard: true,
+        includePersona: true,
+        includeWorldInfo: true,
+        includeAuthorsNote: true,
+        includeSystemPrompt: true,
+        // Companions evolve their own previous states instead of re-deriving them each turn.
+        includeHistory: true,
+    };
+}
+
+/**
+ * Moves a card-mode companion into the slide-out panel. Used by the one-time migration;
+ * the editor can still opt back into in-chat cards afterwards.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyCompanionPanelDisplayDefault(agent) {
+    if (!agent || !isCompanionAgent(agent)) {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    agent.companion = companion;
+    if (companion.displayMode !== 'card') {
+        return false;
+    }
+
+    companion.displayMode = 'panel';
+    return true;
+}
+
+/**
+ * Grants a companion the default context access (persona, character card, world info,
+ * author's note, system prompt). Used by the one-time migration for existing companions.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyCompanionContextAccessDefaults(agent) {
+    if (!agent || !isCompanionAgent(agent)) {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    const next = { ...companion, ...buildCompanionContextAccessDefaults() };
+
+    if (JSON.stringify(next) === JSON.stringify(companion)) {
+        agent.companion = companion;
+        return false;
+    }
+
+    agent.companion = next;
+    return true;
+}
+
+/**
+ * Applies the tracker auto-loop defaults to a companion-execution tracker: run automatically
+ * after each reply with the agent prompt sent as-is, feed the latest state back into the next
+ * main generation, and show state in the slide-out tracker panel instead of chat cards.
+ * The editor can override any of it.
+ * @param {InChatAgent} agent
+ * @returns {boolean} Whether the agent changed.
+ */
+export function applyTrackerCompanionAutoLoopDefaults(agent) {
+    if (!agent || !isCompanionAgent(agent) || agent.category !== 'tracker') {
+        return false;
+    }
+
+    const companion = normalizeCompanionConfig(agent.companion);
+    const next = {
+        ...companion,
+        ...buildCompanionContextAccessDefaults(),
+        trigger: 'auto',
+        displayMode: 'panel',
+        rawPrompt: true,
+        feedback: {
+            ...companion.feedback,
+            enabled: true,
+        },
+    };
+
+    if (JSON.stringify(next) === JSON.stringify(companion)) {
+        agent.companion = companion;
+        return false;
+    }
+
+    agent.companion = next;
+    return true;
+}
+
+/**
+ * Switches an agent between inline and companion execution in place.
+ * Keeps prompt, regex scripts, injection, and conditions so the agent can round-trip.
+ * @param {InChatAgent} agent
+ * @param {'companion'|'inline'} targetExecution
+ * @returns {boolean} Whether the agent changed.
+ */
+export function convertAgentExecution(agent, targetExecution) {
+    const wantsCompanion = targetExecution === 'companion';
+    if (!agent || isToolAgent(agent) || isCompanionAgent(agent) === wantsCompanion) {
+        return false;
+    }
+
+    if (wantsCompanion) {
+        agent.execution = 'companion';
+        agent.companion = normalizeCompanionConfig(agent.companion);
+        // Remember the inline phase so converting back restores it instead of leaving 'post'.
+        agent.companion.inlinePhase = ['pre', 'post', 'both'].includes(agent.phase) ? agent.phase : '';
+        applyTrackerCompanionAutoLoopDefaults(agent);
+        agent.phase = 'post';
+        return true;
+    }
+
+    agent.execution = 'inline';
+    if (agent.companion?.inlinePhase) {
+        agent.phase = agent.companion.inlinePhase;
+    }
+    // normalizeAgent re-derives execution from the category, so a companion-category
+    // agent has to move to custom or it would normalize back to a companion on save.
+    if (agent.category === 'companion') {
+        agent.category = 'custom';
+    }
+    return true;
 }
 
 /**

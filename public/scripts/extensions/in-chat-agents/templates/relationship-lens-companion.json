@@ -1,0 +1,60 @@
+{
+    "id": "tpl-relationship-lens-companion",
+    "name": "Relationship Lens Companion",
+    "description": "Side note card for subtext, leverage, trust shifts, and emotional consequences",
+    "icon": "fa-people-arrows",
+    "category": "companion",
+    "tags": [
+        "relationship",
+        "subtext",
+        "emotion"
+    ],
+    "version": 1,
+    "author": "SillyBunny",
+    "prompt": "Read the latest assistant reply and recent context as a relationship analyst. Write a concise note about what changed between the important characters. Focus on trust, leverage, attraction, resentment, fear, obligation, secrets, and what each person may do next because of it. Use short bullets under these labels when useful: Shift, Evidence, Stakes, Watch next. Stay with established facts and relationship implications from the source reply.",
+    "phase": "post",
+    "execution": "companion",
+    "companion": {
+        "trigger": "manual",
+        "displayMode": "panel",
+        "format": "markdown",
+        "contextMessages": 10,
+        "includeCharacterCard": true,
+        "includePersona": true,
+        "includeWorldInfo": true,
+        "includeHistory": true,
+        "historyDepth": 2,
+        "feedback": {
+            "enabled": false,
+            "depth": 1
+        },
+        "batch": false,
+        "maxTokens": 32000
+    },
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 0,
+        "order": 105,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": ""
+    },
+    "enabled": false,
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal",
+            "continue"
+        ]
+    }
+}

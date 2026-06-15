@@ -327,6 +327,375 @@ describe('in-chat agent scoped enabled state', () => {
         }));
     });
 
+    test('defaults agents to inline execution with companion settings available', async () => {
+        const store = await importStore();
+        const agent = store.createDefaultAgent();
+
+        expect(agent.execution).toBe('inline');
+        expect(agent.companion).toEqual({
+            trigger: 'auto',
+            displayMode: 'panel',
+            format: 'markdown',
+            rawPrompt: false,
+            inlinePhase: '',
+            minContextTokens: 0,
+            contextMessages: 10,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
+            includeHistory: true,
+            historyDepth: 3,
+            feedback: {
+                enabled: false,
+                depth: 1,
+            },
+            batch: false,
+            batchAgentIds: [],
+            maxTokens: 32000,
+        });
+        expect(store.isCompanionAgent(agent)).toBe(false);
+    });
+
+    test('normalizes companion execution settings with safe defaults and clamps', async () => {
+        const store = await importStore();
+
+        expect(store.normalizeCompanionConfig({
+            trigger: 'manual',
+            displayMode: 'hidden',
+            format: 'html',
+            contextMessages: 999,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeHistory: true,
+            historyDepth: -1,
+            feedback: {
+                enabled: true,
+                depth: 999,
+            },
+            batch: true,
+            batchAgentIds: ['continuity-companion', 'director-commentary'],
+            maxTokens: 999999,
+        })).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            displayMode: 'hidden',
+            format: 'html',
+            contextMessages: 50,
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeHistory: true,
+            historyDepth: 1,
+            feedback: {
+                enabled: true,
+                depth: 10,
+            },
+            batch: true,
+            batchAgentIds: ['continuity-companion', 'director-commentary'],
+            maxTokens: 32000,
+        }));
+
+        expect(store.normalizeCompanionConfig({
+            trigger: 'sometimes',
+            displayMode: 'window',
+            format: 'pdf',
+            contextMessages: 'never',
+            historyDepth: 'never',
+            feedback: { depth: 'never' },
+            maxTokens: 'never',
+        })).toEqual(store.createDefaultCompanionConfig());
+    });
+
+    test('normalizes category and execution independently for companion agents', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'pure-companion',
+                name: 'Pure Companion',
+                category: 'companion',
+                execution: 'inline',
+            },
+            {
+                id: 'tracker-companion',
+                name: 'Status Tracker',
+                category: 'companion',
+                sourceTemplateId: 'tpl-status-tracker',
+                execution: 'companion',
+            },
+        ]);
+
+        expect(store.getAgentById('pure-companion')).toEqual(expect.objectContaining({
+            category: 'companion',
+            execution: 'companion',
+        }));
+        expect(store.isCompanionAgent(store.getAgentById('pure-companion'))).toBe(true);
+        expect(store.getCompanionConfig(store.getAgentById('pure-companion'))).toEqual(store.createDefaultCompanionConfig());
+
+        expect(store.getAgentById('tracker-companion')).toEqual(expect.objectContaining({
+            category: 'tracker',
+            execution: 'companion',
+        }));
+        expect(store.isCompanionAgent(store.getAgentById('tracker-companion'))).toBe(true);
+    });
+
+    test('converts an inline tracker to companion execution while keeping its identity', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'inline-tracker',
+            name: 'Inline Tracker',
+            category: 'tracker',
+            phase: 'pre',
+            prompt: 'Track statuses.',
+            regexScripts: [{ id: 'rs-1', scriptName: 'Beautifier', findRegex: '/foo/', replaceString: 'bar' }],
+            injection: { position: 1, depth: 6, role: 2, order: 42, scan: true },
+            conditions: { triggerKeywords: ['status'], triggerProbability: 100, generationTypes: ['normal'] },
+        }]);
+        const agent = store.getAgentById('inline-tracker');
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+
+        expect(agent.execution).toBe('companion');
+        expect(agent.phase).toBe('post');
+        expect(agent.category).toBe('tracker');
+        expect(store.isCompanionAgent(agent)).toBe(true);
+        expect(agent.companion).toEqual({
+            ...store.createDefaultCompanionConfig(),
+            displayMode: 'panel',
+            rawPrompt: true,
+            inlinePhase: 'pre',
+            feedback: { enabled: true, depth: 1 },
+        });
+        expect(agent.regexScripts).toHaveLength(1);
+        expect(agent.regexScripts[0]).toEqual(expect.objectContaining({ findRegex: '/foo/', replaceString: 'bar' }));
+        expect(agent.injection).toEqual(expect.objectContaining({ position: 1, depth: 6, role: 2, order: 42, scan: true }));
+        expect(agent.conditions.triggerKeywords).toEqual(['status']);
+        expect(agent.prompt).toBe('Track statuses.');
+    });
+
+    test('converts a companion-category agent back to inline by moving it to custom', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'pure-companion',
+            name: 'Pure Companion',
+            category: 'companion',
+            execution: 'companion',
+            prompt: 'Write a side note.',
+        }]);
+        const agent = store.getAgentById('pure-companion');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+
+        expect(agent.execution).toBe('inline');
+        expect(agent.category).toBe('custom');
+        expect(store.isCompanionAgent(agent)).toBe(false);
+    });
+
+    test('round-trips a customized companion config through inline conversion', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'customized-companion',
+            name: 'Customized Companion',
+            category: 'custom',
+            execution: 'companion',
+            prompt: 'Write a side note.',
+            companion: { trigger: 'manual', format: 'text', maxTokens: 4096 },
+        }]);
+        const agent = store.getAgentById('customized-companion');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+        expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+        expect(store.isCompanionAgent(agent)).toBe(true);
+        expect(agent.companion).toEqual(expect.objectContaining({ trigger: 'manual', format: 'text', maxTokens: 4096 }));
+    });
+
+    test('keeps converted trackers in the automatic panel loop', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'plain-tracker', name: 'Plain Tracker', category: 'tracker', phase: 'pre' },
+            { id: 'plain-content', name: 'Content Agent', category: 'content', phase: 'post' },
+        ]);
+
+        const plainTracker = store.getAgentById('plain-tracker');
+        expect(store.convertAgentExecution(plainTracker, 'companion')).toBe(true);
+        expect(plainTracker.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            feedback: expect.objectContaining({ enabled: true }),
+        }));
+
+        const contentAgent = store.getAgentById('plain-content');
+        expect(store.convertAgentExecution(contentAgent, 'companion')).toBe(true);
+        expect(contentAgent.companion).toEqual(expect.objectContaining({
+            displayMode: 'panel',
+            rawPrompt: false,
+            feedback: expect.objectContaining({ enabled: false }),
+        }));
+    });
+
+    test('applies the tracker auto-loop defaults once and only to tracker companions', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'manual-card-tracker',
+                name: 'Manual Card Tracker',
+                category: 'tracker',
+                execution: 'companion',
+                companion: { trigger: 'manual', displayMode: 'card', feedback: { enabled: false, depth: 2 } },
+            },
+            { id: 'inline-tracker', name: 'Inline Tracker', category: 'tracker' },
+            { id: 'note-companion', name: 'Note Companion', category: 'companion', execution: 'companion' },
+        ]);
+
+        const trackerCompanion = store.getAgentById('manual-card-tracker');
+        expect(store.applyTrackerCompanionAutoLoopDefaults(trackerCompanion)).toBe(true);
+        expect(trackerCompanion.companion).toEqual(expect.objectContaining({
+            trigger: 'auto',
+            displayMode: 'panel',
+            rawPrompt: true,
+            feedback: { enabled: true, depth: 2 },
+        }));
+        expect(store.applyTrackerCompanionAutoLoopDefaults(trackerCompanion)).toBe(false);
+
+        expect(store.applyTrackerCompanionAutoLoopDefaults(store.getAgentById('inline-tracker'))).toBe(false);
+        const noteCompanion = store.getAgentById('note-companion');
+        expect(store.applyTrackerCompanionAutoLoopDefaults(noteCompanion)).toBe(false);
+        expect(noteCompanion.companion.displayMode).toBe('panel');
+    });
+
+    test('normalizes the panel display mode for companion configs', async () => {
+        const store = await importStore();
+
+        expect(store.normalizeCompanionConfig({ displayMode: 'panel' }).displayMode).toBe('panel');
+        expect(store.normalizeCompanionConfig({ displayMode: 'window' }).displayMode).toBe('panel');
+        expect(store.normalizeCompanionConfig({}).minContextTokens).toBe(0);
+        expect(store.normalizeCompanionConfig({ minContextTokens: 30000 }).minContextTokens).toBe(30000);
+        expect(store.normalizeCompanionConfig({ minContextTokens: 500000 }).minContextTokens).toBe(200000);
+    });
+
+    test('grants context access defaults to companions while honoring explicit choices', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'opted-out-companion',
+                name: 'Opted Out',
+                category: 'companion',
+                execution: 'companion',
+                companion: { includeCharacterCard: false, includePersona: false, includeWorldInfo: false, includeAuthorsNote: false, includeSystemPrompt: false },
+            },
+            { id: 'fresh-companion', name: 'Fresh', category: 'companion', execution: 'companion' },
+            { id: 'inline-agent', name: 'Inline', category: 'custom' },
+        ]);
+
+        // Stored explicit false survives normalization; absent keys pick up the new true defaults.
+        const optedOut = store.getAgentById('opted-out-companion');
+        expect(optedOut.companion.includeCharacterCard).toBe(false);
+        expect(store.getAgentById('fresh-companion').companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
+        }));
+
+        expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(true);
+        expect(optedOut.companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includeAuthorsNote: true,
+            includeSystemPrompt: true,
+            includeHistory: true,
+        }));
+        expect(store.applyCompanionContextAccessDefaults(optedOut)).toBe(false);
+        expect(store.applyCompanionContextAccessDefaults(store.getAgentById('inline-agent'))).toBe(false);
+    });
+
+    test('moves card-mode companions into the panel once', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'card-companion', name: 'Card Companion', category: 'companion', execution: 'companion', companion: { displayMode: 'card' } },
+            { id: 'hidden-companion', name: 'Hidden Companion', category: 'companion', execution: 'companion', companion: { displayMode: 'hidden' } },
+            { id: 'inline-agent', name: 'Inline', category: 'custom' },
+        ]);
+
+        const cardCompanion = store.getAgentById('card-companion');
+        expect(store.applyCompanionPanelDisplayDefault(cardCompanion)).toBe(true);
+        expect(cardCompanion.companion.displayMode).toBe('panel');
+        expect(store.applyCompanionPanelDisplayDefault(cardCompanion)).toBe(false);
+
+        const hiddenCompanion = store.getAgentById('hidden-companion');
+        expect(store.applyCompanionPanelDisplayDefault(hiddenCompanion)).toBe(false);
+        expect(hiddenCompanion.companion.displayMode).toBe('hidden');
+
+        expect(store.applyCompanionPanelDisplayDefault(store.getAgentById('inline-agent'))).toBe(false);
+    });
+
+    test('matches agents to list tabs by phase and execution', async () => {
+        const store = await importStore();
+        const preAgent = { phase: 'pre' };
+        const postAgent = { phase: 'post' };
+        const bothAgent = { phase: 'both' };
+        const companionAgent = { phase: 'post', execution: 'companion' };
+
+        expect(store.agentMatchesListTab(preAgent, 'pre')).toBe(true);
+        expect(store.agentMatchesListTab(preAgent, 'post')).toBe(false);
+        expect(store.agentMatchesListTab(postAgent, 'post')).toBe(true);
+        expect(store.agentMatchesListTab(bothAgent, 'pre')).toBe(true);
+        expect(store.agentMatchesListTab(bothAgent, 'post')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'companion')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'post')).toBe(false);
+        expect(store.agentMatchesListTab(preAgent, 'all')).toBe(true);
+        expect(store.agentMatchesListTab(companionAgent, 'all')).toBe(true);
+    });
+
+    test('resolves companion connection profiles through the dedicated default', async () => {
+        const store = await importStore();
+        store.setGlobalSettings({ connectionProfile: 'default-profile', companionConnectionProfile: 'cheap-profile' });
+
+        expect(store.resolveCompanionConnectionProfile('agent-profile')).toBe('agent-profile');
+        expect(store.resolveCompanionConnectionProfile('')).toBe('cheap-profile');
+        expect(store.resolveConnectionProfile('')).toBe('default-profile');
+
+        store.setGlobalSettings({ companionConnectionProfile: '' });
+        expect(store.resolveCompanionConnectionProfile('')).toBe('default-profile');
+    });
+
+    test('restores the inline phase when converting a companion back', async () => {
+        const store = await importStore();
+        store.loadAgents([{
+            id: 'pre-gen-tracker',
+            name: 'Pre Tracker',
+            category: 'tracker',
+            phase: 'pre',
+            prompt: 'Track things.',
+        }]);
+        const agent = store.getAgentById('pre-gen-tracker');
+
+        expect(store.convertAgentExecution(agent, 'companion')).toBe(true);
+        expect(agent.phase).toBe('post');
+        expect(agent.companion.inlinePhase).toBe('pre');
+
+        expect(store.convertAgentExecution(agent, 'inline')).toBe(true);
+        expect(agent.phase).toBe('pre');
+    });
+
+    test('refuses no-op and tool-agent execution conversions', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            { id: 'already-companion', name: 'Companion', category: 'companion', execution: 'companion' },
+            { id: 'already-inline', name: 'Inline', category: 'custom' },
+            { id: 'tool-agent', name: 'Tool', category: 'tool' },
+        ]);
+
+        expect(store.convertAgentExecution(store.getAgentById('already-companion'), 'companion')).toBe(false);
+        expect(store.convertAgentExecution(store.getAgentById('already-inline'), 'inline')).toBe(false);
+        expect(store.convertAgentExecution(store.getAgentById('tool-agent'), 'companion')).toBe(false);
+        expect(store.convertAgentExecution(undefined, 'companion')).toBe(false);
+    });
+
     test('preserves disabled Pathfinder summary tool toggles while normalizing agents', async () => {
         const store = await importStore();
         store.loadAgents([
@@ -417,6 +786,146 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getRedundantBundledAgentDuplicateIds(agents, templates)).toEqual(['old-prose-polisher']);
     });
 
+    test('refreshes saved bundled agents from the latest template while preserving runtime state', async () => {
+        const store = await importStore();
+        const templates = [{
+            id: 'tpl-chatroom-companion',
+            name: 'Chatroom',
+            prompt: 'latest bundled prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            version: 1,
+            companion: {
+                trigger: 'auto',
+                displayMode: 'panel',
+                format: 'html',
+                includeWorldInfo: true,
+                maxTokens: 32000,
+            },
+            regexScripts: [{
+                id: 'latest-renderer',
+                scriptName: 'Latest renderer',
+                findRegex: '/x/g',
+                replaceString: 'y',
+            }],
+        }];
+        const agents = [{
+            id: 'saved-chatroom',
+            name: 'Chatroom',
+            prompt: 'old bundled prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            enabled: true,
+            favorite: true,
+            connectionProfile: 'sidecar-profile',
+            modelOverride: 'small-model',
+            injection: { order: 420 },
+            companion: {
+                trigger: 'manual',
+                displayMode: 'card',
+                format: 'markdown',
+                includeWorldInfo: false,
+                maxTokens: 2048,
+            },
+            regexScripts: [],
+            settings: {
+                chatroomStyle: 'reddit',
+            },
+        }];
+
+        const plan = store.getBundledAgentLatestTemplatePlan(agents, templates);
+
+        expect(plan.redundantIds).toEqual([]);
+        expect(plan.updates).toHaveLength(1);
+        expect(plan.updates[0].agent).toEqual(expect.objectContaining({
+            id: 'saved-chatroom',
+            name: 'Chatroom',
+            prompt: 'latest bundled prompt',
+            sourceTemplateId: 'tpl-chatroom-companion',
+            enabled: true,
+            favorite: true,
+            connectionProfile: 'sidecar-profile',
+            modelOverride: 'small-model',
+            phaseLocked: false,
+            settings: { chatroomStyle: 'reddit' },
+        }));
+        expect(plan.updates[0].agent.injection.order).toBe(420);
+        expect(plan.updates[0].agent.companion).toEqual(expect.objectContaining({
+            trigger: 'manual',
+            displayMode: 'card',
+            format: 'markdown',
+            includeWorldInfo: false,
+            maxTokens: 2048,
+        }));
+        expect(plan.updates[0].agent.regexScripts).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'latest-renderer' }),
+        ]));
+    });
+
+    test('dedupes existing bundled setup copies while updating the keeper', async () => {
+        const store = await importStore();
+        const templates = [{
+            id: 'tpl-relationship-lens-companion',
+            name: 'Relationship Lens',
+            prompt: 'latest relationship prompt',
+            author: 'SillyBunny',
+            category: 'companion',
+            execution: 'companion',
+            companion: {
+                includeCharacterCard: true,
+                includePersona: true,
+                includeWorldInfo: true,
+            },
+        }];
+        const agents = [
+            {
+                id: 'old-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'stale relationship prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                enabled: true,
+            },
+            {
+                id: 'duplicate-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'another stale prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                enabled: false,
+            },
+            {
+                id: 'locked-relationship-lens',
+                name: 'Relationship Lens',
+                prompt: 'custom locked prompt',
+                author: 'SillyBunny',
+                category: 'companion',
+                execution: 'companion',
+                sourceTemplateId: 'tpl-relationship-lens-companion',
+                phaseLocked: true,
+            },
+        ];
+
+        const plan = store.getBundledAgentLatestTemplatePlan(agents, templates);
+
+        expect(plan.redundantIds).toEqual(['duplicate-relationship-lens']);
+        expect(plan.updates).toHaveLength(1);
+        expect(plan.updates[0].agent.id).toBe('old-relationship-lens');
+        expect(plan.updates[0].agent.prompt).toBe('latest relationship prompt');
+        expect(plan.updates[0].agent.companion).toEqual(expect.objectContaining({
+            includeCharacterCard: true,
+            includePersona: true,
+            includeWorldInfo: true,
+        }));
+    });
+
     test('does not mark phase-locked same-template duplicates redundant', async () => {
         const store = await importStore();
         const templates = [{
@@ -463,6 +972,58 @@ describe('in-chat agent scoped enabled state', () => {
         };
 
         expect(store.findTemplateForAgentSnapshot(agent, templates)?.id).toBe('tpl-achievements-tracker');
+    });
+
+    test('normalizes legacy bundled tracker copies with stale categories', async () => {
+        const store = await importStore();
+        store.loadAgents([
+            {
+                id: 'saved-status',
+                name: 'Saved Status',
+                category: 'custom',
+                sourceTemplateId: 'tpl-status-tracker',
+                enabled: true,
+            },
+            {
+                id: 'saved-scene',
+                name: 'Scene Tracker',
+                category: 'custom',
+                enabled: true,
+            },
+        ]);
+
+        expect(store.getAgentById('saved-status').category).toBe('tracker');
+        expect(store.getAgentById('saved-scene').category).toBe('tracker');
+        expect(store.getEnabledAgents().map(agent => agent.id)).toEqual(['saved-status', 'saved-scene']);
+    });
+
+    test('considers pre-phase extract trackers repairable', async () => {
+        const store = await importStore();
+
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+            },
+        })).toBe(true);
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: false,
+                type: 'extract',
+            },
+        })).toBe(false);
+        expect(store.isTrackerFixAgent({
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'append',
+            },
+        })).toBe(false);
     });
 
     test('keeps prompt-changed custom snapshots from matching bundled templates', async () => {

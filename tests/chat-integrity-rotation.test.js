@@ -178,6 +178,49 @@ describe('chat integrity rotation', () => {
         const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
 
         expect(postSaveBackups).toHaveLength(1);
+        expect(preWriteBackups).toHaveLength(1);
+    });
+
+    test('skips duplicate pre-write backups when on-disk content is unchanged', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-integrity-prewrite-dedup-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('original-integrity', 'original content').map(JSON.stringify).join('\n'));
+
+        const firstResult = await trySaveChat(
+            chatWithIntegrity('original-integrity', 'original content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const secondResult = await trySaveChat(
+            chatWithIntegrity(firstResult.integrity, 'different content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        await trySaveChat(
+            chatWithIntegrity(secondResult.integrity, 'final content'),
+            chatFile,
+            false,
+            'prewrite-dedup-user',
+            'Test Card',
+            backupDir,
+        );
+
+        const backupFiles = await fs.readdir(backupDir);
+        const preWriteBackups = backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+
         expect(preWriteBackups).toHaveLength(2);
     });
 
@@ -419,5 +462,22 @@ describe('chat integrity rotation', () => {
         expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup });');
         expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
+    });
+
+    test('retries group chat load requests after stale CSRF before integrity metadata is initialized', async () => {
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+        const loadGroupChatBody = groupChatSource.slice(
+            groupChatSource.indexOf('async function loadGroupChat(chatId)'),
+            groupChatSource.indexOf('/**\n * Checks whether a group chat file currently exists on the server.'),
+        );
+        const groupChatExistsBody = groupChatSource.slice(
+            groupChatSource.indexOf('async function groupChatExists(chatId)'),
+            groupChatSource.indexOf('/**\n * Validates a group by checking if all members exist'),
+        );
+
+        expect(loadGroupChatBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/get\'');
+        expect(loadGroupChatBody).toContain('{ refreshCsrfToken }');
+        expect(groupChatExistsBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/info\'');
+        expect(groupChatExistsBody).toContain('{ refreshCsrfToken }');
     });
 });

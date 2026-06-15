@@ -189,7 +189,15 @@
 }
 
 /* Pre-hide old ST drawer toggles before shell JS runs. */
-#top-settings-holder > .drawer > .drawer-toggle {
+/* SillyBunny: scope to native drawer IDs only; allow third-party extension buttons to remain visible. */
+#top-settings-holder > #ai-config-button > .drawer-toggle,
+#top-settings-holder > #sys-settings-button > .drawer-toggle,
+#top-settings-holder > #advanced-formatting-button > .drawer-toggle,
+#top-settings-holder > #WI-SP-button > .drawer-toggle,
+#top-settings-holder > #user-settings-button > .drawer-toggle,
+#top-settings-holder > #backgrounds-button > .drawer-toggle,
+#top-settings-holder > #extensions-settings-button > .drawer-toggle,
+#top-settings-holder > #persona-management-button > .drawer-toggle {
     display: none !important;
 }
 
@@ -197,12 +205,48 @@
  * Keep closed top-bar drawers fully inert from first paint onward.
  * This prevents invisible shells from stealing clicks over the top bar.
  */
-#top-settings-holder > .drawer > .drawer-content.closedDrawer:not(.openDrawer) {
+/* SillyBunny: scope to native drawer IDs only; allow third-party extension drawers to function. */
+#top-settings-holder > #ai-config-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #sys-settings-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #advanced-formatting-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #WI-SP-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #user-settings-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #backgrounds-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #extensions-settings-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #persona-management-button > .drawer-content.closedDrawer:not(.openDrawer),
+#top-settings-holder > #rightNavHolder > .drawer-content.closedDrawer:not(.openDrawer) {
     display: none !important;
     pointer-events: none !important;
 }
 
-#top-settings-holder > .drawer > .drawer-content.openDrawer {
+/*
+ * SillyBunny: ghost-toggle for the native Characters drawer toggle.
+ * Extensions like CharacterLibrary anchor dropdowns to the native toggle's (or its icon child's) bounding rect.
+ * Critical hiding properties (visibility, pointer-events) are applied via inline styles in hideHostToggles()
+ * to stay within the CSS ratchet budget; this class serves as a semantic marker and default.
+ * Positioned via JS over the shell's proxy Characters button so extension dropdowns anchor correctly.
+ */
+.sb-ghost-toggle {
+    z-index: -1;
+    opacity: 0;
+    margin: 0;
+    border: none;
+}
+
+#top-settings-holder > #ai-config-button > .drawer-content.openDrawer,
+#top-settings-holder > #sys-settings-button > .drawer-content.openDrawer,
+#top-settings-holder > #advanced-formatting-button > .drawer-content.openDrawer,
+#top-settings-holder > #WI-SP-button > .drawer-content.openDrawer,
+#top-settings-holder > #user-settings-button > .drawer-content.openDrawer,
+#top-settings-holder > #backgrounds-button > .drawer-content.openDrawer,
+#top-settings-holder > #extensions-settings-button > .drawer-content.openDrawer,
+#top-settings-holder > #persona-management-button > .drawer-content.openDrawer,
+#top-settings-holder > #rightNavHolder > .drawer-content.openDrawer {
+    pointer-events: auto;
+}
+
+/* SillyBunny: allow extension drawers (non-native) to be clickable despite parent pointer-events: none. */
+#top-settings-holder > .drawer:not(#ai-config-button):not(#sys-settings-button):not(#advanced-formatting-button):not(#WI-SP-button):not(#user-settings-button):not(#backgrounds-button):not(#extensions-settings-button):not(#persona-management-button):not(#rightNavHolder) {
     pointer-events: auto;
 }
 
@@ -3567,12 +3611,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-radius: var(--sb-radius-md, 16px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
     background: transparent;
-    padding: 14px 14px 16px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    align-items: flex-start;
-    text-align: left;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
     color: var(--SmartThemeBodyColor);
     font: inherit;
     cursor: pointer;
@@ -3581,7 +3626,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 :root[data-sb-compact-mode='true'] .sb-theme-option {
     gap: 5px;
-    padding: 10px 12px;
+    padding: 6px 10px;
 }
 
 .sb-theme-option::before {
@@ -7569,7 +7614,16 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         z-index: var(--sb-z-popout) !important;
     }
 
-    #top-settings-holder > .drawer:not(.sb-embedded-drawer),
+    /* SillyBunny: scope to native drawer IDs; allow third-party extension drawers to render on iOS. */
+    #top-settings-holder > #ai-config-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #sys-settings-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #advanced-formatting-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #WI-SP-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #user-settings-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #backgrounds-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #extensions-settings-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #persona-management-button:not(.sb-embedded-drawer),
+    #top-settings-holder > #rightNavHolder:not(.sb-embedded-drawer),
     #top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
         height: 0 !important;
         min-height: 0 !important;

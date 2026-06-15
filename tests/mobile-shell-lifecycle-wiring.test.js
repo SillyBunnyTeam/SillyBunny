@@ -151,6 +151,45 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileShellRailActionsSource).not.toContain('builtInRailActions.map(getMobileQuickActionKey)');
     });
 
+    test('routes mobile rail model decisions through the lifecycle seam', () => {
+        const getMobileQuickActionContextSource = getFunctionSource('getMobileQuickActionContext');
+        const normalizeMobileQuickActionSource = getFunctionSource('normalizeMobileQuickAction');
+        const getMobileQuickActionKeySource = getFunctionSource('getMobileQuickActionKey');
+        const syncMobileShellRailActionsSource = getFunctionSource('syncMobileShellRailActions');
+
+        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;');
+        expect(tabsSource).toContain('const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;');
+        expect(getMobileQuickActionContextSource).toContain('sbMobileShellLifecycle.railModel.resolveQuickActionRoute(value);');
+        expect(normalizeMobileQuickActionSource).toContain('sbMobileShellLifecycle.railModel.normalizeQuickAction({');
+        expect(normalizeMobileQuickActionSource).toContain('limits: sbMobileShellLifecycle.railModel.limits,');
+        expect(getMobileQuickActionKeySource).toContain('sbMobileShellLifecycle.railModel.getQuickActionKey(normalizedAction);');
+        expect(syncMobileShellRailActionsSource).toContain('sbMobileShellLifecycle.railModel.resolveActionVisibility({');
+        expect(syncMobileShellRailActionsSource).toContain('builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),');
+        expect(syncMobileShellRailActionsSource).toContain('shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;');
+        expect(syncMobileShellRailActionsSource).toContain('for (const group of railActionPlan.beforeGroups)');
+        expect(syncMobileShellRailActionsSource).toContain('if (railActionPlan.afterGroups.length > 0)');
+        expect(syncMobileShellRailActionsSource).not.toContain('const shouldHideCustomizeTabs = showCustomize;');
+        expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
+    });
+
+    test('routes inline drawer decisions through the lifecycle seam', () => {
+        const interceptDrawerOpenersSource = getFunctionSource('interceptDrawerOpeners');
+        const getInlineDrawerStorageKeySource = getFunctionSource('getInlineDrawerStorageKey');
+
+        expect(tabsSource).toContain('function getInlineDrawerAutoCloseId(');
+        expect(interceptDrawerOpenersSource).toContain('sbMobileShellLifecycle.inlineDrawers.resolveAutoCloseSiblings({');
+        expect(interceptDrawerOpenersSource).toContain('openedDrawerId,');
+        expect(interceptDrawerOpenersSource).toContain('openDrawerIds,');
+        expect(interceptDrawerOpenersSource).toContain('isMobileViewport: isMobileViewport(),');
+        expect(interceptDrawerOpenersSource).toContain('for (const closeId of autoClosePlan.closeIds)');
+        expect(interceptDrawerOpenersSource).not.toContain('parent.querySelectorAll(\':scope > .inline-drawer\').forEach');
+        expect(getInlineDrawerStorageKeySource).toContain('sbMobileShellLifecycle.inlineDrawers.derivePersistenceKey({');
+        expect(getInlineDrawerStorageKeySource).toContain('storagePrefix: SB_STORAGE_KEYS.settingsDrawerStatePrefix,');
+        expect(getInlineDrawerStorageKeySource).toContain('contextSegments,');
+        expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer-id:');
+        expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
+    });
+
     test('clamps resizable shell panels against the visual viewport and panel top', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');

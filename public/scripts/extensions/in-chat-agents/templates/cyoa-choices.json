@@ -1,45 +1,49 @@
 {
-  "id": "tpl-cyoa-choices",
-  "name": "CYOA Choices",
-  "description": "Append 3-5 numbered action choices at the end of every response",
-  "icon": "",
-  "category": "tracker",
-  "tags": [
-    "choices",
-    "interactive",
-    "cyoa"
-  ],
-  "version": 1,
-  "author": "Purachina",
-  "prompt": "### CYOA Choices\nEnd EVERY response with the EXACT formatting with no modifications and without leaving out any tags. Place this after every single other formatting when applicable at the very end of the scene message. This is strictly from {{user}}’s perspective.\n\n3-7 numbered options:\n[CHOICES]\n1. Action description\n2. Action description\n3. Action description\n[/CHOICES]",
-  "phase": "post",
-  "injection": {
-    "position": 0,
-    "depth": 4,
-    "role": 1,
-    "order": 100,
-    "scan": false
-  },
-  "postProcess": {
+    "id": "tpl-cyoa-choices",
+    "name": "CYOA Choices",
+    "description": "Append 3-5 numbered action choices at the end of every response",
+    "icon": "",
+    "category": "tracker",
+    "subcategory": "player-choices",
+    "tags": [
+        "choices",
+        "interactive",
+        "cyoa"
+    ],
+    "version": 1,
+    "author": "Purachina",
+    "prompt": "### CYOA Choices\nAdd a player-choice block after the scene reply. When this runs as a repair task, the choice block is the full result. Choices are from {{user}}’s perspective and describe possible next actions.\n\nUse this format with 3-7 numbered options:\n[CHOICES]\n1. Action description\n2. Action description\n3. Action description\n[/CHOICES]",
+    "phase": "post",
+    "injection": {
+        "position": 0,
+        "depth": 4,
+        "role": 1,
+        "order": 100,
+        "scan": false
+    },
+    "postProcess": {
+        "enabled": false,
+        "type": "regex",
+        "regexFind": "",
+        "regexReplace": "",
+        "regexFlags": "g",
+        "appendText": "",
+        "extractPattern": "",
+        "extractVariable": "",
+        "promptTransformEnabled": true,
+        "promptTransformShowNotifications": true,
+        "promptTransformMode": "append",
+        "promptTransformMaxTokens": 8192
+    },
+    "companion": {
+        "includeSystemPrompt": false
+    },
     "enabled": false,
-    "type": "regex",
-    "regexFind": "",
-    "regexReplace": "",
-    "regexFlags": "g",
-    "appendText": "",
-    "extractPattern": "",
-    "extractVariable": "",
-    "promptTransformEnabled": true,
-    "promptTransformShowNotifications": true,
-    "promptTransformMode": "append",
-    "promptTransformMaxTokens": 8192
-  },
-  "enabled": false,
-  "conditions": {
-    "triggerKeywords": [],
-    "triggerProbability": 100,
-    "generationTypes": [
-      "normal"
-    ]
-  }
+    "conditions": {
+        "triggerKeywords": [],
+        "triggerProbability": 100,
+        "generationTypes": [
+            "normal"
+        ]
+    }
 }

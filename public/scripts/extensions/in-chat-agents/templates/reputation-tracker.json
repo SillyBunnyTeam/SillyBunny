@@ -4,6 +4,7 @@
     "description": "Track how {{user}} is perceived by groups and factions",
     "icon": "",
     "category": "tracker",
+    "subcategory": "progress",
     "tags": [
         "reputation",
         "rumors",
@@ -37,5 +38,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }

@@ -31,6 +31,13 @@ export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
     MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
 ]);
 
+export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
+export const MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
+export const MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
+export const MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY = 'characters';
+
+const MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
+
 const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
     [MOBILE_SHELL_SURFACE.NAV]: Object.freeze({
         mobile: Object.freeze([
@@ -133,6 +140,33 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
 function normalizeNumber(value, fallback = 0) {
     const numberValue = Number(value);
     return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function normalizeText(value) {
+    return String(value ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function clampText(value, maxLength = 120) {
+    const normalizedValue = String(value ?? '').replace(/\s+/g, ' ').trim();
+    const safeMaxLength = Math.max(1, Math.round(normalizeNumber(maxLength, 120)));
+    if (normalizedValue.length <= safeMaxLength) {
+        return normalizedValue;
+    }
+
+    return `${normalizedValue.slice(0, safeMaxLength - 1).trimEnd()}…`;
+}
+
+function normalizeRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
+    const fallbackIcon = clampText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
+    const iconClass = String(value ?? '')
+        .trim()
+        .split(/\s+/)
+        .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES.has(token.toLowerCase()));
+
+    return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getTouchPoint(touch) {
@@ -360,6 +394,243 @@ export function resolveMobileShellExclusiveOpen({
     return {
         closeSurfaces: [...(isMobileViewport ? tableEntry.mobile : tableEntry.desktop)],
     };
+}
+
+/**
+ * Resolves persisted quick-action route aliases before shell/tab validation.
+ * @param {object} [action=null] Quick-action candidate.
+ * @returns {{shellKey: string, tabId: string}}
+ */
+export function resolveMobileShellQuickActionRoute(action = null) {
+    const legacyShellKey = normalizeText(action?.shellKey || action?.shell);
+    const legacyTabId = normalizeText(action?.tabId || action?.tab);
+    const isLegacyWorldInfoRoute = legacyShellKey === 'left' && legacyTabId === 'world-info';
+
+    return {
+        shellKey: isLegacyWorldInfoRoute ? MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY : legacyShellKey,
+        tabId: isLegacyWorldInfoRoute ? 'world-info' : legacyTabId,
+    };
+}
+
+/**
+ * Normalizes a shell rail quick-action candidate without touching DOM state.
+ * Runtime adapters provide shell/tab metadata from their current registry.
+ * @param {object} options Options.
+ * @param {object} [options.action=null] Quick-action candidate.
+ * @param {object|null} [options.shellConfig=null] Shell metadata for non-character shells.
+ * @param {object|null} [options.tabConfig=null] Tab metadata for tab actions.
+ * @param {object} [options.limits={}] Limit overrides.
+ * @returns {object|null}
+ */
+export function normalizeMobileShellQuickAction({
+    action = null,
+    shellConfig = null,
+    tabConfig = null,
+    limits = {},
+} = {}) {
+    if (!action || typeof action !== 'object') {
+        return null;
+    }
+
+    const { shellKey, tabId } = resolveMobileShellQuickActionRoute(action);
+    const requestedType = normalizeText(action.type);
+    const isShellAction = requestedType === 'shell';
+    const shellExists = shellKey === MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY || Boolean(shellConfig);
+
+    if ((isShellAction ? !shellKey : !tabId) || !shellExists) {
+        return null;
+    }
+
+    const dedupeKey = clampText(action.dedupeKey, 160);
+    const type = dedupeKey ? 'custom' : isShellAction ? 'shell' : 'tab';
+    const displayText = clampText(action.displayText, 80);
+    const sectionLabel = clampText(action.sectionLabel, 80);
+    const labelMaxLength = normalizeNumber(limits.labelMaxLength, MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH);
+    const iconFallback = limits.iconFallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK;
+    const fallbackLabel = type === 'custom'
+        ? displayText || sectionLabel
+        : type === 'shell'
+            ? shellConfig?.title || shellKey
+            : tabConfig?.label || tabId;
+    const label = clampText(action.label || fallbackLabel, labelMaxLength);
+
+    if (!label) {
+        return null;
+    }
+
+    const fallbackIcon = type === 'custom'
+        ? iconFallback
+        : type === 'shell'
+            ? shellConfig?.proxyIcon || 'fa-bars'
+            : tabConfig?.icon || 'fa-bars';
+    const normalizedAction = {
+        type,
+        shellKey,
+        tabId,
+        icon: normalizeRailIcon(action.icon, fallbackIcon),
+        label,
+    };
+
+    if (type === 'custom') {
+        normalizedAction.sectionLabel = sectionLabel;
+        normalizedAction.displayText = displayText || label;
+        normalizedAction.dedupeKey = dedupeKey;
+    }
+
+    return normalizedAction;
+}
+
+/**
+ * Derives the stable storage/dedupe key for a normalized quick action.
+ * @param {object|null} [action=null] Normalized quick action.
+ * @returns {string}
+ */
+export function getMobileShellQuickActionKey(action = null) {
+    if (!action || typeof action !== 'object') {
+        return '';
+    }
+
+    return [
+        action.type,
+        action.shellKey,
+        action.tabId,
+        action.dedupeKey,
+    ].filter(Boolean).join('::');
+}
+
+/**
+ * Resolves side-rail action groups without constructing DOM.
+ * @param {object} options Options.
+ * @param {boolean} [options.hasVerticalRail=false] Whether rail shortcuts render.
+ * @param {boolean} [options.showCustomize=false] Whether built-in customize/workspace actions render.
+ * @param {boolean} [options.showQuickActions=false] Whether custom quick actions render.
+ * @param {object[]} [options.builtInActions=[]] Built-in actions for the current shell.
+ * @param {string[]} [options.builtInActionKeys=[]] Built-in action keys to hide from custom actions.
+ * @param {object[]} [options.quickActions=[]] Persisted quick actions for the active rail mode.
+ * @param {object|null} [options.replacementAction=null] Optional single replacement quick action.
+ * @param {string} [options.builtInGroupLabel=''] Label for the built-in action group.
+ * @returns {{shouldHideCustomizeTabs: boolean, beforeGroups: object[], afterGroups: object[], quickActions: object[]}}
+ */
+export function resolveMobileShellRailActionVisibility({
+    hasVerticalRail = false,
+    showCustomize = false,
+    showQuickActions = false,
+    builtInActions = [],
+    builtInActionKeys = [],
+    quickActions = [],
+    replacementAction = null,
+    builtInGroupLabel = '',
+} = {}) {
+    const shouldRenderRail = Boolean(hasVerticalRail);
+    const shouldShowCustomize = shouldRenderRail && Boolean(showCustomize);
+    const builtInItems = shouldShowCustomize && Array.isArray(builtInActions)
+        ? builtInActions.filter(Boolean)
+        : [];
+    const builtInKeys = new Set(shouldShowCustomize && Array.isArray(builtInActionKeys) ? builtInActionKeys : []);
+    const visibleQuickActions = replacementAction
+        ? [replacementAction].filter(Boolean)
+        : (Array.isArray(quickActions) ? quickActions : [])
+            .filter(action => !builtInKeys.has(getMobileShellQuickActionKey(action)));
+    const beforeGroups = [];
+    const afterGroups = [];
+
+    if (builtInItems.length > 0) {
+        beforeGroups.push({
+            type: 'built-in',
+            label: String(builtInGroupLabel || 'Built In'),
+            actions: builtInItems,
+        });
+    }
+
+    if (shouldRenderRail && Boolean(showQuickActions) && visibleQuickActions.length > 0) {
+        afterGroups.push({
+            type: 'quick-actions',
+            label: 'Quick Actions',
+            actions: visibleQuickActions,
+        });
+    }
+
+    return {
+        shouldHideCustomizeTabs: shouldShowCustomize,
+        beforeGroups,
+        afterGroups,
+        quickActions: visibleQuickActions,
+    };
+}
+
+/**
+ * Resolves which open inline drawer siblings should close when a drawer opens.
+ * The current shell behavior is viewport-agnostic; callers still pass viewport
+ * state so the decision seam owns the policy if it becomes mobile-specific.
+ * @param {object} [options={}] Options.
+ * @param {string} [options.openedDrawerId=''] Stable id for the drawer being opened.
+ * @param {string[]} [options.openDrawerIds=[]] Stable ids for currently open sibling drawers.
+ * @param {boolean} [options.isMobileViewport=false] Current viewport state.
+ * @returns {{closeIds: string[]}}
+ */
+export function resolveInlineDrawerAutoCloseSiblings(options = {}) {
+    const openedDrawerId = String(options.openedDrawerId ?? '').trim();
+    const openDrawerIds = Array.isArray(options.openDrawerIds) ? options.openDrawerIds : [];
+
+    if (!openedDrawerId) {
+        return { closeIds: [] };
+    }
+
+    const seenIds = new Set([openedDrawerId]);
+    const closeIds = [];
+
+    for (const drawerId of openDrawerIds) {
+        const normalizedDrawerId = String(drawerId ?? '').trim();
+        if (!normalizedDrawerId || seenIds.has(normalizedDrawerId)) {
+            continue;
+        }
+
+        seenIds.add(normalizedDrawerId);
+        closeIds.push(normalizedDrawerId);
+    }
+
+    return { closeIds };
+}
+
+/**
+ * Derives the persistent storage key for an inline drawer from DOM-free context.
+ * Adapter code owns DOM reads and segment sanitization; this helper owns the
+ * key format so user drawer-state preferences keep their exact storage shape.
+ * @param {object} [options={}] Options.
+ * @param {string} [options.drawerId=''] Sanitized drawer id segment, when present.
+ * @param {object} [options.context={}] Sanitized drawer context.
+ * @param {string} [options.context.storagePrefix='sb-settings-inline-drawer'] Storage key prefix.
+ * @param {string[]} [options.context.contextSegments=[]] Sanitized ancestor context segments.
+ * @param {string} [options.context.drawerLabel=''] Sanitized drawer label segment for id-less drawers.
+ * @param {number} [options.context.drawerIndex=0] Sibling index for id-less drawers.
+ * @returns {string}
+ */
+export function deriveInlineDrawerPersistenceKey({
+    drawerId = '',
+    context = {},
+} = {}) {
+    const storagePrefix = String(context.storagePrefix ?? 'sb-settings-inline-drawer').trim();
+    const contextSegments = Array.isArray(context.contextSegments)
+        ? context.contextSegments.map(segment => String(segment ?? '').trim()).filter(Boolean)
+        : [];
+
+    if (!storagePrefix || contextSegments.length === 0) {
+        return '';
+    }
+
+    const contextPath = contextSegments.join('/');
+    const normalizedDrawerId = String(drawerId ?? '').trim();
+    if (normalizedDrawerId) {
+        return `${storagePrefix}:${contextPath}:drawer-id:${normalizedDrawerId}`;
+    }
+
+    const drawerLabel = String(context.drawerLabel ?? '').trim();
+    if (!drawerLabel) {
+        return '';
+    }
+
+    const drawerIndex = Math.max(0, Math.round(normalizeNumber(context.drawerIndex, 0)));
+    return `${storagePrefix}:${contextPath}:drawer:${drawerLabel}:${drawerIndex}`;
 }
 
 /**
@@ -606,6 +877,21 @@ export function createMobileShellLifecycle() {
             surface: MOBILE_SHELL_SURFACE,
             closeAllSurfaces: MOBILE_SHELL_CLOSE_ALL_SURFACES,
             resolveExclusiveOpen: resolveMobileShellExclusiveOpen,
+        },
+        railModel: {
+            limits: {
+                quickActionLimit: MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT,
+                labelMaxLength: MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
+                iconFallback: MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
+            },
+            resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
+            normalizeQuickAction: normalizeMobileShellQuickAction,
+            getQuickActionKey: getMobileShellQuickActionKey,
+            resolveActionVisibility: resolveMobileShellRailActionVisibility,
+        },
+        inlineDrawers: {
+            resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
+            derivePersistenceKey: deriveInlineDrawerPersistenceKey,
         },
         drawerBounds: {
             action: MOBILE_SHELL_DRAWER_BOUND_ACTION,

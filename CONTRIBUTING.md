@@ -69,6 +69,7 @@ Include a Discord-friendly update summary for non-hotfix releases so the changes
 **How to update**
 - Built-in updater: open Customize > Server and update from there.
 - Git clone: run git pull.
+- Docker: run git pull, then sudo docker compose up -d --build (the --build is required to rebuild the local image).
 - Launcher users: close and reopen Start.bat, Start.command, or start.sh.
 - ZIP users: grab the new release directly.
 ```
@@ -76,6 +77,7 @@ Include a Discord-friendly update summary for non-hotfix releases so the changes
 
 When a new, stable upstream SillyTavern version releases:
 
+- Follow the upstream sync runbook in `docs/upstream-sync.md` before preparing a sync PR.
 - Prioritize synchronizing to `staging` over new features and bug fixes.
 - Check for code compatibility with the new version release.
 - Remove and migrate any SillyBunny features or patches if they have been properly implemented upstream.

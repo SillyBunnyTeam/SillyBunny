@@ -22,9 +22,11 @@ import helmet from 'helmet';
 import './fetch-patch.js';
 import { APP_NAME, isBunRuntime } from './runtime.js';
 import { serverDirectory } from './server-directory.js';
+import { getServerBootId } from './server-boot-marker.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { loadPlugins } from './plugin-loader.js';
+import { registerGracefulShutdown } from './shutdown.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -447,7 +449,10 @@ app.use(multerMonkeyPatch);
 
 app.get('/version', async function (_, response) {
     const data = await getVersion();
-    response.send(data);
+    response.send({
+        ...data,
+        serverBootId: getServerBootId(),
+    });
 });
 
 setupPrivateEndpoints(app);
@@ -489,7 +494,7 @@ async function preSetupTasks() {
     const consoleTitle = process.title;
 
     let isExiting = false;
-    const exitProcess = async () => {
+    const exitProcess = async (exitCode = 0) => {
         if (isExiting) return;
         isExiting = true;
         await statsOnExit();
@@ -498,12 +503,15 @@ async function preSetupTasks() {
         }
         diskCache.dispose();
         setWindowTitle(consoleTitle);
-        process.exit();
+        process.exit(exitCode);
     };
 
+    registerGracefulShutdown(exitProcess);
+
     // Set up event listeners for a graceful shutdown
-    process.on('SIGINT', exitProcess);
-    process.on('SIGTERM', exitProcess);
+    // SillyBunny: signal handlers pass signal names, but process.exit needs numeric codes in Bun.
+    process.on('SIGINT', () => exitProcess(0));
+    process.on('SIGTERM', () => exitProcess(0));
     process.on('uncaughtException', (err) => {
         console.error('Uncaught exception:', err);
         exitProcess();

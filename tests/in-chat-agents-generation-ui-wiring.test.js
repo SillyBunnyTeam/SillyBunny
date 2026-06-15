@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const indexSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'index.js'), 'utf8');
+const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
+const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
+const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
+const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -53,5 +57,47 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('event_types.GENERATION_STOPPED');
         expect(indexSource).toContain('eventSource.on(eventName, () => refreshGenerationUi());');
         expect(indexSource).not.toContain('eventSource.on(eventName, refreshGenerationUi);');
+    });
+
+    test('wires companion message cards and actions into chat rendering', () => {
+        expect(publicIndexSource).toContain('mes_run_companions');
+        expect(companionUiSource).toContain('renderCompanionResultsForMessage');
+        expect(companionUiSource).toContain('ica--companion-ledger');
+        expect(companionUiSource).toContain('data-action="regenerate"');
+        expect(companionUiSource).toContain('updateCompanionResult(message, agentId');
+        expect(extensionStyleSource).toContain('.ica--companion-card');
+        expect(extensionStyleSource).toContain('.mes_run_companions--running');
+    });
+
+    test('wires companion AI Maker in the editor', () => {
+        expect(editorTemplateSource).toContain('ica--editor-companion-maker');
+        expect(editorTemplateSource).toContain('AI Maker');
+        expect(indexSource).toContain('generateCompanionKitWithAI');
+        expect(indexSource).toContain('Applied generated companion. Review and save when ready.');
+    });
+
+    test('keeps companion settings labels clear and aligned', () => {
+        expect(editorTemplateSource).toContain('ica--companion-core-grid');
+        expect(extensionStyleSource).toContain('.ica--companion-core-grid');
+        expect(extensionStyleSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));');
+        expect(editorTemplateSource).toContain('Run selected companions in one request');
+        expect(editorTemplateSource).toContain('Batch With Enabled Companions');
+        expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
+        expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('lists all enabled side companions in batch selector regardless of compatibility', () => {
+        const source = getFunctionSource('getCompanionBatchOptionsForAgent');
+        expect(source).not.toContain('getCompanionBatchCompatibilityKey');
+        expect(source).toContain('isAgentEnabledForCurrentScope(candidate)');
+        expect(source).toContain('isCompanionAgent(candidate)');
+    });
+
+    test('labels companion agent cards as side execution', () => {
+        const labelSource = getFunctionSource('getAgentCardPhaseLabel');
+
+        expect(labelSource).toContain('isCompanionAgent(agent)');
+        expect(labelSource).toContain("return 'side';");
+        expect(indexSource).toContain('getAgentCardPhaseLabel(agent)');
     });
 });

@@ -35,7 +35,7 @@ const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-theme.css': 158,
 });
 
-const FORK_DISTINCT_BREAKPOINT_BUDGET = 20;
+const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
 
 const forkSheetSources = Object.fromEntries(
     Object.keys(FORK_SHEET_IMPORTANT_BUDGETS).map(sheetName => [sheetName, readPublicFile('css', sheetName)]),

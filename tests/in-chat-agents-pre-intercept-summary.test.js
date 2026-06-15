@@ -30,7 +30,7 @@ beforeAll(async () => {
                 return null;
             }
         },
-        POPUP_TYPE: { CONFIRM: 'confirm' },
+        POPUP_TYPE: { CONFIRM: 'confirm', TEXT: 'text' },
         POPUP_RESULT: { AFFIRMATIVE: 'affirmative' },
     }));
 
@@ -79,6 +79,20 @@ beforeAll(async () => {
         getEnabledAgents: jest.fn(() => []),
         getAgentById: jest.fn(() => null),
         getAgentRegexScripts: jest.fn(() => []),
+        getCompanionConfig: jest.fn(() => ({
+            trigger: 'auto',
+            displayMode: 'card',
+            format: 'markdown',
+            contextMessages: 10,
+            includeCharacterCard: false,
+            includePersona: false,
+            includeWorldInfo: false,
+            includeHistory: false,
+            historyDepth: 3,
+            feedback: { enabled: false, depth: 1 },
+            batch: false,
+            maxTokens: 2048,
+        })),
         loadAgents: jest.fn(),
         saveAgent: jest.fn(async () => {}),
         deleteAgent: jest.fn(async () => {}),
@@ -100,8 +114,18 @@ beforeAll(async () => {
         normalizeAgentCategory: jest.fn(value => value),
         getAgentChatScopeLabel: jest.fn(() => 'Individual chat'),
         getPromptTransformMode: jest.fn(() => 'rewrite'),
+        isTrackerFixAgent: jest.fn(() => false),
+        agentMatchesListTab: jest.fn(() => true),
+        applyCompanionContextAccessDefaults: jest.fn(() => false),
+        applyCompanionPanelDisplayDefault: jest.fn(() => false),
+        applyTrackerCompanionAutoLoopDefaults: jest.fn(() => false),
+        convertAgentExecution: jest.fn(() => false),
+        resolveCompanionConnectionProfile: jest.fn(value => value ?? ''),
+        isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
+        isToolAgent: jest.fn(agent => agent?.category === 'tool'),
         isPathfinderSubmoduleEnabled: jest.fn(() => false),
         findTemplateForAgentSnapshot: jest.fn(() => null),
+        getBundledAgentLatestTemplatePlan: jest.fn(() => ({ updates: [], redundantIds: [] })),
         getRedundantBundledAgentDuplicateIds: jest.fn(() => []),
         reconcileScopedEnabledAgentIdsFromLegacyFlags: jest.fn(() => false),
         resolveConnectionProfile: jest.fn(value => value ?? ''),
@@ -128,6 +152,7 @@ beforeAll(async () => {
         getPromptTransformHistoryForMessage: jest.fn(() => []),
         refreshRegexSnapshotsForAgent: jest.fn(() => 0),
         runAgentOnMessage: jest.fn(),
+        runTrackerFixOnMessage: jest.fn(),
         syncToolAgentRegistrations: jest.fn(),
         undoPromptTransform: jest.fn(async () => false),
         redoPromptTransform: jest.fn(async () => false),
@@ -161,6 +186,29 @@ beforeAll(async () => {
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tool-definitions.js', () => ({
         getPathfinderToolDefinitions: jest.fn(() => []),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        collectRecentCompanionResults: jest.fn(() => []),
+        initCompanionRunner: jest.fn(),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
+        initCompanionCardUi: jest.fn(),
+        updateCompanionButtonVisibility: jest.fn(),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-dashboard.js', () => ({
+        configureCompanionDashboard: jest.fn(),
+        initCompanionWandMenuItem: jest.fn(),
+        openCompanionDashboard: jest.fn(),
+    }));
+
+    await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
+        configureCompanionPanel: jest.fn(),
+        initCompanionPanel: jest.fn(),
+        openCompanionPanel: jest.fn(),
+        updateCompanionPanelHandleVisibility: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({

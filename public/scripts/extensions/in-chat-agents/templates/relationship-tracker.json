@@ -4,6 +4,7 @@
     "description": "Track affection and trust for recurring NPCs with meaningful interactions",
     "icon": "",
     "category": "tracker",
+    "subcategory": "progress",
     "tags": [
         "relationship",
         "npc",
@@ -37,5 +38,8 @@
         "generationTypes": [
             "normal"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }
