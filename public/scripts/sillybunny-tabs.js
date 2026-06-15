@@ -399,8 +399,8 @@ const SB_THEMES = Object.freeze([
         label: 'Cozy Warm',
     },
     {
-        id: 'neon-cyber',
-        label: 'Neon Cyber',
+        id: 'hypr-glow',
+        label: 'Hypr Glow',
     },
     {
         id: 'slate-flat',

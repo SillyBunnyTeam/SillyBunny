@@ -331,15 +331,15 @@
     --sb-mobile-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, #3c2f25 5%);
 }
 
-:root[data-sb-theme='neon-cyber'] {
-    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, transparent);
-    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
-    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
-    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
-    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 24%, transparent);
+:root[data-sb-theme='hypr-glow'] {
+    --sb-shell-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, transparent);
+    --sb-shell-main-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
+    --sb-shell-nav-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
+    --sb-shell-header-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, transparent);
+    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, var(--SmartThemeBorderColor) 55%);
+    --sb-shell-shadow: 0 0 16px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-    --sb-shell-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
-    --sb-shell-shadow: 0 0 12px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
     --sb-card-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 97%, transparent);
     --sb-button-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
     --sb-button-hover: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
