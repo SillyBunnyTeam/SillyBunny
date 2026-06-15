@@ -64,14 +64,12 @@ describe('OpenAI proxy preset wiring', () => {
         expect(setProxyPresetSource).toContain('reconnectOpenAi();');
     });
 
-    test('applies selected proxy backend binding when loading presets', () => {
+    test('loads selected proxy preset credentials without overriding the saved backend', () => {
         const loadProxyPresetsSource = getFunctionSource('loadProxyPresets');
-        const applySourceFlagIndex = loadProxyPresetsSource.indexOf('const shouldApplySource = Boolean(selected_proxy.source);');
-        const setProxyPresetIndex = loadProxyPresetsSource.indexOf('setProxyPreset(selected_proxy.name, selected_proxy.url, selected_proxy.password, selected_proxy.source, { applySource: shouldApplySource, silent: true });');
+        const setProxyPresetIndex = loadProxyPresetsSource.indexOf('setProxyPreset(selected_proxy.name, selected_proxy.url, selected_proxy.password, selected_proxy.source, { applySource: false, silent: true });');
 
-        expect(applySourceFlagIndex).toBeGreaterThanOrEqual(0);
-        expect(setProxyPresetIndex).toBeGreaterThan(applySourceFlagIndex);
-        expect(loadProxyPresetsSource).not.toContain('{ applySource: false }');
+        expect(setProxyPresetIndex).toBeGreaterThanOrEqual(0);
+        expect(loadProxyPresetsSource).not.toContain('{ applySource: true, silent: true }');
     });
 
     test('switches backend on silent load without triggering a reconnect', () => {
