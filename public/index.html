@@ -20,6 +20,7 @@
     <link rel="preload" as="style" href="style.css?v=20260610a">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
+    <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
     <link rel="modulepreload" href="scripts/sillybunny-settings-tabs.js">
     <link rel="preload" as="font" type="font/woff2" href="webfonts/Figtree/Figtree-Regular.woff2?v=20260422b" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
@@ -6420,6 +6421,10 @@
                             <i class="fa-solid fa-users" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Groups">Groups</strong></span>
                         </button>
+                        <button id="sb_character_tab_conversation" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="conversation">
+                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
+                            <span class="sb-shell-tab-copy"><strong data-i18n="Conversation">Conversation</strong></span>
+                        </button>
                         <button id="sb_character_tab_editor" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="editor">
                             <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Editor">Editor</strong></span>
@@ -6540,6 +6545,134 @@
                         </div>
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
+                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" hidden>
+                        <div class="sb-shell-header">
+                            <div class="sb-shell-kicker" data-i18n="Conversation Mode">Conversation Mode</div>
+                            <h2 class="sb-shell-title" data-i18n="Conversation Settings">Conversation Settings</h2>
+                            <p class="sb-shell-subtitle" data-i18n="Configure autonomous DM presence, auto-messages, scheduling, and formatting for this character.">Configure autonomous DM presence, auto-messages, scheduling, and formatting for this character.</p>
+                        </div>
+                        <div class="flex-container flexFlowColumn flexGap15 overflowYAuto flex1" style="max-height: 100%; padding-bottom: 20px;">
+                            <!-- Group 1: Presence & Status -->
+                            <div class="sb-settings-group">
+                                <h4 class="sb-settings-group-title fa-solid fa-signal" data-i18n="Presence & Availability"> Presence & Availability</h4>
+                                <div class="flex-container flexGap10 flexWrap">
+                                    <label class="checkbox_label whitespacenowrap" title="Character availability status">
+                                        <span data-i18n="Availability Status">Status</span>
+                                        <select id="sb_conv_availability" class="text_pole textarea_compact">
+                                            <option value="online" data-i18n="Online">Online</option>
+                                            <option value="idle" data-i18n="Idle">Idle</option>
+                                            <option value="dnd" data-i18n="Do Not Disturb">Do Not Disturb</option>
+                                            <option value="offline" data-i18n="Offline">Offline</option>
+                                        </select>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="Action when user is idle">
+                                        <span data-i18n="User Idle Action">User Idle Action</span>
+                                        <select id="sb_conv_idle_action" class="text_pole textarea_compact">
+                                            <option value="disabled" data-i18n="Disabled">Disabled</option>
+                                            <option value="followup" data-i18n="Send Auto Follow-up">Send Auto Follow-up</option>
+                                            <option value="spontaneous" data-i18n="Spontaneous Ping">Spontaneous Ping</option>
+                                        </select>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="User idle silence limit in minutes">
+                                        <span data-i18n="Idle Limit">Idle Limit</span>
+                                        <input id="sb_conv_idle_limit" class="text_pole textarea_compact widthUnset" type="number" min="1" max="1440" step="1" value="15" style="width: 60px;" />
+                                        <span class="auto_mode_delay_unit" data-i18n="minutes">mins</span>
+                                    </label>
+                                </div>
+                                <div class="wide100p marginTop5">
+                                    <label class="checkbox_label wide100p" title="Message sent automatically when user messages them while they are Offline or Do Not Disturb">
+                                        <span data-i18n="Offline/DND Auto-responder">Offline/DND Auto-responder</span>
+                                    </label>
+                                    <textarea id="sb_conv_offline_message" class="text_pole textarea_compact autoSetHeight wide100p" rows="2" placeholder="[Character is currently away. Leave a message!]" data-i18n="[placeholder][Character is currently away. Leave a message!]"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Group 2: Schedules & Auto-messages -->
+                            <div class="sb-settings-group">
+                                <h4 class="sb-settings-group-title fa-solid fa-clock" data-i18n="Auto-Messaging & Scheduling"> Auto-Messaging & Scheduling</h4>
+                                <div class="flex-container flexGap10 flexWrap alignitemscenter">
+                                    <label class="checkbox_label whitespacenowrap" title="Enable autonomous scheduled messages">
+                                        <input id="sb_conv_auto_message" type="checkbox" />
+                                        <span data-i18n="Enable Scheduling">Enable Scheduling</span>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="Auto-message minimum delay/cooldown in seconds">
+                                        <span data-i18n="Cooldown">Cooldown</span>
+                                        <input id="sb_conv_cooldown" class="text_pole textarea_compact widthUnset" type="number" min="10" max="9999" step="1" value="60" style="width: 70px;" />
+                                        <span class="auto_mode_delay_unit" data-i18n="seconds">secs</span>
+                                    </label>
+                                </div>
+                                <div class="wide100p marginTop5">
+                                    <label class="checkbox_label wide100p" title="Schedules formatted as: HH:MM - Reason, or delay minutes. Example: '08:00 - Good morning selfie!' or '45 - Dynamic check in'">
+                                        <span data-i18n="Message Schedule (HH:MM - Reason or minutes)">Message Schedule</span>
+                                    </label>
+                                    <textarea id="sb_conv_ai_schedule" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="08:00 - Good morning selfie!&#10;14:00 - Casual afternoon check-in&#10;22:00 - Good night chat" data-i18n="[placeholder]08:00 - Good morning selfie!&#10;14:00 - Casual afternoon check-in&#10;22:00 - Good night chat"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Group 3: Prompts & Presets -->
+                            <div class="sb-settings-group">
+                                <h4 class="sb-settings-group-title fa-solid fa-scroll" data-i18n="Prompts & Formats"> Prompts & Formats</h4>
+                                <div class="flex-container flexGap10 flexWrap">
+                                    <label class="checkbox_label whitespacenowrap" title="Inject Geechan style system prompt and formatting overrides">
+                                        <input id="sb_conv_geechan_prompt" type="checkbox" />
+                                        <span data-i18n="Use Geechan Chatroom Format">Use Geechan Chatroom Format</span>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="Enable dynamic character-to-character chiming when idle or discussed">
+                                        <input id="sb_conv_multi_char" type="checkbox" />
+                                        <span data-i18n="Enable Multi-Character Chiming">Multi-Character Chiming</span>
+                                    </label>
+                                </div>
+                                <div class="wide100p marginTop5">
+                                    <label class="checkbox_label wide100p" title="Comma-separated list of characters who can chime in on this conversation">
+                                        <span data-i18n="Chiming Partners (Comma-separated)">Chiming Partners</span>
+                                    </label>
+                                    <input id="sb_conv_multi_char_names" type="text" class="text_pole wide100p" placeholder="Geechan, Seraphina" data-i18n="[placeholder]Geechan, Seraphina" />
+                                </div>
+                            </div>
+
+                            <!-- Group 4: Context Overrides -->
+                            <div class="sb-settings-group">
+                                <h4 class="sb-settings-group-title fa-solid fa-book-atlas" data-i18n="Context Overrides"> Context Overrides</h4>
+                                <div class="wide100p">
+                                    <label class="checkbox_label wide100p" title="Force a specific Lorebook/World Info database to load for this DM chat">
+                                        <span data-i18n="Lorebook Override">Lorebook Override</span>
+                                    </label>
+                                    <input id="sb_conv_lorebook_override" type="text" class="text_pole wide100p" placeholder="Leave empty for character default" data-i18n="[placeholder]Leave empty for character default" />
+                                </div>
+                                <div class="wide100p marginTop5">
+                                    <label class="checkbox_label wide100p" title="Inject a custom Author's Note into the LLM prompt for this conversation context">
+                                        <span data-i18n="Author's Note Override">Author's Note Override</span>
+                                    </label>
+                                    <textarea id="sb_conv_authors_note" class="text_pole textarea_compact autoSetHeight wide100p" rows="2" placeholder="[Author's Note: Keep responses short, direct, and conversational as if chatting over Discord.]" data-i18n="[placeholder][Author's Note: Keep responses short, direct, and conversational as if chatting over Discord.]"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Group 5: DM Enhancements -->
+                            <div class="sb-settings-group">
+                                <h4 class="sb-settings-group-title fa-solid fa-wand-magic-sparkles" data-i18n="DM Tweaks & Spontaneous Media"> DM Tweaks & Spontaneous Media</h4>
+                                <div class="flex-container flexGap10 flexFlowColumn">
+                                    <label class="checkbox_label whitespacenowrap" title="Add quick inline edit buttons next to messages in the chat list">
+                                        <input id="sb_conv_editable_messages" type="checkbox" />
+                                        <span data-i18n="Enable Quick-Edit DM Actions">Enable Quick-Edit DM Actions</span>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="Enable the Prose Polisher magic wand button to automatically style your input before sending">
+                                        <input id="sb_conv_prose_polisher" type="checkbox" />
+                                        <span data-i18n="Prose Polisher Send Assistant">Prose Polisher Send Assistant</span>
+                                    </label>
+                                    <label class="checkbox_label whitespacenowrap" title="Allows character to spontaneously send selfies using Stable Diffusion slash commands">
+                                        <input id="sb_conv_spontaneous_selfies" type="checkbox" />
+                                        <span data-i18n="Enable Spontaneous Selfies/Image Gen">Enable Spontaneous Selfies</span>
+                                    </label>
+                                </div>
+                                <div class="wide100p marginTop5">
+                                    <label class="checkbox_label wide100p" title="Selfie stable-diffusion prompt trigger prefix. Example: 'raw photo, selfie of seraphina'">
+                                        <span data-i18n="Selfie Prompt Template">Selfie Prompt Template</span>
+                                    </label>
+                                    <input id="sb_conv_selfie_prompt" type="text" class="text_pole wide100p" placeholder="raw photo, selfie of {{char}}" data-i18n="[placeholder]raw photo, selfie of {{char}}" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
                         <div class="sb-character-import-intro">
                             <h3 data-i18n="Bring in a character card">Bring in a character card</h3>
@@ -8804,6 +8937,7 @@
                         </div>
                         <div id="mes_impersonate" class="fa-solid fa-user-secret interactable displayNone" title="Ask AI to write your message for you" data-i18n="[title]Ask AI to write your message for you" tabindex="0"></div>
                         <div id="mes_continue" class="fa-fw fa-solid fa-arrow-right interactable displayNone" title="Continue the last message" data-i18n="[title]Continue the last message"></div>
+                        <div id="sb_prose_polisher_but" class="fa-solid fa-wand-magic-sparkles interactable displayNone" title="Prose Polisher: Polish your message using AI" data-i18n="[title]Prose Polisher: Polish your message using AI"></div>
                         <div id="send_but" class="fa-solid fa-paper-plane interactable displayNone" title="Send a message" data-i18n="[title]Send a message"></div>
                     </div>
                 </div>
@@ -8908,6 +9042,7 @@
     <script type="module" src="scripts/performance-loader.js"></script>
     <script type="module" src="script.js"></script>
     <script type="module" src="scripts/sillybunny-tabs.js"></script>
+    <script type="module" src="scripts/sillybunny-conversation.js"></script>
     <script type="module" src="scripts/sillybunny-settings-tabs.js"></script>
     <script>
         window.addEventListener('load', (event) => {

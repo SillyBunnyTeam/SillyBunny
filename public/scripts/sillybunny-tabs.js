@@ -492,6 +492,7 @@ const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info'
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     { id: 'characters', label: 'Characters', icon: 'fa-address-book' },
     { id: 'groups', label: 'Groups', icon: 'fa-users' },
+    { id: 'conversation', label: 'Conversation', icon: 'fa-comments' },
     { id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' },
     { id: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { id: 'persona', label: 'Persona', icon: 'fa-face-smile' },
@@ -6813,6 +6814,7 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     const panel = getCharacterPanel();
     const normalizedView = view === 'groups' ? 'groups' : 'characters';
     sbState.characterDrawer.lastTab = normalizedView;
@@ -6851,6 +6853,7 @@ function showCharacterEditorEmptyState() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterEditorEmptyState(true);
 
@@ -6990,6 +6993,15 @@ function setCharacterWorldInfoPanelVisible(visible) {
 
     if (content instanceof HTMLElement) {
         content.setAttribute('aria-hidden', String(!visible));
+    }
+}
+
+function setCharacterConversationPanelVisible(visible) {
+    const host = document.getElementById('sb_character_conversation_panel');
+
+    if (host instanceof HTMLElement) {
+        host.hidden = !visible;
+        host.setAttribute('aria-hidden', String(!visible));
     }
 }
 
@@ -7267,6 +7279,7 @@ function openCharacterWorldInfoTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterWorldInfoPanelVisible(true);
     hideCharacterMainPanels();
@@ -7286,6 +7299,7 @@ function openCharacterPersonaTab() {
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterPersonaPanelVisible(true);
     hideCharacterMainPanels();
@@ -7302,6 +7316,7 @@ function openCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
@@ -7320,10 +7335,28 @@ function preserveCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
     syncCharacterShellTabs('import');
+    syncCharacterTitlebarVisibility();
+}
+
+function openCharacterConversationTab() {
+    const panel = getCharacterPanel();
+    sbState.characterDrawer.lastTab = 'conversation';
+
+    setCharacterPanelMenuType(panel, 'conversation');
+    setCharacterEditorEmptyState(false);
+    setCharacterPersonaPanelVisible(false);
+    setCharacterImportPanelVisible(false);
+    setCharacterWorldInfoPanelVisible(false);
+    syncCharacterListControls('characters');
+    setCharacterConversationPanelVisible(true);
+    hideCharacterMainPanels();
+
+    syncCharacterShellTabs('conversation');
     syncCharacterTitlebarVisibility();
 }
 
@@ -7365,6 +7398,9 @@ function openCharacterPanelTab(tabId) {
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
+        } else if (normalizedTabId === 'conversation') {
+            setCharacterPanelMenuType(panel, 'conversation');
+            openCharacterConversationTab();
         } else {
             setCharacterPanelMenuType(panel, 'characters');
             void showCharacterListView();
@@ -7389,6 +7425,8 @@ function restoreLastCharacterPanelView() {
         void showCharacterListView('groups');
     } else if (lastTab === 'editor') {
         void openCharacterEditorTab();
+    } else if (lastTab === 'conversation') {
+        openCharacterConversationTab();
     } else {
         void showCharacterListView('characters');
     }
@@ -7422,7 +7460,9 @@ function syncCharacterShellTabs(activeTab = null) {
                     ? 'world-info'
                     : menuType === 'groups'
                         ? 'groups'
-                        : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
+                        : menuType === 'conversation'
+                            ? 'conversation'
+                            : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
     sbState.characterDrawer.lastTab = normalizedTab;
 

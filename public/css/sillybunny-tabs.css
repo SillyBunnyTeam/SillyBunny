@@ -2275,6 +2275,20 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     display: block;
 }
 
+.sb-character-conversation-panel[hidden] {
+    display: none !important;
+}
+
+.sb-character-conversation-panel {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+    height: 100%;
+}
+
 .sb-character-persona-panel #persona-management-button,
 .sb-character-persona-panel #PersonaManagement {
     width: 100% !important;
