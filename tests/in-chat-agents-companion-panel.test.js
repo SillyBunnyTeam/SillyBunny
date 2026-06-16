@@ -72,7 +72,7 @@ describe('companion tracker panel', () => {
             getAgents: jest.fn(() => agents),
             getCompanionConfig: jest.fn(agent => ({
                 trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
-                displayMode: agent?.companion?.displayMode ?? 'card',
+                displayMode: agent?.companion?.displayMode ?? 'panel',
             })),
             isAgentEnabledForCurrentScope: jest.fn(agent => Boolean(agent?.enabled)),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
@@ -493,9 +493,9 @@ describe('companion tracker panel', () => {
             }
             if (arg === actionButton) {
                 return {
-                attr: jest.fn(name => (name === 'data-action' ? 'panel-run-latest' : undefined)),
-                closest: jest.fn(() => section),
-                prop: button.prop,
+                    attr: jest.fn(name => (name === 'data-action' ? 'panel-run-latest' : undefined)),
+                    closest: jest.fn(() => section),
+                    prop: button.prop,
                 };
             }
             return { length: 0, on: jest.fn(), append: jest.fn(), html: jest.fn(), toggle: jest.fn() };
@@ -719,5 +719,71 @@ describe('companion tracker panel', () => {
         expect(companionUi.insertChoiceIntoMessageInput).toHaveBeenCalledWith('B) Stay here');
         expect(panelElement.removeClass).not.toHaveBeenCalled();
         expect(panelElement.attr).not.toHaveBeenCalledWith('aria-hidden', 'true');
+    });
+
+    test('keeps card and hidden companions out of the tracker panel', async () => {
+        agents = [
+            { id: 'card-agent', name: 'Card Note', execution: 'companion', enabled: true, companion: { displayMode: 'card' } },
+            { id: 'hidden-agent', name: 'Hidden Feedback', execution: 'companion', enabled: true, companion: { displayMode: 'hidden' } },
+            { id: 'panel-agent', name: 'Panel Tracker', execution: 'companion', enabled: true, companion: { displayMode: 'panel' } },
+        ];
+        const panel = await importPanel();
+
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'card-agent': { status: 'done', content: 'inline card content', agentName: 'Card Note' },
+            'hidden-agent': { status: 'done', content: 'hidden feedback', agentName: 'Hidden Feedback' },
+            'panel-agent': { status: 'done', content: 'panel state', agentName: 'Panel Tracker' },
+        });
+
+        const states = panel.collectPanelAgentStates();
+
+        expect(states).toHaveLength(1);
+        expect(states[0].agentId).toBe('panel-agent');
+        expect(states[0].latest.result.content).toBe('panel state');
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('Panel Tracker');
+        expect(html).not.toContain('Card Note');
+        expect(html).not.toContain('Hidden Feedback');
+        expect(panel.shouldShowCompanionPanelHandle()).toBe(true);
+    });
+
+    test('hides the panel handle when only card/hidden companions are enabled', async () => {
+        agents = [
+            { id: 'card-only', name: 'Card Only', execution: 'companion', enabled: true, companion: { displayMode: 'card' } },
+            { id: 'hidden-only', name: 'Hidden Only', execution: 'companion', enabled: true, companion: { displayMode: 'hidden' } },
+        ];
+        const panel = await importPanel();
+
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'card-only': { status: 'done', content: 'card', agentName: 'Card Only' },
+            'hidden-only': { status: 'done', content: 'hidden', agentName: 'Hidden Only' },
+        });
+
+        expect(panel.shouldShowCompanionPanelHandle()).toBe(false);
+        expect(panel.collectPanelAgentStates()).toHaveLength(0);
+        expect(panel.buildPanelHtml()).toContain('No companion agents are enabled');
+    });
+
+    test('excludes orphaned card/hidden results, keeps panel results', async () => {
+        agents = [];
+        const panel = await importPanel();
+
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'orphan-card': { status: 'done', content: 'card orphan', agentName: 'Old Card', displayMode: 'card' },
+            'orphan-panel': { status: 'done', content: 'panel orphan', agentName: 'Old Panel', displayMode: 'panel' },
+            'orphan-legacy': { status: 'done', content: 'legacy', agentName: 'Legacy' },
+        });
+
+        const states = panel.collectPanelAgentStates();
+
+        expect(states.map(state => state.agentId).sort()).toEqual(['orphan-legacy', 'orphan-panel']);
+        expect(states.find(state => state.agentId === 'orphan-card')).toBeUndefined();
     });
 });
