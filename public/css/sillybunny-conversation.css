@@ -648,6 +648,125 @@
     width: 76px;
 }
 
+/* Schedule display */
+.sb-conversation-field-hint {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-line-prose);
+    margin-block: 0;
+}
+
+.sb-conversation-generate-schedule {
+    align-self: flex-start;
+}
+
+.sb-conversation-schedule-display {
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+    border-radius: var(--sb-radius-md, 8px);
+    padding: 10px 12px;
+    font-size: var(--sb-type-meta);
+    min-block-size: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sb-conversation-schedule-display[data-empty='true'] {
+    align-items: center;
+    justify-content: center;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
+    background: transparent;
+}
+
+.sb-conversation-schedule-empty {
+    margin: 0;
+}
+
+.sb-conversation-schedule-now {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: var(--sb-weight-title, 600);
+    padding: 6px 8px;
+    border-radius: var(--sb-radius-sm, 6px);
+    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-accent) 28%, transparent);
+}
+
+.sb-conversation-schedule-label {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    font-size: var(--sb-type-meta);
+    font-weight: var(--sb-weight-control, 500);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin: 4px 0 2px;
+}
+
+.sb-conversation-schedule-blocks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sb-conversation-schedule-block {
+    display: grid;
+    grid-template-columns: 110px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: var(--sb-radius-sm, 6px);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 80%, transparent);
+}
+
+.sb-conversation-schedule-block.is-current {
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-weight: var(--sb-weight-control, 500);
+}
+
+.sb-conversation-schedule-time {
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    font-size: 0.875em;
+}
+
+.sb-conversation-schedule-block.is-current .sb-conversation-schedule-time {
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-conversation-schedule-activity {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-conversation-schedule-status {
+    font-size: 0.8em;
+    font-weight: var(--sb-weight-control, 500);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+}
+
+.sb-conversation-schedule-status[data-status='online'] {
+    color: var(--sb-color-success);
+}
+
+.sb-conversation-schedule-status[data-status='idle'] {
+    color: var(--sb-color-warning);
+}
+
+.sb-conversation-schedule-status[data-status='dnd'] {
+    color: var(--sb-color-danger);
+}
+
+.sb-conversation-schedule-meta {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 46%, transparent);
+    font-size: 0.82em;
+    margin-block-start: 2px;
+}
+
 /* Discord-style rail footer (persona + status) */
 .sb-conversation-rail-footer {
     display: flex;
