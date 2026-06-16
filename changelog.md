@@ -8,6 +8,7 @@
 - PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`
 - PR #498 (2026-06-16) `fix: prevent Windows file locks during chat integrity checks`
 - PR #499 (2026-06-16) `feat: add edit button to companion previous states in tracker panel`
+- PR #500 (2026-06-16) `feat: add availableSprites macro for Expressions Agent`
 
 ## v1.6.5
 
