@@ -10,6 +10,7 @@
 - PR #499 (2026-06-16) `feat: add edit button to companion previous states in tracker panel`
 - PR #500 (2026-06-16) `feat: add availableSprites macro for Expressions Agent`
 - PR #501 (2026-06-16) `feat: add desktop top bar shortcut slots`
+- PR #502 (2026-06-16) `chore: sync Quick Image Gen v2.2.0`
 
 ## v1.6.5
 
