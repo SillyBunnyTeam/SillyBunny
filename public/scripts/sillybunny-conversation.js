@@ -1,7 +1,22 @@
 import { getMessageTimeStamp } from './RossAscends-mods.js';
 import { eventSource, event_types } from './events.js';
 import { selected_group } from './group-chats.js';
+import { world_names } from './world-info.js';
+import { power_user } from './power-user.js';
+import { user_avatar, setUserAvatar } from './personas.js';
+import { executeSlashCommandsWithOptions } from './slash-commands.js';
 import { characters, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, selectCharacterById, this_chid } from '../script.js';
+
+const GEECHAN_DEFAULT_PROMPT = [
+    'You are chatting inside an online messenger, not a roleplay scene.',
+    'Write like a real person texting: short, casual, present-tense messages.',
+    'Use {{char}}: at the start only when it adds clarity. Keep actions brief and inline with *asterisks* if needed.',
+    'Match the energy of the conversation, send one message at a time, and never narrate long prose.',
+].join(' ');
+
+const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
+const USER_STATUS_STORAGE_KEY = 'sb_conv_user_status';
 
 const SETTINGS_KEY_PREFIX = 'sb_conv_settings_';
 const THREAD_KEY_PREFIX = 'sb_conv_thread_';
@@ -12,6 +27,7 @@ const LAST_IDLE_SESSION_PREFIX = 'sb_conv_last_idle_session_';
 const LAST_CHIME_SESSION_PREFIX = 'sb_conv_last_chime_session_';
 const LAST_PREVIEW_PREFIX = 'sb_conv_last_preview_';
 const UNREAD_PREFIX = 'sb_conv_unread_';
+const LAST_AUTO_CHAT_SESSION_PREFIX = 'sb_conv_last_autochat_session_';
 const AUTO_WORKER_INTERVAL_MS = 30000;
 const MAX_THREAD_MESSAGES = 250;
 const TRANSCRIPT_MESSAGE_LIMIT = 32;
@@ -28,6 +44,9 @@ const CHROME_IDS = Object.freeze({
     composerPolish: 'sb_conversation_composer_polish',
     settingsBackdrop: 'sb_conversation_settings_backdrop',
     settingsDrawer: 'sb_conversation_settings_drawer',
+    railFooter: 'sb_conversation_rail_footer',
+    personaPicker: 'sb_conversation_persona_picker',
+    userStatusPicker: 'sb_conversation_user_status_picker',
 });
 const AVAILABILITY_COPY = Object.freeze({
     online: { label: 'Online', detail: 'Available for live DM replies.' },
@@ -45,13 +64,22 @@ const DEFAULT_SETTINGS = Object.freeze({
     auto_message: false,
     cooldown: 60,
     ai_schedule: '',
+    weekly_schedule: '[]',
     geechan_prompt: false,
+    use_geechan_as_system: true,
+    geechan_chatroom_prompt: GEECHAN_DEFAULT_PROMPT,
     multi_char: false,
     multi_char_names: '',
+    auto_character_chat: false,
     lorebook_override: '',
+    conversation_persona: '',
+    connection_profile: '',
     authors_note: '',
     editable_messages: true,
     prose_polisher: false,
+    image_gen_enabled: false,
+    image_gen_prompt_template: 'a photo of {{char}}, {{scene}}',
+    image_gen_negative: '',
     spontaneous_selfies: false,
     selfie_prompt: 'raw photo, selfie of {{char}}',
 });
@@ -65,13 +93,22 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_auto_message', key: 'auto_message', prop: 'checked' },
     { id: 'sb_conv_cooldown', key: 'cooldown', prop: 'value', type: 'number', fallback: DEFAULT_SETTINGS.cooldown, min: 1 },
     { id: 'sb_conv_ai_schedule', key: 'ai_schedule', prop: 'value' },
+    { id: 'sb_conv_weekly_schedule', key: 'weekly_schedule', prop: 'value' },
     { id: 'sb_conv_geechan_prompt', key: 'geechan_prompt', prop: 'checked' },
+    { id: 'sb_conv_use_geechan_as_system', key: 'use_geechan_as_system', prop: 'checked' },
+    { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
+    { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
     { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
+    { id: 'sb_conv_conversation_persona', key: 'conversation_persona', prop: 'value' },
+    { id: 'sb_conv_connection_profile', key: 'connection_profile', prop: 'value' },
     { id: 'sb_conv_authors_note', key: 'authors_note', prop: 'value' },
     { id: 'sb_conv_editable_messages', key: 'editable_messages', prop: 'checked' },
     { id: 'sb_conv_prose_polisher', key: 'prose_polisher', prop: 'checked' },
+    { id: 'sb_conv_image_gen_enabled', key: 'image_gen_enabled', prop: 'checked' },
+    { id: 'sb_conv_image_gen_prompt_template', key: 'image_gen_prompt_template', prop: 'value' },
+    { id: 'sb_conv_image_gen_negative', key: 'image_gen_negative', prop: 'value' },
     { id: 'sb_conv_spontaneous_selfies', key: 'spontaneous_selfies', prop: 'checked' },
     { id: 'sb_conv_selfie_prompt', key: 'selfie_prompt', prop: 'value' },
 ]);
@@ -80,6 +117,10 @@ let initialized = false;
 let autoWorkerBusy = false;
 let generationActive = false;
 let conversationReplyBusy = false;
+let previousConnectionProfile = null;
+let previousPersonaAvatar = null;
+let activePersonaApplied = false;
+let activeProfileApplied = false;
 
 function getCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
@@ -218,6 +259,66 @@ function getAvailabilityCopy(status) {
     return AVAILABILITY_COPY[status] ?? AVAILABILITY_COPY.online;
 }
 
+function getUserStatus() {
+    return localStorage.getItem(USER_STATUS_STORAGE_KEY) || 'online';
+}
+
+function setUserStatus(status) {
+    if (USER_STATUS_OPTIONS.includes(status)) {
+        localStorage.setItem(USER_STATUS_STORAGE_KEY, status);
+    }
+}
+
+function safeParseWeeklySchedule(value) {
+    try {
+        const parsed = JSON.parse(value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function getConnectionProfiles() {
+    return globalThis.extension_settings?.connectionManager?.profiles ?? [];
+}
+
+function getPersonaOptions() {
+    const personas = power_user?.personas;
+    if (!personas || typeof personas !== 'object') {
+        return [];
+    }
+
+    return Object.entries(personas).map(([avatarId, personaName]) => ({ avatarId, personaName: String(personaName) }));
+}
+
+async function applyConnectionProfileByName(profileName) {
+    if (!profileName) {
+        return;
+    }
+
+    try {
+        await executeSlashCommandsWithOptions(`/profile ${profileName}`, {});
+    } catch (error) {
+        console.warn('Conversation Mode: could not apply connection profile', profileName, error);
+    }
+}
+
+async function generateConversationImage(prompt, negative = '') {
+    try {
+        const qig = await import('./extensions/quick-image-gen/index.js');
+        const entry = await qig.withTransientGenerationSettings({}, async () => {
+            const settings = qig.getGenerationSettingsForRun();
+            const raw = await qig.generateForProvider(prompt, negative, settings, new AbortController().signal, {});
+            return raw ? qig.finalizeGeneratedEntry(raw, prompt, negative, settings, {}) : null;
+        });
+
+        return entry?.url ?? null;
+    } catch (error) {
+        console.warn('Conversation Mode: QIG not available or generation failed', error);
+        return null;
+    }
+}
+
 function getUnreadCount(avatar) {
     return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(UNREAD_PREFIX, avatar)), 0, 0);
 }
@@ -311,11 +412,19 @@ function buildConversationSystemPrompt(settings) {
     const character = getCurrentCharacter();
     const charName = getCurrentCharName();
     const userName = name1 || 'User';
+    const useGeechan = settings.use_geechan_as_system && settings.geechan_chatroom_prompt;
     const fields = [
         `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
-        'Reply like a live DM: concise, present-tense, conversational, and grounded in the character. Avoid long prose narration.',
     ];
+
+    if (useGeechan) {
+        fields.push(settings.geechan_chatroom_prompt
+            .replace(/\{\{char\}\}/g, charName)
+            .replace(/\{\{user\}\}/g, userName));
+    } else {
+        fields.push('Reply like a live DM: concise, present-tense, conversational, and grounded in the character. Avoid long prose narration.');
+    }
 
     if (character?.description) {
         fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);
@@ -326,7 +435,7 @@ function buildConversationSystemPrompt(settings) {
     if (character?.scenario) {
         fields.push(`Background context:\n${formatPromptText(character.scenario, 1200)}`);
     }
-    if (settings.geechan_prompt) {
+    if (settings.geechan_prompt && !useGeechan) {
         fields.push(`Messaging format: begin as ${charName}: message body. Keep actions brief and inline if needed.`);
     }
     if (settings.authors_note) {
@@ -439,7 +548,21 @@ function renderConversationTimeline() {
 
         const text = document.createElement('div');
         text.className = 'sb-conversation-message-text';
-        text.innerHTML = messageFormatting(message.mes, message.name, false, message.role === 'user', index, {}, false);
+        if (message.mes) {
+            text.innerHTML = messageFormatting(message.mes, message.name, false, message.role === 'user', index, {}, false);
+        }
+
+        const imageUrl = message.extra?.image_url;
+        if (typeof imageUrl === 'string' && imageUrl) {
+            const figure = document.createElement('figure');
+            figure.className = 'sb-conversation-image-preview';
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = message.extra?.image_prompt || 'Generated image';
+            img.loading = 'lazy';
+            figure.appendChild(img);
+            text.appendChild(figure);
+        }
 
         bubble.append(meta, text);
         item.append(avatarWrap, bubble);
@@ -449,7 +572,64 @@ function renderConversationTimeline() {
     timeline.scrollTop = timeline.scrollHeight;
 }
 
+function buildLorebookOptions(selected) {
+    const options = ['<option value="">Character default (no override)</option>'];
+    for (const worldName of (Array.isArray(world_names) ? world_names : [])) {
+        const safe = escapeHtmlAttribute(worldName);
+        options.push(`<option value="${safe}"${worldName === selected ? ' selected' : ''}>${escapeHtmlText(worldName)}</option>`);
+    }
+    return options.join('');
+}
+
+function buildPersonaOptions(selected) {
+    const options = ['<option value="">Use active persona</option>'];
+    for (const { avatarId, personaName } of getPersonaOptions()) {
+        const safe = escapeHtmlAttribute(avatarId);
+        options.push(`<option value="${safe}"${avatarId === selected ? ' selected' : ''}>${escapeHtmlText(personaName)}</option>`);
+    }
+    return options.join('');
+}
+
+function buildConnectionProfileOptions(selected) {
+    const options = ['<option value="">Use current connection</option>'];
+    for (const profile of getConnectionProfiles()) {
+        if (!profile?.name) {
+            continue;
+        }
+        const safe = escapeHtmlAttribute(profile.name);
+        options.push(`<option value="${safe}"${profile.name === selected ? ' selected' : ''}>${escapeHtmlText(profile.name)}</option>`);
+    }
+    return options.join('');
+}
+
+function buildChimingPartnerOptions(selectedNames) {
+    const selectedSet = new Set(String(selectedNames || '').split(',').map(part => part.trim()).filter(Boolean));
+    const currentAvatar = getCurrentCharAvatar();
+    const rows = [];
+    (Array.isArray(characters) ? characters : []).forEach((character) => {
+        if (!character?.avatar || character.avatar === currentAvatar) {
+            return;
+        }
+        const charName = character.name || 'Character';
+        const checked = selectedSet.has(charName) ? ' checked' : '';
+        rows.push(`<label class="checkbox_label sb-conversation-partner-option"><input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charName)}"${checked} /><span>${escapeHtmlText(charName)}</span></label>`);
+    });
+    if (!rows.length) {
+        return '<div class="sb-conversation-empty">Enable more characters to pick chiming partners.</div>';
+    }
+    return rows.join('');
+}
+
+function escapeHtmlAttribute(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeHtmlText(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function buildSettingsDrawerHtml() {
+    const settings = getSettings();
     return `
         <div class="sb-conversation-settings-header">
             <div>
@@ -471,29 +651,26 @@ function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-signal" aria-hidden="true"></i><span>Presence & Availability</span></h4>
-                <div class="sb-conversation-field-row">
-                    <label class="checkbox_label" title="Character availability status">
-                        <span>Status</span>
-                        <select id="sb_conv_availability" class="text_pole textarea_compact">
-                            <option value="online">Online</option>
-                            <option value="idle">Idle</option>
-                            <option value="dnd">Do Not Disturb</option>
-                            <option value="offline">Offline</option>
-                        </select>
-                    </label>
-                    <label class="checkbox_label" title="Action when user is idle">
-                        <span>User Idle Action</span>
-                        <select id="sb_conv_idle_action" class="text_pole textarea_compact">
-                            <option value="disabled">Disabled</option>
-                            <option value="followup">Send Auto Follow-up</option>
-                            <option value="spontaneous">Spontaneous Ping</option>
-                        </select>
-                    </label>
-                    <label class="checkbox_label sb-conversation-inline-number" title="User idle silence limit in minutes">
-                        <span>Idle Limit</span>
-                        <input id="sb_conv_idle_limit" class="text_pole textarea_compact widthUnset" type="number" min="1" max="1440" step="1" value="15" />
-                        <span class="auto_mode_delay_unit">mins</span>
-                    </label>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_availability">Status</label>
+                    <select id="sb_conv_availability" class="text_pole textarea_compact wide100p">
+                        <option value="online">Online</option>
+                        <option value="idle">Idle</option>
+                        <option value="dnd">Do Not Disturb</option>
+                        <option value="offline">Offline</option>
+                    </select>
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_idle_action">User Idle Action</label>
+                    <select id="sb_conv_idle_action" class="text_pole textarea_compact wide100p">
+                        <option value="disabled">Disabled</option>
+                        <option value="followup">Send Auto Follow-up</option>
+                        <option value="spontaneous">Spontaneous Ping</option>
+                    </select>
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_idle_limit">Idle Limit (minutes)</label>
+                    <input id="sb_conv_idle_limit" class="text_pole textarea_compact wide100p" type="number" min="1" max="1440" step="1" value="15" />
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_offline_message">Offline/DND Auto-responder</label>
@@ -514,32 +691,64 @@ function buildSettingsDrawerHtml() {
                     </label>
                 </div>
                 <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_ai_schedule">Message Schedule</label>
-                    <textarea id="sb_conv_ai_schedule" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="08:00 - Good morning selfie!&#10;14:00 - Casual afternoon check-in&#10;22:00 - Good night chat"></textarea>
+                    <label>Weekly Schedule</label>
+                    <div class="sb-conversation-weekly-schedule" id="sb_conv_weekly_schedule_editor"></div>
+                    <button type="button" class="menu_button sb-conversation-weekly-add" data-sb-conversation-action="weekly-add">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add weekly slot</span>
+                    </button>
+                    <input id="sb_conv_weekly_schedule" type="hidden" value="${escapeHtmlAttribute(settings.weekly_schedule)}" />
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_ai_schedule">Extra Schedule Lines</label>
+                    <textarea id="sb_conv_ai_schedule" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="08:00 - Good morning selfie!&#10;30 - Casual check-in 30 min after you go quiet"></textarea>
                 </div>
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-scroll" aria-hidden="true"></i><span>Prompts & Formats</span></h4>
-                <div class="sb-conversation-field-row">
-                    <label class="checkbox_label" title="Inject Geechan style system prompt and formatting overrides">
-                        <input id="sb_conv_geechan_prompt" type="checkbox" />
-                        <span>Use Geechan Chatroom Format</span>
-                    </label>
-                    <label class="checkbox_label" title="Enable dynamic character-to-character chiming when idle or discussed">
-                        <input id="sb_conv_multi_char" type="checkbox" />
-                        <span>Multi-Character Chiming</span>
-                    </label>
-                </div>
                 <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_multi_char_names">Chiming Partners</label>
-                    <input id="sb_conv_multi_char_names" type="text" class="text_pole wide100p" placeholder="Geechan, Seraphina" />
+                    <label class="checkbox_label" title="Use Geechan Chatroom Prompt as the base system prompt">
+                        <input id="sb_conv_use_geechan_as_system" type="checkbox" />
+                        <span>Use Geechan Chatroom Prompt as system base</span>
+                    </label>
+                    <textarea id="sb_conv_geechan_chatroom_prompt" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type the chatroom system prompt here..."></textarea>
                 </div>
+                <label class="checkbox_label" title="Inject Geechan style messaging format header">
+                    <input id="sb_conv_geechan_prompt" type="checkbox" />
+                    <span>Inject Geechan Messaging-Format Header (legacy)</span>
+                </label>
+                <label class="checkbox_label" title="Enable dynamic character-to-character chiming when idle">
+                    <input id="sb_conv_multi_char" type="checkbox" />
+                    <span>Multi-Character Chiming</span>
+                </label>
+                <div class="sb-conversation-field-stack">
+                    <label>Chiming Partners</label>
+                    <div class="sb-conversation-partner-list" id="sb_conv_chiming_partner_list">${buildChimingPartnerOptions(settings.multi_char_names)}</div>
+                    <input id="sb_conv_multi_char_names" type="hidden" value="${escapeHtmlAttribute(settings.multi_char_names)}" />
+                </div>
+                <label class="checkbox_label" title="Allow enabled characters to chat with each other autonomously in this thread">
+                    <input id="sb_conv_auto_character_chat" type="checkbox" />
+                    <span>Allow characters to talk to each other</span>
+                </label>
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context Overrides</span></h4>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>
-                    <input id="sb_conv_lorebook_override" type="text" class="text_pole wide100p" placeholder="Leave empty for character default" />
+                    <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">
+                        ${buildLorebookOptions(settings.lorebook_override)}
+                    </select>
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_conversation_persona">Conversation Persona</label>
+                    <select id="sb_conv_conversation_persona" class="text_pole textarea_compact wide100p">
+                        ${buildPersonaOptions(settings.conversation_persona)}
+                    </select>
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_connection_profile">Connection Profile</label>
+                    <select id="sb_conv_connection_profile" class="text_pole textarea_compact wide100p">
+                        ${buildConnectionProfileOptions(settings.connection_profile)}
+                    </select>
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_authors_note">Author's Note Override</label>
@@ -547,16 +756,20 @@ function buildSettingsDrawerHtml() {
                 </div>
             </div>
             <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>DM Tweaks & Spontaneous Media</span></h4>
-                <label class="checkbox_label" title="Add quick inline edit buttons next to messages in the Conversation thread">
-                    <input id="sb_conv_editable_messages" type="checkbox" />
-                    <span>Enable Quick-Edit DM Actions</span>
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-image" aria-hidden="true"></i><span>Image Generation</span></h4>
+                <label class="checkbox_label" title="Enable in-chat image generation via Quick Image Gen">
+                    <input id="sb_conv_image_gen_enabled" type="checkbox" />
+                    <span>Enable chatroom image generation (Quick Image Gen)</span>
                 </label>
-                <label class="checkbox_label" title="Enable the Prose Polisher magic wand button to automatically style your input before sending">
-                    <input id="sb_conv_prose_polisher" type="checkbox" />
-                    <span>Prose Polisher Send Assistant</span>
-                </label>
-                <label class="checkbox_label" title="Allows character to spontaneously send selfies using Stable Diffusion slash commands">
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_image_gen_prompt_template">Image Prompt Template</label>
+                    <input id="sb_conv_image_gen_prompt_template" type="text" class="text_pole wide100p" placeholder="a photo of {{char}}, {{scene}}" />
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_image_gen_negative">Negative Prompt</label>
+                    <input id="sb_conv_image_gen_negative" type="text" class="text_pole wide100p" placeholder="blurry, distorted" />
+                </div>
+                <label class="checkbox_label" title="Character spontaneously generates selfies during the conversation">
                     <input id="sb_conv_spontaneous_selfies" type="checkbox" />
                     <span>Enable Spontaneous Selfies</span>
                 </label>
@@ -564,6 +777,17 @@ function buildSettingsDrawerHtml() {
                     <label for="sb_conv_selfie_prompt">Selfie Prompt Template</label>
                     <input id="sb_conv_selfie_prompt" type="text" class="text_pole wide100p" placeholder="raw photo, selfie of {{char}}" />
                 </div>
+            </div>
+            <div class="sb-settings-group">
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>DM Tweaks</span></h4>
+                <label class="checkbox_label" title="Add quick inline edit buttons next to messages in the Conversation thread">
+                    <input id="sb_conv_editable_messages" type="checkbox" />
+                    <span>Enable Quick-Edit DM Actions</span>
+                </label>
+                <label class="checkbox_label" title="Enable the Prose Polisher magic wand button to style your input before sending">
+                    <input id="sb_conv_prose_polisher" type="checkbox" />
+                    <span>Prose Polisher Send Assistant</span>
+                </label>
             </div>
         </div>
     `;
@@ -642,13 +866,45 @@ function ensureConversationChrome() {
             <div class="sb-conversation-rail-header">
                 <div>
                     <div class="sb-conversation-rail-kicker">Pals</div>
-                    <div class="sb-conversation-rail-title">Conversation Cast</div>
                 </div>
                 <button type="button" class="menu_button menu_button_icon sb-conversation-rail-close" data-sb-conversation-action="close-pals" title="Close Conversation pals" aria-label="Close Conversation pals">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
             <div id="${CHROME_IDS.palsList}" class="sb-conversation-pals-list"></div>
+            <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-footer">
+                <div class="sb-conversation-rail-footer-avatar">
+                    <img id="sb_conv_footer_persona_avatar" alt="" loading="lazy" />
+                    <span class="sb-conversation-status-dot sb-conversation-rail-footer-dot" data-status="online" aria-hidden="true"></span>
+                </div>
+                <div class="sb-conversation-rail-footer-copy">
+                    <span id="sb_conv_footer_persona_name" class="sb-conversation-rail-footer-name"></span>
+                    <span id="sb_conv_footer_user_status" class="sb-conversation-rail-footer-status"></span>
+                </div>
+                <div class="sb-conversation-rail-footer-actions">
+                    <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="open-persona-picker" title="Switch persona" aria-label="Switch persona" aria-haspopup="listbox">
+                        <i class="fa-solid fa-user-pen" aria-hidden="true"></i>
+                    </button>
+                    <div id="${CHROME_IDS.personaPicker}" class="sb-conversation-persona-picker" role="listbox" aria-label="Choose persona" hidden></div>
+                    <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="open-user-status-picker" title="Set your status" aria-label="Set your status" aria-haspopup="listbox">
+                        <i class="fa-solid fa-circle-dot" aria-hidden="true"></i>
+                    </button>
+                    <div id="${CHROME_IDS.userStatusPicker}" class="sb-conversation-status-picker" role="listbox" aria-label="Set your status" hidden>
+                        <button type="button" class="sb-conversation-status-option" data-status="online" data-sb-conversation-action="set-user-status" role="option">
+                            <span class="sb-conversation-status-dot" data-status="online" aria-hidden="true"></span>Online
+                        </button>
+                        <button type="button" class="sb-conversation-status-option" data-status="idle" data-sb-conversation-action="set-user-status" role="option">
+                            <span class="sb-conversation-status-dot" data-status="idle" aria-hidden="true"></span>Idle
+                        </button>
+                        <button type="button" class="sb-conversation-status-option" data-status="dnd" data-sb-conversation-action="set-user-status" role="option">
+                            <span class="sb-conversation-status-dot" data-status="dnd" aria-hidden="true"></span>Do Not Disturb
+                        </button>
+                        <button type="button" class="sb-conversation-status-option" data-status="offline" data-sb-conversation-action="set-user-status" role="option">
+                            <span class="sb-conversation-status-dot" data-status="offline" aria-hidden="true"></span>Invisible
+                        </button>
+                    </div>
+                </div>
+            </div>
         `;
         sheld.insertBefore(palsRail, header);
     }
@@ -713,7 +969,30 @@ function openConversationSettings() {
     }
 
     closePalsRail();
-    applySettingsToPanel(getSettings());
+    const settings = getSettings();
+
+    // Refresh live-data dropdowns before showing the drawer.
+    const lorebookSelect = document.getElementById('sb_conv_lorebook_override');
+    if (lorebookSelect instanceof HTMLSelectElement) {
+        lorebookSelect.innerHTML = buildLorebookOptions(settings.lorebook_override);
+    }
+    const personaSelect = document.getElementById('sb_conv_conversation_persona');
+    if (personaSelect instanceof HTMLSelectElement) {
+        personaSelect.innerHTML = buildPersonaOptions(settings.conversation_persona);
+    }
+    const profileSelect = document.getElementById('sb_conv_connection_profile');
+    if (profileSelect instanceof HTMLSelectElement) {
+        profileSelect.innerHTML = buildConnectionProfileOptions(settings.connection_profile);
+    }
+    const partnerList = document.getElementById('sb_conv_chiming_partner_list');
+    if (partnerList instanceof HTMLElement) {
+        partnerList.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
+    }
+
+    applySettingsToPanel(settings);
+    bindWeeklyScheduleEditor();
+    bindChimingPartnerList();
+    updateUserFooter();
     chrome.drawer.hidden = false;
     setConversationBackdropVisible();
     chrome.drawer.querySelector('input, select, textarea, button')?.focus?.({ preventScroll: true });
@@ -725,6 +1004,198 @@ function closeConversationSettings() {
         drawer.hidden = true;
     }
     setConversationBackdropVisible();
+}
+
+function renderWeeklyScheduleEditor(container, scheduleJson) {
+    const entries = safeParseWeeklySchedule(scheduleJson);
+    container.innerHTML = '';
+    for (const entry of entries) {
+        container.appendChild(createWeeklyScheduleRow(entry));
+    }
+}
+
+function createWeeklyScheduleRow(entry = {}) {
+    const row = document.createElement('div');
+    row.className = 'sb-conversation-weekly-row';
+    const dayPills = WEEKDAY_LABELS.map((label, idx) => {
+        const checked = Array.isArray(entry.days) && entry.days.includes(idx) ? ' checked' : '';
+        return `<label class="sb-conversation-day-pill"><input type="checkbox" class="sb-conv-day-check" data-day="${idx}"${checked} /><span>${label}</span></label>`;
+    }).join('');
+    row.innerHTML = `
+        <div class="sb-conversation-day-pills">${dayPills}</div>
+        <div class="sb-conversation-weekly-row-meta">
+            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule time" />
+            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule message" />
+            <label class="checkbox_label sb-conv-weekly-enabled">
+                <input type="checkbox" class="sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
+                <span>On</span>
+            </label>
+            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove slot" aria-label="Remove slot">
+                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+            </button>
+        </div>
+    `;
+    return row;
+}
+
+function addWeeklyScheduleRow() {
+    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
+    if (!(editor instanceof HTMLElement)) {
+        return;
+    }
+
+    editor.appendChild(createWeeklyScheduleRow({ days: [], time: '08:00', message: '', enabled: true }));
+    saveCurrentPanelSettings();
+}
+
+function readWeeklyScheduleFromEditor() {
+    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
+    if (!(editor instanceof HTMLElement)) {
+        return '[]';
+    }
+
+    const entries = [];
+    for (const row of editor.querySelectorAll('.sb-conversation-weekly-row')) {
+        const days = [];
+        row.querySelectorAll('.sb-conv-day-check:checked').forEach((cb) => {
+            const day = parseInt(cb.dataset.day, 10);
+            if (!Number.isNaN(day)) {
+                days.push(day);
+            }
+        });
+        const timeEl = row.querySelector('.sb-conv-weekly-time');
+        const messageEl = row.querySelector('.sb-conv-weekly-message');
+        const enabledEl = row.querySelector('.sb-conv-weekly-enabled-check');
+        entries.push({
+            days,
+            time: timeEl instanceof HTMLInputElement ? timeEl.value : '08:00',
+            message: messageEl instanceof HTMLInputElement ? messageEl.value : '',
+            enabled: enabledEl instanceof HTMLInputElement ? enabledEl.checked : true,
+        });
+    }
+
+    return JSON.stringify(entries);
+}
+
+function readChimingPartnersFromList() {
+    const list = document.getElementById('sb_conv_chiming_partner_list');
+    if (!(list instanceof HTMLElement)) {
+        return '';
+    }
+
+    const checked = [];
+    list.querySelectorAll('.sb-conversation-partner-checkbox:checked').forEach((cb) => {
+        if (cb instanceof HTMLInputElement && cb.value) {
+            checked.push(cb.value);
+        }
+    });
+    return checked.join(', ');
+}
+
+function updateUserFooter() {
+    const footer = document.getElementById(CHROME_IDS.railFooter);
+    if (!(footer instanceof HTMLElement)) {
+        return;
+    }
+
+    const personaName = name1 || 'You';
+    const status = getUserStatus();
+    const statusCopy = AVAILABILITY_COPY[status] ?? AVAILABILITY_COPY.online;
+
+    const avatarEl = document.getElementById('sb_conv_footer_persona_avatar');
+    const nameEl = document.getElementById('sb_conv_footer_persona_name');
+    const statusEl = document.getElementById('sb_conv_footer_user_status');
+    const activeDot = footer.querySelector('.sb-conversation-rail-footer-dot');
+
+    if (avatarEl instanceof HTMLImageElement) {
+        const activeAvatar = typeof user_avatar === 'string' ? user_avatar : null;
+        avatarEl.src = activeAvatar ? getThumbnailUrl('persona', activeAvatar) : (default_user_avatar || '');
+        avatarEl.alt = personaName;
+    }
+    if (nameEl instanceof HTMLElement) {
+        nameEl.textContent = personaName;
+    }
+    if (statusEl instanceof HTMLElement) {
+        statusEl.textContent = statusCopy.label;
+        statusEl.dataset.status = status;
+    }
+    if (activeDot instanceof HTMLElement) {
+        activeDot.dataset.status = status;
+    }
+}
+
+function toggleUserStatusPicker() {
+    const picker = document.getElementById(CHROME_IDS.userStatusPicker);
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+
+    const isHidden = picker.hidden;
+    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
+    picker.hidden = !isHidden;
+}
+
+function togglePersonaPicker() {
+    const picker = document.getElementById(CHROME_IDS.personaPicker);
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+
+    const isHidden = picker.hidden;
+    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
+
+    if (isHidden) {
+        picker.innerHTML = '';
+        const personas = getPersonaOptions();
+        if (!personas.length) {
+            picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
+        } else {
+            for (const { avatarId, personaName } of personas) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sb-conversation-persona-option';
+                btn.dataset.sbConversationAction = 'pick-persona';
+                btn.dataset.personaAvatar = avatarId;
+                btn.setAttribute('role', 'option');
+                const img = document.createElement('img');
+                img.src = getThumbnailUrl('persona', avatarId);
+                img.alt = '';
+                img.loading = 'lazy';
+                btn.appendChild(img);
+                btn.appendChild(document.createTextNode(personaName));
+                picker.appendChild(btn);
+            }
+        }
+    }
+
+    picker.hidden = !isHidden;
+}
+
+function bindWeeklyScheduleEditor() {
+    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
+    const hiddenInput = document.getElementById('sb_conv_weekly_schedule');
+    if (!(editor instanceof HTMLElement)) {
+        return;
+    }
+
+    const scheduleJson = hiddenInput instanceof HTMLInputElement ? hiddenInput.value : '[]';
+    renderWeeklyScheduleEditor(editor, scheduleJson);
+
+    if (editor.dataset.sbConversationBound !== 'true') {
+        editor.dataset.sbConversationBound = 'true';
+        editor.addEventListener('change', saveCurrentPanelSettings);
+        editor.addEventListener('input', saveCurrentPanelSettings);
+    }
+}
+
+function bindChimingPartnerList() {
+    const list = document.getElementById('sb_conv_chiming_partner_list');
+    if (!(list instanceof HTMLElement) || list.dataset.sbConversationBound === 'true') {
+        return;
+    }
+
+    list.dataset.sbConversationBound = 'true';
+    list.addEventListener('change', saveCurrentPanelSettings);
 }
 
 function bindConversationChromeControls(sheld) {
@@ -770,6 +1241,42 @@ function bindConversationChromeControls(sheld) {
             case 'edit-message':
                 editConversationMessage(target.dataset.messageId);
                 break;
+            case 'weekly-add':
+                addWeeklyScheduleRow();
+                break;
+            case 'weekly-remove': {
+                const row = target.closest('.sb-conversation-weekly-row');
+                if (row instanceof HTMLElement) {
+                    row.remove();
+                    saveCurrentPanelSettings();
+                }
+                break;
+            }
+            case 'set-user-status': {
+                const status = target.dataset.status;
+                if (status) {
+                    setUserStatus(status);
+                    updateUserFooter();
+                    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
+                }
+                break;
+            }
+            case 'open-user-status-picker':
+                toggleUserStatusPicker();
+                break;
+            case 'open-persona-picker':
+                togglePersonaPicker();
+                break;
+            case 'pick-persona': {
+                const avatarId = target.dataset.personaAvatar;
+                if (avatarId) {
+                    await setUserAvatar(avatarId, { toastPersonaNameChange: false });
+                    updateUserFooter();
+                    saveCurrentPanelSettings();
+                }
+                document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
+                break;
+            }
             default:
                 break;
         }
@@ -899,6 +1406,48 @@ function bindEntryPanel() {
     }
 }
 
+function getSelectedConnectionProfileName() {
+    const manager = globalThis.extension_settings?.connectionManager;
+    if (!manager || !Array.isArray(manager.profiles)) {
+        return '';
+    }
+    const selected = manager.profiles.find((profile) => profile?.id === manager.selectedProfile);
+    return selected?.name ?? '';
+}
+
+function applyConversationContext(settings) {
+    if (settings.conversation_persona && !activePersonaApplied) {
+        if (typeof user_avatar === 'string' && user_avatar !== settings.conversation_persona) {
+            previousPersonaAvatar = user_avatar;
+            activePersonaApplied = true;
+            void setUserAvatar(settings.conversation_persona, { toastPersonaNameChange: false });
+        }
+    }
+
+    if (settings.connection_profile && !activeProfileApplied) {
+        const current = getSelectedConnectionProfileName();
+        if (current !== settings.connection_profile) {
+            previousConnectionProfile = current;
+            activeProfileApplied = true;
+            void applyConnectionProfileByName(settings.connection_profile);
+        }
+    }
+}
+
+function restoreConversationContext() {
+    if (activePersonaApplied && previousPersonaAvatar) {
+        void setUserAvatar(previousPersonaAvatar, { toastPersonaNameChange: false });
+    }
+    previousPersonaAvatar = null;
+    activePersonaApplied = false;
+
+    if (activeProfileApplied && previousConnectionProfile) {
+        void applyConnectionProfileByName(previousConnectionProfile);
+    }
+    previousConnectionProfile = null;
+    activeProfileApplied = false;
+}
+
 function setConversationInterfaceActive(active) {
     const chrome = active ? ensureConversationChrome() : { sheld: document.getElementById('sheld') };
     if (!(chrome?.sheld instanceof HTMLElement)) {
@@ -909,6 +1458,7 @@ function setConversationInterfaceActive(active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
         closeConversationSettings();
         closePalsRail();
+        restoreConversationContext();
         for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
             const element = document.getElementById(id);
             if (element instanceof HTMLElement) {
@@ -925,6 +1475,8 @@ function setConversationInterfaceActive(active) {
             element.hidden = false;
         }
     }
+    applyConversationContext(getSettings());
+    updateUserFooter();
 }
 
 function renderPalsRail() {
@@ -1031,6 +1583,7 @@ function refreshConversationInterface({ syncControls = false } = {}) {
         updateLastPreviewFromConversation(avatar);
         renderConversationTimeline();
         updateConversationChrome(settings);
+        updateUserFooter();
     }
 
     updateProsePolisherButtonVisibility();
@@ -1062,6 +1615,16 @@ function saveCurrentPanelSettings() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
         return;
+    }
+
+    // Sync dynamic editor state into hidden backing inputs before reading
+    const weeklyInput = document.getElementById('sb_conv_weekly_schedule');
+    if (weeklyInput instanceof HTMLInputElement) {
+        weeklyInput.value = readWeeklyScheduleFromEditor();
+    }
+    const chimingInput = document.getElementById('sb_conv_multi_char_names');
+    if (chimingInput instanceof HTMLInputElement) {
+        chimingInput.value = readChimingPartnersFromList();
     }
 
     const settings = readSettingsFromPanel(avatar);
@@ -1224,6 +1787,28 @@ async function submitConversationInput() {
                 },
             });
         }
+
+        // Item 8: QIG image gen — trigger when user asked for an image or image_gen is enabled + spontaneous_selfies
+        const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
+        const wantsImage = settings.image_gen_enabled
+            && (settings.spontaneous_selfies || imageKeywords.test(text));
+        if (wantsImage) {
+            const charName = getCurrentCharName();
+            const prompt = (settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template)
+                .replace(/\{\{char\}\}/g, charName)
+                .replace(/\{\{scene\}\}/g, 'the current DM conversation');
+            const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+            if (imageUrl) {
+                await appendConversationMessage('[Image attached]', {
+                    name: charName,
+                    role: 'character',
+                    extra: {
+                        conversation_mode_image: true,
+                        image_url: imageUrl,
+                    },
+                });
+            }
+        }
     } catch (error) {
         console.error('Conversation reply error:', error);
         globalThis.toastr?.error?.('Conversation reply failed.');
@@ -1252,15 +1837,30 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
     return message;
 }
 
-function buildAutoMessageDirective(directive, settings) {
-    let fullDirective = directive;
+function buildAutoMessageDirective(directive) {
+    return directive;
+}
 
-    if (settings.spontaneous_selfies) {
-        const selfiePrompt = (settings.selfie_prompt || DEFAULT_SETTINGS.selfie_prompt).replace('{{char}}', getCurrentCharName());
-        fullDirective += `\n[Selfie directive: If an image would fit the moment, include a Stable Diffusion slash command on its own line: /imagine ${selfiePrompt}]`;
+async function maybeGenerateSpontaneousImage(settings) {
+    if (!settings.image_gen_enabled || !settings.spontaneous_selfies) {
+        return;
     }
 
-    return fullDirective;
+    const charName = getCurrentCharName();
+    const prompt = (settings.selfie_prompt || settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template)
+        .replace(/\{\{char\}\}/g, charName)
+        .replace(/\{\{scene\}\}/g, 'the current DM conversation');
+    const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+    if (imageUrl) {
+        await appendConversationMessage('[Image attached]', {
+            name: charName,
+            role: 'character',
+            extra: {
+                conversation_mode_image: true,
+                image_url: imageUrl,
+            },
+        });
+    }
 }
 
 async function triggerAutoMessage(directive, settings, extra = {}) {
@@ -1271,7 +1871,7 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
     autoWorkerBusy = true;
 
     try {
-        const quietPrompt = buildAutoMessageDirective(directive, settings);
+        const quietPrompt = buildAutoMessageDirective(directive);
         const response = await generateConversationReply(quietPrompt, settings, { responseLength: 220 });
 
         if (response?.trim()) {
@@ -1281,6 +1881,8 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
                     ...extra,
                 },
             });
+            autoWorkerBusy = false;
+            await maybeGenerateSpontaneousImage(settings);
             return true;
         }
     } catch (error) {
@@ -1340,13 +1942,55 @@ function hasScheduleTriggered(avatar, triggerKey) {
 }
 
 async function checkScheduledAutoMessages(avatar, settings, now) {
-    if (!settings.auto_message || !settings.ai_schedule) {
+    if (!settings.auto_message) {
+        return false;
+    }
+
+    const hasLegacy = Boolean(settings.ai_schedule);
+    const weeklyEntries = safeParseWeeklySchedule(settings.weekly_schedule);
+    if (!hasLegacy && !weeklyEntries.length) {
         return false;
     }
 
     const currentDate = new Date(now);
     const currentMinute = getCurrentMinuteKey(currentDate);
     const currentDay = getCurrentDayKey(currentDate);
+    const currentDayOfWeek = currentDate.getDay(); // 0=Sun..6=Sat
+
+    // Weekly scheduler entries (item 3)
+    for (const entry of weeklyEntries) {
+        if (entry.enabled === false) {
+            continue;
+        }
+        if (!Array.isArray(entry.days) || !entry.days.includes(currentDayOfWeek)) {
+            continue;
+        }
+        if (!entry.time || entry.time !== currentMinute) {
+            continue;
+        }
+
+        const triggerKey = `weekly:${currentDay}:${entry.time}:${entry.message}`;
+        if (hasScheduleTriggered(avatar, triggerKey)) {
+            continue;
+        }
+
+        const triggered = await triggerAutoMessage(
+            `[System directive: Your weekly schedule is due: "${entry.message}". Send a message with this context in mind.]`,
+            settings,
+            { schedule: `weekly:${entry.time}` },
+        );
+        if (triggered) {
+            setScheduleTriggered(avatar, triggerKey, now);
+            setLastAutoMessageTime(avatar, now);
+        }
+
+        return triggered;
+    }
+
+    // Legacy HH:MM and relative-minute schedule lines
+    if (!hasLegacy) {
+        return false;
+    }
 
     for (const line of settings.ai_schedule.split('\n')) {
         const trimmed = line.trim();
@@ -1493,6 +2137,75 @@ async function checkMultiCharacterChime(avatar, settings, now) {
     return triggered;
 }
 
+async function triggerAutoCharacterChat(avatar, settings) {
+    if (autoWorkerBusy) {
+        return false;
+    }
+
+    // Pick another enabled pal to speak to the current character.
+    const others = getConversationPals().filter((pal) => pal.character?.avatar && pal.character.avatar !== avatar);
+    if (!others.length) {
+        return false;
+    }
+
+    autoWorkerBusy = true;
+    try {
+        const partner = others[Math.floor(Math.random() * others.length)];
+        const partnerName = partner.character.name || 'A friend';
+        const charName = getCurrentCharName();
+        const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
+        const systemPrompt = `You are ${partnerName}, messaging ${charName} in a private group DM. This is separate from any roleplay/story chat. Write one short, natural message from ${partnerName} that continues the casual conversation or starts a friendly new topic. Begin your message exactly with **${partnerName}:** followed by the message body.`;
+        const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short DM from ${partnerName} talking to ${charName}.`;
+        const response = await generateRaw({
+            prompt,
+            systemPrompt,
+            responseLength: 150,
+            trimNames: false,
+        });
+
+        if (response?.trim()) {
+            await appendConversationMessage(response.trim(), {
+                name: partnerName,
+                role: 'partner',
+                extra: { conversation_mode_auto_chat: true },
+            });
+            return true;
+        }
+    } catch (error) {
+        console.error('Auto character chat error:', error);
+    } finally {
+        autoWorkerBusy = false;
+    }
+
+    return false;
+}
+
+async function checkAutoCharacterChat(avatar, settings, now) {
+    if (!settings.auto_character_chat) {
+        return false;
+    }
+
+    const lastUserActivity = getLastUserActivity(avatar, now);
+    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
+
+    if (idleMinutes < settings.idle_limit) {
+        return false;
+    }
+
+    const sessionKey = getCharacterStorageKey(LAST_AUTO_CHAT_SESSION_PREFIX, avatar);
+    if (localStorage.getItem(sessionKey) === String(lastUserActivity)) {
+        return false;
+    }
+
+    const triggered = await triggerAutoCharacterChat(avatar, settings);
+    if (triggered) {
+        localStorage.setItem(sessionKey, String(lastUserActivity));
+        setLastAutoMessageTime(avatar, now);
+    }
+
+    return triggered;
+}
+
 async function conversationModeAutoMessageWorker() {
     if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press) {
         return;
@@ -1522,7 +2235,11 @@ async function conversationModeAutoMessageWorker() {
         return;
     }
 
-    await checkMultiCharacterChime(avatar, settings, now);
+    if (await checkMultiCharacterChime(avatar, settings, now)) {
+        return;
+    }
+
+    await checkAutoCharacterChat(avatar, settings, now);
 }
 
 async function handleAvailabilityAutoResponder(settings = getSettings()) {
