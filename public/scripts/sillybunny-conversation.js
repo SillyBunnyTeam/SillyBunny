@@ -189,7 +189,6 @@ let previousPersonaAvatar = null;
 let activePersonaApplied = false;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
-let scheduleEditingMode = false;
 const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
@@ -1275,6 +1274,9 @@ function buildSettingsDrawerHtml() {
                         <span>Use Geechan Chatroom Prompt as system base</span>
                     </label>
                     <textarea id="sb_conv_geechan_chatroom_prompt" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type the chatroom system prompt here..."></textarea>
+                    <button type="button" class="menu_button sb-conversation-reset-prompt" data-sb-conversation-action="reset-prompt" style="margin-top: 4px; align-self: flex-start; padding: 4px 8px; font-size: var(--sb-type-meta);">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Reset to default</span>
+                    </button>
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_custom_instructions">Custom Instructions</label>
@@ -1349,9 +1351,9 @@ function buildSettingsDrawerHtml() {
                     <input id="sb_conv_editable_messages" type="checkbox" />
                     <span>Enable Quick-Edit DM Actions</span>
                 </label>
-                <label class="checkbox_label" title="Enable the Prose Polisher magic wand button to style your input before sending">
+                <label class="checkbox_label" title="Enable a magic wand icon on character replies to polish and refine their outputs.">
                     <input id="sb_conv_prose_polisher" type="checkbox" />
-                    <span>Prose Polisher Send Assistant</span>
+                    <span>Character Prose Polisher</span>
                 </label>
             </div>
         </div>
@@ -1412,9 +1414,6 @@ function ensureConversationChrome() {
                 <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
                 <textarea id="${CHROME_IDS.input}" class="text_pole" rows="2" placeholder="Message this character outside roleplay..."></textarea>
                 <div class="sb-conversation-composer-actions">
-                    <button id="${CHROME_IDS.composerPolish}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="polish-input" title="Polish message" aria-label="Polish message" hidden>
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
-                    </button>
                     <button id="${CHROME_IDS.send}" type="submit" class="menu_button menu_button_icon" title="Send Conversation message" aria-label="Send Conversation message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                         <span>Send</span>
@@ -1445,6 +1444,9 @@ function ensureConversationChrome() {
                     </button>
                 </div>
                 <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
+            </div>
+            <div class="sb-conversation-rail-search" style="padding: 0 14px 8px;">
+                <input type="text" id="sb_conversation_pals_search" class="text_pole textarea_compact wide100p" placeholder="Search direct messages..." style="font-size: var(--sb-type-meta);" />
             </div>
             <div id="${CHROME_IDS.palsList}" class="sb-conversation-pals-list"></div>
             <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-footer">
@@ -1550,6 +1552,265 @@ function formatScheduleTimestamp(timestamp) {
     }
 }
 
+function openScheduleEditorModal(schedule) {
+    const overlay = document.createElement('div');
+    overlay.id = 'sb_conversation_schedule_modal';
+    overlay.className = 'sb-conversation-schedule-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(8px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    `;
+
+    const editedSchedule = JSON.parse(JSON.stringify(schedule || {
+        days: { '0': [], '1': [], '2': [], '3': [], '4': [], '5': [], '6': [] },
+        talkativeness: 50,
+        inactivityThresholdMinutes: 120,
+    }));
+
+    for (let d = 0; d <= 6; d++) {
+        if (!editedSchedule.days[String(d)]) {
+            editedSchedule.days[String(d)] = [];
+        }
+    }
+
+    let currentTabDay = new Date().getDay();
+
+    const modal = document.createElement('div');
+    modal.className = 'sb-conversation-schedule-modal sb-shell-root';
+    modal.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        width: min(650px, 100%);
+        max-height: calc(100vh - 40px);
+        background: var(--SmartThemeBlurTintColor);
+        border: 1px solid var(--sb-shell-border);
+        border-radius: var(--sb-radius-md, 12px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        color: var(--SmartThemeBodyColor);
+        overflow: hidden;
+    `;
+
+    function updateModalBody() {
+        const listContainer = modal.querySelector('.sb-schedule-modal-blocks-list');
+        if (!listContainer) return;
+
+        const dayBlocks = editedSchedule.days[String(currentTabDay)] || [];
+        listContainer.innerHTML = '';
+
+        if (!dayBlocks.length) {
+            listContainer.innerHTML = '<div class="sb-conversation-empty" style="text-align: center; padding: 20px; opacity: 0.7;">No blocks scheduled for this day. Click "Add Time Block" below to create one!</div>';
+        } else {
+            dayBlocks.forEach((block, idx) => {
+                const row = document.createElement('div');
+                row.className = 'sb-schedule-modal-row';
+                row.style.cssText = `
+                    display: grid;
+                    grid-template-columns: 130px 1fr 100px auto;
+                    gap: 10px;
+                    align-items: center;
+                    margin-bottom: 8px;
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 40%, transparent);
+                `;
+
+                const timeInput = document.createElement('input');
+                timeInput.type = 'text';
+                timeInput.className = 'text_pole textarea_compact sb-schedule-modal-time';
+                timeInput.placeholder = '08:00-12:00';
+                timeInput.value = block.time || '';
+                timeInput.style.fontFamily = 'monospace';
+                timeInput.addEventListener('input', () => {
+                    block.time = timeInput.value;
+                });
+
+                const activityInput = document.createElement('input');
+                activityInput.type = 'text';
+                activityInput.className = 'text_pole textarea_compact sb-schedule-modal-activity';
+                activityInput.placeholder = 'e.g. working, sleeping';
+                activityInput.value = block.activity || '';
+                activityInput.addEventListener('input', () => {
+                    block.activity = activityInput.value;
+                });
+
+                const statusSelect = document.createElement('select');
+                statusSelect.className = 'text_pole sb-schedule-modal-status';
+                statusSelect.style.height = '32px';
+                ['online', 'idle', 'dnd', 'offline'].forEach(st => {
+                    const opt = document.createElement('option');
+                    opt.value = st;
+                    opt.textContent = st;
+                    if (block.status === st) opt.selected = true;
+                    statusSelect.appendChild(opt);
+                });
+                statusSelect.addEventListener('change', () => {
+                    block.status = statusSelect.value;
+                });
+
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'menu_button menu_button_icon';
+                delBtn.style.padding = '4px 8px';
+                delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+                delBtn.addEventListener('click', () => {
+                    editedSchedule.days[String(currentTabDay)].splice(idx, 1);
+                    updateModalBody();
+                });
+
+                row.appendChild(timeInput);
+                row.appendChild(activityInput);
+                row.appendChild(statusSelect);
+                row.appendChild(delBtn);
+                listContainer.appendChild(row);
+            });
+        }
+    }
+
+    modal.innerHTML = `
+        <div class="sb-conversation-schedule-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--sb-shell-border);">
+            <span style="font-weight: var(--sb-weight-title); font-size: 1.1em;"><i class="fa-solid fa-calendar-days" style="color: var(--sb-accent); margin-right: 8px;"></i>Edit Weekly Routine</span>
+            <button type="button" class="menu_button menu_button_icon sb-schedule-modal-close" style="padding: 4px 8px;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="sb-conversation-schedule-modal-tabs" style="display: flex; gap: 4px; padding: 10px 20px; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--sb-shell-border); overflow-x: auto;">
+            ${WEEKDAY_LABELS.map((day, idx) => `
+                <button type="button" class="menu_button sb-schedule-modal-tab" data-day="${idx}" style="flex: 1; padding: 6px 4px; font-size: var(--sb-type-meta); min-width: 50px;">${day}</button>
+            `).join('')}
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding: 20px;" class="sb-schedule-modal-body">
+            <div class="sb-schedule-modal-blocks-list" style="min-height: 120px;"></div>
+            <button type="button" class="menu_button sb-schedule-modal-add" style="margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <i class="fa-solid fa-plus"></i><span>Add Time Block</span>
+            </button>
+        </div>
+        <div class="sb-conversation-schedule-modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--sb-shell-border); background: rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="sb-conversation-field-stack">
+                    <label style="font-size: var(--sb-type-meta); opacity: 0.8; margin-bottom: 4px;">Talkativeness (0-100)</label>
+                    <input type="number" class="text_pole sb-schedule-modal-talkativeness" min="0" max="100" step="5" value="${editedSchedule.talkativeness}" />
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label style="font-size: var(--sb-type-meta); opacity: 0.8; margin-bottom: 4px;">Inactivity Threshold (mins)</label>
+                    <input type="number" class="text_pole sb-schedule-modal-patience" min="15" max="360" step="5" value="${editedSchedule.inactivityThresholdMinutes}" />
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+                <button type="button" class="menu_button sb-schedule-modal-save" style="padding: 6px 14px; font-weight: var(--sb-weight-control); color: white;">Save Changes</button>
+                <button type="button" class="menu_button sb-schedule-modal-cancel" style="padding: 6px 14px;">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    function selectDayTab(dayIdx) {
+        currentTabDay = dayIdx;
+        modal.querySelectorAll('.sb-schedule-modal-tab').forEach(btn => {
+            const btnDay = parseInt(btn.dataset.day, 10);
+            if (btnDay === currentTabDay) {
+                btn.style.borderColor = 'var(--sb-accent)';
+                btn.style.background = 'color-mix(in srgb, var(--sb-accent) 15%, transparent)';
+                btn.style.fontWeight = 'var(--sb-weight-control)';
+            } else {
+                btn.style.borderColor = '';
+                btn.style.background = '';
+                btn.style.fontWeight = '';
+            }
+        });
+        updateModalBody();
+    }
+    selectDayTab(currentTabDay);
+
+    modal.querySelectorAll('.sb-schedule-modal-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectDayTab(parseInt(btn.dataset.day, 10));
+        });
+    });
+
+    const addBtn = modal.querySelector('.sb-schedule-modal-add');
+    addBtn?.addEventListener('click', () => {
+        const dayBlocks = editedSchedule.days[String(currentTabDay)] || [];
+        dayBlocks.push({ time: '12:00-14:00', activity: 'free time', status: 'online' });
+        editedSchedule.days[String(currentTabDay)] = dayBlocks;
+        updateModalBody();
+    });
+
+    const talkInput = modal.querySelector('.sb-schedule-modal-talkativeness');
+    talkInput?.addEventListener('input', () => {
+        editedSchedule.talkativeness = clamp(parseInt(talkInput.value, 10) || 50, 0, 100);
+    });
+
+    const patienceInput = modal.querySelector('.sb-schedule-modal-patience');
+    patienceInput?.addEventListener('input', () => {
+        editedSchedule.inactivityThresholdMinutes = clamp(parseInt(patienceInput.value, 10) || 120, MIN_INACTIVITY_THRESHOLD, MAX_INACTIVITY_THRESHOLD);
+    });
+
+    const closeBtn = modal.querySelector('.sb-schedule-modal-close');
+    const cancelBtn = modal.querySelector('.sb-schedule-modal-cancel');
+    const saveBtn = modal.querySelector('.sb-schedule-modal-save');
+
+    function closeModal() {
+        overlay.remove();
+    }
+
+    closeBtn?.addEventListener('click', closeModal);
+    cancelBtn?.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+    });
+
+    saveBtn?.addEventListener('click', () => {
+        const editAvatar = getCurrentCharAvatar();
+        if (!editAvatar) {
+            closeModal();
+            return;
+        }
+
+        const normalized = {
+            days: {},
+            talkativeness: editedSchedule.talkativeness,
+            inactivityThresholdMinutes: editedSchedule.inactivityThresholdMinutes,
+            generatedAt: Date.now(),
+        };
+
+        for (let d = 0; d <= 6; d++) {
+            const rawBlocks = editedSchedule.days[String(d)] || [];
+            const normalizedBlocks = [];
+            for (const b of rawBlocks) {
+                const norm = normalizeScheduleBlock(b);
+                if (norm) {
+                    normalizedBlocks.push(norm);
+                }
+            }
+            normalizedBlocks.sort((x, y) => {
+                const xr = parseScheduleTimeRange(x.time);
+                const yr = parseScheduleTimeRange(y.time);
+                return xr.startMinutes - yr.startMinutes;
+            });
+            normalized.days[String(d)] = normalizedBlocks;
+        }
+
+        saveStoredSchedule(editAvatar, normalized);
+        const editSettings = getSettings(editAvatar);
+        editSettings.auto_schedule = JSON.stringify(normalized);
+        editSettings.talkativeness = normalized.talkativeness;
+        editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
+        editSettings.schedule_generated_at = normalized.generatedAt;
+        saveSettings(editAvatar, editSettings);
+        applySettingsToPanel(editSettings);
+        renderScheduleDisplay();
+        updateConversationChrome(editSettings);
+        toastr.success('Schedule saved successfully.');
+        closeModal();
+    });
+}
+
 function renderScheduleDisplay() {
     const display = document.getElementById('sb_conv_schedule_display');
     if (!(display instanceof HTMLElement)) {
@@ -1558,21 +1819,6 @@ function renderScheduleDisplay() {
 
     const avatar = getCurrentCharAvatar();
     const schedule = avatar ? getStoredSchedule(avatar) : null;
-
-    if (scheduleEditingMode) {
-        display.dataset.empty = 'false';
-        const jsonText = schedule ? JSON.stringify(schedule, null, 4) : '';
-        display.innerHTML = `
-            <div class="sb-conversation-field-stack" style="gap: 8px;">
-                <textarea id="sb_conv_schedule_editor_area" class="text_pole textarea_compact wide100p" rows="12" style="font-family: monospace; font-size: var(--sb-type-caption); white-space: pre; overflow-wrap: normal; overflow-x: auto;">${escapeHtmlText(jsonText)}</textarea>
-                <div class="sb-conversation-field-row" style="gap: 8px; justify-content: flex-end;">
-                    <button type="button" class="menu_button" data-sb-conversation-action="schedule-edit-save" style="padding: 4px 10px; font-size: var(--sb-type-meta);">Save</button>
-                    <button type="button" class="menu_button" data-sb-conversation-action="schedule-edit-cancel" style="padding: 4px 10px; font-size: var(--sb-type-meta);">Cancel</button>
-                </div>
-            </div>
-        `;
-        return;
-    }
 
     if (!schedule || !schedule.days) {
         display.dataset.empty = 'true';
@@ -1626,7 +1872,6 @@ function openConversationSettings() {
     }
 
     closePalsRail();
-    scheduleEditingMode = false;
     const settings = getSettings();
 
     // Refresh live-data dropdowns before showing the drawer.
@@ -1969,9 +2214,6 @@ function bindConversationChromeControls(sheld) {
             case 'return-roleplay':
                 disableConversationModeForCurrentCharacter();
                 break;
-            case 'polish-input':
-                await handleProsePolish();
-                break;
             case 'polish-character-message':
                 await handleCharacterMessagePolish(target.dataset.messageId, target);
                 break;
@@ -2016,45 +2258,22 @@ function bindConversationChromeControls(sheld) {
             case 'weekly-add':
                 addWeeklyScheduleRow();
                 break;
-            case 'edit-schedule':
-                scheduleEditingMode = !scheduleEditingMode;
-                renderScheduleDisplay();
-                break;
-            case 'schedule-edit-save': {
-                const area = document.getElementById('sb_conv_schedule_editor_area');
-                if (area instanceof HTMLTextAreaElement) {
-                    try {
-                        const parsed = parseScheduleResponse(area.value);
-                        if (parsed) {
-                            const editAvatar = getCurrentCharAvatar();
-                            saveStoredSchedule(editAvatar, parsed);
-                            const editSettings = getSettings(editAvatar);
-                            editSettings.auto_schedule = JSON.stringify(parsed);
-                            if (parsed.talkativeness !== undefined) {
-                                editSettings.talkativeness = parsed.talkativeness;
-                            }
-                            if (parsed.inactivityThresholdMinutes !== undefined) {
-                                editSettings.inactivity_threshold = parsed.inactivityThresholdMinutes;
-                            }
-                            saveSettings(editAvatar, editSettings);
-                            applySettingsToPanel(editSettings);
-                            scheduleEditingMode = false;
-                            renderScheduleDisplay();
-                            updateConversationChrome(editSettings);
-                            toastr.success('Schedule saved successfully.');
-                        } else {
-                            toastr.warning('Invalid schedule JSON structure.');
-                        }
-                    } catch (err) {
-                        toastr.error('Failed to parse schedule JSON: ' + err.message);
-                    }
+            case 'edit-schedule': {
+                const avatar = getCurrentCharAvatar();
+                if (avatar) {
+                    openScheduleEditorModal(getStoredSchedule(avatar));
                 }
                 break;
             }
-            case 'schedule-edit-cancel':
-                scheduleEditingMode = false;
-                renderScheduleDisplay();
+            case 'reset-prompt': {
+                const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
+                if (area instanceof HTMLTextAreaElement) {
+                    area.value = GEECHAN_DEFAULT_PROMPT;
+                    area.dispatchEvent(new Event('input', { bubbles: true }));
+                    toastr.success('System prompt reset to default Geechan preset.');
+                }
                 break;
+            }
             case 'weekly-remove': {
                 const row = target.closest('.sb-conversation-weekly-row');
                 if (row instanceof HTMLElement) {
@@ -2166,6 +2385,25 @@ function bindConversationChromeControls(sheld) {
         backdrop.addEventListener('click', () => {
             closeConversationSettings();
             closePalsRail();
+        });
+    }
+
+    const palsSearch = document.getElementById('sb_conversation_pals_search');
+    if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
+        palsSearch.dataset.sbConversationBound = 'true';
+        palsSearch.addEventListener('input', () => {
+            const query = palsSearch.value.toLowerCase().trim();
+            const pals = document.querySelectorAll('.sb-conversation-pal');
+            pals.forEach(pal => {
+                if (pal instanceof HTMLElement) {
+                    const palName = pal.querySelector('.sb-conversation-pal-name')?.textContent?.toLowerCase() || '';
+                    if (palName.includes(query)) {
+                        pal.style.display = '';
+                    } else {
+                        pal.style.display = 'none';
+                    }
+                }
+            });
         });
     }
 }
@@ -2303,6 +2541,15 @@ function setConversationInterfaceActive(active) {
     const chrome = active ? ensureConversationChrome() : { sheld: document.getElementById('sheld') };
     if (!(chrome?.sheld instanceof HTMLElement)) {
         return;
+    }
+
+    const topBarBtn = document.getElementById('sb-conversation-toggle-top');
+    if (topBarBtn instanceof HTMLElement) {
+        if (active) {
+            topBarBtn.classList.add('is-active');
+        } else {
+            topBarBtn.classList.remove('is-active');
+        }
     }
 
     if (!active) {
@@ -2524,20 +2771,9 @@ function loadCurrentPanelSettings() {
 
 function updateProsePolisherButtonVisibility() {
     const button = document.getElementById('sb_prose_polisher_but');
-    const composerButton = document.getElementById(CHROME_IDS.composerPolish);
-
-    const avatar = getCurrentCharAvatar();
-    const settings = getSettings(avatar);
-    const conversationActive = Boolean(!selected_group && avatar && settings.enabled);
-    const shouldShowComposerPolish = Boolean(conversationActive && settings.prose_polisher);
-
     if (button instanceof HTMLElement) {
         button.classList.add('displayNone');
         button.hidden = true;
-    }
-
-    if (composerButton instanceof HTMLElement) {
-        composerButton.hidden = !shouldShowComposerPolish;
     }
 }
 
@@ -2549,54 +2785,6 @@ function updateEditableMessageButtons() {
     }
 
     renderConversationTimeline();
-}
-
-async function handleProsePolish() {
-    const conversationInput = document.getElementById(CHROME_IDS.input);
-    const textElement = conversationInput instanceof HTMLTextAreaElement
-        ? conversationInput
-        : document.getElementById('send_textarea');
-    if (!(textElement instanceof HTMLTextAreaElement)) {
-        return;
-    }
-
-    const originalText = textElement.value.trim();
-    if (!originalText) {
-        return;
-    }
-
-    const wand = document.getElementById(CHROME_IDS.composerPolish) || document.getElementById('sb_prose_polisher_but');
-    if (wand instanceof HTMLElement) {
-        wand.classList.remove('fa-wand-magic-sparkles');
-        wand.classList.add('fa-spinner', 'fa-spin');
-    }
-
-    try {
-        const systemPrompt = 'You are a professional message editor. Polish the user\'s direct message by correcting typos, spelling, punctuation, and style while keeping the meaning and intent identical. Output only the polished message text.';
-        const prompt = `Polish this message text:\n"${originalText}"`;
-        const response = await generateRaw({
-            prompt,
-            systemPrompt,
-            responseLength: 200,
-            trimNames: true,
-        });
-
-        if (response?.trim()) {
-            textElement.value = response.trim();
-            textElement.dispatchEvent(new Event('input', { bubbles: true }));
-            globalThis.toastr?.success?.('Prose polished successfully!');
-        } else {
-            globalThis.toastr?.error?.('Polishing failed. No response received.');
-        }
-    } catch (error) {
-        console.error('Prose polishing error:', error);
-        globalThis.toastr?.error?.('Error polishing message.');
-    } finally {
-        if (wand instanceof HTMLElement) {
-            wand.classList.remove('fa-spinner', 'fa-spin');
-            wand.classList.add('fa-wand-magic-sparkles');
-        }
-    }
 }
 
 async function handleCharacterMessagePolish(messageId, buttonElement) {
@@ -3424,14 +3612,6 @@ function bindPanelInputs() {
     bindEntryPanel();
 }
 
-function bindProsePolisher() {
-    const polishButton = document.getElementById('sb_prose_polisher_but');
-    if (polishButton instanceof HTMLElement && polishButton.dataset.sbConversationBound !== 'true') {
-        polishButton.dataset.sbConversationBound = 'true';
-        polishButton.addEventListener('click', handleProsePolish);
-    }
-}
-
 function init() {
     if (initialized) {
         return;
@@ -3491,7 +3671,6 @@ function init() {
     eventSource.on(event_types.CHAT_LOADED, handleChatChanged);
 
     bindPanelInputs();
-    bindProsePolisher();
 
     const iconBtn = document.getElementById('sbConversationWorkspaceIcon');
     if (iconBtn instanceof HTMLElement) {

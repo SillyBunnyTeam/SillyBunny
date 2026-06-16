@@ -8267,6 +8267,21 @@ function buildTopBar() {
         () => toggleCharacterPanel(),
     );
 
+    const conversationButton = createProxyButton(
+        {
+            id: 'sb-conversation-toggle-top',
+            icon: 'fa-comments',
+            label: 'Conversation',
+            title: 'Open Conversation Workspace',
+        },
+        () => {
+            const iconBtn = document.getElementById('sbConversationWorkspaceIcon');
+            if (iconBtn instanceof HTMLElement) {
+                iconBtn.click();
+            }
+        },
+    );
+
     const leftShortcutConfig = getShortcutConfig(getShortcutTarget('left'));
     const leftShortcut = createProxyButton(
         {
@@ -8315,7 +8330,7 @@ function buildTopBar() {
     `;
 
     leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, conversationButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
