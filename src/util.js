@@ -6,7 +6,6 @@ import { Buffer } from 'node:buffer';
 import { promises as dnsPromise } from 'node:dns';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import readline from 'node:readline';
 
 import yaml from 'yaml';
 import util from 'node:util';
@@ -2181,35 +2180,34 @@ export function tryDeleteFile(filePath) {
 }
 
 /**
- * Reads the first line of a file asynchronously.
+ * Reads the first line of a file using synchronous I/O.
+ * Returns a Promise for backwards compatibility, but the file descriptor
+ * is guaranteed to be released before the promise resolves. This prevents
+ * Windows file lock issues (EPERM) when the caller immediately performs
+ * synchronous file operations after awaiting this function.
  * @param {string} filePath Path to the file
  * @returns {Promise<string>} The first line of the file
  */
 export function readFirstLine(filePath) {
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
-    const rl = readline.createInterface({ input: stream });
-    return new Promise((resolve, reject) => {
-        let resolved = false;
-        rl.on('line', line => {
-            resolved = true;
-            rl.close();
-            stream.close();
-            resolve(line);
-        });
-
-        rl.on('error', error => {
-            resolved = true;
-            reject(error);
-        });
-
-        // Handle empty files
-        stream.on('end', () => {
-            if (!resolved) {
-                resolved = true;
-                resolve('');
-            }
-        });
-    });
+    let fd;
+    try {
+        fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(1);
+        let line = '';
+        while (true) {
+            const bytesRead = fs.readSync(fd, buf, 0, 1, null);
+            if (bytesRead === 0) break;
+            const char = buf.toString('utf8', 0, 1);
+            if (char === '\n') break;
+            if (char === '\r') continue;
+            line += char;
+        }
+        return Promise.resolve(line);
+    } finally {
+        if (fd !== undefined) {
+            fs.closeSync(fd);
+        }
+    }
 }
 
 /**
