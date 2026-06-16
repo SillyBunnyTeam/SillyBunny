@@ -31,6 +31,10 @@ const SB_STORAGE_KEYS = Object.freeze({
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
     shortcutLeft: 'sb-shortcut-left',
     shortcutRight: 'sb-shortcut-right',
+    shortcutSlot3: 'sb-shortcut-slot3',
+    shortcutSlot4: 'sb-shortcut-slot4',
+    shortcutSlot5: 'sb-shortcut-slot5',
+    shortcutSlot6: 'sb-shortcut-slot6',
     bottomBarScale: 'sb-bottom-bar-scale',
     bottomChatSecondaryOpen: 'sb-bottom-chat-secondary-open',
     desktopButtonScale: 'sb-desktop-button-scale',
@@ -69,11 +73,34 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
     { value: 'right:extensions', label: 'Extensions', icon: 'fa-cubes' },
     { value: 'characters:persona', label: 'Persona', icon: 'fa-face-smile' },
     { value: 'right:background', label: 'Background', icon: 'fa-panorama' },
+    { value: 'none', label: 'None', icon: 'fa-circle-minus' },
 ]);
 
 const SB_SHORTCUT_DEFAULTS = Object.freeze({
     left: 'left:agents',
     right: 'action:search',
+    slot3: 'none',
+    slot4: 'none',
+    slot5: 'none',
+    slot6: 'none',
+});
+const SB_SHORTCUT_SLOTS = Object.freeze(['left', 'right', 'slot3', 'slot4', 'slot5', 'slot6']);
+const SB_SHORTCUT_DESKTOP_SLOTS = Object.freeze(['slot3', 'slot4', 'slot5', 'slot6']);
+const SB_SHORTCUT_STORAGE_KEYS = Object.freeze({
+    left: SB_STORAGE_KEYS.shortcutLeft,
+    right: SB_STORAGE_KEYS.shortcutRight,
+    slot3: SB_STORAGE_KEYS.shortcutSlot3,
+    slot4: SB_STORAGE_KEYS.shortcutSlot4,
+    slot5: SB_STORAGE_KEYS.shortcutSlot5,
+    slot6: SB_STORAGE_KEYS.shortcutSlot6,
+});
+const SB_SHORTCUT_LABELS = Object.freeze({
+    left: 'Left',
+    right: 'Right',
+    slot3: 'Slot 3 (Desktop)',
+    slot4: 'Slot 4 (Desktop)',
+    slot5: 'Slot 5 (Desktop)',
+    slot6: 'Slot 6 (Desktop)',
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
@@ -153,9 +180,14 @@ function debounceAction(callback, wait = SB_MOBILE_ACTION_DEBOUNCE_MS) {
 }
 
 function getShortcutTarget(side) {
-    const stored = migrateLegacyWorldInfoRoute(safeGetItem(side === 'left' ? SB_STORAGE_KEYS.shortcutLeft : SB_STORAGE_KEYS.shortcutRight));
+    const storageKey = SB_SHORTCUT_STORAGE_KEYS[side];
+    const stored = migrateLegacyWorldInfoRoute(storageKey ? safeGetItem(storageKey) : null);
     const valid = SB_SHORTCUT_TARGETS.some(t => t.value === stored);
-    return valid ? stored : SB_SHORTCUT_DEFAULTS[side];
+    return valid ? stored : SB_SHORTCUT_DEFAULTS[side] || 'none';
+}
+
+function getShortcutButtonId(side) {
+    return `sb-shortcut-${side}`;
 }
 
 function getShortcutConfig(target) {
@@ -8213,12 +8245,29 @@ function buildTopBar() {
     );
     bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
+    const desktopShortcutButtons = {};
+    for (const side of SB_SHORTCUT_DESKTOP_SLOTS) {
+        const shortcutConfig = getShortcutConfig(getShortcutTarget(side));
+        const shortcut = createProxyButton(
+            {
+                id: getShortcutButtonId(side),
+                icon: shortcutConfig.icon,
+                label: shortcutConfig.label,
+                title: `Quick access: ${shortcutConfig.label}`,
+                className: 'sb-proxy-button-icon-only sb-desktop-setting',
+            },
+            () => activateShortcutTarget(getShortcutTarget(side)),
+        );
+        bindSearchShortcutPreFocus(shortcut, () => getShortcutTarget(side));
+        desktopShortcutButtons[side] = shortcut;
+    }
+
     centerGroup.innerHTML = `
         <div id="sb-topbar-title" class="sb-brand-title">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut);
-    rightGroup.append(rightShortcut, homeButton, charactersButton);
+    leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -8233,6 +8282,10 @@ function buildTopBar() {
     updateTopbarUtilityButtons();
     updateShortcutButton('left');
     updateShortcutButton('right');
+    updateShortcutButton('slot3');
+    updateShortcutButton('slot4');
+    updateShortcutButton('slot5');
+    updateShortcutButton('slot6');
     syncTopbarLayoutState();
     queueLandingPageStateSync();
     scheduleCharacterToggleGhostSync();
@@ -11061,7 +11114,7 @@ function createShortcutSettingsGroup() {
         className: 'sb-shortcut-rows',
     });
 
-    for (const side of ['left', 'right']) {
+    for (const side of SB_SHORTCUT_SLOTS) {
         const selectId = `sb-shortcut-${side}-select`;
         const row = createElement('div', { className: 'sb-shortcut-row' });
 
@@ -11071,7 +11124,7 @@ function createShortcutSettingsGroup() {
                 for: selectId,
             },
         });
-        label.textContent = side === 'left' ? 'Left' : 'Right';
+        label.textContent = SB_SHORTCUT_LABELS[side] || side;
 
         const select = createElement('select', {
             id: selectId,
@@ -11089,8 +11142,10 @@ function createShortcutSettingsGroup() {
         }
 
         select.addEventListener('change', () => {
-            const key = side === 'left' ? SB_STORAGE_KEYS.shortcutLeft : SB_STORAGE_KEYS.shortcutRight;
-            safeSetItem(key, select.value);
+            const key = SB_SHORTCUT_STORAGE_KEYS[side];
+            if (key) {
+                safeSetItem(key, select.value);
+            }
             updateShortcutButton(side);
         });
 
@@ -11693,7 +11748,7 @@ function createFrontendIconSettingsGroup() {
 }
 
 function updateShortcutButton(side) {
-    const buttonId = side === 'left' ? 'sb-shortcut-left' : 'sb-shortcut-right';
+    const buttonId = getShortcutButtonId(side);
     const button = document.getElementById(buttonId);
     if (!(button instanceof HTMLElement)) return;
 
@@ -11701,6 +11756,13 @@ function updateShortcutButton(side) {
     const config = getShortcutConfig(target);
     const icon = button.querySelector('i');
     const span = button.querySelector('span');
+    const isDisabled = target === 'none';
+
+    if (isDisabled) {
+        button.style.setProperty('display', 'none', 'important');
+    } else {
+        button.style.removeProperty('display');
+    }
 
     if (icon) {
         icon.className = `fa-solid ${config.icon}`;
@@ -11717,8 +11779,8 @@ function updateShortcutButton(side) {
 function syncShortcutButtonActiveStates() {
     const searchExpanded = getUniversalSearchState().expanded;
 
-    for (const side of ['left', 'right']) {
-        const buttonId = side === 'left' ? 'sb-shortcut-left' : 'sb-shortcut-right';
+    for (const side of SB_SHORTCUT_SLOTS) {
+        const buttonId = getShortcutButtonId(side);
         const button = document.getElementById(buttonId);
 
         if (!(button instanceof HTMLButtonElement)) {

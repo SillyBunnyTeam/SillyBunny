@@ -3978,7 +3978,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 .sb-shortcut-row {
     display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
+    grid-template-columns: 110px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     min-width: 0;
