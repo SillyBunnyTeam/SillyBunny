@@ -3742,15 +3742,13 @@ export async function init() {
     }));
 
     const getAvailableExpressionsList = () => {
-        const expressions = Array.isArray(expressionsList)
-            ? [...expressionsList, ...extension_settings.expressions.custom].filter(onlyUnique)
-            : DEFAULT_EXPRESSIONS;
+        const expressions = getCachedExpressions();
 
         const currentLastMessage = selected_group ? getLastCharacterMessage() : null;
         const spriteFolderName = getSpriteFolderName(currentLastMessage, currentLastMessage?.name);
 
-        if (!spriteCache[spriteFolderName]) {
-            return expressions;
+        if (!spriteCache[spriteFolderName] || expressions.length === 0) {
+            return expressions.length === 0 ? DEFAULT_EXPRESSIONS : expressions;
         }
 
         const available = expressions.filter(label => {
