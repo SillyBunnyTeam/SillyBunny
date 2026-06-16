@@ -30,7 +30,7 @@ import {
 /**
  * @typedef {object} AgentCompanionConfig
  * @property {'auto'|'manual'} trigger
- * @property {'card'|'hidden'} displayMode
+ * @property {'card'|'panel'|'hidden'} displayMode
  * @property {'markdown'|'html'|'text'} format
  * @property {number} contextMessages
  * @property {boolean} includeCharacterCard

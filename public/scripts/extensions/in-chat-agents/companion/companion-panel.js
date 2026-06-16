@@ -332,6 +332,20 @@ function getPanelAgents() {
     return getAgents().filter(agent => isCompanionAgent(agent) && agent.category !== 'tool');
 }
 
+// SillyBunny: the slide-out tracker panel is the home for 'panel'-mode companion state only.
+// 'card' renders inline under the reply (handled by isHiddenCompanionResult in companion-ui),
+// and 'hidden' is feedback-only and renders nowhere. When a live agent exists we trust its
+// current editor config so flipping the Display dropdown takes effect on the next render; for
+// orphaned results (deleted agent) we fall back to the mode stored on the result, defaulting to
+// the product default ('panel') when absent.
+function isPanelDisplayMode(agent, result = {}) {
+    if (agent) {
+        return getCompanionConfig(agent).displayMode === 'panel';
+    }
+
+    return (result.displayMode ?? 'panel') === 'panel';
+}
+
 function getLatestAssistantIndex() {
     return chat.findLastIndex(isAssistantMessage);
 }
@@ -357,7 +371,8 @@ export function collectPanelAgentStates() {
     const byAgentId = new Map();
 
     for (const agent of getPanelAgents()) {
-        if (isAgentEnabledForCurrentScope(agent)) {
+        // SillyBunny: only 'panel'-mode companions belong in the tracker panel; 'card' and 'hidden' are excluded.
+        if (isAgentEnabledForCurrentScope(agent) && isPanelDisplayMode(agent)) {
             byAgentId.set(agent.id, { agentId: agent.id, agent, latest: null, history: [] });
         }
     }
@@ -377,9 +392,17 @@ export function collectPanelAgentStates() {
                 continue;
             }
 
-            let state = byAgentId.get(agentId);
+            // SillyBunny: resolve the agent up front so we can filter by display mode before
+            // creating any panel state. 'card' and 'hidden' results stay out of the panel;
+            // orphaned results fall back to the mode stored on the result itself.
+            const existingState = byAgentId.get(agentId);
+            const agent = existingState?.agent ?? getPanelAgents().find(candidate => candidate.id === agentId) ?? null;
+            if (!isPanelDisplayMode(agent, result)) {
+                continue;
+            }
+
+            let state = existingState;
             if (!state) {
-                const agent = getPanelAgents().find(candidate => candidate.id === agentId) ?? null;
                 state = { agentId, agent, latest: null, history: [] };
                 byAgentId.set(agentId, state);
             }
