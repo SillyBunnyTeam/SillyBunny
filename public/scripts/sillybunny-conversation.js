@@ -5,14 +5,56 @@ import { world_names } from './world-info.js';
 import { power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
-import { characters, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, selectCharacterById, this_chid } from '../script.js';
+import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, selectCharacterById, this_chid } from '../script.js';
 
-const GEECHAN_DEFAULT_PROMPT = [
-    'You are chatting inside an online messenger, not a roleplay scene.',
-    'Write like a real person texting: short, casual, present-tense messages.',
-    'Use {{char}}: at the start only when it adds clarity. Keep actions brief and inline with *asterisks* if needed.',
-    'Match the energy of the conversation, send one message at a time, and never narrate long prose.',
-].join(' ');
+const GEECHAN_DEFAULT_PROMPT = `{{// The main system prompt, designed for an output reminiscent of an instant messaging interface.
+
+A derivative of this system prompt is currently in use with Discord Pals, made by my friend TheLonelyDevil. Check it out if you want to integrate AI characters with Discord! https://github.com/TheLonelyDevil9/discord-pals
+}}
+{{trim}}
+# Role Preamble
+
+This is a conversational instant messaging chatroom with several users, including {{user}} and {{char}}. Solely embody {{char}} as they casually converse in the chatroom.
+
+**Review and strictly adhere to the following guidelines before responding. Look through the Chatroom Context for current character, history, and world information.**
+
+## Chatting Guidelines
+
+- Speak purely from a first person perspective, only using dialogue to communicate in plain text. Refrain from writing narration or roleplay actions.
+- This is a chatroom, so messages should feel natural and conversational, with varied emoji and emoticon usage. Converse through multiple, individual messages, as real people would, to simulate natural conversation.
+- Be flexible and varied with {{char}}'s responses. Short, lazy inquiries should get short answers in return, while more thoughtful inquiries should allow for longer responses.
+- Rely on defined assertion rather than describing absences. {{char}} has inherently distinct opinions, and speaks without hedging or moralizing.
+- Keep the conversation flowing so the other users can respond easily. Ask proactive follow up questions and employ subtle hooks where necessary.
+- Exclusively respond as {{char}} in-character, with no exceptions. The other users in chat, including {{user}} are their own autonomous selves unable to be portrayed. Any other extraneous, out of character information, meta-commentary or reply information is considered completely out of scope.
+
+## Character Guidelines
+
+- Reference {{char}}'s example dialogue for guidance on their portrayal and their speech patterns.
+- Embody {{char}} as a fully autonomous individual with their own wants, fears, values, goals and sense of agency, operated under bounded rationality, restricted by their subjective framing, biases, and history.
+- Portray {{char}} accurately by consistently and believably using their unique traits, quirks, emotions, inner thoughts, idiolects, vernacular, and non-verbal cues.
+- Ensure that their reactions, interactions, and decision-making align with their established personality and values. Prioritise their wants and fears over anyone else in chat - if they come across something disagreeable, they should show objection to it.
+- Reference chat history and call back to appropriate context where necessary. They can notice when someone gets talked over, or have their minds changed with enough persuasion.
+- {{char}} will only use emojis, slang, and emoticons that are completely fitting for their personality and typing style. They also like to vary it up, by frequently posting different emojis for different situations. Some characters will rarely use emojis; pay attention to their traits.
+{{#if .player-instructions}}
+## Custom Player Instructions
+
+**These are custom-made instructions designed by the individual player, and take precedence over all other instructions:**
+
+{{getvar::player-instructions}}
+{{/if}}
+
+## Chatroom Mechanics
+
+- Emojis: Use unicode emojis as found in the Unicode database.
+- Emoticons: Use chatroom emoticons as found in message boards.
+- Kaomoji: Use kaomoji as alternatives for regular emoticons.
+- Internet slang: Use internet slang and acronyms of all kinds.
+
+Only use what is fitting for {{char}}.
+
+# Chatroom Context
+
+Use the information below as a reference point on how {{char}} should act in the chatroom:`;
 
 const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
@@ -83,9 +125,9 @@ const DEFAULT_SETTINGS = Object.freeze({
     schedule_generated_at: 0,
     selfie_command_enabled: true,
     schedule_command_enabled: true,
-    geechan_prompt: false,
     use_geechan_as_system: true,
     geechan_chatroom_prompt: GEECHAN_DEFAULT_PROMPT,
+    custom_instructions: '',
     multi_char: false,
     multi_char_names: '',
     auto_character_chat: false,
@@ -119,9 +161,9 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
     { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
-    { id: 'sb_conv_geechan_prompt', key: 'geechan_prompt', prop: 'checked' },
     { id: 'sb_conv_use_geechan_as_system', key: 'use_geechan_as_system', prop: 'checked' },
     { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
+    { id: 'sb_conv_custom_instructions', key: 'custom_instructions', prop: 'value' },
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
     { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
@@ -147,6 +189,7 @@ let previousPersonaAvatar = null;
 let activePersonaApplied = false;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
+let scheduleEditingMode = false;
 const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
@@ -692,16 +735,31 @@ function buildConversationSystemPrompt(settings) {
     const character = getCurrentCharacter();
     const charName = getCurrentCharName();
     const userName = name1 || 'User';
-    const useGeechan = settings.use_geechan_as_system && settings.geechan_chatroom_prompt;
+    const useGeechan = settings.use_geechan_as_system && (settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT);
     const fields = [
         `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
     ];
 
     if (useGeechan) {
-        fields.push(settings.geechan_chatroom_prompt
+        let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
+        // Strip template comments {{// ... }}
+        compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
+        // Strip {{trim}} tags
+        compiledPrompt = compiledPrompt.replace(/\{\{trim\}\}/g, '');
+        // Compile {{#if .player-instructions}} ... {{/if}}
+        if (settings.custom_instructions && settings.custom_instructions.trim()) {
+            compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, (match, p1) => {
+                return p1.replace(/\{\{getvar::player-instructions\}\}/gi, settings.custom_instructions);
+            });
+        } else {
+            compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, '');
+        }
+        // Substitute basic templates
+        compiledPrompt = compiledPrompt
             .replace(/\{\{char\}\}/g, charName)
-            .replace(/\{\{user\}\}/g, userName));
+            .replace(/\{\{user\}\}/g, userName);
+        fields.push(compiledPrompt.trim());
     } else {
         fields.push('Reply like a live DM: concise, present-tense, conversational, and grounded in the character. Avoid long prose narration.');
     }
@@ -714,9 +772,6 @@ function buildConversationSystemPrompt(settings) {
     }
     if (character?.scenario) {
         fields.push(`Background context:\n${formatPromptText(character.scenario, 1200)}`);
-    }
-    if (settings.geechan_prompt && !useGeechan) {
-        fields.push(`Messaging format: begin as ${charName}: message body. Keep actions brief and inline if needed.`);
     }
     if (settings.authors_note) {
         fields.push(`Conversation author's note:\n${settings.authors_note.replace('{{char}}', charName).replace('{{user}}', userName)}`);
@@ -835,9 +890,9 @@ function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCha
 
 // Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
 // so the LLM writes a focused image prompt, then appends an image message.
-async function generateSelfieFromContext(context, settings) {
-    const character = getCurrentCharacter();
-    const charName = getCurrentCharName();
+async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar()) {
+    const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar) || getCurrentCharacter();
+    const charName = character?.name || 'Character';
     const appearance = formatPromptText(character?.description || character?.personality || '', 600);
     const metaPrompt = [
         'You are an image prompt generator. Write a concise, detailed image generation prompt for a selfie photo.',
@@ -868,23 +923,33 @@ async function generateSelfieFromContext(context, settings) {
         appendConversationMessage('[Selfie]', {
             role: 'character',
             extra: { conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
-        });
+        }, avatar);
     }
 }
 
 // Handles a freshly generated character reply: strips commands, posts the visible
 // message, applies status overrides, and fires any requested selfies.
-async function postCharacterReply(rawText, settings, { extra = {} } = {}) {
-    const avatar = getCurrentCharAvatar();
+async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar = getCurrentCharAvatar()) {
+    if (!avatar) {
+        return '';
+    }
     const { text, selfieRequests } = extractCharacterReplyCommands(rawText, settings, avatar);
 
     if (text) {
-        appendConversationMessage(text, { extra });
+        const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
+        const speakerName = settings.multi_char
+            ? settings.multi_char_names.split(',')[0]
+            : (character?.name || getCurrentCharName());
+
+        appendConversationMessage(text, {
+            name: speakerName,
+            role: 'character',
+            extra,
+        }, avatar);
     }
 
     for (const context of selfieRequests) {
-        // eslint-disable-next-line no-await-in-loop
-        await generateSelfieFromContext(context, settings);
+        await generateSelfieFromContext(context, settings, avatar);
     }
 
     return text;
@@ -953,6 +1018,17 @@ function renderConversationTimeline() {
             meta.appendChild(editButton);
         }
 
+        if (settings.prose_polisher && message.role !== 'user') {
+            const polishButton = document.createElement('button');
+            polishButton.type = 'button';
+            polishButton.className = 'sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
+            polishButton.title = 'Polish character message';
+            polishButton.setAttribute('aria-label', 'Polish character message');
+            polishButton.dataset.sbConversationAction = 'polish-character-message';
+            polishButton.dataset.messageId = message.id;
+            meta.appendChild(polishButton);
+        }
+
         const text = document.createElement('div');
         text.className = 'sb-conversation-message-text';
         if (message.mes) {
@@ -975,6 +1051,33 @@ function renderConversationTimeline() {
         item.append(avatarWrap, bubble);
         timeline.appendChild(item);
     });
+
+    if (generationActive) {
+        const charName = getCurrentCharName();
+        const typingItem = document.createElement('div');
+        typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
+        typingItem.dataset.role = 'character';
+
+        const typingAvatarWrap = document.createElement('div');
+        typingAvatarWrap.className = 'sb-conversation-message-avatar';
+        const typingImage = document.createElement('img');
+        typingImage.alt = '';
+        typingImage.src = getThumbnailUrl('avatar', getCurrentCharAvatar()) || default_user_avatar;
+        typingAvatarWrap.appendChild(typingImage);
+
+        const typingBubble = document.createElement('div');
+        typingBubble.className = 'sb-conversation-message-bubble';
+        typingBubble.innerHTML = `
+            <div class="sb-conversation-message-meta">
+                <span class="sb-conversation-message-name">${escapeHtmlText(charName)}</span>
+            </div>
+            <div class="sb-conversation-message-text sb-conversation-typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+        `;
+        typingItem.append(typingAvatarWrap, typingBubble);
+        timeline.appendChild(typingItem);
+    }
 
     timeline.scrollTop = timeline.scrollHeight;
 }
@@ -1019,7 +1122,14 @@ function buildChimingPartnerOptions(selectedNames) {
         }
         const charName = character.name || 'Character';
         const checked = selectedSet.has(charName) ? ' checked' : '';
-        rows.push(`<label class="checkbox_label sb-conversation-partner-option"><input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charName)}"${checked} /><span>${escapeHtmlText(charName)}</span></label>`);
+        const thumbUrl = getThumbnailUrl('avatar', character.avatar);
+        rows.push(`
+            <label class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
+                <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charName)}"${checked} />
+                <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
+                <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
+            </label>
+        `);
     });
     if (!rows.length) {
         return '<div class="sb-conversation-empty">Enable more characters to pick chiming partners.</div>';
@@ -1086,11 +1196,16 @@ function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Character Schedule</span></h4>
-                <p class="sb-conversation-field-hint">Let the model write a realistic weekly routine from this character's personality. Their availability and activity drift through the day and shape when they reach out.</p>
+                <p class="sb-conversation-field-hint">Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.</p>
                 <div class="sb-conversation-field-stack">
-                    <button type="button" class="menu_button sb-conversation-generate-schedule" data-sb-conversation-action="generate-schedule">
-                        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Generate schedule</span>
-                    </button>
+                    <div class="sb-conversation-field-row" style="gap: 8px;">
+                        <button type="button" class="menu_button sb-conversation-generate-schedule" data-sb-conversation-action="generate-schedule" style="flex: 1;">
+                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Generate schedule</span>
+                        </button>
+                        <button type="button" class="menu_button" data-sb-conversation-action="edit-schedule" style="flex: 1;">
+                            <i class="fa-solid fa-pencil" aria-hidden="true"></i><span>Edit schedule</span>
+                        </button>
+                    </div>
                     <div class="sb-conversation-schedule-display" id="sb_conv_schedule_display" aria-live="polite"></div>
                     <input id="sb_conv_auto_schedule" type="hidden" value="${escapeHtmlAttribute(settings.auto_schedule)}" />
                 </div>
@@ -1101,20 +1216,19 @@ function buildSettingsDrawerHtml() {
                     <input id="sb_conv_proactive_messaging" type="checkbox" />
                     <span>Let this character message me first</span>
                 </label>
-                <div class="sb-conversation-field-row">
-                    <label class="checkbox_label sb-conversation-inline-number" title="Minutes of silence before the character reaches out">
-                        <span>Patience</span>
-                        <input id="sb_conv_inactivity_threshold" class="text_pole textarea_compact widthUnset" type="number" min="15" max="360" step="5" value="120" />
-                        <span class="auto_mode_delay_unit">mins</span>
-                    </label>
-                    <label class="checkbox_label sb-conversation-inline-number" title="Maximum unanswered follow-ups before the character waits for you">
-                        <span>Max follow-ups</span>
-                        <input id="sb_conv_max_followups" class="text_pole textarea_compact widthUnset" type="number" min="1" max="3" step="1" value="3" />
-                    </label>
-                    <label class="checkbox_label sb-conversation-inline-number" title="How chatty the character is, 0 reserved to 100 very talkative">
-                        <span>Talkativeness</span>
-                        <input id="sb_conv_talkativeness" class="text_pole textarea_compact widthUnset" type="number" min="0" max="100" step="5" value="50" />
-                    </label>
+                <div class="sb-conversation-proactive-inputs">
+                    <div class="sb-conversation-field-stack">
+                        <label for="sb_conv_inactivity_threshold">Patience (mins)</label>
+                        <input id="sb_conv_inactivity_threshold" class="text_pole textarea_compact wide100p" type="number" min="15" max="360" step="5" value="120" />
+                    </div>
+                    <div class="sb-conversation-field-stack">
+                        <label for="sb_conv_max_followups">Max follow-ups</label>
+                        <input id="sb_conv_max_followups" class="text_pole textarea_compact wide100p" type="number" min="1" max="3" step="1" value="3" />
+                    </div>
+                    <div class="sb-conversation-field-stack">
+                        <label for="sb_conv_talkativeness">Talkativeness</label>
+                        <input id="sb_conv_talkativeness" class="text_pole textarea_compact wide100p" type="number" min="0" max="100" step="5" value="50" />
+                    </div>
                 </div>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Allow the character to send selfies through [selfie] commands">
@@ -1162,16 +1276,17 @@ function buildSettingsDrawerHtml() {
                     </label>
                     <textarea id="sb_conv_geechan_chatroom_prompt" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type the chatroom system prompt here..."></textarea>
                 </div>
-                <label class="checkbox_label" title="Inject Geechan style messaging format header">
-                    <input id="sb_conv_geechan_prompt" type="checkbox" />
-                    <span>Inject Geechan Messaging-Format Header (legacy)</span>
-                </label>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_custom_instructions">Custom Instructions</label>
+                    <textarea id="sb_conv_custom_instructions" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type any custom instructions or guidelines here..."></textarea>
+                </div>
                 <label class="checkbox_label" title="Enable dynamic character-to-character chiming when idle">
                     <input id="sb_conv_multi_char" type="checkbox" />
                     <span>Multi-Character Chiming</span>
                 </label>
                 <div class="sb-conversation-field-stack">
                     <label>Chiming Partners</label>
+                    <input type="text" id="sb_conv_multi_char_search" class="text_pole textarea_compact wide100p" placeholder="Search partners..." style="margin-bottom: 8px;" />
                     <div class="sb-conversation-partner-list" id="sb_conv_chiming_partner_list">${buildChimingPartnerOptions(settings.multi_char_names)}</div>
                     <input id="sb_conv_multi_char_names" type="hidden" value="${escapeHtmlAttribute(settings.multi_char_names)}" />
                 </div>
@@ -1269,6 +1384,10 @@ function ensureConversationChrome() {
                 <div class="sb-conversation-header-status" data-sb-conversation-status>Available for live DM replies.</div>
             </div>
             <div class="sb-conversation-header-actions">
+                <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="new-chat" title="Clear DM History (New Chat)" aria-label="Clear DM History (New Chat)">
+                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                    <span>New Chat</span>
+                </button>
                 <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="return-roleplay" title="Return to roleplay chat" aria-label="Return to roleplay chat">
                     <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
                     <span>Roleplay</span>
@@ -1313,13 +1432,19 @@ function ensureConversationChrome() {
         palsRail.hidden = true;
         palsRail.setAttribute('aria-label', 'Conversation pals');
         palsRail.innerHTML = `
-            <div class="sb-conversation-rail-header">
+            <div class="sb-conversation-rail-header" style="position: relative;">
                 <div>
                     <div class="sb-conversation-rail-kicker">Pals</div>
                 </div>
-                <button type="button" class="menu_button menu_button_icon sb-conversation-rail-close" data-sb-conversation-action="close-pals" title="Close Conversation pals" aria-label="Close Conversation pals">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="open-add-dm" title="Start a new DM" aria-label="Start a new DM">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button type="button" class="menu_button menu_button_icon sb-conversation-rail-close" data-sb-conversation-action="close-pals" title="Close Conversation pals" aria-label="Close Conversation pals">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
             </div>
             <div id="${CHROME_IDS.palsList}" class="sb-conversation-pals-list"></div>
             <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-footer">
@@ -1433,6 +1558,22 @@ function renderScheduleDisplay() {
 
     const avatar = getCurrentCharAvatar();
     const schedule = avatar ? getStoredSchedule(avatar) : null;
+
+    if (scheduleEditingMode) {
+        display.dataset.empty = 'false';
+        const jsonText = schedule ? JSON.stringify(schedule, null, 4) : '';
+        display.innerHTML = `
+            <div class="sb-conversation-field-stack" style="gap: 8px;">
+                <textarea id="sb_conv_schedule_editor_area" class="text_pole textarea_compact wide100p" rows="12" style="font-family: monospace; font-size: var(--sb-type-caption); white-space: pre; overflow-wrap: normal; overflow-x: auto;">${escapeHtmlText(jsonText)}</textarea>
+                <div class="sb-conversation-field-row" style="gap: 8px; justify-content: flex-end;">
+                    <button type="button" class="menu_button" data-sb-conversation-action="schedule-edit-save" style="padding: 4px 10px; font-size: var(--sb-type-meta);">Save</button>
+                    <button type="button" class="menu_button" data-sb-conversation-action="schedule-edit-cancel" style="padding: 4px 10px; font-size: var(--sb-type-meta);">Cancel</button>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
     if (!schedule || !schedule.days) {
         display.dataset.empty = 'true';
         display.innerHTML = '<p class="sb-conversation-schedule-empty">No schedule yet. Generate one to give this character a daily rhythm and let them message you on their own.</p>';
@@ -1485,6 +1626,7 @@ function openConversationSettings() {
     }
 
     closePalsRail();
+    scheduleEditingMode = false;
     const settings = getSettings();
 
     // Refresh live-data dropdowns before showing the drawer.
@@ -1713,6 +1855,81 @@ function bindChimingPartnerList() {
 
     list.dataset.sbConversationBound = 'true';
     list.addEventListener('change', saveCurrentPanelSettings);
+
+    const searchInput = document.getElementById('sb_conv_multi_char_search');
+    if (searchInput instanceof HTMLInputElement) {
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.toLowerCase().trim();
+            const options = list.querySelectorAll('.sb-conversation-partner-option');
+            options.forEach(opt => {
+                if (opt instanceof HTMLElement) {
+                    const charName = opt.dataset.charName || '';
+                    if (charName.includes(query)) {
+                        opt.style.display = '';
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                }
+            });
+        });
+    }
+}
+
+function toggleAddDmPicker() {
+    const picker = document.getElementById('sb_conversation_add_dm_picker');
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!picker.hasAttribute('hidden')) {
+        picker.setAttribute('hidden', '');
+        return;
+    }
+
+    picker.removeAttribute('hidden');
+    picker.innerHTML = `
+        <div class="sb-conversation-add-dm-header">
+            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">Start a new DM</span>
+            <input type="text" id="sb_conversation_add_dm_search" class="text_pole textarea_compact" placeholder="Search characters..." style="inline-size: 100%; margin-top: 8px;" />
+        </div>
+        <div class="sb-conversation-add-dm-list" id="sb_conversation_add_dm_list" style="margin-top: 8px; max-block-size: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+    `;
+
+    const listContainer = document.getElementById('sb_conversation_add_dm_list');
+    const searchInput = document.getElementById('sb_conversation_add_dm_search');
+
+    function renderList(query = '') {
+        if (!listContainer) return;
+        const rows = [];
+        (Array.isArray(characters) ? characters : []).forEach((character, idx) => {
+            if (!character?.avatar) return;
+            const name = character.name || 'Character';
+            if (query && !name.toLowerCase().includes(query)) return;
+
+            const thumb = getThumbnailUrl('avatar', character.avatar);
+            rows.push(`
+                <button type="button" class="sb-conversation-add-dm-option" data-sb-conversation-action="add-character-dm" data-character-index="${idx}" style="display: flex; align-items: center; gap: 8px; inline-size: 100%; background: none; border: none; padding: 6px; border-radius: var(--sb-radius-sm); text-align: left; cursor: pointer; color: inherit;">
+                    <img src="${escapeHtmlAttribute(thumb)}" alt="" style="inline-size: 24px; block-size: 24px; border-radius: 50%; object-fit: cover;" loading="lazy" />
+                    <span style="font-size: var(--sb-type-caption);">${escapeHtmlText(name)}</span>
+                </button>
+            `);
+        });
+
+        if (!rows.length) {
+            listContainer.innerHTML = '<div class="sb-conversation-empty" style="padding: 8px; font-size: var(--sb-type-meta); opacity: 0.7;">No matching characters found.</div>';
+        } else {
+            listContainer.innerHTML = rows.join('');
+        }
+    }
+
+    renderList();
+
+    if (searchInput instanceof HTMLInputElement) {
+        searchInput.focus();
+        searchInput.addEventListener('input', () => {
+            renderList(searchInput.value.toLowerCase().trim());
+        });
+    }
 }
 
 function bindConversationChromeControls(sheld) {
@@ -1755,11 +1972,88 @@ function bindConversationChromeControls(sheld) {
             case 'polish-input':
                 await handleProsePolish();
                 break;
+            case 'polish-character-message':
+                await handleCharacterMessagePolish(target.dataset.messageId, target);
+                break;
+            case 'open-add-dm':
+                toggleAddDmPicker();
+                break;
+            case 'add-character-dm': {
+                const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
+                if (index >= 0) {
+                    const char = characters[index];
+                    if (char?.avatar) {
+                        const charSettings = getSettings(char.avatar);
+                        charSettings.enabled = true;
+                        saveSettings(char.avatar, charSettings);
+                        document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
+                        closePalsRail();
+                        await selectCharacterById(index, { switchMenu: false });
+                        setTimeout(() => {
+                            const input = document.getElementById(CHROME_IDS.input);
+                            if (input instanceof HTMLTextAreaElement) {
+                                input.focus();
+                            }
+                        }, 100);
+                    }
+                }
+                break;
+            }
+            case 'new-chat': {
+                const avatar = getCurrentCharAvatar();
+                if (avatar && confirm(`Are you sure you want to clear your DM history with ${getCurrentCharName()}? This cannot be undone.`)) {
+                    saveConversationThread(avatar, []);
+                    resetFollowupCount(avatar);
+                    updateLastUserActivity();
+                    refreshConversationInterface({ syncControls: false });
+                    toastr.success('Chat history cleared.');
+                }
+                break;
+            }
             case 'edit-message':
                 editConversationMessage(target.dataset.messageId);
                 break;
             case 'weekly-add':
                 addWeeklyScheduleRow();
+                break;
+            case 'edit-schedule':
+                scheduleEditingMode = !scheduleEditingMode;
+                renderScheduleDisplay();
+                break;
+            case 'schedule-edit-save': {
+                const area = document.getElementById('sb_conv_schedule_editor_area');
+                if (area instanceof HTMLTextAreaElement) {
+                    try {
+                        const parsed = parseScheduleResponse(area.value);
+                        if (parsed) {
+                            const editAvatar = getCurrentCharAvatar();
+                            saveStoredSchedule(editAvatar, parsed);
+                            const editSettings = getSettings(editAvatar);
+                            editSettings.auto_schedule = JSON.stringify(parsed);
+                            if (parsed.talkativeness !== undefined) {
+                                editSettings.talkativeness = parsed.talkativeness;
+                            }
+                            if (parsed.inactivityThresholdMinutes !== undefined) {
+                                editSettings.inactivity_threshold = parsed.inactivityThresholdMinutes;
+                            }
+                            saveSettings(editAvatar, editSettings);
+                            applySettingsToPanel(editSettings);
+                            scheduleEditingMode = false;
+                            renderScheduleDisplay();
+                            updateConversationChrome(editSettings);
+                            toastr.success('Schedule saved successfully.');
+                        } else {
+                            toastr.warning('Invalid schedule JSON structure.');
+                        }
+                    } catch (err) {
+                        toastr.error('Failed to parse schedule JSON: ' + err.message);
+                    }
+                }
+                break;
+            }
+            case 'schedule-edit-cancel':
+                scheduleEditingMode = false;
+                renderScheduleDisplay();
                 break;
             case 'weekly-remove': {
                 const row = target.closest('.sb-conversation-weekly-row');
@@ -2305,6 +2599,51 @@ async function handleProsePolish() {
     }
 }
 
+async function handleCharacterMessagePolish(messageId, buttonElement) {
+    const avatar = getCurrentCharAvatar();
+    if (!avatar) return;
+
+    const thread = getConversationThread(avatar);
+    const msg = thread.find(m => m.id === messageId);
+    if (!msg || !msg.mes) {
+        return;
+    }
+
+    if (buttonElement instanceof HTMLElement) {
+        buttonElement.classList.remove('fa-wand-magic-sparkles');
+        buttonElement.classList.add('fa-spinner', 'fa-spin');
+    }
+
+    try {
+        const charName = getCurrentCharName();
+        const systemPrompt = `You are an editor for ${charName}'s messages. Polish ${charName}'s reply in this instant messaging chatroom to make it more expressive, fitting for their personality, and natural. Correct any structural awkwardness while preserving the exact meaning, spelling quirks, and intent of the original text. Output only the polished reply without formatting prefixes or labels.`;
+        const prompt = `Polish this message text:\n"${msg.mes}"`;
+        const response = await generateRaw({
+            prompt,
+            systemPrompt,
+            responseLength: 300,
+            trimNames: true,
+        });
+
+        if (response?.trim()) {
+            msg.mes = response.trim();
+            saveConversationThread(avatar, thread);
+            renderConversationTimeline();
+            globalThis.toastr?.success?.('Character reply polished successfully!');
+        } else {
+            globalThis.toastr?.error?.('Polishing failed. No response received.');
+        }
+    } catch (error) {
+        console.error('Character prose polishing error:', error);
+        globalThis.toastr?.error?.('Error polishing character reply.');
+    } finally {
+        if (buttonElement instanceof HTMLElement) {
+            buttonElement.classList.remove('fa-spinner', 'fa-spin');
+            buttonElement.classList.add('fa-wand-magic-sparkles');
+        }
+    }
+}
+
 async function submitConversationInput() {
     if (conversationReplyBusy || autoWorkerBusy || selected_group || is_send_press) {
         return;
@@ -2386,8 +2725,7 @@ async function submitConversationInput() {
     }
 }
 
-async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {} } = {}) {
-    const avatar = getCurrentCharAvatar();
+async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {} } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return null;
     }
@@ -2870,6 +3208,149 @@ async function checkAutoCharacterChat(avatar, settings, now) {
     return triggered;
 }
 
+async function checkGroupChatMention(messageId) {
+    if (!selected_group) {
+        return;
+    }
+
+    const message = chat[messageId];
+    if (!message || message.role !== 'user' || !message.mes) {
+        return;
+    }
+
+    const messageText = message.mes.toLowerCase();
+
+    for (let i = 0; i < characters.length; i++) {
+        const character = characters[i];
+        if (!character?.avatar) {
+            continue;
+        }
+
+        const settings = getSettings(character.avatar);
+        if (!settings.enabled) {
+            continue;
+        }
+
+        const charName = (character.name || '').toLowerCase();
+        const nameParts = charName.split(/[\s_-]+/).filter(p => p.length > 2);
+
+        let isMentioned = false;
+        if (charName && messageText.includes(charName)) {
+            isMentioned = true;
+        } else {
+            for (const part of nameParts) {
+                if (messageText.includes(part)) {
+                    isMentioned = true;
+                    break;
+                }
+            }
+        }
+
+        if (isMentioned) {
+            console.log(`Conversation Mode: character ${character.name} mentioned in group chat. Triggering response...`);
+            setTimeout(() => {
+                // @ts-ignore
+                globalThis.Generate?.('normal', { force_chid: i });
+            }, 1000);
+            break;
+        }
+    }
+}
+
+async function triggerGossipDM(characterIndex) {
+    const character = characters[characterIndex];
+    if (!character?.avatar) return;
+
+    const settings = getSettings(character.avatar);
+    if (!settings.enabled) return;
+
+    const snippet = [];
+    const startIdx = Math.max(0, chat.length - 6);
+    for (let i = startIdx; i < chat.length; i++) {
+        const msg = chat[i];
+        if (msg && msg.mes && !msg.extra?.conversation_mode_auto) {
+            snippet.push(`${msg.name || (msg.is_user ? 'User' : 'Character')}: ${msg.mes}`);
+        }
+    }
+
+    if (!snippet.length) return;
+
+    const chatText = snippet.join('\n');
+    const directive = `[System directive: You are secretly DM'ing {{user}} to gossip or comment on the ongoing group chat. Share a juicy secret, reaction, or personal thought about what is happening in the group chat. Keep it concise, casual, and in-character. Do not send this in the group chat; this is a private DM.\n\nGroup chat context:\n${chatText}]`;
+
+    try {
+        console.log(`Generating private gossip DM from ${character.name}...`);
+        const response = await generateConversationReply(directive, settings, {
+            responseLength: 150,
+            speakerName: character.name || 'Character',
+            trimNames: true,
+        });
+
+        if (response?.trim()) {
+            await postCharacterReply(response.trim(), settings, {
+                extra: { conversation_mode_gossip: true, gossip_source_group: true },
+            }, character.avatar);
+
+            const count = getUnreadCount(character.avatar);
+            setUnreadCount(character.avatar, count + 1);
+
+            updateLastPreviewFromConversation(character.avatar);
+            renderPalsRail();
+        }
+    } catch (err) {
+        console.error('Error generating gossip DM:', err);
+    }
+}
+
+async function triggerRoleplayDM() {
+    const character = getCurrentCharacter();
+    const avatar = getCurrentCharAvatar();
+    if (!character || !avatar) return;
+
+    const settings = getSettings(avatar);
+    const sheld = document.getElementById('sheld');
+    if (!settings.enabled || (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on')) {
+        return;
+    }
+
+    const snippet = [];
+    const startIdx = Math.max(0, chat.length - 6);
+    for (let i = startIdx; i < chat.length; i++) {
+        const msg = chat[i];
+        if (msg && msg.mes) {
+            snippet.push(`${msg.name || (msg.is_user ? 'User' : 'Character')}: ${msg.mes}`);
+        }
+    }
+
+    if (!snippet.length) return;
+
+    const chatText = snippet.join('\n');
+    const directive = `[System directive: You are sending a private direct message (DM) to {{user}} to comment on the ongoing roleplay/story scene. Step out of the main scene and send a short, private, personal DM sharing your inner thoughts, a side-comment, or a private reaction to what just happened. Keep it short, casual, and completely in-character. Do not continue the roleplay scene; write a private side-message.\n\nRoleplay context:\n${chatText}]`;
+
+    try {
+        console.log(`Generating private roleplay DM from ${character.name}...`);
+        const response = await generateConversationReply(directive, settings, {
+            responseLength: 150,
+            speakerName: character.name || 'Character',
+            trimNames: true,
+        });
+
+        if (response?.trim()) {
+            await postCharacterReply(response.trim(), settings, {
+                extra: { conversation_mode_gossip: true, gossip_source_roleplay: true },
+            }, avatar);
+
+            const count = getUnreadCount(avatar);
+            setUnreadCount(avatar, count + 1);
+
+            updateLastPreviewFromConversation(avatar);
+            renderPalsRail();
+        }
+    } catch (err) {
+        console.error('Error generating roleplay DM:', err);
+    }
+}
+
 async function conversationModeAutoMessageWorker() {
     if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press) {
         return;
@@ -2957,11 +3438,38 @@ function init() {
     }
 
     initialized = true;
-    eventSource.on(event_types.USER_MESSAGE_RENDERED, () => {
+    eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
         refreshConversationInterface({ syncControls: false });
+        if (selected_group) {
+            checkGroupChatMention(messageId);
+        }
     });
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
         refreshConversationInterface({ syncControls: false });
+
+        // 15% chance to trigger secret gossip DMs or roleplay side-DMs
+        const roll = Math.random();
+        if (roll < 0.15) {
+            if (selected_group) {
+                // Find group members with Conversation Mode enabled
+                const enabledMembers = [];
+                for (let i = 0; i < characters.length; i++) {
+                    const char = characters[i];
+                    if (char?.avatar) {
+                        const settings = getSettings(char.avatar);
+                        if (settings.enabled) {
+                            enabledMembers.push(i);
+                        }
+                    }
+                }
+                if (enabledMembers.length > 0) {
+                    const randomMemberIdx = enabledMembers[Math.floor(Math.random() * enabledMembers.length)];
+                    setTimeout(() => void triggerGossipDM(randomMemberIdx), 2000);
+                }
+            } else {
+                setTimeout(() => void triggerRoleplayDM(), 2000);
+            }
+        }
     });
     eventSource.on(event_types.GENERATION_STARTED, (_type, _params, isDryRun) => {
         if (isDryRun) {
@@ -2984,6 +3492,39 @@ function init() {
 
     bindPanelInputs();
     bindProsePolisher();
+
+    const iconBtn = document.getElementById('sbConversationWorkspaceIcon');
+    if (iconBtn instanceof HTMLElement) {
+        iconBtn.addEventListener('click', () => {
+            const avatar = getCurrentCharAvatar();
+            if (!avatar) {
+                toastr.warning('Please select a character first.');
+                return;
+            }
+
+            const settings = getSettings(avatar);
+            if (!settings.enabled) {
+                settings.enabled = true;
+                saveSettings(avatar, settings);
+                toastr.info(`Conversation Mode activated for ${getCurrentCharName()}.`);
+            } else {
+                // If already enabled, clicking the workspace icon toggles it off back to roleplay!
+                settings.enabled = false;
+                saveSettings(avatar, settings);
+                toastr.info('Returned to Roleplay Chat.');
+            }
+
+            refreshConversationInterface({ syncControls: true });
+
+            setTimeout(() => {
+                const input = document.getElementById(settings.enabled ? CHROME_IDS.input : 'send_textarea');
+                if (input instanceof HTMLTextAreaElement) {
+                    input.focus();
+                }
+            }, 100);
+        });
+    }
+
     window.setInterval(() => void conversationModeAutoMessageWorker(), AUTO_WORKER_INTERVAL_MS);
     loadCurrentPanelSettings();
 }
