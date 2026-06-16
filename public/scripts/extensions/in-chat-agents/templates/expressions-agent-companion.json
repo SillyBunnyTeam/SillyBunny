@@ -10,9 +10,9 @@
         "sprites",
         "classification"
     ],
-    "version": 1,
+    "version": 2,
     "author": "SillyBunny",
-    "prompt": "Read the latest assistant reply and classify its dominant emotional tone for a character sprite expression.\n\nOutput ONLY the single most appropriate label from this exact list:\nadmiration, amusement, anger, annoyance, approval, caring, confusion, curiosity, desire, disappointment, disapproval, disgust, embarrassment, excitement, fear, gratitude, grief, joy, love, nervousness, optimism, pride, realization, relief, remorse, sadness, surprise, neutral\n\nRules:\n- Return exactly one word from the list above, nothing else.\n- Prioritise the speaker's visible emotional state in the scene.\n- If multiple emotions apply, choose the strongest one.\n- If the reply is calm, factual, or emotionally neutral, return neutral.\n- Do not explain, punctuate, or wrap the answer in quotes.",
+    "prompt": "Read the latest assistant reply and classify its dominant emotional tone for a character sprite expression.\n\nOutput ONLY the single most appropriate label from this exact list:\n{{availableSprites}}\n\nRules:\n- Return exactly one word from the list above, nothing else.\n- Prioritise the speaker's visible emotional state in the scene.\n- If multiple emotions apply, choose the strongest one.\n- If the reply is calm, factual, or emotionally neutral, return neutral.\n- Do not explain, punctuate, or wrap the answer in quotes.",
     "phase": "post",
     "execution": "companion",
     "companion": {
