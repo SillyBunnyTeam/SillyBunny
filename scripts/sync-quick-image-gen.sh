@@ -162,6 +162,42 @@ for (const [, specifier] of source.matchAll(dynamicImportPattern)) {
     }
 }
 
+const bridgeExports = [
+    'getSettings',
+    'getGenerationSettingsForRun',
+    'generateForProvider',
+    'finalizeGeneratedEntry',
+    'withTransientGenerationSettings',
+];
+for (const symbol of bridgeExports) {
+    if (!new RegExp(`\\b(?:async\\s+)?function\\s+${symbol}\\b`).test(source)) {
+        console.error(`Quick Image Gen index.js is missing expected Expressions bridge helper: ${symbol}`);
+        process.exit(1);
+    }
+}
+
+const moduleExport = 'export { extensionName };';
+if (!source.includes(moduleExport)) {
+    console.error('Quick Image Gen index.js is missing expected module export.');
+    process.exit(1);
+}
+
+const bridgeExportBlock = `
+
+// SillyBunny divergence: minimal helper exports for the Expressions Agent bridge.
+// These are kept intentionally small so upstream syncs only need to preserve this
+// one export block. The actual sprite-generation logic lives outside QIG in
+// public/scripts/extensions/expressions/expression-sprite-bridge.js.
+export {
+    getSettings,
+    getGenerationSettingsForRun,
+    generateForProvider,
+    finalizeGeneratedEntry,
+    withTransientGenerationSettings,
+};`;
+
+source = source.replace(moduleExport, `${moduleExport}${bridgeExportBlock}`);
+
 fs.writeFileSync(indexPath, source);
 NODE
 
