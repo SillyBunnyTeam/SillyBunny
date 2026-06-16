@@ -1965,6 +1965,9 @@ button.ica--card-pill--version-update {
 }
 
 .ica--tpanel-history-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: calc(var(--mainFontSize) * 0.72);
     opacity: 0.55;
     margin-bottom: 4px;

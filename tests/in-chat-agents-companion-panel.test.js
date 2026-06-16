@@ -292,6 +292,28 @@ describe('companion tracker panel', () => {
         expect(html).toContain('No state yet');
     });
 
+    test('renders edit buttons with per-entry message indices on history entries', async () => {
+        const tracker = { id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true };
+        agents = [tracker];
+        const panel = await importPanel();
+
+        for (let index = 0; index < 3; index++) {
+            const message = { is_user: false, is_system: false, mes: `reply ${index}` };
+            chat.push(message);
+            companionResultsByMessage.set(message, {
+                'tracker-1': { status: 'done', content: `state ${index}`, agentName: 'Scene Tracker' },
+            });
+        }
+
+        const html = panel.buildPanelHtml();
+
+        expect(html).toContain('Previous states (2)');
+        expect(html).toMatch(/ica--tpanel-history-entry[\s\S]*?data-message-index="1"/);
+        expect(html).toMatch(/ica--tpanel-history-entry[\s\S]*?data-message-index="0"/);
+        const editNoteMatches = html.match(/data-action="panel-edit-note"/g);
+        expect(editNoteMatches).toHaveLength(3);
+    });
+
     test('shows enabled memory shard before threshold and offers shard compaction after a run', async () => {
         agents = [
             { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true, companion: { minContextTokens: 30000 } },
