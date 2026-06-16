@@ -9,6 +9,7 @@
 - PR #498 (2026-06-16) `fix: prevent Windows file locks during chat integrity checks`
 - PR #499 (2026-06-16) `feat: add edit button to companion previous states in tracker panel`
 - PR #500 (2026-06-16) `feat: add availableSprites macro for Expressions Agent`
+- PR #501 (2026-06-16) `feat: add desktop top bar shortcut slots`
 
 ## v1.6.5
 
