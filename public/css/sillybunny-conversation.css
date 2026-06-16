@@ -960,18 +960,126 @@
 /* Chiming partner picker */
 .sb-conversation-partner-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px 12px;
-    padding: 8px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
     border-radius: var(--sb-radius-md, 12px);
-    max-block-size: 168px;
+    max-block-size: 200px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
 
 .sb-conversation-partner-option {
-    flex: 0 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--sb-radius-sm, 6px);
+    cursor: pointer;
+    transition: background-color 160ms ease-out;
+}
+
+.sb-conversation-partner-option:hover,
+.sb-conversation-partner-option:focus-within {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.sb-conversation-partner-avatar {
+    inline-size: 24px;
+    block-size: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.sb-conversation-partner-name {
+    font-size: var(--sb-type-caption);
+}
+
+/* Symmetrical proactive messaging inputs grid */
+.sb-conversation-proactive-inputs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    align-items: end;
+}
+
+/* Fix persona option img scaling */
+.sb-conversation-persona-option img {
+    inline-size: 24px;
+    block-size: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+/* Animated bouncing dots for typing indicator */
+.sb-conversation-typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-block-size: 20px;
+    padding-block: 4px;
+}
+
+.sb-conversation-typing-dots span {
+    display: inline-block;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    background-color: var(--SmartThemeBodyColor);
+    opacity: 0.4;
+    animation: sb-typing-bounce 1.4s infinite both;
+}
+
+.sb-conversation-typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.sb-conversation-typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes sb-typing-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Character message polish button */
+.sb-conversation-message-polish {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0;
+    cursor: pointer;
+    font-size: var(--sb-type-meta);
+    transition: opacity 160ms ease-out, color 160ms ease-out;
+}
+
+.sb-conversation-message:hover .sb-conversation-message-polish,
+.sb-conversation-message:focus-within .sb-conversation-message-polish {
+    opacity: 0.6;
+}
+
+.sb-conversation-message-polish:hover,
+.sb-conversation-message-polish:focus-visible {
+    opacity: 1;
+    color: var(--sb-accent);
+    outline: none;
+}
+
+/* Style Add DM picker popover options */
+.sb-conversation-add-dm-option {
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+}
+
+.sb-conversation-add-dm-option:hover,
+.sb-conversation-add-dm-option:focus-visible {
+    background-color: color-mix(in srgb, var(--sb-accent) 12%, transparent) !important;
+    outline: none;
 }
 
 /* Generated image messages */
