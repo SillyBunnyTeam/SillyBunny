@@ -648,6 +648,235 @@
     width: 76px;
 }
 
+/* Discord-style rail footer (persona + status) */
+.sb-conversation-rail-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
+}
+
+.sb-conversation-rail-footer-avatar {
+    position: relative;
+    inline-size: 34px;
+    block-size: 34px;
+    flex: 0 0 auto;
+}
+
+.sb-conversation-rail-footer-avatar img {
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: 999px;
+    object-fit: cover;
+}
+
+.sb-conversation-rail-footer-dot {
+    position: absolute;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
+}
+
+.sb-conversation-rail-footer-copy {
+    display: flex;
+    min-inline-size: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+}
+
+.sb-conversation-rail-footer-name {
+    overflow: hidden;
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-title);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-conversation-rail-footer-status {
+    overflow: hidden;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-line-compact);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-conversation-rail-footer-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+/* Popover pickers anchored above the footer buttons */
+.sb-conversation-persona-picker,
+.sb-conversation-status-picker {
+    position: absolute;
+    inset-block-end: calc(100% + 8px);
+    inset-inline-end: 0;
+    z-index: 90;
+    display: flex;
+    min-inline-size: 184px;
+    max-block-size: 280px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    background: var(--SmartThemeBlurTintColor);
+    box-shadow: 0 18px 40px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 60%, transparent);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.sb-conversation-persona-picker[hidden],
+.sb-conversation-status-picker[hidden] {
+    display: none;
+}
+
+.sb-conversation-persona-option,
+.sb-conversation-status-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-button, 10px);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    font-size: var(--sb-type-control);
+    text-align: left;
+    white-space: nowrap;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+}
+
+.sb-conversation-persona-option:hover,
+.sb-conversation-persona-option:focus-visible,
+.sb-conversation-status-option:hover,
+.sb-conversation-status-option:focus-visible {
+    border-color: color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+    outline: none;
+}
+
+/* Weekly scheduler editor */
+.sb-conversation-weekly-schedule {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sb-conversation-weekly-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-conversation-day-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.sb-conversation-day-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 38px;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: var(--sb-type-meta);
+    user-select: none;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+}
+
+.sb-conversation-day-pill .sb-conv-day-check {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sb-conversation-day-pill:has(.sb-conv-day-check:checked) {
+    border-color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--sb-accent) 20%, transparent);
+    font-weight: var(--sb-weight-title);
+}
+
+.sb-conversation-weekly-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.sb-conversation-weekly-row-meta .sb-conv-weekly-time {
+    inline-size: 116px;
+    flex: 0 0 auto;
+}
+
+.sb-conversation-weekly-row-meta .sb-conv-weekly-message {
+    flex: 1 1 160px;
+    min-inline-size: 0;
+}
+
+.sb-conv-weekly-enabled {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.sb-conversation-weekly-add {
+    align-self: flex-start;
+}
+
+/* Chiming partner picker */
+.sb-conversation-partner-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    max-block-size: 168px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.sb-conversation-partner-option {
+    flex: 0 1 auto;
+}
+
+/* Generated image messages */
+.sb-conversation-image-preview {
+    margin: 0;
+    margin-block-start: 6px;
+}
+
+.sb-conversation-image-preview img {
+    max-inline-size: min(100%, 320px);
+    block-size: auto;
+    border-radius: var(--sb-radius-md, 12px);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 40%, transparent);
+}
+
+.sb-conversation-message[data-role='partner'] .sb-conversation-message-bubble {
+    border-color: color-mix(in srgb, var(--sb-accent) 24%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--sb-accent) 7%, transparent);
+}
+
+.sb-conversation-message[data-role='image'] .sb-conversation-message-bubble {
+    padding: 6px;
+}
+
 @media (min-width: 769px) {
     #sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail .sb-conversation-rail-close {
         display: none;
