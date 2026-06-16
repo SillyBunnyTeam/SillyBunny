@@ -28,9 +28,19 @@ const LAST_CHIME_SESSION_PREFIX = 'sb_conv_last_chime_session_';
 const LAST_PREVIEW_PREFIX = 'sb_conv_last_preview_';
 const UNREAD_PREFIX = 'sb_conv_unread_';
 const LAST_AUTO_CHAT_SESSION_PREFIX = 'sb_conv_last_autochat_session_';
+const SCHEDULE_PREFIX = 'sb_conv_schedule_';
+const FOLLOWUP_COUNT_PREFIX = 'sb_conv_followup_count_';
 const AUTO_WORKER_INTERVAL_MS = 30000;
 const MAX_THREAD_MESSAGES = 250;
 const TRANSCRIPT_MESSAGE_LIMIT = 32;
+const SCHEDULE_STATUSES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
+const DEFAULT_INACTIVITY_THRESHOLD = 120;
+const MIN_INACTIVITY_THRESHOLD = 15;
+const MAX_INACTIVITY_THRESHOLD = 360;
+const DEFAULT_TALKATIVENESS = 50;
+const DEFAULT_MAX_FOLLOWUPS = 3;
+const SELFIE_COMMAND_RE = /\[selfie(?::\s*(?:context=)?"?([^"\]]*)"?)?\]/gi;
+const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 const CHROME_IDS = Object.freeze({
     header: 'sb_conversation_header',
     palsToggle: 'sb_conversation_pals_toggle',
@@ -65,6 +75,14 @@ const DEFAULT_SETTINGS = Object.freeze({
     cooldown: 60,
     ai_schedule: '',
     weekly_schedule: '[]',
+    proactive_messaging: false,
+    inactivity_threshold: DEFAULT_INACTIVITY_THRESHOLD,
+    talkativeness: DEFAULT_TALKATIVENESS,
+    max_followups: DEFAULT_MAX_FOLLOWUPS,
+    auto_schedule: '',
+    schedule_generated_at: 0,
+    selfie_command_enabled: true,
+    schedule_command_enabled: true,
     geechan_prompt: false,
     use_geechan_as_system: true,
     geechan_chatroom_prompt: GEECHAN_DEFAULT_PROMPT,
@@ -94,6 +112,13 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_cooldown', key: 'cooldown', prop: 'value', type: 'number', fallback: DEFAULT_SETTINGS.cooldown, min: 1 },
     { id: 'sb_conv_ai_schedule', key: 'ai_schedule', prop: 'value' },
     { id: 'sb_conv_weekly_schedule', key: 'weekly_schedule', prop: 'value' },
+    { id: 'sb_conv_proactive_messaging', key: 'proactive_messaging', prop: 'checked' },
+    { id: 'sb_conv_inactivity_threshold', key: 'inactivity_threshold', prop: 'value', type: 'number', fallback: DEFAULT_INACTIVITY_THRESHOLD, min: MIN_INACTIVITY_THRESHOLD },
+    { id: 'sb_conv_talkativeness', key: 'talkativeness', prop: 'value', type: 'number', fallback: DEFAULT_TALKATIVENESS, min: 0 },
+    { id: 'sb_conv_max_followups', key: 'max_followups', prop: 'value', type: 'number', fallback: DEFAULT_MAX_FOLLOWUPS, min: 1 },
+    { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
+    { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
+    { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
     { id: 'sb_conv_geechan_prompt', key: 'geechan_prompt', prop: 'checked' },
     { id: 'sb_conv_use_geechan_as_system', key: 'use_geechan_as_system', prop: 'checked' },
     { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
@@ -121,6 +146,8 @@ let previousConnectionProfile = null;
 let previousPersonaAvatar = null;
 let activePersonaApplied = false;
 let activeProfileApplied = false;
+let scheduleGenerationBusy = false;
+const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
@@ -183,6 +210,22 @@ function setLastUserActivity(avatar, timestamp = Date.now()) {
     localStorage.setItem(getCharacterStorageKey(LAST_USER_ACTIVITY_PREFIX, avatar), String(timestamp));
 }
 
+function getFollowupCount(avatar) {
+    return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar)), 0, 0);
+}
+
+function setFollowupCount(avatar, count) {
+    localStorage.setItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar), String(Math.max(0, count)));
+}
+
+function resetFollowupCount(avatar) {
+    if (!avatar) {
+        return;
+    }
+
+    localStorage.removeItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar));
+}
+
 function updateLastUserActivity() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
@@ -190,6 +233,8 @@ function updateLastUserActivity() {
     }
 
     setLastUserActivity(avatar);
+    // Marinara-style: any user activity resets the escalating follow-up counter.
+    resetFollowupCount(avatar);
 }
 
 function createConversationMessage({ role = 'character', name = getCurrentCharName(), mes = '', extra = {} } = {}) {
@@ -319,6 +364,241 @@ async function generateConversationImage(prompt, negative = '') {
     }
 }
 
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function getScheduleStorageKey(avatar) {
+    return `${SCHEDULE_PREFIX}${avatar}`;
+}
+
+function getStoredSchedule(avatar = getCurrentCharAvatar()) {
+    if (!avatar) {
+        return null;
+    }
+
+    try {
+        const raw = localStorage.getItem(getScheduleStorageKey(avatar));
+        if (!raw) {
+            return null;
+        }
+
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveStoredSchedule(avatar, schedule) {
+    if (!avatar) {
+        return;
+    }
+
+    localStorage.setItem(getScheduleStorageKey(avatar), JSON.stringify(schedule));
+}
+
+function inferStatusFromActivity(activity) {
+    const text = String(activity || '').toLowerCase();
+    if (/sleep|asleep|nap|passed out|unconscious|bed|resting/.test(text)) {
+        return 'offline';
+    }
+    if (/work|working|class|study|studying|meeting|training|focus|exam|shift|busy/.test(text)) {
+        return 'dnd';
+    }
+    if (/eat|eating|commut|shower|cook|driving|errand|gym|lunch|dinner|breakfast/.test(text)) {
+        return 'idle';
+    }
+    return 'online';
+}
+
+function repairScheduleJson(raw) {
+    let text = String(raw || '').trim();
+    // Strip markdown code fences.
+    text = text.replace(/```(?:json)?/gi, '').trim();
+    // Extract the outermost JSON object if extra prose surrounds it.
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        text = text.slice(firstBrace, lastBrace + 1);
+    }
+    // Remove trailing commas before } or ].
+    text = text.replace(/,\s*([}\]])/g, '$1');
+    return text;
+}
+
+function normalizeScheduleBlock(block) {
+    if (!block || typeof block !== 'object') {
+        return null;
+    }
+
+    const time = String(block.time || '').trim();
+    const activity = String(block.activity || '').trim();
+    if (!time || !activity) {
+        return null;
+    }
+
+    let status = String(block.status || '').toLowerCase().trim();
+    if (!SCHEDULE_STATUSES.includes(status)) {
+        status = inferStatusFromActivity(activity);
+    }
+
+    return { time, activity, status };
+}
+
+function parseScheduleResponse(rawText) {
+    let parsed;
+    try {
+        parsed = JSON.parse(repairScheduleJson(rawText));
+    } catch (error) {
+        console.warn('Conversation Mode: failed to parse generated schedule', error);
+        return null;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+        return null;
+    }
+
+    const days = {};
+    const sourceDays = parsed.days && typeof parsed.days === 'object' ? parsed.days : parsed;
+    let hasAnyBlock = false;
+    for (let day = 0; day < 7; day++) {
+        const dayKeys = [String(day), WEEKDAY_LABELS[day], WEEKDAY_LABELS[day].toLowerCase()];
+        let blocks = null;
+        for (const key of dayKeys) {
+            if (Array.isArray(sourceDays?.[key])) {
+                blocks = sourceDays[key];
+                break;
+            }
+        }
+        const normalized = Array.isArray(blocks)
+            ? blocks.map(normalizeScheduleBlock).filter(Boolean)
+            : [];
+        if (normalized.length) {
+            hasAnyBlock = true;
+        }
+        days[day] = normalized;
+    }
+
+    if (!hasAnyBlock) {
+        return null;
+    }
+
+    const talkativeness = clamp(parsePositiveInt(parsed.talkativeness, DEFAULT_TALKATIVENESS, 0), 0, 100);
+    const inactivityThresholdMinutes = clamp(
+        parsePositiveInt(parsed.inactivityThresholdMinutes ?? parsed.inactivity_threshold, DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
+        MIN_INACTIVITY_THRESHOLD,
+        MAX_INACTIVITY_THRESHOLD,
+    );
+
+    return {
+        days,
+        talkativeness,
+        inactivityThresholdMinutes,
+        generatedAt: Date.now(),
+    };
+}
+
+async function generateCharacterSchedule(character) {
+    if (!character) {
+        return null;
+    }
+
+    const name = character.name || 'The character';
+    const description = formatPromptText(character.description || '', 1800);
+    const personality = formatPromptText(character.personality || '', 1200);
+
+    const systemPrompt = [
+        'You are a schedule generator. Create a realistic weekly schedule for a character based on their personality and description.',
+        'Each time block must include a "status" field indicating availability:',
+        '- "online": awake and available (free time, socializing, casual activities)',
+        '- "idle": semi-available (eating, commuting, showering, cooking)',
+        '- "dnd": busy / do not disturb (working, studying, training, in a meeting, focused tasks)',
+        '- "offline": unavailable (sleeping, passed out, unconscious)',
+        'Also assess the character\'s talkativeness on a scale of 0-100 (how often they initiate contact).',
+        'And estimate how long in minutes this character would wait before messaging someone who has not replied (very patient: 180-360, average: 90-150, eager: 15-60).',
+        'RESPOND IN EXACTLY THIS JSON FORMAT (no markdown, no code blocks, just raw JSON):',
+        '{"talkativeness":50,"inactivityThresholdMinutes":120,"days":{"0":[{"time":"08:00-12:00","activity":"working","status":"dnd"}],"1":[],"2":[],"3":[],"4":[],"5":[],"6":[]}}',
+        'Days are keyed 0=Sunday through 6=Saturday. Cover each day with several blocks spanning a full 24 hours including sleep.',
+    ].join('\n');
+
+    const promptParts = [`Character name: ${name}`];
+    if (description) {
+        promptParts.push(`Description: ${description}`);
+    }
+    if (personality) {
+        promptParts.push(`Personality: ${personality}`);
+    }
+    promptParts.push('Generate the weekly schedule JSON now.');
+
+    const response = await generateRaw({
+        prompt: promptParts.join('\n\n'),
+        systemPrompt,
+        responseLength: 1400,
+        trimNames: false,
+        cacheScope: 'conversation-mode-schedule',
+    });
+
+    return parseScheduleResponse(response);
+}
+
+function parseScheduleTimeRange(range) {
+    const match = String(range || '').match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (!match) {
+        return null;
+    }
+
+    const startMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    const endMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    return { startMinutes, endMinutes };
+}
+
+function getCurrentActivityFromSchedule(schedule, avatar = getCurrentCharAvatar(), now = new Date()) {
+    // Runtime self-override from [schedule_update] commands takes precedence.
+    if (avatar && runtimeStatusOverrides.has(avatar)) {
+        const override = runtimeStatusOverrides.get(avatar);
+        if (override.expiresAt > now.getTime()) {
+            return { status: override.status, activity: override.activity, source: 'override' };
+        }
+        runtimeStatusOverrides.delete(avatar);
+    }
+
+    if (!schedule || !schedule.days) {
+        return { status: 'online', activity: 'free time', source: 'default' };
+    }
+
+    const day = now.getDay();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const blocks = Array.isArray(schedule.days[day]) ? schedule.days[day] : [];
+
+    for (const block of blocks) {
+        const range = parseScheduleTimeRange(block.time);
+        if (!range) {
+            continue;
+        }
+
+        const { startMinutes, endMinutes } = range;
+        const inRange = startMinutes <= endMinutes
+            ? nowMinutes >= startMinutes && nowMinutes < endMinutes
+            : nowMinutes >= startMinutes || nowMinutes < endMinutes; // midnight wrap
+        if (inRange) {
+            return { status: block.status, activity: block.activity, source: 'schedule' };
+        }
+    }
+
+    return { status: 'online', activity: 'free time', source: 'default' };
+}
+
+function parseDurationToMs(text) {
+    const match = String(text || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?/i);
+    if (!match) {
+        return 0;
+    }
+    const hours = parseInt(match[1] || '0', 10);
+    const minutes = parseInt(match[2] || '0', 10);
+    return (hours * 60 + minutes) * 60 * 1000;
+}
+
 function getUnreadCount(avatar) {
     return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(UNREAD_PREFIX, avatar)), 0, 0);
 }
@@ -445,6 +725,25 @@ function buildConversationSystemPrompt(settings) {
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
     }
 
+    const schedule = getStoredSchedule(getCurrentCharAvatar());
+    if (schedule) {
+        const current = getCurrentActivityFromSchedule(schedule);
+        const now = new Date();
+        const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        fields.push(`Current life context: It is ${timeLabel} for ${charName}, who is currently ${current.activity} (status: ${current.status}). Let this naturally color your availability, mood, and what you mention. Stay in this moment of your day.`);
+    }
+
+    const commandHints = [];
+    if (settings.selfie_command_enabled) {
+        commandHints.push('To send a selfie or photo, embed [selfie] (optionally [selfie: context="what the photo shows"]) anywhere in your reply. It is stripped from the visible message and turned into a real image.');
+    }
+    if (settings.schedule_command_enabled) {
+        commandHints.push('To change what you are doing right now, embed [schedule_update: status="online|idle|dnd|offline", activity="short description", duration="1h30m"]. Use this when your situation shifts (you got off work, went to sleep, etc.).');
+    }
+    if (commandHints.length) {
+        fields.push(`Available commands (use sparingly and only when natural):\n${commandHints.join('\n')}`);
+    }
+
     return fields.join('\n\n');
 }
 
@@ -481,6 +780,114 @@ function editConversationMessage(messageId) {
     }
 
     updateConversationThreadMessage(avatar, messageId, edited.trim());
+}
+
+function parseCommandArgs(rawArgs) {
+    const args = {};
+    const re = /(\w+)\s*=\s*"([^"]*)"/g;
+    let match;
+    while ((match = re.exec(rawArgs)) !== null) {
+        args[match[1].toLowerCase()] = match[2];
+    }
+    return args;
+}
+
+function applyScheduleUpdateCommand(avatar, rawArgs) {
+    const args = parseCommandArgs(rawArgs);
+    const status = SCHEDULE_STATUSES.includes(args.status) ? args.status : null;
+    const activity = (args.activity || '').trim();
+    if (!avatar || (!status && !activity)) {
+        return;
+    }
+
+    const durationMs = parseDurationToMs(args.duration) || (2 * 60 * 60 * 1000);
+    runtimeStatusOverrides.set(avatar, {
+        status: status || 'online',
+        activity: activity || 'free time',
+        expiresAt: Date.now() + durationMs,
+    });
+}
+
+// Scans a generated reply for embedded [selfie] / [schedule_update] commands.
+// Strips them from the visible text, applies schedule overrides, and returns
+// { text, selfieRequests:[context] } so callers can fire image generation.
+function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCharAvatar()) {
+    let text = String(rawText || '');
+    const selfieRequests = [];
+
+    if (settings.schedule_command_enabled) {
+        text = text.replace(SCHEDULE_UPDATE_RE, (full, rawArgs) => {
+            applyScheduleUpdateCommand(avatar, rawArgs);
+            return '';
+        });
+    }
+
+    if (settings.selfie_command_enabled) {
+        text = text.replace(SELFIE_COMMAND_RE, (full, context) => {
+            selfieRequests.push((context || '').trim());
+            return '';
+        });
+    }
+
+    text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return { text, selfieRequests };
+}
+
+// Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
+// so the LLM writes a focused image prompt, then appends an image message.
+async function generateSelfieFromContext(context, settings) {
+    const character = getCurrentCharacter();
+    const charName = getCurrentCharName();
+    const appearance = formatPromptText(character?.description || character?.personality || '', 600);
+    const metaPrompt = [
+        'You are an image prompt generator. Write a concise, detailed image generation prompt for a selfie photo.',
+        `Character name: ${charName}.`,
+        appearance ? `Appearance: ${appearance}` : '',
+        context ? `Photo context: ${context}` : 'Photo context: a casual selfie in the current moment.',
+        'Include appearance, clothing, expression and selfie pose, setting/background, and lighting. Output ONLY the prompt text, nothing else.',
+    ].filter(Boolean).join('\n');
+
+    let imagePrompt = '';
+    try {
+        imagePrompt = await generateRaw({
+            prompt: metaPrompt,
+            systemPrompt: 'You output only a raw image generation prompt with no preamble.',
+            responseLength: 200,
+            trimNames: false,
+            cacheScope: 'conversation-mode-selfie',
+        });
+    } catch (error) {
+        console.warn('Conversation Mode: selfie prompt generation failed', error);
+    }
+
+    imagePrompt = formatPromptText(imagePrompt, 600)
+        || (settings.selfie_prompt || 'raw photo, selfie of {{char}}').replace(/\{\{char\}\}/g, charName);
+
+    const imageUrl = await generateConversationImage(imagePrompt, settings.image_gen_negative || '');
+    if (imageUrl) {
+        appendConversationMessage('[Selfie]', {
+            role: 'character',
+            extra: { conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
+        });
+    }
+}
+
+// Handles a freshly generated character reply: strips commands, posts the visible
+// message, applies status overrides, and fires any requested selfies.
+async function postCharacterReply(rawText, settings, { extra = {} } = {}) {
+    const avatar = getCurrentCharAvatar();
+    const { text, selfieRequests } = extractCharacterReplyCommands(rawText, settings, avatar);
+
+    if (text) {
+        appendConversationMessage(text, { extra });
+    }
+
+    for (const context of selfieRequests) {
+        // eslint-disable-next-line no-await-in-loop
+        await generateSelfieFromContext(context, settings);
+    }
+
+    return text;
 }
 
 function renderConversationTimeline() {
@@ -678,7 +1085,50 @@ function buildSettingsDrawerHtml() {
                 </div>
             </div>
             <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Auto-Messaging & Scheduling</span></h4>
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Character Schedule</span></h4>
+                <p class="sb-conversation-field-hint">Let the model write a realistic weekly routine from this character's personality. Their availability and activity drift through the day and shape when they reach out.</p>
+                <div class="sb-conversation-field-stack">
+                    <button type="button" class="menu_button sb-conversation-generate-schedule" data-sb-conversation-action="generate-schedule">
+                        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Generate schedule</span>
+                    </button>
+                    <div class="sb-conversation-schedule-display" id="sb_conv_schedule_display" aria-live="polite"></div>
+                    <input id="sb_conv_auto_schedule" type="hidden" value="${escapeHtmlAttribute(settings.auto_schedule)}" />
+                </div>
+            </div>
+            <div class="sb-settings-group">
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Proactive Messaging</span></h4>
+                <label class="checkbox_label" title="Let the character message you first based on their schedule and mood">
+                    <input id="sb_conv_proactive_messaging" type="checkbox" />
+                    <span>Let this character message me first</span>
+                </label>
+                <div class="sb-conversation-field-row">
+                    <label class="checkbox_label sb-conversation-inline-number" title="Minutes of silence before the character reaches out">
+                        <span>Patience</span>
+                        <input id="sb_conv_inactivity_threshold" class="text_pole textarea_compact widthUnset" type="number" min="15" max="360" step="5" value="120" />
+                        <span class="auto_mode_delay_unit">mins</span>
+                    </label>
+                    <label class="checkbox_label sb-conversation-inline-number" title="Maximum unanswered follow-ups before the character waits for you">
+                        <span>Max follow-ups</span>
+                        <input id="sb_conv_max_followups" class="text_pole textarea_compact widthUnset" type="number" min="1" max="3" step="1" value="3" />
+                    </label>
+                    <label class="checkbox_label sb-conversation-inline-number" title="How chatty the character is, 0 reserved to 100 very talkative">
+                        <span>Talkativeness</span>
+                        <input id="sb_conv_talkativeness" class="text_pole textarea_compact widthUnset" type="number" min="0" max="100" step="5" value="50" />
+                    </label>
+                </div>
+                <div class="sb-conversation-field-row">
+                    <label class="checkbox_label" title="Allow the character to send selfies through [selfie] commands">
+                        <input id="sb_conv_selfie_command_enabled" type="checkbox" />
+                        <span>Allow [selfie] commands</span>
+                    </label>
+                    <label class="checkbox_label" title="Allow the character to change its own status through [schedule_update] commands">
+                        <input id="sb_conv_schedule_command_enabled" type="checkbox" />
+                        <span>Allow [schedule_update] commands</span>
+                    </label>
+                </div>
+            </div>
+            <div class="sb-settings-group">
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Manual Scheduling (optional)</span></h4>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Enable autonomous scheduled messages">
                         <input id="sb_conv_auto_message" type="checkbox" />
@@ -962,6 +1412,72 @@ function togglePalsRail() {
     setConversationBackdropVisible();
 }
 
+function formatScheduleTimestamp(timestamp) {
+    const value = Number(timestamp);
+    if (!Number.isFinite(value) || value <= 0) {
+        return '';
+    }
+
+    try {
+        return new Date(value).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch {
+        return '';
+    }
+}
+
+function renderScheduleDisplay() {
+    const display = document.getElementById('sb_conv_schedule_display');
+    if (!(display instanceof HTMLElement)) {
+        return;
+    }
+
+    const avatar = getCurrentCharAvatar();
+    const schedule = avatar ? getStoredSchedule(avatar) : null;
+    if (!schedule || !schedule.days) {
+        display.dataset.empty = 'true';
+        display.innerHTML = '<p class="sb-conversation-schedule-empty">No schedule yet. Generate one to give this character a daily rhythm and let them message you on their own.</p>';
+        return;
+    }
+
+    display.dataset.empty = 'false';
+    const now = new Date();
+    const todayIndex = now.getDay();
+    const current = getCurrentActivityFromSchedule(schedule, avatar, now);
+    const todayBlocks = Array.isArray(schedule.days[todayIndex]) ? schedule.days[todayIndex] : [];
+
+    const settings = getSettings(avatar);
+    const talkativeness = parsePositiveInt(settings.talkativeness, DEFAULT_TALKATIVENESS, 0);
+    const generatedLabel = formatScheduleTimestamp(settings.schedule_generated_at);
+
+    const currentLine = `<div class="sb-conversation-schedule-now" data-status="${escapeHtmlAttribute(current.status)}">`
+        + '<span class="sb-conversation-status-dot" data-status="' + escapeHtmlAttribute(current.status) + '"></span>'
+        + `<span class="sb-conversation-schedule-now-text">Right now: <strong>${escapeHtmlText(current.activity)}</strong> (${escapeHtmlText(current.status)})</span>`
+        + '</div>';
+
+    let blocksHtml = '';
+    if (todayBlocks.length) {
+        const rows = todayBlocks.map((block) => {
+            const isCurrent = current.source === 'schedule' && block.activity === current.activity && block.status === current.status;
+            return `<li class="sb-conversation-schedule-block${isCurrent ? ' is-current' : ''}" data-status="${escapeHtmlAttribute(block.status)}">`
+                + `<span class="sb-conversation-schedule-time">${escapeHtmlText(block.time)}</span>`
+                + `<span class="sb-conversation-schedule-activity">${escapeHtmlText(block.activity)}</span>`
+                + `<span class="sb-conversation-schedule-status" data-status="${escapeHtmlAttribute(block.status)}">${escapeHtmlText(block.status)}</span>`
+                + '</li>';
+        }).join('');
+        blocksHtml = `<p class="sb-conversation-schedule-label">${escapeHtmlText(WEEKDAY_LABELS[todayIndex])} today</p><ul class="sb-conversation-schedule-blocks">${rows}</ul>`;
+    } else {
+        blocksHtml = `<p class="sb-conversation-schedule-empty">No blocks scheduled for ${escapeHtmlText(WEEKDAY_LABELS[todayIndex])}.</p>`;
+    }
+
+    const metaParts = [`Talkativeness ${talkativeness}`];
+    if (generatedLabel) {
+        metaParts.push(`Updated ${generatedLabel}`);
+    }
+    const metaHtml = `<p class="sb-conversation-schedule-meta">${escapeHtmlText(metaParts.join(' \u00b7 '))}</p>`;
+
+    display.innerHTML = currentLine + blocksHtml + metaHtml;
+}
+
 function openConversationSettings() {
     const chrome = ensureConversationChrome();
     if (!chrome) {
@@ -992,6 +1508,7 @@ function openConversationSettings() {
     applySettingsToPanel(settings);
     bindWeeklyScheduleEditor();
     bindChimingPartnerList();
+    renderScheduleDisplay();
     updateUserFooter();
     chrome.drawer.hidden = false;
     setConversationBackdropVisible();
@@ -1277,6 +1794,46 @@ function bindConversationChromeControls(sheld) {
                 document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
                 break;
             }
+            case 'generate-schedule': {
+                if (scheduleGenerationBusy) {
+                    break;
+                }
+                const character = getCurrentCharacter();
+                const genAvatar = getCurrentCharAvatar();
+                if (!character || !genAvatar) {
+                    toastr.warning('No character selected.');
+                    break;
+                }
+                scheduleGenerationBusy = true;
+                const genBtn = target;
+                genBtn.setAttribute('disabled', '');
+                toastr.info(`Generating schedule for ${character.name}…`);
+                try {
+                    const schedule = await generateCharacterSchedule(character);
+                    if (schedule) {
+                        saveStoredSchedule(genAvatar, schedule);
+                        const genSettings = getSettings(genAvatar);
+                        genSettings.auto_schedule = JSON.stringify(schedule);
+                        genSettings.talkativeness = schedule.talkativeness;
+                        genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
+                        genSettings.schedule_generated_at = Date.now();
+                        saveSettings(genAvatar, genSettings);
+                        applySettingsToPanel(genSettings);
+                        renderScheduleDisplay();
+                        updateConversationChrome(genSettings);
+                        toastr.success(`Schedule generated for ${character.name}.`);
+                    } else {
+                        toastr.warning('Schedule generation returned no data. Try again.');
+                    }
+                } catch (err) {
+                    console.error('Schedule generation error:', err);
+                    toastr.error('Schedule generation failed.');
+                } finally {
+                    scheduleGenerationBusy = false;
+                    genBtn.removeAttribute('disabled');
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -1539,11 +2096,15 @@ function renderPalsRail() {
 
 function updateConversationHeader(settings = getSettings()) {
     const character = getCurrentCharacter();
+    const avatar = getCurrentCharAvatar();
     const image = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-avatar]`);
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
     const statusDot = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status-dot]`);
     const statusCopy = getAvailabilityCopy(settings.availability);
+    const schedule = avatar ? getStoredSchedule(avatar) : null;
+    const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar) : null;
+    const effectiveStatus = current ? current.status : settings.availability;
 
     if (image instanceof HTMLImageElement && character?.avatar) {
         image.src = getThumbnailUrl('avatar', character.avatar);
@@ -1552,12 +2113,17 @@ function updateConversationHeader(settings = getSettings()) {
         name.textContent = character?.name || 'Conversation';
     }
     if (status instanceof HTMLElement) {
-        status.textContent = generationActive && character
-            ? `${character.name || 'Character'} is writing...`
-            : `${statusCopy.label}: ${statusCopy.detail}`;
+        if (generationActive && character) {
+            status.textContent = `${character.name || 'Character'} is writing...`;
+        } else if (current) {
+            const currentCopy = getAvailabilityCopy(current.status);
+            status.textContent = `${currentCopy.label} · ${current.activity}`;
+        } else {
+            status.textContent = `${statusCopy.label}: ${statusCopy.detail}`;
+        }
     }
     if (statusDot instanceof HTMLElement) {
-        statusDot.dataset.status = settings.availability;
+        statusDot.dataset.status = effectiveStatus;
     }
 }
 
@@ -1781,7 +2347,7 @@ async function submitConversationInput() {
     try {
         const response = await generateConversationReply('[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]', settings);
         if (response?.trim()) {
-            await appendConversationMessage(response.trim(), {
+            await postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_reply: true,
                 },
@@ -1875,7 +2441,7 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
         const response = await generateConversationReply(quietPrompt, settings, { responseLength: 220 });
 
         if (response?.trim()) {
-            await appendConversationMessage(response.trim(), {
+            await postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_auto: true,
                     ...extra,
@@ -2070,6 +2636,104 @@ async function checkIdleAutoMessage(avatar, settings, now) {
     return triggered;
 }
 
+function buildProactiveDirective(activity, status, now = new Date()) {
+    const hour = now.getHours();
+    let timeOfDay = 'evening';
+    if (hour < 5) {
+        timeOfDay = 'late night';
+    } else if (hour < 12) {
+        timeOfDay = 'morning';
+    } else if (hour < 17) {
+        timeOfDay = 'afternoon';
+    } else if (hour < 21) {
+        timeOfDay = 'evening';
+    } else {
+        timeOfDay = 'night';
+    }
+
+    const statusNote = status === 'dnd'
+        ? 'You are busy and only have a brief moment.'
+        : status === 'idle'
+            ? 'You have a spare moment between things.'
+            : 'You are free and feel like reaching out.';
+
+    return `[System directive: It is ${timeOfDay} and you are currently ${activity} (status: ${status}). ${statusNote} The user has not replied in a while. Reach out to them yourself with a short, natural direct message. Reference your current activity or the time of day if it feels right. Do not wait for them to speak first.]`;
+}
+
+async function checkProactiveMessaging(avatar, settings, now) {
+    if (!settings.proactive_messaging) {
+        return false;
+    }
+
+    // The user being on Do Not Disturb fully suppresses proactive messaging.
+    if (getUserStatus() === 'dnd') {
+        return false;
+    }
+
+    const schedule = getStoredSchedule(avatar);
+    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now));
+
+    // The character never initiates while offline.
+    if (current.status === 'offline') {
+        return false;
+    }
+
+    const thread = getConversationThread(avatar);
+    const lastMessage = thread[thread.length - 1];
+    const lastUserActivity = getLastUserActivity(avatar, now);
+    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
+    const maxFollowups = clamp(parsePositiveInt(settings.max_followups, DEFAULT_MAX_FOLLOWUPS, 1), 1, 3);
+    const sentCount = getFollowupCount(avatar);
+
+    // Catch-up: the user messaged while the character was unavailable and it is
+    // now back online. Respond regardless of the inactivity threshold.
+    const isCatchUp = Boolean(lastMessage) && lastMessage.role === 'user' && sentCount === 0;
+
+    if (!isCatchUp) {
+        if (sentCount >= maxFollowups) {
+            return false;
+        }
+
+        let thresholdMinutes = clamp(
+            parsePositiveInt(settings.inactivity_threshold, DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
+            MIN_INACTIVITY_THRESHOLD,
+            MAX_INACTIVITY_THRESHOLD,
+        );
+
+        // Busy characters wait three times as long before reaching out.
+        if (current.status === 'dnd') {
+            thresholdMinutes *= 3;
+        }
+
+        if (sentCount === 0) {
+            // First proactive message is measured from the user's last activity.
+            if (idleMinutes < thresholdMinutes) {
+                return false;
+            }
+        } else {
+            // Follow-ups use an escalating cooldown measured from the last auto message.
+            const elapsedSinceAuto = (now - getLastAutoMessageTime(avatar)) / (60 * 1000);
+            const followupThreshold = thresholdMinutes * Math.pow(2, sentCount);
+            if (elapsedSinceAuto < followupThreshold) {
+                return false;
+            }
+        }
+    }
+
+    const directive = buildProactiveDirective(current.activity, current.status, new Date(now));
+    const triggered = await triggerAutoMessage(directive, settings, {
+        proactive: true,
+        proactive_status: current.status,
+    });
+
+    if (triggered) {
+        setFollowupCount(avatar, sentCount + 1);
+        setLastAutoMessageTime(avatar, now);
+    }
+
+    return triggered;
+}
+
 async function triggerMultiCharacterChime(settings) {
     const partners = settings.multi_char_names.split(',').map(name => name.trim()).filter(Boolean);
     if (!partners.length || autoWorkerBusy) {
@@ -2231,7 +2895,12 @@ async function conversationModeAutoMessageWorker() {
         return;
     }
 
-    if (await checkIdleAutoMessage(avatar, settings, now)) {
+    // Marinara-style proactive loop takes priority over legacy idle action.
+    if (settings.proactive_messaging) {
+        if (await checkProactiveMessaging(avatar, settings, now)) {
+            return;
+        }
+    } else if (await checkIdleAutoMessage(avatar, settings, now)) {
         return;
     }
 
