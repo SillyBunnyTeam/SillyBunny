@@ -6,6 +6,7 @@
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
 - PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
 - PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`
+- PR #498 (2026-06-16) `fix: prevent Windows file locks during chat integrity checks`
 
 ## v1.6.5
 
