@@ -2289,36 +2289,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     height: 100%;
 }
 
-.sb-message-has-quick-edit {
-    position: relative;
-}
-
-.sb_quick_edit_btn {
-    position: absolute;
-    inset-block-start: 10px;
-    inset-inline-end: 10px;
-    z-index: 10;
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor), transparent 35%);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor), transparent 10%);
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 160ms ease-out, transform 160ms ease-out;
-}
-
-.sb-message-has-quick-edit:hover .sb_quick_edit_btn,
-.sb_quick_edit_btn:focus-visible {
-    opacity: 0.88;
-    transform: translateY(-1px);
-}
-
 .sb-character-persona-panel #persona-management-button,
 .sb-character-persona-panel #PersonaManagement {
     width: 100% !important;
