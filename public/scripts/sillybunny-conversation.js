@@ -5,7 +5,8 @@ import { world_names } from './world-info.js';
 import { power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
-import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, selectCharacterById, this_chid } from '../script.js';
+import { extension_settings } from './extensions.js';
+import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, saveSettingsDebounced, selectCharacterById, this_chid } from '../script.js';
 
 const GEECHAN_DEFAULT_PROMPT = `{{// The main system prompt, designed for an output reminiscent of an instant messaging interface.
 
@@ -59,9 +60,14 @@ Use the information below as a reference point on how {{char}} should act in the
 const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 const USER_STATUS_STORAGE_KEY = 'sb_conv_user_status';
+const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
+const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
+const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 const SETTINGS_KEY_PREFIX = 'sb_conv_settings_';
 const THREAD_KEY_PREFIX = 'sb_conv_thread_';
+const CONVERSATION_STORE_KEY = 'sillybunny_conversation';
+const DEFAULT_BRANCH_ID = 'main';
 const LAST_USER_ACTIVITY_PREFIX = 'sb_conv_last_user_activity_';
 const LAST_AUTO_MESSAGE_PREFIX = 'sb_conv_last_auto_msg_';
 const LAST_SCHEDULE_TRIGGER_PREFIX = 'sb_conv_last_trigger_';
@@ -125,14 +131,13 @@ const DEFAULT_SETTINGS = Object.freeze({
     schedule_generated_at: 0,
     selfie_command_enabled: true,
     schedule_command_enabled: true,
-    use_geechan_as_system: true,
     geechan_chatroom_prompt: GEECHAN_DEFAULT_PROMPT,
     custom_instructions: '',
     multi_char: false,
     multi_char_names: '',
     auto_character_chat: false,
+    roleplay_reactions: false,
     lorebook_override: '',
-    conversation_persona: '',
     connection_profile: '',
     authors_note: '',
     editable_messages: true,
@@ -140,6 +145,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     image_gen_enabled: false,
     image_gen_prompt_template: 'a photo of {{char}}, {{scene}}',
     image_gen_negative: '',
+    image_gen_cooldown: 10,
     spontaneous_selfies: false,
     selfie_prompt: 'raw photo, selfie of {{char}}',
 });
@@ -160,14 +166,13 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
     { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
-    { id: 'sb_conv_use_geechan_as_system', key: 'use_geechan_as_system', prop: 'checked' },
     { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
     { id: 'sb_conv_custom_instructions', key: 'custom_instructions', prop: 'value' },
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
     { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
+    { id: 'sb_conv_roleplay_reactions', key: 'roleplay_reactions', prop: 'checked' },
     { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
-    { id: 'sb_conv_conversation_persona', key: 'conversation_persona', prop: 'value' },
     { id: 'sb_conv_connection_profile', key: 'connection_profile', prop: 'value' },
     { id: 'sb_conv_authors_note', key: 'authors_note', prop: 'value' },
     { id: 'sb_conv_editable_messages', key: 'editable_messages', prop: 'checked' },
@@ -175,6 +180,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_image_gen_enabled', key: 'image_gen_enabled', prop: 'checked' },
     { id: 'sb_conv_image_gen_prompt_template', key: 'image_gen_prompt_template', prop: 'value' },
     { id: 'sb_conv_image_gen_negative', key: 'image_gen_negative', prop: 'value' },
+    { id: 'sb_conv_image_gen_cooldown', key: 'image_gen_cooldown', prop: 'value', type: 'number', fallback: 10, min: 0 },
     { id: 'sb_conv_spontaneous_selfies', key: 'spontaneous_selfies', prop: 'checked' },
     { id: 'sb_conv_selfie_prompt', key: 'selfie_prompt', prop: 'value' },
 ]);
@@ -184,11 +190,11 @@ let autoWorkerBusy = false;
 let generationActive = false;
 let conversationReplyBusy = false;
 let previousConnectionProfile = null;
-let previousPersonaAvatar = null;
-let activePersonaApplied = false;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
 let conversationWorkspaceOpen = false;
+let imageGenerationActive = false;
+let imageGenerationAbortController = null;
 const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
@@ -222,10 +228,249 @@ function safeParseSettings(stored) {
     }
 
     try {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+        const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
+        return { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
+}
+
+function getConversationStore() {
+    const store = extension_settings[CONVERSATION_STORE_KEY];
+    if (!store || typeof store !== 'object') {
+        extension_settings[CONVERSATION_STORE_KEY] = {
+            version: 1,
+            localStorageMigrated: false,
+            characters: {},
+        };
+    }
+
+    const current = extension_settings[CONVERSATION_STORE_KEY];
+    current.version = current.version || 1;
+    current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
+    return current;
+}
+
+function persistConversationStore() {
+    saveSettingsDebounced();
+}
+
+function createConversationBranch(name = 'Main', id = `br_${Date.now()}_${Math.random().toString(36).slice(2)}`) {
+    return {
+        id,
+        name,
+        messages: [],
+        preview: 'Conversation ready',
+        unread: 0,
+        lastActivity: Date.now(),
+        followupCount: 0,
+        lastAutoMessageAt: 0,
+        scheduleTriggers: {},
+        sessionMarkers: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+    };
+}
+
+function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
+    const normalized = branch && typeof branch === 'object' ? branch : {};
+    return {
+        ...createConversationBranch(id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', id),
+        ...normalized,
+        id: normalized.id || id,
+        name: normalized.name || (id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation'),
+        messages: Array.isArray(normalized.messages) ? normalized.messages : [],
+        scheduleTriggers: normalized.scheduleTriggers && typeof normalized.scheduleTriggers === 'object' ? normalized.scheduleTriggers : {},
+        sessionMarkers: normalized.sessionMarkers && typeof normalized.sessionMarkers === 'object' ? normalized.sessionMarkers : {},
+    };
+}
+
+function getCharacterConversationStore(avatar, { create = true } = {}) {
+    if (!avatar) {
+        return null;
+    }
+
+    const store = getConversationStore();
+    if (!store.characters[avatar] && !create) {
+        return null;
+    }
+    if (!store.characters[avatar]) {
+        store.characters[avatar] = {
+            settings: { ...DEFAULT_SETTINGS },
+            schedule: null,
+            activeBranchId: DEFAULT_BRANCH_ID,
+            branches: {
+                [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID),
+            },
+        };
+    }
+
+    const characterStore = store.characters[avatar];
+    characterStore.settings = safeParseSettings(characterStore.settings);
+    characterStore.branches = characterStore.branches && typeof characterStore.branches === 'object' ? characterStore.branches : {};
+    characterStore.activeBranchId = characterStore.activeBranchId || DEFAULT_BRANCH_ID;
+    if (!characterStore.branches[characterStore.activeBranchId]) {
+        characterStore.branches[characterStore.activeBranchId] = createConversationBranch('Main', characterStore.activeBranchId);
+    }
+    characterStore.branches[characterStore.activeBranchId] = normalizeConversationBranch(characterStore.branches[characterStore.activeBranchId], characterStore.activeBranchId);
+    return characterStore;
+}
+
+function getActiveConversationBranch(avatar, { create = true } = {}) {
+    const characterStore = getCharacterConversationStore(avatar, { create });
+    if (!characterStore) {
+        return null;
+    }
+
+    const id = characterStore.activeBranchId || DEFAULT_BRANCH_ID;
+    characterStore.branches[id] = normalizeConversationBranch(characterStore.branches[id], id);
+    return characterStore.branches[id];
+}
+
+function getConversationBranches(avatar) {
+    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    if (!characterStore) {
+        return [];
+    }
+
+    return Object.values(characterStore.branches).map((branch) => normalizeConversationBranch(branch, branch.id));
+}
+
+function setActiveConversationBranch(avatar, branchId) {
+    const characterStore = getCharacterConversationStore(avatar);
+    if (!characterStore?.branches?.[branchId]) {
+        return;
+    }
+
+    characterStore.activeBranchId = branchId;
+    persistConversationStore();
+}
+
+function createConversationBranchForAvatar(avatar, name = 'New chat') {
+    const characterStore = getCharacterConversationStore(avatar);
+    if (!characterStore) {
+        return null;
+    }
+
+    const branch = createConversationBranch(name || 'New chat');
+    characterStore.branches[branch.id] = branch;
+    characterStore.activeBranchId = branch.id;
+    persistConversationStore();
+    return branch;
+}
+
+function renameConversationBranch(avatar, branchId, name) {
+    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    const branch = characterStore?.branches?.[branchId];
+    if (!branch || !String(name || '').trim()) {
+        return;
+    }
+
+    branch.name = String(name).trim();
+    branch.updatedAt = Date.now();
+    persistConversationStore();
+}
+
+function deleteConversationBranch(avatar, branchId) {
+    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    if (!characterStore?.branches?.[branchId]) {
+        return false;
+    }
+
+    const branchIds = Object.keys(characterStore.branches);
+    if (branchIds.length <= 1) {
+        characterStore.branches[branchId] = createConversationBranch('Main', branchId);
+        characterStore.activeBranchId = branchId;
+    } else {
+        delete characterStore.branches[branchId];
+        if (characterStore.activeBranchId === branchId) {
+            characterStore.activeBranchId = Object.keys(characterStore.branches)[0] || DEFAULT_BRANCH_ID;
+        }
+    }
+    persistConversationStore();
+    return true;
+}
+
+function resetCharacterConversationBranches(avatar) {
+    const characterStore = getCharacterConversationStore(avatar);
+    if (!characterStore) {
+        return;
+    }
+
+    characterStore.activeBranchId = DEFAULT_BRANCH_ID;
+    characterStore.branches = {
+        [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID),
+    };
+    persistConversationStore();
+}
+
+function migrateConversationLocalStorage() {
+    const store = getConversationStore();
+    if (store.localStorageMigrated || typeof localStorage === 'undefined') {
+        return;
+    }
+
+    const prefixes = [
+        SETTINGS_KEY_PREFIX,
+        THREAD_KEY_PREFIX,
+        SCHEDULE_PREFIX,
+        LAST_USER_ACTIVITY_PREFIX,
+        FOLLOWUP_COUNT_PREFIX,
+        UNREAD_PREFIX,
+        LAST_PREVIEW_PREFIX,
+        LAST_AUTO_MESSAGE_PREFIX,
+        LAST_SCHEDULE_TRIGGER_PREFIX,
+    ];
+    const avatars = new Set();
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i) || '';
+        const prefix = prefixes.find(value => key.startsWith(value));
+        if (prefix) {
+            avatars.add(key.slice(prefix.length));
+        }
+    }
+
+    for (const avatar of avatars) {
+        const characterStore = getCharacterConversationStore(avatar);
+        const settingsRaw = localStorage.getItem(getCharacterStorageKey(SETTINGS_KEY_PREFIX, avatar));
+        if (settingsRaw) {
+            characterStore.settings = safeParseSettings(settingsRaw);
+        }
+
+        const branch = getActiveConversationBranch(avatar);
+        const threadRaw = localStorage.getItem(getCharacterStorageKey(THREAD_KEY_PREFIX, avatar));
+        if (threadRaw) {
+            branch.messages = safeParseThread(threadRaw).slice(-MAX_THREAD_MESSAGES);
+        }
+        const preview = localStorage.getItem(getCharacterStorageKey(LAST_PREVIEW_PREFIX, avatar));
+        if (preview) {
+            branch.preview = preview;
+        } else if (branch.messages.length) {
+            branch.preview = stripPreviewText(branch.messages[branch.messages.length - 1].mes) || 'Conversation ready';
+        }
+        branch.unread = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(UNREAD_PREFIX, avatar)), 0, 0);
+        branch.lastActivity = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_USER_ACTIVITY_PREFIX, avatar)), branch.lastActivity, 1);
+        branch.followupCount = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar)), 0, 0);
+        branch.lastAutoMessageAt = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_AUTO_MESSAGE_PREFIX, avatar)), 0, 0);
+        try {
+            branch.scheduleTriggers = JSON.parse(localStorage.getItem(getCharacterStorageKey(LAST_SCHEDULE_TRIGGER_PREFIX, avatar))) || {};
+        } catch {
+            branch.scheduleTriggers = {};
+        }
+
+        const scheduleRaw = localStorage.getItem(getScheduleStorageKey(avatar));
+        if (scheduleRaw) {
+            try {
+                const schedule = JSON.parse(scheduleRaw);
+                characterStore.schedule = schedule && typeof schedule === 'object' ? schedule : null;
+            } catch {
+                characterStore.schedule = null;
+            }
+        }
+    }
+
+    store.localStorageMigrated = true;
+    persistConversationStore();
 }
 
 function getSettings(avatar = getCurrentCharAvatar()) {
@@ -233,7 +478,7 @@ function getSettings(avatar = getCurrentCharAvatar()) {
         return { ...DEFAULT_SETTINGS };
     }
 
-    return safeParseSettings(localStorage.getItem(getCharacterStorageKey(SETTINGS_KEY_PREFIX, avatar)));
+    return { ...DEFAULT_SETTINGS, ...getCharacterConversationStore(avatar).settings };
 }
 
 function saveSettings(avatar, settings) {
@@ -241,23 +486,33 @@ function saveSettings(avatar, settings) {
         return;
     }
 
-    localStorage.setItem(getCharacterStorageKey(SETTINGS_KEY_PREFIX, avatar), JSON.stringify(settings));
+    getCharacterConversationStore(avatar).settings = safeParseSettings(settings);
+    persistConversationStore();
 }
 
 function getLastUserActivity(avatar, fallback = Date.now()) {
-    return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_USER_ACTIVITY_PREFIX, avatar)), fallback, 1);
+    return parsePositiveInt(getActiveConversationBranch(avatar)?.lastActivity, fallback, 1);
 }
 
 function setLastUserActivity(avatar, timestamp = Date.now()) {
-    localStorage.setItem(getCharacterStorageKey(LAST_USER_ACTIVITY_PREFIX, avatar), String(timestamp));
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.lastActivity = timestamp;
+        branch.updatedAt = Date.now();
+        persistConversationStore();
+    }
 }
 
 function getFollowupCount(avatar) {
-    return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar)), 0, 0);
+    return parsePositiveInt(getActiveConversationBranch(avatar)?.followupCount, 0, 0);
 }
 
 function setFollowupCount(avatar, count) {
-    localStorage.setItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar), String(Math.max(0, count)));
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.followupCount = Math.max(0, count);
+        persistConversationStore();
+    }
 }
 
 function resetFollowupCount(avatar) {
@@ -265,7 +520,37 @@ function resetFollowupCount(avatar) {
         return;
     }
 
-    localStorage.removeItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar));
+    setFollowupCount(avatar, 0);
+}
+
+function getConversationSessionMarker(avatar, markerKey) {
+    return String(getActiveConversationBranch(avatar, { create: false })?.sessionMarkers?.[markerKey] ?? '');
+}
+
+function setConversationSessionMarker(avatar, markerKey, value) {
+    const branch = getActiveConversationBranch(avatar);
+    if (!branch) {
+        return;
+    }
+
+    branch.sessionMarkers = branch.sessionMarkers && typeof branch.sessionMarkers === 'object' ? branch.sessionMarkers : {};
+    branch.sessionMarkers[markerKey] = String(value);
+    persistConversationStore();
+}
+
+function getImageCooldownRemainingSeconds(avatar, settings, now = Date.now()) {
+    const cooldownMinutes = parsePositiveInt(settings.image_gen_cooldown, 10, 0);
+    if (!cooldownMinutes) {
+        return 0;
+    }
+
+    const lastImageAt = parsePositiveInt(getConversationSessionMarker(avatar, 'image_at'), 0, 0);
+    const remainingMs = (cooldownMinutes * 60 * 1000) - (now - lastImageAt);
+    return Math.max(0, Math.ceil(remainingMs / 1000));
+}
+
+function markImageGenerated(avatar, timestamp = Date.now()) {
+    setConversationSessionMarker(avatar, 'image_at', timestamp);
 }
 
 function updateLastUserActivity(avatar = getCurrentCharAvatar()) {
@@ -295,7 +580,7 @@ function safeParseThread(stored) {
     }
 
     try {
-        const parsed = JSON.parse(stored);
+        const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
         return Array.isArray(parsed) ? parsed.filter(message => message?.id && message?.mes) : [];
     } catch {
         return [];
@@ -307,7 +592,7 @@ function getConversationThread(avatar = getCurrentCharAvatar()) {
         return [];
     }
 
-    return safeParseThread(localStorage.getItem(getCharacterStorageKey(THREAD_KEY_PREFIX, avatar)));
+    return [...(getActiveConversationBranch(avatar)?.messages ?? [])];
 }
 
 function saveConversationThread(avatar, messages) {
@@ -315,7 +600,14 @@ function saveConversationThread(avatar, messages) {
         return;
     }
 
-    localStorage.setItem(getCharacterStorageKey(THREAD_KEY_PREFIX, avatar), JSON.stringify(messages.slice(-MAX_THREAD_MESSAGES)));
+    const branch = getActiveConversationBranch(avatar);
+    if (!branch) {
+        return;
+    }
+
+    branch.messages = safeParseThread(messages).slice(-MAX_THREAD_MESSAGES);
+    branch.updatedAt = Date.now();
+    persistConversationStore();
 }
 
 function appendConversationThreadMessage(avatar, messageInput) {
@@ -330,7 +622,7 @@ function appendConversationThreadMessage(avatar, messageInput) {
     return message;
 }
 
-function updateConversationThreadMessage(avatar, messageId, messageText) {
+function updateConversationThreadMessage(avatar, messageId, messageText, extra = null) {
     const messages = getConversationThread(avatar);
     const message = messages.find(item => item.id === messageId);
     if (!message) {
@@ -338,10 +630,193 @@ function updateConversationThreadMessage(avatar, messageId, messageText) {
     }
 
     message.mes = messageText;
+    if (extra && typeof extra === 'object') {
+        message.extra = { ...message.extra, ...extra };
+    }
     saveConversationThread(avatar, messages);
     updateLastPreviewFromConversation(avatar);
     if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
         renderConversationTimeline();
+    }
+}
+
+async function runCompanionsOnConversationMessage(avatar, messageId) {
+    const thread = getConversationThread(avatar);
+    const msgIndex = thread.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) {
+        return;
+    }
+
+    const message = thread[msgIndex];
+    if (message.role === 'user') {
+        return;
+    }
+
+    try {
+        const { getEnabledAgents, isCompanionAgent } = await import('./extensions/in-chat-agents/agent-store.js');
+        const { runCompanionsOnMessage, setCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
+
+        const enabledAgents = getEnabledAgents();
+        const companions = enabledAgents.filter(isCompanionAgent);
+        if (companions.length === 0) {
+            return;
+        }
+
+        companions.forEach(agent => {
+            setCompanionResult(message, agent, { status: 'pending', content: '' });
+        });
+        updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
+
+        const originalChatItems = [...chat];
+        const mockChat = thread.map(msg => ({
+            is_user: msg.role === 'user',
+            is_system: msg.role === 'system',
+            name: msg.name,
+            mes: msg.mes,
+            extra: msg.extra || {},
+        }));
+
+        chat.length = 0;
+        chat.push(...mockChat);
+
+        try {
+            await runCompanionsOnMessage(chat.length - 1);
+            message.extra = chat[chat.length - 1].extra;
+            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
+        } finally {
+            chat.length = 0;
+            chat.push(...originalChatItems);
+        }
+    } catch (err) {
+        console.error('Failed to run companion agents on Conversation message:', err);
+    }
+}
+
+async function runSingleCompanionOnConversationMessage(avatar, messageId, agentId) {
+    const thread = getConversationThread(avatar);
+    const msgIndex = thread.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) {
+        return;
+    }
+
+    const message = thread[msgIndex];
+    if (message.role === 'user') {
+        return;
+    }
+
+    try {
+        const { getAgentById } = await import('./extensions/in-chat-agents/agent-store.js');
+        const { runCompanionAgentOnMessage, setCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
+
+        const agent = getAgentById(agentId);
+        if (!agent) {
+            return;
+        }
+
+        setCompanionResult(message, agent, { status: 'pending', content: '' });
+        updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
+
+        const originalChatItems = [...chat];
+        const mockChat = thread.map(msg => ({
+            is_user: msg.role === 'user',
+            is_system: msg.role === 'system',
+            name: msg.name,
+            mes: msg.mes,
+            extra: msg.extra || {},
+        }));
+
+        chat.length = 0;
+        chat.push(...mockChat);
+
+        try {
+            await runCompanionAgentOnMessage(agentId, chat.length - 1);
+            message.extra = chat[chat.length - 1].extra;
+            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
+        } finally {
+            chat.length = 0;
+            chat.push(...originalChatItems);
+        }
+    } catch (err) {
+        console.error('Failed to run single companion agent on Conversation message:', err);
+    }
+}
+
+async function renderCompanionResultsForConversationMessage(message, container) {
+    try {
+        const { getCompanionResults } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
+        const { cleanCompanionAgentName, formatCompanionContent, isHiddenCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-ui.js');
+
+        const results = getCompanionResults(message);
+        const entries = Object.entries(results)
+            .filter(([agentId, result]) => result && typeof result === 'object' && !isHiddenCompanionResult(agentId, result))
+            .sort(([, left], [, right]) => {
+                const leftTime = Date.parse(left.updatedAt ?? '');
+                const rightTime = Date.parse(right.updatedAt ?? '');
+                return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+            });
+
+        if (entries.length === 0) {
+            return;
+        }
+
+        const ledger = document.createElement('div');
+        ledger.className = 'ica--companion-ledger';
+        ledger.setAttribute('aria-label', 'Companion notes');
+
+        entries.forEach(([agentId, result]) => {
+            const status = ['pending', 'done', 'error', 'cancelled'].includes(result.status) ? result.status : 'done';
+            const agentName = cleanCompanionAgentName(result.agentName);
+            const icon = String(result.icon ?? '').trim() || 'fa-user-astronaut';
+            const profileLabel = String(result.profileLabel ?? '').trim();
+            const modelLabel = String(result.modelLabel ?? '').trim();
+            const meta = [profileLabel, modelLabel].filter(Boolean).join(' / ');
+
+            let statusLabel = 'Ready';
+            if (status === 'pending') statusLabel = 'Running';
+            else if (status === 'error') statusLabel = 'Error';
+            else if (status === 'cancelled') statusLabel = 'Cancelled';
+
+            let bodyHtml = '';
+            if (status === 'pending') {
+                bodyHtml = '<div class="ica--companion-pending"><i class="fa-solid fa-spinner fa-spin"></i><span>Companion is writing a note.</span></div>';
+            } else if (status === 'error') {
+                bodyHtml = `<div class="ica--companion-error">${escapeHtmlText(result.error || 'Companion run failed.')}</div>`;
+            } else if (status === 'cancelled') {
+                bodyHtml = '<div class="ica--companion-empty">Companion run was cancelled.</div>';
+            } else {
+                bodyHtml = formatCompanionContent(agentId, result, message);
+            }
+
+            const card = document.createElement('details');
+            card.className = `ica--companion-card ica--companion-card--${status}`;
+            card.dataset.agentId = agentId;
+            if (!result.collapsed) {
+                card.setAttribute('open', '');
+            }
+
+            card.innerHTML = `
+                <summary class="ica--companion-summary">
+                    <span class="ica--companion-title">
+                        <i class="fa-solid ${escapeHtmlAttribute(icon)}"></i>
+                        <span>${escapeHtmlText(agentName)}</span>
+                    </span>
+                    <span class="ica--companion-summary-spacer"></span>
+                    ${meta ? `<span class="ica--companion-meta">${escapeHtmlText(meta)}</span>` : ''}
+                    <span class="ica--companion-status">${escapeHtmlText(statusLabel)}</span>
+                    <span class="ica--companion-actions">
+                        <button type="button" class="ica--companion-action" data-action="regenerate-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" data-message-id="${escapeHtmlAttribute(message.id)}" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
+                        <button type="button" class="ica--companion-action" data-action="copy-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
+                        <button type="button" class="ica--companion-action caution" data-action="delete-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" data-message-id="${escapeHtmlAttribute(message.id)}" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
+                    </span>
+                </summary>
+                <div class="ica--companion-body">${bodyHtml}</div>
+            `;
+            ledger.appendChild(card);
+        });
+
+        container.appendChild(ledger);
+    } catch (err) {
+        console.error('Failed to render companion results:', err);
     }
 }
 
@@ -350,12 +825,14 @@ function getAvailabilityCopy(status) {
 }
 
 function getUserStatus() {
-    return localStorage.getItem(USER_STATUS_STORAGE_KEY) || 'online';
+    const status = getConversationStore().userStatus || localStorage.getItem(USER_STATUS_STORAGE_KEY) || 'online';
+    return USER_STATUS_OPTIONS.includes(status) ? status : 'online';
 }
 
 function setUserStatus(status) {
     if (USER_STATUS_OPTIONS.includes(status)) {
-        localStorage.setItem(USER_STATUS_STORAGE_KEY, status);
+        getConversationStore().userStatus = status;
+        persistConversationStore();
     }
 }
 
@@ -369,7 +846,7 @@ function safeParseWeeklySchedule(value) {
 }
 
 function getConnectionProfiles() {
-    return globalThis.extension_settings?.connectionManager?.profiles ?? [];
+    return extension_settings.connectionManager?.profiles ?? [];
 }
 
 function getPersonaOptions() {
@@ -379,6 +856,84 @@ function getPersonaOptions() {
     }
 
     return Object.entries(personas).map(([avatarId, personaName]) => ({ avatarId, personaName: String(personaName) }));
+}
+
+function getConversationPersonaAppendixScopeKey() {
+    return String(selected_group || getCurrentCharAvatar() || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function getConversationPersonaAppendices(avatarId) {
+    const descriptor = power_user?.persona_descriptions?.[avatarId];
+    if (!descriptor || !Array.isArray(descriptor.appendices)) {
+        return [];
+    }
+
+    return descriptor.appendices.map((appendix, index) => {
+        const name = String(appendix?.name || `Scenario Note ${index + 1}`).trim() || `Scenario Note ${index + 1}`;
+        const id = String(appendix?.id || `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${index}`).trim();
+        return {
+            id,
+            name,
+            description: String(appendix?.description ?? ''),
+        };
+    }).filter(appendix => appendix.id);
+}
+
+function getActiveConversationPersonaAppendixIds(avatarId) {
+    const descriptor = power_user?.persona_descriptions?.[avatarId];
+    const appendices = getConversationPersonaAppendices(avatarId);
+    const appendixIds = new Set(appendices.map(appendix => appendix.id));
+    const selections = descriptor?.[PERSONA_APPENDICES_SELECTIONS_KEY];
+    const scopeKey = getConversationPersonaAppendixScopeKey();
+    const activeIds = selections && typeof selections === 'object' && !Array.isArray(selections)
+        ? selections[scopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY] ?? []
+        : [];
+    return Array.isArray(activeIds)
+        ? activeIds.map(String).filter((id, index, array) => appendixIds.has(id) && array.indexOf(id) === index)
+        : [];
+}
+
+function composeConversationPersonaDescription(avatarId) {
+    const descriptor = power_user?.persona_descriptions?.[avatarId];
+    const chunks = [];
+    const baseDescription = String(descriptor?.description ?? '').trim();
+
+    if (baseDescription) {
+        chunks.push(baseDescription);
+    }
+
+    const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
+    for (const appendix of getConversationPersonaAppendices(avatarId)) {
+        if (activeIds.has(appendix.id) && appendix.description.trim()) {
+            chunks.push(`[${appendix.name}]\n${appendix.description.trim()}`);
+        }
+    }
+
+    return chunks.join('\n\n');
+}
+
+function setActiveConversationPersonaAppendixIds(avatarId, ids) {
+    const descriptor = power_user?.persona_descriptions?.[avatarId];
+    if (!descriptor) {
+        return;
+    }
+
+    const availableIds = new Set(getConversationPersonaAppendices(avatarId).map(appendix => appendix.id));
+    const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
+    const selections = descriptor[PERSONA_APPENDICES_SELECTIONS_KEY]
+        && typeof descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] === 'object'
+        && !Array.isArray(descriptor[PERSONA_APPENDICES_SELECTIONS_KEY])
+        ? descriptor[PERSONA_APPENDICES_SELECTIONS_KEY]
+        : {};
+    selections[getConversationPersonaAppendixScopeKey()] = cleanIds;
+    descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = selections;
+
+    if (avatarId === user_avatar) {
+        power_user.persona_description = composeConversationPersonaDescription(avatarId);
+    }
+
+    saveSettingsDebounced();
+    void eventSource.emit(event_types.PERSONA_UPDATED, avatarId);
 }
 
 async function applyConnectionProfileByName(profileName) {
@@ -394,11 +949,18 @@ async function applyConnectionProfileByName(profileName) {
 }
 
 async function generateConversationImage(prompt, negative = '') {
+    if (imageGenerationActive) {
+        return null;
+    }
+
+    imageGenerationActive = true;
+    imageGenerationAbortController = new AbortController();
+    renderConversationTimeline();
     try {
         const qig = await import('./extensions/quick-image-gen/index.js');
         const entry = await qig.withTransientGenerationSettings({}, async () => {
             const settings = qig.getGenerationSettingsForRun();
-            const raw = await qig.generateForProvider(prompt, negative, settings, new AbortController().signal, {});
+            const raw = await qig.generateForProvider(prompt, negative, settings, imageGenerationAbortController.signal, {});
             return raw ? qig.finalizeGeneratedEntry(raw, prompt, negative, settings, {}) : null;
         });
 
@@ -406,6 +968,10 @@ async function generateConversationImage(prompt, negative = '') {
     } catch (error) {
         console.warn('Conversation Mode: QIG not available or generation failed', error);
         return null;
+    } finally {
+        imageGenerationActive = false;
+        imageGenerationAbortController = null;
+        renderConversationTimeline();
     }
 }
 
@@ -415,6 +981,10 @@ function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
     }
 
     return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || null;
+}
+
+function getCharacterIndexForAvatar(avatar) {
+    return (Array.isArray(characters) ? characters : []).findIndex(character => character?.avatar === avatar);
 }
 
 function getCharacterImageDetails(avatar = getCurrentCharAvatar()) {
@@ -429,6 +999,29 @@ function getCharacterImageDetails(avatar = getCurrentCharAvatar()) {
         character.scenario ? `Context: ${character.scenario}` : '',
         character.data?.creator_notes ? `Creator notes: ${character.data.creator_notes}` : '',
     ].filter(Boolean).map(value => formatPromptText(value, 900)).join('\n');
+}
+
+function getCharacterAuthorNote(avatar = getCurrentCharAvatar()) {
+    const character = getCharacterForAvatar(avatar);
+    return String(character?.data?.extensions?.depth_prompt?.prompt || '').trim();
+}
+
+function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar)) {
+    const character = getCharacterForAvatar(avatar);
+    const branch = getActiveConversationBranch(avatar, { create: false });
+    if (branch?.name && branch.name !== 'Main') {
+        return branch.name;
+    }
+
+    const partners = String(settings?.multi_char_names || '')
+        .split(',')
+        .map(name => name.trim())
+        .filter(Boolean);
+    if (partners.length) {
+        return [character?.name || 'Character', ...partners].join(', ');
+    }
+
+    return character?.name || 'Conversation';
 }
 
 function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {
@@ -463,17 +1056,8 @@ function getStoredSchedule(avatar = getCurrentCharAvatar()) {
         return null;
     }
 
-    try {
-        const raw = localStorage.getItem(getScheduleStorageKey(avatar));
-        if (!raw) {
-            return null;
-        }
-
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-        return null;
-    }
+    const schedule = getCharacterConversationStore(avatar, { create: false })?.schedule;
+    return schedule && typeof schedule === 'object' ? schedule : null;
 }
 
 function saveStoredSchedule(avatar, schedule) {
@@ -481,7 +1065,9 @@ function saveStoredSchedule(avatar, schedule) {
         return;
     }
 
-    localStorage.setItem(getScheduleStorageKey(avatar), JSON.stringify(schedule));
+    const characterStore = getCharacterConversationStore(avatar);
+    characterStore.schedule = schedule && typeof schedule === 'object' ? schedule : null;
+    persistConversationStore();
 }
 
 function inferStatusFromActivity(activity) {
@@ -686,11 +1272,15 @@ function parseDurationToMs(text) {
 }
 
 function getUnreadCount(avatar) {
-    return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(UNREAD_PREFIX, avatar)), 0, 0);
+    return parsePositiveInt(getActiveConversationBranch(avatar, { create: false })?.unread, 0, 0);
 }
 
 function setUnreadCount(avatar, count) {
-    localStorage.setItem(getCharacterStorageKey(UNREAD_PREFIX, avatar), String(Math.max(0, count)));
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.unread = Math.max(0, count);
+        persistConversationStore();
+    }
 }
 
 function clearUnreadCount(avatar) {
@@ -705,17 +1295,30 @@ function stripPreviewText(messageText) {
         .slice(0, 130);
 }
 
+function splitChatroomMessages(text) {
+    const parts = String(text || '')
+        .split(/\n\s*\n+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+    return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
+}
+
 function setLastConversationPreview(avatar, messageText) {
     const preview = stripPreviewText(messageText);
     if (!avatar || !preview) {
         return;
     }
 
-    localStorage.setItem(getCharacterStorageKey(LAST_PREVIEW_PREFIX, avatar), preview);
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.preview = preview;
+        branch.updatedAt = Date.now();
+        persistConversationStore();
+    }
 }
 
 function getLastConversationPreview(avatar) {
-    return localStorage.getItem(getCharacterStorageKey(LAST_PREVIEW_PREFIX, avatar)) || 'Conversation ready';
+    return getActiveConversationBranch(avatar, { create: false })?.preview || 'Conversation ready';
 }
 
 function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar()) {
@@ -778,34 +1381,25 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = name1 || 'User';
-    const useGeechan = settings.use_geechan_as_system && (settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT);
     const fields = [
         `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
     ];
 
-    if (useGeechan) {
-        let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
-        // Strip template comments {{// ... }}
-        compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
-        // Strip {{trim}} tags
-        compiledPrompt = compiledPrompt.replace(/\{\{trim\}\}/g, '');
-        // Compile {{#if .player-instructions}} ... {{/if}}
-        if (settings.custom_instructions && settings.custom_instructions.trim()) {
-            compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, (match, p1) => {
-                return p1.replace(/\{\{getvar::player-instructions\}\}/gi, settings.custom_instructions);
-            });
-        } else {
-            compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, '');
-        }
-        // Substitute basic templates
-        compiledPrompt = compiledPrompt
-            .replace(/\{\{char\}\}/g, charName)
-            .replace(/\{\{user\}\}/g, userName);
-        fields.push(compiledPrompt.trim());
+    let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
+    compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
+    compiledPrompt = compiledPrompt.replace(/\{\{trim\}\}/g, '');
+    if (settings.custom_instructions && settings.custom_instructions.trim()) {
+        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, (match, p1) => {
+            return p1.replace(/\{\{getvar::player-instructions\}\}/gi, settings.custom_instructions);
+        });
     } else {
-        fields.push('Reply like a live DM: concise, present-tense, conversational, and grounded in the character. Avoid long prose narration.');
+        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, '');
     }
+    compiledPrompt = compiledPrompt
+        .replace(/\{\{char\}\}/g, charName)
+        .replace(/\{\{user\}\}/g, userName);
+    fields.push(compiledPrompt.trim());
 
     if (character?.description) {
         fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);
@@ -816,8 +1410,9 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     if (character?.scenario) {
         fields.push(`Background context:\n${formatPromptText(character.scenario, 1200)}`);
     }
-    if (settings.authors_note) {
-        fields.push(`Conversation author's note:\n${settings.authors_note.replace('{{char}}', charName).replace('{{user}}', userName)}`);
+    const authorNote = settings.authors_note || getCharacterAuthorNote(avatar);
+    if (authorNote) {
+        fields.push(`Conversation author's note:\n${authorNote.replace('{{char}}', charName).replace('{{user}}', userName)}`);
     }
     if (settings.lorebook_override) {
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
@@ -933,6 +1528,10 @@ function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCha
 // Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
 // so the LLM writes a focused image prompt, then appends an image message.
 async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar()) {
+    if (!settings.image_gen_enabled || !avatar || getImageCooldownRemainingSeconds(avatar, settings) > 0) {
+        return;
+    }
+
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || 'Character';
     const appearance = getCharacterImageDetails(avatar);
@@ -965,7 +1564,8 @@ async function generateSelfieFromContext(context, settings, avatar = getCurrentC
 
     const imageUrl = await generateConversationImage(imagePrompt, settings.image_gen_negative || '');
     if (imageUrl) {
-        appendConversationMessage('[Selfie]', {
+        markImageGenerated(avatar);
+        appendConversationMessage(context ? `Here's the photo: ${context}` : 'Sending you a selfie.', {
             role: 'character',
             extra: { conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
         }, avatar);
@@ -984,11 +1584,13 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
         const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
         const speakerName = character?.name || getCurrentCharName();
 
-        appendConversationMessage(text, {
-            name: speakerName,
-            role: 'character',
-            extra,
-        }, avatar);
+        for (const messageText of splitChatroomMessages(text)) {
+            appendConversationMessage(messageText, {
+                name: speakerName,
+                role: 'character',
+                extra,
+            }, avatar);
+        }
     }
 
     for (const context of selfieRequests) {
@@ -1104,6 +1706,7 @@ function renderConversationTimeline() {
         }
 
         bubble.append(meta, text);
+        void renderCompanionResultsForConversationMessage(message, bubble);
         item.append(avatarWrap, bubble);
         timeline.appendChild(item);
     });
@@ -1135,6 +1738,31 @@ function renderConversationTimeline() {
         timeline.appendChild(typingItem);
     }
 
+    if (imageGenerationActive) {
+        const imageItem = document.createElement('div');
+        imageItem.className = 'sb-conversation-message sb-conversation-image-pending';
+        imageItem.dataset.role = 'character';
+        const imageAvatarWrap = document.createElement('div');
+        imageAvatarWrap.className = 'sb-conversation-message-avatar';
+        const pendingImage = document.createElement('img');
+        pendingImage.alt = '';
+        pendingImage.src = getThumbnailUrl('avatar', getCurrentCharAvatar()) || default_user_avatar;
+        imageAvatarWrap.appendChild(pendingImage);
+        const imageBubble = document.createElement('div');
+        imageBubble.className = 'sb-conversation-message-bubble';
+        imageBubble.innerHTML = `
+            <div class="sb-conversation-message-meta">
+                <span class="sb-conversation-message-name">Image generation</span>
+                <button type="button" class="sb-conversation-stop-image" data-sb-conversation-action="stop-image-generation">Stop</button>
+            </div>
+            <div class="sb-conversation-message-text sb-conversation-typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+        `;
+        imageItem.append(imageAvatarWrap, imageBubble);
+        timeline.appendChild(imageItem);
+    }
+
     timeline.scrollTop = timeline.scrollHeight;
 }
 
@@ -1143,15 +1771,6 @@ function buildLorebookOptions(selected) {
     for (const worldName of (Array.isArray(world_names) ? world_names : [])) {
         const safe = escapeHtmlAttribute(worldName);
         options.push(`<option value="${safe}"${worldName === selected ? ' selected' : ''}>${escapeHtmlText(worldName)}</option>`);
-    }
-    return options.join('');
-}
-
-function buildPersonaOptions(selected) {
-    const options = ['<option value="">Use active persona</option>'];
-    for (const { avatarId, personaName } of getPersonaOptions()) {
-        const safe = escapeHtmlAttribute(avatarId);
-        options.push(`<option value="${safe}"${avatarId === selected ? ' selected' : ''}>${escapeHtmlText(personaName)}</option>`);
     }
     return options.join('');
 }
@@ -1208,7 +1827,6 @@ function buildSettingsDrawerHtml() {
             <div>
                 <div class="sb-conversation-settings-kicker">Conversation Mode</div>
                 <div class="sb-conversation-settings-title">DM controls</div>
-                <div class="sb-conversation-settings-subtitle">Presence, schedules, context, and message helpers for this character.</div>
             </div>
             <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="close-settings" title="Close Conversation settings" aria-label="Close Conversation settings">
                 <i class="fa-solid fa-xmark"></i>
@@ -1319,10 +1937,7 @@ function buildSettingsDrawerHtml() {
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-scroll" aria-hidden="true"></i><span>Prompts & Formats</span></h4>
                 <div class="sb-conversation-field-stack">
-                    <label class="checkbox_label" title="Use Geechan Chatroom Prompt as the base system prompt">
-                        <input id="sb_conv_use_geechan_as_system" type="checkbox" />
-                        <span>Use Geechan Chatroom Prompt as system base</span>
-                    </label>
+                    <label for="sb_conv_geechan_chatroom_prompt">Geechan Chatroom System Prompt</label>
                     <textarea id="sb_conv_geechan_chatroom_prompt" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type the chatroom system prompt here..."></textarea>
                     <button type="button" class="menu_button sb-conversation-reset-prompt" data-sb-conversation-action="reset-prompt" style="margin-top: 4px; align-self: flex-start; padding: 4px 8px; font-size: var(--sb-type-meta);">
                         <i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Reset to default</span>
@@ -1346,6 +1961,10 @@ function buildSettingsDrawerHtml() {
                     <input id="sb_conv_auto_character_chat" type="checkbox" />
                     <span>Allow characters to talk to each other</span>
                 </label>
+                <label class="checkbox_label" title="Allow this character to privately react to the current roleplay or group chat">
+                    <input id="sb_conv_roleplay_reactions" type="checkbox" />
+                    <span>React to current roleplay</span>
+                </label>
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context Overrides</span></h4>
@@ -1353,12 +1972,6 @@ function buildSettingsDrawerHtml() {
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>
                     <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">
                         ${buildLorebookOptions(settings.lorebook_override)}
-                    </select>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_conversation_persona">Conversation Persona</label>
-                    <select id="sb_conv_conversation_persona" class="text_pole textarea_compact wide100p">
-                        ${buildPersonaOptions(settings.conversation_persona)}
                     </select>
                 </div>
                 <div class="sb-conversation-field-stack">
@@ -1385,6 +1998,10 @@ function buildSettingsDrawerHtml() {
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_image_gen_negative">Negative Prompt</label>
                     <input id="sb_conv_image_gen_negative" type="text" class="text_pole wide100p" placeholder="blurry, distorted" />
+                </div>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_image_gen_cooldown">Image Cooldown (minutes)</label>
+                    <input id="sb_conv_image_gen_cooldown" type="number" min="0" max="1440" step="1" class="text_pole wide100p" value="10" />
                 </div>
                 <label class="checkbox_label" title="Character spontaneously generates selfies during the conversation">
                     <input id="sb_conv_spontaneous_selfies" type="checkbox" />
@@ -1500,7 +2117,7 @@ function ensureConversationChrome() {
             </div>
             <div id="${CHROME_IDS.palsList}" class="sb-conversation-pals-list"></div>
             <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-footer">
-                <div class="sb-conversation-rail-footer-avatar">
+                <div class="sb-conversation-rail-footer-avatar" data-sb-conversation-action="open-persona-picker" role="button" tabindex="0" title="Switch persona" aria-label="Switch persona">
                     <img id="sb_conv_footer_persona_avatar" alt="" loading="lazy" />
                     <span class="sb-conversation-status-dot sb-conversation-rail-footer-dot" data-status="online" aria-hidden="true"></span>
                 </div>
@@ -1929,10 +2546,6 @@ function openConversationSettings() {
     if (lorebookSelect instanceof HTMLSelectElement) {
         lorebookSelect.innerHTML = buildLorebookOptions(settings.lorebook_override);
     }
-    const personaSelect = document.getElementById('sb_conv_conversation_persona');
-    if (personaSelect instanceof HTMLSelectElement) {
-        personaSelect.innerHTML = buildPersonaOptions(settings.conversation_persona);
-    }
     const profileSelect = document.getElementById('sb_conv_connection_profile');
     if (profileSelect instanceof HTMLSelectElement) {
         profileSelect.innerHTML = buildConnectionProfileOptions(settings.connection_profile);
@@ -2089,6 +2702,71 @@ function toggleUserStatusPicker() {
     picker.hidden = !isHidden;
 }
 
+function renderConversationPersonaPicker(picker) {
+    picker.innerHTML = '';
+    const personas = getPersonaOptions();
+    if (!personas.length) {
+        picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
+        return;
+    }
+
+    for (const { avatarId, personaName } of personas) {
+        const entry = document.createElement('div');
+        entry.className = 'sb-conversation-persona-entry';
+        entry.dataset.personaAvatar = avatarId;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sb-conversation-persona-option';
+        btn.dataset.sbConversationAction = 'pick-persona';
+        btn.dataset.personaAvatar = avatarId;
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', String(avatarId === user_avatar));
+
+        const img = document.createElement('img');
+        img.src = getThumbnailUrl('persona', avatarId);
+        img.alt = '';
+        img.loading = 'lazy';
+
+        const name = document.createElement('span');
+        name.className = 'sb-conversation-persona-option-name';
+        name.textContent = personaName;
+        btn.append(img, name);
+        entry.appendChild(btn);
+
+        const appendices = getConversationPersonaAppendices(avatarId);
+        if (appendices.length) {
+            const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
+            const notes = document.createElement('div');
+            notes.className = 'sb-conversation-persona-notes';
+
+            const notesTitle = document.createElement('div');
+            notesTitle.className = 'sb-conversation-persona-notes-title';
+            notesTitle.textContent = 'Scenario Notes';
+            notes.appendChild(notesTitle);
+
+            for (const appendix of appendices) {
+                const label = document.createElement('label');
+                label.className = 'sb-conversation-persona-note-option';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = appendix.id;
+                checkbox.dataset.personaAvatar = avatarId;
+                checkbox.className = 'sb-conversation-persona-note-checkbox';
+                checkbox.checked = activeIds.has(appendix.id);
+                const noteName = document.createElement('span');
+                noteName.textContent = appendix.name;
+                label.append(checkbox, noteName);
+                notes.appendChild(label);
+            }
+
+            entry.appendChild(notes);
+        }
+
+        picker.appendChild(entry);
+    }
+}
+
 function togglePersonaPicker() {
     const picker = document.getElementById(CHROME_IDS.personaPicker);
     if (!(picker instanceof HTMLElement)) {
@@ -2099,27 +2777,7 @@ function togglePersonaPicker() {
     document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
 
     if (isHidden) {
-        picker.innerHTML = '';
-        const personas = getPersonaOptions();
-        if (!personas.length) {
-            picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
-        } else {
-            for (const { avatarId, personaName } of personas) {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'sb-conversation-persona-option';
-                btn.dataset.sbConversationAction = 'pick-persona';
-                btn.dataset.personaAvatar = avatarId;
-                btn.setAttribute('role', 'option');
-                const img = document.createElement('img');
-                img.src = getThumbnailUrl('persona', avatarId);
-                img.alt = '';
-                img.loading = 'lazy';
-                btn.appendChild(img);
-                btn.appendChild(document.createTextNode(personaName));
-                picker.appendChild(btn);
-            }
-        }
+        renderConversationPersonaPicker(picker);
     }
 
     picker.hidden = !isHidden;
@@ -2270,6 +2928,58 @@ function bindConversationChromeControls(sheld) {
             case 'open-add-dm':
                 toggleAddDmPicker();
                 break;
+            case 'stop-image-generation':
+                imageGenerationAbortController?.abort?.();
+                imageGenerationActive = false;
+                imageGenerationAbortController = null;
+                renderConversationTimeline();
+                toastr.info('Image generation stopped.');
+                break;
+            case 'regenerate-companion': {
+                const avatar = getCurrentCharAvatar();
+                const messageId = target.dataset.messageId;
+                const agentId = target.dataset.agentId;
+                if (avatar && messageId && agentId) {
+                    toastr.info('Regenerating companion note...');
+                    await runSingleCompanionOnConversationMessage(avatar, messageId, agentId);
+                }
+                break;
+            }
+            case 'copy-companion': {
+                const card = target.closest('.ica--companion-card');
+                const body = card?.querySelector('.ica--companion-body');
+                if (body) {
+                    const text = body.textContent.trim();
+                    if (navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(text);
+                        toastr.success('Copied companion note to clipboard.');
+                    }
+                }
+                break;
+            }
+            case 'delete-companion': {
+                const avatar = getCurrentCharAvatar();
+                const messageId = target.dataset.messageId;
+                const agentId = target.dataset.agentId;
+                if (avatar && messageId && agentId) {
+                    const confirmed = typeof globalThis.confirm === 'function'
+                        ? globalThis.confirm('Delete this companion note?')
+                        : true;
+                    if (confirmed) {
+                        const messages = getConversationThread(avatar);
+                        const message = messages.find(m => m.id === messageId);
+                        if (message?.extra?.[COMPANION_RESULTS_EXTRA_KEY]) {
+                            delete message.extra[COMPANION_RESULTS_EXTRA_KEY][agentId];
+                            if (Object.keys(message.extra[COMPANION_RESULTS_EXTRA_KEY]).length === 0) {
+                                delete message.extra[COMPANION_RESULTS_EXTRA_KEY];
+                            }
+                            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
+                            toastr.success('Deleted companion note.');
+                        }
+                    }
+                }
+                break;
+            }
             case 'add-character-dm': {
                 const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
                 if (index >= 0) {
@@ -2302,25 +3012,112 @@ function bindConversationChromeControls(sheld) {
                 }
                 break;
             }
-            case 'new-chat': {
-                const avatar = getCurrentCharAvatar();
+            case 'select-branch': {
+                const avatar = target.dataset.avatar;
+                const branchId = target.dataset.branchId;
+                const index = getCharacterIndexForAvatar(avatar);
+                if (avatar && branchId) {
+                    setActiveConversationBranch(avatar, branchId);
+                    conversationWorkspaceOpen = true;
+                    if (index >= 0) {
+                        await selectCharacterById(index, { switchMenu: false });
+                    }
+                    refreshConversationInterface({ syncControls: false });
+                    document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+                }
+                break;
+            }
+            case 'new-branch': {
+                const avatar = target.dataset.avatar;
+                const character = getCharacterForAvatar(avatar);
                 if (!avatar) {
-                    toastr.warning('Pick a DM to clear.');
                     break;
                 }
+                const fallbackName = `Chat ${getConversationBranches(avatar).length + 1}`;
+                const name = globalThis.prompt?.(`Name this Conversation branch for ${character?.name || 'this character'}`, fallbackName) || fallbackName;
+                createConversationBranchForAvatar(avatar, name);
+                const index = getCharacterIndexForAvatar(avatar);
+                conversationWorkspaceOpen = true;
+                if (index >= 0) {
+                    await selectCharacterById(index, { switchMenu: false });
+                }
+                refreshConversationInterface({ syncControls: false });
+                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+                break;
+            }
+            case 'rename-branch': {
+                const avatar = target.dataset.avatar;
+                const branchId = target.dataset.branchId;
+                const branch = getConversationBranches(avatar).find(item => item.id === branchId);
+                if (avatar && branchId && branch) {
+                    const name = globalThis.prompt?.('Rename Conversation branch', branch.name || 'Conversation');
+                    if (name?.trim()) {
+                        renameConversationBranch(avatar, branchId, name);
+                        renderPalsRail();
+                        if (avatar === getCurrentCharAvatar()) {
+                            updateConversationHeader(getSettings(avatar));
+                        }
+                    }
+                }
+                break;
+            }
+            case 'delete-branch': {
+                const avatar = target.dataset.avatar;
+                const branchId = target.dataset.branchId;
+                const branch = getConversationBranches(avatar).find(item => item.id === branchId);
+                if (avatar && branchId && branch) {
+                    const confirmed = typeof globalThis.confirm === 'function'
+                        ? globalThis.confirm(`Delete the "${branch.name || 'Conversation'}" branch? This cannot be undone.`)
+                        : true;
+                    if (confirmed) {
+                        deleteConversationBranch(avatar, branchId);
+                        if (avatar === getCurrentCharAvatar()) {
+                            renderConversationTimeline();
+                            refreshConversationInterface({ syncControls: false });
+                        } else {
+                            renderPalsRail();
+                        }
+                    }
+                }
+                break;
+            }
+            case 'delete-dm': {
+                const avatar = target.dataset.avatar;
+                const character = getCharacterForAvatar(avatar);
+                if (!avatar) {
+                    break;
+                }
+                const name = character?.name || 'this character';
                 const confirmed = typeof globalThis.confirm === 'function'
-                    ? globalThis.confirm(`Clear your DM history with ${getCurrentCharName()}? This cannot be undone.`)
+                    ? globalThis.confirm(`Delete your previous DM history with ${name}? This cannot be undone.`)
                     : true;
                 if (confirmed) {
-                    saveConversationThread(avatar, []);
+                    resetCharacterConversationBranches(avatar);
                     setLastConversationPreview(avatar, 'Conversation ready');
                     clearUnreadCount(avatar);
                     resetFollowupCount(avatar);
-                    updateLastUserActivity(avatar);
-                    renderConversationTimeline();
-                    refreshConversationInterface({ syncControls: false });
-                    toastr.success('Chat history cleared.');
+                    if (avatar === getCurrentCharAvatar()) {
+                        updateLastUserActivity(avatar);
+                        renderConversationTimeline();
+                        refreshConversationInterface({ syncControls: false });
+                    } else {
+                        renderPalsRail();
+                    }
+                    toastr.success(`Deleted DM history with ${name}.`);
                 }
+                break;
+            }
+            case 'new-chat': {
+                const avatar = getCurrentCharAvatar();
+                if (!avatar) {
+                    toastr.warning('Pick a DM first.');
+                    break;
+                }
+                createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar).length + 1}`);
+                updateLastUserActivity(avatar);
+                renderConversationTimeline();
+                refreshConversationInterface({ syncControls: false });
+                toastr.success('New Conversation branch started.');
                 break;
             }
             case 'edit-message':
@@ -2374,8 +3171,11 @@ function bindConversationChromeControls(sheld) {
                     await setUserAvatar(avatarId, { toastPersonaNameChange: false });
                     updateUserFooter();
                     saveCurrentPanelSettings();
+                    const picker = document.getElementById(CHROME_IDS.personaPicker);
+                    if (picker instanceof HTMLElement) {
+                        renderConversationPersonaPicker(picker);
+                    }
                 }
-                document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
                 break;
             }
             case 'generate-schedule': {
@@ -2477,6 +3277,49 @@ function bindConversationChromeControls(sheld) {
             });
         });
     }
+
+    const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
+    if (personaPicker instanceof HTMLElement && personaPicker.dataset.sbConversationAppendicesBound !== 'true') {
+        personaPicker.dataset.sbConversationAppendicesBound = 'true';
+        personaPicker.addEventListener('change', (event) => {
+            const checkbox = event.target instanceof Element
+                ? event.target.closest('.sb-conversation-persona-note-checkbox')
+                : null;
+            if (!(checkbox instanceof HTMLInputElement)) {
+                return;
+            }
+
+            const avatarId = checkbox.dataset.personaAvatar;
+            if (!avatarId) {
+                return;
+            }
+
+            const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
+                .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
+                .map(input => input.value);
+            setActiveConversationPersonaAppendixIds(avatarId, selectedIds);
+            renderConversationPersonaPicker(personaPicker);
+            updateUserFooter();
+        });
+    }
+
+    sheld.addEventListener('toggle', (event) => {
+        if (event.target instanceof HTMLElement && event.target.classList.contains('ica--companion-card')) {
+            const details = event.target;
+            const avatar = getCurrentCharAvatar();
+            const messageId = details.closest('.sb-conversation-message')?.dataset.messageId;
+            const agentId = details.dataset.agentId;
+            if (avatar && messageId && agentId) {
+                const messages = getConversationThread(avatar);
+                const message = messages.find(m => m.id === messageId);
+                if (message?.extra?.[COMPANION_RESULTS_EXTRA_KEY]?.[agentId]) {
+                    message.extra[COMPANION_RESULTS_EXTRA_KEY][agentId].collapsed = !details.open;
+                    saveConversationThread(avatar, messages);
+                    updateLastPreviewFromConversation(avatar);
+                }
+            }
+        }
+    }, true);
 }
 
 function openConversationWorkspaceForCurrentCharacter({ showToast = true } = {}) {
@@ -2511,7 +3354,7 @@ function disableConversationModeForCurrentCharacter() {
 }
 
 function getSelectedConnectionProfileName() {
-    const manager = globalThis.extension_settings?.connectionManager;
+    const manager = extension_settings.connectionManager;
     if (!manager || !Array.isArray(manager.profiles)) {
         return '';
     }
@@ -2520,14 +3363,6 @@ function getSelectedConnectionProfileName() {
 }
 
 function applyConversationContext(settings) {
-    if (settings.conversation_persona && !activePersonaApplied) {
-        if (typeof user_avatar === 'string' && user_avatar !== settings.conversation_persona) {
-            previousPersonaAvatar = user_avatar;
-            activePersonaApplied = true;
-            void setUserAvatar(settings.conversation_persona, { toastPersonaNameChange: false });
-        }
-    }
-
     if (settings.connection_profile && !activeProfileApplied) {
         const current = getSelectedConnectionProfileName();
         if (current !== settings.connection_profile) {
@@ -2539,12 +3374,6 @@ function applyConversationContext(settings) {
 }
 
 function restoreConversationContext() {
-    if (activePersonaApplied && previousPersonaAvatar) {
-        void setUserAvatar(previousPersonaAvatar, { toastPersonaNameChange: false });
-    }
-    previousPersonaAvatar = null;
-    activePersonaApplied = false;
-
     if (activeProfileApplied && previousConnectionProfile) {
         void applyConnectionProfileByName(previousConnectionProfile);
     }
@@ -2604,6 +3433,9 @@ function renderPalsRail() {
     }
 
     for (const { character, index, settings } of pals) {
+        const row = document.createElement('div');
+        row.className = 'sb-conversation-pal-row';
+
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'sb-conversation-pal';
@@ -2622,6 +3454,14 @@ function renderPalsRail() {
             <span class="sb-conversation-pal-unread" aria-hidden="true"></span>
         `;
 
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'sb-conversation-pal-delete fa-solid fa-trash-can';
+        deleteButton.dataset.sbConversationAction = 'delete-dm';
+        deleteButton.dataset.avatar = character.avatar;
+        deleteButton.title = `Delete DM history with ${character.name || 'Character'}`;
+        deleteButton.setAttribute('aria-label', `Delete DM history with ${character.name || 'Character'}`);
+
         const image = button.querySelector('img');
         const statusDot = button.querySelector('.sb-conversation-status-dot');
         const name = button.querySelector('.sb-conversation-pal-name');
@@ -2634,13 +3474,69 @@ function renderPalsRail() {
             statusDot.dataset.status = settings.availability;
         }
         if (name instanceof HTMLElement) {
-            name.textContent = character.name || 'Character';
+            name.textContent = getConversationDisplayName(character.avatar, settings);
         }
         if (preview instanceof HTMLElement) {
             preview.textContent = getLastConversationPreview(character.avatar);
         }
 
-        list.appendChild(button);
+        const characterStore = getCharacterConversationStore(character.avatar, { create: false });
+        const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
+        const branchList = document.createElement('div');
+        branchList.className = 'sb-conversation-branch-list';
+        for (const branch of getConversationBranches(character.avatar)) {
+            const branchRow = document.createElement('div');
+            branchRow.className = 'sb-conversation-branch-row';
+            branchRow.dataset.active = String(branch.id === activeBranchId);
+
+            const branchButton = document.createElement('button');
+            branchButton.type = 'button';
+            branchButton.className = 'sb-conversation-branch-button';
+            branchButton.dataset.sbConversationAction = 'select-branch';
+            branchButton.dataset.avatar = character.avatar;
+            branchButton.dataset.branchId = branch.id;
+            branchButton.innerHTML = '<span class="sb-conversation-branch-name"></span><span class="sb-conversation-branch-preview"></span>';
+            const branchName = branchButton.querySelector('.sb-conversation-branch-name');
+            const branchPreview = branchButton.querySelector('.sb-conversation-branch-preview');
+            if (branchName instanceof HTMLElement) {
+                branchName.textContent = branch.name || 'Conversation';
+            }
+            if (branchPreview instanceof HTMLElement) {
+                branchPreview.textContent = branch.preview || 'Conversation ready';
+            }
+
+            const renameBranch = document.createElement('button');
+            renameBranch.type = 'button';
+            renameBranch.className = 'sb-conversation-branch-action fa-solid fa-pen';
+            renameBranch.dataset.sbConversationAction = 'rename-branch';
+            renameBranch.dataset.avatar = character.avatar;
+            renameBranch.dataset.branchId = branch.id;
+            renameBranch.title = `Rename ${branch.name || 'conversation'}`;
+            renameBranch.setAttribute('aria-label', renameBranch.title);
+
+            const deleteBranch = document.createElement('button');
+            deleteBranch.type = 'button';
+            deleteBranch.className = 'sb-conversation-branch-action fa-solid fa-trash-can';
+            deleteBranch.dataset.sbConversationAction = 'delete-branch';
+            deleteBranch.dataset.avatar = character.avatar;
+            deleteBranch.dataset.branchId = branch.id;
+            deleteBranch.title = `Delete ${branch.name || 'conversation'}`;
+            deleteBranch.setAttribute('aria-label', deleteBranch.title);
+
+            branchRow.append(branchButton, renameBranch, deleteBranch);
+            branchList.appendChild(branchRow);
+        }
+
+        const newBranch = document.createElement('button');
+        newBranch.type = 'button';
+        newBranch.className = 'sb-conversation-new-branch';
+        newBranch.dataset.sbConversationAction = 'new-branch';
+        newBranch.dataset.avatar = character.avatar;
+        newBranch.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i><span>New branch</span>';
+        branchList.appendChild(newBranch);
+
+        row.append(button, deleteButton, branchList);
+        list.appendChild(row);
     }
 }
 
@@ -2676,7 +3572,7 @@ function updateConversationHeader(settings = getSettings()) {
         image.src = getThumbnailUrl('avatar', character.avatar);
     }
     if (name instanceof HTMLElement) {
-        name.textContent = character?.name || 'Conversation';
+        name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
         if (generationActive && character) {
@@ -2889,14 +3785,16 @@ async function submitConversationInput() {
 
     input.value = '';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    appendConversationThreadMessage(avatar, {
-        role: 'user',
-        name: name1 || 'You',
-        mes: text,
-        extra: {
-            conversation_mode_user: true,
-        },
-    });
+    for (const messageText of splitChatroomMessages(text)) {
+        appendConversationThreadMessage(avatar, {
+            role: 'user',
+            name: name1 || 'You',
+            mes: messageText,
+            extra: {
+                conversation_mode_user: true,
+            },
+        });
+    }
     updateLastUserActivity(avatar);
     refreshConversationInterface({ syncControls: false });
 
@@ -2923,7 +3821,7 @@ async function submitConversationInput() {
         const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
         const wantsImage = settings.image_gen_enabled
             && (settings.spontaneous_selfies || imageKeywords.test(text));
-        if (wantsImage) {
+        if (wantsImage && getImageCooldownRemainingSeconds(avatar, settings) === 0) {
             const charName = getCurrentCharName();
             const prompt = buildCharacterImagePrompt(
                 settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
@@ -2932,12 +3830,14 @@ async function submitConversationInput() {
             );
             const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
             if (imageUrl) {
-                await appendConversationMessage('[Image attached]', {
+                markImageGenerated(avatar);
+                await appendConversationMessage('Here, I can show you.', {
                     name: charName,
                     role: 'character',
                     extra: {
                         conversation_mode_image: true,
                         image_url: imageUrl,
+                        image_prompt: prompt,
                     },
                 }, avatar);
             }
@@ -2970,6 +3870,11 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
     } else if (conversationWorkspaceOpen) {
         renderPalsRail();
     }
+
+    if (role !== 'user' && message) {
+        void runCompanionsOnConversationMessage(avatar, message.id);
+    }
+
     return message;
 }
 
@@ -2978,7 +3883,7 @@ function buildAutoMessageDirective(directive) {
 }
 
 async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAvatar()) {
-    if (!settings.image_gen_enabled || !settings.spontaneous_selfies) {
+    if (!settings.image_gen_enabled || !settings.spontaneous_selfies || getImageCooldownRemainingSeconds(avatar, settings) > 0) {
         return;
     }
 
@@ -2991,12 +3896,14 @@ async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAv
     );
     const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
     if (imageUrl) {
-        await appendConversationMessage('[Image attached]', {
+        markImageGenerated(avatar);
+        await appendConversationMessage('Snapped something for you.', {
             name: charName,
             role: 'character',
             extra: {
                 conversation_mode_image: true,
                 image_url: imageUrl,
+                image_prompt: prompt,
             },
         }, avatar);
     }
@@ -3049,19 +3956,20 @@ function getCurrentDayKey(date = new Date()) {
 }
 
 function getLastAutoMessageTime(avatar) {
-    return parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_AUTO_MESSAGE_PREFIX, avatar)), 0, 0);
+    return parsePositiveInt(getActiveConversationBranch(avatar, { create: false })?.lastAutoMessageAt, 0, 0);
 }
 
 function setLastAutoMessageTime(avatar, timestamp = Date.now()) {
-    localStorage.setItem(getCharacterStorageKey(LAST_AUTO_MESSAGE_PREFIX, avatar), String(timestamp));
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.lastAutoMessageAt = timestamp;
+        persistConversationStore();
+    }
 }
 
 function getScheduleTriggerState(avatar) {
-    try {
-        return JSON.parse(localStorage.getItem(getCharacterStorageKey(LAST_SCHEDULE_TRIGGER_PREFIX, avatar))) || {};
-    } catch {
-        return {};
-    }
+    const state = getActiveConversationBranch(avatar, { create: false })?.scheduleTriggers;
+    return state && typeof state === 'object' ? state : {};
 }
 
 function setScheduleTriggered(avatar, triggerKey, timestamp) {
@@ -3074,7 +3982,11 @@ function setScheduleTriggered(avatar, triggerKey, timestamp) {
         delete state[oldestKey];
     }
 
-    localStorage.setItem(getCharacterStorageKey(LAST_SCHEDULE_TRIGGER_PREFIX, avatar), JSON.stringify(state));
+    const branch = getActiveConversationBranch(avatar);
+    if (branch) {
+        branch.scheduleTriggers = state;
+        persistConversationStore();
+    }
 }
 
 function hasScheduleTriggered(avatar, triggerKey) {
@@ -3192,8 +4104,8 @@ async function checkIdleAutoMessage(avatar, settings, now) {
         return false;
     }
 
-    const sessionKey = getCharacterStorageKey(LAST_IDLE_SESSION_PREFIX, avatar);
-    if (localStorage.getItem(sessionKey) === String(lastUserActivity)) {
+    const sessionKey = LAST_IDLE_SESSION_PREFIX;
+    if (getConversationSessionMarker(avatar, sessionKey) === String(lastUserActivity)) {
         return false;
     }
 
@@ -3203,7 +4115,7 @@ async function checkIdleAutoMessage(avatar, settings, now) {
 
     const triggered = await triggerAutoMessage(directive, settings, { idle_action: settings.idle_action });
     if (triggered) {
-        localStorage.setItem(sessionKey, String(lastUserActivity));
+        setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
         setLastAutoMessageTime(avatar, now);
     }
 
@@ -3362,14 +4274,14 @@ async function checkMultiCharacterChime(avatar, settings, now) {
         return false;
     }
 
-    const sessionKey = getCharacterStorageKey(LAST_CHIME_SESSION_PREFIX, avatar);
-    if (localStorage.getItem(sessionKey) === String(lastUserActivity)) {
+    const sessionKey = LAST_CHIME_SESSION_PREFIX;
+    if (getConversationSessionMarker(avatar, sessionKey) === String(lastUserActivity)) {
         return false;
     }
 
     const triggered = await triggerMultiCharacterChime(settings, avatar);
     if (triggered) {
-        localStorage.setItem(sessionKey, String(lastUserActivity));
+        setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
         setLastAutoMessageTime(avatar, now);
     }
 
@@ -3432,14 +4344,14 @@ async function checkAutoCharacterChat(avatar, settings, now) {
         return false;
     }
 
-    const sessionKey = getCharacterStorageKey(LAST_AUTO_CHAT_SESSION_PREFIX, avatar);
-    if (localStorage.getItem(sessionKey) === String(lastUserActivity)) {
+    const sessionKey = LAST_AUTO_CHAT_SESSION_PREFIX;
+    if (getConversationSessionMarker(avatar, sessionKey) === String(lastUserActivity)) {
         return false;
     }
 
     const triggered = await triggerAutoCharacterChat(avatar, settings);
     if (triggered) {
-        localStorage.setItem(sessionKey, String(lastUserActivity));
+        setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
         setLastAutoMessageTime(avatar, now);
     }
 
@@ -3666,6 +4578,7 @@ function init() {
     }
 
     initialized = true;
+    migrateConversationLocalStorage();
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
         refreshConversationInterface({ syncControls: false });
         if (selected_group) {
@@ -3679,13 +4592,13 @@ function init() {
         const roll = Math.random();
         if (roll < 0.15) {
             if (selected_group) {
-                // Find group members with Conversation Mode enabled
+                // Find group members with Conversation Mode enabled and roleplay reactions allowed.
                 const enabledMembers = [];
                 for (let i = 0; i < characters.length; i++) {
                     const char = characters[i];
                     if (char?.avatar) {
                         const settings = getSettings(char.avatar);
-                        if (settings.enabled) {
+                        if (settings.enabled && settings.roleplay_reactions) {
                             enabledMembers.push(i);
                         }
                     }
@@ -3694,7 +4607,7 @@ function init() {
                     const randomMemberIdx = enabledMembers[Math.floor(Math.random() * enabledMembers.length)];
                     setTimeout(() => void triggerGossipDM(randomMemberIdx), 2000);
                 }
-            } else {
+            } else if (getSettings(getCurrentCharAvatar()).roleplay_reactions) {
                 setTimeout(() => void triggerRoleplayDM(), 2000);
             }
         }
