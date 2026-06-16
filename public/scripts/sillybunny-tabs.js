@@ -458,6 +458,11 @@ const SB_CHARACTER_TAB_COPY = Object.freeze({
         subtitle: 'Build and organize group casts for multi-character scenes.',
         description: 'Sort group chats, check members, and return to character cards without losing your place.',
     },
+    conversation: {
+        title: 'Conversation Mode',
+        subtitle: 'Configure Discord-style DMs, presence, and autonomous follow-ups for the active character.',
+        description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
+    },
     editor: {
         title: 'Card Editor',
         subtitle: 'Shape the selected card details, prompts, greetings, and metadata.',
@@ -6907,7 +6912,7 @@ function syncCharacterTitlebarVisibility() {
         return;
     }
 
-    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import'].includes(panel.dataset.menuType ?? '');
+    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import', 'conversation'].includes(panel.dataset.menuType ?? '');
     pinAndTabs.style.display = shouldHide ? 'none' : '';
     syncCharacterEditorFullscreenAvailability();
 }
@@ -7438,6 +7443,7 @@ async function openCharacterEditorTab() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
 
     if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
@@ -7586,6 +7592,7 @@ function resetCharacterPanelView() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
 
     if (listButton instanceof HTMLElement) {
         listButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -7670,6 +7677,7 @@ function bindCharacterDrawerStateObserver() {
             setCharacterPersonaPanelVisible(panel.dataset.menuType === 'persona');
             setCharacterImportPanelVisible(panel.dataset.menuType === 'import');
             setCharacterWorldInfoPanelVisible(panel.dataset.menuType === 'world-info');
+            setCharacterConversationPanelVisible(panel.dataset.menuType === 'conversation');
             syncCharacterEditorFullscreenAvailability();
             syncCharacterTitlebarVisibility();
             syncCharacterShellTabs();
@@ -14114,6 +14122,12 @@ function injectCharacterDrawerControls() {
     if (groupsTab instanceof HTMLButtonElement && groupsTab.dataset.sbBound !== 'true') {
         groupsTab.dataset.sbBound = 'true';
         groupsTab.addEventListener('click', () => { void showCharacterListView('groups'); });
+    }
+
+    const conversationTab = document.getElementById('sb_character_tab_conversation');
+    if (conversationTab instanceof HTMLButtonElement && conversationTab.dataset.sbBound !== 'true') {
+        conversationTab.dataset.sbBound = 'true';
+        conversationTab.addEventListener('click', () => openCharacterConversationTab());
     }
 
     const editorTab = document.getElementById('sb_character_tab_editor');

@@ -6421,7 +6421,7 @@
                             <i class="fa-solid fa-users" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Groups">Groups</strong></span>
                         </button>
-                        <button id="sb_character_tab_conversation" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="conversation">
+                        <button id="sb_character_tab_conversation" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_conversation_panel" data-sb-character-tab="conversation">
                             <i class="fa-solid fa-comments" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Conversation">Conversation</strong></span>
                         </button>
@@ -6545,7 +6545,7 @@
                         </div>
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
-                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" hidden>
+                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" role="tabpanel" aria-labelledby="sb_character_tab_conversation" aria-hidden="true" hidden>
                         <div class="sb-shell-header">
                             <div class="sb-shell-kicker" data-i18n="Conversation Mode">Conversation Mode</div>
                             <h2 class="sb-shell-title" data-i18n="Conversation Settings">Conversation Settings</h2>
