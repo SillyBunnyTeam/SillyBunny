@@ -273,7 +273,7 @@
     flex: 1 1 auto;
     flex-direction: column;
     gap: 6px;
-    padding: 8px;
+    padding: 8px 14px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -773,7 +773,7 @@
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
-    padding: 10px 12px;
+    padding: 10px 14px;
     border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
 }
@@ -1008,8 +1008,13 @@
 .sb-conversation-persona-option img {
     inline-size: 24px;
     block-size: 24px;
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
     border-radius: 50%;
     object-fit: cover;
+    flex-shrink: 0;
 }
 
 /* Animated bouncing dots for typing indicator */
@@ -1176,4 +1181,43 @@
     .sb-conversation-header-status {
         display: none;
     }
+}
+
+/* Pop-out Schedule Editor Modal Overlay & Controls */
+.sb-conversation-schedule-modal-overlay {
+    transition: opacity 220ms ease-out;
+}
+.sb-conversation-schedule-modal {
+    font-family: var(--mainFontFamily, sans-serif);
+    animation: sb-scale-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sb-schedule-modal-tab {
+    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.sb-schedule-modal-row input,
+.sb-schedule-modal-row select {
+    font-size: var(--sb-type-caption, 0.9em);
+    padding: 6px 8px;
+    height: 32px;
+}
+.sb-schedule-modal-delete {
+    color: var(--sb-color-danger, #ff4a4a);
+}
+.sb-schedule-modal-delete:hover {
+    background-color: color-mix(in srgb, var(--sb-color-danger) 15%, transparent);
+}
+@keyframes sb-scale-up {
+    from {
+        transform: scale(0.96);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Hide legacy workspace button in sidebar */
+#sbConversationWorkspaceIcon {
+    display: none !important;
 }
