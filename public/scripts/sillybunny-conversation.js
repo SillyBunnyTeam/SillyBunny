@@ -145,7 +145,6 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 
 const SETTINGS_FIELDS = Object.freeze([
-    { id: 'sb_conv_enabled', key: 'enabled', prop: 'checked' },
     { id: 'sb_conv_availability', key: 'availability', prop: 'value' },
     { id: 'sb_conv_idle_action', key: 'idle_action', prop: 'value' },
     { id: 'sb_conv_idle_limit', key: 'idle_limit', prop: 'value', type: 'number', fallback: DEFAULT_SETTINGS.idle_limit, min: 1 },
@@ -189,6 +188,7 @@ let previousPersonaAvatar = null;
 let activePersonaApplied = false;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
+let conversationWorkspaceOpen = false;
 const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
@@ -268,8 +268,7 @@ function resetFollowupCount(avatar) {
     localStorage.removeItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar));
 }
 
-function updateLastUserActivity() {
-    const avatar = getCurrentCharAvatar();
+function updateLastUserActivity(avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return;
     }
@@ -325,7 +324,9 @@ function appendConversationThreadMessage(avatar, messageInput) {
     messages.push(message);
     saveConversationThread(avatar, messages);
     setLastConversationPreview(avatar, message.mes);
-    renderConversationTimeline();
+    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+        renderConversationTimeline();
+    }
     return message;
 }
 
@@ -339,7 +340,9 @@ function updateConversationThreadMessage(avatar, messageId, messageText) {
     message.mes = messageText;
     saveConversationThread(avatar, messages);
     updateLastPreviewFromConversation(avatar);
-    renderConversationTimeline();
+    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+        renderConversationTimeline();
+    }
 }
 
 function getAvailabilityCopy(status) {
@@ -407,7 +410,11 @@ async function generateConversationImage(prompt, negative = '') {
 }
 
 function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
-    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || getCurrentCharacter();
+    if (!avatar) {
+        return getCurrentCharacter();
+    }
+
+    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || null;
 }
 
 function getCharacterImageDetails(avatar = getCurrentCharAvatar()) {
@@ -767,9 +774,9 @@ function formatConversationTranscript(messages) {
         .join('\n');
 }
 
-function buildConversationSystemPrompt(settings) {
-    const character = getCurrentCharacter();
-    const charName = getCurrentCharName();
+function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()) {
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || getCurrentCharName();
     const userName = name1 || 'User';
     const useGeechan = settings.use_geechan_as_system && (settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT);
     const fields = [
@@ -816,9 +823,9 @@ function buildConversationSystemPrompt(settings) {
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
     }
 
-    const schedule = getStoredSchedule(getCurrentCharAvatar());
+    const schedule = getStoredSchedule(avatar);
     if (schedule) {
-        const current = getCurrentActivityFromSchedule(schedule);
+        const current = getCurrentActivityFromSchedule(schedule, avatar);
         const now = new Date();
         const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         fields.push(`Current life context: It is ${timeLabel} for ${charName}, who is currently ${current.activity} (status: ${current.status}). Let this naturally color your availability, mood, and what you mention. Stay in this moment of your day.`);
@@ -838,8 +845,7 @@ function buildConversationSystemPrompt(settings) {
     return fields.join('\n\n');
 }
 
-async function generateConversationReply(directive, settings, { responseLength = 220, speakerName = getCurrentCharName(), trimNames = true } = {}) {
-    const avatar = getCurrentCharAvatar();
+async function generateConversationReply(directive, settings, { responseLength = 220, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar() } = {}) {
     const messages = getConversationThread(avatar);
     const transcript = formatConversationTranscript(messages) || '(No prior DM messages.)';
     const prompt = [
@@ -851,7 +857,7 @@ async function generateConversationReply(directive, settings, { responseLength =
 
     return generateRaw({
         prompt,
-        systemPrompt: buildConversationSystemPrompt(settings),
+        systemPrompt: buildConversationSystemPrompt(settings, avatar),
         responseLength,
         trimNames,
         cacheScope: 'conversation-mode',
@@ -976,9 +982,7 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
 
     if (text) {
         const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
-        const speakerName = settings.multi_char
-            ? settings.multi_char_names.split(',')[0]
-            : (character?.name || getCurrentCharName());
+        const speakerName = character?.name || getCurrentCharName();
 
         appendConversationMessage(text, {
             name: speakerName,
@@ -997,7 +1001,20 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
 function renderConversationTimeline() {
     const timeline = document.getElementById(CHROME_IDS.timeline);
     const avatar = getCurrentCharAvatar();
-    if (!(timeline instanceof HTMLElement) || !avatar) {
+    if (!(timeline instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!avatar) {
+        timeline.innerHTML = `
+            <div class="sb-conversation-thread-empty">
+                <div class="sb-conversation-thread-empty-icon fa-solid fa-comments" aria-hidden="true"></div>
+                <div>
+                    <strong>Choose a DM to begin</strong>
+                    <p>Use the Pals rail plus button to start messaging a character without opening the character drawer.</p>
+                </div>
+            </div>
+        `;
         return;
     }
 
@@ -1198,13 +1215,6 @@ function buildSettingsDrawerHtml() {
             </button>
         </div>
         <div class="sb-conversation-settings-body">
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-power-off" aria-hidden="true"></i><span>Conversation Interface</span></h4>
-                <label class="checkbox_label" title="Auto-activate the DM interface for this character">
-                    <input id="sb_conv_enabled" type="checkbox" />
-                    <span>Auto-activate Conversation Mode for this character</span>
-                </label>
-            </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-signal" aria-hidden="true"></i><span>Presence & Availability</span></h4>
                 <div class="sb-conversation-field-stack">
@@ -2294,15 +2304,19 @@ function bindConversationChromeControls(sheld) {
             }
             case 'new-chat': {
                 const avatar = getCurrentCharAvatar();
+                if (!avatar) {
+                    toastr.warning('Pick a DM to clear.');
+                    break;
+                }
                 const confirmed = typeof globalThis.confirm === 'function'
                     ? globalThis.confirm(`Clear your DM history with ${getCurrentCharName()}? This cannot be undone.`)
                     : true;
-                if (avatar && confirmed) {
-                    localStorage.removeItem(getCharacterStorageKey(THREAD_KEY_PREFIX, avatar));
+                if (confirmed) {
+                    saveConversationThread(avatar, []);
                     setLastConversationPreview(avatar, 'Conversation ready');
                     clearUnreadCount(avatar);
                     resetFollowupCount(avatar);
-                    updateLastUserActivity();
+                    updateLastUserActivity(avatar);
                     renderConversationTimeline();
                     refreshConversationInterface({ syncControls: false });
                     toastr.success('Chat history cleared.');
@@ -2467,8 +2481,12 @@ function bindConversationChromeControls(sheld) {
 
 function openConversationWorkspaceForCurrentCharacter({ showToast = true } = {}) {
     const avatar = getCurrentCharAvatar();
+    conversationWorkspaceOpen = true;
     if (!avatar) {
-        toastr.warning('Please select a character first.');
+        refreshConversationInterface({ syncControls: false });
+        setTimeout(() => {
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+        }, 100);
         return;
     }
 
@@ -2487,15 +2505,7 @@ function openConversationWorkspaceForCurrentCharacter({ showToast = true } = {})
 }
 
 function disableConversationModeForCurrentCharacter() {
-    const avatar = getCurrentCharAvatar();
-    if (!avatar) {
-        return;
-    }
-
-    const settings = getSettings(avatar);
-    settings.enabled = false;
-    saveSettings(avatar, settings);
-    applySettingsToPanel(settings);
+    conversationWorkspaceOpen = false;
     refreshConversationInterface({ syncControls: false });
     document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
 }
@@ -2569,7 +2579,10 @@ function setConversationInterfaceActive(active) {
             element.hidden = false;
         }
     }
-    applyConversationContext(getSettings());
+    const avatar = getCurrentCharAvatar();
+    if (avatar) {
+        applyConversationContext(getSettings(avatar));
+    }
     updateUserFooter();
 }
 
@@ -2585,7 +2598,7 @@ function renderPalsRail() {
     if (!pals.length) {
         const empty = document.createElement('div');
         empty.className = 'sb-conversation-empty';
-        empty.textContent = 'Enable Conversation Mode on characters to build your DM cast.';
+        empty.textContent = 'Use + to start a DM with a character.';
         list.appendChild(empty);
         return;
     }
@@ -2643,6 +2656,22 @@ function updateConversationHeader(settings = getSettings()) {
     const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
+    if (!avatar || !character) {
+        if (image instanceof HTMLImageElement) {
+            image.src = default_user_avatar;
+        }
+        if (name instanceof HTMLElement) {
+            name.textContent = 'Conversation';
+        }
+        if (status instanceof HTMLElement) {
+            status.textContent = 'Pick or start a DM from the Pals rail.';
+        }
+        if (statusDot instanceof HTMLElement) {
+            statusDot.dataset.status = 'offline';
+        }
+        return;
+    }
+
     if (image instanceof HTMLImageElement && character?.avatar) {
         image.src = getThumbnailUrl('avatar', character.avatar);
     }
@@ -2672,20 +2701,36 @@ function updateConversationChrome(settings = getSettings()) {
 function refreshConversationInterface({ syncControls = false } = {}) {
     const avatar = getCurrentCharAvatar();
     const settings = getSettings(avatar);
-    const active = Boolean(!selected_group && avatar && settings.enabled);
+    if (conversationWorkspaceOpen && avatar && !settings.enabled) {
+        settings.enabled = true;
+        saveSettings(avatar, settings);
+    }
+    const active = Boolean(conversationWorkspaceOpen && !selected_group);
 
     setConversationInterfaceActive(active);
 
-    if (syncControls) {
+    if (syncControls && avatar) {
         applySettingsToPanel(settings);
     }
 
     if (active) {
-        clearUnreadCount(avatar);
-        updateLastPreviewFromConversation(avatar);
+        if (avatar) {
+            clearUnreadCount(avatar);
+            updateLastPreviewFromConversation(avatar);
+        }
         renderConversationTimeline();
         updateConversationChrome(settings);
         updateUserFooter();
+
+        const input = document.getElementById(CHROME_IDS.input);
+        const send = document.getElementById(CHROME_IDS.send);
+        if (input instanceof HTMLTextAreaElement) {
+            input.disabled = !avatar;
+            input.placeholder = avatar ? 'Message this character outside roleplay...' : 'Pick or start a DM from the Pals rail...';
+        }
+        if (send instanceof HTMLButtonElement) {
+            send.disabled = !avatar;
+        }
     }
 
     updateProsePolisherButtonVisibility();
@@ -2773,8 +2818,7 @@ function updateProsePolisherButtonVisibility() {
 
 function updateEditableMessageButtons() {
     const avatar = getCurrentCharAvatar();
-    const settings = getSettings(avatar);
-    if (selected_group || !avatar || !settings.enabled) {
+    if (selected_group || !avatar || !conversationWorkspaceOpen) {
         return;
     }
 
@@ -2853,7 +2897,7 @@ async function submitConversationInput() {
             conversation_mode_user: true,
         },
     });
-    updateLastUserActivity();
+    updateLastUserActivity(avatar);
     refreshConversationInterface({ syncControls: false });
 
     if (await handleAvailabilityAutoResponder(settings)) {
@@ -2866,13 +2910,13 @@ async function submitConversationInput() {
     refreshConversationInterface({ syncControls: false });
 
     try {
-        const response = await generateConversationReply('[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]', settings);
+        const response = await generateConversationReply('[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]', settings, { avatar });
         if (response?.trim()) {
             await postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_reply: true,
                 },
-            });
+            }, avatar);
         }
 
         // Item 8: QIG image gen — trigger when user asked for an image or image_gen is enabled + spontaneous_selfies
@@ -2895,7 +2939,7 @@ async function submitConversationInput() {
                         conversation_mode_image: true,
                         image_url: imageUrl,
                     },
-                });
+                }, avatar);
             }
         }
     } catch (error) {
@@ -2921,7 +2965,11 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
         extra,
     });
 
-    refreshConversationInterface({ syncControls: false });
+    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+        refreshConversationInterface({ syncControls: false });
+    } else if (conversationWorkspaceOpen) {
+        renderPalsRail();
+    }
     return message;
 }
 
@@ -2929,16 +2977,17 @@ function buildAutoMessageDirective(directive) {
     return directive;
 }
 
-async function maybeGenerateSpontaneousImage(settings) {
+async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAvatar()) {
     if (!settings.image_gen_enabled || !settings.spontaneous_selfies) {
         return;
     }
 
-    const charName = getCurrentCharName();
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || getCurrentCharName();
     const prompt = buildCharacterImagePrompt(
         settings.selfie_prompt || settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
         'a spontaneous selfie in the current DM conversation',
-        getCurrentCharAvatar(),
+        avatar,
     );
     const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
     if (imageUrl) {
@@ -2949,12 +2998,13 @@ async function maybeGenerateSpontaneousImage(settings) {
                 conversation_mode_image: true,
                 image_url: imageUrl,
             },
-        });
+        }, avatar);
     }
 }
 
 async function triggerAutoMessage(directive, settings, extra = {}) {
-    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press || !getCurrentCharacter()) {
+    const avatar = getCurrentCharAvatar();
+    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press || !getCurrentCharacter() || !avatar) {
         return false;
     }
 
@@ -2962,7 +3012,7 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
 
     try {
         const quietPrompt = buildAutoMessageDirective(directive);
-        const response = await generateConversationReply(quietPrompt, settings, { responseLength: 220 });
+        const response = await generateConversationReply(quietPrompt, settings, { responseLength: 220, avatar });
 
         if (response?.trim()) {
             await postCharacterReply(response.trim(), settings, {
@@ -2970,9 +3020,9 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
                     conversation_mode_auto: true,
                     ...extra,
                 },
-            });
+            }, avatar);
             autoWorkerBusy = false;
-            await maybeGenerateSpontaneousImage(settings);
+            await maybeGenerateSpontaneousImage(settings, avatar);
             return true;
         }
     } catch (error) {
@@ -3258,7 +3308,7 @@ async function checkProactiveMessaging(avatar, settings, now) {
     return triggered;
 }
 
-async function triggerMultiCharacterChime(settings) {
+async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
     const partners = settings.multi_char_names.split(',').map(name => name.trim()).filter(Boolean);
     if (!partners.length || autoWorkerBusy) {
         return false;
@@ -3268,9 +3318,10 @@ async function triggerMultiCharacterChime(settings) {
 
     try {
         const partnerName = partners[Math.floor(Math.random() * partners.length)];
-        const charName = getCurrentCharName();
+        const character = getCharacterForAvatar(avatar);
+        const charName = character?.name || getCurrentCharName();
         const userName = name1 || 'User';
-        const transcript = formatConversationTranscript(getConversationThread()) || '(No prior DM messages.)';
+        const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
         const systemPrompt = `You are ${partnerName}, chiming in on a private DM conversation between ${charName} and ${userName}. This is separate from the roleplay/story chat. Write one short, casual message that fits the latest DM context. Format your message exactly beginning with **${partnerName}:** followed by your message body.`;
         const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short, engaging DM chime from ${partnerName}'s perspective.`;
         const response = await generateRaw({
@@ -3287,7 +3338,7 @@ async function triggerMultiCharacterChime(settings) {
                 extra: {
                     conversation_mode_chime: true,
                 },
-            });
+            }, avatar);
             return true;
         }
     } catch (error) {
@@ -3316,7 +3367,7 @@ async function checkMultiCharacterChime(avatar, settings, now) {
         return false;
     }
 
-    const triggered = await triggerMultiCharacterChime(settings);
+    const triggered = await triggerMultiCharacterChime(settings, avatar);
     if (triggered) {
         localStorage.setItem(sessionKey, String(lastUserActivity));
         setLastAutoMessageTime(avatar, now);
@@ -3340,7 +3391,8 @@ async function triggerAutoCharacterChat(avatar, settings) {
     try {
         const partner = others[Math.floor(Math.random() * others.length)];
         const partnerName = partner.character.name || 'A friend';
-        const charName = getCurrentCharName();
+        const character = getCharacterForAvatar(avatar);
+        const charName = character?.name || getCurrentCharName();
         const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
         const systemPrompt = `You are ${partnerName}, messaging ${charName} in a private group DM. This is separate from any roleplay/story chat. Write one short, natural message from ${partnerName} that continues the casual conversation or starts a friendly new topic. Begin your message exactly with **${partnerName}:** followed by the message body.`;
         const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short DM from ${partnerName} talking to ${charName}.`;
@@ -3356,7 +3408,7 @@ async function triggerAutoCharacterChat(avatar, settings) {
                 name: partnerName,
                 role: 'partner',
                 extra: { conversation_mode_auto_chat: true },
-            });
+            }, avatar);
             return true;
         }
     } catch (error) {
@@ -3470,6 +3522,7 @@ async function triggerGossipDM(characterIndex) {
             responseLength: 150,
             speakerName: character.name || 'Character',
             trimNames: true,
+            avatar: character.avatar,
         });
 
         if (response?.trim()) {
@@ -3519,6 +3572,7 @@ async function triggerRoleplayDM() {
             responseLength: 150,
             speakerName: character.name || 'Character',
             trimNames: true,
+            avatar,
         });
 
         if (response?.trim()) {

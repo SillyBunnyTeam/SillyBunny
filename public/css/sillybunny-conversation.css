@@ -199,6 +199,8 @@
 }
 
 .sb-conversation-pal {
+    box-sizing: border-box;
+    min-inline-size: 0;
     width: 100%;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -243,10 +245,16 @@
 }
 
 .sb-conversation-pal-copy {
+    display: block;
     min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
 }
 
 .sb-conversation-pal-name {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     overflow: hidden;
     font-size: var(--sb-type-control);
     font-weight: var(--sb-weight-title);
@@ -255,6 +263,9 @@
 }
 
 .sb-conversation-pal-preview {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     margin-block-start: 3px;
     overflow: hidden;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
