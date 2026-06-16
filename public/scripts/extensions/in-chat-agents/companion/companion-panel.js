@@ -548,8 +548,11 @@ function buildPanelAgentSection(state) {
             <details class="ica--tpanel-history">
                 <summary>Previous states (${state.history.length})</summary>
                 ${state.history.map(entry => `
-                    <div class="ica--tpanel-history-entry">
-                        <div class="ica--tpanel-history-head">Message #${entry.messageIndex}</div>
+                    <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}">
+                        <div class="ica--tpanel-history-head">
+                            <span>Message #${entry.messageIndex}</span>
+                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
+                        </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
                     </div>
                 `).join('')}
@@ -698,7 +701,7 @@ async function handlePanelAction(event) {
 
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
-    const messageIndex = Number(section.attr('data-message-index'));
+    const messageIndex = Number(button.closest('[data-message-index]').attr('data-message-index'));
 
     if (action === 'panel-run-latest') {
         if (!agentId) {
