@@ -15,9 +15,19 @@ describe('mapSillyBunnyVersionToStEquivalent', () => {
         expect(mapSillyBunnyVersionToStEquivalent('1.6.4-beta')).toBe('1.18.4-beta');
     });
 
-    test('passes through unmapped SB minor versions', () => {
-        expect(mapSillyBunnyVersionToStEquivalent('1.7.0')).toBe('1.7.0');
-        expect(mapSillyBunnyVersionToStEquivalent('1.99.5')).toBe('1.99.5');
+    test('clamps future unmapped SB minors to the highest synced ST version', () => {
+        // SB 1.7.0 is not yet in SILLYBUNNY_TO_ST_MINOR, but should map to ST 1.18.0
+        // (the highest synced ST minor) instead of passing through as 1.7.0.
+        expect(mapSillyBunnyVersionToStEquivalent('1.7.0')).toBe('1.18.0');
+        expect(mapSillyBunnyVersionToStEquivalent('1.99.5')).toBe('1.18.5');
+        expect(mapSillyBunnyVersionToStEquivalent('1.8.1')).toBe('1.18.1');
+        expect(mapSillyBunnyVersionToStEquivalent('1.7.3-beta')).toBe('1.18.3-beta');
+    });
+
+    test('passes through SB minors lower than the minimum mapped entry', () => {
+        // SB 1.5.x is below the minimum mapped entry (6); pass through unchanged.
+        expect(mapSillyBunnyVersionToStEquivalent('1.5.0')).toBe('1.5.0');
+        expect(mapSillyBunnyVersionToStEquivalent('1.0.1')).toBe('1.0.1');
     });
 
     test('passes through non-1.x major versions', () => {
