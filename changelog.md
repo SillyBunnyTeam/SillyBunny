@@ -4,6 +4,7 @@
 
 ### Merged Staging PRs
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
+- PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
 
 ## v1.6.5
 
