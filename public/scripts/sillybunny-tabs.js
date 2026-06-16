@@ -7349,20 +7349,9 @@ function preserveCharacterImportTab() {
 }
 
 function openCharacterConversationTab() {
-    const panel = getCharacterPanel();
-    sbState.characterDrawer.lastTab = 'conversation';
-
-    setCharacterPanelMenuType(panel, 'conversation');
-    setCharacterEditorEmptyState(false);
-    setCharacterPersonaPanelVisible(false);
-    setCharacterImportPanelVisible(false);
-    setCharacterWorldInfoPanelVisible(false);
-    syncCharacterListControls('characters');
-    setCharacterConversationPanelVisible(true);
-    hideCharacterMainPanels();
-
-    syncCharacterShellTabs('conversation');
-    syncCharacterTitlebarVisibility();
+    sbState.characterDrawer.lastTab = 'characters';
+    window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
+    closeCharacterPanel();
 }
 
 function openCharacterPanelTab(tabId) {
@@ -8267,21 +8256,6 @@ function buildTopBar() {
         () => toggleCharacterPanel(),
     );
 
-    const conversationButton = createProxyButton(
-        {
-            id: 'sb-conversation-toggle-top',
-            icon: 'fa-comments',
-            label: 'Conversation',
-            title: 'Open Conversation Workspace',
-        },
-        () => {
-            const iconBtn = document.getElementById('sbConversationWorkspaceIcon');
-            if (iconBtn instanceof HTMLElement) {
-                iconBtn.click();
-            }
-        },
-    );
-
     const leftShortcutConfig = getShortcutConfig(getShortcutTarget('left'));
     const leftShortcut = createProxyButton(
         {
@@ -8330,7 +8304,7 @@ function buildTopBar() {
     `;
 
     leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, conversationButton, charactersButton);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 

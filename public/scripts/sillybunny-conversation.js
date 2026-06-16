@@ -406,6 +406,43 @@ async function generateConversationImage(prompt, negative = '') {
     }
 }
 
+function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
+    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || getCurrentCharacter();
+}
+
+function getCharacterImageDetails(avatar = getCurrentCharAvatar()) {
+    const character = getCharacterForAvatar(avatar);
+    if (!character) {
+        return '';
+    }
+
+    return [
+        character.description ? `Description: ${character.description}` : '',
+        character.personality ? `Personality: ${character.personality}` : '',
+        character.scenario ? `Context: ${character.scenario}` : '',
+        character.data?.creator_notes ? `Creator notes: ${character.data.creator_notes}` : '',
+    ].filter(Boolean).map(value => formatPromptText(value, 900)).join('\n');
+}
+
+function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || getCurrentCharName();
+    const details = getCharacterImageDetails(avatar);
+    const basePrompt = String(template || DEFAULT_SETTINGS.image_gen_prompt_template)
+        .replace(/\{\{char\}\}/g, charName)
+        .replace(/\{\{scene\}\}/g, scene)
+        .replace(/\{\{appearance\}\}/g, details || `${charName}'s established appearance`);
+
+    if (!details) {
+        return basePrompt;
+    }
+
+    return [
+        basePrompt,
+        `Depict ${charName} specifically, not a generic person. Use these character-card details: ${details}`,
+    ].join('\n');
+}
+
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
@@ -890,9 +927,9 @@ function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCha
 // Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
 // so the LLM writes a focused image prompt, then appends an image message.
 async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar()) {
-    const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar) || getCurrentCharacter();
+    const character = getCharacterForAvatar(avatar);
     const charName = character?.name || 'Character';
-    const appearance = formatPromptText(character?.description || character?.personality || '', 600);
+    const appearance = getCharacterImageDetails(avatar);
     const metaPrompt = [
         'You are an image prompt generator. Write a concise, detailed image generation prompt for a selfie photo.',
         `Character name: ${charName}.`,
@@ -914,8 +951,11 @@ async function generateSelfieFromContext(context, settings, avatar = getCurrentC
         console.warn('Conversation Mode: selfie prompt generation failed', error);
     }
 
-    imagePrompt = formatPromptText(imagePrompt, 600)
-        || (settings.selfie_prompt || 'raw photo, selfie of {{char}}').replace(/\{\{char\}\}/g, charName);
+    imagePrompt = buildCharacterImagePrompt(
+        formatPromptText(imagePrompt, 600) || settings.selfie_prompt || 'raw photo, selfie of {{char}}',
+        context || 'a casual selfie in the current moment',
+        avatar,
+    );
 
     const imageUrl = await generateConversationImage(imagePrompt, settings.image_gen_negative || '');
     if (imageUrl) {
@@ -2225,12 +2265,23 @@ function bindConversationChromeControls(sheld) {
                 if (index >= 0) {
                     const char = characters[index];
                     if (char?.avatar) {
+                        const currentAvatar = getCurrentCharAvatar();
+                        const currentSettings = currentAvatar ? getSettings(currentAvatar) : null;
                         const charSettings = getSettings(char.avatar);
                         charSettings.enabled = true;
                         saveSettings(char.avatar, charSettings);
+                        if (currentSettings && currentAvatar !== char.avatar) {
+                            const names = new Set(currentSettings.multi_char_names.split(',').map(name => name.trim()).filter(Boolean));
+                            names.add(char.name || 'Character');
+                            currentSettings.multi_char = true;
+                            currentSettings.multi_char_names = Array.from(names).join(', ');
+                            saveSettings(currentAvatar, currentSettings);
+                        }
                         document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
                         closePalsRail();
                         await selectCharacterById(index, { switchMenu: false });
+                        openConversationWorkspaceForCurrentCharacter({ showToast: false });
+                        renderPalsRail();
                         setTimeout(() => {
                             const input = document.getElementById(CHROME_IDS.input);
                             if (input instanceof HTMLTextAreaElement) {
@@ -2243,10 +2294,16 @@ function bindConversationChromeControls(sheld) {
             }
             case 'new-chat': {
                 const avatar = getCurrentCharAvatar();
-                if (avatar && confirm(`Are you sure you want to clear your DM history with ${getCurrentCharName()}? This cannot be undone.`)) {
-                    saveConversationThread(avatar, []);
+                const confirmed = typeof globalThis.confirm === 'function'
+                    ? globalThis.confirm(`Clear your DM history with ${getCurrentCharName()}? This cannot be undone.`)
+                    : true;
+                if (avatar && confirmed) {
+                    localStorage.removeItem(getCharacterStorageKey(THREAD_KEY_PREFIX, avatar));
+                    setLastConversationPreview(avatar, 'Conversation ready');
+                    clearUnreadCount(avatar);
                     resetFollowupCount(avatar);
                     updateLastUserActivity();
+                    renderConversationTimeline();
                     refreshConversationInterface({ syncControls: false });
                     toastr.success('Chat history cleared.');
                 }
@@ -2408,47 +2465,25 @@ function bindConversationChromeControls(sheld) {
     }
 }
 
-function syncEntryPanel(settings = getSettings()) {
-    const character = getCurrentCharacter();
-    const nameElement = document.getElementById('sb_conv_entry_name');
-    const summaryElement = document.getElementById('sb_conv_entry_summary');
-    const toggle = document.getElementById('sb_conv_entry_enabled');
-    const openButton = document.getElementById('sb_conv_open_dm');
-
-    if (nameElement instanceof HTMLElement) {
-        nameElement.textContent = character?.name || 'No character selected';
-    }
-
-    if (summaryElement instanceof HTMLElement) {
-        summaryElement.textContent = character
-            ? settings.enabled
-                ? 'This character has a separate DM workspace. Roleplay chat remains untouched.'
-                : 'Enable Conversation Mode to open a separate DM workspace. Settings live inside the Conversation gear menu.'
-            : 'Select a character before enabling Conversation Mode.';
-    }
-
-    if (toggle instanceof HTMLInputElement) {
-        toggle.checked = Boolean(character && settings.enabled);
-        toggle.disabled = !character;
-    }
-
-    if (openButton instanceof HTMLButtonElement) {
-        openButton.disabled = !character;
-    }
-}
-
-function enableConversationModeForCurrentCharacter() {
+function openConversationWorkspaceForCurrentCharacter({ showToast = true } = {}) {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
+        toastr.warning('Please select a character first.');
         return;
     }
 
     const settings = getSettings(avatar);
+    const wasEnabled = Boolean(settings.enabled);
     settings.enabled = true;
     saveSettings(avatar, settings);
     applySettingsToPanel(settings);
-    refreshConversationInterface({ syncControls: false });
-    document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+    refreshConversationInterface({ syncControls: true });
+    if (showToast && !wasEnabled) {
+        toastr.info(`Conversation Mode activated for ${getCurrentCharName()}.`);
+    }
+    setTimeout(() => {
+        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+    }, 100);
 }
 
 function disableConversationModeForCurrentCharacter() {
@@ -2463,36 +2498,6 @@ function disableConversationModeForCurrentCharacter() {
     applySettingsToPanel(settings);
     refreshConversationInterface({ syncControls: false });
     document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
-}
-
-function bindEntryPanel() {
-    const panel = document.getElementById('sb_character_conversation_panel');
-    if (!(panel instanceof HTMLElement) || panel.dataset.sbConversationEntryBound === 'true') {
-        return;
-    }
-
-    panel.dataset.sbConversationEntryBound = 'true';
-    panel.addEventListener('change', (event) => {
-        if (!(event.target instanceof HTMLInputElement) || event.target.id !== 'sb_conv_entry_enabled') {
-            return;
-        }
-
-        const avatar = getCurrentCharAvatar();
-        if (!avatar) {
-            return;
-        }
-
-        const settings = getSettings(avatar);
-        settings.enabled = event.target.checked;
-        saveSettings(avatar, settings);
-        applySettingsToPanel(settings);
-        refreshConversationInterface({ syncControls: false });
-    });
-
-    const openButton = document.getElementById('sb_conv_open_dm');
-    if (openButton instanceof HTMLButtonElement) {
-        openButton.addEventListener('click', enableConversationModeForCurrentCharacter);
-    }
 }
 
 function getSelectedConnectionProfileName() {
@@ -2541,15 +2546,6 @@ function setConversationInterfaceActive(active) {
     const chrome = active ? ensureConversationChrome() : { sheld: document.getElementById('sheld') };
     if (!(chrome?.sheld instanceof HTMLElement)) {
         return;
-    }
-
-    const topBarBtn = document.getElementById('sb-conversation-toggle-top');
-    if (topBarBtn instanceof HTMLElement) {
-        if (active) {
-            topBarBtn.classList.add('is-active');
-        } else {
-            topBarBtn.classList.remove('is-active');
-        }
     }
 
     if (!active) {
@@ -2678,7 +2674,6 @@ function refreshConversationInterface({ syncControls = false } = {}) {
     const settings = getSettings(avatar);
     const active = Boolean(!selected_group && avatar && settings.enabled);
 
-    syncEntryPanel(settings);
     setConversationInterfaceActive(active);
 
     if (syncControls) {
@@ -2759,7 +2754,6 @@ function loadCurrentPanelSettings() {
 
     if (!avatar) {
         applySettingsToPanel(DEFAULT_SETTINGS);
-        syncEntryPanel(DEFAULT_SETTINGS);
         refreshConversationInterface({ syncControls: false });
         return;
     }
@@ -2887,9 +2881,11 @@ async function submitConversationInput() {
             && (settings.spontaneous_selfies || imageKeywords.test(text));
         if (wantsImage) {
             const charName = getCurrentCharName();
-            const prompt = (settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template)
-                .replace(/\{\{char\}\}/g, charName)
-                .replace(/\{\{scene\}\}/g, 'the current DM conversation');
+            const prompt = buildCharacterImagePrompt(
+                settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
+                'the current DM conversation',
+                getCurrentCharAvatar(),
+            );
             const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
             if (imageUrl) {
                 await appendConversationMessage('[Image attached]', {
@@ -2939,9 +2935,11 @@ async function maybeGenerateSpontaneousImage(settings) {
     }
 
     const charName = getCurrentCharName();
-    const prompt = (settings.selfie_prompt || settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template)
-        .replace(/\{\{char\}\}/g, charName)
-        .replace(/\{\{scene\}\}/g, 'the current DM conversation');
+    const prompt = buildCharacterImagePrompt(
+        settings.selfie_prompt || settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
+        'a spontaneous selfie in the current DM conversation',
+        getCurrentCharAvatar(),
+    );
     const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
     if (imageUrl) {
         await appendConversationMessage('[Image attached]', {
@@ -3608,10 +3606,6 @@ function handleChatChanged() {
     loadCurrentPanelSettings();
 }
 
-function bindPanelInputs() {
-    bindEntryPanel();
-}
-
 function init() {
     if (initialized) {
         return;
@@ -3670,39 +3664,7 @@ function init() {
     eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
     eventSource.on(event_types.CHAT_LOADED, handleChatChanged);
 
-    bindPanelInputs();
-
-    const iconBtn = document.getElementById('sbConversationWorkspaceIcon');
-    if (iconBtn instanceof HTMLElement) {
-        iconBtn.addEventListener('click', () => {
-            const avatar = getCurrentCharAvatar();
-            if (!avatar) {
-                toastr.warning('Please select a character first.');
-                return;
-            }
-
-            const settings = getSettings(avatar);
-            if (!settings.enabled) {
-                settings.enabled = true;
-                saveSettings(avatar, settings);
-                toastr.info(`Conversation Mode activated for ${getCurrentCharName()}.`);
-            } else {
-                // If already enabled, clicking the workspace icon toggles it off back to roleplay!
-                settings.enabled = false;
-                saveSettings(avatar, settings);
-                toastr.info('Returned to Roleplay Chat.');
-            }
-
-            refreshConversationInterface({ syncControls: true });
-
-            setTimeout(() => {
-                const input = document.getElementById(settings.enabled ? CHROME_IDS.input : 'send_textarea');
-                if (input instanceof HTMLTextAreaElement) {
-                    input.focus();
-                }
-            }, 100);
-        });
-    }
+    window.addEventListener('sb:open-conversation-workspace', () => openConversationWorkspaceForCurrentCharacter());
 
     window.setInterval(() => void conversationModeAutoMessageWorker(), AUTO_WORKER_INTERVAL_MS);
     loadCurrentPanelSettings();

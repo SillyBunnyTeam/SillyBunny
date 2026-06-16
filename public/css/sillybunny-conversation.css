@@ -1,83 +1,3 @@
-.sb-conversation-entry-card {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 16px;
-    align-items: start;
-    padding: 18px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    border-radius: var(--sb-radius-lg, 22px);
-    background:
-        linear-gradient(135deg, color-mix(in srgb, var(--sb-accent) 9%, transparent), transparent 44%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
-    box-shadow: 0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
-}
-
-.sb-conversation-entry-icon {
-    inline-size: 46px;
-    block-size: 46px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
-    border-radius: var(--sb-radius-button, 14px);
-    background: color-mix(in srgb, var(--sb-accent) 14%, transparent);
-    color: color-mix(in srgb, var(--sb-accent) 88%, var(--SmartThemeBodyColor));
-}
-
-.sb-conversation-entry-copy {
-    min-inline-size: 0;
-}
-
-.sb-conversation-entry-kicker {
-    margin-block-end: 4px;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-title);
-    letter-spacing: var(--sb-tracking-kicker);
-    line-height: var(--sb-line-compact);
-    text-transform: uppercase;
-}
-
-.sb-conversation-entry-copy h3 {
-    margin: 0;
-    font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-title);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-title);
-}
-
-.sb-conversation-entry-copy p,
-.sb-conversation-entry-note {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
-    font-size: var(--sb-type-control);
-    line-height: var(--sb-line-body);
-}
-
-.sb-conversation-entry-copy p {
-    margin: 8px 0 0;
-}
-
-.sb-conversation-entry-actions {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-}
-
-.sb-conversation-entry-toggle {
-    min-block-size: 38px;
-    padding: 8px 10px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    border-radius: var(--sb-radius-button, 14px);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 74%, transparent);
-}
-
-.sb-conversation-entry-note {
-    margin: 0;
-    max-inline-size: 70ch;
-}
-
 .sb-settings-group {
     display: flex;
     flex-direction: column;
@@ -1116,10 +1036,6 @@
 }
 
 @media (max-width: 768px) {
-    .sb-conversation-entry-card {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     #sheld[data-sb-conversation-mode='on'] {
         grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
@@ -1215,9 +1131,4 @@
         transform: scale(1);
         opacity: 1;
     }
-}
-
-/* Hide legacy workspace button in sidebar */
-#sbConversationWorkspaceIcon {
-    display: none !important;
 }

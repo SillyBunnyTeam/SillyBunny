@@ -49,7 +49,7 @@
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260610a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260609a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-conversation.css?v=20260616d">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-conversation.css?v=20260616e">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260609d" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
@@ -6406,8 +6406,6 @@
         </div>
         <div id="rightNavHolder" class="drawer">
             <div id="unimportantYes" class="drawer-toggle drawer-header" style="display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;">
-                <div id="sbConversationWorkspaceIcon" class="drawer-icon fa-solid fa-comments fa-fw" title="Conversation Workspace" style="cursor: pointer; opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
-                </div>
                 <div id="rightNavDrawerIcon" class="drawer-icon fa-solid fa-address-card fa-fw closedIcon" title="Character Management" data-i18n="[title]Character Management">
                 </div>
             </div>
@@ -6548,34 +6546,7 @@
                         </div>
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
-                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" role="tabpanel" aria-labelledby="sb_character_tab_conversation" aria-hidden="true" hidden>
-                        <div class="sb-shell-header">
-                            <div class="sb-shell-kicker" data-i18n="Conversation Mode">Conversation Mode</div>
-                            <h2 class="sb-shell-title" data-i18n="Open a separate DM workspace">Open a separate DM workspace</h2>
-                            <p class="sb-shell-subtitle" data-i18n="Conversation Mode gives this character a direct-message thread that stays separate from roleplay, with pals, scheduled pings, and in-thread settings.">Conversation Mode gives this character a direct-message thread that stays separate from roleplay, with pals, scheduled pings, and in-thread settings.</p>
-                        </div>
-                        <div class="sb-conversation-entry-card">
-                            <div class="sb-conversation-entry-icon" aria-hidden="true">
-                                <i class="fa-solid fa-comments"></i>
-                            </div>
-                            <div class="sb-conversation-entry-copy">
-                                <div class="sb-conversation-entry-kicker" data-i18n="Current thread">Current thread</div>
-                                <h3 id="sb_conv_entry_name" data-i18n="No character selected">No character selected</h3>
-                                <p id="sb_conv_entry_summary" data-i18n="Enable Conversation Mode to open a separate DM thread. Settings move into the Conversation gear menu.">Enable Conversation Mode to open a separate DM thread. Settings move into the Conversation gear menu.</p>
-                            </div>
-                            <div class="sb-conversation-entry-actions">
-                                <label class="checkbox_label sb-conversation-entry-toggle" title="Auto-activate the DM interface for this character">
-                                    <input id="sb_conv_entry_enabled" type="checkbox" />
-                                    <span data-i18n="Enable Conversation Mode for this character">Enable Conversation Mode for this character</span>
-                                </label>
-                                <button id="sb_conv_open_dm" type="button" class="menu_button menu_button_icon">
-                                    <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
-                                    <span data-i18n="Open Conversation workspace">Open Conversation workspace</span>
-                                </button>
-                            </div>
-                        </div>
-                        <p class="sb-conversation-entry-note" data-i18n="Once enabled, single-character chats open the Conversation workspace. Your roleplay chat stays separate; use the Conversation gear for presence, schedules, lorebook, author notes, prose polish, and selfie settings.">Once enabled, single-character chats open the Conversation workspace. Your roleplay chat stays separate; use the Conversation gear for presence, schedules, lorebook, author notes, prose polish, and selfie settings.</p>
-                    </div>
+                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" role="tabpanel" aria-labelledby="sb_character_tab_conversation" aria-hidden="true" hidden></div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
                         <div class="sb-character-import-intro">
                             <h3 data-i18n="Bring in a character card">Bring in a character card</h3>
