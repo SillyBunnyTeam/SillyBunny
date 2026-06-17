@@ -7349,14 +7349,18 @@ function preserveCharacterImportTab() {
 }
 
 function openCharacterConversationTab() {
-    sbState.characterDrawer.lastTab = 'conversation';
+    if (sbState.characterDrawer.lastTab === 'conversation') {
+        sbState.characterDrawer.lastTab = 'characters';
+    }
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
     closeCharacterPanel();
 }
 
 function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
-    sbState.characterDrawer.lastTab = normalizedTabId;
+    if (normalizedTabId !== 'conversation') {
+        sbState.characterDrawer.lastTab = normalizedTabId;
+    }
 
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
@@ -7419,8 +7423,6 @@ function restoreLastCharacterPanelView() {
         void showCharacterListView('groups');
     } else if (lastTab === 'editor') {
         void openCharacterEditorTab();
-    } else if (lastTab === 'conversation') {
-        openCharacterConversationTab();
     } else {
         void showCharacterListView('characters');
     }
@@ -7459,7 +7461,9 @@ function syncCharacterShellTabs(activeTab = null) {
                             ? 'conversation'
                             : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
-    sbState.characterDrawer.lastTab = normalizedTab;
+    if (normalizedTab !== 'conversation') {
+        sbState.characterDrawer.lastTab = normalizedTab;
+    }
 
     if (menuType === 'characters' || menuType === 'groups') {
         syncCharacterListControls(menuType);

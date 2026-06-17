@@ -2143,7 +2143,19 @@ async function getRecentChats() {
     }
 
     return [...roleplayChats, ...conversationChats]
-        .sort((first, second) => Number(second.last_mes || 0) - Number(first.last_mes || 0))
+        .sort((first, second) => {
+            const firstPinned = PinnedChatsManager.isPinned(first);
+            const secondPinned = PinnedChatsManager.isPinned(second);
+
+            if (firstPinned && !secondPinned) {
+                return -1;
+            }
+            if (!firstPinned && secondPinned) {
+                return 1;
+            }
+
+            return sortMoments(timestampToMoment(first.last_mes), timestampToMoment(second.last_mes));
+        })
         .map((chat, index) => ({ ...chat, hidden: index >= settings.collapsedDisplayed }));
 }
 
