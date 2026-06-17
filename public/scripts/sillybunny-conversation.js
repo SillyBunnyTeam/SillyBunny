@@ -6,7 +6,7 @@ import { playMessageSound, power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
 import { extension_settings } from './extensions.js';
-import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, saveSettingsDebounced, selectCharacterById, this_chid } from '../script.js';
+import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, saveSettingsDebounced, this_chid } from '../script.js';
 
 const GEECHAN_DEFAULT_PROMPT = `{{// The main system prompt, designed for an output reminiscent of an instant messaging interface.
 
@@ -60,13 +60,13 @@ Use the information below as a reference point on how {{char}} should act in the
 const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 const USER_STATUS_STORAGE_KEY = 'sb_conv_user_status';
-const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
 const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
 const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 const SETTINGS_KEY_PREFIX = 'sb_conv_settings_';
 const THREAD_KEY_PREFIX = 'sb_conv_thread_';
 const CONVERSATION_STORE_KEY = 'sillybunny_conversation';
+const GROUP_CONVERSATION_STORE_PREFIX = 'group:';
 const DEFAULT_BRANCH_ID = 'main';
 const LAST_USER_ACTIVITY_PREFIX = 'sb_conv_last_user_activity_';
 const LAST_AUTO_MESSAGE_PREFIX = 'sb_conv_last_auto_msg_';
@@ -75,7 +75,6 @@ const LAST_IDLE_SESSION_PREFIX = 'sb_conv_last_idle_session_';
 const LAST_CHIME_SESSION_PREFIX = 'sb_conv_last_chime_session_';
 const LAST_PREVIEW_PREFIX = 'sb_conv_last_preview_';
 const UNREAD_PREFIX = 'sb_conv_unread_';
-const LAST_AUTO_CHAT_SESSION_PREFIX = 'sb_conv_last_autochat_session_';
 const SCHEDULE_PREFIX = 'sb_conv_schedule_';
 const FOLLOWUP_COUNT_PREFIX = 'sb_conv_followup_count_';
 const AUTO_WORKER_INTERVAL_MS = 30000;
@@ -90,6 +89,7 @@ const MAX_INACTIVITY_THRESHOLD = 360;
 const DEFAULT_TALKATIVENESS = 50;
 const DEFAULT_MAX_FOLLOWUPS = 3;
 const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
+const DEFAULT_AUTO_CHAT_COOLDOWN = 10;
 const SEND_QUEUE_BATCH_MS = 900;
 const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
 const PARTNER_FOLLOWUP_RECENT_WINDOW = 6;
@@ -98,6 +98,7 @@ const GROUP_ASIDE_CONTEXT_LIMIT = 8;
 const GROUP_ASIDE_RANDOM_CHANCE = 0.18;
 const GROUP_ASIDE_COOLDOWN_MS = 8 * 60 * 1000;
 const GROUP_ASIDE_MENTION_COOLDOWN_MS = 45 * 1000;
+const AUTO_CHAT_LAST_SENT_MARKER = 'auto_chat_at';
 const MAX_STACKED_PARTICIPANT_AVATARS = 4;
 const MEMORY_SUMMARY_MIN_MESSAGES = 24;
 const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;
@@ -113,6 +114,9 @@ const CHROME_IDS = Object.freeze({
     timeline: 'sb_conversation_timeline',
     form: 'sb_conversation_form',
     input: 'sb_conversation_input',
+    attach: 'sb_conversation_attach',
+    fileInput: 'sb_conversation_file_input',
+    attachmentPreview: 'sb_conversation_attachment_preview',
     send: 'sb_conversation_send',
     composerPolish: 'sb_conversation_composer_polish',
     settingsBackdrop: 'sb_conversation_settings_backdrop',
@@ -152,6 +156,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     multi_char: false,
     multi_char_names: '',
     auto_character_chat: false,
+    auto_chat_cooldown: DEFAULT_AUTO_CHAT_COOLDOWN,
     auto_chat_names: '',
     roleplay_reactions: false,
     lorebook_override: '',
@@ -189,6 +194,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
     { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
+    { id: 'sb_conv_auto_chat_cooldown', key: 'auto_chat_cooldown', prop: 'value', type: 'number', fallback: DEFAULT_AUTO_CHAT_COOLDOWN, min: 1 },
     { id: 'sb_conv_auto_chat_names', key: 'auto_chat_names', prop: 'value' },
     { id: 'sb_conv_roleplay_reactions', key: 'roleplay_reactions', prop: 'checked' },
     { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
@@ -209,11 +215,14 @@ let autoWorkerIntervalId = null;
 let autoWorkerBusy = false;
 let generationActive = false;
 let conversationReplyBusy = false;
+let conversationUploadActive = false;
 let sendQueueProcessing = false;
 let previousConnectionProfile = null;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
 let conversationWorkspaceOpen = false;
+let conversationSelectedAvatar = null;
+let conversationSelectedGroupId = null;
 let imageGenerationActive = false;
 let imageGenerationAbortController = null;
 let originalDocumentTitle = typeof document !== 'undefined' ? document.title : '';
@@ -228,12 +237,23 @@ const partnerReplyBusyKeys = new Set();
 const groupAsideBusyKeys = new Set();
 const groupAsideLastSent = new Map();
 
-function getCurrentCharacter() {
+function getRoleplayCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
         return null;
     }
 
     return characters[this_chid] ?? null;
+}
+
+function getCurrentCharacter() {
+    if (conversationWorkspaceOpen && conversationSelectedAvatar) {
+        const selected = getCharacterForAvatar(conversationSelectedAvatar);
+        if (selected) {
+            return selected;
+        }
+    }
+
+    return getRoleplayCurrentCharacter();
 }
 
 function getCurrentCharAvatar() {
@@ -242,6 +262,60 @@ function getCurrentCharAvatar() {
 
 function getCurrentCharName(fallback = 'Character') {
     return getCurrentCharacter()?.name || fallback;
+}
+
+function getConversationGroupById(groupId) {
+    if (!groupId || !Array.isArray(groups)) {
+        return null;
+    }
+
+    return groups.find(group => String(group?.id) === String(groupId)) || null;
+}
+
+function isAvatarInConversationGroup(avatar, groupId) {
+    const group = getConversationGroupById(groupId);
+    return Boolean(avatar && group?.members?.includes(avatar) && !group.disabled_members?.includes(avatar));
+}
+
+function getConversationGroupIdForAvatar(avatar) {
+    if (!avatar) {
+        return null;
+    }
+
+    if (conversationWorkspaceOpen) {
+        return conversationSelectedGroupId && isAvatarInConversationGroup(avatar, conversationSelectedGroupId)
+            ? conversationSelectedGroupId
+            : null;
+    }
+
+    return selected_group && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
+}
+
+function getConversationThreadKey(avatar, groupId = getConversationGroupIdForAvatar(avatar)) {
+    if (!avatar) {
+        return '';
+    }
+
+    const safeGroupId = groupId && isAvatarInConversationGroup(avatar, groupId) ? String(groupId) : '';
+    return safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${avatar}` : avatar;
+}
+
+function parseConversationThreadKey(key) {
+    const value = String(key || '');
+    if (!value.startsWith(GROUP_CONVERSATION_STORE_PREFIX)) {
+        return { avatar: value, groupId: '' };
+    }
+
+    const withoutPrefix = value.slice(GROUP_CONVERSATION_STORE_PREFIX.length);
+    const separatorIndex = withoutPrefix.indexOf(':');
+    if (separatorIndex < 0) {
+        return { avatar: '', groupId: '' };
+    }
+
+    return {
+        groupId: withoutPrefix.slice(0, separatorIndex),
+        avatar: withoutPrefix.slice(separatorIndex + 1),
+    };
 }
 
 function getCharacterStorageKey(prefix, avatar) {
@@ -265,6 +339,7 @@ function safeParseSettings(stored) {
             settings.multi_char_names = settings.auto_chat_names;
         }
         settings.auto_chat_names = settings.multi_char_names;
+        settings.auto_chat_cooldown = parsePositiveInt(settings.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1);
         return settings;
     } catch {
         return { ...DEFAULT_SETTINGS };
@@ -356,8 +431,24 @@ function getCharacterConversationStore(avatar, { create = true } = {}) {
     return characterStore;
 }
 
+function getConversationThreadStore(avatar, { create = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const threadKey = getConversationThreadKey(avatar, groupId);
+    if (!threadKey) {
+        return null;
+    }
+
+    const threadStore = getCharacterConversationStore(threadKey, { create });
+    if (!threadStore) {
+        return null;
+    }
+
+    threadStore.threadAvatar = avatar;
+    threadStore.groupId = groupId || '';
+    return threadStore;
+}
+
 function getActiveConversationBranch(avatar, { create = true } = {}) {
-    const characterStore = getCharacterConversationStore(avatar, { create });
+    const characterStore = getConversationThreadStore(avatar, { create });
     if (!characterStore) {
         return null;
     }
@@ -368,7 +459,7 @@ function getActiveConversationBranch(avatar, { create = true } = {}) {
 }
 
 function getConversationBranches(avatar) {
-    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    const characterStore = getConversationThreadStore(avatar, { create: false });
     if (!characterStore) {
         return [];
     }
@@ -377,7 +468,7 @@ function getConversationBranches(avatar) {
 }
 
 function setActiveConversationBranch(avatar, branchId) {
-    const characterStore = getCharacterConversationStore(avatar);
+    const characterStore = getConversationThreadStore(avatar);
     if (!characterStore?.branches?.[branchId]) {
         return;
     }
@@ -387,7 +478,7 @@ function setActiveConversationBranch(avatar, branchId) {
 }
 
 function createConversationBranchForAvatar(avatar, name = 'New chat') {
-    const characterStore = getCharacterConversationStore(avatar);
+    const characterStore = getConversationThreadStore(avatar);
     if (!characterStore) {
         return null;
     }
@@ -400,7 +491,7 @@ function createConversationBranchForAvatar(avatar, name = 'New chat') {
 }
 
 function renameConversationBranch(avatar, branchId, name) {
-    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    const characterStore = getConversationThreadStore(avatar, { create: false });
     const branch = characterStore?.branches?.[branchId];
     if (!branch || !String(name || '').trim()) {
         return;
@@ -412,7 +503,7 @@ function renameConversationBranch(avatar, branchId, name) {
 }
 
 function deleteConversationBranch(avatar, branchId) {
-    const characterStore = getCharacterConversationStore(avatar, { create: false });
+    const characterStore = getConversationThreadStore(avatar, { create: false });
     if (!characterStore?.branches?.[branchId]) {
         return false;
     }
@@ -432,7 +523,7 @@ function deleteConversationBranch(avatar, branchId) {
 }
 
 function resetCharacterConversationBranches(avatar) {
-    const characterStore = getCharacterConversationStore(avatar);
+    const characterStore = getConversationThreadStore(avatar);
     if (!characterStore) {
         return;
     }
@@ -530,46 +621,72 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         return [];
     }
 
-    return characters
-        .map((character) => {
-            const avatar = character?.avatar;
-            if (!avatar) {
-                return null;
-            }
+    const chats = [];
+    const pushConversationChat = (character, threadStore, group = null) => {
+        const avatar = character?.avatar;
+        const settings = avatar ? getSettings(avatar) : { ...DEFAULT_SETTINGS };
+        if (!avatar || !settings.enabled || !threadStore) {
+            return;
+        }
 
-            const characterStore = getCharacterConversationStore(avatar, { create: false });
-            const settings = safeParseSettings(characterStore?.settings);
-            if (!settings.enabled || !characterStore) {
-                return null;
-            }
+        const branchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
+        const branch = normalizeConversationBranch(threadStore.branches?.[branchId], branchId);
+        const messages = Array.isArray(branch?.messages) ? branch.messages : [];
+        if (group && !messages.length && !branch.unread && branch.preview === 'Conversation ready') {
+            return;
+        }
 
-            const branch = getActiveConversationBranch(avatar, { create: false });
-            const messages = Array.isArray(branch?.messages) ? branch.messages : [];
-            const timestamp = parsePositiveInt(branch?.updatedAt || branch?.createdAt, Date.now(), 1);
-            const date = new Date(timestamp);
-            const branchName = branch?.name && branch.name !== 'Main' ? branch.name : 'Conversation Mode';
-            return {
-                avatar,
-                group: '',
-                char_name: character.name || 'Character',
-                char_thumbnail: getThumbnailUrl('avatar', avatar),
-                chat_name: branchName,
-                file_name: branchName,
-                mes: branch?.preview || stripPreviewText(messages[messages.length - 1]?.mes) || 'Conversation ready',
-                chat_items: messages.length,
-                file_size: 'DM',
-                date_short: date.toLocaleDateString(),
-                date_long: date.toLocaleString(),
-                last_mes: timestamp,
-                is_group: false,
-                is_agent: false,
-                is_conversation: true,
-                recent_chat_type: 'conversation',
-                hidden: false,
-                pinned: false,
-            };
-        })
-        .filter(Boolean)
+        const timestamp = parsePositiveInt(branch?.updatedAt || branch?.createdAt, Date.now(), 1);
+        const date = new Date(timestamp);
+        const branchName = branch?.name && branch.name !== 'Main' ? branch.name : 'Conversation Mode';
+        const groupName = group?.name || '';
+        chats.push({
+            avatar,
+            group: group?.id || '',
+            char_name: groupName || character.name || 'Character',
+            char_thumbnail: getThumbnailUrl('avatar', avatar),
+            chat_name: groupName ? `${character.name || 'Character'} · ${branchName}` : branchName,
+            file_name: groupName ? `${groupName} · ${character.name || 'Character'}` : branchName,
+            mes: branch?.preview || getConversationMessagePreviewText(messages[messages.length - 1]) || 'Conversation ready',
+            chat_items: messages.length,
+            file_size: groupName ? 'Group DM' : 'DM',
+            date_short: date.toLocaleDateString(),
+            date_long: date.toLocaleString(),
+            last_mes: timestamp,
+            is_group: Boolean(group),
+            is_agent: false,
+            is_conversation: true,
+            recent_chat_type: 'conversation',
+            hidden: false,
+            pinned: false,
+        });
+    };
+
+    characters.forEach((character) => {
+        const avatar = character?.avatar;
+        if (!avatar) {
+            return;
+        }
+
+        pushConversationChat(character, getConversationThreadStore(avatar, { create: false, groupId: '' }));
+    });
+
+    Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
+        const parsed = parseConversationThreadKey(storeKey);
+        if (!parsed.groupId || !parsed.avatar) {
+            return;
+        }
+
+        const character = getCharacterForAvatar(parsed.avatar);
+        const group = getConversationGroupById(parsed.groupId);
+        if (!character || !group) {
+            return;
+        }
+
+        pushConversationChat(character, threadStore, group);
+    });
+
+    return chats
         .sort((first, second) => Number(second.last_mes || 0) - Number(first.last_mes || 0))
         .slice(0, Number.isFinite(max) ? max : undefined);
 }
@@ -629,6 +746,23 @@ function setConversationSessionMarker(avatar, markerKey, value) {
     branch.sessionMarkers = branch.sessionMarkers && typeof branch.sessionMarkers === 'object' ? branch.sessionMarkers : {};
     branch.sessionMarkers[markerKey] = String(value);
     persistConversationStore();
+}
+
+function getConversationBranchActivityTime(avatar) {
+    const branch = getActiveConversationBranch(avatar, { create: false });
+    return parsePositiveInt(branch?.updatedAt || branch?.createdAt, Date.now(), 1);
+}
+
+function getLastAutoCharacterChatTime(avatar) {
+    return parsePositiveInt(getConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER), 0, 0);
+}
+
+function setLastAutoCharacterChatTime(avatar, timestamp = Date.now()) {
+    setConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, timestamp);
+}
+
+function getAutoCharacterChatCooldownMs(settings) {
+    return parsePositiveInt(settings?.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1) * 60 * 1000;
 }
 
 function getConversationMemorySummary(avatar = getCurrentCharAvatar()) {
@@ -696,6 +830,56 @@ function createConversationMessage({ role = 'character', name = getCurrentCharNa
     };
 }
 
+function getConversationMediaAttachments(message) {
+    return Array.isArray(message?.extra?.media) ? message.extra.media.filter(item => item?.url) : [];
+}
+
+function getConversationFileAttachments(message) {
+    return Array.isArray(message?.extra?.files) ? message.extra.files.filter(item => item?.url) : [];
+}
+
+function hasConversationMessageContent(message) {
+    return Boolean(
+        message?.id
+        && (
+            String(message.mes || '').trim()
+            || getConversationMediaAttachments(message).length
+            || getConversationFileAttachments(message).length
+            || message.extra?.image_url
+        ),
+    );
+}
+
+function getConversationAttachmentLabels(message) {
+    const labels = [];
+    const generatedImage = message?.extra?.image_url;
+    if (typeof generatedImage === 'string' && generatedImage) {
+        labels.push('generated image');
+    }
+
+    for (const media of getConversationMediaAttachments(message)) {
+        const title = String(media.title || '').trim();
+        const type = String(media.type || 'media').trim() || 'media';
+        labels.push(title ? `${type}: ${title}` : type);
+    }
+
+    for (const file of getConversationFileAttachments(message)) {
+        const name = String(file.name || '').trim();
+        labels.push(name ? `file: ${name}` : 'file');
+    }
+
+    return labels;
+}
+
+function getConversationAttachmentSummary(message) {
+    const labels = getConversationAttachmentLabels(message);
+    return labels.length ? `[Attachments: ${labels.join('; ')}]` : '';
+}
+
+function getConversationMessagePreviewText(message) {
+    return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
+}
+
 function safeParseThread(stored) {
     if (!stored) {
         return [];
@@ -703,7 +887,7 @@ function safeParseThread(stored) {
 
     try {
         const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
-        return Array.isArray(parsed) ? parsed.filter(message => message?.id && message?.mes) : [];
+        return Array.isArray(parsed) ? parsed.filter(hasConversationMessageContent) : [];
     } catch {
         return [];
     }
@@ -737,8 +921,8 @@ function appendConversationThreadMessage(avatar, messageInput) {
     const message = createConversationMessage(messageInput);
     messages.push(message);
     saveConversationThread(avatar, messages);
-    setLastConversationPreview(avatar, message.mes);
-    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+    setLastConversationPreview(avatar, getConversationMessagePreviewText(message));
+    if (isConversationActiveForAvatar(avatar)) {
         renderConversationTimeline();
     }
     return message;
@@ -757,188 +941,8 @@ function updateConversationThreadMessage(avatar, messageId, messageText, extra =
     }
     saveConversationThread(avatar, messages);
     updateLastPreviewFromConversation(avatar);
-    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+    if (isConversationActiveForAvatar(avatar)) {
         renderConversationTimeline();
-    }
-}
-
-async function runCompanionsOnConversationMessage(avatar, messageId) {
-    const thread = getConversationThread(avatar);
-    const msgIndex = thread.findIndex(m => m.id === messageId);
-    if (msgIndex === -1) {
-        return;
-    }
-
-    const message = thread[msgIndex];
-    if (message.role === 'user') {
-        return;
-    }
-
-    try {
-        const { getEnabledAgents, isCompanionAgent } = await import('./extensions/in-chat-agents/agent-store.js');
-        const { runCompanionsOnMessage, setCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
-
-        const enabledAgents = getEnabledAgents();
-        const companions = enabledAgents.filter(isCompanionAgent);
-        if (companions.length === 0) {
-            return;
-        }
-
-        companions.forEach(agent => {
-            setCompanionResult(message, agent, { status: 'pending', content: '' });
-        });
-        updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
-
-        const originalChatItems = [...chat];
-        const mockChat = thread.map(msg => ({
-            is_user: msg.role === 'user',
-            is_system: msg.role === 'system',
-            name: msg.name,
-            mes: msg.mes,
-            extra: msg.extra || {},
-        }));
-
-        chat.length = 0;
-        chat.push(...mockChat);
-
-        try {
-            await runCompanionsOnMessage(chat.length - 1);
-            message.extra = chat[chat.length - 1].extra;
-            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
-        } finally {
-            chat.length = 0;
-            chat.push(...originalChatItems);
-        }
-    } catch (err) {
-        console.error('Failed to run companion agents on Conversation message:', err);
-    }
-}
-
-async function runSingleCompanionOnConversationMessage(avatar, messageId, agentId) {
-    const thread = getConversationThread(avatar);
-    const msgIndex = thread.findIndex(m => m.id === messageId);
-    if (msgIndex === -1) {
-        return;
-    }
-
-    const message = thread[msgIndex];
-    if (message.role === 'user') {
-        return;
-    }
-
-    try {
-        const { getAgentById } = await import('./extensions/in-chat-agents/agent-store.js');
-        const { runCompanionAgentOnMessage, setCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
-
-        const agent = getAgentById(agentId);
-        if (!agent) {
-            return;
-        }
-
-        setCompanionResult(message, agent, { status: 'pending', content: '' });
-        updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
-
-        const originalChatItems = [...chat];
-        const mockChat = thread.map(msg => ({
-            is_user: msg.role === 'user',
-            is_system: msg.role === 'system',
-            name: msg.name,
-            mes: msg.mes,
-            extra: msg.extra || {},
-        }));
-
-        chat.length = 0;
-        chat.push(...mockChat);
-
-        try {
-            await runCompanionAgentOnMessage(agentId, chat.length - 1);
-            message.extra = chat[chat.length - 1].extra;
-            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
-        } finally {
-            chat.length = 0;
-            chat.push(...originalChatItems);
-        }
-    } catch (err) {
-        console.error('Failed to run single companion agent on Conversation message:', err);
-    }
-}
-
-async function renderCompanionResultsForConversationMessage(message, container) {
-    try {
-        const { getCompanionResults } = await import('./extensions/in-chat-agents/companion/companion-runner.js');
-        const { cleanCompanionAgentName, formatCompanionContent, isHiddenCompanionResult } = await import('./extensions/in-chat-agents/companion/companion-ui.js');
-
-        const results = getCompanionResults(message);
-        const entries = Object.entries(results)
-            .filter(([agentId, result]) => result && typeof result === 'object' && !isHiddenCompanionResult(agentId, result))
-            .sort(([, left], [, right]) => {
-                const leftTime = Date.parse(left.updatedAt ?? '');
-                const rightTime = Date.parse(right.updatedAt ?? '');
-                return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
-            });
-
-        if (entries.length === 0) {
-            return;
-        }
-
-        const ledger = document.createElement('div');
-        ledger.className = 'ica--companion-ledger';
-        ledger.setAttribute('aria-label', 'Companion notes');
-
-        entries.forEach(([agentId, result]) => {
-            const status = ['pending', 'done', 'error', 'cancelled'].includes(result.status) ? result.status : 'done';
-            const agentName = cleanCompanionAgentName(result.agentName);
-            const icon = String(result.icon ?? '').trim() || 'fa-user-astronaut';
-            const profileLabel = String(result.profileLabel ?? '').trim();
-            const modelLabel = String(result.modelLabel ?? '').trim();
-            const meta = [profileLabel, modelLabel].filter(Boolean).join(' / ');
-
-            let statusLabel = 'Ready';
-            if (status === 'pending') statusLabel = 'Running';
-            else if (status === 'error') statusLabel = 'Error';
-            else if (status === 'cancelled') statusLabel = 'Cancelled';
-
-            let bodyHtml = '';
-            if (status === 'pending') {
-                bodyHtml = '<div class="ica--companion-pending"><i class="fa-solid fa-spinner fa-spin"></i><span>Companion is writing a note.</span></div>';
-            } else if (status === 'error') {
-                bodyHtml = `<div class="ica--companion-error">${escapeHtmlText(result.error || 'Companion run failed.')}</div>`;
-            } else if (status === 'cancelled') {
-                bodyHtml = '<div class="ica--companion-empty">Companion run was cancelled.</div>';
-            } else {
-                bodyHtml = formatCompanionContent(agentId, result, message);
-            }
-
-            const card = document.createElement('details');
-            card.className = `ica--companion-card ica--companion-card--${status}`;
-            card.dataset.agentId = agentId;
-            if (!result.collapsed) {
-                card.setAttribute('open', '');
-            }
-
-            card.innerHTML = `
-                <summary class="ica--companion-summary">
-                    <span class="ica--companion-title">
-                        <i class="fa-solid ${escapeHtmlAttribute(icon)}"></i>
-                        <span>${escapeHtmlText(agentName)}</span>
-                    </span>
-                    <span class="ica--companion-summary-spacer"></span>
-                    ${meta ? `<span class="ica--companion-meta">${escapeHtmlText(meta)}</span>` : ''}
-                    <span class="ica--companion-status">${escapeHtmlText(statusLabel)}</span>
-                    <span class="ica--companion-actions">
-                        <button type="button" class="ica--companion-action" data-action="regenerate-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" data-message-id="${escapeHtmlAttribute(message.id)}" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
-                        <button type="button" class="ica--companion-action" data-action="copy-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
-                        <button type="button" class="ica--companion-action caution" data-action="delete-companion" data-agent-id="${escapeHtmlAttribute(agentId)}" data-message-id="${escapeHtmlAttribute(message.id)}" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
-                    </span>
-                </summary>
-                <div class="ica--companion-body">${bodyHtml}</div>
-            `;
-            ledger.appendChild(card);
-        });
-
-        container.appendChild(ledger);
-    } catch (err) {
-        console.error('Failed to render companion results:', err);
     }
 }
 
@@ -981,7 +985,8 @@ function getPersonaOptions() {
 }
 
 function getConversationPersonaAppendixScopeKey() {
-    return String(selected_group || getCurrentCharAvatar() || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const avatar = getCurrentCharAvatar();
+    return String(getConversationThreadKey(avatar) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
 }
 
 function getConversationPersonaAppendices(avatarId) {
@@ -1070,6 +1075,27 @@ async function applyConnectionProfileByName(profileName) {
     }
 }
 
+async function withConversationConnectionProfile(settings, task) {
+    const profileName = String(settings?.connection_profile || '').trim();
+    if (!profileName) {
+        return task();
+    }
+
+    const previousProfile = getSelectedConnectionProfileName();
+    const shouldSwitch = previousProfile !== profileName;
+    if (shouldSwitch) {
+        await applyConnectionProfileByName(profileName);
+    }
+
+    try {
+        return await task();
+    } finally {
+        if (shouldSwitch && previousProfile) {
+            await applyConnectionProfileByName(previousProfile);
+        }
+    }
+}
+
 async function generateConversationImage(prompt, negative = '') {
     if (imageGenerationActive) {
         return null;
@@ -1120,6 +1146,14 @@ function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
 function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { includeThreadPartners = true } = {}) {
     const partnerAvatars = [];
     parseAvatarList(settings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const group = getConversationGroupById(groupId);
+    if (group?.members?.length) {
+        group.members
+            .filter(memberAvatar => !group.disabled_members?.includes(memberAvatar))
+            .forEach(memberAvatar => addUniqueAvatar(partnerAvatars, memberAvatar, avatar));
+    }
 
     if (includeThreadPartners) {
         getConversationThread(avatar).forEach((message) => {
@@ -1624,21 +1658,21 @@ function updateConversationNotificationIndicators() {
 }
 
 function isConversationActiveForAvatar(avatar) {
-    return Boolean(conversationWorkspaceOpen && !selected_group && avatar && avatar === getCurrentCharAvatar());
+    return Boolean(
+        conversationWorkspaceOpen
+        && avatar
+        && avatar === getCurrentCharAvatar()
+        && getConversationThreadKey(avatar) === getConversationThreadKey(getCurrentCharAvatar()),
+    );
 }
 
-async function openConversationFromNotification(avatar) {
-    const characterIndex = getCharacterIndexForAvatar(avatar);
-    if (characterIndex < 0) {
+function openConversationFromNotification(avatar, { groupId = null } = {}) {
+    if (!openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
         return;
     }
-
-    await selectCharacterById(characterIndex);
-    conversationWorkspaceOpen = true;
-    refreshConversationInterface({ syncControls: true });
 }
 
-function showConversationToast(avatar, message) {
+function showConversationToast(avatar, message, { groupId = null } = {}) {
     const toastr = globalThis.toastr;
     if (!toastr?.info) {
         return;
@@ -1649,11 +1683,11 @@ function showConversationToast(avatar, message) {
     const preview = stripPreviewText(message.mes) || 'New Conversation message';
     toastr.info(preview, title, {
         timeOut: 6000,
-        onclick: () => void openConversationFromNotification(avatar),
+        onclick: () => openConversationFromNotification(avatar, { groupId }),
     });
 }
 
-function notifyNewConversationMessage(avatar, message, shouldNotify) {
+function notifyNewConversationMessage(avatar, message, shouldNotify, { groupId = null } = {}) {
     updateConversationNotificationIndicators();
     if (!shouldNotify || !message || message.role === 'user' || message.role === 'system') {
         return;
@@ -1665,7 +1699,7 @@ function notifyNewConversationMessage(avatar, message, shouldNotify) {
         console.warn('Conversation Mode: notification sound failed', error);
     }
 
-    showConversationToast(avatar, message);
+    showConversationToast(avatar, message, { groupId });
 }
 
 function parseAvatarList(value) {
@@ -1697,11 +1731,29 @@ function hasMentionBoundaryMatch(messageText, mention) {
     return pattern.test(messageText);
 }
 
+function getCharacterMentionHandles(character) {
+    const charName = String(character?.name || '').trim();
+    if (!charName) {
+        return [];
+    }
+
+    const parts = charName.split(/[\s_-]+/).filter(part => part.length > 2);
+    return Array.from(new Set([
+        `@${charName}`,
+        `@${charName.replace(/[\s_-]+/g, '')}`,
+        ...parts.map(part => `@${part}`),
+    ].map(handle => handle.trim()).filter(handle => handle.length > 1)));
+}
+
 function isCharacterMentionedInText(character, text, candidates = []) {
     const messageText = String(text || '').toLowerCase();
     const charName = String(character?.name || '').toLowerCase().trim();
     if (!messageText || !charName) {
         return false;
+    }
+
+    if (getCharacterMentionHandles(character).some(handle => hasMentionBoundaryMatch(messageText, handle))) {
+        return true;
     }
 
     if (hasMentionBoundaryMatch(messageText, charName)) {
@@ -1748,6 +1800,7 @@ function getConversationPartnerSettings(partnerAvatar, hostSettings) {
         reply_delay_multiplier: partnerSettings.reply_delay_multiplier,
         authors_note: partnerSettings.authors_note,
         lorebook_override: partnerSettings.lorebook_override,
+        connection_profile: partnerSettings.connection_profile,
     };
 }
 
@@ -1978,9 +2031,9 @@ function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar()) {
     }
 
     const messages = getConversationThread(avatar);
-    const message = [...messages].reverse().find(item => item?.mes);
+    const message = [...messages].reverse().find(hasConversationMessageContent);
     if (message) {
-        setLastConversationPreview(avatar, message.mes);
+        setLastConversationPreview(avatar, getConversationMessagePreviewText(message));
     }
 
     updateConversationNotificationIndicators();
@@ -2001,11 +2054,7 @@ function getConversationPals() {
 }
 
 function getSelectedConversationGroup() {
-    if (!selected_group || !Array.isArray(groups)) {
-        return null;
-    }
-
-    return groups.find(group => group?.id == selected_group) || null;
+    return getConversationGroupById(conversationWorkspaceOpen ? conversationSelectedGroupId : selected_group);
 }
 
 function getCurrentGroupConversationMembers({ requireRoleplayReactions = false } = {}) {
@@ -2024,6 +2073,34 @@ function getCurrentGroupConversationMembers({ requireRoleplayReactions = false }
         })
         .filter(item => item.character?.avatar && item.settings.enabled)
         .filter(item => !requireRoleplayReactions || item.settings.roleplay_reactions);
+}
+
+function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
+    const targets = [];
+    const addTarget = (character, sourceLabel = '') => {
+        if (!character?.avatar || targets.some(target => target.avatar === character.avatar)) {
+            return;
+        }
+
+        targets.push({
+            avatar: character.avatar,
+            name: character.name || 'Character',
+            sourceLabel,
+        });
+    };
+
+    const baseSettings = baseAvatar ? getSettings(baseAvatar) : null;
+    if (baseAvatar) {
+        getConversationParticipants(baseAvatar, baseSettings || getSettings(baseAvatar)).forEach(character => addTarget(character, 'Conversation'));
+    }
+
+    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat'));
+
+    if (!targets.length && baseAvatar) {
+        addTarget(getCharacterForAvatar(baseAvatar), 'Conversation');
+    }
+
+    return targets;
 }
 
 function getCharacterForGroupChatMessage(message) {
@@ -2089,6 +2166,100 @@ function getConversationMessageReceipt(message, avatar = getCurrentCharAvatar())
     return seenAt > 0 && createdAt > 0 && seenAt >= createdAt ? 'Seen' : 'Delivered';
 }
 
+function formatConversationFileSize(size) {
+    const bytes = Number(size);
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+
+    const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+    return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function renderConversationAttachments(container, message) {
+    const media = getConversationMediaAttachments(message);
+    const files = getConversationFileAttachments(message);
+    if (!media.length && !files.length) {
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sb-conversation-attachments';
+
+    media.forEach((attachment) => {
+        const figure = document.createElement('figure');
+        figure.className = 'sb-conversation-media-attachment';
+
+        const title = String(attachment.title || '').trim();
+        const type = String(attachment.type || 'image');
+        if (type === 'video') {
+            const video = document.createElement('video');
+            video.src = attachment.url;
+            video.controls = true;
+            video.preload = 'metadata';
+            video.title = title;
+            figure.appendChild(video);
+        } else if (type === 'audio') {
+            const audio = document.createElement('audio');
+            audio.src = attachment.url;
+            audio.controls = true;
+            audio.preload = 'metadata';
+            audio.title = title;
+            figure.appendChild(audio);
+        } else {
+            const img = document.createElement('img');
+            img.src = attachment.url;
+            img.alt = title || 'Uploaded image';
+            img.loading = 'lazy';
+            figure.appendChild(img);
+        }
+
+        if (title) {
+            const caption = document.createElement('figcaption');
+            caption.textContent = title;
+            figure.appendChild(caption);
+        }
+
+        wrapper.appendChild(figure);
+    });
+
+    files.forEach((file) => {
+        const link = document.createElement('a');
+        link.className = 'sb-conversation-file-attachment';
+        link.href = file.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.download = file.name || '';
+
+        const icon = document.createElement('span');
+        icon.className = 'fa-solid fa-file-lines';
+        icon.setAttribute('aria-hidden', 'true');
+
+        const copy = document.createElement('span');
+        copy.className = 'sb-conversation-file-copy';
+        const name = document.createElement('span');
+        name.className = 'sb-conversation-file-name';
+        name.textContent = file.name || 'Attached file';
+        const size = document.createElement('span');
+        size.className = 'sb-conversation-file-size';
+        size.textContent = formatConversationFileSize(file.size);
+        copy.append(name, size);
+
+        link.append(icon, copy);
+        wrapper.appendChild(link);
+    });
+
+    container.appendChild(wrapper);
+}
+
 function formatPromptText(value, maxLength = 1400) {
     return String(value || '')
         .replace(/<[^>]*>/g, ' ')
@@ -2100,7 +2271,13 @@ function formatPromptText(value, maxLength = 1400) {
 function formatConversationTranscript(messages) {
     return messages
         .slice(-TRANSCRIPT_MESSAGE_LIMIT)
-        .map(message => `${message.name || 'Speaker'}: ${formatPromptText(message.mes, 1800)}`)
+        .map(message => {
+            const parts = [
+                formatPromptText(message.mes, 1800),
+                getConversationAttachmentSummary(message),
+            ].filter(Boolean);
+            return parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : '';
+        })
         .filter(Boolean)
         .join('\n');
 }
@@ -2265,13 +2442,13 @@ async function generateConversationReply(directive, settings, { responseLength =
         `${speakerName}:`,
     ].join('\n\n');
 
-    return generateRaw({
+    return withConversationConnectionProfile(settings, () => generateRaw({
         prompt,
         systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar }),
         responseLength,
         trimNames,
         cacheScope: 'conversation-mode',
-    });
+    }));
 }
 
 function editConversationMessage(messageId) {
@@ -2588,6 +2765,7 @@ function renderConversationTimeline() {
         text.className = 'sb-conversation-message-text';
         if (message.mes) {
             text.innerHTML = messageFormatting(message.mes, message.name, false, message.role === 'user', index, {}, false);
+            highlightConversationMentions(text, avatar);
         }
 
         const imageUrl = message.extra?.image_url;
@@ -2602,8 +2780,9 @@ function renderConversationTimeline() {
             text.appendChild(figure);
         }
 
+        renderConversationAttachments(text, message);
+
         bubble.append(meta, text);
-        void renderCompanionResultsForConversationMessage(message, bubble);
         item.append(avatarWrap, bubble);
         timeline.appendChild(item);
     });
@@ -2705,12 +2884,21 @@ function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters 
         const charAvatar = character.avatar;
         const checked = selectedSet.has(charAvatar) ? ' checked' : '';
         const thumbUrl = getThumbnailUrl('avatar', charAvatar);
+        const profileOptions = buildConnectionProfileOptions(getSettings(charAvatar).connection_profile);
         rows.push(`
-            <label class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
-                <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
-                <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
-                <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
-            </label>
+            <div class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
+                <label class="sb-conversation-partner-pick">
+                    <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
+                    <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
+                    <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
+                </label>
+                <label class="sb-conversation-partner-profile-wrap" title="Connection profile for ${escapeHtmlAttribute(charName)}">
+                    <span class="sr-only">${escapeHtmlText(charName)} connection profile</span>
+                    <select class="text_pole textarea_compact sb-conversation-partner-profile" data-partner-avatar="${escapeHtmlAttribute(charAvatar)}">
+                        ${profileOptions}
+                    </select>
+                </label>
+            </div>
         `);
     });
     if (!rows.length) {
@@ -2729,6 +2917,87 @@ function escapeHtmlAttribute(value) {
 
 function escapeHtmlText(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getConversationMentionTargets(avatar = getCurrentCharAvatar()) {
+    if (!avatar) {
+        return [];
+    }
+
+    return getConversationParticipants(avatar, getSettings(avatar))
+        .filter(character => character?.avatar && character.name);
+}
+
+function collectMentionTextNodes(node, nodes = []) {
+    if (!node) {
+        return nodes;
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        if (node.nodeValue?.includes('@')) {
+            nodes.push(node);
+        }
+        return nodes;
+    }
+
+    if (node instanceof HTMLElement && node.matches('a, code, pre, .sb-conversation-mention')) {
+        return nodes;
+    }
+
+    node.childNodes.forEach(child => collectMentionTextNodes(child, nodes));
+    return nodes;
+}
+
+function highlightConversationMentions(container, avatar = getCurrentCharAvatar()) {
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const handles = [];
+    for (const character of getConversationMentionTargets(avatar)) {
+        for (const handle of getCharacterMentionHandles(character)) {
+            if (!handles.includes(handle)) {
+                handles.push(handle);
+            }
+        }
+    }
+
+    if (!handles.length) {
+        return;
+    }
+
+    const mentionRe = new RegExp(`(^|[^a-z0-9_])(${handles.sort((left, right) => right.length - left.length).map(escapeRegExp).join('|')})(?=$|[^a-z0-9_])`, 'gi');
+    for (const textNode of collectMentionTextNodes(container)) {
+        const value = textNode.nodeValue || '';
+        mentionRe.lastIndex = 0;
+        if (!mentionRe.test(value)) {
+            continue;
+        }
+
+        mentionRe.lastIndex = 0;
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        let match;
+        while ((match = mentionRe.exec(value)) !== null) {
+            const prefix = match[1] || '';
+            const mention = match[2] || '';
+            const mentionStart = match.index + prefix.length;
+            if (mentionStart > lastIndex) {
+                fragment.appendChild(document.createTextNode(value.slice(lastIndex, mentionStart)));
+            }
+
+            const tag = document.createElement('span');
+            tag.className = 'sb-conversation-mention';
+            tag.textContent = mention;
+            fragment.appendChild(tag);
+            lastIndex = mentionStart + mention.length;
+        }
+
+        if (lastIndex < value.length) {
+            fragment.appendChild(document.createTextNode(value.slice(lastIndex)));
+        }
+        textNode.parentNode?.replaceChild(fragment, textNode);
+    }
 }
 
 function buildSettingsDrawerHtml() {
@@ -2868,7 +3137,7 @@ function buildSettingsDrawerHtml() {
                 </label>
                 <div class="sb-conversation-field-stack">
                     <label>Group DM Members</label>
-                    <p class="sb-conversation-field-hint">Selected characters are considered part of this Conversation thread. Mentions and autonomous character-to-character chat use this same group list.</p>
+                    <p class="sb-conversation-field-hint">Selected characters are considered part of this Conversation thread. Type @Name, such as @Kaveh, to tag them. Autonomous character-to-character chat uses this same group list.</p>
                     <input type="text" id="sb_conv_multi_char_search" class="text_pole textarea_compact wide100p" placeholder="Search group members..." style="margin-bottom: 8px;" />
                     <div class="sb-conversation-partner-list" id="sb_conv_chiming_partner_list">${buildChimingPartnerOptions(settings.multi_char_names)}</div>
                     <input id="sb_conv_multi_char_names" type="hidden" value="${escapeHtmlAttribute(settings.multi_char_names)}" />
@@ -2876,6 +3145,11 @@ function buildSettingsDrawerHtml() {
                 <label class="checkbox_label" title="Allow enabled characters to chat with each other autonomously in this thread">
                     <input id="sb_conv_auto_character_chat" type="checkbox" />
                     <span>Allow characters to talk to each other</span>
+                </label>
+                <label class="checkbox_label sb-conversation-inline-number" title="Minimum time between autonomous character-to-character messages in this Conversation thread">
+                    <span>Character chat cooldown</span>
+                    <input id="sb_conv_auto_chat_cooldown" class="text_pole textarea_compact widthUnset" type="number" min="1" max="1440" step="1" value="${DEFAULT_AUTO_CHAT_COOLDOWN}" />
+                    <span class="auto_mode_delay_unit">mins</span>
                 </label>
                 <label class="checkbox_label" title="Allow this character to privately react to the current roleplay or group chat">
                     <input id="sb_conv_roleplay_reactions" type="checkbox" />
@@ -2994,7 +3268,12 @@ function ensureConversationChrome() {
             <form id="${CHROME_IDS.form}" class="sb-conversation-composer">
                 <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
                 <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Message this character outside roleplay..."></textarea>
+                <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-actions">
+                    <button id="${CHROME_IDS.attach}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="attach-file" title="Attach images or files" aria-label="Attach images or files">
+                        <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+                    </button>
+                    <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" multiple aria-label="Conversation attachments" />
                     <button id="${CHROME_IDS.send}" type="submit" class="menu_button menu_button_icon" title="Send Conversation message" aria-label="Send Conversation message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                         <span>Send</span>
@@ -3133,7 +3412,14 @@ function formatScheduleTimestamp(timestamp) {
     }
 }
 
-function openScheduleEditorModal(schedule) {
+function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) {
+    const targets = getScheduleEditorTargets(initialAvatar);
+    let editAvatar = targets.some(target => target.avatar === initialAvatar) ? initialAvatar : targets[0]?.avatar;
+    if (!editAvatar) {
+        toastr.warning('No character available for schedule editing.');
+        return;
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'sb_conversation_schedule_modal';
     overlay.className = 'sb-conversation-schedule-modal-overlay';
@@ -3149,17 +3435,43 @@ function openScheduleEditorModal(schedule) {
         padding: 20px;
     `;
 
-    const editedSchedule = JSON.parse(JSON.stringify(schedule || {
-        days: { '0': [], '1': [], '2': [], '3': [], '4': [], '5': [], '6': [] },
-        talkativeness: 50,
-        inactivityThresholdMinutes: 120,
-    }));
+    function createEditableSchedule(schedule) {
+        const editable = JSON.parse(JSON.stringify(schedule || {
+            days: { '0': [], '1': [], '2': [], '3': [], '4': [], '5': [], '6': [] },
+            talkativeness: DEFAULT_TALKATIVENESS,
+            inactivityThresholdMinutes: DEFAULT_INACTIVITY_THRESHOLD,
+        }));
 
-    for (let d = 0; d <= 6; d++) {
-        if (!editedSchedule.days[String(d)]) {
-            editedSchedule.days[String(d)] = [];
+        if (!editable.days || typeof editable.days !== 'object') {
+            editable.days = {};
         }
+
+        for (let d = 0; d <= 6; d++) {
+            if (!Array.isArray(editable.days[String(d)])) {
+                editable.days[String(d)] = [];
+            }
+        }
+
+        editable.talkativeness = clamp(parsePositiveInt(editable.talkativeness, DEFAULT_TALKATIVENESS, 0), 0, 100);
+        editable.inactivityThresholdMinutes = clamp(
+            parsePositiveInt(editable.inactivityThresholdMinutes, DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
+            MIN_INACTIVITY_THRESHOLD,
+            MAX_INACTIVITY_THRESHOLD,
+        );
+
+        return editable;
     }
+
+    const editedSchedulesByAvatar = new Map();
+    const getEditedSchedule = (avatar) => {
+        if (!editedSchedulesByAvatar.has(avatar)) {
+            editedSchedulesByAvatar.set(avatar, createEditableSchedule(getStoredSchedule(avatar)));
+        }
+
+        return editedSchedulesByAvatar.get(avatar);
+    };
+
+    let editedSchedule = getEditedSchedule(editAvatar);
 
     let currentTabDay = new Date().getDay();
 
@@ -3253,10 +3565,22 @@ function openScheduleEditorModal(schedule) {
         }
     }
 
+    const targetOptionsHtml = targets.map((target) => {
+        const source = target.sourceLabel ? ` (${target.sourceLabel})` : '';
+        return `<option value="${escapeHtmlAttribute(target.avatar)}"${target.avatar === editAvatar ? ' selected' : ''}>${escapeHtmlText(target.name + source)}</option>`;
+    }).join('');
+
     modal.innerHTML = `
         <div class="sb-conversation-schedule-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--sb-shell-border);">
             <span style="font-weight: var(--sb-weight-title); font-size: 1.1em;"><i class="fa-solid fa-calendar-days" style="color: var(--sb-accent); margin-right: 8px;"></i>Edit Weekly Routine</span>
             <button type="button" class="menu_button menu_button_icon sb-schedule-modal-close" style="padding: 4px 8px;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="sb-schedule-modal-target" style="display: grid; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--sb-shell-border); background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);">
+            <label for="sb_schedule_modal_target" style="font-size: var(--sb-type-meta); font-weight: var(--sb-weight-control); opacity: 0.82;">Editing schedule for</label>
+            <select id="sb_schedule_modal_target" class="text_pole textarea_compact wide100p"${targets.length <= 1 ? ' disabled' : ''}>
+                ${targetOptionsHtml}
+            </select>
+            <p class="sb-conversation-field-hint" style="margin: 0;">Conversation members and current group-chat members use their own character-card schedules.</p>
         </div>
         <div class="sb-conversation-schedule-modal-tabs" style="display: flex; gap: 4px; padding: 10px 20px; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--sb-shell-border); overflow-x: auto;">
             ${WEEKDAY_LABELS.map((day, idx) => `
@@ -3306,7 +3630,39 @@ function openScheduleEditorModal(schedule) {
         });
         updateModalBody();
     }
+
+    function syncScheduleMetaInputs() {
+        const talkInput = modal.querySelector('.sb-schedule-modal-talkativeness');
+        if (talkInput instanceof HTMLInputElement) {
+            talkInput.value = String(editedSchedule.talkativeness ?? DEFAULT_TALKATIVENESS);
+        }
+
+        const patienceInput = modal.querySelector('.sb-schedule-modal-patience');
+        if (patienceInput instanceof HTMLInputElement) {
+            patienceInput.value = String(editedSchedule.inactivityThresholdMinutes ?? DEFAULT_INACTIVITY_THRESHOLD);
+        }
+    }
+
+    function selectScheduleTarget(nextAvatar) {
+        if (!nextAvatar || nextAvatar === editAvatar || !targets.some(target => target.avatar === nextAvatar)) {
+            return;
+        }
+
+        editAvatar = nextAvatar;
+        editedSchedule = getEditedSchedule(editAvatar);
+        syncScheduleMetaInputs();
+        selectDayTab(currentTabDay);
+    }
+
+    syncScheduleMetaInputs();
     selectDayTab(currentTabDay);
+
+    const targetSelect = modal.querySelector('#sb_schedule_modal_target');
+    if (targetSelect instanceof HTMLSelectElement) {
+        targetSelect.addEventListener('change', () => {
+            selectScheduleTarget(targetSelect.value);
+        });
+    }
 
     modal.querySelectorAll('.sb-schedule-modal-tab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -3347,7 +3703,6 @@ function openScheduleEditorModal(schedule) {
     });
 
     saveBtn?.addEventListener('click', () => {
-        const editAvatar = getCurrentCharAvatar();
         if (!editAvatar) {
             closeModal();
             return;
@@ -3372,7 +3727,7 @@ function openScheduleEditorModal(schedule) {
             normalizedBlocks.sort((x, y) => {
                 const xr = parseScheduleTimeRange(x.time);
                 const yr = parseScheduleTimeRange(y.time);
-                return xr.startMinutes - yr.startMinutes;
+                return (xr?.startMinutes ?? Number.MAX_SAFE_INTEGER) - (yr?.startMinutes ?? Number.MAX_SAFE_INTEGER);
             });
             normalized.days[String(d)] = normalizedBlocks;
         }
@@ -3384,10 +3739,15 @@ function openScheduleEditorModal(schedule) {
         editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
         editSettings.schedule_generated_at = normalized.generatedAt;
         saveSettings(editAvatar, editSettings);
-        applySettingsToPanel(editSettings);
-        renderScheduleDisplay();
-        updateConversationChrome(editSettings);
-        toastr.success('Schedule saved successfully.');
+        if (editAvatar === getCurrentCharAvatar()) {
+            applySettingsToPanel(editSettings);
+            renderScheduleDisplay();
+            updateConversationChrome(editSettings);
+        } else {
+            updateConversationChrome(getSettings());
+        }
+        const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
+        toastr.success(`Schedule saved for ${targetName}.`);
         closeModal();
     });
 }
@@ -3577,6 +3937,17 @@ function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
 }
 
+function saveConversationPartnerConnectionProfile(select) {
+    const partnerAvatar = select?.dataset?.partnerAvatar;
+    if (!partnerAvatar) {
+        return;
+    }
+
+    const settings = getSettings(partnerAvatar);
+    settings.connection_profile = select.value || '';
+    saveSettings(partnerAvatar, settings);
+}
+
 function updateUserFooter() {
     const footer = document.getElementById(CHROME_IDS.railFooter);
     if (!(footer instanceof HTMLElement)) {
@@ -3725,7 +4096,16 @@ function bindPartnerList(listId, searchId) {
     }
 
     list.dataset.sbConversationBound = 'true';
-    list.addEventListener('change', saveCurrentPanelSettings);
+    list.addEventListener('change', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const profileSelect = target?.closest('.sb-conversation-partner-profile');
+        if (profileSelect instanceof HTMLSelectElement) {
+            saveConversationPartnerConnectionProfile(profileSelect);
+            return;
+        }
+
+        saveCurrentPanelSettings();
+    });
 
     const searchInput = document.getElementById(searchId);
     if (searchInput instanceof HTMLInputElement) {
@@ -3816,10 +4196,13 @@ function bindConversationChromeControls(sheld) {
         }
 
         if (target.classList.contains('sb-conversation-pal')) {
-            const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
-            if (index >= 0) {
+            const avatar = target.dataset.avatar || characters[parsePositiveInt(target.dataset.characterIndex, -1, 0)]?.avatar;
+            if (avatar) {
                 closePalsRail();
-                await selectCharacterById(index, { switchMenu: false });
+                openConversationWorkspaceForAvatar(avatar, {
+                    groupId: getConversationGroupIdForAvatar(avatar),
+                    showToast: false,
+                });
             }
             return;
         }
@@ -3846,6 +4229,16 @@ function bindConversationChromeControls(sheld) {
             case 'open-add-dm':
                 toggleAddDmPicker();
                 break;
+            case 'attach-file': {
+                const fileInput = document.getElementById(CHROME_IDS.fileInput);
+                if (fileInput instanceof HTMLInputElement) {
+                    fileInput.click();
+                }
+                break;
+            }
+            case 'clear-attachments':
+                clearConversationAttachmentInput();
+                break;
             case 'stop-image-generation':
                 imageGenerationAbortController?.abort?.();
                 imageGenerationActive = false;
@@ -3853,51 +4246,6 @@ function bindConversationChromeControls(sheld) {
                 renderConversationTimeline();
                 toastr.info('Image generation stopped.');
                 break;
-            case 'regenerate-companion': {
-                const avatar = getCurrentCharAvatar();
-                const messageId = target.dataset.messageId;
-                const agentId = target.dataset.agentId;
-                if (avatar && messageId && agentId) {
-                    toastr.info('Regenerating companion note...');
-                    await runSingleCompanionOnConversationMessage(avatar, messageId, agentId);
-                }
-                break;
-            }
-            case 'copy-companion': {
-                const card = target.closest('.ica--companion-card');
-                const body = card?.querySelector('.ica--companion-body');
-                if (body) {
-                    const text = body.textContent.trim();
-                    if (navigator.clipboard?.writeText) {
-                        await navigator.clipboard.writeText(text);
-                        toastr.success('Copied companion note to clipboard.');
-                    }
-                }
-                break;
-            }
-            case 'delete-companion': {
-                const avatar = getCurrentCharAvatar();
-                const messageId = target.dataset.messageId;
-                const agentId = target.dataset.agentId;
-                if (avatar && messageId && agentId) {
-                    const confirmed = typeof globalThis.confirm === 'function'
-                        ? globalThis.confirm('Delete this companion note?')
-                        : true;
-                    if (confirmed) {
-                        const messages = getConversationThread(avatar);
-                        const message = messages.find(m => m.id === messageId);
-                        if (message?.extra?.[COMPANION_RESULTS_EXTRA_KEY]) {
-                            delete message.extra[COMPANION_RESULTS_EXTRA_KEY][agentId];
-                            if (Object.keys(message.extra[COMPANION_RESULTS_EXTRA_KEY]).length === 0) {
-                                delete message.extra[COMPANION_RESULTS_EXTRA_KEY];
-                            }
-                            updateConversationThreadMessage(avatar, messageId, message.mes, message.extra);
-                            toastr.success('Deleted companion note.');
-                        }
-                    }
-                }
-                break;
-            }
             case 'add-character-dm': {
                 const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
                 if (index >= 0) {
@@ -3917,8 +4265,10 @@ function bindConversationChromeControls(sheld) {
                         }
                         document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
                         closePalsRail();
-                        await selectCharacterById(index, { switchMenu: false });
-                        openConversationWorkspaceForCurrentCharacter({ showToast: false });
+                        openConversationWorkspaceForAvatar(char.avatar, {
+                            groupId: getConversationGroupIdForAvatar(char.avatar),
+                            showToast: false,
+                        });
                         renderPalsRail();
                         setTimeout(() => {
                             const input = document.getElementById(CHROME_IDS.input);
@@ -3933,13 +4283,12 @@ function bindConversationChromeControls(sheld) {
             case 'select-branch': {
                 const avatar = target.dataset.avatar;
                 const branchId = target.dataset.branchId;
-                const index = getCharacterIndexForAvatar(avatar);
                 if (avatar && branchId) {
                     setActiveConversationBranch(avatar, branchId);
-                    conversationWorkspaceOpen = true;
-                    if (index >= 0) {
-                        await selectCharacterById(index, { switchMenu: false });
-                    }
+                    openConversationWorkspaceForAvatar(avatar, {
+                        groupId: getConversationGroupIdForAvatar(avatar),
+                        showToast: false,
+                    });
                     refreshConversationInterface({ syncControls: false });
                     document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 }
@@ -3954,11 +4303,10 @@ function bindConversationChromeControls(sheld) {
                 const fallbackName = `Chat ${getConversationBranches(avatar).length + 1}`;
                 const name = globalThis.prompt?.(`Name this Conversation branch for ${character?.name || 'this character'}`, fallbackName) || fallbackName;
                 createConversationBranchForAvatar(avatar, name);
-                const index = getCharacterIndexForAvatar(avatar);
-                conversationWorkspaceOpen = true;
-                if (index >= 0) {
-                    await selectCharacterById(index, { switchMenu: false });
-                }
+                openConversationWorkspaceForAvatar(avatar, {
+                    groupId: getConversationGroupIdForAvatar(avatar),
+                    showToast: false,
+                });
                 refreshConversationInterface({ syncControls: false });
                 document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 break;
@@ -4023,7 +4371,7 @@ function bindConversationChromeControls(sheld) {
                         const remainingPals = getConversationPals();
                         if (remainingPals.length > 0) {
                             const nextPal = remainingPals[0];
-                            await selectCharacterById(nextPal.index, { switchMenu: false });
+                            openConversationWorkspaceForAvatar(nextPal.character.avatar, { showToast: false });
                             renderConversationTimeline();
                             refreshConversationInterface({ syncControls: true });
                         } else {
@@ -4058,8 +4406,8 @@ function bindConversationChromeControls(sheld) {
                 break;
             case 'edit-schedule': {
                 const avatar = getCurrentCharAvatar();
-                if (avatar) {
-                    openScheduleEditorModal(getStoredSchedule(avatar));
+                if (avatar || getCurrentGroupConversationMembers().length) {
+                    openScheduleEditorModal(avatar);
                 }
                 break;
             }
@@ -4177,6 +4525,12 @@ function bindConversationChromeControls(sheld) {
         });
     }
 
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (fileInput instanceof HTMLInputElement && fileInput.dataset.sbConversationBound !== 'true') {
+        fileInput.dataset.sbConversationBound = 'true';
+        fileInput.addEventListener('change', updateConversationAttachmentPreview);
+    }
+
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
         drawer.dataset.sbConversationBound = 'true';
@@ -4236,55 +4590,80 @@ function bindConversationChromeControls(sheld) {
             updateUserFooter();
         });
     }
-
-    sheld.addEventListener('toggle', (event) => {
-        if (event.target instanceof HTMLElement && event.target.classList.contains('ica--companion-card')) {
-            const details = event.target;
-            const avatar = getCurrentCharAvatar();
-            const messageId = details.closest('.sb-conversation-message')?.dataset.messageId;
-            const agentId = details.dataset.agentId;
-            if (avatar && messageId && agentId) {
-                const messages = getConversationThread(avatar);
-                const message = messages.find(m => m.id === messageId);
-                if (message?.extra?.[COMPANION_RESULTS_EXTRA_KEY]?.[agentId]) {
-                    message.extra[COMPANION_RESULTS_EXTRA_KEY][agentId].collapsed = !details.open;
-                    saveConversationThread(avatar, messages);
-                    updateLastPreviewFromConversation(avatar);
-                }
-            }
-        }
-    }, true);
 }
 
-function openConversationWorkspaceForCurrentCharacter({ showToast = true } = {}) {
-    const avatar = getCurrentCharAvatar();
+function getDefaultConversationAvatar() {
+    const group = getConversationGroupById(selected_group);
+    const groupAvatar = group?.members
+        ?.filter(avatar => avatar && !group.disabled_members?.includes(avatar))
+        ?.find(avatar => getCharacterForAvatar(avatar));
+    if (selected_group && groupAvatar) {
+        return groupAvatar;
+    }
+
+    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
+    if (currentAvatar) {
+        return currentAvatar;
+    }
+
+    const pal = getConversationPals().find(item => item.character?.avatar);
+    if (pal?.character?.avatar) {
+        return pal.character.avatar;
+    }
+
+    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar)?.avatar || null;
+}
+
+export function openConversationWorkspaceForAvatar(avatar, { groupId = null, showToast = true } = {}) {
+    const character = avatar ? getCharacterForAvatar(avatar) : null;
+    const targetAvatar = character?.avatar || null;
+    const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
     conversationWorkspaceOpen = true;
-    if (!avatar) {
+    conversationSelectedAvatar = targetAvatar;
+    conversationSelectedGroupId = targetGroupId;
+
+    if (!targetAvatar) {
         refreshConversationInterface({ syncControls: false });
         setTimeout(() => {
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
         }, 100);
-        return;
+        return false;
     }
 
-    const settings = getSettings(avatar);
+    const settings = getSettings(targetAvatar);
     const wasEnabled = Boolean(settings.enabled);
     settings.enabled = true;
-    saveSettings(avatar, settings);
+    saveSettings(targetAvatar, settings);
     applySettingsToPanel(settings);
     refreshConversationInterface({ syncControls: true });
     if (showToast && !wasEnabled) {
-        toastr.info(`Conversation Mode activated for ${getCurrentCharName()}.`);
+        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
     setTimeout(() => {
         document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
     }, 100);
+    return true;
 }
 
-function disableConversationModeForCurrentCharacter() {
+export function openConversationWorkspaceFromWelcome() {
+    const avatar = conversationSelectedAvatar || getDefaultConversationAvatar();
+    const groupId = selected_group && avatar && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
+    if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
+        toastr.warning('Pick or import a character before opening Conversation Mode.');
+        return false;
+    }
+
+    return true;
+}
+
+function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
     conversationWorkspaceOpen = false;
+    conversationSelectedAvatar = null;
+    conversationSelectedGroupId = null;
     refreshConversationInterface({ syncControls: false });
-    document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
+    if (focusRoleplay) {
+        document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
+    }
 }
 
 function getSelectedConnectionProfileName() {
@@ -4376,8 +4755,9 @@ function renderPalsRail() {
         button.type = 'button';
         button.className = 'sb-conversation-pal';
         button.dataset.characterIndex = String(index);
+        button.dataset.avatar = character.avatar;
         button.dataset.unread = String(unreadCount > 0);
-        button.setAttribute('aria-current', String(!selected_group && Number(this_chid) === index));
+        button.setAttribute('aria-current', String(conversationWorkspaceOpen && getCurrentCharAvatar() === character.avatar));
         button.innerHTML = `
             <span class="sb-conversation-pal-avatar"></span>
             <span class="sb-conversation-pal-copy">
@@ -4415,7 +4795,7 @@ function renderPalsRail() {
             unreadBadge.hidden = unreadCount <= 0;
         }
 
-        const characterStore = getCharacterConversationStore(character.avatar, { create: false });
+        const characterStore = getConversationThreadStore(character.avatar, { create: false });
         const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
         const branchList = document.createElement('div');
         branchList.className = 'sb-conversation-branch-list';
@@ -4538,7 +4918,7 @@ function refreshConversationInterface({ syncControls = false } = {}) {
         settings.enabled = true;
         saveSettings(avatar, settings);
     }
-    const active = Boolean(conversationWorkspaceOpen && !selected_group);
+    const active = Boolean(conversationWorkspaceOpen);
 
     setConversationInterfaceActive(active);
 
@@ -4694,6 +5074,94 @@ async function handleCharacterMessagePolish(messageId, buttonElement) {
     }
 }
 
+function getConversationPendingFiles() {
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) {
+        return [];
+    }
+
+    return Array.from(fileInput.files);
+}
+
+function updateConversationAttachmentPreview() {
+    const preview = document.getElementById(CHROME_IDS.attachmentPreview);
+    if (!(preview instanceof HTMLElement)) {
+        return;
+    }
+
+    const files = getConversationPendingFiles();
+    if (!files.length) {
+        preview.hidden = true;
+        preview.textContent = '';
+        return;
+    }
+
+    const fileRows = files.slice(0, 4).map((file) => {
+        const size = formatConversationFileSize(file.size);
+        return `<span class="sb-conversation-attachment-pill"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span>${escapeHtmlText(file.name)}</span>${size ? `<small>${escapeHtmlText(size)}</small>` : ''}</span>`;
+    });
+    if (files.length > 4) {
+        fileRows.push(`<span class="sb-conversation-attachment-pill">+${files.length - 4} more</span>`);
+    }
+
+    preview.innerHTML = `
+        <div class="sb-conversation-attachment-list">${fileRows.join('')}</div>
+        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="clear-attachments" title="Clear attachments" aria-label="Clear attachments">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+    `;
+    preview.hidden = false;
+}
+
+function clearConversationAttachmentInput() {
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (fileInput instanceof HTMLInputElement) {
+        fileInput.value = '';
+    }
+    updateConversationAttachmentPreview();
+}
+
+async function populateConversationUserAttachments(messageInput) {
+    if (!getConversationPendingFiles().length) {
+        return;
+    }
+
+    const { populateFileAttachment } = await import('./chats.js');
+    await populateFileAttachment(messageInput, CHROME_IDS.fileInput);
+    if (getConversationMediaAttachments(messageInput).length) {
+        messageInput.extra.media_display = 'list';
+        messageInput.extra.inline_image = true;
+    }
+}
+
+async function buildConversationAttachmentPromptContext(messageInput, visibleText) {
+    const summary = getConversationAttachmentSummary(messageInput);
+    if (!summary) {
+        return '';
+    }
+
+    const parts = [summary];
+    if (getConversationFileAttachments(messageInput).length) {
+        try {
+            const { appendFileContent } = await import('./chats.js');
+            const promptMessage = {
+                ...messageInput,
+                extra: { ...messageInput.extra },
+            };
+            const filePromptText = await appendFileContent(promptMessage, visibleText || '');
+            const cleanPromptText = formatPromptText(filePromptText, 2800);
+            const cleanVisibleText = formatPromptText(visibleText || '', 2800);
+            if (cleanPromptText && cleanPromptText !== cleanVisibleText) {
+                parts.push(`Attached file text: ${cleanPromptText}`);
+            }
+        } catch (error) {
+            console.warn('Conversation Mode: could not read attachment text for prompt context', error);
+        }
+    }
+
+    return parts.join('\n');
+}
+
 function focusConversationInput() {
     const input = document.getElementById(CHROME_IDS.input);
     if (input instanceof HTMLTextAreaElement && !input.disabled) {
@@ -4716,7 +5184,7 @@ async function waitForAutoWorker() {
 
 async function processQueuedConversationReply(queueItem) {
     const avatar = queueItem?.avatar;
-    if (!avatar || selected_group || is_send_press) {
+    if (!avatar || is_send_press) {
         return;
     }
 
@@ -4739,14 +5207,18 @@ async function processQueuedConversationReply(queueItem) {
     try {
         const character = getCharacterForAvatar(avatar);
         const speakerName = character?.name || getCurrentCharName();
-        const partnerChimePromise = settings.multi_char
+        const partnerChimePromise = settings.multi_char_names
             ? checkMultiCharacterChime(avatar, settings, Date.now()).catch((error) => {
                 console.error('Conversation partner chime error:', error);
                 return false;
             })
             : Promise.resolve(false);
+        const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
         const response = await generateConversationReply(
-            '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]',
+            [
+                '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]',
+                attachmentContext ? `Latest user attachment context:\n${attachmentContext}` : '',
+            ].filter(Boolean).join('\n\n'),
             settings,
             { avatar, speakerName },
         );
@@ -4818,7 +5290,7 @@ async function processSendQueue() {
 }
 
 async function submitConversationInput() {
-    if (selected_group || is_send_press) {
+    if (is_send_press || conversationUploadActive) {
         return;
     }
 
@@ -4830,27 +5302,75 @@ async function submitConversationInput() {
     const avatar = getCurrentCharAvatar();
     const settings = getSettings(avatar);
     const text = input.value.trim();
-    if (!avatar || !settings.enabled || !text) {
+    const pendingFiles = getConversationPendingFiles();
+    if (!avatar || !settings.enabled || (!text && !pendingFiles.length)) {
         return;
     }
 
-    input.value = '';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    for (const messageText of splitChatroomMessages(text)) {
-        appendConversationThreadMessage(avatar, {
-            role: 'user',
-            name: name1 || 'You',
-            mes: messageText,
-            extra: {
-                conversation_mode_user: true,
-            },
-        });
+    conversationUploadActive = true;
+    const sendButton = document.getElementById(CHROME_IDS.send);
+    if (sendButton instanceof HTMLButtonElement) {
+        sendButton.disabled = true;
     }
-    updateLastUserActivity(avatar);
-    refreshConversationInterface({ syncControls: false });
 
-    sendQueue.push({ avatar, text, createdAt: Date.now() });
-    void processSendQueue();
+    try {
+        const userName = name1 || 'You';
+        const hasAttachments = pendingFiles.length > 0;
+        const attachmentContextParts = [];
+
+        if (hasAttachments) {
+            const messageInput = {
+                role: 'user',
+                name: userName,
+                mes: text,
+                extra: {
+                    conversation_mode_user: true,
+                },
+            };
+            await populateConversationUserAttachments(messageInput);
+            const attachmentContext = await buildConversationAttachmentPromptContext(messageInput, text);
+            if (attachmentContext) {
+                attachmentContextParts.push(attachmentContext);
+            }
+            if (!String(messageInput.mes || '').trim() && !getConversationMediaAttachments(messageInput).length && !getConversationFileAttachments(messageInput).length) {
+                toastr.warning('No attachments were added. Try a different file.');
+                return;
+            }
+
+            appendConversationThreadMessage(avatar, messageInput);
+        } else {
+            for (const messageText of splitChatroomMessages(text)) {
+                appendConversationThreadMessage(avatar, {
+                    role: 'user',
+                    name: userName,
+                    mes: messageText,
+                    extra: {
+                        conversation_mode_user: true,
+                    },
+                });
+            }
+        }
+
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        clearConversationAttachmentInput();
+        updateLastUserActivity(avatar);
+        refreshConversationInterface({ syncControls: false });
+
+        const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
+        sendQueue.push({
+            avatar,
+            text: queuedText,
+            attachmentContext: attachmentContextParts.join('\n'),
+            createdAt: Date.now(),
+        });
+        void processSendQueue();
+    } finally {
+        conversationUploadActive = false;
+        if (sendButton instanceof HTMLButtonElement) {
+            sendButton.disabled = false;
+        }
+    }
 }
 
 async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {} } = {}, avatar = getCurrentCharAvatar()) {
@@ -4858,6 +5378,7 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
         return null;
     }
 
+    const groupId = getConversationGroupIdForAvatar(avatar);
     const message = appendConversationThreadMessage(avatar, {
         role,
         name,
@@ -4878,12 +5399,8 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
         renderPalsRail();
     }
 
-    notifyNewConversationMessage(avatar, message, shouldNotify);
+    notifyNewConversationMessage(avatar, message, shouldNotify, { groupId });
     scheduleConversationMemorySummary(avatar);
-
-    if (!['user', 'system'].includes(role) && message) {
-        void runCompanionsOnConversationMessage(avatar, message.id);
-    }
 
     return message;
 }
@@ -4921,7 +5438,7 @@ async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAv
 
 async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar()) {
     const character = getCharacterForAvatar(avatar);
-    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press || !character || !avatar) {
+    if (autoWorkerBusy || conversationReplyBusy || is_send_press || !character || !avatar) {
         return false;
     }
 
@@ -5319,11 +5836,15 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
 }
 
 async function checkMultiCharacterChime(avatar, settings, now) {
-    if (!settings.multi_char || !settings.multi_char_names) {
+    if (!settings.multi_char_names) {
         return false;
     }
 
     const mentionedPartner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names);
+    if (!settings.multi_char && !mentionedPartner) {
+        return false;
+    }
+
     const lastUserActivity = getLastUserActivity(avatar, now);
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
@@ -5336,7 +5857,9 @@ async function checkMultiCharacterChime(avatar, settings, now) {
         return false;
     }
 
-    const triggered = await triggerMultiCharacterChime(settings, avatar);
+    const triggered = !settings.multi_char && mentionedPartner
+        ? await triggerConversationPartnerChime(mentionedPartner, settings, avatar)
+        : await triggerMultiCharacterChime(settings, avatar);
     if (triggered) {
         setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
         setLastAutoMessageTime(avatar, now);
@@ -5368,7 +5891,11 @@ async function triggerAutoCharacterChat(avatar, settings) {
 
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
-        const directive = `[System directive: You are ${partnerName}, messaging ${charName} in a private group DM. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). Continue the casual conversation or start a friendly new topic with one short, natural message. Output only your message body, without a name prefix.]`;
+        const otherMembers = [character, ...getAllowedPartnerCharacters(settings.multi_char_names, avatar)]
+            .filter(member => member?.avatar && member.avatar !== partner.avatar);
+        const target = otherMembers.length ? otherMembers[Math.floor(Math.random() * otherMembers.length)] : character;
+        const targetName = target?.name || charName;
+        const directive = `[System directive: You are ${partnerName}, speaking autonomously in a private group DM. Aim this message at ${targetName}, not the user, unless the user is directly relevant. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). This is character-to-character ambient chat, so continue the casual conversation or start a friendly new topic with one short, natural message. Other people may reply later. Output only your message body, without a name prefix.]`;
         const response = await generateConversationReply(directive, partnerSettings, {
             responseLength: 150,
             trimNames: false,
@@ -5399,21 +5926,15 @@ async function checkAutoCharacterChat(avatar, settings, now) {
         return false;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, now);
-    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
-
-    if (idleMinutes < Math.max(1, settings.idle_limit / 3)) {
-        return false;
-    }
-
-    const sessionKey = LAST_AUTO_CHAT_SESSION_PREFIX;
-    if (getConversationSessionMarker(avatar, sessionKey) === String(lastUserActivity)) {
+    const lastAutoChatAt = getLastAutoCharacterChatTime(avatar);
+    const cooldownBaseline = lastAutoChatAt || getConversationBranchActivityTime(avatar);
+    if (now - cooldownBaseline < getAutoCharacterChatCooldownMs(settings)) {
         return false;
     }
 
     const triggered = await triggerAutoCharacterChat(avatar, settings);
     if (triggered) {
-        setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
+        setLastAutoCharacterChatTime(avatar, now);
         setLastAutoMessageTime(avatar, now);
     }
 
@@ -5561,7 +6082,7 @@ async function triggerRoleplayDM() {
 }
 
 async function conversationModeAutoMessageWorker() {
-    if (autoWorkerBusy || conversationReplyBusy || sendQueueProcessing || sendQueue.length || selected_group || is_send_press) {
+    if (autoWorkerBusy || conversationReplyBusy || sendQueueProcessing || sendQueue.length || is_send_press) {
         return;
     }
 
@@ -5598,10 +6119,6 @@ async function conversationModeAutoMessageWorker() {
 }
 
 async function handleAvailabilityAutoResponder(settings = getSettings(), avatar = getCurrentCharAvatar()) {
-    if (selected_group) {
-        return false;
-    }
-
     if (!avatar) {
         return false;
     }
@@ -5681,7 +6198,13 @@ function init() {
     eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
     eventSource.on(event_types.CHAT_LOADED, handleChatChanged);
 
-    window.addEventListener('sb:open-conversation-workspace', () => openConversationWorkspaceForCurrentCharacter());
+    window.addEventListener('sb:open-conversation-workspace', (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        const avatar = detail?.avatar || getDefaultConversationAvatar();
+        const groupId = detail?.groupId || (selected_group && avatar && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null);
+        openConversationWorkspaceForAvatar(avatar, { groupId, showToast: detail?.showToast !== false });
+    });
+    window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
 
     const existingAutoWorkerIntervalId = globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY];
     if (existingAutoWorkerIntervalId) {

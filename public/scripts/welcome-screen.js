@@ -1396,6 +1396,11 @@ async function handleWelcomeAction(button, sendTextArea) {
                 sendTextArea.focus();
             }
             break;
+        case 'open-conversation': {
+            const conversationModule = await import('./sillybunny-conversation.js');
+            conversationModule.openConversationWorkspaceFromWelcome?.();
+            break;
+        }
         case 'open-characters-menu':
             globalThis.SillyBunnyShell?.openCharacters?.();
             break;
@@ -1597,7 +1602,7 @@ async function sendWelcomePanel(chats, expand = false) {
                 const fileName = item.getAttribute('data-file');
                 const isConversation = item.getAttribute('data-recent-chat-type') === 'conversation';
                 if (isConversation && avatarId) {
-                    void openRecentConversationChat(avatarId);
+                    void openRecentConversationChat(avatarId, groupId);
                     return;
                 }
                 if (avatarId && fileName) {
@@ -1762,8 +1767,9 @@ async function openRecentCharacterChat(avatarId, fileName) {
 /**
  * Opens a character in Conversation Mode from the welcome page.
  * @param {string} avatarId Avatar file name
+ * @param {string} groupId Group ID, when opening a group-scoped Conversation
  */
-async function openRecentConversationChat(avatarId) {
+async function openRecentConversationChat(avatarId, groupId = '') {
     const characterId = characters.findIndex(x => x.avatar === avatarId);
     if (characterId === -1) {
         console.error(`Character not found for avatar ID: ${avatarId}`);
@@ -1771,10 +1777,14 @@ async function openRecentConversationChat(avatarId) {
     }
 
     try {
-        await selectCharacterById(characterId);
-        setActiveCharacter(avatarId);
-        saveSettingsDebounced();
-        window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
+        const conversationModule = await import('./sillybunny-conversation.js');
+        const opened = conversationModule.openConversationWorkspaceForAvatar?.(avatarId, {
+            groupId: groupId || null,
+            showToast: false,
+        });
+        if (!opened) {
+            toastr.warning(t`Failed to open Conversation Mode for this chat.`);
+        }
     } catch (error) {
         console.error('Error opening conversation chat:', error);
         toastr.error(t`Failed to open conversation chat. See console for details.`);

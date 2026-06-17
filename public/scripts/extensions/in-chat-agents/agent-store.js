@@ -504,6 +504,7 @@ export function agentMatchesListTab(agent, tab) {
 
 export const LEGACY_AGENT_MAX_TOKENS = 2000;
 export const DEFAULT_AGENT_MAX_TOKENS = 8192;
+export const MAX_AGENT_MAX_TOKENS = 64000;
 export const PATHFINDER_TEMPLATE_ID = 'tpl-pathfinder';
 
 export function areAgentsGloballyEnabled() {
@@ -851,7 +852,7 @@ export function normalizePromptTransformMaxTokens(value) {
         return DEFAULT_AGENT_MAX_TOKENS;
     }
 
-    return Math.max(16, Math.min(16000, Number(value)));
+    return Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(value)));
 }
 
 export function normalizePreProcessMaxTokens(value) {
@@ -859,7 +860,7 @@ export function normalizePreProcessMaxTokens(value) {
         return DEFAULT_AGENT_MAX_TOKENS;
     }
 
-    return Math.max(16, Math.min(16000, Number(value)));
+    return Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(value)));
 }
 
 function clampNumber(value, fallback, min, max) {
@@ -917,7 +918,7 @@ export function createDefaultCompanionConfig() {
         },
         batch: false,
         batchAgentIds: [],
-        maxTokens: 32000,
+        maxTokens: MAX_AGENT_MAX_TOKENS,
     };
 }
 
@@ -961,7 +962,7 @@ export function normalizeCompanionConfig(raw = {}) {
         },
         batch: Boolean(rawConfig.batch),
         batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
-        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, 32000),
+        maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, MAX_AGENT_MAX_TOKENS),
     };
 }
 
@@ -1294,7 +1295,7 @@ export function normalizeAgent(rawAgent = {}) {
                 ? String(rawPostProcess.promptTransformMode)
                 : defaults.postProcess.promptTransformMode,
             promptTransformMaxTokens: Number.isFinite(Number(rawPostProcess.promptTransformMaxTokens))
-                ? Math.max(16, Math.min(16000, Number(rawPostProcess.promptTransformMaxTokens)))
+                ? Math.max(16, Math.min(MAX_AGENT_MAX_TOKENS, Number(rawPostProcess.promptTransformMaxTokens)))
                 : defaults.postProcess.promptTransformMaxTokens,
         },
         regexScripts: Array.isArray(rawAgent.regexScripts)

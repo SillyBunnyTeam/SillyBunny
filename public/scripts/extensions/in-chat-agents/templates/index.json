@@ -549,7 +549,7 @@
             "wrapSuffix": "",
             "patchStartTag": "<context_patch>",
             "patchEndTag": "</context_patch>",
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "postProcess": {
             "enabled": false,
@@ -607,7 +607,7 @@
             "promptTransformEnabled": true,
             "promptTransformShowNotifications": true,
             "promptTransformMode": "rewrite",
-            "promptTransformMaxTokens": 32000
+            "promptTransformMaxTokens": 64000
         },
         "enabled": false,
         "conditions": {
@@ -862,7 +862,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         }
     },
     {
@@ -1385,7 +1385,7 @@
                 "depth": 0
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1445,7 +1445,7 @@
                 "depth": 2
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1505,7 +1505,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1565,7 +1565,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1625,7 +1625,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1685,7 +1685,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1745,7 +1745,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000,
+            "maxTokens": 64000,
             "minContextTokens": 30000
         },
         "injection": {
@@ -1810,7 +1810,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "injection": {
             "position": 0,
@@ -1873,7 +1873,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "regexScripts": [
             {
@@ -2040,7 +2040,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "regexScripts": [
             {
@@ -2122,7 +2122,7 @@
                 "depth": 1
             },
             "batch": false,
-            "maxTokens": 32000
+            "maxTokens": 64000
         },
         "regexScripts": [
             {

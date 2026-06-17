@@ -7990,6 +7990,7 @@ function bindLandingPageObserver() {
 }
 
 async function returnToLandingPage() {
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
     closeShell('left');
     closeShell('right');
     closeCharacterPanel();

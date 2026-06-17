@@ -16,6 +16,7 @@ import {
     getCompanionConfig,
     getEnabledAgents,
     getGlobalSettings,
+    MAX_AGENT_MAX_TOKENS,
     isCompanionAgent,
     resolveCompanionConnectionProfile,
 } from '../agent-store.js';
@@ -906,7 +907,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
     try {
         const promptMessages = await buildBatchPromptMessages(agents, messageIndex, generationType);
-        const maxTokens = Math.min(32000, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
+        const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {

@@ -32,7 +32,7 @@
             "depth": 1
         },
         "batch": false,
-        "maxTokens": 32000
+        "maxTokens": 64000
     },
     "regexScripts": [
         {
