@@ -847,12 +847,32 @@
     color: var(--SmartThemeBodyColor);
 }
 
+/* Floating Toolbar for Desktop */
 .sb-conversation-message-actions {
+    position: absolute;
+    top: -14px;
+    right: 12px;
     display: inline-flex;
-    flex-wrap: wrap;
-    gap: 4px;
     align-items: center;
-    justify-content: flex-start;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, var(--sb-accent));
+    border-radius: var(--sb-radius-button, 14px);
+    background: var(--SmartThemeBlurTintColor); /* clean background overlay */
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform: translateY(4px);
+    z-index: 10;
+}
+
+.sb-conversation-message-bubble:hover .sb-conversation-message-actions,
+.sb-conversation-message-bubble:focus-within .sb-conversation-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
 }
 
 .sb-conversation-message-action,
@@ -881,6 +901,32 @@
     color: var(--SmartThemeBodyColor);
     outline: none;
     transform: translateY(-1px);
+}
+
+.sb-conversation-message-action.sb-conversation-message-edit,
+.sb-conversation-message-action.sb-conversation-message-polish {
+    opacity: 1 !important;
+    inline-size: auto;
+    block-size: auto;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: 999px;
+    padding: 2px 7px;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+
+.sb-conversation-message-action.sb-conversation-message-edit:hover,
+.sb-conversation-message-action.sb-conversation-message-polish:hover {
+    border-color: color-mix(in srgb, var(--sb-accent) 38%, var(--sb-shell-border));
+    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
+    color: var(--SmartThemeBodyColor);
+    transform: translateY(-1px);
+}
+
+/* Style trigger for mobile only (hidden on desktop) */
+.sb-conversation-mobile-menu-trigger {
+    display: none;
 }
 
 .sb-conversation-message-action.fa-trash-can {
@@ -1996,15 +2042,67 @@
         max-inline-size: 94%;
     }
 
-    .sb-conversation-message-actions {
-        inline-size: 100%;
-        margin-block-start: 3px;
-        justify-content: flex-start;
+    /* Mobile Triggers and Action Trays */
+    .sb-conversation-mobile-menu-trigger {
+        display: inline-flex;
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        width: 28px;
+        height: 28px;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+        font-size: 14px;
+        cursor: pointer;
+        opacity: 0.6;
+        z-index: 5;
+    }
+    
+    .sb-conversation-mobile-menu-trigger:active {
+        opacity: 1;
+        color: var(--sb-accent);
     }
 
+    /* On mobile, align bubble header text nicely with the top-right ellipsis */
+    .sb-conversation-message-meta {
+        padding-right: 20px; /* leave room for trigger */
+    }
+
+    /* Inactive (closed) action tray on mobile */
+    .sb-conversation-message-actions {
+        display: none !important; /* completely hidden when not open */
+        position: static;
+        width: 100%;
+        margin-block-start: 8px;
+        box-shadow: none;
+        backdrop-filter: none;
+        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 42%, transparent);
+        background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 50%, var(--SmartThemeBodyColor) 4%);
+        padding: 8px;
+        border-radius: var(--sb-radius-button, 12px);
+        flex-wrap: wrap;
+        gap: 6px;
+        transform: none;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Active (open) action tray on mobile */
+    .sb-conversation-message-actions.open {
+        display: flex !important; /* flex display when open */
+    }
+
+    /* Make action/reaction buttons bigger and touch-friendly on mobile tray */
     .sb-conversation-message-action,
     .sb-conversation-reaction-button {
-        min-block-size: 28px;
+        min-block-size: 34px;
+        min-inline-size: 34px;
+        font-size: 13px;
+        padding: 4px 10px;
+        border-radius: var(--sb-radius-button, 10px);
     }
 
     .sb-conversation-message-avatar {

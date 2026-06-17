@@ -63,9 +63,9 @@ const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 const CONVERSATION_NOTIFICATION_PRIORITIES = Object.freeze(['normal', 'silent', 'priority']);
 const CONVERSATION_TIMELINE_CHANNELS = Object.freeze(['main', 'pinned', 'selfies', 'media', 'ooc', 'memories']);
 const CONVERSATION_REACTION_LABELS = Object.freeze({
-    heart: 'Like',
-    spark: 'Spark',
-    laugh: 'Laugh',
+    heart: '❤️',
+    spark: '✨',
+    laugh: '😂',
 });
 const USER_STATUS_STORAGE_KEY = 'sb_conv_user_status';
 const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
@@ -3402,30 +3402,31 @@ function renderConversationTimeline() {
             meta.appendChild(receipt);
         }
 
+        const actionBar = document.createElement('span');
+        actionBar.className = 'sb-conversation-message-actions';
+
         if (settings.editable_messages) {
             const editButton = document.createElement('button');
             editButton.type = 'button';
-            editButton.className = 'sb-conversation-message-edit fa-solid fa-pencil';
+            editButton.className = 'sb-conversation-message-action sb-conversation-message-edit fa-solid fa-pencil';
             editButton.title = 'Edit Conversation message';
             editButton.setAttribute('aria-label', 'Edit Conversation message');
             editButton.dataset.sbConversationAction = 'edit-message';
             editButton.dataset.messageId = message.id;
-            meta.appendChild(editButton);
+            actionBar.appendChild(editButton);
         }
 
         if (settings.prose_polisher && message.role !== 'user') {
             const polishButton = document.createElement('button');
             polishButton.type = 'button';
-            polishButton.className = 'sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
+            polishButton.className = 'sb-conversation-message-action sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
             polishButton.title = 'Polish character message';
             polishButton.setAttribute('aria-label', 'Polish character message');
             polishButton.dataset.sbConversationAction = 'polish-character-message';
             polishButton.dataset.messageId = message.id;
-            meta.appendChild(polishButton);
+            actionBar.appendChild(polishButton);
         }
 
-        const actionBar = document.createElement('span');
-        actionBar.className = 'sb-conversation-message-actions';
         const messageActions = [
             { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
             { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message' },
@@ -3455,7 +3456,12 @@ function renderConversationTimeline() {
             reactionButton.dataset.reaction = reaction;
             actionBar.appendChild(reactionButton);
         }
-        meta.appendChild(actionBar);
+
+        const mobileTrigger = document.createElement('button');
+        mobileTrigger.type = 'button';
+        mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis';
+        mobileTrigger.title = 'Message options';
+        mobileTrigger.setAttribute('aria-label', 'Message options');
 
         const text = document.createElement('div');
         text.className = 'sb-conversation-message-text';
@@ -3486,13 +3492,13 @@ function renderConversationTimeline() {
             for (const [reaction, count] of activeReactions) {
                 const chip = document.createElement('span');
                 chip.className = 'sb-conversation-message-reaction-chip';
-                chip.textContent = `${normalizeConversationReactionLabel(reaction)}${Number(count) > 1 ? ` ${count}` : ''}`;
+                chip.textContent = `${normalizeConversationReactionLabel(reaction)} ${count}`;
                 reactions.appendChild(chip);
             }
             text.appendChild(reactions);
         }
 
-        bubble.append(meta, text);
+        bubble.append(meta, text, actionBar, mobileTrigger);
         item.append(avatarWrap, bubble);
         timeline.appendChild(item);
     });
@@ -4506,6 +4512,9 @@ function ensureConversationChrome() {
                 <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Message this character outside roleplay..."></textarea>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-actions">
+                    <button id="sb_conversation_toggle_tools" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="toggle-tools" title="Toggle filters and tools" aria-label="Toggle filters and tools">
+                        <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                    </button>
                     <button id="${CHROME_IDS.attach}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="attach-file" title="Attach images or files" aria-label="Attach images or files">
                         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
                     </button>
@@ -5864,8 +5873,35 @@ function bindConversationChromeControls(sheld) {
 
     sheld.dataset.sbConversationChromeBound = 'true';
     sheld.addEventListener('click', async (event) => {
-        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal') : null;
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal, .sb-conversation-mobile-menu-trigger') : null;
+
+        if (!target || (!target.closest('.sb-conversation-message-actions') && !target.closest('.sb-conversation-mobile-menu-trigger'))) {
+            document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
+                el.classList.remove('open');
+            });
+        }
+
         if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        if (target.classList.contains('sb-conversation-mobile-menu-trigger')) {
+            event.stopPropagation();
+            const currentBubble = target.closest('.sb-conversation-message-bubble');
+            const currentActionBar = currentBubble?.querySelector('.sb-conversation-message-actions');
+            if (currentActionBar) {
+                const isOpen = currentActionBar.classList.contains('open');
+                document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
+                    if (el !== currentActionBar) {
+                        el.classList.remove('open');
+                    }
+                });
+                if (isOpen) {
+                    currentActionBar.classList.remove('open');
+                } else {
+                    currentActionBar.classList.add('open');
+                }
+            }
             return;
         }
 
@@ -5883,6 +5919,12 @@ function bindConversationChromeControls(sheld) {
         }
 
         switch (target.dataset.sbConversationAction) {
+            case 'toggle-tools': {
+                const currentVisible = localStorage.getItem('sb_conv_tools_visible') === 'true';
+                localStorage.setItem('sb_conv_tools_visible', String(!currentVisible));
+                syncConversationToolsVisibility();
+                break;
+            }
             case 'toggle-pals':
                 togglePalsRail();
                 break;
@@ -6739,6 +6781,27 @@ function updateConversationHeader(settings = getSettings()) {
     }
 }
 
+function syncConversationToolsVisibility() {
+    const tools = document.getElementById(CHROME_IDS.tools);
+    const toggleBtn = document.getElementById('sb_conversation_toggle_tools');
+    if (tools instanceof HTMLElement) {
+        const visible = localStorage.getItem('sb_conv_tools_visible') === 'true';
+        if (visible) {
+            tools.classList.add('visible');
+            tools.style.setProperty('display', 'grid', 'important');
+            if (toggleBtn) {
+                toggleBtn.classList.add('active');
+            }
+        } else {
+            tools.classList.remove('visible');
+            tools.style.setProperty('display', 'none', 'important');
+            if (toggleBtn) {
+                toggleBtn.classList.remove('active');
+            }
+        }
+    }
+}
+
 function updateConversationChrome(settings = getSettings()) {
     updateConversationHeader(settings);
     renderPalsRail();
@@ -6768,6 +6831,7 @@ function refreshConversationInterface({ syncControls = false } = {}) {
         renderConversationTimeline();
         updateConversationChrome(settings);
         updateUserFooter();
+        syncConversationToolsVisibility();
 
         const input = document.getElementById(CHROME_IDS.input);
         const send = document.getElementById(CHROME_IDS.send);
