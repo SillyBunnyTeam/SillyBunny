@@ -1015,8 +1015,9 @@ function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = 
 
     const partners = String(settings?.multi_char_names || '')
         .split(',')
-        .map(name => name.trim())
-        .filter(Boolean);
+        .map(val => val.trim())
+        .filter(Boolean)
+        .map(val => getCharacterForAvatar(val)?.name || val);
     if (partners.length) {
         return [character?.name || 'Character', ...partners].join(', ');
     }
@@ -1584,12 +1585,21 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
         const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
         const speakerName = character?.name || getCurrentCharName();
 
+        let isFirst = true;
         for (const messageText of splitChatroomMessages(text)) {
-            appendConversationMessage(messageText, {
+            if (!isFirst) {
+                generationActive = true;
+                refreshConversationInterface({ syncControls: false });
+                const delay = 600 + messageText.length * 25;
+                const clampedDelay = Math.min(4000, Math.max(800, delay));
+                await new Promise(resolve => setTimeout(resolve, clampedDelay));
+            }
+            await appendConversationMessage(messageText, {
                 name: speakerName,
                 role: 'character',
                 extra,
             }, avatar);
+            isFirst = false;
         }
     }
 
@@ -1796,11 +1806,12 @@ function buildChimingPartnerOptions(selectedNames) {
             return;
         }
         const charName = character.name || 'Character';
-        const checked = selectedSet.has(charName) ? ' checked' : '';
-        const thumbUrl = getThumbnailUrl('avatar', character.avatar);
+        const charAvatar = character.avatar;
+        const checked = (selectedSet.has(charAvatar) || selectedSet.has(charName)) ? ' checked' : '';
+        const thumbUrl = getThumbnailUrl('avatar', charAvatar);
         rows.push(`
             <label class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
-                <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charName)}"${checked} />
+                <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
                 <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
                 <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
             </label>
@@ -2991,10 +3002,10 @@ function bindConversationChromeControls(sheld) {
                         charSettings.enabled = true;
                         saveSettings(char.avatar, charSettings);
                         if (currentSettings && currentAvatar !== char.avatar) {
-                            const names = new Set(currentSettings.multi_char_names.split(',').map(name => name.trim()).filter(Boolean));
-                            names.add(char.name || 'Character');
+                            const values = new Set(currentSettings.multi_char_names.split(',').map(val => val.trim()).filter(Boolean));
+                            values.add(char.avatar || char.name || 'Character');
                             currentSettings.multi_char = true;
-                            currentSettings.multi_char_names = Array.from(names).join(', ');
+                            currentSettings.multi_char_names = Array.from(values).join(', ');
                             saveSettings(currentAvatar, currentSettings);
                         }
                         document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
@@ -3096,10 +3107,22 @@ function bindConversationChromeControls(sheld) {
                     setLastConversationPreview(avatar, 'Conversation ready');
                     clearUnreadCount(avatar);
                     resetFollowupCount(avatar);
+
+                    const charSettings = getSettings(avatar);
+                    charSettings.enabled = false;
+                    saveSettings(avatar, charSettings);
+
                     if (avatar === getCurrentCharAvatar()) {
-                        updateLastUserActivity(avatar);
-                        renderConversationTimeline();
-                        refreshConversationInterface({ syncControls: false });
+                        const remainingPals = getConversationPals();
+                        if (remainingPals.length > 0) {
+                            const nextPal = remainingPals[0];
+                            await selectCharacterById(nextPal.index, { switchMenu: false });
+                            renderConversationTimeline();
+                            refreshConversationInterface({ syncControls: true });
+                        } else {
+                            conversationWorkspaceOpen = false;
+                            refreshConversationInterface({ syncControls: false });
+                        }
                     } else {
                         renderPalsRail();
                     }
@@ -3240,6 +3263,10 @@ function bindConversationChromeControls(sheld) {
                 event.preventDefault();
                 void submitConversationInput();
             }
+        });
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = `${input.scrollHeight}px`;
         });
     }
 
@@ -4221,7 +4248,7 @@ async function checkProactiveMessaging(avatar, settings, now) {
 }
 
 async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
-    const partners = settings.multi_char_names.split(',').map(name => name.trim()).filter(Boolean);
+    const partners = settings.multi_char_names.split(',').map(val => val.trim()).filter(Boolean);
     if (!partners.length || autoWorkerBusy) {
         return false;
     }
@@ -4229,7 +4256,8 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
     autoWorkerBusy = true;
 
     try {
-        const partnerName = partners[Math.floor(Math.random() * partners.length)];
+        const partnerVal = partners[Math.floor(Math.random() * partners.length)];
+        const partnerName = getCharacterForAvatar(partnerVal)?.name || partnerVal;
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const userName = name1 || 'User';
