@@ -233,19 +233,16 @@
     justify-content: flex-end;
     gap: 6px;
     margin-inline-start: auto;
-    flex-wrap: wrap;
 }
 
 .sb-conversation-rail-new-button {
     min-block-size: 36px;
+    min-inline-size: 36px;
+    padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding-inline: 10px;
     color: var(--SmartThemeBodyColor);
-    font-size: var(--sb-type-meta);
-    white-space: nowrap;
 }
 
 .sb-conversation-rail-title {
@@ -1827,4 +1824,44 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Notification badges */
+#sb_character_tab_conversation {
+    position: relative;
+}
+.sb-tab-notification-badge {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background-color: var(--sb-accent, var(--sb-button-accent-bg, #ff453a));
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: bold;
+    min-inline-size: 14px;
+    block-size: 14px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    line-height: 1;
+    z-index: 5;
+    pointer-events: none;
+}
+#rm_button_characters {
+    position: relative;
+}
+.sb-drawer-notification-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    inline-size: 8px;
+    block-size: 8px;
+    background-color: var(--sb-accent, var(--sb-button-accent-bg, #ff453a));
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--sb-accent, #ff453a);
+    pointer-events: none;
+    z-index: 99;
 }
