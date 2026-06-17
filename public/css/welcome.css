@@ -1017,6 +1017,10 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     gap: 6px;
 }
 
+.welcomeRecent .recentChatList .recentChat.conversation .chatActions {
+    display: none;
+}
+
 .welcomeRecent .recentChatList .recentChat .chatActions button {
     width: 32px;
     height: 32px;

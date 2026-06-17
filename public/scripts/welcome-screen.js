@@ -1056,7 +1056,7 @@ globalThis.SillyBunnyShell.highlightLaunchpadItem = highlightLaunchpadItem;
 /**
  * Gets the filter bucket used by the Recent Chats tabs.
  * @param {RecentChat} chat Recent chat data
- * @returns {'agent'|'group'|'individual'}
+ * @returns {'agent'|'group'|'conversation'|'individual'}
  */
 function getRecentChatType(chat) {
     if (chat.is_agent) {
@@ -1067,21 +1067,29 @@ function getRecentChatType(chat) {
         return 'group';
     }
 
+    if (chat.is_conversation) {
+        return 'conversation';
+    }
+
     return 'individual';
 }
 
 /**
  * Gets the filter bucket for a rendered Recent Chat item.
  * @param {Element} item Recent chat element
- * @returns {'agent'|'group'|'individual'}
+ * @returns {'agent'|'group'|'conversation'|'individual'}
  */
 function getRecentChatItemType(item) {
-    if (item instanceof HTMLElement && ['agent', 'group', 'individual'].includes(item.dataset.recentChatType || '')) {
-        return /** @type {'agent'|'group'|'individual'} */ (item.dataset.recentChatType);
+    if (item instanceof HTMLElement && ['agent', 'group', 'conversation', 'individual'].includes(item.dataset.recentChatType || '')) {
+        return /** @type {'agent'|'group'|'conversation'|'individual'} */ (item.dataset.recentChatType);
     }
 
     if (item.classList.contains('agent')) {
         return 'agent';
+    }
+
+    if (item.classList.contains('conversation')) {
+        return 'conversation';
     }
 
     if (item.classList.contains('group')) {
@@ -1587,6 +1595,11 @@ async function sendWelcomePanel(chats, expand = false) {
                 const avatarId = item.getAttribute('data-avatar');
                 const groupId = item.getAttribute('data-group');
                 const fileName = item.getAttribute('data-file');
+                const isConversation = item.getAttribute('data-recent-chat-type') === 'conversation';
+                if (isConversation && avatarId) {
+                    void openRecentConversationChat(avatarId);
+                    return;
+                }
                 if (avatarId && fileName) {
                     void openRecentCharacterChat(avatarId, fileName);
                 }
@@ -1639,6 +1652,9 @@ async function sendWelcomePanel(chats, expand = false) {
                 const avatarId = chatItem.getAttribute('data-avatar');
                 const groupId = chatItem.getAttribute('data-group');
                 const fileName = chatItem.getAttribute('data-file');
+                if (chatItem.getAttribute('data-recent-chat-type') === 'conversation') {
+                    return;
+                }
                 if (avatarId && fileName) {
                     void renameRecentCharacterChat(avatarId, fileName);
                 }
@@ -1657,6 +1673,9 @@ async function sendWelcomePanel(chats, expand = false) {
                 const avatarId = chatItem.getAttribute('data-avatar');
                 const groupId = chatItem.getAttribute('data-group');
                 const fileName = chatItem.getAttribute('data-file');
+                if (chatItem.getAttribute('data-recent-chat-type') === 'conversation') {
+                    return;
+                }
                 if (avatarId && fileName) {
                     void deleteRecentCharacterChat(avatarId, fileName);
                 }
@@ -1675,6 +1694,9 @@ async function sendWelcomePanel(chats, expand = false) {
                 const avatarId = chatItem.getAttribute('data-avatar');
                 const groupId = chatItem.getAttribute('data-group');
                 const fileName = chatItem.getAttribute('data-file');
+                if (chatItem.getAttribute('data-recent-chat-type') === 'conversation') {
+                    return;
+                }
                 const recentChat = chats.find(c => c.chat_name === fileName && ((c.is_group && c.group === groupId) || (!c.is_group && c.avatar === avatarId)));
                 if (!recentChat) {
                     console.error('Recent chat not found for pinning.');
@@ -1734,6 +1756,28 @@ async function openRecentCharacterChat(avatarId, fileName) {
     } catch (error) {
         console.error('Error opening recent chat:', error);
         toastr.error(t`Failed to open recent chat. See console for details.`);
+    }
+}
+
+/**
+ * Opens a character in Conversation Mode from the welcome page.
+ * @param {string} avatarId Avatar file name
+ */
+async function openRecentConversationChat(avatarId) {
+    const characterId = characters.findIndex(x => x.avatar === avatarId);
+    if (characterId === -1) {
+        console.error(`Character not found for avatar ID: ${avatarId}`);
+        return;
+    }
+
+    try {
+        await selectCharacterById(characterId);
+        setActiveCharacter(avatarId);
+        saveSettingsDebounced();
+        window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
+    } catch (error) {
+        console.error('Error opening conversation chat:', error);
+        toastr.error(t`Failed to open conversation chat. See console for details.`);
     }
 }
 
@@ -2019,6 +2063,16 @@ function isAgentRecentChat(chatData) {
 
 async function getRecentChats() {
     const settings = getRecentChatsSettings();
+    const getConversationChats = async () => {
+        try {
+            const conversationModule = await import('./sillybunny-conversation.js');
+            const conversationChats = conversationModule.getConversationWelcomeChats?.({ max: settings.maxDisplayed }) || [];
+            return conversationChats.map((chat, index) => ({ ...chat, hidden: index >= settings.collapsedDisplayed }));
+        } catch (error) {
+            console.warn('Failed to load Conversation Mode recent chats', error);
+            return [];
+        }
+    };
     const response = await fetch('/api/chats/recent', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -2028,14 +2082,14 @@ async function getRecentChats() {
 
     if (!response.ok) {
         console.warn('Failed to fetch recent character chats');
-        return [];
+        return getConversationChats();
     }
 
     /** @type {RecentChat[]} */
     const data = await response.json();
 
     if (!Array.isArray(data) || data.length === 0) {
-        return [];
+        return getConversationChats();
     }
 
     const dataWithEntities = data
@@ -2072,7 +2126,15 @@ async function getRecentChats() {
         chat.recent_chat_type = getRecentChatType(chat);
     });
 
-    return dataWithEntities.map(t => t.chat);
+    const roleplayChats = dataWithEntities.map(t => t.chat);
+    const conversationChats = await getConversationChats();
+    if (!conversationChats.length) {
+        return roleplayChats;
+    }
+
+    return [...roleplayChats, ...conversationChats]
+        .sort((first, second) => Number(second.last_mes || 0) - Number(first.last_mes || 0))
+        .map((chat, index) => ({ ...chat, hidden: index >= settings.collapsedDisplayed }));
 }
 
 export async function openPermanentAssistantChat({ tryCreate = true, created = false } = {}) {

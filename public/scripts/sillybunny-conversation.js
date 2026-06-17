@@ -2,7 +2,7 @@ import { getMessageTimeStamp } from './RossAscends-mods.js';
 import { eventSource, event_types } from './events.js';
 import { selected_group } from './group-chats.js';
 import { world_names } from './world-info.js';
-import { power_user } from './power-user.js';
+import { playMessageSound, power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
 import { extension_settings } from './extensions.js';
@@ -87,6 +87,8 @@ const MIN_INACTIVITY_THRESHOLD = 15;
 const MAX_INACTIVITY_THRESHOLD = 360;
 const DEFAULT_TALKATIVENESS = 50;
 const DEFAULT_MAX_FOLLOWUPS = 3;
+const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
+const SEND_QUEUE_BATCH_MS = 900;
 const SELFIE_COMMAND_RE = /\[selfie(?::\s*(?:context=)?"?([^"\]]*)"?)?\]/gi;
 const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 const CHROME_IDS = Object.freeze({
@@ -127,6 +129,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     inactivity_threshold: DEFAULT_INACTIVITY_THRESHOLD,
     talkativeness: DEFAULT_TALKATIVENESS,
     max_followups: DEFAULT_MAX_FOLLOWUPS,
+    reply_delay_multiplier: DEFAULT_REPLY_DELAY_MULTIPLIER,
     auto_schedule: '',
     schedule_generated_at: 0,
     selfie_command_enabled: true,
@@ -136,6 +139,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     multi_char: false,
     multi_char_names: '',
     auto_character_chat: false,
+    auto_chat_names: '',
     roleplay_reactions: false,
     lorebook_override: '',
     connection_profile: '',
@@ -163,6 +167,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_inactivity_threshold', key: 'inactivity_threshold', prop: 'value', type: 'number', fallback: DEFAULT_INACTIVITY_THRESHOLD, min: MIN_INACTIVITY_THRESHOLD },
     { id: 'sb_conv_talkativeness', key: 'talkativeness', prop: 'value', type: 'number', fallback: DEFAULT_TALKATIVENESS, min: 0 },
     { id: 'sb_conv_max_followups', key: 'max_followups', prop: 'value', type: 'number', fallback: DEFAULT_MAX_FOLLOWUPS, min: 1 },
+    { id: 'sb_conv_reply_delay_multiplier', key: 'reply_delay_multiplier', prop: 'value', type: 'number', fallback: DEFAULT_REPLY_DELAY_MULTIPLIER, min: 0 },
     { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
     { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
@@ -171,6 +176,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
     { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
+    { id: 'sb_conv_auto_chat_names', key: 'auto_chat_names', prop: 'value' },
     { id: 'sb_conv_roleplay_reactions', key: 'roleplay_reactions', prop: 'checked' },
     { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
     { id: 'sb_conv_connection_profile', key: 'connection_profile', prop: 'value' },
@@ -189,12 +195,17 @@ let initialized = false;
 let autoWorkerBusy = false;
 let generationActive = false;
 let conversationReplyBusy = false;
+let sendQueueProcessing = false;
 let previousConnectionProfile = null;
 let activeProfileApplied = false;
 let scheduleGenerationBusy = false;
 let conversationWorkspaceOpen = false;
 let imageGenerationActive = false;
 let imageGenerationAbortController = null;
+let originalDocumentTitle = typeof document !== 'undefined' ? document.title : '';
+let originalFaviconHref = '';
+let faviconUpdateToken = 0;
+const sendQueue = [];
 const runtimeStatusOverrides = new Map();
 
 function getCurrentCharacter() {
@@ -479,6 +490,59 @@ function getSettings(avatar = getCurrentCharAvatar()) {
     }
 
     return { ...DEFAULT_SETTINGS, ...getCharacterConversationStore(avatar).settings };
+}
+
+export function isConversationModeEnabled(avatar) {
+    return Boolean(getCharacterConversationStore(avatar, { create: false })?.settings?.enabled);
+}
+
+export function getConversationWelcomeChats({ max = Infinity } = {}) {
+    if (!Array.isArray(characters)) {
+        return [];
+    }
+
+    return characters
+        .map((character) => {
+            const avatar = character?.avatar;
+            if (!avatar) {
+                return null;
+            }
+
+            const characterStore = getCharacterConversationStore(avatar, { create: false });
+            const settings = safeParseSettings(characterStore?.settings);
+            if (!settings.enabled || !characterStore) {
+                return null;
+            }
+
+            const branch = getActiveConversationBranch(avatar, { create: false });
+            const messages = Array.isArray(branch?.messages) ? branch.messages : [];
+            const timestamp = parsePositiveInt(branch?.updatedAt || branch?.createdAt, Date.now(), 1);
+            const date = new Date(timestamp);
+            const branchName = branch?.name && branch.name !== 'Main' ? branch.name : 'Conversation Mode';
+            return {
+                avatar,
+                group: '',
+                char_name: character.name || 'Character',
+                char_thumbnail: getThumbnailUrl('avatar', avatar),
+                chat_name: branchName,
+                file_name: branchName,
+                mes: branch?.preview || stripPreviewText(messages[messages.length - 1]?.mes) || 'Conversation ready',
+                chat_items: messages.length,
+                file_size: 'DM',
+                date_short: date.toLocaleDateString(),
+                date_long: date.toLocaleString(),
+                last_mes: timestamp,
+                is_group: false,
+                is_agent: false,
+                is_conversation: true,
+                recent_chat_type: 'conversation',
+                hidden: false,
+                pinned: false,
+            };
+        })
+        .filter(Boolean)
+        .sort((first, second) => Number(second.last_mes || 0) - Number(first.last_mes || 0))
+        .slice(0, Number.isFinite(max) ? max : undefined);
 }
 
 function saveSettings(avatar, settings) {
@@ -1288,6 +1352,291 @@ function clearUnreadCount(avatar) {
     setUnreadCount(avatar, 0);
 }
 
+function incrementUnreadCount(avatar) {
+    if (!avatar) {
+        return;
+    }
+
+    setUnreadCount(avatar, getUnreadCount(avatar) + 1);
+}
+
+function getTotalUnreadCount() {
+    return getConversationPals().reduce((sum, pal) => sum + getUnreadCount(pal.character.avatar), 0);
+}
+
+function getBadgeLabel(count) {
+    return count > 99 ? '99+' : String(count || '');
+}
+
+function getDocumentTitleBase() {
+    const currentTitle = String(document.title || '').replace(/^\(\d+\+?\)\s+/, '').trim();
+    if (!originalDocumentTitle || /^\(\d+\+?\)\s+/.test(originalDocumentTitle)) {
+        originalDocumentTitle = currentTitle || 'SillyBunny';
+    }
+    return originalDocumentTitle;
+}
+
+function getFaviconLink() {
+    let link = document.querySelector('link[rel~="icon"]');
+    if (!(link instanceof HTMLLinkElement)) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+    }
+
+    if (!originalFaviconHref && link.href) {
+        originalFaviconHref = link.href;
+    }
+    return link;
+}
+
+function updateConversationTitleBadge(totalUnread = getTotalUnreadCount()) {
+    const baseTitle = getDocumentTitleBase();
+    document.title = totalUnread > 0 ? `(${getBadgeLabel(totalUnread)}) ${baseTitle}` : baseTitle;
+}
+
+function updateConversationFaviconBadge(totalUnread = getTotalUnreadCount()) {
+    const link = getFaviconLink();
+    const sourceHref = originalFaviconHref || link.href;
+    if (!sourceHref) {
+        return;
+    }
+
+    const token = ++faviconUpdateToken;
+    if (totalUnread <= 0) {
+        link.href = sourceHref;
+        return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+        if (token !== faviconUpdateToken) {
+            return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        ctx.drawImage(image, 0, 0, 32, 32);
+        ctx.fillStyle = '#fb7185';
+        ctx.beginPath();
+        ctx.arc(23, 9, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1b1f26';
+        ctx.font = '700 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(totalUnread > 9 ? '9+' : String(totalUnread), 23, 9);
+        try {
+            link.href = canvas.toDataURL('image/png');
+        } catch (error) {
+            console.warn('Conversation Mode: favicon badge failed', error);
+        }
+    };
+    image.onerror = () => {
+        if (token === faviconUpdateToken) {
+            link.href = sourceHref;
+        }
+    };
+    image.src = sourceHref;
+}
+
+function updatePalsToggleBadge(totalUnread = getTotalUnreadCount()) {
+    const badge = document.querySelector(`#${CHROME_IDS.palsToggle} .sb-conversation-pals-toggle-badge`);
+    if (!(badge instanceof HTMLElement)) {
+        return;
+    }
+
+    badge.textContent = getBadgeLabel(totalUnread);
+    badge.hidden = totalUnread <= 0;
+}
+
+function updateConversationNotificationIndicators() {
+    const totalUnread = getTotalUnreadCount();
+    updatePalsToggleBadge(totalUnread);
+    updateConversationTitleBadge(totalUnread);
+    updateConversationFaviconBadge(totalUnread);
+}
+
+function isConversationActiveForAvatar(avatar) {
+    return Boolean(conversationWorkspaceOpen && !selected_group && avatar && avatar === getCurrentCharAvatar());
+}
+
+async function openConversationFromNotification(avatar) {
+    const characterIndex = getCharacterIndexForAvatar(avatar);
+    if (characterIndex < 0) {
+        return;
+    }
+
+    await selectCharacterById(characterIndex);
+    conversationWorkspaceOpen = true;
+    refreshConversationInterface({ syncControls: true });
+}
+
+function showConversationToast(avatar, message) {
+    const toastr = globalThis.toastr;
+    if (!toastr?.info) {
+        return;
+    }
+
+    const character = getCharacterForAvatar(avatar);
+    const title = `New DM from ${message.name || character?.name || 'Character'}`;
+    const preview = stripPreviewText(message.mes) || 'New Conversation message';
+    toastr.info(preview, title, {
+        timeOut: 6000,
+        onclick: () => void openConversationFromNotification(avatar),
+    });
+}
+
+function notifyNewConversationMessage(avatar, message, shouldNotify) {
+    updateConversationNotificationIndicators();
+    if (!shouldNotify || !message || message.role === 'user' || message.role === 'system') {
+        return;
+    }
+
+    try {
+        playMessageSound({ force: true });
+    } catch (error) {
+        console.warn('Conversation Mode: notification sound failed', error);
+    }
+
+    showConversationToast(avatar, message);
+}
+
+function parseAvatarList(value) {
+    return String(value || '')
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+}
+
+function getAllowedPartnerCharacters(selectedAvatars, currentAvatar = getCurrentCharAvatar()) {
+    const avatars = parseAvatarList(selectedAvatars);
+    return avatars
+        .map(avatar => getCharacterForAvatar(avatar))
+        .filter(character => character?.avatar && character.avatar !== currentAvatar);
+}
+
+function getLastUserConversationText(avatar) {
+    const userMessage = [...getConversationThread(avatar)].reverse().find(message => message?.role === 'user' && message.mes);
+    return userMessage?.mes || '';
+}
+
+function isCharacterMentionedInText(character, text) {
+    const messageText = String(text || '').toLowerCase();
+    const charName = String(character?.name || '').toLowerCase().trim();
+    if (!messageText || !charName) {
+        return false;
+    }
+
+    if (messageText.includes(charName)) {
+        return true;
+    }
+
+    return charName
+        .split(/[\s_-]+/)
+        .filter(part => part.length > 2)
+        .some(part => messageText.includes(part));
+}
+
+function chooseConversationPartner(avatar, selectedAvatars) {
+    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar);
+    if (!partners.length) {
+        return null;
+    }
+
+    const lastUserText = getLastUserConversationText(avatar);
+    const mentioned = partners.find(character => isCharacterMentionedInText(character, lastUserText));
+    return mentioned || partners[Math.floor(Math.random() * partners.length)];
+}
+
+function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripSpeakerPrefix(messageText, speakerName) {
+    const text = String(messageText || '').trim();
+    const namePattern = escapeRegExp(speakerName);
+    if (!namePattern) {
+        return text;
+    }
+
+    return text
+        .replace(new RegExp(`^\\s*(?:\\*\\*)?${namePattern}\\s*[:：-](?:\\*\\*)?\\s*`, 'i'), '')
+        .trim();
+}
+
+function getConversationActivityContext(settings, avatar, now = new Date()) {
+    const schedule = getStoredSchedule(avatar);
+    if (schedule) {
+        return getCurrentActivityFromSchedule(schedule, avatar, now);
+    }
+
+    const status = settings?.availability || DEFAULT_SETTINGS.availability;
+    const copy = getAvailabilityCopy(status);
+    return { status, activity: copy.detail.replace(/\.$/, '').toLowerCase(), source: 'manual' };
+}
+
+function getReplyDelayMs(messageText, settings, avatar) {
+    const multiplier = clamp(parsePositiveInt(settings?.reply_delay_multiplier, DEFAULT_REPLY_DELAY_MULTIPLIER, 0), 0, 300) / 100;
+    if (multiplier <= 0) {
+        return 0;
+    }
+
+    const current = getConversationActivityContext(settings, avatar);
+    const status = current.status || 'online';
+    const baseMs = { online: 450, idle: 900, dnd: 1600, offline: 2200 }[status] ?? 450;
+    const perCharMs = { online: 18, idle: 32, dnd: 52, offline: 68 }[status] ?? 18;
+    const talkativeness = clamp(parsePositiveInt(settings?.talkativeness, DEFAULT_TALKATIVENESS, 0), 0, 100);
+    const talkFactor = 1.15 - (talkativeness / 200);
+    const delay = (baseMs + String(messageText || '').length * perCharMs * talkFactor) * multiplier;
+    return Math.min(9000, Math.max(350, Math.round(delay)));
+}
+
+async function waitForReplyDelay(messageText, settings, avatar) {
+    const delay = getReplyDelayMs(messageText, settings, avatar);
+    if (delay <= 0) {
+        return;
+    }
+
+    if (isConversationActiveForAvatar(avatar)) {
+        generationActive = true;
+        refreshConversationInterface({ syncControls: false });
+    }
+    await new Promise(resolve => setTimeout(resolve, delay));
+}
+
+function maybePostDelayedReplyNotice(avatar, settings) {
+    const current = getConversationActivityContext(settings, avatar);
+    if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
+        return;
+    }
+    if (!['dnd', 'offline'].includes(current.status)) {
+        return;
+    }
+
+    const lastUserActivity = getLastUserActivity(avatar);
+    const markerKey = 'sb_conv_busy_reply_notice';
+    if (getConversationSessionMarker(avatar, markerKey) === String(lastUserActivity)) {
+        return;
+    }
+
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || 'This character';
+    appendConversationThreadMessage(avatar, {
+        role: 'system',
+        name: 'Status',
+        mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
+        extra: { conversation_mode_notice: true, availability: current.status },
+    });
+    setConversationSessionMarker(avatar, markerKey, lastUserActivity);
+}
+
 function stripPreviewText(messageText) {
     return String(messageText || '')
         .replace(/<[^>]*>/g, ' ')
@@ -1333,7 +1682,7 @@ function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar()) {
         setLastConversationPreview(avatar, message.mes);
     }
 
-    clearUnreadCount(avatar);
+    updateConversationNotificationIndicators();
 }
 
 function getConversationSettingsForCharacter(character) {
@@ -1353,6 +1702,14 @@ function getConversationPals() {
 function getConversationMessageAvatar(message, avatar = getCurrentCharAvatar()) {
     if (message.role === 'user') {
         return default_user_avatar;
+    }
+
+    if (message.role === 'partner') {
+        const partnerAvatar = message.extra?.partner_avatar
+            || (Array.isArray(characters) ? characters.find(character => character?.name === message.name)?.avatar : null);
+        if (partnerAvatar) {
+            return getThumbnailUrl('avatar', partnerAvatar);
+        }
     }
 
     if (avatar) {
@@ -1585,21 +1942,13 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
         const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
         const speakerName = character?.name || getCurrentCharName();
 
-        let isFirst = true;
         for (const messageText of splitChatroomMessages(text)) {
-            if (!isFirst) {
-                generationActive = true;
-                refreshConversationInterface({ syncControls: false });
-                const delay = 600 + messageText.length * 25;
-                const clampedDelay = Math.min(4000, Math.max(800, delay));
-                await new Promise(resolve => setTimeout(resolve, clampedDelay));
-            }
+            await waitForReplyDelay(messageText, settings, avatar);
             await appendConversationMessage(messageText, {
                 name: speakerName,
                 role: 'character',
                 extra,
             }, avatar);
-            isFirst = false;
         }
     }
 
@@ -1797,8 +2146,8 @@ function buildConnectionProfileOptions(selected) {
     return options.join('');
 }
 
-function buildChimingPartnerOptions(selectedNames) {
-    const selectedSet = new Set(String(selectedNames || '').split(',').map(part => part.trim()).filter(Boolean));
+function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters to pick partners.') {
+    const selectedSet = new Set(parseAvatarList(selectedNames));
     const currentAvatar = getCurrentCharAvatar();
     const rows = [];
     (Array.isArray(characters) ? characters : []).forEach((character) => {
@@ -1807,7 +2156,7 @@ function buildChimingPartnerOptions(selectedNames) {
         }
         const charName = character.name || 'Character';
         const charAvatar = character.avatar;
-        const checked = (selectedSet.has(charAvatar) || selectedSet.has(charName)) ? ' checked' : '';
+        const checked = selectedSet.has(charAvatar) ? ' checked' : '';
         const thumbUrl = getThumbnailUrl('avatar', charAvatar);
         rows.push(`
             <label class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
@@ -1818,9 +2167,17 @@ function buildChimingPartnerOptions(selectedNames) {
         `);
     });
     if (!rows.length) {
-        return '<div class="sb-conversation-empty">Enable more characters to pick chiming partners.</div>';
+        return `<div class="sb-conversation-empty">${escapeHtmlText(emptyText)}</div>`;
     }
     return rows.join('');
+}
+
+function buildChimingPartnerOptions(selectedNames) {
+    return buildPartnerOptions(selectedNames, 'Enable more characters to pick chiming partners.');
+}
+
+function buildAutoChatPartnerOptions(selectedNames) {
+    return buildPartnerOptions(selectedNames, 'Enable more characters to pick auto-chat partners.');
 }
 
 function escapeHtmlAttribute(value) {
@@ -1907,6 +2264,10 @@ function buildSettingsDrawerHtml() {
                         <label for="sb_conv_talkativeness">Talkativeness</label>
                         <input id="sb_conv_talkativeness" class="text_pole textarea_compact wide100p" type="number" min="0" max="100" step="5" value="50" />
                     </div>
+                    <div class="sb-conversation-field-stack">
+                        <label for="sb_conv_reply_delay_multiplier">Reply delay</label>
+                        <input id="sb_conv_reply_delay_multiplier" class="text_pole textarea_compact wide100p" type="number" min="0" max="300" step="10" value="100" />
+                    </div>
                 </div>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Allow the character to send selfies through [selfie] commands">
@@ -1972,6 +2333,13 @@ function buildSettingsDrawerHtml() {
                     <input id="sb_conv_auto_character_chat" type="checkbox" />
                     <span>Allow characters to talk to each other</span>
                 </label>
+                <div class="sb-conversation-field-stack">
+                    <label>Auto-chat Partners</label>
+                    <p class="sb-conversation-field-hint">Only these characters may chime in autonomously. This list is separate from mention-based Chiming Partners.</p>
+                    <input type="text" id="sb_conv_auto_chat_search" class="text_pole textarea_compact wide100p" placeholder="Search auto-chat partners..." style="margin-bottom: 8px;" />
+                    <div class="sb-conversation-partner-list" id="sb_conv_auto_chat_partner_list">${buildAutoChatPartnerOptions(settings.auto_chat_names)}</div>
+                    <input id="sb_conv_auto_chat_names" type="hidden" value="${escapeHtmlAttribute(settings.auto_chat_names)}" />
+                </div>
                 <label class="checkbox_label" title="Allow this character to privately react to the current roleplay or group chat">
                     <input id="sb_conv_roleplay_reactions" type="checkbox" />
                     <span>React to current roleplay</span>
@@ -2053,6 +2421,7 @@ function ensureConversationChrome() {
         header.innerHTML = `
             <button id="${CHROME_IDS.palsToggle}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="toggle-pals" title="Open Conversation pals" aria-label="Open Conversation pals">
                 <i class="fa-solid fa-address-book"></i>
+                <span class="sb-conversation-pals-toggle-badge" hidden></span>
             </button>
             <div class="sb-conversation-header-avatar">
                 <img data-sb-conversation-avatar alt="" loading="lazy">
@@ -2090,7 +2459,7 @@ function ensureConversationChrome() {
             <div id="${CHROME_IDS.timeline}" class="sb-conversation-timeline" role="log" aria-live="polite"></div>
             <form id="${CHROME_IDS.form}" class="sb-conversation-composer">
                 <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
-                <textarea id="${CHROME_IDS.input}" class="text_pole" rows="2" placeholder="Message this character outside roleplay..."></textarea>
+                <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Message this character outside roleplay..."></textarea>
                 <div class="sb-conversation-composer-actions">
                     <button id="${CHROME_IDS.send}" type="submit" class="menu_button menu_button_icon" title="Send Conversation message" aria-label="Send Conversation message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
@@ -2565,10 +2934,15 @@ function openConversationSettings() {
     if (partnerList instanceof HTMLElement) {
         partnerList.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
     }
+    const autoChatList = document.getElementById('sb_conv_auto_chat_partner_list');
+    if (autoChatList instanceof HTMLElement) {
+        autoChatList.innerHTML = buildAutoChatPartnerOptions(settings.auto_chat_names);
+    }
 
     applySettingsToPanel(settings);
     bindWeeklyScheduleEditor();
-    bindChimingPartnerList();
+    bindPartnerList('sb_conv_chiming_partner_list', 'sb_conv_multi_char_search');
+    bindPartnerList('sb_conv_auto_chat_partner_list', 'sb_conv_auto_chat_search');
     renderScheduleDisplay();
     updateUserFooter();
     chrome.drawer.hidden = false;
@@ -2655,8 +3029,8 @@ function readWeeklyScheduleFromEditor() {
     return JSON.stringify(entries);
 }
 
-function readChimingPartnersFromList() {
-    const list = document.getElementById('sb_conv_chiming_partner_list');
+function readPartnersFromList(listId) {
+    const list = document.getElementById(listId);
     if (!(list instanceof HTMLElement)) {
         return '';
     }
@@ -2668,6 +3042,14 @@ function readChimingPartnersFromList() {
         }
     });
     return checked.join(', ');
+}
+
+function readChimingPartnersFromList() {
+    return readPartnersFromList('sb_conv_chiming_partner_list');
+}
+
+function readAutoChatPartnersFromList() {
+    return readPartnersFromList('sb_conv_auto_chat_partner_list');
 }
 
 function updateUserFooter() {
@@ -2811,8 +3193,8 @@ function bindWeeklyScheduleEditor() {
     }
 }
 
-function bindChimingPartnerList() {
-    const list = document.getElementById('sb_conv_chiming_partner_list');
+function bindPartnerList(listId, searchId) {
+    const list = document.getElementById(listId);
     if (!(list instanceof HTMLElement) || list.dataset.sbConversationBound === 'true') {
         return;
     }
@@ -2820,7 +3202,7 @@ function bindChimingPartnerList() {
     list.dataset.sbConversationBound = 'true';
     list.addEventListener('change', saveCurrentPanelSettings);
 
-    const searchInput = document.getElementById('sb_conv_multi_char_search');
+    const searchInput = document.getElementById(searchId);
     if (searchInput instanceof HTMLInputElement) {
         searchInput.addEventListener('input', () => {
             const query = searchInput.value.toLowerCase().trim();
@@ -3456,10 +3838,12 @@ function renderPalsRail() {
         empty.className = 'sb-conversation-empty';
         empty.textContent = 'Use + to start a DM with a character.';
         list.appendChild(empty);
+        updateConversationNotificationIndicators();
         return;
     }
 
     for (const { character, index, settings } of pals) {
+        const unreadCount = getUnreadCount(character.avatar);
         const row = document.createElement('div');
         row.className = 'sb-conversation-pal-row';
 
@@ -3467,7 +3851,7 @@ function renderPalsRail() {
         button.type = 'button';
         button.className = 'sb-conversation-pal';
         button.dataset.characterIndex = String(index);
-        button.dataset.unread = String(getUnreadCount(character.avatar) > 0);
+        button.dataset.unread = String(unreadCount > 0);
         button.setAttribute('aria-current', String(!selected_group && Number(this_chid) === index));
         button.innerHTML = `
             <span class="sb-conversation-pal-avatar">
@@ -3493,6 +3877,7 @@ function renderPalsRail() {
         const statusDot = button.querySelector('.sb-conversation-status-dot');
         const name = button.querySelector('.sb-conversation-pal-name');
         const preview = button.querySelector('.sb-conversation-pal-preview');
+        const unreadBadge = button.querySelector('.sb-conversation-pal-unread');
 
         if (image instanceof HTMLImageElement) {
             image.src = getThumbnailUrl('avatar', character.avatar);
@@ -3505,6 +3890,10 @@ function renderPalsRail() {
         }
         if (preview instanceof HTMLElement) {
             preview.textContent = getLastConversationPreview(character.avatar);
+        }
+        if (unreadBadge instanceof HTMLElement) {
+            unreadBadge.textContent = getBadgeLabel(unreadCount);
+            unreadBadge.hidden = unreadCount <= 0;
         }
 
         const characterStore = getCharacterConversationStore(character.avatar, { create: false });
@@ -3565,6 +3954,7 @@ function renderPalsRail() {
         row.append(button, deleteButton, branchList);
         list.appendChild(row);
     }
+    updateConversationNotificationIndicators();
 }
 
 function updateConversationHeader(settings = getSettings()) {
@@ -3606,7 +3996,8 @@ function updateConversationHeader(settings = getSettings()) {
             status.textContent = `${character.name || 'Character'} is writing...`;
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
-            status.textContent = `${currentCopy.label} · ${current.activity}`;
+            const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
+            status.textContent = `${currentCopy.label} · ${current.activity}${delayedNotice}`;
         } else {
             status.textContent = `${statusCopy.label}: ${statusCopy.detail}`;
         }
@@ -3695,6 +4086,10 @@ function saveCurrentPanelSettings() {
     const chimingInput = document.getElementById('sb_conv_multi_char_names');
     if (chimingInput instanceof HTMLInputElement) {
         chimingInput.value = readChimingPartnersFromList();
+    }
+    const autoChatInput = document.getElementById('sb_conv_auto_chat_names');
+    if (autoChatInput instanceof HTMLInputElement) {
+        autoChatInput.value = readAutoChatPartnersFromList();
     }
 
     const settings = readSettingsFromPanel(avatar);
@@ -3793,8 +4188,116 @@ async function handleCharacterMessagePolish(messageId, buttonElement) {
     }
 }
 
+function focusConversationInput() {
+    const input = document.getElementById(CHROME_IDS.input);
+    if (input instanceof HTMLTextAreaElement && !input.disabled) {
+        input.focus({ preventScroll: true });
+    }
+}
+
+async function waitForAutoWorker() {
+    while (autoWorkerBusy) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+}
+
+async function processQueuedConversationReply(queueItem) {
+    const avatar = queueItem?.avatar;
+    if (!avatar || selected_group || is_send_press) {
+        return;
+    }
+
+    await waitForAutoWorker();
+
+    const settings = getSettings(avatar);
+    if (!settings.enabled) {
+        return;
+    }
+
+    if (await handleAvailabilityAutoResponder(settings, avatar)) {
+        return;
+    }
+
+    conversationReplyBusy = true;
+    generationActive = true;
+    maybePostDelayedReplyNotice(avatar, settings);
+    refreshConversationInterface({ syncControls: false });
+
+    try {
+        const character = getCharacterForAvatar(avatar);
+        const speakerName = character?.name || getCurrentCharName();
+        const response = await generateConversationReply(
+            '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]',
+            settings,
+            { avatar, speakerName },
+        );
+        if (response?.trim()) {
+            await postCharacterReply(response.trim(), settings, {
+                extra: {
+                    conversation_mode_reply: true,
+                },
+            }, avatar);
+        }
+
+        const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
+        const wantsImage = settings.image_gen_enabled
+            && (settings.spontaneous_selfies || imageKeywords.test(queueItem.text || ''));
+        if (wantsImage && getImageCooldownRemainingSeconds(avatar, settings) === 0) {
+            const prompt = buildCharacterImagePrompt(
+                settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
+                'the current DM conversation',
+                avatar,
+            );
+            const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+            if (imageUrl) {
+                markImageGenerated(avatar);
+                await appendConversationMessage('Here, I can show you.', {
+                    name: speakerName,
+                    role: 'character',
+                    extra: {
+                        conversation_mode_image: true,
+                        image_url: imageUrl,
+                        image_prompt: prompt,
+                    },
+                }, avatar);
+            }
+        }
+    } catch (error) {
+        console.error('Conversation reply error:', error);
+        globalThis.toastr?.error?.('Conversation reply failed.');
+    } finally {
+        conversationReplyBusy = false;
+        generationActive = false;
+        refreshConversationInterface({ syncControls: false });
+    }
+}
+
+async function processSendQueue() {
+    if (sendQueueProcessing) {
+        return;
+    }
+
+    sendQueueProcessing = true;
+    try {
+        while (sendQueue.length) {
+            const queueItem = sendQueue.shift();
+            await processQueuedConversationReply(queueItem);
+            if (sendQueue.length) {
+                await new Promise(resolve => setTimeout(resolve, SEND_QUEUE_BATCH_MS));
+            }
+        }
+    } finally {
+        sendQueueProcessing = false;
+        focusConversationInput();
+    }
+
+    if (sendQueue.length) {
+        void processSendQueue();
+    }
+}
+
 async function submitConversationInput() {
-    if (conversationReplyBusy || autoWorkerBusy || selected_group || is_send_press) {
+    if (selected_group || is_send_press) {
         return;
     }
 
@@ -3825,59 +4328,8 @@ async function submitConversationInput() {
     updateLastUserActivity(avatar);
     refreshConversationInterface({ syncControls: false });
 
-    if (await handleAvailabilityAutoResponder(settings)) {
-        input.focus({ preventScroll: true });
-        return;
-    }
-
-    conversationReplyBusy = true;
-    generationActive = true;
-    refreshConversationInterface({ syncControls: false });
-
-    try {
-        const response = await generateConversationReply('[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]', settings, { avatar });
-        if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
-                extra: {
-                    conversation_mode_reply: true,
-                },
-            }, avatar);
-        }
-
-        // Item 8: QIG image gen — trigger when user asked for an image or image_gen is enabled + spontaneous_selfies
-        const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
-        const wantsImage = settings.image_gen_enabled
-            && (settings.spontaneous_selfies || imageKeywords.test(text));
-        if (wantsImage && getImageCooldownRemainingSeconds(avatar, settings) === 0) {
-            const charName = getCurrentCharName();
-            const prompt = buildCharacterImagePrompt(
-                settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
-                'the current DM conversation',
-                getCurrentCharAvatar(),
-            );
-            const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
-            if (imageUrl) {
-                markImageGenerated(avatar);
-                await appendConversationMessage('Here, I can show you.', {
-                    name: charName,
-                    role: 'character',
-                    extra: {
-                        conversation_mode_image: true,
-                        image_url: imageUrl,
-                        image_prompt: prompt,
-                    },
-                }, avatar);
-            }
-        }
-    } catch (error) {
-        console.error('Conversation reply error:', error);
-        globalThis.toastr?.error?.('Conversation reply failed.');
-    } finally {
-        conversationReplyBusy = false;
-        generationActive = false;
-        refreshConversationInterface({ syncControls: false });
-        input.focus({ preventScroll: true });
-    }
+    sendQueue.push({ avatar, text, createdAt: Date.now() });
+    void processSendQueue();
 }
 
 async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {} } = {}, avatar = getCurrentCharAvatar()) {
@@ -3891,14 +4343,20 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
         mes: messageText,
         extra,
     });
+    const shouldNotify = !['user', 'system'].includes(role) && !isConversationActiveForAvatar(avatar);
+    if (shouldNotify) {
+        incrementUnreadCount(avatar);
+    }
 
-    if (conversationWorkspaceOpen && avatar === getCurrentCharAvatar()) {
+    if (isConversationActiveForAvatar(avatar)) {
         refreshConversationInterface({ syncControls: false });
     } else if (conversationWorkspaceOpen) {
         renderPalsRail();
     }
 
-    if (role !== 'user' && message) {
+    notifyNewConversationMessage(avatar, message, shouldNotify);
+
+    if (!['user', 'system'].includes(role) && message) {
         void runCompanionsOnConversationMessage(avatar, message.id);
     }
 
@@ -4248,21 +4706,20 @@ async function checkProactiveMessaging(avatar, settings, now) {
 }
 
 async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
-    const partners = settings.multi_char_names.split(',').map(val => val.trim()).filter(Boolean);
-    if (!partners.length || autoWorkerBusy) {
+    const partner = chooseConversationPartner(avatar, settings.multi_char_names);
+    if (!partner || autoWorkerBusy) {
         return false;
     }
 
     autoWorkerBusy = true;
 
     try {
-        const partnerVal = partners[Math.floor(Math.random() * partners.length)];
-        const partnerName = getCharacterForAvatar(partnerVal)?.name || partnerVal;
+        const partnerName = partner.name || 'A friend';
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const userName = name1 || 'User';
         const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
-        const systemPrompt = `You are ${partnerName}, chiming in on a private DM conversation between ${charName} and ${userName}. This is separate from the roleplay/story chat. Write one short, casual message that fits the latest DM context. Format your message exactly beginning with **${partnerName}:** followed by your message body.`;
+        const systemPrompt = `You are ${partnerName}, chiming in on a private DM conversation between ${charName} and ${userName}. This is separate from the roleplay/story chat. Write one short, casual message that fits the latest DM context. Output only the message body, without a name prefix.`;
         const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short, engaging DM chime from ${partnerName}'s perspective.`;
         const response = await generateRaw({
             prompt,
@@ -4272,11 +4729,12 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
         });
 
         if (response?.trim()) {
-            await appendConversationMessage(response.trim(), {
+            await appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
                 name: partnerName,
                 role: 'partner',
                 extra: {
                     conversation_mode_chime: true,
+                    partner_avatar: partner.avatar,
                 },
             }, avatar);
             return true;
@@ -4321,20 +4779,18 @@ async function triggerAutoCharacterChat(avatar, settings) {
         return false;
     }
 
-    // Pick another enabled pal to speak to the current character.
-    const others = getConversationPals().filter((pal) => pal.character?.avatar && pal.character.avatar !== avatar);
-    if (!others.length) {
+    const partner = chooseConversationPartner(avatar, settings.auto_chat_names);
+    if (!partner) {
         return false;
     }
 
     autoWorkerBusy = true;
     try {
-        const partner = others[Math.floor(Math.random() * others.length)];
-        const partnerName = partner.character.name || 'A friend';
+        const partnerName = partner.name || 'A friend';
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
-        const systemPrompt = `You are ${partnerName}, messaging ${charName} in a private group DM. This is separate from any roleplay/story chat. Write one short, natural message from ${partnerName} that continues the casual conversation or starts a friendly new topic. Begin your message exactly with **${partnerName}:** followed by the message body.`;
+        const systemPrompt = `You are ${partnerName}, messaging ${charName} in a private group DM. This is separate from any roleplay/story chat. Write one short, natural message from ${partnerName} that continues the casual conversation or starts a friendly new topic. Output only the message body, without a name prefix.`;
         const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short DM from ${partnerName} talking to ${charName}.`;
         const response = await generateRaw({
             prompt,
@@ -4344,10 +4800,10 @@ async function triggerAutoCharacterChat(avatar, settings) {
         });
 
         if (response?.trim()) {
-            await appendConversationMessage(response.trim(), {
+            await appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
                 name: partnerName,
                 role: 'partner',
-                extra: { conversation_mode_auto_chat: true },
+                extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
             }, avatar);
             return true;
         }
@@ -4469,12 +4925,6 @@ async function triggerGossipDM(characterIndex) {
             await postCharacterReply(response.trim(), settings, {
                 extra: { conversation_mode_gossip: true, gossip_source_group: true },
             }, character.avatar);
-
-            const count = getUnreadCount(character.avatar);
-            setUnreadCount(character.avatar, count + 1);
-
-            updateLastPreviewFromConversation(character.avatar);
-            renderPalsRail();
         }
     } catch (err) {
         console.error('Error generating gossip DM:', err);
@@ -4519,12 +4969,6 @@ async function triggerRoleplayDM() {
             await postCharacterReply(response.trim(), settings, {
                 extra: { conversation_mode_gossip: true, gossip_source_roleplay: true },
             }, avatar);
-
-            const count = getUnreadCount(avatar);
-            setUnreadCount(avatar, count + 1);
-
-            updateLastPreviewFromConversation(avatar);
-            renderPalsRail();
         }
     } catch (err) {
         console.error('Error generating roleplay DM:', err);
@@ -4532,7 +4976,7 @@ async function triggerRoleplayDM() {
 }
 
 async function conversationModeAutoMessageWorker() {
-    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press) {
+    if (autoWorkerBusy || conversationReplyBusy || sendQueueProcessing || sendQueue.length || selected_group || is_send_press) {
         return;
     }
 
@@ -4572,12 +5016,11 @@ async function conversationModeAutoMessageWorker() {
     await checkAutoCharacterChat(avatar, settings, now);
 }
 
-async function handleAvailabilityAutoResponder(settings = getSettings()) {
+async function handleAvailabilityAutoResponder(settings = getSettings(), avatar = getCurrentCharAvatar()) {
     if (selected_group) {
         return false;
     }
 
-    const avatar = getCurrentCharAvatar();
     if (!avatar) {
         return false;
     }
@@ -4586,13 +5029,15 @@ async function handleAvailabilityAutoResponder(settings = getSettings()) {
         return false;
     }
 
-    const offlineText = (settings.offline_message || DEFAULT_SETTINGS.offline_message).replace('{{char}}', getCurrentCharName());
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || getCurrentCharName();
+    const offlineText = (settings.offline_message || DEFAULT_SETTINGS.offline_message).replace('{{char}}', charName);
     await appendConversationMessage(offlineText, {
         extra: {
             conversation_mode_auto_responder: true,
             availability: settings.availability,
         },
-    });
+    }, avatar);
     return true;
 }
 
