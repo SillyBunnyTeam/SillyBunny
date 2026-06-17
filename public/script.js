@@ -6323,8 +6323,29 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
         if (message.role === 'assistant') name = message.name ?? name2;
         if (message.role === 'system') name = message.name ?? '';
         const prefix = isInstruct || api === 'openai' ? '' : (name ? `${name}: ` : '');
-        const messageContent = normalizeContentText(message.content);
-        message.content = prefix + substituteParams(messageContent);
+        if (api === 'openai' && Array.isArray(message.content)) {
+            let didApplyPrefix = !prefix;
+            message.content = message.content.map(part => {
+                if (part?.type !== 'text' || typeof part.text !== 'string') {
+                    return part;
+                }
+
+                const text = substituteParams(part.text);
+                if (didApplyPrefix) {
+                    return { ...part, text };
+                }
+
+                didApplyPrefix = true;
+                return { ...part, text: prefix + text };
+            });
+
+            if (!didApplyPrefix) {
+                message.content.unshift({ type: 'text', text: prefix });
+            }
+        } else {
+            const messageContent = normalizeContentText(message.content);
+            message.content = prefix + substituteParams(messageContent);
+        }
         if (isInstruct) {  // instruct formatting for text completion
             const isUser = message.role === 'user';
             const isNarrator = message.role === 'system';

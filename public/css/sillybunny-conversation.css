@@ -690,6 +690,7 @@
 .sb-conversation-message[data-role='user'] .sb-conversation-message-meta {
     justify-content: flex-end;
     inline-size: 100%;
+    margin-inline-start: auto;
     text-align: right;
 }
 
@@ -1237,12 +1238,11 @@
     flex: 0 0 auto;
 }
 
-/* Popover pickers anchored above the footer buttons */
+/* Popover pickers anchored above the footer controls */
 .sb-conversation-persona-picker,
 .sb-conversation-status-picker {
     position: absolute;
     inset-block-end: calc(100% + 8px);
-    inset-inline-end: 0;
     z-index: 90;
     display: flex;
     min-inline-size: 184px;
@@ -1256,6 +1256,14 @@
     box-shadow: 0 18px 40px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 60%, transparent);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+}
+
+.sb-conversation-persona-picker {
+    inset-inline-start: 0;
+}
+
+.sb-conversation-status-picker {
+    inset-inline-end: 0;
 }
 
 .sb-conversation-persona-picker[hidden],
