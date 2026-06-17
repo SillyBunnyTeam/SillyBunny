@@ -322,6 +322,28 @@
     white-space: nowrap;
 }
 
+.sb-conversation-pal-name-row {
+    display: flex;
+    min-inline-size: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+.sb-conversation-pal-name-row .sb-conversation-pal-name {
+    flex: 1 1 auto;
+}
+
+.sb-conversation-pal-kind {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 70%, transparent);
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
+    font-size: 0.68rem;
+    font-weight: var(--sb-weight-control);
+    line-height: 1;
+}
+
 .sb-conversation-pal-preview {
     display: block;
     min-inline-size: 0;
@@ -954,6 +976,25 @@
     width: 76px;
 }
 
+.sb-conversation-idle-actions {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.sb-conversation-idle-actions .checkbox_label {
+    min-block-size: 36px;
+    padding-inline: 10px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-button, 10px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-conversation-settings-body .text_pole[type='number'] {
+    min-block-size: 36px;
+    padding-block: 4px;
+}
+
 /* Schedule display */
 .sb-conversation-field-hint {
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
@@ -1413,8 +1454,8 @@
 /* Symmetrical proactive messaging inputs grid */
 .sb-conversation-proactive-inputs {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(4, minmax(72px, 1fr));
+    gap: 8px;
     align-items: end;
 }
 
