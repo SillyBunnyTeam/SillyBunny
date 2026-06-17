@@ -1,6 +1,6 @@
 import { getMessageTimeStamp } from './RossAscends-mods.js';
 import { eventSource, event_types } from './events.js';
-import { selected_group } from './group-chats.js';
+import { selected_group, groups } from './group-chats.js';
 import { world_names } from './world-info.js';
 import { playMessageSound, power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
@@ -93,6 +93,11 @@ const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 const SEND_QUEUE_BATCH_MS = 900;
 const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
 const PARTNER_FOLLOWUP_RECENT_WINDOW = 6;
+const PARALLEL_CHIME_MAX_PARTNERS = 2;
+const GROUP_ASIDE_CONTEXT_LIMIT = 8;
+const GROUP_ASIDE_RANDOM_CHANCE = 0.18;
+const GROUP_ASIDE_COOLDOWN_MS = 8 * 60 * 1000;
+const GROUP_ASIDE_MENTION_COOLDOWN_MS = 45 * 1000;
 const MAX_STACKED_PARTICIPANT_AVATARS = 4;
 const MEMORY_SUMMARY_MIN_MESSAGES = 24;
 const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;
@@ -218,7 +223,10 @@ const sendQueue = [];
 const runtimeStatusOverrides = new Map();
 const memorySummaryBusyAvatars = new Set();
 const memorySummaryTimers = new Map();
-let activeTypingParticipant = null;
+const activeTypingParticipants = new Map();
+const partnerReplyBusyKeys = new Set();
+const groupAsideBusyKeys = new Set();
+const groupAsideLastSent = new Map();
 
 function getCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
@@ -1119,9 +1127,7 @@ function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings
                 return;
             }
 
-            const partnerAvatar = message.extra?.partner_avatar
-                || (Array.isArray(characters) ? characters.find(character => character?.name === message.name)?.avatar : null);
-            addUniqueAvatar(partnerAvatars, partnerAvatar, avatar);
+            addUniqueAvatar(partnerAvatars, message.extra?.partner_avatar, avatar);
         });
     }
 
@@ -1681,21 +1687,36 @@ function getLastUserConversationText(avatar) {
     return userMessage?.mes || '';
 }
 
-function isCharacterMentionedInText(character, text) {
+function hasMentionBoundaryMatch(messageText, mention) {
+    const needle = String(mention || '').toLowerCase().trim();
+    if (!messageText || !needle) {
+        return false;
+    }
+
+    const pattern = new RegExp(`(^|[^a-z0-9_])${escapeRegExp(needle)}($|[^a-z0-9_])`, 'i');
+    return pattern.test(messageText);
+}
+
+function isCharacterMentionedInText(character, text, candidates = []) {
     const messageText = String(text || '').toLowerCase();
     const charName = String(character?.name || '').toLowerCase().trim();
     if (!messageText || !charName) {
         return false;
     }
 
-    if (messageText.includes(charName)) {
+    if (hasMentionBoundaryMatch(messageText, charName)) {
         return true;
     }
 
+    const candidateList = Array.isArray(candidates) && candidates.length ? candidates : [character];
     return charName
         .split(/[\s_-]+/)
         .filter(part => part.length > 2)
-        .some(part => messageText.includes(part));
+        .filter((part) => {
+            const partMatches = candidateList.filter(candidate => String(candidate?.name || '').toLowerCase().split(/[\s_-]+/).includes(part));
+            return partMatches.length === 1;
+        })
+        .some(part => hasMentionBoundaryMatch(messageText, part));
 }
 
 function chooseConversationPartner(avatar, selectedAvatars) {
@@ -1705,7 +1726,7 @@ function chooseConversationPartner(avatar, selectedAvatars) {
     }
 
     const lastUserText = getLastUserConversationText(avatar);
-    const mentioned = partners.find(character => isCharacterMentionedInText(character, lastUserText));
+    const mentioned = partners.find(character => isCharacterMentionedInText(character, lastUserText, partners));
     return mentioned || (Math.random() < 0.75 ? getLeastRecentPartner(avatar, selectedAvatars) : partners[Math.floor(Math.random() * partners.length)]);
 }
 
@@ -1747,7 +1768,7 @@ function getLeastRecentPartner(avatar, selectedAvatars) {
 function getLastPartnerMessageIndex(thread, partner) {
     for (let index = thread.length - 1; index >= 0; index--) {
         const message = thread[index];
-        if (message?.extra?.partner_avatar === partner.avatar || message?.name === partner.name) {
+        if (message?.extra?.partner_avatar === partner.avatar) {
             return index;
         }
     }
@@ -1763,16 +1784,16 @@ function getRecentlySilentMentionedPartner(avatar, selectedAvatars) {
 
     const thread = getConversationThread(avatar);
     const recentMessages = thread.slice(-PARTNER_FOLLOWUP_RECENT_WINDOW);
-    const mentionedPartner = partners.find(partner => recentMessages.some(message => isCharacterMentionedInText(partner, message?.mes || '')));
+    const mentionedPartner = partners.find(partner => recentMessages.some(message => isCharacterMentionedInText(partner, message?.mes || '', partners)));
     if (!mentionedPartner) {
         return null;
     }
 
     const lastMentionIndex = recentMessages.reduce((lastIndex, message, index) => {
-        return isCharacterMentionedInText(mentionedPartner, message?.mes || '') ? index : lastIndex;
+        return isCharacterMentionedInText(mentionedPartner, message?.mes || '', partners) ? index : lastIndex;
     }, -1);
     const spokeAfterMention = recentMessages.slice(lastMentionIndex + 1).some((message) => {
-        const isPartnerMessage = message?.extra?.partner_avatar === mentionedPartner.avatar || message?.name === mentionedPartner.name;
+        const isPartnerMessage = message?.extra?.partner_avatar === mentionedPartner.avatar;
         return isPartnerMessage && !['user', 'system'].includes(message.role);
     });
     return spokeAfterMention ? null : mentionedPartner;
@@ -1828,26 +1849,62 @@ async function waitForReplyDelay(messageText, settings, avatar) {
     }
 
     if (isConversationActiveForAvatar(avatar)) {
-        generationActive = true;
         refreshConversationInterface({ syncControls: false });
     }
     await new Promise(resolve => setTimeout(resolve, delay));
 }
 
+function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { create = false } = {}) {
+    const threadAvatar = avatar || getCurrentCharAvatar();
+    if (!threadAvatar) {
+        return null;
+    }
+
+    let participantMap = activeTypingParticipants.get(threadAvatar);
+    if (!participantMap && create) {
+        participantMap = new Map();
+        activeTypingParticipants.set(threadAvatar, participantMap);
+    }
+
+    return participantMap || null;
+}
+
+function getActiveTypingParticipants(avatar = getCurrentCharAvatar()) {
+    const participantMap = getTypingParticipantMap(avatar);
+    return participantMap ? Array.from(participantMap.values()).filter(participant => participant?.avatar) : [];
+}
+
+function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar()) {
+    const participants = getActiveTypingParticipants(avatar);
+    return participants.length ? participants[participants.length - 1] : null;
+}
+
 async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar()) {
-    const previousTypingParticipant = activeTypingParticipant;
-    const previousGenerationActive = generationActive;
-    activeTypingParticipant = participant || null;
-    generationActive = true;
-    if (isConversationActiveForAvatar(avatar)) {
+    const threadAvatar = avatar || getCurrentCharAvatar();
+    const participantAvatar = participant?.avatar || threadAvatar;
+    const participantMap = getTypingParticipantMap(threadAvatar, { create: true });
+    const previousTypingParticipant = participantMap?.get(participantAvatar) || null;
+    if (participantMap && participantAvatar) {
+        participantMap.set(participantAvatar, participant || { avatar: participantAvatar, name: 'Character' });
+    }
+
+    if (isConversationActiveForAvatar(threadAvatar)) {
         refreshConversationInterface({ syncControls: false });
     }
     try {
         return await task();
     } finally {
-        activeTypingParticipant = previousTypingParticipant;
-        generationActive = previousGenerationActive;
-        if (isConversationActiveForAvatar(avatar)) {
+        if (participantMap && participantAvatar) {
+            if (previousTypingParticipant) {
+                participantMap.set(participantAvatar, previousTypingParticipant);
+            } else {
+                participantMap.delete(participantAvatar);
+            }
+            if (!participantMap.size) {
+                activeTypingParticipants.delete(threadAvatar);
+            }
+        }
+        if (isConversationActiveForAvatar(threadAvatar)) {
             refreshConversationInterface({ syncControls: false });
         }
     }
@@ -1943,14 +2000,67 @@ function getConversationPals() {
         .filter(item => item.character?.avatar && item.settings.enabled);
 }
 
+function getSelectedConversationGroup() {
+    if (!selected_group || !Array.isArray(groups)) {
+        return null;
+    }
+
+    return groups.find(group => group?.id == selected_group) || null;
+}
+
+function getCurrentGroupConversationMembers({ requireRoleplayReactions = false } = {}) {
+    const group = getSelectedConversationGroup();
+    if (!group || !Array.isArray(group.members)) {
+        return [];
+    }
+
+    return group.members
+        .filter(avatar => avatar && !group.disabled_members?.includes(avatar))
+        .map((avatar) => {
+            const character = getCharacterForAvatar(avatar);
+            const index = getCharacterIndexForAvatar(avatar);
+            const settings = getConversationSettingsForCharacter(character);
+            return { character, index, settings };
+        })
+        .filter(item => item.character?.avatar && item.settings.enabled)
+        .filter(item => !requireRoleplayReactions || item.settings.roleplay_reactions);
+}
+
+function getCharacterForGroupChatMessage(message) {
+    const avatar = String(message?.original_avatar || message?.extra?.original_avatar || message?.extra?.avatar || '').trim();
+    return avatar ? getCharacterForAvatar(avatar) : null;
+}
+
+function buildGroupChatContext(limit = GROUP_ASIDE_CONTEXT_LIMIT) {
+    const startIndex = Math.max(0, chat.length - limit);
+    const lines = [];
+    for (let index = startIndex; index < chat.length; index++) {
+        const message = chat[index];
+        const text = stripPreviewText(message?.mes || '');
+        if (!text) {
+            continue;
+        }
+
+        const speaker = message?.name || (message?.is_user || message?.role === 'user' ? name1 || 'User' : 'Character');
+        lines.push(`${speaker}: ${formatPromptText(text, 600)}`);
+    }
+
+    return lines.join('\n');
+}
+
+function getGroupAsideKey(avatar, groupId = selected_group) {
+    return `${groupId || 'group'}:${avatar || 'unknown'}`;
+}
+
 function getConversationMessageAvatar(message, avatar = getCurrentCharAvatar()) {
     if (message.role === 'user') {
-        return default_user_avatar;
+        return (typeof user_avatar === 'string' && user_avatar)
+            ? getThumbnailUrl('persona', user_avatar) || default_user_avatar
+            : default_user_avatar;
     }
 
     if (message.role === 'partner') {
-        const partnerAvatar = message.extra?.partner_avatar
-            || (Array.isArray(characters) ? characters.find(character => character?.name === message.name)?.avatar : null);
+        const partnerAvatar = message.extra?.partner_avatar;
         if (partnerAvatar) {
             return getThumbnailUrl('avatar', partnerAvatar);
         }
@@ -2078,6 +2188,7 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
             ? `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`
             : `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
+        'Formatting: write plain chat text. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
     ];
 
     let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
@@ -2243,6 +2354,8 @@ function normalizeConversationOutputText(rawText) {
             .replace(/^['"]{2,}\s*/, '"')
             .replace(/\s*['"]{2,}$/, '"')
             .replace(/^"([\s\S]*)"$/, '$1')
+            .replace(/[“”"]/g, '')
+            .replace(/\s+([?!.,:;])/g, '$1')
             .trim();
         if (normalized !== text) {
             text = normalized;
@@ -2252,9 +2365,51 @@ function normalizeConversationOutputText(rawText) {
     return text;
 }
 
+function splitPartnerChatroomMessages(text) {
+    const messages = String(text || '')
+        .split(/\n+/)
+        .map(part => normalizeConversationOutputText(part))
+        .filter(Boolean);
+    return messages.length ? messages : splitChatroomMessages(text).map(part => normalizeConversationOutputText(part)).filter(Boolean);
+}
+
+async function postPartnerConversationReply(rawText, partner, partnerSettings, { avatar = getCurrentCharAvatar(), extra = {} } = {}) {
+    if (!avatar || !partner) {
+        return false;
+    }
+
+    const partnerName = partner.name || 'A friend';
+    const { text, selfieRequests } = extractCharacterReplyCommands(stripSpeakerPrefix(rawText, partnerName), partnerSettings, partner.avatar);
+    const messages = splitPartnerChatroomMessages(text);
+
+    if (messages.length) {
+        await withTypingParticipant(partner, async () => {
+            for (const messageText of messages) {
+                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
+                await appendConversationMessage(messageText, {
+                    name: partnerName,
+                    role: 'partner',
+                    extra,
+                }, avatar);
+            }
+        }, avatar);
+    }
+
+    for (const context of selfieRequests) {
+        await withTypingParticipant(partner, () => generateSelfieFromContext(context, partnerSettings, partner.avatar, {
+            threadAvatar: avatar,
+            role: 'partner',
+            name: partnerName,
+            extra: { ...extra, partner_avatar: partner.avatar },
+        }), avatar);
+    }
+
+    return Boolean(messages.length || selfieRequests.length);
+}
+
 // Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
 // so the LLM writes a focused image prompt, then appends an image message.
-async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar()) {
+async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {} } = {}) {
     if (!settings.image_gen_enabled || !avatar || getImageCooldownRemainingSeconds(avatar, settings) > 0) {
         return;
     }
@@ -2292,10 +2447,11 @@ async function generateSelfieFromContext(context, settings, avatar = getCurrentC
     const imageUrl = await generateConversationImage(imagePrompt, settings.image_gen_negative || '');
     if (imageUrl) {
         markImageGenerated(avatar);
-        appendConversationMessage(context ? `Here's the photo: ${context}` : 'Sending you a selfie.', {
-            role: 'character',
-            extra: { conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
-        }, avatar);
+        await appendConversationMessage('Sending you a selfie.', {
+            name,
+            role,
+            extra: { ...extra, conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
+        }, threadAvatar);
     }
 }
 
@@ -2452,12 +2608,18 @@ function renderConversationTimeline() {
         timeline.appendChild(item);
     });
 
-    if (generationActive) {
-        const typingAvatar = activeTypingParticipant?.avatar || getCurrentCharAvatar();
-        const typingName = activeTypingParticipant?.name || getCurrentCharName();
+    const typingParticipants = getActiveTypingParticipants(avatar);
+    const fallbackTypingCharacter = generationActive ? getCharacterForAvatar(avatar) : null;
+    if (fallbackTypingCharacter?.avatar && !typingParticipants.some(participant => participant.avatar === fallbackTypingCharacter.avatar)) {
+        typingParticipants.unshift(fallbackTypingCharacter);
+    }
+
+    for (const typingParticipant of typingParticipants) {
+        const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
+        const typingName = typingParticipant?.name || getCurrentCharName();
         const typingItem = document.createElement('div');
         typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
-        typingItem.dataset.role = activeTypingParticipant && activeTypingParticipant.avatar !== getCurrentCharAvatar() ? 'partner' : 'character';
+        typingItem.dataset.role = typingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character';
 
         const typingAvatarWrap = document.createElement('div');
         typingAvatarWrap.className = 'sb-conversation-message-avatar';
@@ -2481,14 +2643,16 @@ function renderConversationTimeline() {
     }
 
     if (imageGenerationActive) {
+        const pendingParticipant = getPrimaryTypingParticipant(avatar);
+        const pendingAvatar = pendingParticipant?.avatar || getCurrentCharAvatar();
         const imageItem = document.createElement('div');
         imageItem.className = 'sb-conversation-message sb-conversation-image-pending';
-        imageItem.dataset.role = 'character';
+        imageItem.dataset.role = pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character';
         const imageAvatarWrap = document.createElement('div');
         imageAvatarWrap.className = 'sb-conversation-message-avatar';
         const pendingImage = document.createElement('img');
         pendingImage.alt = '';
-        pendingImage.src = getThumbnailUrl('avatar', getCurrentCharAvatar()) || default_user_avatar;
+        pendingImage.src = getThumbnailUrl('avatar', pendingAvatar) || default_user_avatar;
         imageAvatarWrap.appendChild(pendingImage);
         const imageBubble = document.createElement('div');
         imageBubble.className = 'sb-conversation-message-bubble';
@@ -4341,9 +4505,15 @@ function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
-        if (generationActive && character) {
-            const typingName = activeTypingParticipant?.name || character.name || 'Character';
-            status.textContent = `${typingName} is writing...`;
+        const typingParticipants = getActiveTypingParticipants(avatar);
+        if (generationActive && character?.avatar && !typingParticipants.some(participant => participant.avatar === character.avatar)) {
+            typingParticipants.unshift(character);
+        }
+        if (typingParticipants.length) {
+            const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
+            status.textContent = typingNames.length > 1
+                ? `${typingNames.join(', ')} are writing...`
+                : `${typingNames[0] || 'Character'} is writing...`;
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
@@ -4506,7 +4676,7 @@ async function handleCharacterMessagePolish(messageId, buttonElement) {
         });
 
         if (response?.trim()) {
-            msg.mes = response.trim();
+            msg.mes = normalizeConversationOutputText(response.trim());
             saveConversationThread(avatar, thread);
             renderConversationTimeline();
             globalThis.toastr?.success?.('Character reply polished successfully!');
@@ -4569,6 +4739,12 @@ async function processQueuedConversationReply(queueItem) {
     try {
         const character = getCharacterForAvatar(avatar);
         const speakerName = character?.name || getCurrentCharName();
+        const partnerChimePromise = settings.multi_char
+            ? checkMultiCharacterChime(avatar, settings, Date.now()).catch((error) => {
+                console.error('Conversation partner chime error:', error);
+                return false;
+            })
+            : Promise.resolve(false);
         const response = await generateConversationReply(
             '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]',
             settings,
@@ -4606,7 +4782,7 @@ async function processQueuedConversationReply(queueItem) {
             }
         }
 
-        await checkMultiCharacterChime(avatar, settings, Date.now());
+        await partnerChimePromise;
     } catch (error) {
         console.error('Conversation reply error:', error);
         globalThis.toastr?.error?.('Conversation reply failed.');
@@ -5058,15 +5234,44 @@ async function checkProactiveMessaging(avatar, settings, now) {
     return triggered;
 }
 
-async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
-    const partner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names)
-        || chooseConversationPartner(avatar, settings.multi_char_names);
-    if (!partner || autoWorkerBusy) {
+function getPartnerReplyBusyKey(avatar, partnerAvatar, scope) {
+    return `${avatar || 'thread'}:${partnerAvatar || 'partner'}:${scope || 'reply'}`;
+}
+
+function getConversationPartnerChimeCandidates(avatar, selectedAvatars, { max = PARALLEL_CHIME_MAX_PARTNERS } = {}) {
+    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar);
+    const candidates = [];
+    const addCandidate = (partner) => {
+        if (partner?.avatar && !candidates.some(candidate => candidate.avatar === partner.avatar)) {
+            candidates.push(partner);
+        }
+    };
+
+    addCandidate(getRecentlySilentMentionedPartner(avatar, selectedAvatars));
+    addCandidate(getLeastRecentPartner(avatar, selectedAvatars));
+
+    const shuffled = [...partners].sort(() => Math.random() - 0.5);
+    for (const partner of shuffled) {
+        if (candidates.length >= max) {
+            break;
+        }
+        addCandidate(partner);
+    }
+
+    return candidates.slice(0, max);
+}
+
+async function triggerConversationPartnerChime(partner, settings, avatar = getCurrentCharAvatar()) {
+    if (!partner?.avatar || !avatar) {
         return false;
     }
 
-    autoWorkerBusy = true;
+    const busyKey = getPartnerReplyBusyKey(avatar, partner.avatar, 'chime');
+    if (partnerReplyBusyKeys.has(busyKey)) {
+        return false;
+    }
 
+    partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
         const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
@@ -5074,7 +5279,7 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const userName = name1 || 'User';
-        const directive = `[System directive: You are ${partnerName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Output only your message body, without a name prefix.]`;
+        const directive = `[System directive: You are ${partnerName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Other people may be typing at the same time; do not wait for them. Output only your message body, without a name prefix.]`;
         const response = await generateConversationReply(directive, partnerSettings, {
             responseLength: 150,
             trimNames: false,
@@ -5085,27 +5290,32 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
         });
 
         if (response?.trim()) {
-            const messageText = stripSpeakerPrefix(response.trim(), partnerName);
-            await withTypingParticipant(partner, async () => {
-                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
-                return appendConversationMessage(messageText, {
-                    name: partnerName,
-                    role: 'partner',
-                    extra: {
-                        conversation_mode_chime: true,
-                        partner_avatar: partner.avatar,
-                    },
-                }, avatar);
-            }, avatar);
+            await postPartnerConversationReply(response.trim(), partner, partnerSettings, {
+                avatar,
+                extra: {
+                    conversation_mode_chime: true,
+                    partner_avatar: partner.avatar,
+                },
+            });
             return true;
         }
     } catch (error) {
         console.error('Multi-character chime error:', error);
     } finally {
-        autoWorkerBusy = false;
+        partnerReplyBusyKeys.delete(busyKey);
     }
 
     return false;
+}
+
+async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
+    const partners = getConversationPartnerChimeCandidates(avatar, settings.multi_char_names);
+    if (!partners.length) {
+        return false;
+    }
+
+    const results = await Promise.allSettled(partners.map(partner => triggerConversationPartnerChime(partner, settings, avatar)));
+    return results.some(result => result.status === 'fulfilled' && result.value === true);
 }
 
 async function checkMultiCharacterChime(avatar, settings, now) {
@@ -5136,17 +5346,18 @@ async function checkMultiCharacterChime(avatar, settings, now) {
 }
 
 async function triggerAutoCharacterChat(avatar, settings) {
-    if (autoWorkerBusy) {
-        return false;
-    }
-
     const partner = getLeastRecentPartner(avatar, settings.multi_char_names)
         || chooseConversationPartner(avatar, settings.multi_char_names);
     if (!partner) {
         return false;
     }
 
-    autoWorkerBusy = true;
+    const busyKey = getPartnerReplyBusyKey(avatar, partner.avatar, 'auto-chat');
+    if (partnerReplyBusyKeys.has(busyKey)) {
+        return false;
+    }
+
+    partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
         const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
@@ -5168,21 +5379,16 @@ async function triggerAutoCharacterChat(avatar, settings) {
         });
 
         if (response?.trim()) {
-            const messageText = stripSpeakerPrefix(response.trim(), partnerName);
-            await withTypingParticipant(partner, async () => {
-                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
-                return appendConversationMessage(messageText, {
-                    name: partnerName,
-                    role: 'partner',
-                    extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
-                }, avatar);
-            }, avatar);
+            await postPartnerConversationReply(response.trim(), partner, partnerSettings, {
+                avatar,
+                extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
+            });
             return true;
         }
     } catch (error) {
         console.error('Auto character chat error:', error);
     } finally {
-        autoWorkerBusy = false;
+        partnerReplyBusyKeys.delete(busyKey);
     }
 
     return false;
@@ -5224,83 +5430,90 @@ async function checkGroupChatMention(messageId) {
         return;
     }
 
-    const messageText = message.mes.toLowerCase();
-
-    for (let i = 0; i < characters.length; i++) {
-        const character = characters[i];
-        if (!character?.avatar) {
-            continue;
-        }
-
-        const settings = getSettings(character.avatar);
-        if (!settings.enabled) {
-            continue;
-        }
-
-        const charName = (character.name || '').toLowerCase();
-        const nameParts = charName.split(/[\s_-]+/).filter(p => p.length > 2);
-
-        let isMentioned = false;
-        if (charName && messageText.includes(charName)) {
-            isMentioned = true;
-        } else {
-            for (const part of nameParts) {
-                if (messageText.includes(part)) {
-                    isMentioned = true;
-                    break;
-                }
-            }
-        }
-
-        if (isMentioned) {
-            console.log(`Conversation Mode: character ${character.name} mentioned in group chat. Triggering response...`);
-            setTimeout(() => {
-                // @ts-ignore
-                globalThis.Generate?.('normal', { force_chid: i });
-            }, 1000);
-            break;
-        }
+    const members = getCurrentGroupConversationMembers({ requireRoleplayReactions: true });
+    const memberCharacters = members.map(item => item.character).filter(Boolean);
+    const mentionedMembers = members.filter(({ character }) => isCharacterMentionedInText(character, message.mes, memberCharacters));
+    if (!mentionedMembers.length) {
+        return;
     }
+
+    setTimeout(() => {
+        for (const { character } of mentionedMembers) {
+            void triggerGroupAsideDM(character, { reason: 'mention', sourceMessageId: messageId });
+        }
+    }, 900);
 }
 
-async function triggerGossipDM(characterIndex) {
-    const character = characters[characterIndex];
-    if (!character?.avatar) return;
-
-    const settings = getSettings(character.avatar);
-    if (!settings.enabled) return;
-
-    const snippet = [];
-    const startIdx = Math.max(0, chat.length - 6);
-    for (let i = startIdx; i < chat.length; i++) {
-        const msg = chat[i];
-        if (msg && msg.mes && !msg.extra?.conversation_mode_auto) {
-            snippet.push(`${msg.name || (msg.is_user ? 'User' : 'Character')}: ${msg.mes}`);
-        }
+async function triggerGroupAsideDM(character, { reason = 'random', sourceMessageId = null } = {}) {
+    const group = getSelectedConversationGroup();
+    if (!group || !character?.avatar || !group.members?.includes(character.avatar) || group.disabled_members?.includes(character.avatar)) {
+        return false;
     }
 
-    if (!snippet.length) return;
+    const settings = getSettings(character.avatar);
+    if (!settings.enabled || !settings.roleplay_reactions) {
+        return false;
+    }
 
-    const chatText = snippet.join('\n');
-    const directive = `[System directive: You are secretly DM'ing {{user}} to gossip or comment on the ongoing group chat. Share a juicy secret, reaction, or personal thought about what is happening in the group chat. Keep it concise, casual, and in-character. Do not send this in the group chat; this is a private DM.\n\nGroup chat context:\n${chatText}]`;
+    const current = getConversationActivityContext(settings, character.avatar);
+    if (current.status === 'offline') {
+        return false;
+    }
 
+    const key = getGroupAsideKey(character.avatar, group.id);
+    if (groupAsideBusyKeys.has(key)) {
+        return false;
+    }
+
+    const now = Date.now();
+    const cooldown = reason === 'mention' ? GROUP_ASIDE_MENTION_COOLDOWN_MS : GROUP_ASIDE_COOLDOWN_MS;
+    if (now - (groupAsideLastSent.get(key) || 0) < cooldown) {
+        return false;
+    }
+
+    const groupContext = buildGroupChatContext();
+    if (!groupContext) {
+        return false;
+    }
+
+    groupAsideBusyKeys.add(key);
     try {
-        console.log(`Generating private gossip DM from ${character.name}...`);
+        const userName = name1 || 'User';
+        const characterName = character.name || 'Character';
+        const reasonLine = reason === 'mention'
+            ? `${userName} just mentioned or addressed you in the group chat. Send them a private aside DM about it.`
+            : 'Send a private aside DM while the group chat is ongoing. React to the group if there is something worth reacting to; otherwise start a natural casual DM topic.';
+        const directive = `[System directive: You are ${characterName}, currently present in the active group chat. ${reasonLine} This message goes only to ${userName} in Conversation Mode, not into the group chat. Keep it short, casual, in-character, and suitable as one or two chat bubbles. Output only your DM body, without a name prefix.\n\nRecent group chat context:\n${groupContext}]`;
         const response = await generateConversationReply(directive, settings, {
-            responseLength: 150,
-            speakerName: character.name || 'Character',
-            trimNames: true,
+            responseLength: 170,
+            speakerName: characterName,
+            trimNames: false,
             avatar: character.avatar,
         });
 
         if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
-                extra: { conversation_mode_gossip: true, gossip_source_group: true },
-            }, character.avatar);
+            const extra = {
+                conversation_mode_group_aside: true,
+                conversation_mode_gossip: true,
+                gossip_source_group: true,
+                group_aside_reason: reason,
+                source_group_id: group.id,
+            };
+            if (sourceMessageId !== null && typeof sourceMessageId !== 'undefined') {
+                extra.source_group_message_id = sourceMessageId;
+            }
+
+            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra }, character.avatar), character.avatar);
+            groupAsideLastSent.set(key, Date.now());
+            return true;
         }
     } catch (err) {
-        console.error('Error generating gossip DM:', err);
+        console.error('Error generating group aside DM:', err);
+    } finally {
+        groupAsideBusyKeys.delete(key);
     }
+
+    return false;
 }
 
 async function triggerRoleplayDM() {
@@ -5426,27 +5639,23 @@ function init() {
             checkGroupChatMention(messageId);
         }
     });
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
         refreshConversationInterface({ syncControls: false });
 
-        // 15% chance to trigger secret gossip DMs or roleplay side-DMs
+        // Occasional private asides keep Conversation Mode feeling connected
+        // without forcing a public group-chat reply.
         const roll = Math.random();
-        if (roll < 0.15) {
+        if (roll < GROUP_ASIDE_RANDOM_CHANCE) {
             if (selected_group) {
-                // Find group members with Conversation Mode enabled and roleplay reactions allowed.
-                const enabledMembers = [];
-                for (let i = 0; i < characters.length; i++) {
-                    const char = characters[i];
-                    if (char?.avatar) {
-                        const settings = getSettings(char.avatar);
-                        if (settings.enabled && settings.roleplay_reactions) {
-                            enabledMembers.push(i);
-                        }
-                    }
-                }
-                if (enabledMembers.length > 0) {
-                    const randomMemberIdx = enabledMembers[Math.floor(Math.random() * enabledMembers.length)];
-                    setTimeout(() => void triggerGossipDM(randomMemberIdx), 2000);
+                const members = getCurrentGroupConversationMembers({ requireRoleplayReactions: true });
+                const speaker = getCharacterForGroupChatMessage(chat[messageId]);
+                const speakerMember = speaker?.avatar ? members.find(item => item.character?.avatar === speaker.avatar) : null;
+                const chosenMember = speakerMember && Math.random() < 0.65
+                    ? speakerMember
+                    : members[Math.floor(Math.random() * members.length)];
+                if (chosenMember?.character) {
+                    const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
+                    setTimeout(() => void triggerGroupAsideDM(chosenMember.character, { reason, sourceMessageId: messageId }), 2000);
                 }
             } else if (getSettings(getCurrentCharAvatar()).roleplay_reactions) {
                 setTimeout(() => void triggerRoleplayDM(), 2000);

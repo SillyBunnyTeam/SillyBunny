@@ -599,16 +599,16 @@
     flex: 0 0 34px;
 }
 
-.sb-conversation-message[data-role='user'] .sb-conversation-message-avatar {
-    display: none;
-}
-
 .sb-conversation-message-avatar img {
     inline-size: 100%;
     block-size: 100%;
     display: block;
     border-radius: var(--sb-radius-button, 14px);
     object-fit: cover;
+}
+
+.sb-conversation-message[data-role='user'] .sb-conversation-message-avatar img {
+    border: 1px solid color-mix(in srgb, var(--sb-accent) 42%, var(--sb-shell-border));
 }
 
 .sb-conversation-message-bubble {
