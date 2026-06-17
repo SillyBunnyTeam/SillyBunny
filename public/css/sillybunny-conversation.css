@@ -989,6 +989,10 @@
     gap: 6px;
 }
 
+.sb-conversation-field-stack[hidden] {
+    display: none !important;
+}
+
 .sb-conversation-field-stack > label,
 .sb-conversation-field-label {
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);

@@ -238,6 +238,8 @@ let conversationSelectedAvatar = null;
 let conversationSelectedGroupId = null;
 let imageGenerationActive = false;
 let imageGenerationAbortController = null;
+let lastRenderedAvatar = null;
+let lastRenderedMessageCount = 0;
 let originalDocumentTitle = typeof document !== 'undefined' ? document.title : '';
 let originalFaviconHref = '';
 let faviconUpdateToken = 0;
@@ -2820,7 +2822,7 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     fields.push(userPersonaStatus
         ? `User presence: ${userName} is ${userAvailability.label.toLowerCase()}. Their Conversation status: ${userPersonaStatus}.`
         : `User presence: ${userName} is ${userAvailability.label.toLowerCase()}.`);
-    const personaContext = composeConversationPersonaDescription(user_avatar);
+    const personaContext = composeConversationPersonaDescription(user_avatar).trim() || String(power_user?.persona_description ?? '').trim();
     if (personaContext) {
         fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
     }
@@ -3154,6 +3156,11 @@ function renderConversationTimeline() {
         return;
     }
 
+    const previousScrollTop = timeline.scrollTop;
+    const previousScrollBottom = timeline.scrollHeight - previousScrollTop - timeline.clientHeight;
+    const previousAvatar = lastRenderedAvatar;
+    const previousMessageCount = lastRenderedMessageCount;
+
     if (!avatar) {
         timeline.innerHTML = `
             <div class="sb-conversation-thread-empty">
@@ -3164,11 +3171,16 @@ function renderConversationTimeline() {
                 </div>
             </div>
         `;
+        lastRenderedAvatar = null;
+        lastRenderedMessageCount = 0;
         return;
     }
 
     const settings = getSettings(avatar);
     const messages = getConversationThread(avatar);
+    const contextChanged = previousAvatar !== avatar;
+    const messagesAdded = messages.length > previousMessageCount;
+    const isNearBottom = previousScrollBottom <= 150;
     timeline.textContent = '';
 
     if (!messages.length) {
@@ -3182,6 +3194,13 @@ function renderConversationTimeline() {
             </div>
         `;
         timeline.appendChild(empty);
+        lastRenderedAvatar = avatar;
+        lastRenderedMessageCount = messages.length;
+        if (contextChanged || messagesAdded || isNearBottom) {
+            timeline.scrollTop = timeline.scrollHeight;
+        } else {
+            timeline.scrollTop = previousScrollTop;
+        }
         return;
     }
 
@@ -3329,7 +3348,13 @@ function renderConversationTimeline() {
         timeline.appendChild(imageItem);
     }
 
-    timeline.scrollTop = timeline.scrollHeight;
+    lastRenderedAvatar = avatar;
+    lastRenderedMessageCount = messages.length;
+    if (contextChanged || messagesAdded || isNearBottom) {
+        timeline.scrollTop = timeline.scrollHeight;
+    } else {
+        timeline.scrollTop = previousScrollTop;
+    }
 }
 
 function buildLorebookOptions(selected) {
@@ -4422,7 +4447,11 @@ function openConversationSettings() {
 function closeConversationSettings() {
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     if (drawer instanceof HTMLElement) {
+        const shouldSave = drawer.hidden === false;
         drawer.hidden = true;
+        if (shouldSave) {
+            saveCurrentPanelSettings();
+        }
     }
     setConversationBackdropVisible();
 }
@@ -4667,7 +4696,6 @@ function bindWeeklyScheduleEditor() {
     if (editor.dataset.sbConversationBound !== 'true') {
         editor.dataset.sbConversationBound = 'true';
         editor.addEventListener('change', saveCurrentPanelSettings);
-        editor.addEventListener('input', saveCurrentPanelSettings);
     }
 }
 
@@ -5477,7 +5505,6 @@ function bindConversationChromeControls(sheld) {
     if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
         drawer.dataset.sbConversationBound = 'true';
         drawer.addEventListener('change', saveCurrentPanelSettings);
-        drawer.addEventListener('input', saveCurrentPanelSettings);
     }
 
     const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
