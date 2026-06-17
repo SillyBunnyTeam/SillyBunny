@@ -71,6 +71,7 @@
     padding: 12px 16px;
     border-block-end: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
+    cursor: grab;
 }
 
 .sb-conversation-header-avatar {

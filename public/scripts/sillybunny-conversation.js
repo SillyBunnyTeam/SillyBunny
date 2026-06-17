@@ -4441,7 +4441,6 @@ function ensureConversationChrome() {
     if (!(header instanceof HTMLElement)) {
         header = document.createElement('div');
         header.id = CHROME_IDS.header;
-        header.classList.add('drag-grabber');
         header.hidden = true;
         header.innerHTML = `
             <button id="${CHROME_IDS.palsToggle}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="toggle-pals" title="Open Conversation pals" aria-label="Open Conversation pals">
@@ -4509,6 +4508,9 @@ function ensureConversationChrome() {
                     </button>
                     <button type="button" class="sb-conversation-tool-button" data-sb-conversation-action="quick-summarize" title="Refresh Conversation memory">
                         <i class="fa-solid fa-book-open" aria-hidden="true"></i><span>Summarize</span>
+                    </button>
+                    <button type="button" class="sb-conversation-tool-button" data-sb-conversation-action="force-response" title="Force a response even if the character is DND or offline">
+                        <i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Force</span>
                     </button>
                 </div>
             </div>
@@ -6181,6 +6183,22 @@ function bindConversationChromeControls(sheld) {
             case 'quick-summarize':
                 await quickConversationSummarize();
                 break;
+            case 'force-response': {
+                const avatar = getCurrentCharAvatar();
+                if (avatar) {
+                    const groupId = conversationSelectedGroupId || '';
+                    sendQueue.push({
+                        avatar,
+                        groupId,
+                        text: '',
+                        attachmentContext: '',
+                        createdAt: Date.now(),
+                        force: true,
+                    });
+                    void processSendQueue();
+                }
+                break;
+            }
             case 'set-channel':
                 setConversationTimelineChannel(target.dataset.channel);
                 break;
@@ -7159,16 +7177,18 @@ async function processQueuedConversationReply(queueItem) {
         return;
     }
 
-    if (getConversationActivityContext(settings, avatar).status === 'offline') {
-        return;
-    }
+    if (!queueItem?.force) {
+        if (getConversationActivityContext(settings, avatar).status === 'offline') {
+            return;
+        }
 
-    if (await handleAvailabilityAutoResponder(settings, avatar, { groupId })) {
-        return;
+        if (await handleAvailabilityAutoResponder(settings, avatar, { groupId })) {
+            return;
+        }
     }
 
     const status = getConversationActivityContext(settings, avatar).status || 'online';
-    if (status === 'idle' || status === 'dnd') {
+    if (!queueItem?.force && (status === 'idle' || status === 'dnd')) {
         const initialDelayMs = status === 'idle'
             ? (Math.random() * 1.5 + 1.5) * 1000
             : (Math.random() * 3 + 3) * 1000;
@@ -7190,9 +7210,12 @@ async function processQueuedConversationReply(queueItem) {
             })
             : Promise.resolve(false);
         const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
+        const systemDirective = queueItem?.force
+            ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
+            : '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]';
         const response = await generateConversationReply(
             [
-                '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]',
+                systemDirective,
                 attachmentContext ? `Latest user attachment context:\n${attachmentContext}` : '',
             ].filter(Boolean).join('\n\n'),
             settings,

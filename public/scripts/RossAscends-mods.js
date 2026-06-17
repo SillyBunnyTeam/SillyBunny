@@ -692,7 +692,9 @@ export function dragElement($elmnt) {
 
     // Setup event listeners using event delegation to support dynamic header elements like #sb_conversation_header
     $(document).off('mousedown', headerSelector).on('mousedown', headerSelector, (e) => {
-        if ($(e.target).hasClass('drag-grabber')) {
+        const isHeader = $(e.target).closest('#sb_conversation_header').length > 0;
+        const isInteractive = $(e.target).closest('button, input, select, textarea, [role="button"], a, i').length > 0;
+        if ($(e.target).hasClass('drag-grabber') || (isHeader && !isInteractive)) {
             actionType = 'drag';
             isMouseDown = true;
             observer.observe($elmnt[0], { attributes: true, attributeFilter: ['style'] });
