@@ -261,8 +261,6 @@ let generationActive = false;
 let conversationReplyBusy = false;
 let conversationUploadActive = false;
 let sendQueueProcessing = false;
-let previousConnectionProfile = null;
-let activeProfileApplied = false;
 let conversationProfileSwitchQueue = Promise.resolve();
 let scheduleGenerationBusy = false;
 let conversationWorkspaceOpen = false;
@@ -1779,13 +1777,14 @@ async function generateCharacterSchedule(character) {
     }
     promptParts.push('Generate the weekly schedule JSON now.');
 
-    const response = await generateRaw({
+    const settings = getSettings(character.avatar);
+    const response = await withConversationConnectionProfile(settings, () => generateRaw({
         prompt: promptParts.join('\n\n'),
         systemPrompt,
         responseLength: 1400,
         trimNames: false,
         cacheScope: 'conversation-mode-schedule',
-    });
+    }));
 
     return parseScheduleResponse(response);
 }
@@ -1983,17 +1982,20 @@ function updateConversationTabBadge(totalUnread = getTotalUnreadCount()) {
 }
 
 function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount()) {
-    const drawerButton = document.getElementById('rm_button_characters');
-    if (!drawerButton) {
-        return;
+    const ids = ['rm_button_characters', 'rightNavDrawerIcon'];
+    for (const id of ids) {
+        const drawerButton = document.getElementById(id);
+        if (!drawerButton) {
+            continue;
+        }
+        let badge = drawerButton.querySelector('.sb-drawer-notification-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'sb-drawer-notification-badge';
+            drawerButton.appendChild(badge);
+        }
+        badge.style.display = totalUnread > 0 ? 'block' : 'none';
     }
-    let badge = drawerButton.querySelector('.sb-drawer-notification-badge');
-    if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'sb-drawer-notification-badge';
-        drawerButton.appendChild(badge);
-    }
-    badge.style.display = totalUnread > 0 ? 'block' : 'none';
 }
 
 function updateConversationNotificationIndicators() {
@@ -2865,13 +2867,14 @@ async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), 
             buildConversationMemoryPrompt(avatar, messages, { groupId }),
             'Return the updated memory summary in 6 concise bullets or fewer. No preamble.',
         ].filter(Boolean).join('\n\n');
-        const response = await generateRaw({
+        const settings = getSettings(avatar);
+        const response = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt,
             systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
             responseLength: 420,
             trimNames: false,
             cacheScope: 'conversation-mode-memory',
-        });
+        }));
 
         if (response?.trim()) {
             saveConversationMemorySummary(avatar, response.trim(), messages.length, { groupId });
@@ -3221,13 +3224,13 @@ async function generateSelfieFromContext(context, settings, avatar = getCurrentC
 
     let imagePrompt = '';
     try {
-        imagePrompt = await generateRaw({
+        imagePrompt = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt: metaPrompt,
             systemPrompt: 'You output only a raw image generation prompt with no preamble.',
             responseLength: 200,
             trimNames: false,
             cacheScope: 'conversation-mode-selfie',
-        });
+        }));
     } catch (error) {
         console.warn('Conversation Mode: selfie prompt generation failed', error);
     }
@@ -3268,12 +3271,14 @@ async function postCharacterReply(rawText, settings, { extra = {}, groupId = und
                 continue;
             }
 
-            await waitForReplyDelay(cleanMessageText, settings, avatar);
-            await appendConversationMessage(cleanMessageText, {
-                name: speakerName,
-                role: 'character',
-                extra,
-                groupId,
+            await withTypingParticipant(character || { avatar, name: speakerName }, async () => {
+                await waitForReplyDelay(cleanMessageText, settings, avatar);
+                await appendConversationMessage(cleanMessageText, {
+                    name: speakerName,
+                    role: 'character',
+                    extra,
+                    groupId,
+                }, avatar);
             }, avatar);
         }
     }
@@ -4436,6 +4441,7 @@ function ensureConversationChrome() {
     if (!(header instanceof HTMLElement)) {
         header = document.createElement('div');
         header.id = CHROME_IDS.header;
+        header.classList.add('drag-grabber');
         header.hidden = true;
         header.innerHTML = `
             <button id="${CHROME_IDS.palsToggle}" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="toggle-pals" title="Open Conversation pals" aria-label="Open Conversation pals">
@@ -6517,22 +6523,11 @@ function getSelectedConnectionProfileName() {
 }
 
 function applyConversationContext(settings) {
-    if (settings.connection_profile && !activeProfileApplied) {
-        const current = getSelectedConnectionProfileName();
-        if (current !== settings.connection_profile) {
-            previousConnectionProfile = current;
-            activeProfileApplied = true;
-            void applyConnectionProfileByName(settings.connection_profile);
-        }
-    }
+    // Deprecated: rely entirely on temporary switches during generation to avoid corrupting global connection profile state.
 }
 
 function restoreConversationContext() {
-    if (activeProfileApplied && previousConnectionProfile) {
-        void applyConnectionProfileByName(previousConnectionProfile);
-    }
-    previousConnectionProfile = null;
-    activeProfileApplied = false;
+    // Deprecated: rely entirely on temporary switches during generation to avoid corrupting global connection profile state.
 }
 
 function setConversationInterfaceActive(active) {
@@ -6961,12 +6956,13 @@ async function handleCharacterMessagePolish(messageId, buttonElement) {
         const charName = getCurrentCharName();
         const systemPrompt = `You are an editor for ${charName}'s messages. Polish ${charName}'s reply in this instant messaging chatroom to make it more expressive, fitting for their personality, and natural. Correct any structural awkwardness while preserving the exact meaning, spelling quirks, and intent of the original text. Output only the polished reply without formatting prefixes or labels.`;
         const prompt = `Polish this message text:\n"${msg.mes}"`;
-        const response = await generateRaw({
+        const settings = getSettings(avatar);
+        const response = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt,
             systemPrompt,
             responseLength: 300,
             trimNames: true,
-        });
+        }));
 
         if (response?.trim()) {
             msg.mes = normalizeConversationOutputText(response.trim());
@@ -7163,8 +7159,20 @@ async function processQueuedConversationReply(queueItem) {
         return;
     }
 
+    if (getConversationActivityContext(settings, avatar).status === 'offline') {
+        return;
+    }
+
     if (await handleAvailabilityAutoResponder(settings, avatar, { groupId })) {
         return;
+    }
+
+    const status = getConversationActivityContext(settings, avatar).status || 'online';
+    if (status === 'idle' || status === 'dnd') {
+        const initialDelayMs = status === 'idle'
+            ? (Math.random() * 1.5 + 1.5) * 1000
+            : (Math.random() * 3 + 3) * 1000;
+        await new Promise(resolve => setTimeout(resolve, initialDelayMs));
     }
 
     conversationReplyBusy = true;
@@ -8150,6 +8158,10 @@ async function checkConversationReminders(now) {
 }
 
 async function conversationModeAutoMessageWorker() {
+    if (getUserStatus() === 'offline') {
+        return;
+    }
+
     if (autoWorkerBusy || conversationReplyBusy || sendQueueProcessing || sendQueue.length || is_send_press) {
         return;
     }
