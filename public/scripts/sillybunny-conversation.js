@@ -79,6 +79,8 @@ const LAST_AUTO_CHAT_SESSION_PREFIX = 'sb_conv_last_autochat_session_';
 const SCHEDULE_PREFIX = 'sb_conv_schedule_';
 const FOLLOWUP_COUNT_PREFIX = 'sb_conv_followup_count_';
 const AUTO_WORKER_INTERVAL_MS = 30000;
+const AUTO_WORKER_WAIT_TIMEOUT_MS = 45000;
+const AUTO_WORKER_INTERVAL_GLOBAL_KEY = '__sbConversationAutoWorkerIntervalId';
 const MAX_THREAD_MESSAGES = 250;
 const TRANSCRIPT_MESSAGE_LIMIT = 32;
 const SCHEDULE_STATUSES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
@@ -89,6 +91,10 @@ const DEFAULT_TALKATIVENESS = 50;
 const DEFAULT_MAX_FOLLOWUPS = 3;
 const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 const SEND_QUEUE_BATCH_MS = 900;
+const MAX_STACKED_PARTICIPANT_AVATARS = 4;
+const MEMORY_SUMMARY_MIN_MESSAGES = 24;
+const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;
+const MEMORY_SUMMARY_RECENT_MESSAGES = 36;
 const SELFIE_COMMAND_RE = /\[selfie(?::\s*(?:context=)?"?([^"\]]*)"?)?\]/gi;
 const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 const CHROME_IDS = Object.freeze({
@@ -192,6 +198,7 @@ const SETTINGS_FIELDS = Object.freeze([
 ]);
 
 let initialized = false;
+let autoWorkerIntervalId = null;
 let autoWorkerBusy = false;
 let generationActive = false;
 let conversationReplyBusy = false;
@@ -207,6 +214,9 @@ let originalFaviconHref = '';
 let faviconUpdateToken = 0;
 const sendQueue = [];
 const runtimeStatusOverrides = new Map();
+const memorySummaryBusyAvatars = new Set();
+const memorySummaryTimers = new Map();
+let activeTypingParticipant = null;
 
 function getCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
@@ -278,6 +288,8 @@ function createConversationBranch(name = 'Main', id = `br_${Date.now()}_${Math.r
         lastAutoMessageAt: 0,
         scheduleTriggers: {},
         sessionMarkers: {},
+        memorySummary: '',
+        memoryMessageCount: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
     };
@@ -293,6 +305,8 @@ function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
         messages: Array.isArray(normalized.messages) ? normalized.messages : [],
         scheduleTriggers: normalized.scheduleTriggers && typeof normalized.scheduleTriggers === 'object' ? normalized.scheduleTriggers : {},
         sessionMarkers: normalized.sessionMarkers && typeof normalized.sessionMarkers === 'object' ? normalized.sessionMarkers : {},
+        memorySummary: typeof normalized.memorySummary === 'string' ? normalized.memorySummary : '',
+        memoryMessageCount: parsePositiveInt(normalized.memoryMessageCount, 0, 0),
     };
 }
 
@@ -602,6 +616,33 @@ function setConversationSessionMarker(avatar, markerKey, value) {
     persistConversationStore();
 }
 
+function getConversationMemorySummary(avatar = getCurrentCharAvatar()) {
+    return String(getActiveConversationBranch(avatar, { create: false })?.memorySummary || '').trim();
+}
+
+function saveConversationMemorySummary(avatar, summary, messageCount) {
+    const branch = getActiveConversationBranch(avatar);
+    if (!branch) {
+        return;
+    }
+
+    branch.memorySummary = String(summary || '').trim();
+    branch.memoryMessageCount = Math.max(0, messageCount || 0);
+    persistConversationStore();
+}
+
+function markConversationSeen(avatar = getCurrentCharAvatar(), timestamp = Date.now()) {
+    if (!avatar) {
+        return;
+    }
+
+    setConversationSessionMarker(avatar, 'seen_at', timestamp);
+}
+
+function getConversationSeenAt(avatar = getCurrentCharAvatar()) {
+    return parsePositiveInt(getConversationSessionMarker(avatar, 'seen_at'), 0, 0);
+}
+
 function getImageCooldownRemainingSeconds(avatar, settings, now = Date.now()) {
     const cooldownMinutes = parsePositiveInt(settings.image_gen_cooldown, 10, 0);
     if (!cooldownMinutes) {
@@ -628,12 +669,14 @@ function updateLastUserActivity(avatar = getCurrentCharAvatar()) {
 }
 
 function createConversationMessage({ role = 'character', name = getCurrentCharName(), mes = '', extra = {} } = {}) {
+    const createdAt = Date.now();
     return {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
         role,
         name,
         mes,
         send_date: getMessageTimeStamp(),
+        created_at: createdAt,
         extra,
     };
 }
@@ -1051,6 +1094,120 @@ function getCharacterIndexForAvatar(avatar) {
     return (Array.isArray(characters) ? characters : []).findIndex(character => character?.avatar === avatar);
 }
 
+function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
+    if (!avatar || avatar === currentAvatar || avatars.includes(avatar)) {
+        return;
+    }
+
+    avatars.push(avatar);
+}
+
+function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { includeThreadPartners = true } = {}) {
+    const partnerAvatars = [];
+    parseAvatarList(settings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+    parseAvatarList(settings?.auto_chat_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+
+    if (includeThreadPartners) {
+        getConversationThread(avatar).forEach((message) => {
+            if (message?.role !== 'partner') {
+                return;
+            }
+
+            const partnerAvatar = message.extra?.partner_avatar
+                || (Array.isArray(characters) ? characters.find(character => character?.name === message.name)?.avatar : null);
+            addUniqueAvatar(partnerAvatars, partnerAvatar, avatar);
+        });
+    }
+
+    return partnerAvatars.filter(partnerAvatar => getCharacterForAvatar(partnerAvatar));
+}
+
+function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), options = {}) {
+    const participants = [];
+    const primary = getCharacterForAvatar(avatar);
+    if (primary?.avatar) {
+        participants.push(primary);
+    }
+
+    getConversationPartnerAvatars(avatar, settings, options).forEach((partnerAvatar) => {
+        const partner = getCharacterForAvatar(partnerAvatar);
+        if (partner?.avatar && !participants.some(participant => participant.avatar === partner.avatar)) {
+            participants.push(partner);
+        }
+    });
+
+    return participants;
+}
+
+function getEffectiveConversationStatus(avatar = getCurrentCharAvatar(), settings = getSettings(avatar)) {
+    const schedule = getStoredSchedule(avatar);
+    if (schedule) {
+        return getCurrentActivityFromSchedule(schedule, avatar).status;
+    }
+
+    return settings?.availability || DEFAULT_SETTINGS.availability;
+}
+
+function getParticipantNamesForDisplay(participants) {
+    return participants
+        .map(participant => participant?.name || 'Character')
+        .filter(Boolean);
+}
+
+function renderConversationParticipantStack(container, participants, { status = 'online', max = MAX_STACKED_PARTICIPANT_AVATARS } = {}) {
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const participantList = Array.isArray(participants) ? participants : [];
+    const visibleParticipants = participantList.filter(participant => participant?.avatar).slice(0, max);
+    container.textContent = '';
+    container.title = getParticipantNamesForDisplay(participantList).join(', ');
+
+    if (!visibleParticipants.length) {
+        const fallbackItem = document.createElement('span');
+        fallbackItem.className = 'sb-conversation-participant-avatar';
+        fallbackItem.dataset.primary = 'true';
+        const fallbackImage = document.createElement('img');
+        fallbackImage.alt = '';
+        fallbackImage.loading = 'lazy';
+        fallbackImage.src = default_user_avatar;
+        fallbackItem.appendChild(fallbackImage);
+        container.appendChild(fallbackItem);
+        return;
+    }
+
+    visibleParticipants.forEach((participant, index) => {
+        const avatarItem = document.createElement('span');
+        avatarItem.className = 'sb-conversation-participant-avatar';
+        avatarItem.dataset.primary = String(index === 0);
+
+        const image = document.createElement('img');
+        image.alt = '';
+        image.loading = index > 0 ? 'lazy' : 'eager';
+        image.src = getThumbnailUrl('avatar', participant.avatar) || default_user_avatar;
+        avatarItem.appendChild(image);
+
+        if (index === 0) {
+            const statusDot = document.createElement('span');
+            statusDot.className = 'sb-conversation-status-dot';
+            statusDot.dataset.status = status;
+            statusDot.setAttribute('aria-hidden', 'true');
+            avatarItem.appendChild(statusDot);
+        }
+
+        container.appendChild(avatarItem);
+    });
+
+    if (participantList.length > visibleParticipants.length) {
+        const overflow = document.createElement('span');
+        overflow.className = 'sb-conversation-participant-overflow';
+        overflow.textContent = `+${participantList.length - visibleParticipants.length}`;
+        overflow.setAttribute('aria-hidden', 'true');
+        container.appendChild(overflow);
+    }
+}
+
 function getCharacterImageDetails(avatar = getCurrentCharAvatar()) {
     const character = getCharacterForAvatar(avatar);
     if (!character) {
@@ -1071,22 +1228,13 @@ function getCharacterAuthorNote(avatar = getCurrentCharAvatar()) {
 }
 
 function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar)) {
-    const character = getCharacterForAvatar(avatar);
     const branch = getActiveConversationBranch(avatar, { create: false });
     if (branch?.name && branch.name !== 'Main') {
         return branch.name;
     }
 
-    const partners = String(settings?.multi_char_names || '')
-        .split(',')
-        .map(val => val.trim())
-        .filter(Boolean)
-        .map(val => getCharacterForAvatar(val)?.name || val);
-    if (partners.length) {
-        return [character?.name || 'Character', ...partners].join(', ');
-    }
-
-    return character?.name || 'Conversation';
+    const names = getParticipantNamesForDisplay(getConversationParticipants(avatar, settings));
+    return names.length ? names.join(', ') : 'Conversation';
 }
 
 function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {
@@ -1611,6 +1759,25 @@ async function waitForReplyDelay(messageText, settings, avatar) {
     await new Promise(resolve => setTimeout(resolve, delay));
 }
 
+async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar()) {
+    const previousTypingParticipant = activeTypingParticipant;
+    const previousGenerationActive = generationActive;
+    activeTypingParticipant = participant || null;
+    generationActive = true;
+    if (isConversationActiveForAvatar(avatar)) {
+        refreshConversationInterface({ syncControls: false });
+    }
+    try {
+        return await task();
+    } finally {
+        activeTypingParticipant = previousTypingParticipant;
+        generationActive = previousGenerationActive;
+        if (isConversationActiveForAvatar(avatar)) {
+            refreshConversationInterface({ syncControls: false });
+        }
+    }
+}
+
 function maybePostDelayedReplyNotice(avatar, settings) {
     const current = getConversationActivityContext(settings, avatar);
     if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
@@ -1719,6 +1886,22 @@ function getConversationMessageAvatar(message, avatar = getCurrentCharAvatar()) 
     return default_user_avatar;
 }
 
+function getConversationMessageReceipt(message, avatar = getCurrentCharAvatar()) {
+    if (!message || message.role !== 'user') {
+        return '';
+    }
+
+    const thread = getConversationThread(avatar);
+    const messageIndex = thread.findIndex(item => item.id === message.id);
+    if (messageIndex >= 0 && thread.slice(messageIndex + 1).some(item => !['user', 'system'].includes(item.role))) {
+        return 'Seen';
+    }
+
+    const seenAt = getConversationSeenAt(avatar);
+    const createdAt = parsePositiveInt(message.created_at, 0, 0);
+    return seenAt > 0 && createdAt > 0 && seenAt >= createdAt ? 'Seen' : 'Delivered';
+}
+
 function formatPromptText(value, maxLength = 1400) {
     return String(value || '')
         .replace(/<[^>]*>/g, ' ')
@@ -1733,6 +1916,78 @@ function formatConversationTranscript(messages) {
         .map(message => `${message.name || 'Speaker'}: ${formatPromptText(message.mes, 1800)}`)
         .filter(Boolean)
         .join('\n');
+}
+
+function buildConversationMemoryPrompt(avatar, messages) {
+    const character = getCharacterForAvatar(avatar);
+    const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar)));
+    return [
+        `Main DM: ${character?.name || 'Character'} with ${name1 || 'User'}.`,
+        participants.length > 1 ? `Other possible participants: ${participants.slice(1).join(', ')}.` : '',
+        'Summarize durable DM memory only: relationship tone, promises, unresolved topics, preferences, private jokes, boundaries, and emotionally important beats.',
+        'Ignore filler small talk unless it changes the relationship. Keep it compact and useful for future replies.',
+        '',
+        formatConversationTranscript(messages.slice(-MEMORY_SUMMARY_RECENT_MESSAGES)),
+    ].filter(Boolean).join('\n');
+}
+
+async function updateConversationMemorySummary(avatar = getCurrentCharAvatar()) {
+    if (!avatar || memorySummaryBusyAvatars.has(avatar)) {
+        return;
+    }
+
+    const branch = getActiveConversationBranch(avatar, { create: false });
+    const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => message?.mes && message.role !== 'system') : [];
+    if (messages.length < MEMORY_SUMMARY_MIN_MESSAGES) {
+        return;
+    }
+
+    const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount, 0, 0);
+    if (messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
+        return;
+    }
+
+    memorySummaryBusyAvatars.add(avatar);
+    try {
+        const previousSummary = getConversationMemorySummary(avatar);
+        const prompt = [
+            previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
+            buildConversationMemoryPrompt(avatar, messages),
+            'Return the updated memory summary in 6 concise bullets or fewer. No preamble.',
+        ].filter(Boolean).join('\n\n');
+        const response = await generateRaw({
+            prompt,
+            systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
+            responseLength: 420,
+            trimNames: false,
+            cacheScope: 'conversation-mode-memory',
+        });
+
+        if (response?.trim()) {
+            saveConversationMemorySummary(avatar, response.trim(), messages.length);
+        }
+    } catch (error) {
+        console.warn('Conversation Mode: memory summary update failed', error);
+    } finally {
+        memorySummaryBusyAvatars.delete(avatar);
+    }
+}
+
+function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar()) {
+    if (!avatar) {
+        return;
+    }
+
+    const existingTimer = memorySummaryTimers.get(avatar);
+    if (existingTimer) {
+        window.clearTimeout(existingTimer);
+    }
+
+    const timer = window.setTimeout(() => {
+        memorySummaryTimers.delete(avatar);
+        void updateConversationMemorySummary(avatar);
+    }, 2500);
+    memorySummaryTimers.set(avatar, timer);
 }
 
 function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()) {
@@ -1774,6 +2029,16 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     }
     if (settings.lorebook_override) {
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
+    }
+
+    const partners = getConversationParticipants(avatar, settings).slice(1);
+    if (partners.length) {
+        fields.push(`Group DM participants who may chime in: ${getParticipantNamesForDisplay(partners).join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
+    }
+
+    const memorySummary = getConversationMemorySummary(avatar);
+    if (memorySummary) {
+        fields.push(`Long-term DM memory summary:\n${memorySummary}`);
     }
 
     const schedule = getStoredSchedule(avatar);
@@ -2024,6 +2289,14 @@ function renderConversationTimeline() {
         time.textContent = message.send_date || '';
         meta.append(name, time);
 
+        const receiptText = getConversationMessageReceipt(message, avatar);
+        if (receiptText) {
+            const receipt = document.createElement('span');
+            receipt.className = 'sb-conversation-message-receipt';
+            receipt.textContent = receiptText;
+            meta.appendChild(receipt);
+        }
+
         if (settings.editable_messages) {
             const editButton = document.createElement('button');
             editButton.type = 'button';
@@ -2071,23 +2344,24 @@ function renderConversationTimeline() {
     });
 
     if (generationActive) {
-        const charName = getCurrentCharName();
+        const typingAvatar = activeTypingParticipant?.avatar || getCurrentCharAvatar();
+        const typingName = activeTypingParticipant?.name || getCurrentCharName();
         const typingItem = document.createElement('div');
         typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
-        typingItem.dataset.role = 'character';
+        typingItem.dataset.role = activeTypingParticipant && activeTypingParticipant.avatar !== getCurrentCharAvatar() ? 'partner' : 'character';
 
         const typingAvatarWrap = document.createElement('div');
         typingAvatarWrap.className = 'sb-conversation-message-avatar';
         const typingImage = document.createElement('img');
         typingImage.alt = '';
-        typingImage.src = getThumbnailUrl('avatar', getCurrentCharAvatar()) || default_user_avatar;
+        typingImage.src = getThumbnailUrl('avatar', typingAvatar) || default_user_avatar;
         typingAvatarWrap.appendChild(typingImage);
 
         const typingBubble = document.createElement('div');
         typingBubble.className = 'sb-conversation-message-bubble';
         typingBubble.innerHTML = `
             <div class="sb-conversation-message-meta">
-                <span class="sb-conversation-message-name">${escapeHtmlText(charName)}</span>
+                <span class="sb-conversation-message-name">${escapeHtmlText(typingName)}</span>
             </div>
             <div class="sb-conversation-message-text sb-conversation-typing-dots">
                 <span></span><span></span><span></span>
@@ -2423,10 +2697,7 @@ function ensureConversationChrome() {
                 <i class="fa-solid fa-address-book"></i>
                 <span class="sb-conversation-pals-toggle-badge" hidden></span>
             </button>
-            <div class="sb-conversation-header-avatar">
-                <img data-sb-conversation-avatar alt="" loading="lazy">
-                <span class="sb-conversation-status-dot" data-sb-conversation-status-dot data-status="online" aria-hidden="true"></span>
-            </div>
+            <div class="sb-conversation-header-avatar" data-sb-conversation-participants></div>
             <div class="sb-conversation-header-copy">
                 <div class="sb-conversation-header-kicker">Conversation Workspace</div>
                 <div class="sb-conversation-header-name" data-sb-conversation-name>Conversation</div>
@@ -3854,10 +4125,7 @@ function renderPalsRail() {
         button.dataset.unread = String(unreadCount > 0);
         button.setAttribute('aria-current', String(!selected_group && Number(this_chid) === index));
         button.innerHTML = `
-            <span class="sb-conversation-pal-avatar">
-                <img alt="" loading="lazy">
-                <span class="sb-conversation-status-dot" aria-hidden="true"></span>
-            </span>
+            <span class="sb-conversation-pal-avatar"></span>
             <span class="sb-conversation-pal-copy">
                 <span class="sb-conversation-pal-name"></span>
                 <span class="sb-conversation-pal-preview"></span>
@@ -3873,18 +4141,15 @@ function renderPalsRail() {
         deleteButton.title = `Delete DM history with ${character.name || 'Character'}`;
         deleteButton.setAttribute('aria-label', `Delete DM history with ${character.name || 'Character'}`);
 
-        const image = button.querySelector('img');
-        const statusDot = button.querySelector('.sb-conversation-status-dot');
+        const avatarStack = button.querySelector('.sb-conversation-pal-avatar');
         const name = button.querySelector('.sb-conversation-pal-name');
         const preview = button.querySelector('.sb-conversation-pal-preview');
         const unreadBadge = button.querySelector('.sb-conversation-pal-unread');
 
-        if (image instanceof HTMLImageElement) {
-            image.src = getThumbnailUrl('avatar', character.avatar);
-        }
-        if (statusDot instanceof HTMLElement) {
-            statusDot.dataset.status = settings.availability;
-        }
+        renderConversationParticipantStack(avatarStack, getConversationParticipants(character.avatar, settings), {
+            status: getEffectiveConversationStatus(character.avatar, settings),
+            max: 3,
+        });
         if (name instanceof HTMLElement) {
             name.textContent = getConversationDisplayName(character.avatar, settings);
         }
@@ -3960,50 +4225,44 @@ function renderPalsRail() {
 function updateConversationHeader(settings = getSettings()) {
     const character = getCurrentCharacter();
     const avatar = getCurrentCharAvatar();
-    const image = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-avatar]`);
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
-    const statusDot = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status-dot]`);
+    const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
     const statusCopy = getAvailabilityCopy(settings.availability);
     const schedule = avatar ? getStoredSchedule(avatar) : null;
     const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
     if (!avatar || !character) {
-        if (image instanceof HTMLImageElement) {
-            image.src = default_user_avatar;
-        }
+        renderConversationParticipantStack(participantsContainer, [], { status: 'offline' });
         if (name instanceof HTMLElement) {
             name.textContent = 'Conversation';
         }
         if (status instanceof HTMLElement) {
             status.textContent = 'Pick or start a DM from the Pals rail.';
         }
-        if (statusDot instanceof HTMLElement) {
-            statusDot.dataset.status = 'offline';
-        }
         return;
     }
 
-    if (image instanceof HTMLImageElement && character?.avatar) {
-        image.src = getThumbnailUrl('avatar', character.avatar);
-    }
+    const participants = getConversationParticipants(avatar, settings);
+    const partnerCount = Math.max(0, participants.length - 1);
+    renderConversationParticipantStack(participantsContainer, participants, { status: effectiveStatus });
     if (name instanceof HTMLElement) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
         if (generationActive && character) {
-            status.textContent = `${character.name || 'Character'} is writing...`;
+            const typingName = activeTypingParticipant?.name || character.name || 'Character';
+            status.textContent = `${typingName} is writing...`;
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
-            status.textContent = `${currentCopy.label} · ${current.activity}${delayedNotice}`;
+            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
+            status.textContent = `${currentCopy.label} · ${current.activity}${delayedNotice}${partnerNotice}`;
         } else {
-            status.textContent = `${statusCopy.label}: ${statusCopy.detail}`;
+            const partnerNotice = partnerCount ? ` ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in.` : '';
+            status.textContent = `${statusCopy.label}: ${statusCopy.detail}${partnerNotice}`;
         }
-    }
-    if (statusDot instanceof HTMLElement) {
-        statusDot.dataset.status = effectiveStatus;
     }
 }
 
@@ -4048,7 +4307,6 @@ function refreshConversationInterface({ syncControls = false } = {}) {
     }
 
     updateProsePolisherButtonVisibility();
-    updateEditableMessageButtons();
 }
 
 function readSettingsFromPanel(avatar) {
@@ -4134,15 +4392,6 @@ function updateProsePolisherButtonVisibility() {
     }
 }
 
-function updateEditableMessageButtons() {
-    const avatar = getCurrentCharAvatar();
-    if (selected_group || !avatar || !conversationWorkspaceOpen) {
-        return;
-    }
-
-    renderConversationTimeline();
-}
-
 async function handleCharacterMessagePolish(messageId, buttonElement) {
     const avatar = getCurrentCharAvatar();
     if (!avatar) return;
@@ -4196,7 +4445,14 @@ function focusConversationInput() {
 }
 
 async function waitForAutoWorker() {
+    const startTime = Date.now();
+
     while (autoWorkerBusy) {
+        if (Date.now() - startTime >= AUTO_WORKER_WAIT_TIMEOUT_MS) {
+            console.warn('Conversation Mode auto worker wait timed out; continuing queued reply.');
+            break;
+        }
+
         await new Promise(resolve => setTimeout(resolve, 200));
     }
 }
@@ -4347,6 +4603,9 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
     if (shouldNotify) {
         incrementUnreadCount(avatar);
     }
+    if (!['user', 'system'].includes(role)) {
+        markConversationSeen(avatar, Date.now());
+    }
 
     if (isConversationActiveForAvatar(avatar)) {
         refreshConversationInterface({ syncControls: false });
@@ -4355,6 +4614,7 @@ async function appendConversationMessage(messageText, { name = getCurrentCharNam
     }
 
     notifyNewConversationMessage(avatar, message, shouldNotify);
+    scheduleConversationMemorySummary(avatar);
 
     if (!['user', 'system'].includes(role) && message) {
         void runCompanionsOnConversationMessage(avatar, message.id);
@@ -4394,9 +4654,9 @@ async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAv
     }
 }
 
-async function triggerAutoMessage(directive, settings, extra = {}) {
-    const avatar = getCurrentCharAvatar();
-    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press || !getCurrentCharacter() || !avatar) {
+async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar()) {
+    const character = getCharacterForAvatar(avatar);
+    if (autoWorkerBusy || conversationReplyBusy || selected_group || is_send_press || !character || !avatar) {
         return false;
     }
 
@@ -4404,16 +4664,19 @@ async function triggerAutoMessage(directive, settings, extra = {}) {
 
     try {
         const quietPrompt = buildAutoMessageDirective(directive);
-        const response = await generateConversationReply(quietPrompt, settings, { responseLength: 220, avatar });
+        const response = await generateConversationReply(quietPrompt, settings, {
+            responseLength: 220,
+            speakerName: character.name || 'Character',
+            avatar,
+        });
 
         if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
+            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_auto: true,
                     ...extra,
                 },
-            }, avatar);
-            autoWorkerBusy = false;
+            }, avatar), avatar);
             await maybeGenerateSpontaneousImage(settings, avatar);
             return true;
         }
@@ -4515,6 +4778,7 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
             `[System directive: Your weekly schedule is due: "${entry.message}". Send a message with this context in mind.]`,
             settings,
             { schedule: `weekly:${entry.time}` },
+            avatar,
         );
         if (triggered) {
             setScheduleTriggered(avatar, triggerKey, now);
@@ -4542,7 +4806,7 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
                 continue;
             }
 
-            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed });
+            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed }, avatar);
             if (triggered) {
                 setScheduleTriggered(avatar, triggerKey, now);
                 setLastAutoMessageTime(avatar, now);
@@ -4563,7 +4827,7 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
                     continue;
                 }
 
-                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed });
+                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed }, avatar);
                 if (triggered) {
                     setScheduleTriggered(avatar, triggerKey, now);
                     setLastAutoMessageTime(avatar, now);
@@ -4598,7 +4862,7 @@ async function checkIdleAutoMessage(avatar, settings, now) {
         ? '[System directive: The user has been quiet for a while. Send a casual auto follow-up checking in or asking what they are up to.]'
         : '[System directive: Send a spontaneous ping to the user, starting a new topic or sharing a casual thought.]';
 
-    const triggered = await triggerAutoMessage(directive, settings, { idle_action: settings.idle_action });
+    const triggered = await triggerAutoMessage(directive, settings, { idle_action: settings.idle_action }, avatar);
     if (triggered) {
         setConversationSessionMarker(avatar, sessionKey, lastUserActivity);
         setLastAutoMessageTime(avatar, now);
@@ -4695,7 +4959,7 @@ async function checkProactiveMessaging(avatar, settings, now) {
     const triggered = await triggerAutoMessage(directive, settings, {
         proactive: true,
         proactive_status: current.status,
-    });
+    }, avatar);
 
     if (triggered) {
         setFollowupCount(avatar, sentCount + 1);
@@ -4729,14 +4993,14 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
         });
 
         if (response?.trim()) {
-            await appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
+            await withTypingParticipant(partner, () => appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
                 name: partnerName,
                 role: 'partner',
                 extra: {
                     conversation_mode_chime: true,
                     partner_avatar: partner.avatar,
                 },
-            }, avatar);
+            }, avatar), avatar);
             return true;
         }
     } catch (error) {
@@ -4800,11 +5064,11 @@ async function triggerAutoCharacterChat(avatar, settings) {
         });
 
         if (response?.trim()) {
-            await appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
+            await withTypingParticipant(partner, () => appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
                 name: partnerName,
                 role: 'partner',
                 extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
-            }, avatar);
+            }, avatar), avatar);
             return true;
         }
     } catch (error) {
@@ -4980,40 +5244,36 @@ async function conversationModeAutoMessageWorker() {
         return;
     }
 
-    const avatar = getCurrentCharAvatar();
-    if (!avatar) {
-        return;
-    }
-
-    const settings = getSettings(avatar);
-    if (!settings.enabled) {
-        return;
-    }
-
     const now = Date.now();
-    const elapsedSeconds = (now - getLastAutoMessageTime(avatar)) / 1000;
-    if (elapsedSeconds < settings.cooldown) {
-        return;
-    }
 
-    if (await checkScheduledAutoMessages(avatar, settings, now)) {
-        return;
-    }
+    for (const { character, settings } of getConversationPals()) {
+        const avatar = character.avatar;
+        const elapsedSeconds = (now - getLastAutoMessageTime(avatar)) / 1000;
+        if (elapsedSeconds < settings.cooldown) {
+            continue;
+        }
 
-    // Marinara-style proactive loop takes priority over legacy idle action.
-    if (settings.proactive_messaging) {
-        if (await checkProactiveMessaging(avatar, settings, now)) {
+        if (await checkScheduledAutoMessages(avatar, settings, now)) {
             return;
         }
-    } else if (await checkIdleAutoMessage(avatar, settings, now)) {
-        return;
-    }
 
-    if (await checkMultiCharacterChime(avatar, settings, now)) {
-        return;
-    }
+        // Marinara-style proactive loop takes priority over legacy idle action.
+        if (settings.proactive_messaging) {
+            if (await checkProactiveMessaging(avatar, settings, now)) {
+                return;
+            }
+        } else if (await checkIdleAutoMessage(avatar, settings, now)) {
+            return;
+        }
 
-    await checkAutoCharacterChat(avatar, settings, now);
+        if (await checkMultiCharacterChime(avatar, settings, now)) {
+            return;
+        }
+
+        if (await checkAutoCharacterChat(avatar, settings, now)) {
+            return;
+        }
+    }
 }
 
 async function handleAvailabilityAutoResponder(settings = getSettings(), avatar = getCurrentCharAvatar()) {
@@ -5106,7 +5366,13 @@ function init() {
 
     window.addEventListener('sb:open-conversation-workspace', () => openConversationWorkspaceForCurrentCharacter());
 
-    window.setInterval(() => void conversationModeAutoMessageWorker(), AUTO_WORKER_INTERVAL_MS);
+    const existingAutoWorkerIntervalId = globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY];
+    if (existingAutoWorkerIntervalId) {
+        window.clearInterval(existingAutoWorkerIntervalId);
+    }
+
+    autoWorkerIntervalId = window.setInterval(() => void conversationModeAutoMessageWorker(), AUTO_WORKER_INTERVAL_MS);
+    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = autoWorkerIntervalId;
     loadCurrentPanelSettings();
 }
 

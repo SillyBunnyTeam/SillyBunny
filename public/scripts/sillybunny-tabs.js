@@ -7349,7 +7349,7 @@ function preserveCharacterImportTab() {
 }
 
 function openCharacterConversationTab() {
-    sbState.characterDrawer.lastTab = 'characters';
+    sbState.characterDrawer.lastTab = 'conversation';
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
     closeCharacterPanel();
 }
