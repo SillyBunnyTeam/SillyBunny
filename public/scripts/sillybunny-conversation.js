@@ -92,7 +92,7 @@ const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 const DEFAULT_AUTO_CHAT_COOLDOWN = 10;
 const SEND_QUEUE_BATCH_MS = 900;
 const MIN_CONVERSATION_REPLY_MAX_TOKENS = 64;
-const DEFAULT_CONVERSATION_REPLY_MAX_TOKENS = 1024;
+const DEFAULT_CONVERSATION_REPLY_MAX_TOKENS = 16000;
 const MAX_CONVERSATION_REPLY_MAX_TOKENS = 64000;
 const CONVERSATION_ERROR_DETAIL_MAX_LENGTH = 180;
 const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
@@ -3279,7 +3279,7 @@ function buildSettingsDrawerHtml() {
                     </div>
                     <div class="sb-conversation-field-stack">
                         <label for="sb_conv_reply_max_tokens">Max reply tokens</label>
-                        <input id="sb_conv_reply_max_tokens" class="text_pole textarea_compact wide100p" type="number" min="64" max="64000" step="64" value="1024" />
+                        <input id="sb_conv_reply_max_tokens" class="text_pole textarea_compact wide100p" type="number" min="64" max="64000" step="64" value="16000" />
                     </div>
                 </div>
                 <p class="sb-conversation-field-hint">Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.</p>
@@ -3449,7 +3449,7 @@ function ensureConversationChrome() {
                     <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
                     <span>Roleplay</span>
                 </button>
-                <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="open-settings" title="Conversation settings" aria-label="Conversation settings">
+                <button type="button" class="menu_button menu_button_icon sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation settings" aria-label="Conversation settings">
                     <i class="fa-solid fa-gear"></i>
                 </button>
             </div>
@@ -3495,9 +3495,14 @@ function ensureConversationChrome() {
                 <div>
                     <div class="sb-conversation-rail-kicker">Pals</div>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="open-add-dm" title="Start a new DM" aria-label="Start a new DM">
-                        <i class="fa-solid fa-plus"></i>
+                <div class="sb-conversation-rail-start-actions">
+                    <button type="button" class="menu_button sb-conversation-rail-new-button" data-sb-conversation-action="open-add-dm" title="Start a new solo DM" aria-label="Start a new solo DM">
+                        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                        <span>New Solo Chat</span>
+                    </button>
+                    <button type="button" class="menu_button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-group-chat" title="Start a Conversation for the current group chat" aria-label="Start a Conversation for the current group chat">
+                        <i class="fa-solid fa-user-group" aria-hidden="true"></i>
+                        <span>New Group Chat</span>
                     </button>
                     <button type="button" class="menu_button menu_button_icon sb-conversation-rail-close" data-sb-conversation-action="close-pals" title="Close Conversation pals" aria-label="Close Conversation pals">
                         <i class="fa-solid fa-xmark"></i>
@@ -4386,6 +4391,50 @@ function toggleAddDmPicker() {
     }
 }
 
+function openCurrentRoleplayGroupConversation() {
+    const group = getConversationGroupById(selected_group);
+    if (!group || !Array.isArray(group.members)) {
+        toastr.warning('Open a roleplay group chat first to start a group Conversation.');
+        return false;
+    }
+
+    const groupMembers = group.members
+        .filter(avatar => avatar && !group.disabled_members?.includes(avatar))
+        .map(avatar => getCharacterForAvatar(avatar))
+        .filter(character => character?.avatar);
+
+    if (!groupMembers.length) {
+        toastr.warning('This group does not have any available character cards for Conversation Mode.');
+        return false;
+    }
+
+    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
+    const targetCharacter = groupMembers.find(character => character.avatar === currentAvatar)
+        || groupMembers.find(character => character.avatar === conversationSelectedAvatar)
+        || groupMembers[0];
+
+    if (!targetCharacter?.avatar) {
+        toastr.warning('Pick a group member before opening a group Conversation.');
+        return false;
+    }
+
+    document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
+    closePalsRail();
+    const opened = openConversationWorkspaceForAvatar(targetCharacter.avatar, {
+        groupId: String(selected_group),
+        showToast: false,
+    });
+    if (opened) {
+        renderPalsRail();
+        setTimeout(() => {
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+        }, 100);
+        toastr.success(`Opened group Conversation for ${group.name || 'this group'}.`);
+    }
+
+    return opened;
+}
+
 function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
@@ -4432,6 +4481,9 @@ function bindConversationChromeControls(sheld) {
                 break;
             case 'open-add-dm':
                 toggleAddDmPicker();
+                break;
+            case 'open-new-group-chat':
+                openCurrentRoleplayGroupConversation();
                 break;
             case 'attach-file': {
                 const fileInput = document.getElementById(CHROME_IDS.fileInput);
