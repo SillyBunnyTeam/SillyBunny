@@ -1454,7 +1454,7 @@
 /* Symmetrical proactive messaging inputs grid */
 .sb-conversation-proactive-inputs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(72px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
     gap: 8px;
     align-items: end;
 }

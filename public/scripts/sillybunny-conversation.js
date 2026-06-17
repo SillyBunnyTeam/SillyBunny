@@ -91,6 +91,10 @@ const DEFAULT_MAX_FOLLOWUPS = 3;
 const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 const DEFAULT_AUTO_CHAT_COOLDOWN = 10;
 const SEND_QUEUE_BATCH_MS = 900;
+const MIN_CONVERSATION_REPLY_MAX_TOKENS = 64;
+const DEFAULT_CONVERSATION_REPLY_MAX_TOKENS = 1024;
+const MAX_CONVERSATION_REPLY_MAX_TOKENS = 64000;
+const CONVERSATION_ERROR_DETAIL_MAX_LENGTH = 180;
 const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
 const PARTNER_FOLLOWUP_RECENT_WINDOW = 6;
 const PARALLEL_CHIME_MAX_PARTNERS = 2;
@@ -149,6 +153,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     talkativeness: DEFAULT_TALKATIVENESS,
     max_followups: DEFAULT_MAX_FOLLOWUPS,
     reply_delay_multiplier: DEFAULT_REPLY_DELAY_MULTIPLIER,
+    reply_max_tokens: DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     auto_schedule: '',
     schedule_generated_at: 0,
     selfie_command_enabled: true,
@@ -189,6 +194,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_talkativeness', key: 'talkativeness', prop: 'value', type: 'number', fallback: DEFAULT_TALKATIVENESS, min: 0 },
     { id: 'sb_conv_max_followups', key: 'max_followups', prop: 'value', type: 'number', fallback: DEFAULT_MAX_FOLLOWUPS, min: 1 },
     { id: 'sb_conv_reply_delay_multiplier', key: 'reply_delay_multiplier', prop: 'value', type: 'number', fallback: DEFAULT_REPLY_DELAY_MULTIPLIER, min: 0 },
+    { id: 'sb_conv_reply_max_tokens', key: 'reply_max_tokens', prop: 'value', type: 'number', fallback: DEFAULT_CONVERSATION_REPLY_MAX_TOKENS, min: MIN_CONVERSATION_REPLY_MAX_TOKENS, max: MAX_CONVERSATION_REPLY_MAX_TOKENS },
     { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
     { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
@@ -366,6 +372,7 @@ function safeParseSettings(stored) {
         }
         settings.auto_chat_names = settings.multi_char_names;
         settings.auto_chat_cooldown = parsePositiveInt(settings.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1);
+        settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
         return settings;
     } catch {
         return { ...DEFAULT_SETTINGS };
@@ -1354,6 +1361,14 @@ function buildCharacterImagePrompt(template, scene = 'the current DM conversatio
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+}
+
+function getConversationReplyMaxTokens(settings = {}) {
+    return clamp(
+        parsePositiveInt(settings?.reply_max_tokens, DEFAULT_CONVERSATION_REPLY_MAX_TOKENS, MIN_CONVERSATION_REPLY_MAX_TOKENS),
+        MIN_CONVERSATION_REPLY_MAX_TOKENS,
+        MAX_CONVERSATION_REPLY_MAX_TOKENS,
+    );
 }
 
 function getScheduleStorageKey(avatar) {
@@ -2561,9 +2576,12 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     return fields.join('\n\n');
 }
 
-async function generateConversationReply(directive, settings, { responseLength = 220, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar } = {}) {
+async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar } = {}) {
     const messages = getConversationThread(threadAvatar);
     const transcript = formatConversationTranscript(messages) || '(No prior DM messages.)';
+    const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
+        ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
+        : getConversationReplyMaxTokens(settings);
     const prompt = [
         'Conversation transcript:',
         transcript,
@@ -2574,7 +2592,7 @@ async function generateConversationReply(directive, settings, { responseLength =
     return withConversationConnectionProfile(settings, () => generateRaw({
         prompt,
         systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar }),
-        responseLength,
+        responseLength: resolvedResponseLength,
         trimNames,
         cacheScope: 'conversation-mode',
     }));
@@ -2669,6 +2687,50 @@ function normalizeConversationOutputText(rawText) {
         }
     }
     return text;
+}
+
+function getConversationErrorDetail(error) {
+    let detail = '';
+    if (typeof error === 'string') {
+        detail = error;
+    } else if (error?.message) {
+        detail = error.message;
+    } else if (error?.response) {
+        detail = error.response;
+    } else if (error?.error?.message) {
+        detail = error.error.message;
+    } else if (error?.error) {
+        detail = error.error;
+    } else if (error) {
+        try {
+            detail = JSON.stringify(error);
+        } catch {
+            detail = String(error);
+        }
+    }
+
+    return String(detail || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, CONVERSATION_ERROR_DETAIL_MAX_LENGTH);
+}
+
+function reportConversationGenerationError(context, error, { toast = true, level = 'error' } = {}) {
+    const detail = getConversationErrorDetail(error);
+    const label = context ? `Conversation ${context}` : 'Conversation generation';
+    const log = level === 'warning' ? console.warn : console.error;
+    log(`${label} failed${detail ? `: ${detail}` : ''}`, error);
+
+    if (!toast) {
+        return;
+    }
+
+    const message = `${label} failed${detail ? `: ${detail}` : '. Check the browser console for details.'}`;
+    if (level === 'warning') {
+        globalThis.toastr?.warning?.(message);
+    } else {
+        globalThis.toastr?.error?.(message);
+    }
 }
 
 function splitPartnerChatroomMessages(text) {
@@ -3215,7 +3277,12 @@ function buildSettingsDrawerHtml() {
                         <label for="sb_conv_reply_delay_multiplier">Reply delay</label>
                         <input id="sb_conv_reply_delay_multiplier" class="text_pole textarea_compact wide100p" type="number" min="0" max="300" step="10" value="100" />
                     </div>
+                    <div class="sb-conversation-field-stack">
+                        <label for="sb_conv_reply_max_tokens">Max reply tokens</label>
+                        <input id="sb_conv_reply_max_tokens" class="text_pole textarea_compact wide100p" type="number" min="64" max="64000" step="64" value="1024" />
+                    </div>
                 </div>
+                <p class="sb-conversation-field-hint">Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.</p>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Let the character turn [selfie: prompt] into a Quick Image Gen request">
                         <input id="sb_conv_selfie_command_enabled" type="checkbox" />
@@ -5118,7 +5185,8 @@ function readSettingsFromPanel(avatar) {
         if (field.prop === 'checked') {
             settings[field.key] = Boolean(element.checked);
         } else if (field.type === 'number') {
-            settings[field.key] = parsePositiveInt(element.value, field.fallback, field.min);
+            const parsed = parsePositiveInt(element.value, field.fallback, field.min);
+            settings[field.key] = typeof field.max === 'number' ? clamp(parsed, field.min, field.max) : parsed;
         } else {
             settings[field.key] = element.value ?? '';
         }
@@ -5145,6 +5213,7 @@ function saveCurrentPanelSettings() {
 
     const settings = readSettingsFromPanel(avatar);
     settings.idle_action = getIdleActionFromSettings(settings);
+    settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
     settings.auto_chat_names = settings.multi_char_names;
     saveSettings(avatar, settings);
     refreshConversationInterface({ syncControls: false });
@@ -5414,8 +5483,7 @@ async function processQueuedConversationReply(queueItem) {
 
         await partnerChimePromise;
     } catch (error) {
-        console.error('Conversation reply error:', error);
-        globalThis.toastr?.error?.('Conversation reply failed.');
+        reportConversationGenerationError('reply', error);
     } finally {
         conversationReplyBusy = false;
         generationActive = false;
@@ -5605,7 +5673,6 @@ async function triggerAutoMessage(directive, settings, extra = {}, avatar = getC
     try {
         const quietPrompt = buildAutoMessageDirective(directive);
         const response = await generateConversationReply(quietPrompt, settings, {
-            responseLength: 220,
             speakerName: character.name || 'Character',
             avatar,
         });
@@ -5621,8 +5688,7 @@ async function triggerAutoMessage(directive, settings, extra = {}, avatar = getC
             return true;
         }
     } catch (error) {
-        console.error('Conversation auto-message error:', error);
-        globalThis.toastr?.warning?.('Conversation Mode auto-message failed.');
+        reportConversationGenerationError('auto-message', error, { level: 'warning' });
     } finally {
         autoWorkerBusy = false;
     }
@@ -5979,7 +6045,6 @@ async function triggerConversationPartnerChime(partner, settings, avatar = getCu
         const userName = name1 || 'User';
         const directive = `[System directive: You are ${partnerName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Other people may be typing at the same time; do not wait for them. Output only your message body, without a name prefix.]`;
         const response = await generateConversationReply(directive, partnerSettings, {
-            responseLength: 150,
             trimNames: false,
             speakerName: partnerName,
             avatar,
@@ -5998,7 +6063,7 @@ async function triggerConversationPartnerChime(partner, settings, avatar = getCu
             return true;
         }
     } catch (error) {
-        console.error('Multi-character chime error:', error);
+        reportConversationGenerationError('partner chime', error, { toast: false });
     } finally {
         partnerReplyBusyKeys.delete(busyKey);
     }
@@ -6078,7 +6143,6 @@ async function triggerAutoCharacterChat(avatar, settings) {
         const targetName = target?.name || charName;
         const directive = `[System directive: You are ${partnerName}, speaking autonomously in a private group DM. Aim this message at ${targetName}, not the user, unless the user is directly relevant. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). This is character-to-character ambient chat, so continue the casual conversation or start a friendly new topic with one short, natural message. Other people may reply later. Output only your message body, without a name prefix.]`;
         const response = await generateConversationReply(directive, partnerSettings, {
-            responseLength: 150,
             trimNames: false,
             speakerName: partnerName,
             avatar,
@@ -6094,7 +6158,7 @@ async function triggerAutoCharacterChat(avatar, settings) {
             return true;
         }
     } catch (error) {
-        console.error('Auto character chat error:', error);
+        reportConversationGenerationError('character-to-character chat', error, { toast: false });
     } finally {
         partnerReplyBusyKeys.delete(busyKey);
     }
@@ -6187,7 +6251,6 @@ async function triggerGroupAsideDM(character, { reason = 'random', sourceMessage
             : 'Send a private aside DM while the group chat is ongoing. React to the group if there is something worth reacting to; otherwise start a natural casual DM topic.';
         const directive = `[System directive: You are ${characterName}, currently present in the active group chat. ${reasonLine} This message goes only to ${userName} in Conversation Mode, not into the group chat. Keep it short, casual, in-character, and suitable as one or two chat bubbles. Output only your DM body, without a name prefix.\n\nRecent group chat context:\n${groupContext}]`;
         const response = await generateConversationReply(directive, settings, {
-            responseLength: 170,
             speakerName: characterName,
             trimNames: false,
             avatar: character.avatar,
@@ -6210,7 +6273,7 @@ async function triggerGroupAsideDM(character, { reason = 'random', sourceMessage
             return true;
         }
     } catch (err) {
-        console.error('Error generating group aside DM:', err);
+        reportConversationGenerationError('group aside DM', err, { toast: false });
     } finally {
         groupAsideBusyKeys.delete(key);
     }
@@ -6246,7 +6309,6 @@ async function triggerRoleplayDM() {
     try {
         console.log(`Generating private roleplay DM from ${character.name}...`);
         const response = await generateConversationReply(directive, settings, {
-            responseLength: 150,
             speakerName: character.name || 'Character',
             trimNames: true,
             avatar,
@@ -6258,7 +6320,7 @@ async function triggerRoleplayDM() {
             }, avatar);
         }
     } catch (err) {
-        console.error('Error generating roleplay DM:', err);
+        reportConversationGenerationError('roleplay side DM', err, { toast: false });
     }
 }
 
