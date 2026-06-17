@@ -6,6 +6,7 @@ import { playMessageSound, power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
 import { extension_settings } from './extensions.js';
+import { MEDIA_DISPLAY } from './constants.js';
 import { characters, chat, default_user_avatar, generateRaw, getThumbnailUrl, is_send_press, messageFormatting, name1, saveSettingsDebounced, this_chid } from '../script.js';
 
 const GEECHAN_DEFAULT_PROMPT = `{{// The main system prompt, designed for an output reminiscent of an instant messaging interface.
@@ -154,6 +155,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     max_followups: DEFAULT_MAX_FOLLOWUPS,
     reply_delay_multiplier: DEFAULT_REPLY_DELAY_MULTIPLIER,
     reply_max_tokens: DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
+    copy_memory_to_new_branch: true,
     auto_schedule: '',
     schedule_generated_at: 0,
     selfie_command_enabled: true,
@@ -195,6 +197,7 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_max_followups', key: 'max_followups', prop: 'value', type: 'number', fallback: DEFAULT_MAX_FOLLOWUPS, min: 1 },
     { id: 'sb_conv_reply_delay_multiplier', key: 'reply_delay_multiplier', prop: 'value', type: 'number', fallback: DEFAULT_REPLY_DELAY_MULTIPLIER, min: 0 },
     { id: 'sb_conv_reply_max_tokens', key: 'reply_max_tokens', prop: 'value', type: 'number', fallback: DEFAULT_CONVERSATION_REPLY_MAX_TOKENS, min: MIN_CONVERSATION_REPLY_MAX_TOKENS, max: MAX_CONVERSATION_REPLY_MAX_TOKENS },
+    { id: 'sb_conv_copy_memory_to_new_branch', key: 'copy_memory_to_new_branch', prop: 'checked' },
     { id: 'sb_conv_auto_schedule', key: 'auto_schedule', prop: 'value' },
     { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
@@ -510,13 +513,23 @@ function setActiveConversationBranch(avatar, branchId, { groupId = getConversati
     persistConversationStore();
 }
 
-function createConversationBranchForAvatar(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+function createConversationBranchForAvatar(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar), copyMemory = null } = {}) {
     const characterStore = getConversationThreadStore(avatar, { groupId });
     if (!characterStore) {
         return null;
     }
 
+    const sourceBranch = normalizeConversationBranch(
+        characterStore.branches?.[characterStore.activeBranchId || DEFAULT_BRANCH_ID],
+        characterStore.activeBranchId || DEFAULT_BRANCH_ID,
+    );
     const branch = createConversationBranch(name || 'New chat');
+    const shouldCopyMemory = copyMemory ?? Boolean(getSettings(avatar).copy_memory_to_new_branch);
+    if (shouldCopyMemory && sourceBranch.memorySummary) {
+        branch.memorySummary = sourceBranch.memorySummary;
+        branch.memoryMessageCount = 0;
+        branch.sessionMarkers.memory_copied_from = sourceBranch.id;
+    }
     characterStore.branches[branch.id] = branch;
     characterStore.activeBranchId = branch.id;
     persistConversationStore();
@@ -798,12 +811,12 @@ function getAutoCharacterChatCooldownMs(settings) {
     return parsePositiveInt(settings?.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1) * 60 * 1000;
 }
 
-function getConversationMemorySummary(avatar = getCurrentCharAvatar()) {
-    return String(getActiveConversationBranch(avatar, { create: false })?.memorySummary || '').trim();
+function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    return String(getActiveConversationBranch(avatar, { create: false, groupId })?.memorySummary || '').trim();
 }
 
-function saveConversationMemorySummary(avatar, summary, messageCount) {
-    const branch = getActiveConversationBranch(avatar);
+function saveConversationMemorySummary(avatar, summary, messageCount, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const branch = getActiveConversationBranch(avatar, { groupId });
     if (!branch) {
         return;
     }
@@ -811,6 +824,20 @@ function saveConversationMemorySummary(avatar, summary, messageCount) {
     branch.memorySummary = String(summary || '').trim();
     branch.memoryMessageCount = Math.max(0, messageCount || 0);
     persistConversationStore();
+    renderConversationMemoryPanel();
+}
+
+function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
+    if (!branch) {
+        return false;
+    }
+
+    branch.memorySummary = '';
+    branch.memoryMessageCount = 0;
+    persistConversationStore();
+    renderConversationMemoryPanel();
+    return true;
 }
 
 function markConversationSeen(avatar = getCurrentCharAvatar(), timestamp = Date.now()) {
@@ -865,6 +892,29 @@ function createConversationMessage({ role = 'character', name = getCurrentCharNa
 
 function getConversationMediaAttachments(message) {
     return Array.isArray(message?.extra?.media) ? message.extra.media.filter(item => item?.url) : [];
+}
+
+function getConversationPromptMediaAttachments(message) {
+    const media = [...getConversationMediaAttachments(message)];
+    const generatedImage = message?.extra?.image_url;
+    if (typeof generatedImage === 'string' && generatedImage) {
+        media.push({ url: generatedImage, type: 'image', title: 'Generated image' });
+    }
+
+    return media;
+}
+
+function getConversationMediaDisplay(message) {
+    const value = message?.extra?.media_display;
+    return Object.values(MEDIA_DISPLAY).includes(value) ? value : MEDIA_DISPLAY.LIST;
+}
+
+function getConversationMediaIndex(message, media) {
+    if (!Array.isArray(media) || !media.length) {
+        return 0;
+    }
+
+    return clamp(parsePositiveInt(message?.extra?.media_index, 0, 0), 0, media.length - 1);
 }
 
 function getConversationFileAttachments(message) {
@@ -2420,6 +2470,56 @@ function formatConversationTranscript(messages) {
         .join('\n');
 }
 
+function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName()) {
+    const promptMessages = [{
+        role: 'user',
+        content: 'Conversation transcript:',
+        identifier: 'conversation-transcript-header',
+    }];
+
+    messages.slice(-TRANSCRIPT_MESSAGE_LIMIT).forEach((message, index) => {
+        const parts = [
+            formatPromptText(message.mes, 1800),
+            getConversationAttachmentSummary(message),
+        ].filter(Boolean);
+        const media = getConversationPromptMediaAttachments(message);
+        if (!parts.length && !media.length) {
+            return;
+        }
+
+        const role = message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant';
+        const promptMessage = {
+            role,
+            content: parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : `${message.name || 'Speaker'} sent an attachment.`,
+            identifier: `conversation-message-${message.id || index}`,
+        };
+
+        if (media.length) {
+            promptMessage.media = media;
+            promptMessage.mediaDisplay = getConversationMediaDisplay(message);
+            promptMessage.mediaIndex = getConversationMediaIndex(message, media);
+        }
+
+        promptMessages.push(promptMessage);
+    });
+
+    if (promptMessages.length === 1) {
+        promptMessages.push({
+            role: 'user',
+            content: '(No prior DM messages.)',
+            identifier: 'conversation-empty-transcript',
+        });
+    }
+
+    promptMessages.push({
+        role: 'user',
+        content: [directive, `${speakerName}:`].filter(Boolean).join('\n\n'),
+        identifier: 'conversation-reply-directive',
+    });
+
+    return promptMessages;
+}
+
 function buildConversationMemoryPrompt(avatar, messages) {
     const character = getCharacterForAvatar(avatar);
     const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar)));
@@ -2433,25 +2533,29 @@ function buildConversationMemoryPrompt(avatar, messages) {
     ].filter(Boolean).join('\n');
 }
 
-async function updateConversationMemorySummary(avatar = getCurrentCharAvatar()) {
-    if (!avatar || memorySummaryBusyAvatars.has(avatar)) {
-        return;
+async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false } = {}) {
+    const memoryKey = getConversationThreadKey(avatar, groupId);
+    if (!avatar || !memoryKey || memorySummaryBusyAvatars.has(memoryKey)) {
+        return false;
     }
 
-    const branch = getActiveConversationBranch(avatar, { create: false });
-    const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => message?.mes && message.role !== 'system') : [];
-    if (messages.length < MEMORY_SUMMARY_MIN_MESSAGES) {
-        return;
+    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
+    const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
+    if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
+        if (notify) {
+            toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize.`);
+        }
+        return false;
     }
 
     const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount, 0, 0);
-    if (messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
-        return;
+    if (!force && messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
+        return false;
     }
 
-    memorySummaryBusyAvatars.add(avatar);
+    memorySummaryBusyAvatars.add(memoryKey);
     try {
-        const previousSummary = getConversationMemorySummary(avatar);
+        const previousSummary = getConversationMemorySummary(avatar, { groupId });
         const prompt = [
             previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
             buildConversationMemoryPrompt(avatar, messages),
@@ -2466,13 +2570,22 @@ async function updateConversationMemorySummary(avatar = getCurrentCharAvatar()) 
         });
 
         if (response?.trim()) {
-            saveConversationMemorySummary(avatar, response.trim(), messages.length);
+            saveConversationMemorySummary(avatar, response.trim(), messages.length, { groupId });
+            if (notify) {
+                toastr.success('Conversation memory refreshed.');
+            }
+            return true;
         }
     } catch (error) {
         console.warn('Conversation Mode: memory summary update failed', error);
+        if (notify) {
+            toastr.warning('Conversation memory refresh failed. Check console for details.');
+        }
     } finally {
-        memorySummaryBusyAvatars.delete(avatar);
+        memorySummaryBusyAvatars.delete(memoryKey);
     }
+
+    return false;
 }
 
 function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar()) {
@@ -2480,16 +2593,18 @@ function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar()) {
         return;
     }
 
-    const existingTimer = memorySummaryTimers.get(avatar);
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const memoryKey = getConversationThreadKey(avatar, groupId);
+    const existingTimer = memorySummaryTimers.get(memoryKey);
     if (existingTimer) {
         window.clearTimeout(existingTimer);
     }
 
     const timer = window.setTimeout(() => {
-        memorySummaryTimers.delete(avatar);
-        void updateConversationMemorySummary(avatar);
+        memorySummaryTimers.delete(memoryKey);
+        void updateConversationMemorySummary(avatar, { groupId });
     }, 2500);
-    memorySummaryTimers.set(avatar, timer);
+    memorySummaryTimers.set(memoryKey, timer);
 }
 
 function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar } = {}) {
@@ -2543,6 +2658,10 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     fields.push(userPersonaStatus
         ? `User presence: ${userName} is ${userAvailability.label.toLowerCase()}. Their Conversation status: ${userPersonaStatus}.`
         : `User presence: ${userName} is ${userAvailability.label.toLowerCase()}.`);
+    const personaContext = composeConversationPersonaDescription(user_avatar);
+    if (personaContext) {
+        fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
+    }
 
     const partners = getConversationParticipants(threadAvatar, threadSettings).filter(participant => participant?.avatar && participant.avatar !== avatar);
     if (partners.length) {
@@ -2578,16 +2697,10 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
 
 async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar } = {}) {
     const messages = getConversationThread(threadAvatar);
-    const transcript = formatConversationTranscript(messages) || '(No prior DM messages.)';
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
         : getConversationReplyMaxTokens(settings);
-    const prompt = [
-        'Conversation transcript:',
-        transcript,
-        directive,
-        `${speakerName}:`,
-    ].join('\n\n');
+    const prompt = buildConversationPromptMessages(messages, directive, speakerName);
 
     return withConversationConnectionProfile(settings, () => generateRaw({
         prompt,
@@ -3294,6 +3407,27 @@ function buildSettingsDrawerHtml() {
                     </label>
                 </div>
                 <p class="sb-conversation-field-hint">Selfie commands are hidden from the chat and sent as image prompts. Schedule updates let the character adjust what they are doing now.</p>
+            </div>
+            <div class="sb-settings-group">
+                <h4 class="sb-settings-group-title"><i class="fa-solid fa-brain" aria-hidden="true"></i><span>Chat Memories</span></h4>
+                <p class="sb-conversation-field-hint">Branch-specific notes the LLM writes for continuity. They are sent back into future Conversation replies, but they do not copy old messages.</p>
+                <div class="sb-conversation-field-stack">
+                    <label for="sb_conv_memory_summary">Current branch memory</label>
+                    <textarea id="sb_conv_memory_summary" class="text_pole textarea_compact wide100p sb-conversation-memory-summary" rows="5" readonly placeholder="No memory summary yet. It appears after enough messages, or you can refresh it manually once this branch has chat history."></textarea>
+                    <p id="sb_conv_memory_meta" class="sb-conversation-field-hint sb-conversation-memory-meta"></p>
+                </div>
+                <div class="sb-conversation-field-row sb-conversation-memory-actions">
+                    <button type="button" class="menu_button" data-sb-conversation-action="refresh-memory">
+                        <i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Refresh memory</span>
+                    </button>
+                    <button type="button" class="menu_button" data-sb-conversation-action="clear-memory">
+                        <i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Clear memory</span>
+                    </button>
+                </div>
+                <label class="checkbox_label" title="Copy this branch's memory summary into newly created Conversation branches for this character">
+                    <input id="sb_conv_copy_memory_to_new_branch" type="checkbox" />
+                    <span>Carry current memory into new branches</span>
+                </label>
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Manual Scheduling (optional)</span></h4>
@@ -4011,6 +4145,65 @@ function renderScheduleDisplay() {
     display.innerHTML = currentLine + blocksHtml + metaHtml;
 }
 
+function renderConversationMemoryPanel() {
+    const memoryInput = document.getElementById('sb_conv_memory_summary');
+    const meta = document.getElementById('sb_conv_memory_meta');
+    if (!(memoryInput instanceof HTMLTextAreaElement)) {
+        return;
+    }
+
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const branch = avatar ? getActiveConversationBranch(avatar, { create: false, groupId }) : null;
+    const memorySummary = String(branch?.memorySummary || '').trim();
+    const messageCount = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system').length : 0;
+    const summarizedCount = parsePositiveInt(branch?.memoryMessageCount, 0, 0);
+
+    memoryInput.value = memorySummary;
+    memoryInput.placeholder = messageCount
+        ? 'No memory summary yet. Click Refresh memory to write one now, or keep chatting and it will update automatically.'
+        : 'No memory summary yet. This branch has no messages to summarize.';
+
+    if (meta instanceof HTMLElement) {
+        const branchName = branch?.name || 'Current branch';
+        const copied = branch?.sessionMarkers?.memory_copied_from ? ' · copied from previous branch' : '';
+        meta.textContent = `${branchName} · ${messageCount} message${messageCount === 1 ? '' : 's'} · summarized through ${summarizedCount}${copied}`;
+    }
+}
+
+async function refreshConversationMemoryFromPanel() {
+    const avatar = getCurrentCharAvatar();
+    if (!avatar) {
+        toastr.warning('Pick a DM first.');
+        return;
+    }
+
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const refreshed = await updateConversationMemorySummary(avatar, { force: true, groupId, notify: true });
+    if (!refreshed) {
+        renderConversationMemoryPanel();
+    }
+}
+
+function clearConversationMemoryFromPanel() {
+    const avatar = getCurrentCharAvatar();
+    if (!avatar) {
+        toastr.warning('Pick a DM first.');
+        return;
+    }
+
+    const confirmed = typeof globalThis.confirm === 'function'
+        ? globalThis.confirm('Clear the memory summary for this Conversation branch? This does not delete chat messages.')
+        : true;
+    if (!confirmed) {
+        return;
+    }
+
+    if (clearConversationMemorySummary(avatar)) {
+        toastr.success('Conversation memory cleared.');
+    }
+}
+
 function openConversationSettings() {
     const chrome = ensureConversationChrome();
     if (!chrome) {
@@ -4038,6 +4231,7 @@ function openConversationSettings() {
     bindWeeklyScheduleEditor();
     bindPartnerList('sb_conv_chiming_partner_list', 'sb_conv_multi_char_search');
     renderScheduleDisplay();
+    renderConversationMemoryPanel();
     updateUserFooter();
     chrome.drawer.hidden = false;
     setConversationBackdropVisible();
@@ -4495,6 +4689,12 @@ function bindConversationChromeControls(sheld) {
             case 'clear-attachments':
                 clearConversationAttachmentInput();
                 break;
+            case 'refresh-memory':
+                await refreshConversationMemoryFromPanel();
+                break;
+            case 'clear-memory':
+                clearConversationMemoryFromPanel();
+                break;
             case 'stop-image-generation':
                 imageGenerationAbortController?.abort?.();
                 imageGenerationActive = false;
@@ -4538,6 +4738,7 @@ function bindConversationChromeControls(sheld) {
                         showToast: false,
                     });
                     refreshConversationInterface({ syncControls: false });
+                    renderConversationMemoryPanel();
                     document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 }
                 break;
@@ -4557,6 +4758,7 @@ function bindConversationChromeControls(sheld) {
                     showToast: false,
                 });
                 refreshConversationInterface({ syncControls: false });
+                renderConversationMemoryPanel();
                 document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 break;
             }
@@ -4572,6 +4774,7 @@ function bindConversationChromeControls(sheld) {
                         renderPalsRail();
                         if (isConversationActiveThread(avatar, groupId)) {
                             updateConversationHeader(getSettings(avatar));
+                            renderConversationMemoryPanel();
                         }
                     }
                 }
@@ -4591,6 +4794,7 @@ function bindConversationChromeControls(sheld) {
                         if (isConversationActiveThread(avatar, groupId)) {
                             renderConversationTimeline();
                             refreshConversationInterface({ syncControls: false });
+                            renderConversationMemoryPanel();
                         } else {
                             renderPalsRail();
                         }
@@ -4651,6 +4855,7 @@ function bindConversationChromeControls(sheld) {
                 updateLastUserActivity(avatar);
                 renderConversationTimeline();
                 refreshConversationInterface({ syncControls: false });
+                renderConversationMemoryPanel();
                 toastr.success('New Conversation branch started.');
                 break;
             }
@@ -5409,7 +5614,7 @@ async function populateConversationUserAttachments(messageInput) {
     const { populateFileAttachment } = await import('./chats.js');
     await populateFileAttachment(messageInput, CHROME_IDS.fileInput);
     if (getConversationMediaAttachments(messageInput).length) {
-        messageInput.extra.media_display = 'list';
+        messageInput.extra.media_display = MEDIA_DISPLAY.LIST;
         messageInput.extra.inline_image = true;
     }
 }

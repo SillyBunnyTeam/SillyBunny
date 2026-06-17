@@ -692,6 +692,8 @@
 
 .sb-conversation-message[data-role='user'] .sb-conversation-message-meta {
     justify-content: flex-end;
+    inline-size: 100%;
+    text-align: right;
 }
 
 .sb-conversation-message-name {
@@ -1024,6 +1026,24 @@
 .sb-conversation-settings-body .text_pole[type='number'] {
     min-block-size: 36px;
     padding-block: 4px;
+}
+
+.sb-conversation-memory-summary {
+    min-block-size: 120px;
+    resize: vertical;
+    white-space: pre-wrap;
+}
+
+.sb-conversation-memory-meta {
+    min-block-size: 1.25em;
+}
+
+.sb-conversation-memory-actions {
+    gap: 8px;
+}
+
+.sb-conversation-memory-actions .menu_button {
+    min-block-size: 36px;
 }
 
 /* Schedule display */
