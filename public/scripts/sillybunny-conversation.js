@@ -91,6 +91,8 @@ const DEFAULT_TALKATIVENESS = 50;
 const DEFAULT_MAX_FOLLOWUPS = 3;
 const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 const SEND_QUEUE_BATCH_MS = 900;
+const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
+const PARTNER_FOLLOWUP_RECENT_WINDOW = 6;
 const MAX_STACKED_PARTICIPANT_AVATARS = 4;
 const MEMORY_SUMMARY_MIN_MESSAGES = 24;
 const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;
@@ -250,7 +252,12 @@ function safeParseSettings(stored) {
 
     try {
         const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
-        return { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+        const settings = { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+        if (!settings.multi_char_names && settings.auto_chat_names) {
+            settings.multi_char_names = settings.auto_chat_names;
+        }
+        settings.auto_chat_names = settings.multi_char_names;
+        return settings;
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
@@ -1105,7 +1112,6 @@ function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
 function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { includeThreadPartners = true } = {}) {
     const partnerAvatars = [];
     parseAvatarList(settings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
-    parseAvatarList(settings?.auto_chat_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
 
     if (includeThreadPartners) {
         getConversationThread(avatar).forEach((message) => {
@@ -1700,7 +1706,76 @@ function chooseConversationPartner(avatar, selectedAvatars) {
 
     const lastUserText = getLastUserConversationText(avatar);
     const mentioned = partners.find(character => isCharacterMentionedInText(character, lastUserText));
-    return mentioned || partners[Math.floor(Math.random() * partners.length)];
+    return mentioned || (Math.random() < 0.75 ? getLeastRecentPartner(avatar, selectedAvatars) : partners[Math.floor(Math.random() * partners.length)]);
+}
+
+function getConversationPartnerSettings(partnerAvatar, hostSettings) {
+    if (!partnerAvatar) {
+        return hostSettings;
+    }
+
+    const partnerSettings = getSettings(partnerAvatar);
+    return {
+        ...hostSettings,
+        availability: partnerSettings.availability,
+        ai_schedule: partnerSettings.ai_schedule,
+        weekly_schedule: partnerSettings.weekly_schedule,
+        auto_schedule: partnerSettings.auto_schedule,
+        schedule_generated_at: partnerSettings.schedule_generated_at,
+        talkativeness: partnerSettings.talkativeness,
+        inactivity_threshold: partnerSettings.inactivity_threshold,
+        reply_delay_multiplier: partnerSettings.reply_delay_multiplier,
+        authors_note: partnerSettings.authors_note,
+        lorebook_override: partnerSettings.lorebook_override,
+    };
+}
+
+function getLeastRecentPartner(avatar, selectedAvatars) {
+    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar);
+    if (!partners.length) {
+        return null;
+    }
+
+    const thread = getConversationThread(avatar);
+    return [...partners].sort((left, right) => {
+        const leftIndex = getLastPartnerMessageIndex(thread, left);
+        const rightIndex = getLastPartnerMessageIndex(thread, right);
+        return leftIndex - rightIndex;
+    })[0];
+}
+
+function getLastPartnerMessageIndex(thread, partner) {
+    for (let index = thread.length - 1; index >= 0; index--) {
+        const message = thread[index];
+        if (message?.extra?.partner_avatar === partner.avatar || message?.name === partner.name) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+function getRecentlySilentMentionedPartner(avatar, selectedAvatars) {
+    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar);
+    if (!partners.length) {
+        return null;
+    }
+
+    const thread = getConversationThread(avatar);
+    const recentMessages = thread.slice(-PARTNER_FOLLOWUP_RECENT_WINDOW);
+    const mentionedPartner = partners.find(partner => recentMessages.some(message => isCharacterMentionedInText(partner, message?.mes || '')));
+    if (!mentionedPartner) {
+        return null;
+    }
+
+    const lastMentionIndex = recentMessages.reduce((lastIndex, message, index) => {
+        return isCharacterMentionedInText(mentionedPartner, message?.mes || '') ? index : lastIndex;
+    }, -1);
+    const spokeAfterMention = recentMessages.slice(lastMentionIndex + 1).some((message) => {
+        const isPartnerMessage = message?.extra?.partner_avatar === mentionedPartner.avatar || message?.name === mentionedPartner.name;
+        return isPartnerMessage && !['user', 'system'].includes(message.role);
+    });
+    return spokeAfterMention ? null : mentionedPartner;
 }
 
 function escapeRegExp(value) {
@@ -1711,12 +1786,12 @@ function stripSpeakerPrefix(messageText, speakerName) {
     const text = String(messageText || '').trim();
     const namePattern = escapeRegExp(speakerName);
     if (!namePattern) {
-        return text;
+        return normalizeConversationOutputText(text);
     }
 
-    return text
+    return normalizeConversationOutputText(text
         .replace(new RegExp(`^\\s*(?:\\*\\*)?${namePattern}\\s*[:：-](?:\\*\\*)?\\s*`, 'i'), '')
-        .trim();
+        .trim());
 }
 
 function getConversationActivityContext(settings, avatar, now = new Date()) {
@@ -1789,7 +1864,9 @@ function maybePostDelayedReplyNotice(avatar, settings) {
 
     const lastUserActivity = getLastUserActivity(avatar);
     const markerKey = 'sb_conv_busy_reply_notice';
-    if (getConversationSessionMarker(avatar, markerKey) === String(lastUserActivity)) {
+    const markerValue = getConversationSessionMarker(avatar, markerKey);
+    const markerTime = parsePositiveInt(markerValue.split(':')[1], 0, 0);
+    if (markerTime > 0 && Date.now() - markerTime < STATUS_NOTICE_COOLDOWN_MS) {
         return;
     }
 
@@ -1801,7 +1878,7 @@ function maybePostDelayedReplyNotice(avatar, settings) {
         mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
         extra: { conversation_mode_notice: true, availability: current.status },
     });
-    setConversationSessionMarker(avatar, markerKey, lastUserActivity);
+    setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`);
 }
 
 function stripPreviewText(messageText) {
@@ -1990,12 +2067,16 @@ function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar()) {
     memorySummaryTimers.set(avatar, timer);
 }
 
-function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()) {
+function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar } = {}) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = name1 || 'User';
+    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar);
+    const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
     const fields = [
-        `You are ${charName} in a private direct-message conversation with ${userName}.`,
+        threadCharacter
+            ? `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`
+            : `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
     ];
 
@@ -2031,12 +2112,12 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
     }
 
-    const partners = getConversationParticipants(avatar, settings).slice(1);
+    const partners = getConversationParticipants(threadAvatar, threadSettings).filter(participant => participant?.avatar && participant.avatar !== avatar);
     if (partners.length) {
         fields.push(`Group DM participants who may chime in: ${getParticipantNamesForDisplay(partners).join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
     }
 
-    const memorySummary = getConversationMemorySummary(avatar);
+    const memorySummary = getConversationMemorySummary(threadAvatar);
     if (memorySummary) {
         fields.push(`Long-term DM memory summary:\n${memorySummary}`);
     }
@@ -2063,8 +2144,8 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     return fields.join('\n\n');
 }
 
-async function generateConversationReply(directive, settings, { responseLength = 220, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar() } = {}) {
-    const messages = getConversationThread(avatar);
+async function generateConversationReply(directive, settings, { responseLength = 220, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar } = {}) {
+    const messages = getConversationThread(threadAvatar);
     const transcript = formatConversationTranscript(messages) || '(No prior DM messages.)';
     const prompt = [
         'Conversation transcript:',
@@ -2075,7 +2156,7 @@ async function generateConversationReply(directive, settings, { responseLength =
 
     return generateRaw({
         prompt,
-        systemPrompt: buildConversationSystemPrompt(settings, avatar),
+        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar }),
         responseLength,
         trimNames,
         cacheScope: 'conversation-mode',
@@ -2145,7 +2226,30 @@ function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCha
     }
 
     text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    text = normalizeConversationOutputText(text);
     return { text, selfieRequests };
+}
+
+function normalizeConversationOutputText(rawText) {
+    let text = String(rawText || '').trim();
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const normalized = text
+            .replace(/[“”]"([^"\n]{1,240})"[“”]/g, '"$1"')
+            .replace(/"[“”]([^“”\n]{1,240})[“”]"/g, '"$1"')
+            .replace(/^[“”]+/, '"')
+            .replace(/[“”]+$/, '"')
+            .replace(/^['"]{2,}\s*/, '"')
+            .replace(/\s*['"]{2,}$/, '"')
+            .replace(/^"([\s\S]*)"$/, '$1')
+            .trim();
+        if (normalized !== text) {
+            text = normalized;
+            changed = true;
+        }
+    }
+    return text;
 }
 
 // Turns a free-form selfie context into a real image via QIG. Uses a meta-prompt
@@ -2208,8 +2312,13 @@ async function postCharacterReply(rawText, settings, { extra = {} } = {}, avatar
         const speakerName = character?.name || getCurrentCharName();
 
         for (const messageText of splitChatroomMessages(text)) {
-            await waitForReplyDelay(messageText, settings, avatar);
-            await appendConversationMessage(messageText, {
+            const cleanMessageText = normalizeConversationOutputText(messageText);
+            if (!cleanMessageText) {
+                continue;
+            }
+
+            await waitForReplyDelay(cleanMessageText, settings, avatar);
+            await appendConversationMessage(cleanMessageText, {
                 name: speakerName,
                 role: 'character',
                 extra,
@@ -2450,10 +2559,6 @@ function buildChimingPartnerOptions(selectedNames) {
     return buildPartnerOptions(selectedNames, 'Enable more characters to pick chiming partners.');
 }
 
-function buildAutoChatPartnerOptions(selectedNames) {
-    return buildPartnerOptions(selectedNames, 'Enable more characters to pick auto-chat partners.');
-}
-
 function escapeHtmlAttribute(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -2598,8 +2703,9 @@ function buildSettingsDrawerHtml() {
                     <span>Multi-Character Chiming</span>
                 </label>
                 <div class="sb-conversation-field-stack">
-                    <label>Chiming Partners</label>
-                    <input type="text" id="sb_conv_multi_char_search" class="text_pole textarea_compact wide100p" placeholder="Search partners..." style="margin-bottom: 8px;" />
+                    <label>Group DM Members</label>
+                    <p class="sb-conversation-field-hint">Selected characters are considered part of this Conversation thread. Mentions and autonomous character-to-character chat use this same group list.</p>
+                    <input type="text" id="sb_conv_multi_char_search" class="text_pole textarea_compact wide100p" placeholder="Search group members..." style="margin-bottom: 8px;" />
                     <div class="sb-conversation-partner-list" id="sb_conv_chiming_partner_list">${buildChimingPartnerOptions(settings.multi_char_names)}</div>
                     <input id="sb_conv_multi_char_names" type="hidden" value="${escapeHtmlAttribute(settings.multi_char_names)}" />
                 </div>
@@ -2607,13 +2713,6 @@ function buildSettingsDrawerHtml() {
                     <input id="sb_conv_auto_character_chat" type="checkbox" />
                     <span>Allow characters to talk to each other</span>
                 </label>
-                <div class="sb-conversation-field-stack">
-                    <label>Auto-chat Partners</label>
-                    <p class="sb-conversation-field-hint">Only these characters may chime in autonomously. This list is separate from mention-based Chiming Partners.</p>
-                    <input type="text" id="sb_conv_auto_chat_search" class="text_pole textarea_compact wide100p" placeholder="Search auto-chat partners..." style="margin-bottom: 8px;" />
-                    <div class="sb-conversation-partner-list" id="sb_conv_auto_chat_partner_list">${buildAutoChatPartnerOptions(settings.auto_chat_names)}</div>
-                    <input id="sb_conv_auto_chat_names" type="hidden" value="${escapeHtmlAttribute(settings.auto_chat_names)}" />
-                </div>
                 <label class="checkbox_label" title="Allow this character to privately react to the current roleplay or group chat">
                     <input id="sb_conv_roleplay_reactions" type="checkbox" />
                     <span>React to current roleplay</span>
@@ -3205,15 +3304,10 @@ function openConversationSettings() {
     if (partnerList instanceof HTMLElement) {
         partnerList.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
     }
-    const autoChatList = document.getElementById('sb_conv_auto_chat_partner_list');
-    if (autoChatList instanceof HTMLElement) {
-        autoChatList.innerHTML = buildAutoChatPartnerOptions(settings.auto_chat_names);
-    }
 
     applySettingsToPanel(settings);
     bindWeeklyScheduleEditor();
     bindPartnerList('sb_conv_chiming_partner_list', 'sb_conv_multi_char_search');
-    bindPartnerList('sb_conv_auto_chat_partner_list', 'sb_conv_auto_chat_search');
     renderScheduleDisplay();
     updateUserFooter();
     chrome.drawer.hidden = false;
@@ -3317,10 +3411,6 @@ function readPartnersFromList(listId) {
 
 function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
-}
-
-function readAutoChatPartnersFromList() {
-    return readPartnersFromList('sb_conv_auto_chat_partner_list');
 }
 
 function updateUserFooter() {
@@ -4345,12 +4435,9 @@ function saveCurrentPanelSettings() {
     if (chimingInput instanceof HTMLInputElement) {
         chimingInput.value = readChimingPartnersFromList();
     }
-    const autoChatInput = document.getElementById('sb_conv_auto_chat_names');
-    if (autoChatInput instanceof HTMLInputElement) {
-        autoChatInput.value = readAutoChatPartnersFromList();
-    }
 
     const settings = readSettingsFromPanel(avatar);
+    settings.auto_chat_names = settings.multi_char_names;
     saveSettings(avatar, settings);
     refreshConversationInterface({ syncControls: false });
 }
@@ -4518,6 +4605,8 @@ async function processQueuedConversationReply(queueItem) {
                 }, avatar);
             }
         }
+
+        await checkMultiCharacterChime(avatar, settings, Date.now());
     } catch (error) {
         console.error('Conversation reply error:', error);
         globalThis.toastr?.error?.('Conversation reply failed.');
@@ -4970,7 +5059,8 @@ async function checkProactiveMessaging(avatar, settings, now) {
 }
 
 async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar()) {
-    const partner = chooseConversationPartner(avatar, settings.multi_char_names);
+    const partner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names)
+        || chooseConversationPartner(avatar, settings.multi_char_names);
     if (!partner || autoWorkerBusy) {
         return false;
     }
@@ -4979,28 +5069,34 @@ async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvata
 
     try {
         const partnerName = partner.name || 'A friend';
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const userName = name1 || 'User';
-        const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
-        const systemPrompt = `You are ${partnerName}, chiming in on a private DM conversation between ${charName} and ${userName}. This is separate from the roleplay/story chat. Write one short, casual message that fits the latest DM context. Output only the message body, without a name prefix.`;
-        const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short, engaging DM chime from ${partnerName}'s perspective.`;
-        const response = await generateRaw({
-            prompt,
-            systemPrompt,
+        const directive = `[System directive: You are ${partnerName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Output only your message body, without a name prefix.]`;
+        const response = await generateConversationReply(directive, partnerSettings, {
             responseLength: 150,
             trimNames: false,
+            speakerName: partnerName,
+            avatar,
+            threadAvatar: avatar,
+            speakerAvatar: partner.avatar,
         });
 
         if (response?.trim()) {
-            await withTypingParticipant(partner, () => appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
-                name: partnerName,
-                role: 'partner',
-                extra: {
-                    conversation_mode_chime: true,
-                    partner_avatar: partner.avatar,
-                },
-            }, avatar), avatar);
+            const messageText = stripSpeakerPrefix(response.trim(), partnerName);
+            await withTypingParticipant(partner, async () => {
+                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
+                return appendConversationMessage(messageText, {
+                    name: partnerName,
+                    role: 'partner',
+                    extra: {
+                        conversation_mode_chime: true,
+                        partner_avatar: partner.avatar,
+                    },
+                }, avatar);
+            }, avatar);
             return true;
         }
     } catch (error) {
@@ -5017,10 +5113,11 @@ async function checkMultiCharacterChime(avatar, settings, now) {
         return false;
     }
 
+    const mentionedPartner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names);
     const lastUserActivity = getLastUserActivity(avatar, now);
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
-    if (idleMinutes < settings.idle_limit / 2) {
+    if (!mentionedPartner && idleMinutes < Math.max(0.75, settings.idle_limit / 4)) {
         return false;
     }
 
@@ -5043,7 +5140,8 @@ async function triggerAutoCharacterChat(avatar, settings) {
         return false;
     }
 
-    const partner = chooseConversationPartner(avatar, settings.auto_chat_names);
+    const partner = getLeastRecentPartner(avatar, settings.multi_char_names)
+        || chooseConversationPartner(avatar, settings.multi_char_names);
     if (!partner) {
         return false;
     }
@@ -5051,24 +5149,34 @@ async function triggerAutoCharacterChat(avatar, settings) {
     autoWorkerBusy = true;
     try {
         const partnerName = partner.name || 'A friend';
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
+        if (partnerContext.status === 'offline') {
+            return false;
+        }
+
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
-        const transcript = formatConversationTranscript(getConversationThread(avatar)) || '(No prior DM messages.)';
-        const systemPrompt = `You are ${partnerName}, messaging ${charName} in a private group DM. This is separate from any roleplay/story chat. Write one short, natural message from ${partnerName} that continues the casual conversation or starts a friendly new topic. Output only the message body, without a name prefix.`;
-        const prompt = `Conversation transcript:\n${transcript}\n\nWrite a short DM from ${partnerName} talking to ${charName}.`;
-        const response = await generateRaw({
-            prompt,
-            systemPrompt,
+        const directive = `[System directive: You are ${partnerName}, messaging ${charName} in a private group DM. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). Continue the casual conversation or start a friendly new topic with one short, natural message. Output only your message body, without a name prefix.]`;
+        const response = await generateConversationReply(directive, partnerSettings, {
             responseLength: 150,
             trimNames: false,
+            speakerName: partnerName,
+            avatar,
+            threadAvatar: avatar,
+            speakerAvatar: partner.avatar,
         });
 
         if (response?.trim()) {
-            await withTypingParticipant(partner, () => appendConversationMessage(stripSpeakerPrefix(response.trim(), partnerName), {
-                name: partnerName,
-                role: 'partner',
-                extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
-            }, avatar), avatar);
+            const messageText = stripSpeakerPrefix(response.trim(), partnerName);
+            await withTypingParticipant(partner, async () => {
+                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
+                return appendConversationMessage(messageText, {
+                    name: partnerName,
+                    role: 'partner',
+                    extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
+                }, avatar);
+            }, avatar);
             return true;
         }
     } catch (error) {
@@ -5081,14 +5189,14 @@ async function triggerAutoCharacterChat(avatar, settings) {
 }
 
 async function checkAutoCharacterChat(avatar, settings, now) {
-    if (!settings.auto_character_chat) {
+    if (!settings.auto_character_chat || !settings.multi_char_names) {
         return false;
     }
 
     const lastUserActivity = getLastUserActivity(avatar, now);
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
-    if (idleMinutes < settings.idle_limit) {
+    if (idleMinutes < Math.max(1, settings.idle_limit / 3)) {
         return false;
     }
 

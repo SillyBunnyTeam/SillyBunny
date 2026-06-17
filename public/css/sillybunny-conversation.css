@@ -613,7 +613,7 @@
 
 .sb-conversation-message-bubble {
     min-inline-size: 0;
-    padding: 3px 6px;
+    padding: 6px 10px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     border-radius: var(--sb-radius-lg, 22px) var(--sb-radius-lg, 22px) var(--sb-radius-lg, 22px) 8px;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
