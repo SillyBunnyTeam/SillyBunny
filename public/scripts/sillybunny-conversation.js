@@ -3235,7 +3235,7 @@ function buildSettingsDrawerHtml() {
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_offline_message">Offline/DND Auto-responder</label>
-                    <textarea id="sb_conv_offline_message" class="text_pole textarea_compact autoSetHeight wide100p" rows="2" placeholder="[Character is currently away. Leave a message!]"></textarea>
+                    <input id="sb_conv_offline_message" class="text_pole textarea_compact wide100p" type="text" placeholder="[Character is currently away. Leave a message!]" />
                 </div>
             </div>
             <div class="sb-settings-group">
@@ -3297,6 +3297,7 @@ function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Manual Scheduling (optional)</span></h4>
+                <p class="sb-conversation-field-hint">Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.</p>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Enable autonomous scheduled messages">
                         <input id="sb_conv_auto_message" type="checkbox" />
