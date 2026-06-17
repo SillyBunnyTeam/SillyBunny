@@ -2576,38 +2576,94 @@ function formatConversationTranscript(messages) {
         .join('\n');
 }
 
-function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName()) {
+async function convertImageUrlToBase64(imageUrl) {
+    if (typeof imageUrl !== 'string' || !imageUrl) {
+        return '';
+    }
+    if (imageUrl.startsWith('data:')) {
+        return imageUrl;
+    }
+
+    try {
+        const response = await fetch(imageUrl, { method: 'GET', cache: 'force-cache' });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image: status ${response.status}`);
+        }
+        const blob = await response.blob();
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error('Conversation Mode: failed to convert image to base64', error);
+        return imageUrl;
+    }
+}
+
+async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName()) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
         identifier: 'conversation-transcript-header',
     }];
 
-    messages.slice(-TRANSCRIPT_MESSAGE_LIMIT).forEach((message, index) => {
+    const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
+    const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
         const parts = [
             formatPromptText(message.mes, 1800),
             getConversationAttachmentSummary(message),
         ].filter(Boolean);
         const media = getConversationPromptMediaAttachments(message);
         if (!parts.length && !media.length) {
-            return;
+            return null;
         }
 
         const role = message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant';
-        const promptMessage = {
-            role,
-            content: parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : `${message.name || 'Speaker'} sent an attachment.`,
-            identifier: `conversation-message-${message.id || index}`,
-        };
+        const textContent = parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : `${message.name || 'Speaker'} sent an attachment.`;
 
-        if (media.length) {
-            promptMessage.media = media;
-            promptMessage.mediaDisplay = getConversationMediaDisplay(message);
-            promptMessage.mediaIndex = getConversationMediaIndex(message, media);
+        if (!media.length) {
+            return {
+                role,
+                content: textContent,
+                identifier: `conversation-message-${message.id || index}`,
+            };
         }
 
-        promptMessages.push(promptMessage);
-    });
+        const contentParts = [
+            { type: 'text', text: textContent },
+        ];
+
+        const mediaDisplay = getConversationMediaDisplay(message);
+        const mediaIndex = getConversationMediaIndex(message, media);
+        const mediaToInline = mediaDisplay === MEDIA_DISPLAY.GALLERY
+            ? [media[mediaIndex]]
+            : media;
+
+        for (const item of mediaToInline) {
+            if (item && item.url) {
+                const base64Url = await convertImageUrlToBase64(item.url);
+                if (base64Url) {
+                    contentParts.push({
+                        type: 'image_url',
+                        image_url: {
+                            url: base64Url,
+                            detail: 'high',
+                        },
+                    });
+                }
+            }
+        }
+
+        return {
+            role,
+            content: contentParts,
+            identifier: `conversation-message-${message.id || index}`,
+        };
+    }));
+
+    convertedMessages.filter(Boolean).forEach(msg => promptMessages.push(msg));
 
     if (promptMessages.length === 1) {
         promptMessages.push({
@@ -2807,7 +2863,7 @@ async function generateConversationReply(directive, settings, { responseLength =
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
         : getConversationReplyMaxTokens(settings);
-    const prompt = buildConversationPromptMessages(messages, directive, speakerName);
+    const prompt = await buildConversationPromptMessages(messages, directive, speakerName);
 
     return withConversationConnectionProfile(settings, () => generateRaw({
         prompt,
