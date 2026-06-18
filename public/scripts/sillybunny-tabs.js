@@ -2318,14 +2318,19 @@ function syncShellViewportBounds() {
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+    const setRootViewportProperty = (property, value) => {
+        if (root.style.getPropertyValue(property) !== value) {
+            root.style.setProperty(property, value);
+        }
+    };
 
-    root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
-    root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
-    root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+    setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
+    setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
+    setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
     // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
     // when the keyboard opens; without this var the shell stays anchored at
     // the layout viewport top and the composer floats mid-screen.
-    root.style.setProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+    setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
 function getMobileShellBoundDrawers() {
@@ -2347,11 +2352,15 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 
     for (const property of decision.styleRemovals) {
-        drawer.style.removeProperty(property);
+        if (drawer.style.getPropertyValue(property) || drawer.style.getPropertyPriority(property)) {
+            drawer.style.removeProperty(property);
+        }
     }
 
     for (const { property, value, priority } of decision.styleWrites) {
-        drawer.style.setProperty(property, value, priority);
+        if (drawer.style.getPropertyValue(property) !== value || drawer.style.getPropertyPriority(property) !== priority) {
+            drawer.style.setProperty(property, value, priority);
+        }
     }
 }
 
@@ -2381,6 +2390,9 @@ function syncMobileShellDrawerBounds() {
     }
 }
 
+let sbMobileShellDrawerBoundsFrameId = 0;
+let sbMobileShellDrawerBoundsFollowupId = 0;
+
 function queueMobileShellDrawerBoundsSync() {
     const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
         isMobileViewport: isMobileViewport(),
@@ -2392,18 +2404,31 @@ function queueMobileShellDrawerBoundsSync() {
         return;
     }
 
+    if (sbMobileShellDrawerBoundsFrameId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(sbMobileShellDrawerBoundsFrameId);
+        sbMobileShellDrawerBoundsFrameId = 0;
+    }
+    if (sbMobileShellDrawerBoundsFollowupId) {
+        window.clearTimeout(sbMobileShellDrawerBoundsFollowupId);
+        sbMobileShellDrawerBoundsFollowupId = 0;
+    }
+
     const sync = () => {
+        sbMobileShellDrawerBoundsFrameId = 0;
         syncShellViewportBounds();
         syncMobileShellDrawerBounds();
     };
 
     if (schedule.useAnimationFrame) {
-        window.requestAnimationFrame(sync);
+        sbMobileShellDrawerBoundsFrameId = window.requestAnimationFrame(sync);
     } else {
         sync();
     }
 
-    window.setTimeout(sync, schedule.followupDelayMs);
+    sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {
+        sbMobileShellDrawerBoundsFollowupId = 0;
+        sync();
+    }, schedule.followupDelayMs);
 }
 
 function isMovingUIActive() {
@@ -14488,6 +14513,24 @@ function syncMobileViewportState() {
     }
 }
 
+let sbMobileViewportStateFrameId = 0;
+
+function queueMobileViewportStateSync() {
+    if (sbMobileViewportStateFrameId) {
+        return;
+    }
+
+    if (typeof window.requestAnimationFrame !== 'function') {
+        syncMobileViewportState();
+        return;
+    }
+
+    sbMobileViewportStateFrameId = window.requestAnimationFrame(() => {
+        sbMobileViewportStateFrameId = 0;
+        syncMobileViewportState();
+    });
+}
+
 function reinitSelect2AfterShell() {
     const modelSelectors = [
         '#mancer_model',
@@ -15465,12 +15508,10 @@ function initAll() {
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
-    window.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.addEventListener('orientationchange', syncMobileViewportState);
-    window.visualViewport?.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncMobileViewportState, { passive: true });
+    window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
+    window.addEventListener('orientationchange', queueMobileViewportStateSync);
+    window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).

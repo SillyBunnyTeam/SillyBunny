@@ -143,7 +143,6 @@
         max-width: 100% !important;
         min-height: var(--sb-mobile-composer-input-height) !important;
         max-height: 42dvh !important;
-        field-sizing: content !important;
         resize: none !important;
         overflow-y: auto !important;
         box-sizing: border-box !important;

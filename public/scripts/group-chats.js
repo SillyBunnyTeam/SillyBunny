@@ -3593,6 +3593,7 @@ async function createGroup() {
         auto_message_enabled: Boolean($('#rm_group_auto_message').prop('checked')),
         ai_schedule: String($('#rm_group_ai_schedule').val() || ''),
         auto_schedule_state: {},
+        conversation_settings: {},
     };
 
     const createGroupResponse = await fetch('/api/groups/create', {

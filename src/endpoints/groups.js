@@ -203,6 +203,7 @@ router.post('/create', (request, response) => {
         auto_mode_delay: request.body.auto_mode_delay ?? 5,
         generation_mode_join_prefix: request.body.generation_mode_join_prefix ?? '',
         generation_mode_join_suffix: request.body.generation_mode_join_suffix ?? '',
+        conversation_settings: request.body.conversation_settings ?? {},
     };
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));
     const fileData = JSON.stringify(groupMetadata, null, 4);

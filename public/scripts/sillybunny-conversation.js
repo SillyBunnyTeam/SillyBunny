@@ -1,6 +1,6 @@
 import { getMessageTimeStamp } from './RossAscends-mods.js';
 import { eventSource, event_types } from './events.js';
-import { selected_group, groups, group_activation_strategy, group_generation_mode } from './group-chats.js';
+import { selected_group, groups, group_activation_strategy, group_generation_mode, editGroup } from './group-chats.js';
 import { world_names } from './world-info.js';
 import { playMessageSound, power_user } from './power-user.js';
 import { user_avatar, setUserAvatar } from './personas.js';
@@ -254,6 +254,21 @@ const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_selfie_prompt', key: 'selfie_prompt', prop: 'value' },
 ]);
 
+const GROUP_CONVERSATION_SETTINGS_KEYS = Object.freeze([
+    'proactive_messaging',
+    'inactivity_threshold',
+    'max_followups',
+    'talkativeness',
+    'reply_delay_multiplier',
+    'reply_max_tokens',
+    'selfie_command_enabled',
+    'schedule_command_enabled',
+]);
+const GROUP_CONVERSATION_SETTINGS_KEY_SET = new Set(GROUP_CONVERSATION_SETTINGS_KEYS);
+const CHARACTER_CONVERSATION_SETTINGS_KEYS = Object.freeze(
+    Object.keys(DEFAULT_SETTINGS).filter(key => !GROUP_CONVERSATION_SETTINGS_KEY_SET.has(key)),
+);
+
 let initialized = false;
 let autoWorkerIntervalId = null;
 let autoWorkerBusy = false;
@@ -479,6 +494,39 @@ function safeParseSettings(stored) {
     }
 }
 
+function pickConversationSettings(settings, keys) {
+    const source = settings && typeof settings === 'object' ? settings : {};
+    return [...keys].reduce((picked, key) => {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            picked[key] = source[key];
+        }
+        return picked;
+    }, {});
+}
+
+function normalizeGroupConversationSettings(settings = {}) {
+    return pickConversationSettings(safeParseSettings(settings), GROUP_CONVERSATION_SETTINGS_KEYS);
+}
+
+function getDefaultGroupConversationSettings() {
+    return normalizeGroupConversationSettings(DEFAULT_SETTINGS);
+}
+
+function getGroupConversationSettings(groupId) {
+    const group = getConversationGroupById(groupId);
+    return normalizeGroupConversationSettings(group?.conversation_settings);
+}
+
+function saveGroupConversationSettings(groupId, settings) {
+    const group = getConversationGroupById(groupId);
+    if (!group) {
+        return;
+    }
+
+    group.conversation_settings = normalizeGroupConversationSettings(settings);
+    void editGroup(String(group.id), false, false);
+}
+
 function getConversationStore() {
     const store = extension_settings[CONVERSATION_STORE_KEY];
     if (!store || typeof store !== 'object') {
@@ -623,7 +671,7 @@ function createConversationBranchForAvatar(avatar, name = 'New chat', { groupId 
         characterStore.activeBranchId || DEFAULT_BRANCH_ID,
     );
     const branch = createConversationBranch(name || 'New chat');
-    const shouldCopyMemory = copyMemory ?? Boolean(getSettings(avatar).copy_memory_to_new_branch);
+    const shouldCopyMemory = copyMemory ?? Boolean(getSettings(avatar, { groupId }).copy_memory_to_new_branch);
     if (shouldCopyMemory && sourceBranch.memorySummary) {
         branch.memorySummary = sourceBranch.memorySummary;
         branch.memoryMessageCount = 0;
@@ -755,6 +803,13 @@ function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversatio
     }
 
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    if (groupId) {
+        const threadSettings = threadStore?.settings
+            ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
+            : {};
+        return { ...DEFAULT_SETTINGS, ...getGroupConversationSettings(groupId), ...threadSettings };
+    }
+
     const settings = threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
     return { ...DEFAULT_SETTINGS, ...settings };
 }
@@ -846,7 +901,10 @@ function saveSettings(avatar, settings, { groupId = getConversationGroupIdForAva
 
     const threadStore = getConversationThreadStore(avatar, { create: true, groupId });
     if (threadStore) {
-        threadStore.settings = safeParseSettings(settings);
+        const normalizedSettings = safeParseSettings(settings);
+        threadStore.settings = groupId
+            ? pickConversationSettings(normalizedSettings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
+            : normalizedSettings;
     }
     persistConversationStore();
 }
@@ -1516,7 +1574,12 @@ function getParticipantNamesForDisplay(participants) {
         .filter(Boolean);
 }
 
-function renderConversationParticipantStack(container, participants, { status = 'online', max = MAX_STACKED_PARTICIPANT_AVATARS } = {}) {
+function renderConversationParticipantStack(container, participants, {
+    status = 'online',
+    max = MAX_STACKED_PARTICIPANT_AVATARS,
+    groupId = getConversationGroupIdForAvatar(getCurrentCharAvatar()),
+    onAvatarClick = null,
+} = {}) {
     if (!(container instanceof HTMLElement)) {
         return;
     }
@@ -1543,6 +1606,24 @@ function renderConversationParticipantStack(container, participants, { status = 
         const avatarItem = document.createElement('span');
         avatarItem.className = 'sb-conversation-participant-avatar';
         avatarItem.dataset.primary = String(index === 0);
+        avatarItem.title = participant.name || 'Character';
+
+        if (typeof onAvatarClick === 'function') {
+            avatarItem.classList.add('is-interactive');
+            avatarItem.tabIndex = 0;
+            avatarItem.role = 'button';
+            avatarItem.setAttribute('aria-label', `Open solo DM with ${participant.name || 'Character'}`);
+            avatarItem.addEventListener('click', (event) => {
+                event.stopPropagation();
+                onAvatarClick(participant);
+            });
+            avatarItem.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onAvatarClick(participant);
+                }
+            });
+        }
 
         const image = document.createElement('img');
         image.alt = '';
@@ -1550,13 +1631,13 @@ function renderConversationParticipantStack(container, participants, { status = 
         image.src = getThumbnailUrl('avatar', participant.avatar) || default_user_avatar;
         avatarItem.appendChild(image);
 
-        if (index === 0) {
-            const statusDot = document.createElement('span');
-            statusDot.className = 'sb-conversation-status-dot';
-            statusDot.dataset.status = status;
-            statusDot.setAttribute('aria-hidden', 'true');
-            avatarItem.appendChild(statusDot);
-        }
+        const statusDot = document.createElement('span');
+        statusDot.className = 'sb-conversation-status-dot';
+        statusDot.dataset.status = participant.avatar
+            ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId }))
+            : status;
+        statusDot.setAttribute('aria-hidden', 'true');
+        avatarItem.appendChild(statusDot);
 
         container.appendChild(avatarItem);
     });
@@ -1754,7 +1835,7 @@ function parseScheduleResponse(rawText) {
     };
 }
 
-async function generateCharacterSchedule(character) {
+async function generateCharacterSchedule(character, { groupId = getConversationGroupIdForAvatar(character?.avatar) } = {}) {
     if (!character) {
         return null;
     }
@@ -1786,7 +1867,7 @@ async function generateCharacterSchedule(character) {
     }
     promptParts.push('Generate the weekly schedule JSON now.');
 
-    const settings = getSettings(character.avatar);
+    const settings = getSettings(character.avatar, { groupId });
     const response = await withConversationConnectionProfile(settings, () => generateRaw({
         prompt: promptParts.join('\n\n'),
         systemPrompt,
@@ -2064,7 +2145,7 @@ function notifyNewConversationMessage(avatar, message, shouldNotify, { groupId =
         return;
     }
 
-    const settings = getSettings(avatar);
+    const settings = getSettings(avatar, { groupId });
     if (!shouldSurfaceConversationNotification(settings)) {
         return;
     }
@@ -2167,12 +2248,12 @@ function chooseConversationPartner(avatar, selectedAvatars, settings = getSettin
     return mentioned || (Math.random() < 0.75 ? getLeastRecentPartner(avatar, selectedAvatars, settings, { groupId }) : partners[Math.floor(Math.random() * partners.length)]);
 }
 
-function getConversationPartnerSettings(partnerAvatar, hostSettings) {
+function getConversationPartnerSettings(partnerAvatar, hostSettings, { groupId = getConversationGroupIdForAvatar(partnerAvatar) } = {}) {
     if (!partnerAvatar) {
         return hostSettings;
     }
 
-    const partnerSettings = getSettings(partnerAvatar);
+    const partnerSettings = getSettings(partnerAvatar, { groupId });
     return {
         ...hostSettings,
         availability: partnerSettings.availability,
@@ -2452,8 +2533,8 @@ function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { gr
     updateConversationNotificationIndicators();
 }
 
-function getConversationSettingsForCharacter(character) {
-    return character?.avatar ? getSettings(character.avatar) : { ...DEFAULT_SETTINGS };
+function getConversationSettingsForCharacter(character, { groupId = getConversationGroupIdForAvatar(character?.avatar) } = {}) {
+    return character?.avatar ? getSettings(character.avatar, { groupId }) : { ...DEFAULT_SETTINGS };
 }
 
 function getConversationPals() {
@@ -2462,7 +2543,7 @@ function getConversationPals() {
     }
 
     return characters
-        .map((character, index) => ({ character, index, settings: getConversationSettingsForCharacter(character) }))
+        .map((character, index) => ({ character, index, settings: getConversationSettingsForCharacter(character, { groupId: '' }) }))
         .filter(item => item.character?.avatar && item.settings.enabled);
 }
 
@@ -2504,10 +2585,11 @@ function getConversationRailItems() {
 
         const character = getCharacterForAvatar(parsed.avatar);
         const group = getConversationGroupById(parsed.groupId);
-        const settings = getConversationSettingsForCharacter(character);
         if (!character || !group) {
             return;
         }
+
+        const settings = getConversationSettingsForCharacter(character, { groupId: parsed.groupId });
 
         addItem({
             character,
@@ -2543,7 +2625,7 @@ function getCurrentGroupConversationMembers({ requireRoleplayReactions = false }
         .map((avatar) => {
             const character = getCharacterForAvatar(avatar);
             const index = getCharacterIndexForAvatar(avatar);
-            const settings = getConversationSettingsForCharacter(character);
+            const settings = getConversationSettingsForCharacter(character, { groupId: String(group.id || '') });
             return { character, index, settings };
         })
         .filter(item => item.character?.avatar && item.settings.enabled)
@@ -2552,7 +2634,7 @@ function getCurrentGroupConversationMembers({ requireRoleplayReactions = false }
 
 function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
     const targets = [];
-    const addTarget = (character, sourceLabel = '') => {
+    const addTarget = (character, sourceLabel = '', groupId = '') => {
         if (!character?.avatar || targets.some(target => target.avatar === character.avatar)) {
             return;
         }
@@ -2561,18 +2643,21 @@ function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
             avatar: character.avatar,
             name: character.name || 'Character',
             sourceLabel,
+            groupId,
         });
     };
 
-    const baseSettings = baseAvatar ? getSettings(baseAvatar) : null;
+    const baseGroupId = getConversationGroupIdForAvatar(baseAvatar);
+    const baseSettings = baseAvatar ? getSettings(baseAvatar, { groupId: baseGroupId }) : null;
     if (baseAvatar) {
-        getConversationParticipants(baseAvatar, baseSettings || getSettings(baseAvatar)).forEach(character => addTarget(character, 'Conversation'));
+        getConversationParticipants(baseAvatar, baseSettings || getSettings(baseAvatar, { groupId: baseGroupId }), { groupId: baseGroupId })
+            .forEach(character => addTarget(character, 'Conversation', baseGroupId));
     }
 
-    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat'));
+    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
 
     if (!targets.length && baseAvatar) {
-        addTarget(getCharacterForAvatar(baseAvatar), 'Conversation');
+        addTarget(getCharacterForAvatar(baseAvatar), 'Conversation', baseGroupId);
     }
 
     return targets;
@@ -2865,7 +2950,7 @@ async function buildConversationPromptMessages(messages, directive, speakerName 
 
 function buildConversationMemoryPrompt(avatar, messages, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     const character = getCharacterForAvatar(avatar);
-    const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar), { groupId }));
+    const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar, { groupId }), { groupId }));
     return [
         `Main DM: ${character?.name || 'Character'} with ${name1 || 'User'}.`,
         participants.length > 1 ? `Other possible participants: ${participants.slice(1).join(', ')}.` : '',
@@ -2904,7 +2989,7 @@ async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), 
             buildConversationMemoryPrompt(avatar, messages, { groupId }),
             'Return the updated memory summary in 6 concise bullets or fewer. No preamble.',
         ].filter(Boolean).join('\n\n');
-        const settings = getSettings(avatar);
+        const settings = getSettings(avatar, { groupId });
         const response = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt,
             systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
@@ -2954,7 +3039,7 @@ function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar()
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = name1 || 'User';
-    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar);
+    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId });
     const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
     const fields = [
         threadCharacter
@@ -3350,12 +3435,11 @@ async function postCharacterReply(rawText, settings, { extra = {}, groupId = und
     if (!avatar) {
         return '';
     }
-    const { text, selfieRequests } = extractCharacterReplyCommands(rawText, settings, avatar, { groupId });
+    const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
+    const speakerName = character?.name || getCurrentCharName();
+    const { text, selfieRequests } = extractCharacterReplyCommands(stripSpeakerPrefix(rawText, speakerName), settings, avatar, { groupId });
 
     if (text) {
-        const character = (Array.isArray(characters) ? characters : []).find(c => c?.avatar === avatar);
-        const speakerName = character?.name || getCurrentCharName();
-
         for (const messageText of splitChatroomMessages(text)) {
             const cleanMessageText = normalizeConversationOutputText(messageText);
             if (!cleanMessageText) {
@@ -3414,8 +3498,8 @@ function renderConversationTimeline() {
         return;
     }
 
-    const settings = getSettings(avatar);
     const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     const allMessages = getConversationThread(avatar, { groupId });
     const messages = getConversationTimelineMessages(allMessages);
     const contextChanged = previousAvatar !== avatar;
@@ -3476,6 +3560,15 @@ function renderConversationTimeline() {
         image.loading = index > 8 ? 'lazy' : 'eager';
         image.src = getConversationMessageAvatar(message, avatar);
         avatarWrap.appendChild(image);
+
+        const messageAvatar = message.role === 'partner' ? message.extra?.partner_avatar : avatar;
+        if (messageAvatar && message.role !== 'user' && message.role !== 'system') {
+            const statusDot = document.createElement('span');
+            statusDot.className = 'sb-conversation-status-dot';
+            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar, getSettings(messageAvatar, { groupId }));
+            statusDot.setAttribute('aria-hidden', 'true');
+            avatarWrap.appendChild(statusDot);
+        }
 
         const bubble = document.createElement('div');
         bubble.className = 'sb-conversation-message-bubble';
@@ -3694,6 +3787,7 @@ function buildConnectionProfileOptions(selected) {
 function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters to pick partners.') {
     const selectedSet = new Set(parseAvatarList(selectedNames));
     const currentAvatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(currentAvatar);
     const rows = [];
     (Array.isArray(characters) ? characters : []).forEach((character) => {
         if (!character?.avatar || character.avatar === currentAvatar) {
@@ -3703,7 +3797,7 @@ function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters 
         const charAvatar = character.avatar;
         const checked = selectedSet.has(charAvatar) ? ' checked' : '';
         const thumbUrl = getThumbnailUrl('avatar', charAvatar);
-        const profileOptions = buildConnectionProfileOptions(getSettings(charAvatar).connection_profile);
+        const profileOptions = buildConnectionProfileOptions(getSettings(charAvatar, { groupId }).connection_profile);
         rows.push(`
             <div class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
                 <label class="sb-conversation-partner-pick">
@@ -3902,7 +3996,7 @@ async function regenerateConversationMessage(messageId) {
     }
 
     const speakerAvatar = context.message.extra?.partner_avatar || context.avatar;
-    const settings = getSettings(speakerAvatar);
+    const settings = getSettings(speakerAvatar, { groupId: context.groupId });
     const speakerName = context.message.name || getCharacterForAvatar(speakerAvatar)?.name || getCurrentCharName();
     const prompt = await buildConversationPromptMessages(
         context.messages.slice(0, index),
@@ -3980,8 +4074,8 @@ async function quickConversationSelfie() {
         return;
     }
 
-    const settings = getSettings(avatar);
     const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     const context = globalThis.prompt?.('Describe the selfie context', 'a casual selfie in the current DM conversation');
     if (typeof context !== 'string') {
         return;
@@ -4171,7 +4265,8 @@ function getConversationMentionTargets(avatar = getCurrentCharAvatar()) {
         return [];
     }
 
-    return getConversationParticipants(avatar, getSettings(avatar))
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    return getConversationParticipants(avatar, getSettings(avatar, { groupId }), { groupId })
         .filter(character => character?.avatar && character.name);
 }
 
@@ -4251,11 +4346,20 @@ function buildSettingsDrawerHtml() {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId });
+    const isGroupConversation = Boolean(groupId);
+    const drawerTitle = isGroupConversation ? 'Group controls' : 'DM controls';
+    const proactiveTitle = isGroupConversation
+        ? 'Let group members message you first based on the group schedule and mood'
+        : 'Let the character message you first based on their schedule and mood';
+    const proactiveLabel = isGroupConversation ? 'Let group members message me first' : 'Let this character message me first';
+    const proactiveHint = isGroupConversation
+        ? 'These proactive controls apply only to this group Conversation, not solo DMs.'
+        : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.';
     return `
         <div class="sb-conversation-settings-header">
             <div>
                 <div class="sb-conversation-settings-kicker">Conversation Mode</div>
-                <div class="sb-conversation-settings-title">DM controls</div>
+                <div class="sb-conversation-settings-title">${drawerTitle}</div>
             </div>
             <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="close-settings" title="Close Conversation settings" aria-label="Close Conversation settings">
                 <i class="fa-solid fa-xmark"></i>
@@ -4340,9 +4444,9 @@ function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Proactive Messaging</span></h4>
-                <label class="checkbox_label" title="Let the character message you first based on their schedule and mood">
+                <label class="checkbox_label" title="${escapeHtmlAttribute(proactiveTitle)}">
                     <input id="sb_conv_proactive_messaging" type="checkbox" />
-                    <span>Let this character message me first</span>
+                    <span>${proactiveLabel}</span>
                 </label>
                 <div class="sb-conversation-proactive-inputs">
                     <div class="sb-conversation-field-stack">
@@ -4366,7 +4470,7 @@ function buildSettingsDrawerHtml() {
                         <input id="sb_conv_reply_max_tokens" class="text_pole textarea_compact wide100p" type="number" min="64" max="64000" step="64" value="16000" />
                     </div>
                 </div>
-                <p class="sb-conversation-field-hint">Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.</p>
+                <p class="sb-conversation-field-hint">${proactiveHint}</p>
                 <div class="sb-conversation-field-row">
                     <label class="checkbox_label" title="Let the character turn [selfie: prompt] into a Quick Image Gen request">
                         <input id="sb_conv_selfie_command_enabled" type="checkbox" />
@@ -4614,7 +4718,7 @@ function ensureConversationChrome() {
             <div id="${CHROME_IDS.dropHint}" class="sb-conversation-drop-hint" hidden>Drop files to attach</div>
             <form id="${CHROME_IDS.form}" class="sb-conversation-composer">
                 <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
-                <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Message this character outside roleplay..."></textarea>
+                <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message..."></textarea>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-actions">
                     <button id="sb_conversation_toggle_tools" type="button" class="menu_button menu_button_icon" data-sb-conversation-action="toggle-tools" title="Toggle filters and tools" aria-label="Toggle filters and tools">
@@ -5123,18 +5227,25 @@ function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) {
         }
 
         saveStoredSchedule(editAvatar, normalized);
-        const editSettings = getSettings(editAvatar);
+        const editTarget = targets.find(target => target.avatar === editAvatar);
+        const editGroupId = editTarget?.groupId || '';
+        const editSettings = getSettings(editAvatar, { groupId: editGroupId });
         editSettings.auto_schedule = JSON.stringify(normalized);
         editSettings.talkativeness = normalized.talkativeness;
         editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
         editSettings.schedule_generated_at = normalized.generatedAt;
-        saveSettings(editAvatar, editSettings);
+        if (editGroupId) {
+            saveGroupConversationSettings(editGroupId, editSettings);
+        }
+        saveSettings(editAvatar, editSettings, { groupId: editGroupId });
         if (editAvatar === getCurrentCharAvatar()) {
             applySettingsToPanel(editSettings);
             renderScheduleDisplay();
             updateConversationChrome(editSettings);
         } else {
-            updateConversationChrome(getSettings());
+            const currentAvatar = getCurrentCharAvatar();
+            const currentGroupId = getConversationGroupIdForAvatar(currentAvatar);
+            updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId }));
         }
         const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
         toastr.success(`Schedule saved for ${targetName}.`);
@@ -5163,7 +5274,8 @@ function renderScheduleDisplay() {
     const current = getCurrentActivityFromSchedule(schedule, avatar, now);
     const todayBlocks = Array.isArray(schedule.days[todayIndex]) ? schedule.days[todayIndex] : [];
 
-    const settings = getSettings(avatar);
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     const talkativeness = parsePositiveInt(settings.talkativeness, DEFAULT_TALKATIVENESS, 0);
     const generatedLabel = formatScheduleTimestamp(settings.schedule_generated_at);
 
@@ -5285,7 +5397,10 @@ function openConversationSettings() {
     }
 
     closePalsRail();
-    const settings = getSettings();
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
+    chrome.drawer.innerHTML = buildSettingsDrawerHtml();
 
     // Refresh live-data dropdowns before showing the drawer.
     const lorebookSelect = document.getElementById('sb_conv_lorebook_override');
@@ -5420,9 +5535,10 @@ function saveConversationPartnerConnectionProfile(select) {
         return;
     }
 
-    const settings = getSettings(partnerAvatar);
+    const groupId = getConversationGroupIdForAvatar(partnerAvatar);
+    const settings = getSettings(partnerAvatar, { groupId });
     settings.connection_profile = select.value || '';
-    saveSettings(partnerAvatar, settings);
+    saveSettings(partnerAvatar, settings, { groupId });
 }
 
 function updateUserFooter() {
@@ -5763,6 +5879,7 @@ async function createConversationGroup(memberAvatars, { sourceAvatar = '', copyS
         chat_id: chatId,
         chats: [chatId],
         auto_mode_delay: 120,
+        conversation_settings: getDefaultGroupConversationSettings(),
     };
 
     const response = await fetch('/api/groups/create', {
@@ -5790,10 +5907,6 @@ async function createConversationGroup(memberAvatars, { sourceAvatar = '', copyS
         } else {
             groups.push(group);
         }
-    }
-
-    if (sourceAvatar && copySourceGroupId !== null) {
-        copyConversationThreadToGroup(sourceAvatar, String(group.id), { sourceGroupId: copySourceGroupId || '' });
     }
 
     try {
@@ -5855,7 +5968,7 @@ function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '' }
     const sourceMembers = normalizedSourceGroupId ? getCurrentGroupMemberAvatars(normalizedSourceGroupId) : [];
     const lockedMembers = new Set(sourceAvatar ? (sourceMembers.length ? sourceMembers : [sourceAvatar]) : []);
     const selectedMembers = new Set(lockedMembers);
-    const copyFromCurrentThread = Boolean(sourceAvatar);
+    const copyFromCurrentThread = false;
 
     if (!picker.hasAttribute('hidden')
         && picker.dataset.pickerType === 'group'
@@ -5875,7 +5988,7 @@ function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '' }
         ? (normalizedSourceGroupId ? 'Add members to this group' : 'Add members to this DM')
         : 'Start a group DM';
     const description = sourceAvatar
-        ? 'Selected members will open as a new group Conversation with this thread copied over.'
+        ? 'Selected members will open as a separate group Conversation with its own history and group controls.'
         : 'Pick two or more characters to create a group Conversation independent of the active roleplay chat.';
 
     picker.innerHTML = `
@@ -5975,7 +6088,7 @@ async function handleCreateConversationGroupFromPicker() {
         members = [];
     }
 
-    const sourceAvatar = picker.dataset.copySource === 'true' ? picker.dataset.sourceAvatar || '' : '';
+    const sourceAvatar = picker.dataset.sourceAvatar || '';
     const copySourceGroupId = picker.dataset.copySource === 'true' ? picker.dataset.copySourceGroupId || '' : null;
     return createAndOpenConversationGroup(members, { sourceAvatar, copySourceGroupId });
 }
@@ -6117,9 +6230,9 @@ function bindConversationChromeControls(sheld) {
                 if (index >= 0) {
                     const char = characters[index];
                     if (char?.avatar) {
-                        const charSettings = getSettings(char.avatar);
+                        const charSettings = getSettings(char.avatar, { groupId: '' });
                         charSettings.enabled = true;
-                        saveSettings(char.avatar, charSettings);
+                        saveSettings(char.avatar, charSettings, { groupId: '' });
                         document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
                         closePalsRail();
                         openConversationWorkspaceForAvatar(char.avatar, {
@@ -6183,7 +6296,7 @@ function bindConversationChromeControls(sheld) {
                         renameConversationBranch(avatar, branchId, name, { groupId });
                         renderPalsRail();
                         if (isConversationActiveThread(avatar, groupId)) {
-                            updateConversationHeader(getSettings(avatar));
+                            updateConversationHeader(getSettings(avatar, { groupId }));
                             renderConversationMemoryPanel();
                         }
                     }
@@ -6231,9 +6344,9 @@ function bindConversationChromeControls(sheld) {
                     resetFollowupCount(avatar, { groupId });
 
                     if (!groupId) {
-                        const charSettings = getSettings(avatar);
+                        const charSettings = getSettings(avatar, { groupId: '' });
                         charSettings.enabled = false;
-                        saveSettings(avatar, charSettings);
+                        saveSettings(avatar, charSettings, { groupId: '' });
                     }
 
                     if (isConversationActiveThread(avatar, groupId)) {
@@ -6398,15 +6511,19 @@ function bindConversationChromeControls(sheld) {
                 genBtn.setAttribute('disabled', '');
                 toastr.info(`Generating schedule for ${character.name}…`);
                 try {
-                    const schedule = await generateCharacterSchedule(character);
+                    const groupId = getConversationGroupIdForAvatar(genAvatar);
+                    const schedule = await generateCharacterSchedule(character, { groupId });
                     if (schedule) {
                         saveStoredSchedule(genAvatar, schedule);
-                        const genSettings = getSettings(genAvatar);
+                        const genSettings = getSettings(genAvatar, { groupId });
                         genSettings.auto_schedule = JSON.stringify(schedule);
                         genSettings.talkativeness = schedule.talkativeness;
                         genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
                         genSettings.schedule_generated_at = Date.now();
-                        saveSettings(genAvatar, genSettings);
+                        if (groupId) {
+                            saveGroupConversationSettings(groupId, genSettings);
+                        }
+                        saveSettings(genAvatar, genSettings, { groupId });
                         applySettingsToPanel(genSettings);
                         renderScheduleDisplay();
                         updateConversationChrome(genSettings);
@@ -6700,7 +6817,8 @@ function setConversationInterfaceActive(active) {
     }
     const avatar = getCurrentCharAvatar();
     if (avatar) {
-        applyConversationContext(getSettings(avatar));
+        const groupId = getConversationGroupIdForAvatar(avatar);
+        applyConversationContext(getSettings(avatar, { groupId }));
     }
     updateUserFooter();
 }
@@ -6852,6 +6970,7 @@ function renderPalsRail() {
 function updateConversationHeader(settings = getSettings()) {
     const character = getCurrentCharacter();
     const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
     const stage = document.getElementById(CHROME_IDS.stage);
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
@@ -6883,7 +7002,7 @@ function updateConversationHeader(settings = getSettings()) {
         stage.dataset.ambientStatus = String(effectiveStatus || settings.availability || 'online');
     }
 
-    const participants = getConversationParticipants(avatar, settings);
+    const participants = getConversationParticipants(avatar, settings, { groupId });
     const partnerCount = Math.max(0, participants.length - 1);
     if (addMemberButton instanceof HTMLButtonElement) {
         addMemberButton.hidden = !conversationWorkspaceOpen;
@@ -6891,7 +7010,15 @@ function updateConversationHeader(settings = getSettings()) {
         addMemberButton.title = label;
         addMemberButton.setAttribute('aria-label', label);
     }
-    renderConversationParticipantStack(participantsContainer, participants, { status: effectiveStatus });
+    renderConversationParticipantStack(participantsContainer, participants, {
+        status: effectiveStatus,
+        groupId,
+        onAvatarClick: groupId ? (participant) => {
+            if (participant?.avatar) {
+                openConversationWorkspaceForAvatar(participant.avatar, { groupId: null, showToast: false });
+            }
+        } : null,
+    });
     if (name instanceof HTMLElement) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
@@ -6945,10 +7072,11 @@ function updateConversationChrome(settings = getSettings()) {
 
 function refreshConversationInterface({ syncControls = false } = {}) {
     const avatar = getCurrentCharAvatar();
-    const settings = getSettings(avatar);
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     if (conversationWorkspaceOpen && avatar && !settings.enabled) {
         settings.enabled = true;
-        saveSettings(avatar, settings);
+        saveSettings(avatar, settings, { groupId });
     }
     const active = Boolean(conversationWorkspaceOpen);
 
@@ -6960,7 +7088,6 @@ function refreshConversationInterface({ syncControls = false } = {}) {
 
     if (active) {
         if (avatar) {
-            const groupId = conversationSelectedGroupId || '';
             clearUnreadCount(avatar, { groupId });
             updateLastPreviewFromConversation(avatar, { groupId });
         }
@@ -6973,7 +7100,7 @@ function refreshConversationInterface({ syncControls = false } = {}) {
         const send = document.getElementById(CHROME_IDS.send);
         if (input instanceof HTMLTextAreaElement) {
             input.disabled = !avatar;
-            input.placeholder = avatar ? 'Message this character outside roleplay...' : 'Pick or start a DM from the Pals rail...';
+            input.placeholder = avatar ? 'Type your message...' : 'Pick or start a DM from the Pals rail...';
         }
         if (send instanceof HTMLButtonElement) {
             send.disabled = !avatar;
@@ -7027,6 +7154,9 @@ function saveCurrentPanelSettings() {
     settings.idle_action = getIdleActionFromSettings(settings);
     settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
     settings.auto_chat_names = settings.multi_char_names;
+    if (groupId) {
+        saveGroupConversationSettings(groupId, settings);
+    }
     saveSettings(avatar, settings, { groupId });
     refreshConversationInterface({ syncControls: false });
     updateGroupMembersVisibility();
@@ -7100,7 +7230,7 @@ async function handleCharacterMessagePolish(messageId, buttonElement) {
         const charName = getCurrentCharName();
         const systemPrompt = `You are an editor for ${charName}'s messages. Polish ${charName}'s reply in this instant messaging chatroom to make it more expressive, fitting for their personality, and natural. Correct any structural awkwardness while preserving the exact meaning, spelling quirks, and intent of the original text. Output only the polished reply without formatting prefixes or labels.`;
         const prompt = `Polish this message text:\n"${msg.mes}"`;
-        const settings = getSettings(avatar);
+        const settings = getSettings(avatar, { groupId });
         const response = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt,
             systemPrompt,
@@ -7298,7 +7428,7 @@ async function processQueuedConversationReply(queueItem) {
 
     await waitForAutoWorker();
 
-    const settings = getSettings(avatar);
+    const settings = getSettings(avatar, { groupId });
     if (!settings.enabled) {
         return;
     }
@@ -7426,13 +7556,13 @@ async function submitConversationInput() {
     }
 
     const avatar = getCurrentCharAvatar();
-    const settings = getSettings(avatar);
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     const text = input.value.trim();
     const pendingFiles = getValidatedConversationPendingFiles({ notify: true });
     if (!pendingFiles) {
         return;
     }
-    const groupId = getConversationGroupIdForAvatar(avatar);
     if (!avatar || !settings.enabled || (!text && !pendingFiles.length)) {
         return;
     }
@@ -7642,13 +7772,13 @@ function setLastAutoMessageTime(avatar, timestamp = Date.now(), { groupId = getC
     }
 }
 
-function getScheduleTriggerState(avatar) {
-    const state = getActiveConversationBranch(avatar, { create: false })?.scheduleTriggers;
+function getScheduleTriggerState(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const state = getActiveConversationBranch(avatar, { create: false, groupId })?.scheduleTriggers;
     return state && typeof state === 'object' ? state : {};
 }
 
-function setScheduleTriggered(avatar, triggerKey, timestamp) {
-    const state = getScheduleTriggerState(avatar);
+function setScheduleTriggered(avatar, triggerKey, timestamp, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const state = getScheduleTriggerState(avatar, { groupId });
     state[triggerKey] = timestamp;
 
     const stateEntries = Object.entries(state).sort((first, second) => first[1] - second[1]);
@@ -7657,18 +7787,18 @@ function setScheduleTriggered(avatar, triggerKey, timestamp) {
         delete state[oldestKey];
     }
 
-    const branch = getActiveConversationBranch(avatar);
+    const branch = getActiveConversationBranch(avatar, { groupId });
     if (branch) {
         branch.scheduleTriggers = state;
         persistConversationStore();
     }
 }
 
-function hasScheduleTriggered(avatar, triggerKey) {
-    return Object.prototype.hasOwnProperty.call(getScheduleTriggerState(avatar), triggerKey);
+function hasScheduleTriggered(avatar, triggerKey, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    return Object.prototype.hasOwnProperty.call(getScheduleTriggerState(avatar, { groupId }), triggerKey);
 }
 
-async function checkScheduledAutoMessages(avatar, settings, now) {
+async function checkScheduledAutoMessages(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!settings.auto_message) {
         return false;
     }
@@ -7697,19 +7827,19 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
         }
 
         const triggerKey = `weekly:${currentDay}:${entry.time}:${entry.message}`;
-        if (hasScheduleTriggered(avatar, triggerKey)) {
+        if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
             continue;
         }
 
         const triggered = await triggerAutoMessage(
             `[System directive: Your weekly schedule is due: "${entry.message}". Send a message with this context in mind.]`,
             settings,
-            { schedule: `weekly:${entry.time}` },
+            { schedule: `weekly:${entry.time}`, groupId },
             avatar,
         );
         if (triggered) {
-            setScheduleTriggered(avatar, triggerKey, now);
-            setLastAutoMessageTime(avatar, now);
+            setScheduleTriggered(avatar, triggerKey, now, { groupId });
+            setLastAutoMessageTime(avatar, now, { groupId });
         }
 
         return triggered;
@@ -7729,14 +7859,14 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
         const absoluteMatch = trimmed.match(/^(\d{2}):(\d{2})\s*-\s*(.*)$/);
         if (absoluteMatch && `${absoluteMatch[1]}:${absoluteMatch[2]}` === currentMinute) {
             const triggerKey = `absolute:${currentDay}:${currentMinute}:${trimmed}`;
-            if (hasScheduleTriggered(avatar, triggerKey)) {
+            if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
                 continue;
             }
 
-            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed }, avatar);
+            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed, groupId }, avatar);
             if (triggered) {
-                setScheduleTriggered(avatar, triggerKey, now);
-                setLastAutoMessageTime(avatar, now);
+                setScheduleTriggered(avatar, triggerKey, now, { groupId });
+                setLastAutoMessageTime(avatar, now, { groupId });
             }
 
             return triggered;
@@ -7745,19 +7875,19 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
         const relativeMatch = trimmed.match(/^(\d+)\s*-\s*(.*)$/);
         if (relativeMatch) {
             const delayMinutes = parsePositiveInt(relativeMatch[1], 0, 0);
-            const lastUserActivity = getLastUserActivity(avatar, now);
+            const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
             const elapsedMinutes = (now - lastUserActivity) / (60 * 1000);
 
             if (delayMinutes > 0 && elapsedMinutes >= delayMinutes) {
                 const triggerKey = `relative:${lastUserActivity}:${trimmed}`;
-                if (hasScheduleTriggered(avatar, triggerKey)) {
+                if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
                     continue;
                 }
 
-                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed }, avatar);
+                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed, groupId }, avatar);
                 if (triggered) {
-                    setScheduleTriggered(avatar, triggerKey, now);
-                    setLastAutoMessageTime(avatar, now);
+                    setScheduleTriggered(avatar, triggerKey, now, { groupId });
+                    setLastAutoMessageTime(avatar, now, { groupId });
                 }
 
                 return triggered;
@@ -7768,14 +7898,14 @@ async function checkScheduledAutoMessages(avatar, settings, now) {
     return false;
 }
 
-async function checkIdleAutoMessage(avatar, settings, now) {
+async function checkIdleAutoMessage(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     const followupEnabled = Boolean(settings.idle_followup);
     const spontaneousEnabled = Boolean(settings.idle_spontaneous);
     if (!followupEnabled && !spontaneousEnabled) {
         return false;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, now);
+    const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
     if (idleMinutes < settings.idle_limit) {
@@ -7783,16 +7913,16 @@ async function checkIdleAutoMessage(avatar, settings, now) {
     }
 
     const followupSessionKey = `${LAST_IDLE_SESSION_PREFIX}followup`;
-    if (followupEnabled && getConversationSessionMarker(avatar, followupSessionKey) !== String(lastUserActivity)) {
+    if (followupEnabled && getConversationSessionMarker(avatar, followupSessionKey, { groupId }) !== String(lastUserActivity)) {
         const triggered = await triggerAutoMessage(
             '[System directive: The user has been quiet for a while. Send a casual auto follow-up checking in or asking what they are up to.]',
             settings,
-            { idle_action: 'followup' },
+            { idle_action: 'followup', groupId },
             avatar,
         );
         if (triggered) {
-            setConversationSessionMarker(avatar, followupSessionKey, lastUserActivity);
-            setLastAutoMessageTime(avatar, now);
+            setConversationSessionMarker(avatar, followupSessionKey, lastUserActivity, { groupId });
+            setLastAutoMessageTime(avatar, now, { groupId });
         }
         return triggered;
     }
@@ -7803,19 +7933,19 @@ async function checkIdleAutoMessage(avatar, settings, now) {
     }
 
     const spontaneousSessionKey = `${LAST_IDLE_SESSION_PREFIX}spontaneous`;
-    if (getConversationSessionMarker(avatar, spontaneousSessionKey) === String(lastUserActivity)) {
+    if (getConversationSessionMarker(avatar, spontaneousSessionKey, { groupId }) === String(lastUserActivity)) {
         return false;
     }
 
     const triggered = await triggerAutoMessage(
         '[System directive: Send a spontaneous ping to the user, starting a new topic or sharing a casual thought.]',
         settings,
-        { idle_action: 'spontaneous' },
+        { idle_action: 'spontaneous', groupId },
         avatar,
     );
     if (triggered) {
-        setConversationSessionMarker(avatar, spontaneousSessionKey, lastUserActivity);
-        setLastAutoMessageTime(avatar, now);
+        setConversationSessionMarker(avatar, spontaneousSessionKey, lastUserActivity, { groupId });
+        setLastAutoMessageTime(avatar, now, { groupId });
     }
 
     return triggered;
@@ -7845,7 +7975,7 @@ function buildProactiveDirective(activity, status, now = new Date()) {
     return `[System directive: It is ${timeOfDay} and you are currently ${activity} (status: ${status}). ${statusNote} The user has not replied in a while. Reach out to them yourself with a short, natural direct message. Reference your current activity or the time of day if it feels right. Do not wait for them to speak first.]`;
 }
 
-async function checkProactiveMessaging(avatar, settings, now) {
+async function checkProactiveMessaging(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!settings.proactive_messaging) {
         return false;
     }
@@ -7863,12 +7993,12 @@ async function checkProactiveMessaging(avatar, settings, now) {
         return false;
     }
 
-    const thread = getConversationThread(avatar);
+    const thread = getConversationThread(avatar, { groupId });
     const lastMessage = thread[thread.length - 1];
-    const lastUserActivity = getLastUserActivity(avatar, now);
+    const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
     const maxFollowups = clamp(parsePositiveInt(settings.max_followups, DEFAULT_MAX_FOLLOWUPS, 1), 1, 3);
-    const sentCount = getFollowupCount(avatar);
+    const sentCount = getFollowupCount(avatar, { groupId });
 
     // Catch-up: the user messaged while the character was unavailable and it is
     // now back online. Respond regardless of the inactivity threshold.
@@ -7897,7 +8027,7 @@ async function checkProactiveMessaging(avatar, settings, now) {
             }
         } else {
             // Follow-ups use an escalating cooldown measured from the last auto message.
-            const elapsedSinceAuto = (now - getLastAutoMessageTime(avatar)) / (60 * 1000);
+            const elapsedSinceAuto = (now - getLastAutoMessageTime(avatar, { groupId })) / (60 * 1000);
             const followupThreshold = thresholdMinutes * Math.pow(2, sentCount);
             if (elapsedSinceAuto < followupThreshold) {
                 return false;
@@ -7909,11 +8039,12 @@ async function checkProactiveMessaging(avatar, settings, now) {
     const triggered = await triggerAutoMessage(directive, settings, {
         proactive: true,
         proactive_status: current.status,
+        groupId,
     }, avatar);
 
     if (triggered) {
-        setFollowupCount(avatar, sentCount + 1);
-        setLastAutoMessageTime(avatar, now);
+        setFollowupCount(avatar, sentCount + 1, { groupId });
+        setLastAutoMessageTime(avatar, now, { groupId });
     }
 
     return triggered;
@@ -7959,7 +8090,7 @@ async function triggerConversationPartnerChime(partner, settings, avatar = getCu
     partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
-        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId });
         const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
@@ -8048,7 +8179,7 @@ async function triggerAutoCharacterChat(avatar, settings, { groupId = getConvers
     partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
-        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings);
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId });
         const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
         if (partnerContext.status === 'offline') {
             return false;
@@ -8137,7 +8268,8 @@ async function triggerGroupAsideDM(character, { reason = 'random', sourceMessage
         return false;
     }
 
-    const settings = getSettings(character.avatar);
+    const groupId = String(group.id || '');
+    const settings = getSettings(character.avatar, { groupId });
     if (!settings.enabled || !settings.roleplay_reactions) {
         return false;
     }
@@ -8175,6 +8307,7 @@ async function triggerGroupAsideDM(character, { reason = 'random', sourceMessage
             speakerName: characterName,
             trimNames: false,
             avatar: character.avatar,
+            groupId,
         });
 
         if (response?.trim()) {
@@ -8207,7 +8340,7 @@ async function triggerRoleplayDM() {
     const avatar = getCurrentCharAvatar();
     if (!character || !avatar) return;
 
-    const settings = getSettings(avatar);
+    const settings = getSettings(avatar, { groupId: '' });
     const sheld = document.getElementById('sheld');
     if (!settings.enabled || (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on')) {
         return;
@@ -8261,7 +8394,8 @@ async function checkConversationReminders(now) {
 
     const reminder = dueReminders[0];
     const avatar = reminder.avatar;
-    const settings = getSettings(avatar);
+    const groupId = reminder.groupId || '';
+    const settings = getSettings(avatar, { groupId });
 
     if (!settings.enabled) {
         reminder.fired = true;
@@ -8285,8 +8419,8 @@ async function checkConversationReminders(now) {
             conversation_mode_reminder: true,
             reminder_text: reminder.text,
             reminder_id: reminder.id,
-            partner_avatar: reminder.groupId ? avatar : undefined,
-            groupId: reminder.groupId || undefined,
+            partner_avatar: groupId ? avatar : undefined,
+            groupId: groupId || undefined,
         }, avatar);
 
         if (triggered) {
@@ -8321,31 +8455,31 @@ async function conversationModeAutoMessageWorker() {
         return;
     }
 
-    for (const { character, settings } of getConversationPals()) {
+    for (const { character, settings, groupId = '' } of getConversationRailItems()) {
         const avatar = character.avatar;
-        const elapsedSeconds = (now - getLastAutoMessageTime(avatar)) / 1000;
+        const elapsedSeconds = (now - getLastAutoMessageTime(avatar, { groupId })) / 1000;
         if (elapsedSeconds < settings.cooldown) {
             continue;
         }
 
-        if (await checkScheduledAutoMessages(avatar, settings, now)) {
+        if (await checkScheduledAutoMessages(avatar, settings, now, { groupId })) {
             return;
         }
 
         // Marinara-style proactive loop takes priority over legacy idle action.
         if (settings.proactive_messaging) {
-            if (await checkProactiveMessaging(avatar, settings, now)) {
+            if (await checkProactiveMessaging(avatar, settings, now, { groupId })) {
                 return;
             }
-        } else if (await checkIdleAutoMessage(avatar, settings, now)) {
+        } else if (await checkIdleAutoMessage(avatar, settings, now, { groupId })) {
             return;
         }
 
-        if (await checkMultiCharacterChime(avatar, settings, now)) {
+        if (await checkMultiCharacterChime(avatar, settings, now, { groupId })) {
             return;
         }
 
-        if (await checkAutoCharacterChat(avatar, settings, now)) {
+        if (await checkAutoCharacterChat(avatar, settings, now, { groupId })) {
             return;
         }
     }
@@ -8408,7 +8542,7 @@ function init() {
                     const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
                     setTimeout(() => void triggerGroupAsideDM(chosenMember.character, { reason, sourceMessageId: messageId }), 2000);
                 }
-            } else if (getSettings(getCurrentCharAvatar()).roleplay_reactions) {
+            } else if (getSettings(getCurrentCharAvatar(), { groupId: '' }).roleplay_reactions) {
                 setTimeout(() => void triggerRoleplayDM(), 2000);
             }
         }
