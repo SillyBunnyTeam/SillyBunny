@@ -88,8 +88,10 @@ import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromCon
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
     buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
     buildReverseProxyPresetForSave,
+    getChatCompletionSamplingProfileLookupKeys,
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
@@ -6687,7 +6689,37 @@ function getModelSamplingProfileKey() {
     if (!source || !model) {
         return null;
     }
-    return `${source}:${model}`;
+    return buildChatCompletionSamplingProfileKey(source, model);
+}
+
+function getModelSamplingProfileKeys() {
+    const source = oai_settings.chat_completion_source;
+    const model = getChatCompletionModel();
+    if (!source || !model) {
+        return [];
+    }
+    return getChatCompletionSamplingProfileLookupKeys(source, model);
+}
+
+function getModelSamplingProfileMatch() {
+    const profileKeys = getModelSamplingProfileKeys();
+    const profiles = oai_settings.model_sampling_profiles;
+
+    if (!profileKeys.length || !profiles) {
+        return null;
+    }
+
+    for (const profileKey of profileKeys) {
+        if (Object.hasOwn(profiles, profileKey)) {
+            return {
+                canonicalKey: profileKeys[0],
+                profileKey,
+                profile: profiles[profileKey],
+            };
+        }
+    }
+
+    return null;
 }
 
 function getSamplingSettingsSnapshot() {
@@ -6730,20 +6762,31 @@ function saveSamplingProfileForCurrentModel() {
         toastr.warning(t`No model is currently selected.`, t`Cannot save sampling profile`);
         return;
     }
+    oai_settings.model_sampling_profiles ??= {};
     oai_settings.model_sampling_profiles[profileKey] = getSamplingSettingsSnapshot();
+    for (const lookupKey of getModelSamplingProfileKeys()) {
+        if (lookupKey !== profileKey) {
+            delete oai_settings.model_sampling_profiles[lookupKey];
+        }
+    }
     saveSettingsDebounced();
     const modelLabel = getChatCompletionModel();
     toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
 }
 
 function clearSamplingProfileForCurrentModel() {
-    const profileKey = getModelSamplingProfileKey();
-    if (!profileKey) {
+    const profileKeys = getModelSamplingProfileKeys();
+    if (!profileKeys.length) {
         toastr.warning(t`No model is currently selected.`, t`Cannot clear sampling profile`);
         return;
     }
-    if (oai_settings.model_sampling_profiles?.[profileKey]) {
-        delete oai_settings.model_sampling_profiles[profileKey];
+    const profiles = oai_settings.model_sampling_profiles;
+    const deletedKeys = profileKeys.filter(profileKey => profiles && Object.hasOwn(profiles, profileKey));
+
+    if (deletedKeys.length) {
+        for (const profileKey of deletedKeys) {
+            delete profiles[profileKey];
+        }
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
         toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model sampling profile removed`);
@@ -6757,15 +6800,15 @@ function maybeApplyModelSamplingProfile() {
     if (!oai_settings.model_sampling_profiles_enabled) {
         return;
     }
-    const profileKey = getModelSamplingProfileKey();
-    if (!profileKey) {
+    const profileMatch = getModelSamplingProfileMatch();
+    if (!profileMatch) {
         return;
     }
-    const profile = oai_settings.model_sampling_profiles?.[profileKey];
-    if (!profile) {
-        return;
+    applySamplingSettings(profileMatch.profile);
+    if (profileMatch.profileKey !== profileMatch.canonicalKey) {
+        oai_settings.model_sampling_profiles[profileMatch.canonicalKey] = structuredClone(profileMatch.profile);
+        saveSettingsDebounced();
     }
-    applySamplingSettings(profile);
     // SillyBunny: Removed constant "Model sampling profile loaded" toast to reduce UI noise
 }
 
@@ -7535,6 +7578,13 @@ function onSettingsPresetChange() {
         updateOpenAISettingsGroupVisibility();
         scheduleOpenAIUiRefresh();
         $('#openai_logit_bias_preset').trigger('change');
+
+        // SillyBunny: re-assert the per-model sampling profile after a preset has
+        // written its sampling values, so a bound model profile always wins over
+        // the (Default/char) preset — the core promise of "decouple sampling from
+        // preset". Without this, starting a new chat or switching to a backend
+        // with a saved sampling profile silently reverts to the preset's sampling.
+        maybeApplyModelSamplingProfile();
 
         await saveSettings();
         await eventSource.emit(event_types.OAI_PRESET_CHANGED_AFTER);
