@@ -110,8 +110,8 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
     }
 }
 
-export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const current = getConversationActivityContext(settings, avatar);
+export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar), statusAvatar = avatar } = {}) {
+    const current = getConversationActivityContext(settings, statusAvatar);
     if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
         return;
     }
@@ -127,7 +127,7 @@ export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getCon
         return;
     }
 
-    const character = getCharacterForAvatar(avatar);
+    const character = getCharacterForAvatar(statusAvatar);
     const charName = character?.name || 'This character';
     appendConversationThreadMessage(avatar, {
         role: 'system',

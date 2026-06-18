@@ -11,10 +11,11 @@ import {
     SAFE_TOAST_OPTIONS,
     SEND_QUEUE_BATCH_MS,
 } from './constants.js';
-import { getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
-import { generateConversationReply, postCharacterReply, reportConversationGenerationError } from './generation.js';
+import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
+import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
 import { incrementUnreadCount, isConversationActiveThread, notifyNewConversationMessage } from './notifications.js';
+import { isCharacterMentionedInText } from './partners.js';
 import { formatConversationFileSize, formatPromptText, scheduleConversationMemorySummary } from './prompt.js';
 import { scheduleInterfaceRefresh, schedulePalsRailRender } from './render-scheduler.js';
 import { getSettings } from './settings-store.js';
@@ -24,13 +25,14 @@ import {
     getConversationAttachmentSummary,
     getConversationFileAttachments,
     getConversationMediaAttachments,
+    getConversationThread,
     getImageCooldownRemainingSeconds,
     markConversationSeen,
     markImageGenerated,
     updateLastUserActivity,
 } from './thread-store.js';
 import { escapeHtmlText, handleConversationSlashAction } from './timeline-render.js';
-import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages } from './typing.js';
+import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 
 export function getConversationPendingFiles() {
     const fileInput = document.getElementById(CHROME_IDS.fileInput);
@@ -192,6 +194,70 @@ export async function waitForAutoWorker() {
     }
 }
 
+function getConversationSpeakerAvatar(message, threadAvatar) {
+    if (!message || ['user', 'system'].includes(message.role || '')) {
+        return '';
+    }
+
+    return message.role === 'partner'
+        ? String(message.extra?.partner_avatar || '')
+        : String(threadAvatar || '');
+}
+
+function getLastGroupSpeakerIndex(thread, speakerAvatar, threadAvatar) {
+    for (let index = thread.length - 1; index >= 0; index--) {
+        if (getConversationSpeakerAvatar(thread[index], threadAvatar) === speakerAvatar) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+function getGroupReplyCandidates(threadAvatar, groupId) {
+    const group = getConversationGroupById(groupId);
+    if (!group?.members?.length) {
+        return [];
+    }
+
+    return group.members
+        .filter(avatar => avatar && !group.disabled_members?.includes(avatar))
+        .map((avatar) => {
+            const character = getCharacterForAvatar(avatar);
+            return character?.avatar
+                ? { character, settings: getSettings(character.avatar, { groupId }) }
+                : null;
+        })
+        .filter(Boolean);
+}
+
+function chooseGroupReplyCandidate(threadAvatar, groupId, queueItem, { force = false } = {}) {
+    const candidates = getGroupReplyCandidates(threadAvatar, groupId);
+    if (!candidates.length) {
+        return null;
+    }
+
+    const availableCandidates = force
+        ? candidates
+        : candidates.filter(({ character, settings }) => getConversationActivityContext(settings, character.avatar).status !== 'offline');
+    const pool = availableCandidates.length ? availableCandidates : candidates;
+    const candidateCharacters = pool.map(item => item.character).filter(Boolean);
+    const latestUserText = [queueItem?.text, queueItem?.attachmentContext].filter(Boolean).join('\n');
+    const mentioned = pool.find(({ character }) => isCharacterMentionedInText(character, latestUserText, candidateCharacters));
+    if (mentioned) {
+        return mentioned;
+    }
+
+    const thread = getConversationThread(threadAvatar, { groupId });
+    return pool
+        .map(item => ({
+            ...item,
+            lastSpeakerIndex: getLastGroupSpeakerIndex(thread, item.character.avatar, threadAvatar),
+            tieBreaker: Math.random(),
+        }))
+        .sort((left, right) => left.lastSpeakerIndex - right.lastSpeakerIndex || left.tieBreaker - right.tieBreaker)[0] || null;
+}
+
 export async function processQueuedConversationReply(queueItem) {
     const avatar = queueItem?.avatar;
     if (!avatar || is_send_press) {
@@ -202,22 +268,29 @@ export async function processQueuedConversationReply(queueItem) {
 
     await waitForAutoWorker();
 
-    const settings = getSettings(avatar, { groupId });
-    if (!settings.enabled) {
+    const threadSettings = getSettings(avatar, { groupId });
+    if (!threadSettings.enabled) {
         return;
     }
 
+    const groupReplyCandidate = groupId
+        ? chooseGroupReplyCandidate(avatar, groupId, queueItem, { force: Boolean(queueItem?.force) })
+        : null;
+    const replyCharacter = groupReplyCandidate?.character || getCharacterForAvatar(avatar);
+    const replyAvatar = replyCharacter?.avatar || avatar;
+    const replySettings = groupReplyCandidate?.settings || threadSettings;
+
     if (!queueItem?.force) {
-        if (getConversationActivityContext(settings, avatar).status === 'offline') {
+        if (getConversationActivityContext(replySettings, replyAvatar).status === 'offline') {
             return;
         }
 
-        if (await handleAvailabilityAutoResponder(settings, avatar, { groupId })) {
+        if (!groupId && await handleAvailabilityAutoResponder(replySettings, replyAvatar, { groupId })) {
             return;
         }
     }
 
-    const status = getConversationActivityContext(settings, avatar).status || 'online';
+    const status = getConversationActivityContext(replySettings, replyAvatar).status || 'online';
     if (!queueItem?.force && (status === 'idle' || status === 'dnd')) {
         const initialDelayMs = status === 'idle'
             ? (Math.random() * 1.5 + 1.5) * 1000
@@ -227,14 +300,13 @@ export async function processQueuedConversationReply(queueItem) {
 
     conversationState.conversationReplyBusy = true;
     conversationState.generationActive = true;
-    maybePostDelayedReplyNotice(avatar, settings, { groupId });
+    maybePostDelayedReplyNotice(avatar, replySettings, { groupId, statusAvatar: replyAvatar });
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
-        const character = getCharacterForAvatar(avatar);
-        const speakerName = character?.name || getCurrentCharName();
-        const partnerChimePromise = getConversationPartnerAvatars(avatar, settings, { groupId, includeThreadPartners: true }).length
-            ? checkMultiCharacterChime(avatar, settings, Date.now(), { groupId }).catch((error) => {
+        const speakerName = replyCharacter?.name || (replyAvatar === avatar ? getCurrentCharName() : 'Character');
+        const partnerChimePromise = !groupId && getConversationPartnerAvatars(avatar, threadSettings, { groupId, includeThreadPartners: true }).length
+            ? checkMultiCharacterChime(avatar, threadSettings, Date.now(), { groupId }).catch((error) => {
                 console.error('Conversation partner chime error:', error);
                 return false;
             })
@@ -243,42 +315,60 @@ export async function processQueuedConversationReply(queueItem) {
         const systemDirective = queueItem?.force
             ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
             : '[System directive: The user sent the latest DM. Reply directly to them in the Conversation Mode thread.]';
-        const response = await generateConversationReply(
+        const response = await withTypingParticipant(replyCharacter || { avatar: replyAvatar, name: speakerName }, () => generateConversationReply(
             [
                 systemDirective,
                 attachmentContext ? `Latest user attachment context:\n${attachmentContext}` : '',
             ].filter(Boolean).join('\n\n'),
-            settings,
-            { avatar, speakerName, groupId },
-        );
-        if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
-                extra: {
-                    conversation_mode_reply: true,
-                },
+            replySettings,
+            {
+                avatar: replyAvatar,
+                threadAvatar: avatar,
+                speakerAvatar: replyAvatar,
+                speakerName,
                 groupId,
-            }, avatar);
+            },
+        ), avatar);
+        if (response?.trim()) {
+            if (replyAvatar === avatar) {
+                await postCharacterReply(response.trim(), replySettings, {
+                    extra: {
+                        conversation_mode_reply: true,
+                    },
+                    groupId,
+                }, avatar);
+            } else {
+                await postPartnerConversationReply(response.trim(), replyCharacter, replySettings, {
+                    avatar,
+                    extra: {
+                        conversation_mode_reply: true,
+                        partner_avatar: replyAvatar,
+                    },
+                    groupId,
+                });
+            }
         }
 
         const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
-        const wantsImage = settings.image_gen_enabled
-            && (settings.spontaneous_selfies || imageKeywords.test(queueItem.text || ''));
-        if (wantsImage && getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { groupId }) === 0) {
+        const wantsImage = replySettings.image_gen_enabled
+            && (replySettings.spontaneous_selfies || imageKeywords.test(queueItem.text || ''));
+        if (wantsImage && getImageCooldownRemainingSeconds(replyAvatar, replySettings, Date.now(), { groupId }) === 0) {
             const prompt = buildCharacterImagePrompt(
-                settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
+                replySettings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
                 'the current DM conversation',
-                avatar,
+                replyAvatar,
             );
-            const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+            const imageUrl = await generateConversationImage(prompt, replySettings.image_gen_negative || '');
             if (imageUrl) {
-                markImageGenerated(avatar, Date.now(), { groupId });
+                markImageGenerated(replyAvatar, Date.now(), { groupId });
                 await appendConversationMessage('Here, I can show you.', {
                     name: speakerName,
-                    role: 'character',
+                    role: replyAvatar === avatar ? 'character' : 'partner',
                     extra: {
                         conversation_mode_image: true,
                         image_url: imageUrl,
                         image_prompt: prompt,
+                        ...(replyAvatar === avatar ? {} : { partner_avatar: replyAvatar }),
                     },
                     groupId,
                 }, avatar);

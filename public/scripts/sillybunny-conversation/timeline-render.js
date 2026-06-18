@@ -116,6 +116,211 @@ function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, mess
     ].join('\u001d'));
 }
 
+function buildConversationMessageFingerprint(message, { avatar, groupId, settings, index }) {
+    const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+    const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
+        ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId }))
+        : '';
+
+    return hashConversationRenderFingerprint([
+        message?.id || '',
+        message?.role || '',
+        message?.name || '',
+        message?.send_date || '',
+        message?.created_at || '',
+        message?.mes || '',
+        JSON.stringify(message?.extra || {}),
+        getConversationAttachmentSummary(message),
+        getConversationMessageReceipt(message, avatar, { groupId }),
+        getConversationMessageAvatar(message, avatar),
+        settings?.editable_messages ? '1' : '0',
+        settings?.prose_polisher ? '1' : '0',
+        speakerStatus,
+        index > 8 ? 'lazy' : 'eager',
+    ].join('\u001f'));
+}
+
+function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint }) {
+    const item = document.createElement('article');
+    item.className = 'sb-conversation-message';
+    item.dataset.role = message.role || 'character';
+    item.dataset.messageId = message.id;
+    item.dataset.pinned = String(Boolean(message.extra?.conversation_pinned));
+    item.dataset.sbConversationMessageFingerprint = fingerprint;
+
+    const avatarWrap = document.createElement('div');
+    avatarWrap.className = 'sb-conversation-message-avatar';
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = index > 8 ? 'lazy' : 'eager';
+    image.src = getConversationMessageAvatar(message, avatar);
+    avatarWrap.appendChild(image);
+
+    const messageAvatar = message.role === 'partner' ? message.extra?.partner_avatar : avatar;
+    if (messageAvatar && message.role !== 'user' && message.role !== 'system') {
+        const statusDot = document.createElement('span');
+        statusDot.className = 'sb-conversation-status-dot';
+        statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar, getSettings(messageAvatar, { groupId }));
+        statusDot.setAttribute('aria-hidden', 'true');
+        avatarWrap.appendChild(statusDot);
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = 'sb-conversation-message-bubble';
+
+    const meta = document.createElement('div');
+    meta.className = 'sb-conversation-message-meta';
+    const name = document.createElement('span');
+    name.className = 'sb-conversation-message-name';
+    name.textContent = message.name || (message.role === 'user' ? name1 || 'You' : getCurrentCharName());
+    const time = document.createElement('time');
+    time.className = 'sb-conversation-message-time';
+    time.textContent = message.send_date || '';
+    meta.append(name, time);
+
+    const receiptText = getConversationMessageReceipt(message, avatar, { groupId });
+    if (receiptText) {
+        const receipt = document.createElement('span');
+        receipt.className = 'sb-conversation-message-receipt';
+        receipt.textContent = receiptText;
+        meta.appendChild(receipt);
+    }
+
+    const actionBar = document.createElement('span');
+    actionBar.className = 'sb-conversation-message-actions';
+
+    if (settings.editable_messages) {
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'sb-conversation-message-action sb-conversation-message-edit fa-solid fa-pencil';
+        editButton.title = 'Edit Conversation message';
+        editButton.setAttribute('aria-label', 'Edit Conversation message');
+        editButton.dataset.sbConversationAction = 'edit-message';
+        editButton.dataset.messageId = message.id;
+        actionBar.appendChild(editButton);
+    }
+
+    if (settings.prose_polisher && message.role !== 'user') {
+        const polishButton = document.createElement('button');
+        polishButton.type = 'button';
+        polishButton.className = 'sb-conversation-message-action sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
+        polishButton.title = 'Polish character message';
+        polishButton.setAttribute('aria-label', 'Polish character message');
+        polishButton.dataset.sbConversationAction = 'polish-character-message';
+        polishButton.dataset.messageId = message.id;
+        actionBar.appendChild(polishButton);
+    }
+
+    const messageActions = [
+        { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
+        { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message' },
+        { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here' },
+    ];
+    if (!['user', 'system'].includes(message.role || '')) {
+        messageActions.push({ action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message' });
+    }
+    messageActions.push({ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message' });
+    for (const messageAction of messageActions) {
+        const actionButton = document.createElement('button');
+        actionButton.type = 'button';
+        actionButton.className = `sb-conversation-message-action fa-solid ${messageAction.icon}`;
+        actionButton.title = messageAction.label;
+        actionButton.setAttribute('aria-label', messageAction.label);
+        actionButton.dataset.sbConversationAction = messageAction.action;
+        actionButton.dataset.messageId = message.id;
+        actionBar.appendChild(actionButton);
+    }
+    for (const reaction of Object.keys(CONVERSATION_REACTION_LABELS)) {
+        const reactionButton = document.createElement('button');
+        reactionButton.type = 'button';
+        reactionButton.className = 'sb-conversation-reaction-button';
+        reactionButton.textContent = normalizeConversationReactionLabel(reaction);
+        reactionButton.dataset.sbConversationAction = 'react-message';
+        reactionButton.dataset.messageId = message.id;
+        reactionButton.dataset.reaction = reaction;
+        actionBar.appendChild(reactionButton);
+    }
+
+    const mobileTrigger = document.createElement('button');
+    mobileTrigger.type = 'button';
+    mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis';
+    mobileTrigger.title = 'Message options';
+    mobileTrigger.setAttribute('aria-label', 'Message options');
+
+    const text = document.createElement('div');
+    text.className = 'sb-conversation-message-text';
+    if (message.mes) {
+        text.innerHTML = messageFormatting(message.mes, message.name, false, message.role === 'user', -1, {}, false);
+        highlightConversationMentions(text, avatar);
+    }
+
+    const imageUrl = message.extra?.image_url;
+    if (typeof imageUrl === 'string' && imageUrl) {
+        const figure = document.createElement('figure');
+        figure.className = 'sb-conversation-image-preview';
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = message.extra?.image_prompt || 'Generated image';
+        img.loading = 'lazy';
+        figure.appendChild(img);
+        text.appendChild(figure);
+    }
+
+    renderConversationAttachments(text, message);
+
+    const activeReactions = Object.entries(message.extra?.conversation_reactions || {})
+        .filter(([, count]) => Number(count) > 0);
+    if (activeReactions.length) {
+        const reactions = document.createElement('div');
+        reactions.className = 'sb-conversation-message-reactions';
+        for (const [reaction, count] of activeReactions) {
+            const chip = document.createElement('span');
+            chip.className = 'sb-conversation-message-reaction-chip';
+            chip.textContent = `${normalizeConversationReactionLabel(reaction)} ${count}`;
+            reactions.appendChild(chip);
+        }
+        text.appendChild(reactions);
+    }
+
+    bubble.append(meta, text, actionBar, mobileTrigger);
+    item.append(avatarWrap, bubble);
+    return item;
+}
+
+function removeTimelineTransientNodes(timeline) {
+    timeline.querySelectorAll('.sb-conversation-thread-empty, .sb-conversation-typing-indicator, .sb-conversation-image-pending').forEach(node => node.remove());
+}
+
+function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings }) {
+    const existingNodes = new Map();
+    timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
+        if (node instanceof HTMLElement && !node.classList.contains('sb-conversation-typing-indicator') && !node.classList.contains('sb-conversation-image-pending')) {
+            existingNodes.set(node.dataset.messageId || '', node);
+        }
+    });
+
+    messages.forEach((message, index) => {
+        const messageId = String(message?.id || '');
+        const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, settings, index });
+        const currentNode = existingNodes.get(messageId) || null;
+        let nextNode = currentNode;
+        if (!nextNode || nextNode.dataset.sbConversationMessageFingerprint !== fingerprint) {
+            nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint });
+            if (currentNode) {
+                currentNode.replaceWith(nextNode);
+            }
+        }
+
+        existingNodes.delete(messageId);
+        const referenceNode = timeline.children[index] || null;
+        if (nextNode !== referenceNode) {
+            timeline.insertBefore(nextNode, referenceNode);
+        }
+    });
+
+    existingNodes.forEach(node => node.remove());
+}
+
 export function renderConversationTimeline() {
     const timeline = document.getElementById(CHROME_IDS.timeline);
     const avatar = getCurrentCharAvatar();
@@ -167,9 +372,14 @@ export function renderConversationTimeline() {
 
     conversationState.lastTimelineFingerprint = fingerprint;
     timeline.dataset.sbConversationFingerprint = fingerprint;
-    timeline.textContent = '';
+    if (contextChanged) {
+        timeline.textContent = '';
+    } else {
+        removeTimelineTransientNodes(timeline);
+    }
 
     if (!allMessages.length) {
+        timeline.textContent = '';
         const empty = document.createElement('div');
         empty.className = 'sb-conversation-thread-empty';
         empty.innerHTML = `
@@ -192,6 +402,7 @@ export function renderConversationTimeline() {
     }
 
     if (!messages.length) {
+        timeline.textContent = '';
         const empty = document.createElement('div');
         empty.className = 'sb-conversation-thread-empty';
         empty.innerHTML = `
@@ -208,156 +419,14 @@ export function renderConversationTimeline() {
         return;
     }
 
-    messages.forEach((message, index) => {
-        const item = document.createElement('article');
-        item.className = 'sb-conversation-message';
-        item.dataset.role = message.role || 'character';
-        item.dataset.messageId = message.id;
-        item.dataset.pinned = String(Boolean(message.extra?.conversation_pinned));
-
-        const avatarWrap = document.createElement('div');
-        avatarWrap.className = 'sb-conversation-message-avatar';
-        const image = document.createElement('img');
-        image.alt = '';
-        image.loading = index > 8 ? 'lazy' : 'eager';
-        image.src = getConversationMessageAvatar(message, avatar);
-        avatarWrap.appendChild(image);
-
-        const messageAvatar = message.role === 'partner' ? message.extra?.partner_avatar : avatar;
-        if (messageAvatar && message.role !== 'user' && message.role !== 'system') {
-            const statusDot = document.createElement('span');
-            statusDot.className = 'sb-conversation-status-dot';
-            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar, getSettings(messageAvatar, { groupId }));
-            statusDot.setAttribute('aria-hidden', 'true');
-            avatarWrap.appendChild(statusDot);
-        }
-
-        const bubble = document.createElement('div');
-        bubble.className = 'sb-conversation-message-bubble';
-
-        const meta = document.createElement('div');
-        meta.className = 'sb-conversation-message-meta';
-        const name = document.createElement('span');
-        name.className = 'sb-conversation-message-name';
-        name.textContent = message.name || (message.role === 'user' ? name1 || 'You' : getCurrentCharName());
-        const time = document.createElement('time');
-        time.className = 'sb-conversation-message-time';
-        time.textContent = message.send_date || '';
-        meta.append(name, time);
-
-        const receiptText = getConversationMessageReceipt(message, avatar, { groupId });
-        if (receiptText) {
-            const receipt = document.createElement('span');
-            receipt.className = 'sb-conversation-message-receipt';
-            receipt.textContent = receiptText;
-            meta.appendChild(receipt);
-        }
-
-        const actionBar = document.createElement('span');
-        actionBar.className = 'sb-conversation-message-actions';
-
-        if (settings.editable_messages) {
-            const editButton = document.createElement('button');
-            editButton.type = 'button';
-            editButton.className = 'sb-conversation-message-action sb-conversation-message-edit fa-solid fa-pencil';
-            editButton.title = 'Edit Conversation message';
-            editButton.setAttribute('aria-label', 'Edit Conversation message');
-            editButton.dataset.sbConversationAction = 'edit-message';
-            editButton.dataset.messageId = message.id;
-            actionBar.appendChild(editButton);
-        }
-
-        if (settings.prose_polisher && message.role !== 'user') {
-            const polishButton = document.createElement('button');
-            polishButton.type = 'button';
-            polishButton.className = 'sb-conversation-message-action sb-conversation-message-polish fa-solid fa-wand-magic-sparkles';
-            polishButton.title = 'Polish character message';
-            polishButton.setAttribute('aria-label', 'Polish character message');
-            polishButton.dataset.sbConversationAction = 'polish-character-message';
-            polishButton.dataset.messageId = message.id;
-            actionBar.appendChild(polishButton);
-        }
-
-        const messageActions = [
-            { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
-            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message' },
-            { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here' },
-        ];
-        if (!['user', 'system'].includes(message.role || '')) {
-            messageActions.push({ action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message' });
-        }
-        messageActions.push({ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message' });
-        for (const messageAction of messageActions) {
-            const actionButton = document.createElement('button');
-            actionButton.type = 'button';
-            actionButton.className = `sb-conversation-message-action fa-solid ${messageAction.icon}`;
-            actionButton.title = messageAction.label;
-            actionButton.setAttribute('aria-label', messageAction.label);
-            actionButton.dataset.sbConversationAction = messageAction.action;
-            actionButton.dataset.messageId = message.id;
-            actionBar.appendChild(actionButton);
-        }
-        for (const reaction of Object.keys(CONVERSATION_REACTION_LABELS)) {
-            const reactionButton = document.createElement('button');
-            reactionButton.type = 'button';
-            reactionButton.className = 'sb-conversation-reaction-button';
-            reactionButton.textContent = normalizeConversationReactionLabel(reaction);
-            reactionButton.dataset.sbConversationAction = 'react-message';
-            reactionButton.dataset.messageId = message.id;
-            reactionButton.dataset.reaction = reaction;
-            actionBar.appendChild(reactionButton);
-        }
-
-        const mobileTrigger = document.createElement('button');
-        mobileTrigger.type = 'button';
-        mobileTrigger.className = 'sb-conversation-mobile-menu-trigger fa-solid fa-ellipsis';
-        mobileTrigger.title = 'Message options';
-        mobileTrigger.setAttribute('aria-label', 'Message options');
-
-        const text = document.createElement('div');
-        text.className = 'sb-conversation-message-text';
-        if (message.mes) {
-            text.innerHTML = messageFormatting(message.mes, message.name, false, message.role === 'user', -1, {}, false);
-            highlightConversationMentions(text, avatar);
-        }
-
-        const imageUrl = message.extra?.image_url;
-        if (typeof imageUrl === 'string' && imageUrl) {
-            const figure = document.createElement('figure');
-            figure.className = 'sb-conversation-image-preview';
-            const img = document.createElement('img');
-            img.src = imageUrl;
-            img.alt = message.extra?.image_prompt || 'Generated image';
-            img.loading = 'lazy';
-            figure.appendChild(img);
-            text.appendChild(figure);
-        }
-
-        renderConversationAttachments(text, message);
-
-        const activeReactions = Object.entries(message.extra?.conversation_reactions || {})
-            .filter(([, count]) => Number(count) > 0);
-        if (activeReactions.length) {
-            const reactions = document.createElement('div');
-            reactions.className = 'sb-conversation-message-reactions';
-            for (const [reaction, count] of activeReactions) {
-                const chip = document.createElement('span');
-                chip.className = 'sb-conversation-message-reaction-chip';
-                chip.textContent = `${normalizeConversationReactionLabel(reaction)} ${count}`;
-                reactions.appendChild(chip);
-            }
-            text.appendChild(reactions);
-        }
-
-        bubble.append(meta, text, actionBar, mobileTrigger);
-        item.append(avatarWrap, bubble);
-        timeline.appendChild(item);
-    });
+    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings });
 
     const typingParticipants = getActiveTypingParticipants(avatar);
-    const fallbackTypingCharacter = conversationState.generationActive ? getCharacterForAvatar(avatar) : null;
-    if (fallbackTypingCharacter?.avatar && !typingParticipants.some(participant => participant.avatar === fallbackTypingCharacter.avatar)) {
-        typingParticipants.unshift(fallbackTypingCharacter);
+    if (conversationState.generationActive && !typingParticipants.length) {
+        const fallbackTypingCharacter = getCharacterForAvatar(avatar);
+        if (fallbackTypingCharacter?.avatar) {
+            typingParticipants.unshift(fallbackTypingCharacter);
+        }
     }
 
     for (const typingParticipant of typingParticipants) {

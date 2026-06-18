@@ -359,10 +359,16 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     const userName = name1 || 'User';
     const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId });
     const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
+    const partners = getConversationParticipants(threadAvatar, threadSettings, { groupId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
+    const partnerNames = getParticipantNamesForDisplay(partners);
+    let conversationOpening = `You are ${charName} in a private direct-message conversation with ${userName}.`;
+    if (groupId) {
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${[userName, ...partnerNames].join(', ')}. You are one equal participant in this group DM and should reply only as ${charName}.`;
+    } else if (threadCharacter) {
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`;
+    }
     const fields = [
-        threadCharacter
-            ? `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`
-            : `You are ${charName} in a private direct-message conversation with ${userName}.`,
+        conversationOpening,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
         'Formatting: write plain chat text. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
     ];
@@ -409,9 +415,8 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
     }
 
-    const partners = getConversationParticipants(threadAvatar, threadSettings, { groupId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
     if (partners.length) {
-        fields.push(`Group DM participants who may chime in: ${getParticipantNamesForDisplay(partners).join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
+        fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${partnerNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
     }
 
     const memorySummary = getConversationMemorySummary(threadAvatar, { groupId });
