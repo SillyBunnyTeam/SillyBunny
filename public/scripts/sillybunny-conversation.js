@@ -749,16 +749,19 @@ function migrateConversationLocalStorage() {
     persistConversationStore();
 }
 
-function getSettings(avatar = getCurrentCharAvatar()) {
+function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!avatar) {
         return { ...DEFAULT_SETTINGS };
     }
 
-    return { ...DEFAULT_SETTINGS, ...getCharacterConversationStore(avatar).settings };
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    const settings = threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
+    return { ...DEFAULT_SETTINGS, ...settings };
 }
 
-export function isConversationModeEnabled(avatar) {
-    return Boolean(getCharacterConversationStore(avatar, { create: false })?.settings?.enabled);
+export function isConversationModeEnabled(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    return Boolean(threadStore?.settings?.enabled);
 }
 
 export function getConversationWelcomeChats({ max = Infinity } = {}) {
@@ -769,7 +772,7 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
     const chats = [];
     const pushConversationChat = (character, threadStore, group = null) => {
         const avatar = character?.avatar;
-        const settings = avatar ? getSettings(avatar) : { ...DEFAULT_SETTINGS };
+        const settings = avatar ? getSettings(avatar, { groupId: group?.id || '' }) : { ...DEFAULT_SETTINGS };
         if (!avatar || !settings.enabled || !threadStore) {
             return;
         }
@@ -836,12 +839,15 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         .slice(0, Number.isFinite(max) ? max : undefined);
 }
 
-function saveSettings(avatar, settings) {
+function saveSettings(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!avatar) {
         return;
     }
 
-    getCharacterConversationStore(avatar).settings = safeParseSettings(settings);
+    const threadStore = getConversationThreadStore(avatar, { create: true, groupId });
+    if (threadStore) {
+        threadStore.settings = safeParseSettings(settings);
+    }
     persistConversationStore();
 }
 
@@ -1451,9 +1457,10 @@ function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
     avatars.push(avatar);
 }
 
-function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const resolvedSettings = settings || getSettings(avatar, { groupId });
     const partnerAvatars = [];
-    parseAvatarList(settings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+    parseAvatarList(resolvedSettings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
 
     const group = getConversationGroupById(groupId);
     if (group?.members?.length) {
@@ -1475,14 +1482,16 @@ function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings
     return partnerAvatars.filter(partnerAvatar => getCharacterForAvatar(partnerAvatar));
 }
 
-function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), options = {}) {
+function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = null, options = {}) {
+    const { groupId = getConversationGroupIdForAvatar(avatar) } = options;
+    const resolvedSettings = settings || getSettings(avatar, { groupId });
     const participants = [];
     const primary = getCharacterForAvatar(avatar);
     if (primary?.avatar) {
         participants.push(primary);
     }
 
-    getConversationPartnerAvatars(avatar, settings, options).forEach((partnerAvatar) => {
+    getConversationPartnerAvatars(avatar, resolvedSettings, options).forEach((partnerAvatar) => {
         const partner = getCharacterForAvatar(partnerAvatar);
         if (partner?.avatar && !participants.some(participant => participant.avatar === partner.avatar)) {
             participants.push(partner);
@@ -3054,12 +3063,66 @@ function editConversationMessage(messageId) {
         return;
     }
 
-    const edited = globalThis.prompt?.('Edit Conversation message', message.mes);
-    if (typeof edited !== 'string' || !edited.trim() || edited === message.mes) {
+    const messageElement = document.querySelector(`.sb-conversation-message[data-message-id="${messageId}"]`);
+    if (!messageElement) {
         return;
     }
 
-    updateConversationThreadMessage(avatar, messageId, edited.trim(), null, { groupId });
+    const textElement = messageElement.querySelector('.sb-conversation-message-text');
+    if (!textElement) {
+        return;
+    }
+
+    // If an editor is already open in this element, do nothing.
+    if (textElement.querySelector('.sb-conversation-message-edit-textarea')) {
+        return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'sb-conversation-message-edit-textarea';
+    textarea.value = message.mes;
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'sb-conversation-message-edit-buttons';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'menu_button sb-conversation-message-edit-save';
+    saveButton.textContent = 'Save';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'menu_button sb-conversation-message-edit-cancel';
+    cancelButton.textContent = 'Cancel';
+
+    buttonContainer.append(saveButton, cancelButton);
+
+    textElement.textContent = '';
+    textElement.append(textarea, buttonContainer);
+    textarea.focus();
+
+    saveButton.onclick = () => {
+        const value = textarea.value.trim();
+        if (value && value !== message.mes) {
+            updateConversationThreadMessage(avatar, messageId, value, null, { groupId });
+        } else {
+            renderConversationTimeline();
+        }
+    };
+
+    cancelButton.onclick = () => {
+        renderConversationTimeline();
+    };
+
+    textarea.onkeydown = (event) => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            saveButton.click();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelButton.click();
+        }
+    };
 }
 
 function parseCommandArgs(rawArgs) {
@@ -4012,7 +4075,8 @@ function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(), grou
     return true;
 }
 
-async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), settings = getSettings(avatar), groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), settings = null, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const resolvedSettings = settings || getSettings(avatar, { groupId });
     const parsed = parseConversationSlashCommand(text);
     if (!parsed || !avatar) {
         return false;
@@ -4021,7 +4085,7 @@ async function handleConversationSlashAction(text, { avatar = getCurrentCharAvat
     switch (parsed.command) {
         case 'selfie': {
             const context = parsed.args || 'a casual selfie in the current DM conversation';
-            await generateSelfieFromContext(context, settings, avatar, { groupId });
+            await generateSelfieFromContext(context, resolvedSettings, avatar, { groupId });
             return true;
         }
         case 'remind': {
@@ -4184,7 +4248,9 @@ function highlightConversationMentions(container, avatar = getCurrentCharAvatar(
 }
 
 function buildSettingsDrawerHtml() {
-    const settings = getSettings();
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     return `
         <div class="sb-conversation-settings-header">
             <div>
@@ -4322,6 +4388,9 @@ function buildSettingsDrawerHtml() {
                     <p id="sb_conv_memory_meta" class="sb-conversation-field-hint sb-conversation-memory-meta"></p>
                 </div>
                 <div class="sb-conversation-field-row sb-conversation-memory-actions">
+                    <button type="button" class="menu_button" data-sb-conversation-action="create-memory">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Create memory</span>
+                    </button>
                     <button type="button" class="menu_button" data-sb-conversation-action="refresh-memory">
                         <i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Refresh memory</span>
                     </button>
@@ -5153,6 +5222,28 @@ function renderConversationMemoryPanel() {
     }
 }
 
+async function forceCreateMemoryFromPanel() {
+    const avatar = getCurrentCharAvatar();
+    if (!avatar) {
+        toastr.warning('Pick a DM first.');
+        return;
+    }
+
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const branch = getActiveConversationBranch(avatar, { groupId });
+    const currentMemory = branch?.memorySummary || '';
+    const newMemory = globalThis.prompt?.('Enter or override the memory summary for this branch:', currentMemory);
+    if (typeof newMemory !== 'string') {
+        return;
+    }
+
+    const trimmedMemory = newMemory.trim();
+    const messages = getConversationThread(avatar, { groupId });
+    saveConversationMemorySummary(avatar, trimmedMemory, messages.length, { groupId });
+    toastr.success('Conversation memory updated.');
+    renderConversationMemoryPanel();
+}
+
 async function refreshConversationMemoryFromPanel() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
@@ -5181,7 +5272,8 @@ function clearConversationMemoryFromPanel() {
         return;
     }
 
-    if (clearConversationMemorySummary(avatar)) {
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    if (clearConversationMemorySummary(avatar, { groupId })) {
         toastr.success('Conversation memory cleared.');
     }
 }
@@ -6004,6 +6096,9 @@ function bindConversationChromeControls(sheld) {
             case 'clear-attachments':
                 clearConversationAttachmentInput();
                 break;
+            case 'create-memory':
+                await forceCreateMemoryFromPanel();
+                break;
             case 'refresh-memory':
                 await refreshConversationMemoryFromPanel();
                 break;
@@ -6521,10 +6616,10 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         return false;
     }
 
-    const settings = getSettings(targetAvatar);
+    const settings = getSettings(targetAvatar, { groupId: targetGroupId });
     const wasEnabled = Boolean(settings.enabled);
     settings.enabled = true;
-    saveSettings(targetAvatar, settings);
+    saveSettings(targetAvatar, settings, { groupId: targetGroupId });
     applySettingsToPanel(settings);
     refreshConversationInterface({ syncControls: true });
     if (showToast && !wasEnabled) {
@@ -6888,8 +6983,8 @@ function refreshConversationInterface({ syncControls = false } = {}) {
     updateProsePolisherButtonVisibility();
 }
 
-function readSettingsFromPanel(avatar) {
-    const settings = getSettings(avatar);
+function readSettingsFromPanel(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const settings = getSettings(avatar, { groupId });
 
     for (const field of SETTINGS_FIELDS) {
         const element = document.getElementById(field.id);
@@ -6916,6 +7011,8 @@ function saveCurrentPanelSettings() {
         return;
     }
 
+    const groupId = getConversationGroupIdForAvatar(avatar);
+
     // Sync dynamic editor state into hidden backing inputs before reading
     const weeklyInput = document.getElementById('sb_conv_weekly_schedule');
     if (weeklyInput instanceof HTMLInputElement) {
@@ -6926,11 +7023,11 @@ function saveCurrentPanelSettings() {
         chimingInput.value = readChimingPartnersFromList();
     }
 
-    const settings = readSettingsFromPanel(avatar);
+    const settings = readSettingsFromPanel(avatar, { groupId });
     settings.idle_action = getIdleActionFromSettings(settings);
     settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
     settings.auto_chat_names = settings.multi_char_names;
-    saveSettings(avatar, settings);
+    saveSettings(avatar, settings, { groupId });
     refreshConversationInterface({ syncControls: false });
     updateGroupMembersVisibility();
 }
@@ -6969,7 +7066,8 @@ function loadCurrentPanelSettings() {
         return;
     }
 
-    const settings = getSettings(avatar);
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const settings = getSettings(avatar, { groupId });
     applySettingsToPanel(settings);
     refreshConversationInterface({ syncControls: false });
 }

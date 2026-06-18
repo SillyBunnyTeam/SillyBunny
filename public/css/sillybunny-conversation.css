@@ -1038,6 +1038,38 @@
     margin: 0;
 }
 
+.sb-conversation-message-edit-textarea {
+    width: 100%;
+    min-height: 80px;
+    background: var(--input-bg, #1a1a1a);
+    color: var(--SmartThemeBodyColor, #ffffff);
+    border: 1px solid var(--sb-shell-border, #333);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
+.sb-conversation-message-edit-textarea:focus {
+    border-color: var(--sb-accent);
+}
+
+.sb-conversation-message-edit-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.sb-conversation-message-edit-save,
+.sb-conversation-message-edit-cancel {
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
 .sb-conversation-mention {
     display: inline-flex;
     align-items: center;
