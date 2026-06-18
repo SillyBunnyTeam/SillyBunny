@@ -6312,43 +6312,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
         grid-template-columns: minmax(0, 1fr);
         width: 100%;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 > :is(#rm_group_automode_label, #rm_group_auto_dm_cooldown_label),
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label {
-        grid-template-columns: 18px minmax(0, 1fr) minmax(4.5em, 5.5em) max-content !important;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child > .checkbox_label {
-        grid-template-columns: 18px minmax(0, 1fr);
-        width: 100%;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule {
-        width: 100% !important;
-        inline-size: 100% !important;
-        min-width: 0 !important;
-        min-inline-size: 0 !important;
-        min-height: var(--sb-mobile-touch-target, 44px);
-        height: auto;
-        max-height: none;
-        justify-self: stretch;
-        padding-inline: 12px !important;
-        white-space: normal;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule span {
-        min-width: 0;
-        white-space: normal;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_ai_schedule {
-        min-height: 9rem;
     }
 }
 
@@ -6385,7 +6351,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack {
     display: grid;
-    grid-template-columns: auto minmax(240px, 0.9fr) minmax(360px, 1.1fr);
+    grid-template-columns: auto minmax(240px, 1fr);
     align-items: start;
     gap: var(--sb-shell-space-sm);
     width: 100%;
@@ -6394,13 +6360,8 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 58%, transparent);
 }
 
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
+#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
     min-width: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-    margin-left: 0;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > #rm_button_back_from_group {
@@ -6449,87 +6410,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: normal;
 }
 
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 > :is(#rm_group_automode_label, #rm_group_auto_dm_cooldown_label) {
-    grid-template-columns: 18px minmax(8em, 1fr) minmax(4.5em, 5.5em) max-content;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label {
-    grid-template-columns: minmax(18px, 18px) minmax(8em, 1fr) minmax(4.5em, 5.5em) max-content !important;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #rm_group_auto_dm_cooldown_label::before {
-    content: '';
-    width: 18px;
-    height: 18px;
-}
-
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 input[type="number"] {
     width: 100%;
     min-width: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-    grid-column: 3;
-    grid-row: 1;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
-    display: grid;
-    grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(var(--sb-mobile-touch-target, 44px), 1fr);
-    align-items: center;
-    align-self: flex-end;
-    justify-content: stretch;
-    column-gap: var(--sb-shell-space-sm);
-    row-gap: 6px;
-    width: 100%;
-    margin-left: 0;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child > .checkbox_label {
-    display: grid;
-    grid-template-columns: 18px minmax(0, max-content);
-    align-items: center;
-    column-gap: 8px;
-    min-width: 0;
-    white-space: normal;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule {
-    width: 100% !important;
-    inline-size: 100% !important;
-    min-width: 0 !important;
-    min-inline-size: 0 !important;
-    max-width: 100% !important;
-    max-inline-size: 100% !important;
-    height: auto;
-    min-height: 40px;
-    max-height: none;
-    justify-self: stretch;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding-inline: 12px !important;
-    text-align: center;
-    white-space: normal;
-    aspect-ratio: auto !important;
-    overflow: visible;
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_generate_schedule span {
-    display: inline;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: var(--sb-line-compact);
-}
-
-#right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-    width: min(34rem, 100%);
-    height: clamp(12rem, 18vh, 16rem);
-    min-height: clamp(12rem, 18vh, 16rem);
-    align-self: flex-end;
-    margin-left: auto;
 }
 
 @media screen and (max-width: 1420px) {
@@ -6537,15 +6420,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         grid-template-columns: auto minmax(0, 1fr);
     }
 
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
-        grid-column: 1 / -1;
-        grid-row: 2;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-        height: clamp(14rem, 26vh, 20rem);
-        min-height: clamp(14rem, 26vh, 20rem);
-    }
 }
 
 @media screen and (max-width: 1180px) {
@@ -6554,25 +6428,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     }
 
     #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > :is(#rm_group_submit, #rm_group_restore_avatar),
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1,
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls {
+    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .flex1 {
         grid-column: 1;
         grid-row: auto;
         margin-left: 0;
         transform: none;
     }
 
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack #rm_group_ai_schedule {
-        width: 100%;
-        align-self: stretch;
-        margin-left: 0;
-    }
-
-    #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) #GroupFavDelOkBack > .group_schedule_controls > .flex-container:first-child {
-        width: 100%;
-        align-self: stretch;
-        margin-left: 0;
-    }
 }
 
 @media screen and (max-width: 768px) {
@@ -7413,21 +7275,6 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
-    }
-
-    #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule {
-        min-width: 0;
-        min-inline-size: 0;
-        min-height: var(--sb-mobile-touch-target, 44px);
-        padding: 0 12px;
-        gap: 6px;
-    }
-
-    #right-nav-panel:is([data-menu-type='group_create'], [data-menu-type='group_edit']) #rm_group_generate_schedule span[data-i18n='Generate Schedule'] {
-        display: inline;
-        min-width: 0;
-        white-space: normal;
-        overflow-wrap: anywhere;
     }
 
     :root[data-sb-mobile-nav-mode='icon-only'] .sb-shell-root.openDrawer .sb-shell-tab,

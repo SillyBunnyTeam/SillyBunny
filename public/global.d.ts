@@ -34,7 +34,6 @@ declare global {
         generation_mode_join_prefix?: string;
         generation_mode_join_suffix?: string;
         activation_strategy?: number;
-        auto_mode_delay?: number;
         allow_self_responses?: boolean;
         avatar_url?: string;
         hideMutedSprites?: boolean;

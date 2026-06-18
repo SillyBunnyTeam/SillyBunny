@@ -4731,18 +4731,6 @@ export function updateMessageMetaBadges(messageElement, message) {
         $messageElement.find('.reasoning-tokens-badge').remove();
     }
 
-    const isGroupDm = Boolean(message?.extra?.is_group_dm);
-    if (isGroupDm) {
-        let dmBadge = $messageElement.find('.group-dm-badge');
-        if (!dmBadge.length) {
-            dmBadge = $('<span class="group-dm-badge" title="Private group DM" aria-label="Private group DM"></span>');
-            dmBadge.html('<i class="fa-solid fa-envelope" aria-hidden="true"></i><span>DM</span>');
-            $tokenCounter.after(dmBadge);
-        }
-    } else {
-        $messageElement.find('.group-dm-badge').remove();
-    }
-
     const hasTransformHistory = hasPromptTransformHistoryForActiveSwipe(message);
     if (hasTransformHistory) {
         let transformBadge = $messageElement.find('.agent-transform-badge');

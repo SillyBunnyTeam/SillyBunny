@@ -200,7 +200,6 @@ router.post('/create', (request, response) => {
         fav: request.body.fav,
         chat_id: request.body.chat_id ?? id,
         chats: request.body.chats ?? [id],
-        auto_mode_delay: request.body.auto_mode_delay ?? 5,
         generation_mode_join_prefix: request.body.generation_mode_join_prefix ?? '',
         generation_mode_join_suffix: request.body.generation_mode_join_suffix ?? '',
         conversation_settings: request.body.conversation_settings ?? {},
