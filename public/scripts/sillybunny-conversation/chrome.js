@@ -74,6 +74,7 @@ import {
     quickConversationSummarize,
     reactConversationMessage,
     regenerateConversationMessage,
+    replyToConversationMessage,
     setConversationTimelineChannel,
     toggleConversationMessagePin,
     updateConversationNotificationSettingsVisibility,
@@ -356,6 +357,9 @@ export function bindConversationChromeControls(sheld) {
             }
             case 'edit-message':
                 editConversationMessage(target.dataset.messageId);
+                break;
+            case 'reply-message':
+                replyToConversationMessage(target.dataset.messageId);
                 break;
             case 'copy-message':
                 await copyConversationMessage(target.dataset.messageId);

@@ -359,7 +359,7 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
             speakerName,
             groupId,
         },
-    ), threadAvatar);
+    ), threadAvatar, { groupId });
     let posted = false;
     if (response?.trim()) {
         if (replyAvatar === threadAvatar) {

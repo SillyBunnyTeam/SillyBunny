@@ -61,7 +61,7 @@ function hashConversationRenderFingerprint(value) {
 }
 
 function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages }) {
-    const activeTyping = getActiveTypingParticipants(avatar);
+    const activeTyping = getActiveTypingParticipants(avatar, { groupId });
     const statusAvatars = new Set([avatar]);
     for (const participant of activeTyping) {
         if (participant?.avatar) {
@@ -212,6 +212,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     }
 
     const messageActions = [
+        { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
         { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
         { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message' },
         { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here' },
@@ -421,37 +422,66 @@ export function renderConversationTimeline() {
 
     reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings });
 
-    const typingParticipants = getActiveTypingParticipants(avatar);
-    for (const typingParticipant of typingParticipants) {
-        const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
-        const typingName = typingParticipant?.name || getCurrentCharName();
+    const typingParticipants = getActiveTypingParticipants(avatar, { groupId });
+    if (typingParticipants.length > 2) {
         const typingItem = document.createElement('div');
         typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
-        typingItem.dataset.role = typingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character';
+        typingItem.dataset.role = 'partner';
 
         const typingAvatarWrap = document.createElement('div');
         typingAvatarWrap.className = 'sb-conversation-message-avatar';
         const typingImage = document.createElement('img');
         typingImage.alt = '';
-        typingImage.src = getThumbnailUrl('avatar', typingAvatar) || default_user_avatar;
+        typingImage.src = getThumbnailUrl('avatar', typingParticipants[0]?.avatar) || default_user_avatar;
         typingAvatarWrap.appendChild(typingImage);
 
         const typingBubble = document.createElement('div');
         typingBubble.className = 'sb-conversation-message-bubble';
         typingBubble.innerHTML = `
             <div class="sb-conversation-message-meta">
-                <span class="sb-conversation-message-name">${escapeHtmlText(typingName)}</span>
+                <span class="sb-conversation-message-name">Several people</span>
             </div>
-            <div class="sb-conversation-message-text sb-conversation-typing-dots">
-                <span></span><span></span><span></span>
+            <div class="sb-conversation-message-text" style="font-style: italic; opacity: 0.8; display: flex; align-items: center; gap: 8px;">
+                <span>Several people are typing</span>
+                <span class="sb-conversation-typing-dots">
+                    <span></span><span></span><span></span>
+                </span>
             </div>
         `;
         typingItem.append(typingAvatarWrap, typingBubble);
         timeline.appendChild(typingItem);
+    } else {
+        for (const typingParticipant of typingParticipants) {
+            const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
+            const typingName = typingParticipant?.name || getCurrentCharName();
+            const typingItem = document.createElement('div');
+            typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
+            typingItem.dataset.role = typingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character';
+
+            const typingAvatarWrap = document.createElement('div');
+            typingAvatarWrap.className = 'sb-conversation-message-avatar';
+            const typingImage = document.createElement('img');
+            typingImage.alt = '';
+            typingImage.src = getThumbnailUrl('avatar', typingAvatar) || default_user_avatar;
+            typingAvatarWrap.appendChild(typingImage);
+
+            const typingBubble = document.createElement('div');
+            typingBubble.className = 'sb-conversation-message-bubble';
+            typingBubble.innerHTML = `
+                <div class="sb-conversation-message-meta">
+                    <span class="sb-conversation-message-name">${escapeHtmlText(typingName)}</span>
+                </div>
+                <div class="sb-conversation-message-text sb-conversation-typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            `;
+            typingItem.append(typingAvatarWrap, typingBubble);
+            timeline.appendChild(typingItem);
+        }
     }
 
     if (conversationState.imageGenerationActive) {
-        const pendingParticipant = getPrimaryTypingParticipant(avatar);
+        const pendingParticipant = getPrimaryTypingParticipant(avatar, { groupId });
         const pendingAvatar = pendingParticipant?.avatar || getCurrentCharAvatar();
         const imageItem = document.createElement('div');
         imageItem.className = 'sb-conversation-message sb-conversation-image-pending';
@@ -647,6 +677,44 @@ export function saveConversationMessageThread(context) {
         }
     }
     scheduleTimelineRender();
+}
+
+export function replyToConversationMessage(messageId) {
+    const context = getConversationMessageById(messageId);
+    if (!context || !context.message) {
+        return;
+    }
+
+    const input = document.getElementById(CHROME_IDS.input);
+    if (!(input instanceof HTMLTextAreaElement)) {
+        return;
+    }
+
+    const speakerName = context.message.name || 'Character';
+    const messageText = context.message.mes || '';
+
+    let quoteBlock = '';
+    if (messageText) {
+        if (messageText.includes('\n')) {
+            const quoteLines = messageText.split('\n').map(line => `> ${line}`);
+            quoteBlock = `> **${speakerName}**:\n${quoteLines.join('\n')}`;
+        } else {
+            quoteBlock = `> **${speakerName}**: ${messageText}`;
+        }
+    } else {
+        const attachmentSummary = getConversationAttachmentSummary(context.message) || 'Sent an attachment.';
+        quoteBlock = `> **${speakerName}**: *${attachmentSummary}*`;
+    }
+
+    const existingText = input.value.trim();
+    const newText = quoteBlock + '\n\n' + (existingText ? existingText + '\n' : '');
+
+    input.value = newText;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+
+    // Position cursor at the very end
+    input.setSelectionRange(input.value.length, input.value.length);
 }
 
 export async function copyConversationMessage(messageId) {

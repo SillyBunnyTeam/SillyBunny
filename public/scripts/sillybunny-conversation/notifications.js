@@ -13,7 +13,7 @@ import {
     shouldSurfaceConversationNotification,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
-import { getSettings } from './settings-store.js';
+import { getSettings, isConversationModeEnabled } from './settings-store.js';
 import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
 
@@ -46,6 +46,11 @@ export function getTotalUnreadCount() {
         const parsed = parseConversationThreadKey(threadKey);
         const avatar = parsed.groupId ? parsed.avatar : threadKey;
         if (!avatar || !getCharacterForAvatar(avatar)) {
+            return sum;
+        }
+
+        const groupId = parsed.groupId || '';
+        if (!isConversationModeEnabled(avatar, { groupId })) {
             return sum;
         }
 

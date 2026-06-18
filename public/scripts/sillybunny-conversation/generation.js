@@ -215,7 +215,7 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
     if (messages.length) {
         await withTypingParticipant(partner, async () => {
             for (const messageText of messages) {
-                await waitForReplyDelay(messageText, partnerSettings, partner.avatar);
+                await waitForReplyDelay(messageText, partnerSettings, partner.avatar, { groupId });
                 await appendConversationMessage(messageText, {
                     name: partnerName,
                     role: 'partner',
@@ -223,7 +223,7 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
                     groupId,
                 }, avatar);
             }
-        }, avatar);
+        }, avatar, { groupId });
     }
 
     for (const context of selfieRequests) {
@@ -233,7 +233,7 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
             name: partnerName,
             extra: { ...extra, partner_avatar: partner.avatar },
             groupId,
-        }), avatar);
+        }), avatar, { groupId });
     }
 
     return Boolean(messages.length || selfieRequests.length);
@@ -302,14 +302,14 @@ export async function postCharacterReply(rawText, settings, { extra = {}, groupI
             }
 
             await withTypingParticipant(character || { avatar, name: speakerName }, async () => {
-                await waitForReplyDelay(cleanMessageText, settings, avatar);
+                await waitForReplyDelay(cleanMessageText, settings, avatar, { groupId });
                 await appendConversationMessage(cleanMessageText, {
                     name: speakerName,
                     role: 'character',
                     extra,
                     groupId,
                 }, avatar);
-            }, avatar);
+            }, avatar, { groupId });
         }
     }
 

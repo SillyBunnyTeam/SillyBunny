@@ -124,7 +124,7 @@ export async function triggerAutoMessage(directive, settings, extra = {}, avatar
                     ...extra,
                 },
                 groupId,
-            }, avatar), avatar);
+            }, avatar), avatar, { groupId });
             await maybeGenerateSpontaneousImage(settings, avatar, { groupId });
             return true;
         }
@@ -712,7 +712,7 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
                 extra.source_group_message_id = sourceMessageId;
             }
 
-            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra, groupId: null }, character.avatar), character.avatar);
+            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra, groupId: null }, character.avatar), character.avatar, { groupId: null });
             groupAsideLastSent.set(key, Date.now());
             return true;
         }

@@ -2,12 +2,13 @@ import { DEFAULT_REPLY_DELAY_MULTIPLIER, DEFAULT_SETTINGS, DEFAULT_TALKATIVENESS
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationThreadKey,
     getCurrentCharAvatar,
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
-import { isConversationActiveForAvatar, updateConversationNotificationIndicators } from './notifications.js';
+import { isConversationActiveThread, updateConversationNotificationIndicators } from './notifications.js';
 import { getAvailabilityCopy } from './personas.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
@@ -42,53 +43,59 @@ export function getReplyDelayMs(messageText, settings, avatar) {
     return Math.min(9000, Math.max(350, Math.round(delay)));
 }
 
-export async function waitForReplyDelay(messageText, settings, avatar) {
+export async function waitForReplyDelay(messageText, settings, avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     const delay = getReplyDelayMs(messageText, settings, avatar);
     if (delay <= 0) {
         return;
     }
 
-    if (isConversationActiveForAvatar(avatar)) {
+    if (isConversationActiveThread(avatar, groupId)) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
     await new Promise(resolve => setTimeout(resolve, delay));
 }
 
-export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { create = false } = {}) {
+export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { create = false, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     const threadAvatar = avatar || getCurrentCharAvatar();
     if (!threadAvatar) {
         return null;
     }
 
-    let participantMap = activeTypingParticipants.get(threadAvatar);
+    const threadKey = getConversationThreadKey(threadAvatar, groupId || '');
+    if (!threadKey) {
+        return null;
+    }
+
+    let participantMap = activeTypingParticipants.get(threadKey);
     if (!participantMap && create) {
         participantMap = new Map();
-        activeTypingParticipants.set(threadAvatar, participantMap);
+        activeTypingParticipants.set(threadKey, participantMap);
     }
 
     return participantMap || null;
 }
 
-export function getActiveTypingParticipants(avatar = getCurrentCharAvatar()) {
-    const participantMap = getTypingParticipantMap(avatar);
+export function getActiveTypingParticipants(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const participantMap = getTypingParticipantMap(avatar, { groupId });
     return participantMap ? Array.from(participantMap.values()).filter(participant => participant?.avatar) : [];
 }
 
-export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar()) {
-    const participants = getActiveTypingParticipants(avatar);
+export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const participants = getActiveTypingParticipants(avatar, { groupId });
     return participants.length ? participants[participants.length - 1] : null;
 }
 
-export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar()) {
+export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     const threadAvatar = avatar || getCurrentCharAvatar();
     const participantAvatar = participant?.avatar || threadAvatar;
-    const participantMap = getTypingParticipantMap(threadAvatar, { create: true });
+    const participantMap = getTypingParticipantMap(threadAvatar, { create: true, groupId });
     const previousTypingParticipant = participantMap?.get(participantAvatar) || null;
     if (participantMap && participantAvatar) {
         participantMap.set(participantAvatar, participant || { avatar: participantAvatar, name: 'Character' });
     }
 
-    if (isConversationActiveForAvatar(threadAvatar)) {
+    const isThreadActive = isConversationActiveThread(threadAvatar, groupId);
+    if (isThreadActive) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
     try {
@@ -100,11 +107,12 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
             } else {
                 participantMap.delete(participantAvatar);
             }
-            if (!participantMap.size) {
-                activeTypingParticipants.delete(threadAvatar);
+            const threadKey = getConversationThreadKey(threadAvatar, groupId || '');
+            if (!participantMap.size && threadKey) {
+                activeTypingParticipants.delete(threadKey);
             }
         }
-        if (isConversationActiveForAvatar(threadAvatar)) {
+        if (isThreadActive) {
             scheduleInterfaceRefresh({ syncControls: false });
         }
     }

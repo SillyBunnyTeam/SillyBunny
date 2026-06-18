@@ -318,12 +318,16 @@ export function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
-        const typingParticipants = getActiveTypingParticipants(avatar);
+        const typingParticipants = getActiveTypingParticipants(avatar, { groupId });
         if (typingParticipants.length) {
             const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
-            status.textContent = typingNames.length > 1
-                ? `${typingNames.join(', ')} are writing...`
-                : `${typingNames[0] || 'Character'} is writing...`;
+            if (typingNames.length > 2) {
+                status.textContent = 'Several people are typing...';
+            } else if (typingNames.length > 1) {
+                status.textContent = `${typingNames.join(', ')} are writing...`;
+            } else {
+                status.textContent = `${typingNames[0] || 'Character'} is writing...`;
+            }
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';

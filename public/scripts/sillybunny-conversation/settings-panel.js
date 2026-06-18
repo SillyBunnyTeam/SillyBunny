@@ -101,7 +101,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         backdrop-filter: blur(8px);
         z-index: 9999;
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: center;
         padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
         box-sizing: border-box;
