@@ -80,6 +80,115 @@ export function buildChatCompletionSamplingSettingsSnapshot(settings, settingsMa
     return structuredClone(snapshot);
 }
 
+const OPENAI_SAMPLING_PROFILE_SOURCE = 'openai';
+const OPENAI_SAMPLING_PROFILE_SOURCES = new Set([
+    'openai',
+    'openai_responses',
+    'azure_openai',
+]);
+const OPENAI_MODEL_PROVIDER_SEGMENTS = new Set([
+    'openai',
+    'openai-responses',
+    'azure-openai',
+]);
+
+function normalizeSamplingProfileSource(source) {
+    return String(source ?? '').trim().toLowerCase();
+}
+
+function normalizeSamplingProfileModel(model) {
+    return String(model ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\\/g, '/')
+        .replace(/:+/g, '/')
+        .replace(/[\s_]+/g, '-')
+        .replace(/\/+/g, '/')
+        .replace(/-+/g, '-')
+        .replace(/^[-/]+|[-/]+$/g, '');
+}
+
+function stripOpenAIModelProviderPrefix(model) {
+    let normalizedModel = normalizeSamplingProfileModel(model).replace(/^(?:models\/)+/, '');
+    const slashSegments = normalizedModel.split('/');
+    const openAiSegmentIndex = slashSegments.findIndex(segment => OPENAI_MODEL_PROVIDER_SEGMENTS.has(segment));
+
+    if (openAiSegmentIndex >= 0 && slashSegments[openAiSegmentIndex + 1]) {
+        return slashSegments.slice(openAiSegmentIndex + 1).join('-');
+    }
+
+    return normalizedModel.replace(/^(?:openai|openai-responses|azure-openai)[-/]+/, '');
+}
+
+function normalizeOpenAIModelForSamplingProfile(model) {
+    let normalizedModel = stripOpenAIModelProviderPrefix(model)
+        .replace(/^chatgpt(?=\d)/, 'chatgpt-')
+        .replace(/^chatgpt-/, 'gpt-')
+        .replace(/^gpt(?=\d)/, 'gpt-')
+        .replace(/^(o[134])(?=[a-z])/, '$1-');
+
+    normalizedModel = normalizedModel
+        .replace(/-(?:\d{4}-\d{2}-\d{2}|\d{8})$/, '')
+        .replace(/-latest$/, '');
+
+    return normalizedModel;
+}
+
+function isOpenAIModelForSamplingProfile(model) {
+    const normalizedModel = normalizeSamplingProfileModel(model);
+    const normalizedOpenAIModel = normalizeOpenAIModelForSamplingProfile(model);
+
+    return Boolean(normalizedOpenAIModel) && (
+        normalizedModel.split('/').some(segment => OPENAI_MODEL_PROVIDER_SEGMENTS.has(segment))
+        || /^(?:gpt(?:-|\d)|codex(?:-|$)|omni(?:-|$)|o[134](?:-|\d|$))/.test(normalizedOpenAIModel)
+    );
+}
+
+/**
+ * Builds a canonical key for model sampling profiles.
+ *
+ * @param {string} source Chat Completion source
+ * @param {string} model Chat Completion model
+ * @returns {string|null} Canonical model sampling profile key
+ */
+export function buildChatCompletionSamplingProfileKey(source, model) {
+    const normalizedSource = normalizeSamplingProfileSource(source);
+    const normalizedModel = normalizeSamplingProfileModel(model);
+
+    if (!normalizedSource || !normalizedModel) {
+        return null;
+    }
+
+    const isOpenAIProfile = OPENAI_SAMPLING_PROFILE_SOURCES.has(normalizedSource)
+        || (normalizedSource === 'custom' && isOpenAIModelForSamplingProfile(normalizedModel));
+
+    const profileSource = isOpenAIProfile ? OPENAI_SAMPLING_PROFILE_SOURCE : normalizedSource;
+    const profileModel = isOpenAIProfile ? normalizeOpenAIModelForSamplingProfile(normalizedModel) : normalizedModel;
+
+    if (!profileModel) {
+        return null;
+    }
+
+    return `${profileSource}:${profileModel}`;
+}
+
+/**
+ * Lists profile keys to try when loading/clearing model sampling profiles.
+ * The legacy exact key keeps saved profiles from earlier SillyBunny builds usable.
+ *
+ * @param {string} source Chat Completion source
+ * @param {string} model Chat Completion model
+ * @returns {string[]} Canonical key followed by legacy fallback keys
+ */
+export function getChatCompletionSamplingProfileLookupKeys(source, model) {
+    const legacyKey = source && model ? `${source}:${model}` : null;
+
+    return [
+        buildChatCompletionSamplingProfileKey(source, model),
+        legacyKey,
+    ].filter((key, index, keys) => key && keys.indexOf(key) === index);
+}
+
 /**
  * Returns whether OpenAI preset saves should include provider/model/API fields.
  *

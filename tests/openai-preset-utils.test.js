@@ -2,9 +2,11 @@ import { describe, expect, test } from '@jest/globals';
 import {
     buildChatCompletionPreset,
     buildChatCompletionPresetForSave,
+    buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
     buildReverseProxyPresetForSave,
     getChatCompletionConnectionPresetKeys,
+    getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
     getChatCompletionSamplingSettingsKeys,
     normalizeReverseProxyPreset,
@@ -257,5 +259,63 @@ describe('Chat Completion preset utilities', () => {
             assistant_prefill: '',
             prompts: [{ identifier: 'main', content: 'Prompt after edit' }],
         });
+    });
+});
+
+describe('Chat Completion sampling profile keys', () => {
+    test('builds canonical keys for native OpenAI models', () => {
+        expect(buildChatCompletionSamplingProfileKey('openai', 'gpt-4o')).toBe('openai:gpt-4o');
+        expect(buildChatCompletionSamplingProfileKey('openai', 'gpt-4-turbo')).toBe('openai:gpt-4-turbo');
+        expect(buildChatCompletionSamplingProfileKey('openai', 'o1-preview')).toBe('openai:o1-preview');
+        expect(buildChatCompletionSamplingProfileKey('openai_responses', 'gpt-4o')).toBe('openai:gpt-4o');
+        expect(buildChatCompletionSamplingProfileKey('azure_openai', 'gpt-4')).toBe('openai:gpt-4');
+    });
+
+    test('shares canonical keys for OpenAI Custom models', () => {
+        expect(buildChatCompletionSamplingProfileKey('custom', 'openai/gpt-4o')).toBe('openai:gpt-4o');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'models/openai/gpt-4-turbo')).toBe('openai:gpt-4-turbo');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'chatgpt-4o-latest')).toBe('openai:gpt-4o');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'o1-preview-2024-08-01')).toBe('openai:o1-preview');
+    });
+
+    test('normalizes model separators and case in canonical keys', () => {
+        expect(buildChatCompletionSamplingProfileKey('openai', 'GPT-4O')).toBe('openai:gpt-4o');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'openai\\gpt-4')).toBe('openai:gpt-4');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'openai:gpt-4-turbo')).toBe('openai:gpt-4-turbo');
+    });
+
+    test('isolates unknown custom models with normalized keys', () => {
+        expect(buildChatCompletionSamplingProfileKey('custom', 'my-local-model')).toBe('custom:my-local-model');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'llama-3.1')).toBe('custom:llama-3.1');
+        expect(buildChatCompletionSamplingProfileKey('custom', 'MyLocalModel')).toBe('custom:mylocalmodel');
+    });
+
+    test('includes legacy exact key in lookup keys', () => {
+        const keys = getChatCompletionSamplingProfileLookupKeys('openai', 'gpt-4o');
+        expect(keys).toContain('openai:gpt-4o');
+        expect(keys[0]).toBe('openai:gpt-4o');
+    });
+
+    test('includes legacy key for OpenAI Custom models', () => {
+        const keys = getChatCompletionSamplingProfileLookupKeys('custom', 'openai/gpt-4o');
+        expect(keys[0]).toBe('openai:gpt-4o');
+        expect(keys).toContain('custom:openai/gpt-4o');
+    });
+
+    test('deduplicates canonical and legacy keys when identical', () => {
+        const keys = getChatCompletionSamplingProfileLookupKeys('custom', 'my-model');
+        expect(keys).toEqual(['custom:my-model']);
+    });
+
+    test('returns null for missing source or model', () => {
+        expect(buildChatCompletionSamplingProfileKey('', 'gpt-4o')).toBeNull();
+        expect(buildChatCompletionSamplingProfileKey('openai', '')).toBeNull();
+        expect(buildChatCompletionSamplingProfileKey(null, 'gpt-4o')).toBeNull();
+        expect(buildChatCompletionSamplingProfileKey('openai', null)).toBeNull();
+    });
+
+    test('returns empty array for missing source or model', () => {
+        expect(getChatCompletionSamplingProfileLookupKeys('', 'gpt-4o')).toEqual([]);
+        expect(getChatCompletionSamplingProfileLookupKeys('openai', '')).toEqual([]);
     });
 });
