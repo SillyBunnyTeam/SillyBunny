@@ -37,7 +37,7 @@ const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
 const PATHFINDER_LOG_MODE_KEY = 'pathfinder-retrieval-log-mode';
 const PATHFINDER_QUICKSTART_DISMISSED_KEY = 'pathfinder-quickstart-dismissed';
-const DEFAULT_PIPELINE_MAX_TOKENS = 32000;
+const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 let settingsEl = null;
 let currentAgent = null;

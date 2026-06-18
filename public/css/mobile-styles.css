@@ -1884,8 +1884,8 @@
 
     .group_speaker_controls {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) repeat(4, var(--sb-mobile-touch-target, 44px)) !important;
-        grid-template-areas: "avatars speak dm chat auto" !important;
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) !important;
+        grid-template-areas: "avatars speak" !important;
         gap: 5px !important;
         align-items: center !important;
         min-height: calc(var(--sb-mobile-touch-target, 44px) + 8px) !important;
@@ -1962,40 +1962,12 @@
         height: 34px !important;
     }
 
-    .group-dm-unread-dot {
-        top: -2px !important;
-        right: -2px !important;
-        display: block !important;
-        width: 10px !important;
-        height: 10px !important;
-        min-width: 10px !important;
-        min-height: 10px !important;
-    }
-
-    .group_speaker_avatar.has-unread-dm {
-        border-color: var(--sb-state-attention, var(--color-danger, #fb7185)) !important;
-        box-shadow: 0 0 0 1px var(--sb-state-attention-border, color-mix(in srgb, var(--color-danger, #fb7185) 42%, transparent)) !important;
-        animation: none !important;
-    }
-
-    .group_speaker_avatar.has-unread-dm::after {
-        inset: -4px !important;
-    }
-
     .group_speaker_avatar span,
-    #group_speaker_now span,
-    #group_speaker_dm_now span,
-    #group_speaker_dm_consolidate span,
-    #group_speaker_auto_dm span,
-    .group_speaker_toggle span {
+    #group_speaker_now span {
         display: none !important;
     }
 
-    #group_speaker_now,
-    #group_speaker_dm_now,
-    #group_speaker_dm_consolidate,
-    #group_speaker_auto_dm,
-    .group_speaker_toggle {
+    #group_speaker_now {
         width: var(--sb-mobile-touch-target, 44px) !important;
         min-width: var(--sb-mobile-touch-target, 44px) !important;
         max-width: var(--sb-mobile-touch-target, 44px) !important;
@@ -2015,38 +1987,6 @@
 
     #group_speaker_now {
         grid-area: speak !important;
-    }
-
-    #group_speaker_dm_now {
-        grid-area: dm !important;
-    }
-
-    #group_speaker_dm_consolidate {
-        grid-area: chat !important;
-    }
-
-    .group_speaker_toggle {
-        grid-area: auto !important;
-    }
-
-    #group_speaker_dm_now.selected,
-    #group_speaker_auto_dm.selected {
-        color: var(--SmartThemeBlurTintColor) !important;
-        background: var(--SmartThemeQuoteColor) !important;
-        border-color: var(--SmartThemeQuoteColor) !important;
-        opacity: 1 !important;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent), 0 0 10px color-mix(in srgb, var(--SmartThemeQuoteColor) 55%, transparent) !important;
-    }
-
-    #group_speaker_dm_now.selected i,
-    #group_speaker_auto_dm.selected i {
-        color: var(--SmartThemeBlurTintColor) !important;
-    }
-
-    #group_speaker_dm_now:not(.selected),
-    #group_speaker_auto_dm:not(.selected) {
-        opacity: 0.58 !important;
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent) !important;
     }
 
     /* SillyBunny: Mobile-specific group member touch targets for Add Members screen */
@@ -2110,19 +2050,6 @@
     #rm_group_members .group_member_icon {
         max-width: var(--sb-group-actions-width);
         flex-wrap: wrap;
-    }
-
-    /* SillyBunny: Prevent text overflow on Generate Schedule button */
-    #rm_group_generate_schedule {
-        max-width: 100%;
-        min-width: 0;
-    }
-
-    #rm_group_generate_schedule span {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
     }
 
     /* General fix for menu_button_icon with text on mobile */

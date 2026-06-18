@@ -7538,58 +7538,6 @@ body:not(.movingUI) .drawer-content.maximized {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
 }
 
-.group_speaker_avatar.has-unread-dm {
-    border-color: var(--sb-state-attention, var(--color-danger, #fb7185));
-    box-shadow: 0 0 0 1px var(--sb-state-attention-border, color-mix(in srgb, var(--color-danger, #fb7185) 42%, transparent));
-}
-
-.group_speaker_avatar.has-unread-dm::after {
-    content: "";
-    position: absolute;
-    inset: -4px;
-    z-index: -1;
-    border-radius: inherit;
-    background: var(--sb-state-attention-bg, color-mix(in srgb, var(--color-danger, #fb7185) 24%, transparent));
-    box-shadow: 0 0 10px color-mix(in srgb, var(--sb-state-attention, var(--color-danger, #fb7185)) 42%, transparent);
-    opacity: 0.78;
-    pointer-events: none;
-    transform: scale(1);
-    transform-origin: center;
-    animation: groupUnreadDmPulse 1.4s ease-in-out infinite;
-}
-
-@keyframes groupUnreadDmPulse {
-    0%, 100% {
-        opacity: 0.68;
-        transform: scale(0.96);
-    }
-
-    50% {
-        opacity: 0.98;
-        transform: scale(1.08);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .group_speaker_avatar.has-unread-dm::after {
-        animation: none;
-        opacity: 0.72;
-        transform: none;
-    }
-}
-
-#group_speaker_dm_now.selected,
-#group_speaker_auto_dm.selected {
-    border-color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 28%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent) inset;
-}
-
-#group_speaker_dm_now.selected i,
-#group_speaker_auto_dm.selected i {
-    color: var(--SmartThemeQuoteColor);
-}
-
 .group_speaker_avatar img {
     width: 24px;
     height: 24px;
@@ -7604,15 +7552,11 @@ body:not(.movingUI) .drawer-content.maximized {
     text-overflow: ellipsis;
 }
 
-.group_speaker_toggle {
-    white-space: nowrap;
-}
-
 @media screen and (max-width: 600px) {
     .group_speaker_controls {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) repeat(3, 34px) auto;
-        grid-template-areas: "typing typing typing typing typing" "avatars speak dm chat auto";
+        grid-template-columns: minmax(0, 1fr) 34px;
+        grid-template-areas: "typing typing" "avatars speak";
         align-items: center;
         gap: 4px;
         padding: 4px 6px;
@@ -7655,10 +7599,7 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 
     .group_speaker_avatar span,
-    #group_speaker_now span,
-    #group_speaker_dm_now span,
-    #group_speaker_dm_consolidate span,
-    #group_speaker_auto_dm span {
+    #group_speaker_now span {
         display: none;
     }
 
@@ -7667,10 +7608,7 @@ body:not(.movingUI) .drawer-content.maximized {
         height: 24px;
     }
 
-    #group_speaker_now,
-    #group_speaker_dm_now,
-    #group_speaker_dm_consolidate,
-    #group_speaker_auto_dm {
+    #group_speaker_now {
         width: 34px;
         min-width: 34px;
         max-width: 34px;
@@ -7687,83 +7625,19 @@ body:not(.movingUI) .drawer-content.maximized {
         grid-area: speak;
     }
 
-    #group_speaker_dm_now {
-        grid-area: dm;
-    }
-
-    #group_speaker_dm_consolidate {
-        grid-area: chat;
-    }
-
-    .group_speaker_toggle {
-        grid-area: auto;
-    }
 }
 
 @media screen and (max-width: 420px) {
     .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) repeat(4, 30px);
+        grid-template-columns: minmax(0, 1fr) 30px;
     }
 
-    #group_speaker_now,
-    #group_speaker_dm_now,
-    #group_speaker_dm_consolidate,
-    #group_speaker_auto_dm {
+    #group_speaker_now {
         width: 30px;
         min-width: 30px;
         max-width: 30px;
     }
 
-    .group_speaker_toggle {
-        width: 30px;
-        max-width: 30px;
-        justify-content: center;
-        gap: 0;
-    }
-
-    .group_speaker_toggle span,
-    #group_speaker_auto_dm span {
-        display: none;
-    }
-}
-
-.group-dm-unread-dot {
-    position: absolute;
-    top: -1px;
-    right: -1px;
-    z-index: 3;
-    display: block !important;
-    width: 10px;
-    height: 10px;
-    min-width: 10px;
-    min-height: 10px;
-    padding: 0;
-    border-radius: 50%;
-    background: var(--sb-state-attention, var(--color-danger, #fb7185));
-    border: 2px solid var(--SmartThemeBlurTintColor);
-    box-shadow:
-        0 0 0 1px var(--sb-state-attention-border, color-mix(in srgb, var(--color-danger, #fb7185) 65%, transparent)),
-        0 0 7px color-mix(in srgb, var(--sb-state-attention, var(--color-danger, #fb7185)) 58%, transparent);
-    pointer-events: none;
-}
-
-.group-dm-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    margin-left: 4px;
-    padding: 1px 5px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent);
-    color: var(--SmartThemeBodyColor);
-    font-size: 0.75em;
-    line-height: 1.3;
-    vertical-align: middle;
-}
-
-.group-dm-badge i {
-    font-size: 0.9em;
 }
 
 /* Mobile chat input guardrails: keep send/stop controls square and centered. */

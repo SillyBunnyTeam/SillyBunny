@@ -50,7 +50,7 @@ Return a JSON array of entry names that should be retrieved. Format:
     outputFormat: 'json_object',
     connectionProfile: '',
     settings: {
-        maxTokens: 32000,
+        maxTokens: 64000,
         temperature: 0.3,
     },
     isDefault: true,
@@ -103,7 +103,7 @@ Return a JSON array of entry names to include. Format:
     outputFormat: 'json_object',
     connectionProfile: '',
     settings: {
-        maxTokens: 32000,
+        maxTokens: 64000,
         temperature: 0.2,
     },
     isDefault: true,

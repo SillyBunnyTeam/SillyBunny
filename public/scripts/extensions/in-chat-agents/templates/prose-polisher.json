@@ -33,7 +33,7 @@
         "promptTransformEnabled": true,
         "promptTransformShowNotifications": true,
         "promptTransformMode": "rewrite",
-        "promptTransformMaxTokens": 32000
+        "promptTransformMaxTokens": 64000
     },
     "enabled": false,
     "conditions": {

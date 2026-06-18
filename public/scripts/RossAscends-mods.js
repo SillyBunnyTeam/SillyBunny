@@ -538,7 +538,9 @@ export function dragElement($elmnt) {
     const elmntName = $elmnt.attr('id');
     const stateKey = getMovingUIStateKey(elmntName);
     const elmntNameEscaped = $.escapeSelector(elmntName);
-    const $elmntHeader = $(`#${elmntNameEscaped}header`);
+    const headerSelector = elmntName === 'sheld'
+        ? '#sheldheader, #sb_conversation_header'
+        : `#${elmntNameEscaped}header`;
 
     // Helper: Save position/size to state and emit events
     function savePositionAndSize() {
@@ -688,17 +690,17 @@ export function dragElement($elmnt) {
         savePositionAndSize();
     }
 
-    // Setup event listeners
-    if ($elmntHeader.length) {
-        $elmntHeader.off('mousedown').on('mousedown', (e) => {
-            if ($(e.target).hasClass('drag-grabber')) {
-                actionType = 'drag';
-                isMouseDown = true;
-                observer.observe($elmnt[0], { attributes: true, attributeFilter: ['style'] });
-                dragMouseDown(e);
-            }
-        });
-    }
+    // Setup event listeners using event delegation to support dynamic header elements like #sb_conversation_header
+    $(document).off('mousedown', headerSelector).on('mousedown', headerSelector, (e) => {
+        const isHeader = $(e.target).closest('#sb_conversation_header').length > 0;
+        const isInteractive = $(e.target).closest('button, input, select, textarea, [role="button"], a, i').length > 0;
+        if ($(e.target).hasClass('drag-grabber') || (isHeader && !isInteractive)) {
+            actionType = 'drag';
+            isMouseDown = true;
+            observer.observe($elmnt[0], { attributes: true, attributeFilter: ['style'] });
+            dragMouseDown(e);
+        }
+    });
 
     $elmnt.off('mousedown').on('mousedown', (e) => {
         const rect = $elmnt[0].getBoundingClientRect();

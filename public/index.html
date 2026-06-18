@@ -20,6 +20,7 @@
     <link rel="preload" as="style" href="style.css?v=20260610a">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
+    <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
     <link rel="modulepreload" href="scripts/sillybunny-settings-tabs.js">
     <link rel="preload" as="font" type="font/woff2" href="webfonts/Figtree/Figtree-Regular.woff2?v=20260422b" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
@@ -48,6 +49,7 @@
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260610a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260609a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-conversation.css?v=20260618g">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260609d" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
@@ -6403,7 +6405,7 @@
             </div>
         </div>
         <div id="rightNavHolder" class="drawer">
-            <div id="unimportantYes" class="drawer-toggle drawer-header">
+            <div id="unimportantYes" class="drawer-toggle drawer-header" style="display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;">
                 <div id="rightNavDrawerIcon" class="drawer-icon fa-solid fa-address-card fa-fw closedIcon" title="Character Management" data-i18n="[title]Character Management">
                 </div>
             </div>
@@ -6419,6 +6421,10 @@
                         <button id="sb_character_tab_groups" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="groups">
                             <i class="fa-solid fa-users" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Groups">Groups</strong></span>
+                        </button>
+                        <button id="sb_character_tab_conversation" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_conversation_panel" data-sb-character-tab="conversation">
+                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
+                            <span class="sb-shell-tab-copy"><strong data-i18n="Conversation">Conversation</strong></span>
                         </button>
                         <button id="sb_character_tab_editor" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="editor">
                             <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
@@ -6540,6 +6546,7 @@
                         </div>
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
+                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" role="tabpanel" aria-labelledby="sb_character_tab_conversation" aria-hidden="true" hidden></div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
                         <div class="sb-character-import-intro">
                             <h3 data-i18n="Bring in a character card">Bring in a character card</h3>
@@ -7003,38 +7010,6 @@
                                                     <input id="rm_group_allow_self_responses" type="checkbox" />
                                                     <span data-i18n="Allow self responses">Allow self responses</span>
                                                 </label>
-                                                <label id="rm_group_automode_label" class="checkbox_label whitespacenowrap">
-                                                    <input id="rm_group_automode" type="checkbox" />
-                                                    <span data-i18n="Auto Mode">Auto Mode</span>
-                                                    <input id="rm_group_automode_delay" class="text_pole textarea_compact widthUnset" type="number" min="1" max="999" step="1" value="120" title="Auto Mode delay in seconds" data-i18n="[title]Auto Mode delay in seconds" />
-                                                    <span class="auto_mode_delay_unit" title="Auto Mode delay unit" data-i18n="seconds">seconds</span>
-                                                </label>
-                                                <label id="rm_group_auto_dm_cooldown_label" class="checkbox_label whitespacenowrap" title="Minimum delay between scheduled Auto DMs" data-i18n="[title]Minimum delay between scheduled Auto DMs">
-                                                    <span data-i18n="Auto DM cooldown">Auto DM cooldown</span>
-                                                    <input id="rm_group_auto_dm_cooldown" class="text_pole textarea_compact widthUnset" type="number" min="1" max="9999" step="1" value="300" title="Auto DM cooldown in seconds" data-i18n="[title]Auto DM cooldown in seconds" />
-                                                    <span class="auto_mode_delay_unit" title="Auto DM cooldown unit" data-i18n="seconds">seconds</span>
-                                                </label>
-                                            </div>
-                                            <div class="wide100p flex-container flexFlowColumn flexGap5 group_schedule_controls">
-                                                <div class="flex-container flexGap5 flexWrap alignitemscenter">
-                                                    <label class="checkbox_label whitespacenowrap" title="Adds your local date and time to group auto-message prompts" data-i18n="[title]Adds your local date and time to group auto-message prompts">
-                                                        <input id="rm_group_time_aware" type="checkbox" />
-                                                        <span data-i18n="Time-aware">Time-aware</span>
-                                                    </label>
-                                                    <label class="checkbox_label whitespacenowrap" title="Let scheduled characters message when their schedule is due" data-i18n="[title]Let scheduled characters message when their schedule is due">
-                                                        <input id="rm_group_auto_message" type="checkbox" />
-                                                        <span data-i18n="Scheduled messages">Scheduled messages</span>
-                                                    </label>
-                                                    <button type="button" id="rm_group_generate_schedule" class="menu_button menu_button_icon" title="Ask the AI to make a full 24-hour daily message schedule for this group" data-i18n="[title]Ask the AI to make a full 24-hour daily message schedule for this group">
-                                                        <i class="fa-solid fa-calendar-days"></i>
-                                                        <span data-i18n="Generate Schedule">Generate Schedule</span>
-                                                    </button>
-                                                </div>
-                                                <textarea id="rm_group_ai_schedule" class="text_pole textarea_compact autoSetHeight wide100p" rows="8" placeholder="00:00 Seraphina: sleeps while keeping a faint watch over the glade
-08:00 Bunny Guide: checks in after breakfast
-23:00 Assistant Nahida: winds down and reflects" title="Daily auto-message schedule. Format: HH:MM Character: reason" data-i18n="[placeholder]00:00 Seraphina: sleeps while keeping a faint watch over the glade
-08:00 Bunny Guide: checks in after breakfast
-23:00 Assistant Nahida: winds down and reflects;[title]Daily auto-message schedule. Format: HH:MM Character: reason"></textarea>
                                             </div>
                                 </div>
                             </div>
@@ -8754,18 +8729,6 @@
                     <i class="fa-solid fa-comment-dots"></i>
                     <span data-i18n="Speak Now">Speak Now</span>
                 </button>
-                <button type="button" id="group_speaker_dm_now" class="menu_button menu_button_icon" title="Toggle private DM mode for the selected character; your next send goes only to them" data-i18n="[title]Toggle private DM mode for the selected character; your next send goes only to them">
-                    <i class="fa-solid fa-envelope"></i>
-                    <span data-i18n="DM">DM</span>
-                </button>
-                <button type="button" id="group_speaker_dm_consolidate" class="menu_button menu_button_icon" title="Open a separate private DM chat with the selected character" data-i18n="[title]Open a separate private DM chat with the selected character">
-                    <i class="fa-solid fa-envelope-open-text"></i>
-                    <span data-i18n="DM Chat">DM Chat</span>
-                </button>
-                <button type="button" id="group_speaker_auto_dm" class="menu_button menu_button_icon group_speaker_toggle" title="Let any character privately DM you during scheduled auto messages" data-i18n="[title]Let any character privately DM you during scheduled auto messages" aria-pressed="false">
-                    <i class="fa-solid fa-bell"></i>
-                    <span data-i18n="Auto DM">Auto DM</span>
-                </button>
             </div>
             <div id="dialogue_del_mes">
                 <div id="dialogue_del_mes_ok" data-i18n="Delete" class="menu_button">Delete</div>
@@ -8804,6 +8767,7 @@
                         </div>
                         <div id="mes_impersonate" class="fa-solid fa-user-secret interactable displayNone" title="Ask AI to write your message for you" data-i18n="[title]Ask AI to write your message for you" tabindex="0"></div>
                         <div id="mes_continue" class="fa-fw fa-solid fa-arrow-right interactable displayNone" title="Continue the last message" data-i18n="[title]Continue the last message"></div>
+                        <div id="sb_prose_polisher_but" class="fa-solid fa-wand-magic-sparkles interactable displayNone" title="Prose Polisher: Polish your message using AI" data-i18n="[title]Prose Polisher: Polish your message using AI"></div>
                         <div id="send_but" class="fa-solid fa-paper-plane interactable displayNone" title="Send a message" data-i18n="[title]Send a message"></div>
                     </div>
                 </div>
@@ -8908,6 +8872,7 @@
     <script type="module" src="scripts/performance-loader.js"></script>
     <script type="module" src="script.js"></script>
     <script type="module" src="scripts/sillybunny-tabs.js"></script>
+    <script type="module" src="scripts/sillybunny-conversation.js"></script>
     <script type="module" src="scripts/sillybunny-settings-tabs.js"></script>
     <script>
         window.addEventListener('load', (event) => {

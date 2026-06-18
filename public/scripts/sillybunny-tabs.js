@@ -458,6 +458,11 @@ const SB_CHARACTER_TAB_COPY = Object.freeze({
         subtitle: 'Build and organize group casts for multi-character scenes.',
         description: 'Sort group chats, check members, and return to character cards without losing your place.',
     },
+    conversation: {
+        title: 'Conversation Mode',
+        subtitle: 'Configure Discord-style DMs, presence, and autonomous follow-ups for the active character.',
+        description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
+    },
     editor: {
         title: 'Card Editor',
         subtitle: 'Shape the selected card details, prompts, greetings, and metadata.',
@@ -492,6 +497,7 @@ const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info'
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     { id: 'characters', label: 'Characters', icon: 'fa-address-book' },
     { id: 'groups', label: 'Groups', icon: 'fa-users' },
+    { id: 'conversation', label: 'Conversation', icon: 'fa-comments' },
     { id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' },
     { id: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { id: 'persona', label: 'Persona', icon: 'fa-face-smile' },
@@ -2312,14 +2318,19 @@ function syncShellViewportBounds() {
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
+    const setRootViewportProperty = (property, value) => {
+        if (root.style.getPropertyValue(property) !== value) {
+            root.style.setProperty(property, value);
+        }
+    };
 
-    root.style.setProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
-    root.style.setProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
-    root.style.setProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
+    setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
+    setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
+    setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
     // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
     // when the keyboard opens; without this var the shell stays anchored at
     // the layout viewport top and the composer floats mid-screen.
-    root.style.setProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+    setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
 function getMobileShellBoundDrawers() {
@@ -2341,11 +2352,15 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 
     for (const property of decision.styleRemovals) {
-        drawer.style.removeProperty(property);
+        if (drawer.style.getPropertyValue(property) || drawer.style.getPropertyPriority(property)) {
+            drawer.style.removeProperty(property);
+        }
     }
 
     for (const { property, value, priority } of decision.styleWrites) {
-        drawer.style.setProperty(property, value, priority);
+        if (drawer.style.getPropertyValue(property) !== value || drawer.style.getPropertyPriority(property) !== priority) {
+            drawer.style.setProperty(property, value, priority);
+        }
     }
 }
 
@@ -2375,6 +2390,9 @@ function syncMobileShellDrawerBounds() {
     }
 }
 
+let sbMobileShellDrawerBoundsFrameId = 0;
+let sbMobileShellDrawerBoundsFollowupId = 0;
+
 function queueMobileShellDrawerBoundsSync() {
     const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
         isMobileViewport: isMobileViewport(),
@@ -2386,18 +2404,31 @@ function queueMobileShellDrawerBoundsSync() {
         return;
     }
 
+    if (sbMobileShellDrawerBoundsFrameId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(sbMobileShellDrawerBoundsFrameId);
+        sbMobileShellDrawerBoundsFrameId = 0;
+    }
+    if (sbMobileShellDrawerBoundsFollowupId) {
+        window.clearTimeout(sbMobileShellDrawerBoundsFollowupId);
+        sbMobileShellDrawerBoundsFollowupId = 0;
+    }
+
     const sync = () => {
+        sbMobileShellDrawerBoundsFrameId = 0;
         syncShellViewportBounds();
         syncMobileShellDrawerBounds();
     };
 
     if (schedule.useAnimationFrame) {
-        window.requestAnimationFrame(sync);
+        sbMobileShellDrawerBoundsFrameId = window.requestAnimationFrame(sync);
     } else {
         sync();
     }
 
-    window.setTimeout(sync, schedule.followupDelayMs);
+    sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {
+        sbMobileShellDrawerBoundsFollowupId = 0;
+        sync();
+    }, schedule.followupDelayMs);
 }
 
 function isMovingUIActive() {
@@ -6813,6 +6844,7 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     const panel = getCharacterPanel();
     const normalizedView = view === 'groups' ? 'groups' : 'characters';
     sbState.characterDrawer.lastTab = normalizedView;
@@ -6851,6 +6883,7 @@ function showCharacterEditorEmptyState() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterEditorEmptyState(true);
 
@@ -6904,7 +6937,7 @@ function syncCharacterTitlebarVisibility() {
         return;
     }
 
-    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import'].includes(panel.dataset.menuType ?? '');
+    const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import', 'conversation'].includes(panel.dataset.menuType ?? '');
     pinAndTabs.style.display = shouldHide ? 'none' : '';
     syncCharacterEditorFullscreenAvailability();
 }
@@ -6990,6 +7023,15 @@ function setCharacterWorldInfoPanelVisible(visible) {
 
     if (content instanceof HTMLElement) {
         content.setAttribute('aria-hidden', String(!visible));
+    }
+}
+
+function setCharacterConversationPanelVisible(visible) {
+    const host = document.getElementById('sb_character_conversation_panel');
+
+    if (host instanceof HTMLElement) {
+        host.hidden = !visible;
+        host.setAttribute('aria-hidden', String(!visible));
     }
 }
 
@@ -7267,6 +7309,7 @@ function openCharacterWorldInfoTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterWorldInfoPanelVisible(true);
     hideCharacterMainPanels();
@@ -7286,6 +7329,7 @@ function openCharacterPersonaTab() {
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterPersonaPanelVisible(true);
     hideCharacterMainPanels();
@@ -7302,6 +7346,7 @@ function openCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
@@ -7320,6 +7365,7 @@ function preserveCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
@@ -7327,9 +7373,19 @@ function preserveCharacterImportTab() {
     syncCharacterTitlebarVisibility();
 }
 
+function openCharacterConversationTab() {
+    if (sbState.characterDrawer.lastTab === 'conversation') {
+        sbState.characterDrawer.lastTab = 'characters';
+    }
+    window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
+    closeCharacterPanel();
+}
+
 function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
-    sbState.characterDrawer.lastTab = normalizedTabId;
+    if (normalizedTabId !== 'conversation') {
+        sbState.characterDrawer.lastTab = normalizedTabId;
+    }
 
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
@@ -7365,6 +7421,9 @@ function openCharacterPanelTab(tabId) {
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
+        } else if (normalizedTabId === 'conversation') {
+            setCharacterPanelMenuType(panel, 'conversation');
+            openCharacterConversationTab();
         } else {
             setCharacterPanelMenuType(panel, 'characters');
             void showCharacterListView();
@@ -7400,6 +7459,7 @@ async function openCharacterEditorTab() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
 
     if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
@@ -7422,9 +7482,13 @@ function syncCharacterShellTabs(activeTab = null) {
                     ? 'world-info'
                     : menuType === 'groups'
                         ? 'groups'
-                        : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
+                        : menuType === 'conversation'
+                            ? 'conversation'
+                            : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
-    sbState.characterDrawer.lastTab = normalizedTab;
+    if (normalizedTab !== 'conversation') {
+        sbState.characterDrawer.lastTab = normalizedTab;
+    }
 
     if (menuType === 'characters' || menuType === 'groups') {
         syncCharacterListControls(menuType);
@@ -7546,6 +7610,7 @@ function resetCharacterPanelView() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
+    setCharacterConversationPanelVisible(false);
 
     if (listButton instanceof HTMLElement) {
         listButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -7630,6 +7695,7 @@ function bindCharacterDrawerStateObserver() {
             setCharacterPersonaPanelVisible(panel.dataset.menuType === 'persona');
             setCharacterImportPanelVisible(panel.dataset.menuType === 'import');
             setCharacterWorldInfoPanelVisible(panel.dataset.menuType === 'world-info');
+            setCharacterConversationPanelVisible(panel.dataset.menuType === 'conversation');
             syncCharacterEditorFullscreenAvailability();
             syncCharacterTitlebarVisibility();
             syncCharacterShellTabs();
@@ -7953,6 +8019,7 @@ function bindLandingPageObserver() {
 }
 
 async function returnToLandingPage() {
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
     closeShell('left');
     closeShell('right');
     closeCharacterPanel();
@@ -14076,6 +14143,12 @@ function injectCharacterDrawerControls() {
         groupsTab.addEventListener('click', () => { void showCharacterListView('groups'); });
     }
 
+    const conversationTab = document.getElementById('sb_character_tab_conversation');
+    if (conversationTab instanceof HTMLButtonElement && conversationTab.dataset.sbBound !== 'true') {
+        conversationTab.dataset.sbBound = 'true';
+        conversationTab.addEventListener('click', () => openCharacterConversationTab());
+    }
+
     const editorTab = document.getElementById('sb_character_tab_editor');
     if (editorTab instanceof HTMLButtonElement && editorTab.dataset.sbBound !== 'true') {
         editorTab.dataset.sbBound = 'true';
@@ -14438,6 +14511,24 @@ function syncMobileViewportState() {
 
         handler();
     }
+}
+
+let sbMobileViewportStateFrameId = 0;
+
+function queueMobileViewportStateSync() {
+    if (sbMobileViewportStateFrameId) {
+        return;
+    }
+
+    if (typeof window.requestAnimationFrame !== 'function') {
+        syncMobileViewportState();
+        return;
+    }
+
+    sbMobileViewportStateFrameId = window.requestAnimationFrame(() => {
+        sbMobileViewportStateFrameId = 0;
+        syncMobileViewportState();
+    });
 }
 
 function reinitSelect2AfterShell() {
@@ -15417,12 +15508,10 @@ function initAll() {
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
-    window.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.addEventListener('orientationchange', syncMobileViewportState);
-    window.visualViewport?.addEventListener('resize', syncMobileViewportState, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncMobileViewportState, { passive: true });
+    window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
+    window.addEventListener('orientationchange', queueMobileViewportStateSync);
+    window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).

@@ -21,6 +21,7 @@ import {
     AGENT_CATEGORIES,
     AGENT_SUBCATEGORIES,
     DEFAULT_AGENT_MAX_TOKENS,
+    MAX_AGENT_MAX_TOKENS,
     getGlobalSettings,
     initializeScopedAgentEnableState,
     isAgentEnabledForCurrentScope,
@@ -4021,7 +4022,7 @@ function buildCompanionFallbackKit({ agentName, description, currentPrompt, goal
                 historyDepth: 2,
                 feedback: { enabled: false, depth: 1 },
                 batch: false,
-                maxTokens: 32000,
+                maxTokens: MAX_AGENT_MAX_TOKENS,
             },
         }),
         usedFallback: true,
@@ -4057,7 +4058,7 @@ The JSON shape must be:
     "historyDepth": 2,
     "feedback": { "enabled": false, "depth": 1 },
     "batch": false,
-    "maxTokens": 32000
+    "maxTokens": 64000
   }
 }
 
@@ -4067,7 +4068,7 @@ Requirements:
 - Prefer concise markdown unless the user specifically needs HTML or plain text.
 - Use trigger "manual" for occasional diagnostics and "auto" for notes that should run after most replies.
 - Use displayMode "hidden" only when the note is mainly for feedback into future generations.
-- Keep maxTokens between 512 and 32000. Use 32000 by default unless the user asks for a smaller, cheaper companion.`;
+- Keep maxTokens between 512 and 64000. Use 64000 by default unless the user asks for a smaller, cheaper companion.`;
 
     const userPrompt = [
         `Agent name: ${agentName || '(blank)'}`,

@@ -31,7 +31,6 @@ import {
     default_avatar,
     clearChat,
     Generate,
-    generateRaw,
     select_rm_info,
     setCharacterId,
     setCharacterName,
@@ -57,7 +56,6 @@ import {
     displayPastChats,
     sendMessageAsUser,
     getBiasStrings,
-    saveChatConditional,
     flushPendingChatSavesForNavigation,
     deactivateSendButtons,
     activateSendButtons,
@@ -77,9 +75,6 @@ import {
     animation_duration,
     depth_prompt_role_default,
     shouldAutoContinue,
-    setGenerationChatFilter,
-    setPendingGeneratedMessageExtra,
-    setPendingUserMessageExtra,
     unshallowCharacter,
     chatElement,
     ensureMessageMediaIsArray,
@@ -99,7 +94,6 @@ import { chat_completion_sources, oai_settings } from './openai.js';
 export {
     selected_group,
     openGroupId,
-    is_group_automode_enabled,
     hideMutedSprites,
     is_group_generating,
     group_generation_id,
@@ -118,8 +112,6 @@ export {
 };
 
 let is_group_generating = false; // Group generation flag
-let is_group_automode_enabled = false;
-let isGroupScheduleGenerating = false;
 let hideMutedSprites = false;
 /** @type {Group[]} */
 let groups = [];
@@ -133,14 +125,7 @@ let groupChatSaveQueue = Promise.resolve();
 const queuedGroupChatIntegrityByFile = new Map();
 
 const GROUP_MEMBER_MODELS_KEY = 'member_models';
-const GROUP_AUTO_MODE_KEY = 'SillyBunny.groupAutoModeEnabled';
-const GROUP_DM_SETTINGS_KEY = 'SillyBunny.groupDmSettings';
-const GROUP_DM_UNREAD_KEY = 'SillyBunny.groupDmUnread';
 const ENTITY_SELECTION_PULSE_CLEANUP_MS = 900;
-const defaultGroupDmSettings = {
-    autoDmEnabled: false,
-    autoDmMember: '',
-};
 let entitySelectionPulseId = 0;
 
 function pulseSelectedEntityCard(card) {
@@ -179,74 +164,6 @@ function pulseSelectedEntityCard(card) {
     card.addEventListener('animationend', cleanupPulseOnAnimationEnd, { once: true });
     cleanupTimer = window.setTimeout(cleanupPulse, ENTITY_SELECTION_PULSE_CLEANUP_MS);
 }
-
-function getGlobalGroupAutoModeEnabled() {
-    return accountStorage.getItem(GROUP_AUTO_MODE_KEY) === 'true';
-}
-
-function saveGlobalGroupAutoModeEnabled(enabled) {
-    accountStorage.setItem(GROUP_AUTO_MODE_KEY, String(Boolean(enabled)));
-}
-
-function applyGlobalGroupAutoModeSettings() {
-    is_group_automode_enabled = getGlobalGroupAutoModeEnabled();
-}
-
-function getGlobalGroupDmSettings() {
-    try {
-        const stored = JSON.parse(accountStorage.getItem(GROUP_DM_SETTINGS_KEY) || '{}');
-        return { ...defaultGroupDmSettings, ...(stored && typeof stored === 'object' ? stored : {}) };
-    } catch {
-        return { ...defaultGroupDmSettings };
-    }
-}
-
-function saveGlobalGroupDmSettings(settings) {
-    accountStorage.setItem(GROUP_DM_SETTINGS_KEY, JSON.stringify({ ...getGlobalGroupDmSettings(), ...settings }));
-}
-
-function applyGlobalGroupDmSettings() {
-    const settings = getGlobalGroupDmSettings();
-    selectedGroupDmAvatar = String(settings.autoDmMember || '');
-}
-
-function getGroupDmUnreadState() {
-    try {
-        const stored = JSON.parse(accountStorage.getItem(GROUP_DM_UNREAD_KEY) || '{}');
-        return stored && typeof stored === 'object' ? stored : {};
-    } catch {
-        return {};
-    }
-}
-
-function saveGroupDmUnreadState(state) {
-    accountStorage.setItem(GROUP_DM_UNREAD_KEY, JSON.stringify(state || {}));
-}
-
-function getGroupDmUnreadKey(groupId, avatarId) {
-    return `${groupId || ''}:${avatarId || ''}`;
-}
-
-function hasUnreadGroupDm(groupId, avatarId) {
-    return Boolean(getGroupDmUnreadState()[getGroupDmUnreadKey(groupId, avatarId)]);
-}
-
-function setUnreadGroupDm(groupId, avatarId, unread = true) {
-    const key = getGroupDmUnreadKey(groupId, avatarId);
-    if (!key || key === ':') {
-        return;
-    }
-
-    const state = getGroupDmUnreadState();
-    if (unread) {
-        state[key] = Date.now();
-    } else {
-        delete state[key];
-    }
-    saveGroupDmUnreadState(state);
-    updateGroupSpeakerControls();
-}
-
 
 function getGroupMemberModels(group) {
     if (!group || typeof group !== 'object') {
@@ -329,13 +246,8 @@ async function runWithGroupMemberModelOverride(group, avatarId, callback) {
 
 let selectedGroupSpeakerAvatar = '';
 let groupSpeakerControlsInitialized = false;
-let selectedGroupDmAvatar = '';
-let groupDmModeEnabled = false;
-let groupDmModeForced = false;
-let pendingGroupDmUserTarget = '';
 let activeGroupTypingName = '';
 let groupSpeakerAvatarRenderKey = '';
-let groupScheduleCheckInterval = null;
 
 function getCharacterIdByAvatar(avatarId) {
     return characters.findIndex(character => character.avatar === avatarId);
@@ -353,155 +265,6 @@ function getGroupEnabledMembers(group) {
     return group.members.filter(member => !group.disabled_members?.includes(member));
 }
 
-function isGroupDmChatMetadata(metadata = chat_metadata) {
-    return metadata?.type === 'group_dm_chat' && Boolean(metadata?.dm_member);
-}
-
-function getGroupDmParticipants(metadata = chat_metadata) {
-    if (!isGroupDmChatMetadata(metadata)) {
-        return [];
-    }
-
-    return [metadata.dm_member, ...(Array.isArray(metadata.dm_participants) ? metadata.dm_participants : [])]
-        .map(avatar => String(avatar || ''))
-        .filter(Boolean)
-        .filter(onlyUnique);
-}
-
-function isGroupDmParticipant(avatarId, metadata = chat_metadata) {
-    return getGroupDmParticipants(metadata).includes(String(avatarId || ''));
-}
-
-function getGroupDmAllowedMembers(group, metadata = chat_metadata) {
-    const enabledMembers = getGroupEnabledMembers(group);
-    if (!isGroupDmChatMetadata(metadata)) {
-        return enabledMembers;
-    }
-
-    const participants = getGroupDmParticipants(metadata);
-    return enabledMembers.filter(avatar => participants.includes(avatar));
-}
-
-async function inviteGroupDmParticipant(avatarId) {
-    if (!isGroupDmChatMetadata(chat_metadata)) {
-        return false;
-    }
-
-    const avatar = String(avatarId || '');
-    if (!avatar || isGroupDmParticipant(avatar)) {
-        return false;
-    }
-
-    const participants = getGroupDmParticipants(chat_metadata);
-    const nextParticipants = [...participants, avatar].filter(onlyUnique);
-    updateChatMetadata({ ...chat_metadata, dm_participants: nextParticipants }, true);
-    await saveChatConditional();
-    return true;
-}
-
-function applyGroupDmChatMode(metadata = chat_metadata) {
-    if (isGroupDmChatMetadata(metadata)) {
-        const dmMember = String(metadata.dm_member || '');
-        selectedGroupSpeakerAvatar = dmMember;
-        selectedGroupDmAvatar = dmMember;
-        groupDmModeEnabled = true;
-        groupDmModeForced = true;
-        updateGroupSpeakerControls();
-        return;
-    }
-
-    if (groupDmModeForced) {
-        selectedGroupDmAvatar = '';
-        groupDmModeEnabled = false;
-        groupDmModeForced = false;
-        updateGroupSpeakerControls();
-    }
-}
-
-function getGroupDmExtra(fromAvatar, toAvatar) {
-    return {
-        is_group_dm: true,
-        dm_from: fromAvatar || 'user',
-        dm_to: toAvatar || 'user',
-    };
-}
-
-function canGroupMemberSeeMessage(message, speakerAvatar) {
-    if (!message?.extra?.is_group_dm) {
-        return true;
-    }
-
-    if (isGroupDmChatMetadata()) {
-        return isGroupDmParticipant(speakerAvatar);
-    }
-
-    const dmFrom = String(message.extra.dm_from || (message.is_user ? 'user' : message.original_avatar || ''));
-    const dmTo = String(message.extra.dm_to || message.extra.dm_target || '');
-    return dmFrom === speakerAvatar || dmTo === speakerAvatar;
-}
-
-function withGroupPrivateDmFilter(speakerAvatar, callback) {
-    setGenerationChatFilter(message => canGroupMemberSeeMessage(message, speakerAvatar));
-    try {
-        return callback();
-    } finally {
-        setGenerationChatFilter(null);
-    }
-}
-
-async function withGroupPrivateDmMemory(group, speakerAvatar, callback) {
-    const dmMessages = isGroupDmChatMetadata() ? [] : await getGroupDmMemoryMessages(group, speakerAvatar);
-    chat.splice(0, 0, ...dmMessages);
-
-    try {
-        return await withGroupPrivateDmFilter(speakerAvatar, callback);
-    } finally {
-        if (dmMessages.length) {
-            const injected = new Set(dmMessages);
-            for (let index = chat.length - 1; index >= 0; index--) {
-                if (injected.has(chat[index])) {
-                    chat.splice(index, 1);
-                }
-            }
-        }
-    }
-}
-
-async function getGroupDmMemoryMessages(group, speakerAvatar) {
-    const avatar = String(speakerAvatar || '');
-    if (!group || !avatar || !Array.isArray(group.chats)) {
-        return [];
-    }
-
-    const messages = [];
-    for (const chatId of group.chats) {
-        const data = await loadGroupChat(chatId);
-        const metadata = data?.[0]?.chat_metadata;
-        if (!isGroupDmChatMetadata(metadata) || !isGroupDmParticipant(avatar, metadata)) {
-            continue;
-        }
-
-        for (const message of data.slice(1)) {
-            if (!message || message.is_system) {
-                continue;
-            }
-
-            const clone = structuredClone(message);
-            const isUserMessage = Boolean(clone.is_user);
-            clone.extra = {
-                ...(clone.extra || {}),
-                is_group_dm: true,
-                dm_from: clone.extra?.dm_from || (isUserMessage ? 'user' : avatar),
-                dm_to: clone.extra?.dm_to || (isUserMessage ? avatar : 'user'),
-            };
-            clone.title = clone.title || 'Private DM';
-            messages.push(clone);
-        }
-    }
-
-    return messages;
-}
-
 function getSelectedGroupSpeakerChid(group) {
     if (!selectedGroupSpeakerAvatar) {
         return -1;
@@ -515,63 +278,10 @@ function getSelectedGroupSpeakerChid(group) {
     return getCharacterIdByAvatar(selectedGroupSpeakerAvatar);
 }
 
-function getCurrentLocalTimeContext() {
-    const now = new Date();
-    return `${now.toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time'})`;
-}
-
-function buildContextAwareGroupPrompt(group, speakerName, options = {}) {
+function buildContextAwareGroupPrompt(speakerName, options = {}) {
     const targetName = options.targetName || '';
-    const reason = options.reason || '';
-    const isDm = Boolean(options.isDm);
-    const timeText = group?.time_aware ? ` Current local time: ${getCurrentLocalTimeContext()}.` : '';
     const targetText = targetName ? ` The immediate call or message is directed at ${speakerName} by ${targetName}; ${speakerName} should answer ${targetName}.` : '';
-    const reasonText = reason ? ` Reason for this turn: ${reason}.` : '';
-    const dmText = isDm ? ' This is a private DM; write it as a direct private message, not a public group reply.' : '';
-    return `[Group context: write only as ${speakerName}. Pay attention to who addressed whom in the recent chat. If the user calls for ${speakerName}, answer the user. If another character calls for ${speakerName}, answer that character. Characters may also talk to each other naturally when the context calls for it.${targetText}${reasonText}${timeText}${dmText}]`;
-}
-
-function parseGroupSchedule(scheduleText) {
-    return String(scheduleText || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => {
-            const match = line.match(/^(\d{1,2}):(\d{2})\s+([^:–—-]+?)\s*[:–—-]\s*(.+)$/);
-            if (!match) return null;
-            const hour = Math.max(0, Math.min(23, Number(match[1])));
-            const minute = Math.max(0, Math.min(59, Number(match[2])));
-            return {
-                time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-                minutes: hour * 60 + minute,
-                name: match[3].trim(),
-                reason: match[4].trim(),
-            };
-        })
-        .filter(Boolean);
-}
-
-function getCurrentDayKey(date = new Date()) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function getCurrentMinutes(date = new Date()) {
-    return date.getHours() * 60 + date.getMinutes();
-}
-
-function findScheduledCharacterId(group, scheduleItem) {
-    const wanted = scheduleItem.name.toLowerCase();
-    const avatar = getGroupDmAllowedMembers(group).find(member => {
-        const character = characters.find(x => x.avatar === member);
-        return character?.name?.toLowerCase() === wanted;
-    });
-    return avatar ? getCharacterIdByAvatar(avatar) : -1;
-}
-
-async function saveGroupRuntimeState(group) {
-    if (group?.id) {
-        await editGroup(group.id, false, false);
-    }
+    return `[Group context: write only as ${speakerName}. Pay attention to who addressed whom in the recent chat. If the user calls for ${speakerName}, answer the user. If another character calls for ${speakerName}, answer that character. Characters may also talk to each other naturally when the context calls for it.${targetText}]`;
 }
 
 function findDirectlyAddressedMember(group, text) {
@@ -580,7 +290,7 @@ function findDirectlyAddressedMember(group, text) {
         return -1;
     }
 
-    for (const avatar of getGroupDmAllowedMembers(group)) {
+    for (const avatar of getGroupEnabledMembers(group)) {
         const character = characters.find(x => x.avatar === avatar);
         if (!character?.name) continue;
         const escapedName = character.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -595,21 +305,6 @@ function findDirectlyAddressedMember(group, text) {
 
 function isAddressedToEntireGroup(text) {
     return /(^|[^\p{L}\p{N}_])(?:everyone|everybody|you\s+all|y['’]?all|all)([^\p{L}\p{N}_]|$)/iu.test(String(text || ''));
-}
-
-
-function getGroupAutoReplyDepth() {
-    let depth = 0;
-    for (let index = chat.length - 1; index >= 0; index--) {
-        const message = chat[index];
-        if (!message || message.is_user || message.is_system) {
-            break;
-        }
-
-        depth++;
-    }
-
-    return depth;
 }
 
 
@@ -629,180 +324,6 @@ function limitGroupSpeakersForControl(activatedMembers, forceSingleSpeaker) {
     }
 
     return activatedMembers.slice(0, 1);
-}
-
-function getGroupDmThreadStartIndex(participantAvatar) {
-    for (let index = chat.length - 1; index >= 0; index--) {
-        const message = chat[index];
-        if (!message?.extra?.is_group_dm || message.extra?.type === 'group_dm_consolidation') {
-            return index + 1;
-        }
-
-        if (!canGroupMemberSeeMessage(message, participantAvatar)) {
-            return index + 1;
-        }
-    }
-
-    return 0;
-}
-
-function getGroupDmThreadMessages(participantAvatar, startIndex = getGroupDmThreadStartIndex(participantAvatar)) {
-    return chat.slice(startIndex).filter(message => message?.extra?.is_group_dm && message.extra?.type !== 'group_dm_consolidation' && canGroupMemberSeeMessage(message, participantAvatar) && String(message.mes ?? '').trim());
-}
-
-function removeGroupDmThreadMessages(participantAvatar, startIndex) {
-    for (let index = chat.length - 1; index >= startIndex; index--) {
-        const message = chat[index];
-        if (message?.extra?.is_group_dm && canGroupMemberSeeMessage(message, participantAvatar)) {
-            chat.splice(index, 1);
-        }
-    }
-}
-
-function getGroupDmChatName(group, character) {
-    const safeGroupName = String(group?.name || 'Group').replace(/[/:*?"<>|]/g, '-');
-    const safeCharacterName = String(character?.name || 'Character').replace(/[/:*?"<>|]/g, '-');
-    return `DM - ${safeGroupName} - ${safeCharacterName}`;
-}
-
-async function returnToMainGroupChat() {
-    const group = selected_group ? groups.find(x => x.id === selected_group) : null;
-    const mainGroupChatId = String(chat_metadata.main_group_chat_id || '');
-
-    if (!group) {
-        return;
-    }
-
-    if (mainGroupChatId && group.chats.includes(mainGroupChatId)) {
-        await openGroupChat(group.id, mainGroupChatId);
-        return;
-    }
-
-    const fallbackChatId = group.chats.find(chatId => chatId !== group.chat_id && !String(chatId).startsWith('DM - '));
-    if (fallbackChatId) {
-        await openGroupChat(group.id, fallbackChatId);
-        return;
-    }
-
-    await createNewGroupChat(group.id);
-}
-
-async function saveGroupChatData(chatId, data, force = true) {
-    const saveChatRequest = await compressRequest({
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: data, force }),
-    });
-    return fetch('/api/chats/group/save', saveChatRequest);
-}
-
-async function updateGroupDmReturnTarget(chatId, mainGroupChatId) {
-    if (!chatId || !mainGroupChatId || chatId === mainGroupChatId) {
-        return;
-    }
-
-    const data = await loadGroupChat(chatId);
-    if (!Array.isArray(data) || !data.length || !Object.hasOwn(data[0], 'chat_metadata')) {
-        return;
-    }
-
-    const header = { ...data[0], chat_metadata: { ...(data[0].chat_metadata || {}), main_group_chat_id: mainGroupChatId } };
-    const response = await saveGroupChatData(chatId, [header, ...data.slice(1)], true);
-
-    if (!response.ok) {
-        console.warn('Could not update DM chat return target', chatId, response);
-    }
-}
-
-async function ensureGroupDmChat(group, character, mainGroupChatId, initialMessages = []) {
-    if (!group || !character) {
-        return '';
-    }
-
-    const dmChatName = getGroupDmChatName(group, character);
-    if (!group.chats.includes(dmChatName)) {
-        const dmChatData = initialMessages.map(message => ({
-            ...structuredClone(message),
-            extra: { ...(message.extra || {}), is_group_dm: true },
-        }));
-        const saved = await saveGroupBookmarkChat(group.id, dmChatName, {
-            type: 'group_dm_chat',
-            dm_member: character.avatar,
-            main_group_chat_id: mainGroupChatId || group.chat_id,
-            tainted: true,
-            dm_participants: [character.avatar],
-        }, undefined, dmChatData, { throwOnError: false });
-
-        if (!saved) {
-            return '';
-        }
-    } else {
-        await updateGroupDmReturnTarget(dmChatName, mainGroupChatId || group.chat_id);
-    }
-
-    return dmChatName;
-}
-
-async function appendMessageToGroupDmChat(group, character, message, mainGroupChatId) {
-    const dmChatName = await ensureGroupDmChat(group, character, mainGroupChatId);
-    if (!dmChatName) {
-        return false;
-    }
-
-    const data = await loadGroupChat(dmChatName);
-    if (!Array.isArray(data) || !data.length || !Object.hasOwn(data[0], 'chat_metadata')) {
-        return false;
-    }
-
-    const dmMessage = {
-        ...structuredClone(message),
-        extra: { ...(message.extra || {}), ...getGroupDmExtra(character.avatar, 'user') },
-        title: message.title || 'Private DM',
-    };
-    const response = await saveGroupChatData(dmChatName, [data[0], ...data.slice(1), dmMessage], true);
-    return response.ok;
-}
-
-async function openGroupDmChatForAvatar(avatarId) {
-    const group = selected_group ? groups.find(x => x.id === selected_group) : null;
-    const targetAvatar = String(avatarId || '');
-    if (!group || !targetAvatar) {
-        toastr.warning(t`Pick a group member first.`);
-        return false;
-    }
-
-    const character = characters.find(x => x.avatar === targetAvatar);
-    if (!character) {
-        return false;
-    }
-
-    const previousGroupChatId = isGroupDmChatMetadata() ? String(chat_metadata.main_group_chat_id || '') : group.chat_id;
-    const startIndex = getGroupDmThreadStartIndex(targetAvatar);
-    const dmMessages = group.chats.includes(getGroupDmChatName(group, character)) ? [] : getGroupDmThreadMessages(targetAvatar, startIndex);
-    const dmChatName = await ensureGroupDmChat(group, character, previousGroupChatId, dmMessages);
-    if (!dmChatName) {
-        return false;
-    }
-
-    if (dmMessages.length) {
-        removeGroupDmThreadMessages(targetAvatar, startIndex);
-        await printMessages();
-        await saveChatConditional();
-    }
-
-    setUnreadGroupDm(group.id, character.avatar, false);
-
-    selectedGroupSpeakerAvatar = character.avatar;
-    selectedGroupDmAvatar = character.avatar;
-    groupDmModeEnabled = true;
-    groupDmModeForced = true;
-    updateGroupSpeakerControls();
-    await openGroupChat(group.id, dmChatName);
-    return true;
-}
-
-async function openSelectedGroupDmChat() {
-    return openGroupDmChatForAvatar(selectedGroupSpeakerAvatar);
 }
 
 function setGroupTypingIndicator(characterName = '') {
@@ -838,11 +359,9 @@ function updateGroupSpeakerControls() {
         return;
     }
 
-    const unreadState = getGroupDmUnreadState();
     const avatarRenderKey = JSON.stringify({
         groupId: group.id,
         members,
-        unread: members.map(avatarId => Boolean(unreadState[getGroupDmUnreadKey(group.id, avatarId)])),
     });
     if (avatarRenderKey !== groupSpeakerAvatarRenderKey) {
         groupSpeakerAvatarRenderKey = avatarRenderKey;
@@ -856,19 +375,13 @@ function updateGroupSpeakerControls() {
             const item = $('<button type="button" class="group_speaker_avatar"></button>');
             item.attr('title', `${character.name}: speak next / now`);
             item.attr('data-avatar', avatarId);
-            const hasUnreadDm = Boolean(unreadState[getGroupDmUnreadKey(group.id, avatarId)]);
             item.toggleClass('selected', avatarId === selectedGroupSpeakerAvatar);
-            item.toggleClass('has-unread-dm', hasUnreadDm);
             item.append($('<img alt="">').attr({
                 src: getThumbnailUrl('avatar', avatarId),
                 loading: 'lazy',
                 decoding: 'async',
             }));
             item.append($('<span></span>').text(character.name));
-            if (hasUnreadDm) {
-                item.attr('title', `${character.name}: unread DM — tap to open`);
-                item.append($('<i class="group-dm-unread-dot" aria-label="Unread DM"></i>'));
-            }
             avatarList.append(item);
         }
     }
@@ -877,22 +390,6 @@ function updateGroupSpeakerControls() {
         const avatarId = String($(this).data('avatar') || '');
         $(this).toggleClass('selected', avatarId === selectedGroupSpeakerAvatar);
     });
-
-    if (selectedGroupDmAvatar && !members.includes(selectedGroupDmAvatar)) {
-        selectedGroupDmAvatar = '';
-    }
-
-    const autoDmEnabled = Boolean(getGlobalGroupDmSettings().autoDmEnabled);
-    container.find('#group_speaker_auto_dm')
-        .toggleClass('selected', autoDmEnabled)
-        .attr('aria-pressed', String(autoDmEnabled));
-    container.find('#group_speaker_dm_now').toggleClass('selected', groupDmModeEnabled);
-
-    const dmChatButton = container.find('#group_speaker_dm_consolidate');
-    const inDmChat = isGroupDmChatMetadata();
-    dmChatButton.attr('title', inDmChat ? t`Return to the main group chat` : t`Open a separate private DM chat with the selected character`);
-    dmChatButton.find('i').attr('class', inDmChat ? 'fa-solid fa-arrow-left' : 'fa-solid fa-envelope-open-text');
-    dmChatButton.find('span').text(inDmChat ? t`Return to Group` : t`DM Chat`);
 }
 
 function initGroupSpeakerControls() {
@@ -901,43 +398,17 @@ function initGroupSpeakerControls() {
     }
 
     groupSpeakerControlsInitialized = true;
-    applyGlobalGroupDmSettings();
     const container = $('#group_speaker_controls');
     container.on('click', '.group_speaker_avatar', async function (event) {
         const avatarId = String($(this).data('avatar') || '');
-        if (selected_group && hasUnreadGroupDm(selected_group, avatarId) && !event.shiftKey) {
-            event.preventDefault();
-            event.stopPropagation();
-            await openGroupDmChatForAvatar(avatarId);
-            return;
-        }
-
-        if (groupDmModeForced && avatarId && !isGroupDmParticipant(avatarId) && !event.shiftKey) {
-            selectedGroupSpeakerAvatar = avatarId;
-            updateGroupSpeakerControls();
-            return;
-        }
-
         const alreadySelected = selectedGroupSpeakerAvatar === avatarId;
-        selectedGroupSpeakerAvatar = groupDmModeForced && alreadySelected ? selectedGroupSpeakerAvatar : (alreadySelected ? '' : avatarId);
-        if (groupDmModeForced && avatarId && !isGroupDmParticipant(avatarId)) {
-            void inviteGroupDmParticipant(avatarId).then(invited => {
-                if (invited) {
-                    toastr.success(t`Added participant to this DM chat.`);
-                }
-                updateGroupSpeakerControls();
-            });
-        }
+        selectedGroupSpeakerAvatar = alreadySelected ? '' : avatarId;
         updateGroupSpeakerControls();
 
         if (event.shiftKey && selected_group) {
             const chid = getCharacterIdByAvatar(avatarId);
             if (chid !== -1) {
-                if (groupDmModeForced && !isGroupDmParticipant(avatarId)) {
-                    void inviteGroupDmParticipant(avatarId).then(() => Generate('normal', { force_chid: chid }));
-                } else {
-                    Generate('normal', { force_chid: chid });
-                }
+                Generate('normal', { force_chid: chid });
             }
         }
     });
@@ -948,58 +419,10 @@ function initGroupSpeakerControls() {
             return;
         }
 
-        if (groupDmModeForced && selectedGroupSpeakerAvatar && !isGroupDmParticipant(selectedGroupSpeakerAvatar)) {
-            await inviteGroupDmParticipant(selectedGroupSpeakerAvatar);
-        }
-
         const chid = getCharacterIdByAvatar(selectedGroupSpeakerAvatar);
         if (chid !== -1) {
             Generate('normal', { force_chid: chid });
         }
-    });
-
-    container.on('click', '#group_speaker_dm_consolidate', async function () {
-        if (isGroupDmChatMetadata()) {
-            await returnToMainGroupChat();
-            return;
-        }
-
-        await openSelectedGroupDmChat();
-    });
-
-    container.on('click', '#group_speaker_dm_now', function () {
-        const group = selected_group ? groups.find(x => x.id === selected_group) : null;
-        if (!group) {
-            return;
-        }
-
-        if (groupDmModeForced) {
-            groupDmModeEnabled = true;
-            selectedGroupDmAvatar = selectedGroupSpeakerAvatar || selectedGroupDmAvatar;
-            updateGroupSpeakerControls();
-            toastr.info(t`DM is locked on for this DM chat.`);
-            return;
-        }
-
-        if (!groupDmModeEnabled && !selectedGroupSpeakerAvatar) {
-            toastr.warning(t`Pick a group member first.`);
-            return;
-        }
-
-        groupDmModeEnabled = !groupDmModeEnabled;
-        selectedGroupDmAvatar = groupDmModeEnabled ? selectedGroupSpeakerAvatar : '';
-        updateGroupSpeakerControls();
-    });
-
-    container.on('click', '#group_speaker_auto_dm', async function () {
-        const group = selected_group ? groups.find(x => x.id === selected_group) : null;
-        if (!group) {
-            return;
-        }
-
-        const enabled = !getGlobalGroupDmSettings().autoDmEnabled;
-        saveGlobalGroupDmSettings({ autoDmEnabled: enabled, autoDmMember: '' });
-        updateGroupSpeakerControls();
     });
 }
 
@@ -1016,50 +439,11 @@ export const group_generation_mode = {
     APPEND_DISABLED: 2,
 };
 
-export const DEFAULT_AUTO_MODE_DELAY = 120;
-export const DEFAULT_AUTO_DM_COOLDOWN = 300;
-
 export const groupCandidatesFilter = new FilterHelper(debounce(printGroupCandidates, debounce_timeout.quick));
 export const groupMembersFilter = new FilterHelper(debounce(printGroupMembers, debounce_timeout.quick));
-let autoModeWorker = null;
 const saveGroupDebounced = debounce(async (group, reload) => await _save(group, reload), debounce_timeout.relaxed);
 /** @type {Map<string, number>} */
 let groupChatQueueOrder = new Map();
-
-function setAutoModeWorker() {
-    clearInterval(autoModeWorker);
-    clearInterval(groupScheduleCheckInterval);
-    const autoModeDelay = groups.find(x => x.id === selected_group)?.auto_mode_delay ?? DEFAULT_AUTO_MODE_DELAY;
-    autoModeWorker = setInterval(groupChatAutoModeWorker, autoModeDelay * 1000);
-    groupScheduleCheckInterval = setInterval(groupScheduleAutoMessageWorker, 60 * 1000);
-}
-
-function syncGroupAutoModeToggle() {
-    applyGlobalGroupAutoModeSettings();
-    $('#rm_group_automode').prop('checked', is_group_automode_enabled);
-    setAutoModeWorker();
-}
-
-function hasUserDraftInChatBox() {
-    return String($('#send_textarea').val() || '').trim().length > 0;
-}
-
-function shouldGroupDmWaitForUserTurn() {
-    if (!isGroupDmChatMetadata()) {
-        return false;
-    }
-
-    for (let index = chat.length - 1; index >= 0; index--) {
-        const message = chat[index];
-        if (!message || message.is_system) {
-            continue;
-        }
-
-        return !message.is_user;
-    }
-
-    return true;
-}
 
 /**
  * Saves a group to the server.
@@ -1297,7 +681,6 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     }
 
     updateChatMetadata(metadata, true);
-    applyGroupDmChatMode(metadata);
 
     if (reload && switchMenu) {
         select_group_chats(groupId, true);
@@ -1797,11 +1180,6 @@ async function getGroups() {
             if (group.disabled_members == undefined) {
                 group.disabled_members = [];
             }
-            group.time_aware = Boolean(group.time_aware);
-            group.auto_message_enabled = Boolean(group.auto_message_enabled);
-            group.auto_dm_cooldown = Number(group.auto_dm_cooldown) || DEFAULT_AUTO_DM_COOLDOWN;
-            group.ai_schedule = String(group.ai_schedule || '');
-            group.auto_schedule_state = group.auto_schedule_state && typeof group.auto_schedule_state === 'object' ? group.auto_schedule_state : {};
             if (group.chat_id == undefined) {
                 group.chat_id = group.id;
                 group.chats = [group.id];
@@ -1974,7 +1352,7 @@ function getGroupChatNames(groupId) {
 
 /**
  * Generates text for the group chat by queueing members according to the activation strategy.
- * @param {boolean} byAutoMode If the generation was triggered by the auto mode.
+ * @param {boolean} byAutoMode If the generation was triggered programmatically.
  * @param {string?} type Generation type
  * @param {object} params Additional Generate parameters
  * @returns {Promise<string|void>} Generated text or nothing if no generation occurred
@@ -2019,16 +1397,6 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         setCharacterName('');
         setCharacterId(undefined);
         const userInput = String($('#send_textarea').val());
-        const manualDmTarget = groupDmModeEnabled ? selectedGroupSpeakerAvatar : '';
-        const isToggledDm = !byAutoMode && [null, undefined, 'normal'].includes(type) && Boolean(manualDmTarget);
-        if (isToggledDm) {
-            type = 'dm';
-            params = { ...(params || {}), force_chid: getCharacterIdByAvatar(manualDmTarget) };
-            pendingGroupDmUserTarget = manualDmTarget;
-            setPendingUserMessageExtra(getGroupDmExtra('user', manualDmTarget));
-        } else {
-            pendingGroupDmUserTarget = '';
-        }
 
         // id of this specific batch for regeneration purposes
         group_generation_id = Date.now();
@@ -2046,26 +1414,21 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         }
 
         const activationStrategy = Number(group.activation_strategy ?? group_activation_strategy.NATURAL);
-        const enabledMembers = getGroupDmAllowedMembers(group);
+        const enabledMembers = getGroupEnabledMembers(group);
         let activatedMembers = [];
 
         const selectedSpeakerChid = getSelectedGroupSpeakerChid(group);
         const addressedMemberChid = findDirectlyAddressedMember(group, activationText);
         const isWholeGroupAddress = isAddressedToEntireGroup(activationText);
-        const autoReplyDepth = byAutoMode && !isUserInput ? getGroupAutoReplyDepth() : 0;
         if (params && Array.isArray(params.force_chids)) {
             activatedMembers = params.force_chids;
         } else if (params && typeof params.force_chid == 'number') {
             activatedMembers = [params.force_chid];
         } else if (type !== 'quiet' && isWholeGroupAddress && isUserInput) {
             activatedMembers = enabledMembers.map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
-        } else if (byAutoMode && type !== 'quiet' && addressedMemberChid !== -1 && autoReplyDepth < 3) {
+        } else if (type !== 'quiet' && addressedMemberChid !== -1) {
             activatedMembers = [addressedMemberChid];
-        } else if (byAutoMode && type !== 'quiet' && autoReplyDepth >= 3) {
-            activatedMembers = [];
-        } else if (!byAutoMode && type !== 'quiet' && addressedMemberChid !== -1) {
-            activatedMembers = [addressedMemberChid];
-        } else if (!byAutoMode && type !== 'quiet' && selectedSpeakerChid !== -1) {
+        } else if (type !== 'quiet' && selectedSpeakerChid !== -1) {
             activatedMembers = [selectedSpeakerChid];
         } else if (type === 'quiet') {
             activatedMembers = activateSwipe(enabledMembers, { allowSystem: true }).slice(0, 1);
@@ -2092,12 +1455,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             activatedMembers = shuffle(enabledMembers).slice(0, 1).map(x => characters.findIndex(y => y.avatar === x)).filter(x => x !== -1);
         }
 
-        if (isGroupDmChatMetadata()) {
-            const allowedMemberSet = new Set(enabledMembers);
-            activatedMembers = activatedMembers.filter(chid => allowedMemberSet.has(characters[chid]?.avatar));
-        }
-
-        const canUseMultiSpeakerTurn = byAutoMode || (params && Array.isArray(params.force_chids)) || (isWholeGroupAddress && isUserInput);
+        const canUseMultiSpeakerTurn = (params && Array.isArray(params.force_chids)) || (isWholeGroupAddress && isUserInput);
         const shouldForceSingleSpeaker = !canUseMultiSpeakerTurn && !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
         activatedMembers = limitGroupSpeakersForControl(activatedMembers, shouldForceSingleSpeaker);
         const shouldRenderUserMessage = Boolean(userInput) && !byAutoMode && !['quiet', 'swipe', 'continue', 'impersonate'].includes(type);
@@ -2146,43 +1504,23 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
 
             // Wait for generation to finish
             const generateType = ['swipe', 'impersonate', 'quiet', 'continue'].includes(type) ? type : 'normal';
-            const contextPrompt = buildContextAwareGroupPrompt(group, characters[chId]?.name || 'the selected speaker', {
+            const contextPrompt = buildContextAwareGroupPrompt(characters[chId]?.name || 'the selected speaker', {
                 targetName: addressedMemberChid === chId ? getMessageSpeakerName(lastMessage) : '',
-                isDm: type === 'dm' || isGroupDmChatMetadata(),
             });
             const mergedParams = { ...(params || {}) };
             mergedParams.quiet_prompt = [mergedParams.quiet_prompt, contextPrompt].filter(Boolean).join('\n');
             mergedParams.quietToLoud = true;
             mergedParams.suppressUserMessage = didRenderUserMessage || mergedParams.suppressUserMessage;
-            if (type === 'dm' || isGroupDmChatMetadata()) {
-                setPendingGeneratedMessageExtra(getGroupDmExtra(characters[chId]?.avatar, 'user'));
-            }
-            textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => withGroupPrivateDmMemory(group, characters[chId]?.avatar, () => Generate(generateType, { automatic_trigger: byAutoMode, ...mergedParams })));
+            textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => Generate(generateType, { automatic_trigger: byAutoMode, ...mergedParams }));
             let messageChunk = textResult?.messageChunk;
 
             if (messageChunk) {
                 while (shouldAutoContinue(messageChunk, type === 'impersonate')) {
-                    textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => withGroupPrivateDmMemory(group, characters[chId]?.avatar, () => Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams })));
+                    textResult = await runWithGroupMemberModelOverride(group, characters[chId]?.avatar, () => Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams }));
                     messageChunk = textResult?.messageChunk;
                 }
             }
 
-            if (type === 'dm' || isGroupDmChatMetadata()) {
-                const dmMessage = chat[chat.length - 1];
-                if (dmMessage && !dmMessage.is_user && !dmMessage.is_system) {
-                    dmMessage.extra = { ...(dmMessage.extra || {}), ...getGroupDmExtra(characters[chId]?.avatar, 'user') };
-                    dmMessage.title = dmMessage.title || 'Private DM';
-                    if (byAutoMode && type === 'dm' && !isGroupDmChatMetadata()) {
-                        const dmSaved = await appendMessageToGroupDmChat(group, characters[chId], dmMessage, group.chat_id);
-                        if (dmSaved) {
-                            chat.pop();
-                            await printMessages();
-                            await saveChatConditional();
-                            setUnreadGroupDm(group.id, characters[chId]?.avatar, true);
-                        }
-                    }
-                }
-            }
             if (power_user.show_group_chat_queue) {
                 groupChatQueueOrder.delete(characters[chId].avatar);
                 groupChatQueueOrder.forEach((value, key, map) => map.set(key, value - 1));
@@ -2190,18 +1528,10 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             setGroupTypingIndicator('');
         }
 
-        if (type === 'dm' && pendingGroupDmUserTarget) {
-            pendingGroupDmUserTarget = '';
-            updateGroupSpeakerControls();
-        }
-
         if (selectedSpeakerChid !== -1 && !(params && typeof params.force_chid == 'number')) {
             clearSelectedGroupSpeaker();
         }
     } finally {
-        setGenerationChatFilter(null);
-        setPendingGeneratedMessageExtra(null);
-        setPendingUserMessageExtra(null);
         setGroupTypingIndicator('');
         is_group_generating = false;
         setSendButtonState(false);
@@ -2521,150 +1851,6 @@ export async function unshallowGroupMembers(groupId) {
     }
 }
 
-let groupAutoModeAbortController = null;
-
-async function groupChatAutoModeWorker() {
-    if (!is_group_automode_enabled || online_status === 'no_connection') {
-        return;
-    }
-
-    if (!selected_group || is_send_press || is_group_generating || hasUserDraftInChatBox() || shouldGroupDmWaitForUserTurn()) {
-        return;
-    }
-
-    const group = groups.find((x) => x.id === selected_group);
-
-    if (!group || !Array.isArray(group.members) || !group.members.length) {
-        return;
-    }
-
-    const allowedMembers = getGroupDmAllowedMembers(group);
-    if (!allowedMembers.length) {
-        return;
-    }
-
-    groupAutoModeAbortController = new AbortController();
-    await generateGroupWrapper(true, 'auto', { signal: groupAutoModeAbortController.signal, quiet_prompt: buildContextAwareGroupPrompt(group, 'the next speaker', { reason: 'automatic group conversation', isDm: isGroupDmChatMetadata() }), quietToLoud: true });
-}
-
-async function triggerImmediateMentionedGroupReply(messageId) {
-    if (!is_group_automode_enabled || online_status === 'no_connection' || is_send_press || hasUserDraftInChatBox() || isGroupDmChatMetadata() || !selected_group) {
-        return;
-    }
-
-    const message = chat[messageId];
-    const group = groups.find((x) => x.id === selected_group);
-    if (!group || !message || message.is_user || message.is_system) {
-        return;
-    }
-
-    const addressedMemberChid = findDirectlyAddressedMember(group, message.mes);
-    if (addressedMemberChid === -1 || characters[addressedMemberChid]?.avatar === message.original_avatar) {
-        return;
-    }
-
-    if (is_group_generating) {
-        await waitUntilCondition(() => !is_group_generating, debounce_timeout.extended, 20);
-    }
-
-    if (!is_group_automode_enabled || online_status === 'no_connection' || is_send_press || is_group_generating || getGroupAutoReplyDepth() >= 3) {
-        return;
-    }
-
-    groupAutoModeAbortController = new AbortController();
-    await generateGroupWrapper(true, 'auto', {
-        signal: groupAutoModeAbortController.signal,
-        force_chid: addressedMemberChid,
-        quiet_prompt: buildContextAwareGroupPrompt(group, characters[addressedMemberChid]?.name || 'the mentioned speaker', { targetName: getMessageSpeakerName(message), isDm: isGroupDmChatMetadata() }),
-        quietToLoud: true,
-    });
-}
-
-async function triggerImmediateWholeGroupReply(messageId) {
-    if (!is_group_automode_enabled || online_status === 'no_connection' || is_send_press || hasUserDraftInChatBox() || is_group_generating || !selected_group) {
-        return;
-    }
-
-    const message = chat[messageId];
-    const group = groups.find((x) => x.id === selected_group);
-    if (!group || !message?.is_user || message.is_system || !isAddressedToEntireGroup(message.mes)) {
-        return;
-    }
-
-    const forceChids = getGroupDmAllowedMembers(group).map(avatar => getCharacterIdByAvatar(avatar)).filter(chid => chid !== -1);
-    if (!forceChids.length) {
-        return;
-    }
-
-    groupAutoModeAbortController = new AbortController();
-    await generateGroupWrapper(true, 'auto', {
-        signal: groupAutoModeAbortController.signal,
-        force_chids: forceChids,
-        quiet_prompt: buildContextAwareGroupPrompt(group, 'everyone in the DM', { targetName: 'the user', isDm: isGroupDmChatMetadata() }),
-        quietToLoud: true,
-    });
-}
-
-async function groupScheduleAutoMessageWorker() {
-    if (online_status === 'no_connection' || !selected_group || is_send_press || is_group_generating || hasUserDraftInChatBox()) {
-        return;
-    }
-
-    const group = groups.find((x) => x.id === selected_group);
-    if (!group?.auto_message_enabled || isGroupDmChatMetadata()) {
-        return;
-    }
-
-    const schedule = parseGroupSchedule(group.ai_schedule);
-    if (!schedule.length) {
-        return;
-    }
-
-    const now = new Date();
-    const dayKey = getCurrentDayKey(now);
-    const currentMinutes = getCurrentMinutes(now);
-    group.auto_schedule_state = group.auto_schedule_state && typeof group.auto_schedule_state === 'object' ? group.auto_schedule_state : {};
-    const state = group.auto_schedule_state;
-
-    for (const item of schedule) {
-        const key = `${dayKey}:${item.time}:${item.name}`;
-        if (state[key] || item.minutes > currentMinutes) {
-            continue;
-        }
-
-        const chid = findScheduledCharacterId(group, item);
-        if (chid === -1) {
-            state[key] = 'missing';
-            continue;
-        }
-
-        groupAutoModeAbortController = new AbortController();
-        const character = characters[chid];
-        const dmSettings = getGlobalGroupDmSettings();
-        const isDmWanted = Boolean(dmSettings.autoDmEnabled && (!dmSettings.autoDmMember || dmSettings.autoDmMember === character.avatar));
-        const cooldownMs = Math.max(1, Number(group.auto_dm_cooldown) || DEFAULT_AUTO_DM_COOLDOWN) * 1000;
-        const lastAutoDmAt = Number(group.auto_schedule_state?.last_auto_dm_at || 0);
-        const isDm = isDmWanted && (!lastAutoDmAt || Date.now() - lastAutoDmAt >= cooldownMs);
-        if (isDmWanted && !isDm) {
-            continue;
-        }
-
-        state[key] = Date.now();
-        await saveGroupRuntimeState(group);
-        await generateGroupWrapper(true, isDm ? 'dm' : 'auto', {
-            signal: groupAutoModeAbortController.signal,
-            force_chid: chid,
-            quiet_prompt: buildContextAwareGroupPrompt(group, character.name, { reason: item.reason, isDm, targetName: isDm ? 'the user' : '' }),
-            quietToLoud: true,
-        });
-        if (isDm) {
-            group.auto_schedule_state.last_auto_dm_at = Date.now();
-        }
-        await saveGroupRuntimeState(group);
-        break;
-    }
-}
-
 /**
  * Modifies a group member by adding or removing them.
  * @param {string} groupId Group ID
@@ -2757,91 +1943,6 @@ async function onGroupGenerationModeInput(e) {
         await editGroup(openGroupId, false, false);
 
         toggleHiddenControls(_thisGroup);
-    }
-}
-
-async function onGroupAutoModeDelayInput(e) {
-    if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        _thisGroup.auto_mode_delay = Number(e.target.value);
-        await editGroup(openGroupId, false, false);
-        setAutoModeWorker();
-    }
-}
-
-async function onGroupAutoDmCooldownInput(e) {
-    if (openGroupId) {
-        const group = groups.find((x) => x.id == openGroupId);
-        group.auto_dm_cooldown = Number(e.target.value) || DEFAULT_AUTO_DM_COOLDOWN;
-        await editGroup(openGroupId, false, false);
-    }
-}
-
-async function onGroupTimeAwareInput(e) {
-    if (openGroupId) {
-        const group = groups.find((x) => x.id == openGroupId);
-        group.time_aware = $(e.target).prop('checked');
-        await editGroup(openGroupId, false, false);
-    }
-}
-
-async function onGroupAutoMessageInput(e) {
-    if (openGroupId) {
-        const group = groups.find((x) => x.id == openGroupId);
-        group.auto_message_enabled = $(e.target).prop('checked');
-        await editGroup(openGroupId, false, false);
-        setAutoModeWorker();
-    }
-}
-
-async function onGroupScheduleInput(e) {
-    if (openGroupId) {
-        const group = groups.find((x) => x.id == openGroupId);
-        group.ai_schedule = String(e.target.value || '');
-        await editGroup(openGroupId, false, false);
-    }
-}
-
-async function onGenerateGroupScheduleClick() {
-    const group = openGroupId ? groups.find((x) => x.id == openGroupId) : null;
-    if (!group) {
-        toastr.warning(t`Open a group first.`);
-        return;
-    }
-
-    if (isGroupScheduleGenerating) {
-        toastr.info(t`Group schedule is already being generated.`);
-        return;
-    }
-
-    isGroupScheduleGenerating = true;
-    const names = getGroupEnabledMembers(group)
-        .map(avatar => characters.find(character => character.avatar === avatar)?.name)
-        .filter(Boolean)
-        .join(', ');
-    const toast = toastr.info(t`Generating group schedule...`, '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
-    try {
-        const prompt = `Create an immersive full-day routine and auto-message schedule for this fictional group. Current local time: ${getCurrentLocalTimeContext()}. Group members: ${names}. Cover the whole day from 00:00 through 23:00. Include mundane realistic activities such as sleeping, meals, chores, travel, study/work, rest, hobbies, checking on others, and winding down. Use 24-hour local time. Return only schedule lines in this exact format: HH:MM Character: short in-character reason. Include at least one entry for every hour 00 through 23, with natural variation and no markdown.`;
-        const schedule = String(await generateRaw({
-            prompt,
-            systemPrompt: 'You create immersive 24-hour daily routines for fictional group chat auto-messages. Return only schedule lines in the requested HH:MM Character: reason format.',
-            responseLength: 1200,
-        }) || '').trim();
-        if (!schedule) {
-            toastr.warning(t`Schedule generation did not return anything.`);
-            return;
-        }
-
-        group.ai_schedule = schedule;
-        $('#rm_group_ai_schedule').val(schedule).trigger('input');
-        await editGroup(group.id, false, false);
-        toastr.success(t`Group schedule generated.`);
-    } catch (error) {
-        console.error('Group schedule generation failed', error);
-        toastr.error(t`Group schedule generation failed.`);
-    } finally {
-        isGroupScheduleGenerating = false;
-        toastr.clear(toast);
     }
 }
 
@@ -3195,12 +2296,6 @@ function select_group_chats(groupId, skipAnimation) {
     $('#rm_group_submit').prop('disabled', !groupHasMembers);
     $('#rm_group_allow_self_responses').prop('checked', group && group.allow_self_responses);
     $('#rm_group_hidemutedsprites').prop('checked', group && group.hideMutedSprites);
-    $('#rm_group_automode_delay').val(group?.auto_mode_delay ?? DEFAULT_AUTO_MODE_DELAY);
-    $('#rm_group_auto_dm_cooldown').val(group?.auto_dm_cooldown ?? DEFAULT_AUTO_DM_COOLDOWN);
-    $('#rm_group_time_aware').prop('checked', Boolean(group?.time_aware));
-    $('#rm_group_auto_message').prop('checked', Boolean(group?.auto_message_enabled));
-    $('#rm_group_ai_schedule').val(group?.ai_schedule ?? '');
-
     $('#rm_group_generation_mode_join_prefix').val(group?.generation_mode_join_prefix ?? '').attr('setting', 'generation_mode_join_prefix');
     $('#rm_group_generation_mode_join_suffix').val(group?.generation_mode_join_suffix ?? '').attr('setting', 'generation_mode_join_suffix');
     toggleHiddenControls(group, generationMode);
@@ -3227,14 +2322,10 @@ function select_group_chats(groupId, skipAnimation) {
     }
 
     updateFavButtonState(group?.fav ?? false);
-    syncGroupAutoModeToggle();
 
     // top bar
     if (group) {
-        $('#rm_group_automode_label').show();
         $('#rm_button_selected_ch').children('h2').text(groupName);
-    } else {
-        $('#rm_group_automode_label').hide();
     }
 
     // Toggle textbox sizes, as input events have not fired here
@@ -3441,7 +2532,6 @@ export async function openGroupById(groupId, { switchMenu = true } = {}) {
     setEditedMessageId(undefined);
     updateChatMetadata({}, true);
     await getGroupChat(groupId, false, { switchMenu });
-    syncGroupAutoModeToggle();
     syncCharacterMenuActiveEntity();
     return true;
 }
@@ -3554,7 +2644,6 @@ async function createGroup() {
     let allowSelfResponses = !!$('#rm_group_allow_self_responses').prop('checked');
     let activationStrategy = Number($('#rm_group_activation_strategy').find(':selected').val()) ?? group_activation_strategy.NATURAL;
     let generationMode = Number($('#rm_group_generation_mode').find(':selected').val()) ?? group_generation_mode.SWAP;
-    let autoModeDelay = Number($('#rm_group_automode_delay').val()) ?? DEFAULT_AUTO_MODE_DELAY;
     const members = newGroupMembers.filter(onlyUnique);
     const existingGroup = findGroupByMembers(members);
     if (existingGroup) {
@@ -3587,12 +2676,7 @@ async function createGroup() {
         fav: fav_grp_checked,
         chat_id: chatName,
         chats: chats,
-        auto_mode_delay: autoModeDelay,
-        auto_dm_cooldown: Number($('#rm_group_auto_dm_cooldown').val()) || DEFAULT_AUTO_DM_COOLDOWN,
-        time_aware: Boolean($('#rm_group_time_aware').prop('checked')),
-        auto_message_enabled: Boolean($('#rm_group_auto_message').prop('checked')),
-        ai_schedule: String($('#rm_group_ai_schedule').val() || ''),
-        auto_schedule_state: {},
+        conversation_settings: {},
     };
 
     const createGroupResponse = await fetch('/api/groups/create', {
@@ -3640,7 +2724,6 @@ export async function createNewGroupChat(groupId, { chatAlreadyPrepared = false 
 
     await editGroup(group.id, true, false);
     await getGroupChat(group.id, false, { newlyCreated: true });
-    syncGroupAutoModeToggle();
 }
 
 /**
@@ -3700,7 +2783,6 @@ export async function openGroupChat(groupId, chatId) {
 
     await editGroup(groupId, true, false);
     await getGroupChat(groupId);
-    syncGroupAutoModeToggle();
 }
 
 /**
@@ -3900,12 +2982,6 @@ export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chat
     }
 }
 
-function stopAutoModeGeneration() {
-    if (groupAutoModeAbortController) {
-        groupAutoModeAbortController.abort();
-    }
-}
-
 function doCurMemberListPopout() {
     //repurposes the zoomed avatar template to server as a floating group member list
     if ($('#groupMemberListPopout').length === 0) {
@@ -3945,7 +3021,6 @@ function doCurMemberListPopout() {
 }
 
 jQuery(() => {
-    applyGlobalGroupAutoModeSettings();
     initGroupSpeakerControls();
     if (!CSS.supports('field-sizing', 'content')) {
         $(document).on('input', '#rm_group_chats_block .autoSetHeight', function () {
@@ -3972,15 +3047,6 @@ jQuery(() => {
     $('#rm_group_submit').on('click', createGroup);
     $('#rm_group_quick_create').on('click', createQuickGroupFromSelectedMembers);
     $('#rm_group_scenario').on('click', setCharacterSettingsOverrides);
-    $('#rm_group_automode').on('input', function () {
-        const value = $(this).prop('checked');
-        is_group_automode_enabled = value;
-        saveGlobalGroupAutoModeEnabled(value);
-        syncGroupAutoModeToggle();
-        if (!value) {
-            stopAutoModeGeneration();
-        }
-    });
     $('#rm_group_hidemutedsprites').on('input', function () {
         const value = $(this).prop('checked');
         hideMutedSprites = value;
@@ -4002,12 +3068,6 @@ jQuery(() => {
     $('#rm_group_allow_self_responses').on('input', onGroupSelfResponsesClick);
     $('#rm_group_activation_strategy').on('change', onGroupActivationStrategyInput);
     $('#rm_group_generation_mode').on('change', onGroupGenerationModeInput);
-    $('#rm_group_automode_delay').on('input', onGroupAutoModeDelayInput);
-    $('#rm_group_auto_dm_cooldown').on('input', onGroupAutoDmCooldownInput);
-    $('#rm_group_time_aware').on('input', onGroupTimeAwareInput);
-    $('#rm_group_auto_message').on('input', onGroupAutoMessageInput);
-    $('#rm_group_ai_schedule').on('input', onGroupScheduleInput);
-    $('#rm_group_generate_schedule').on('click', onGenerateGroupScheduleClick);
     $('#rm_group_generation_mode_join_prefix').on('input', onGroupGenerationModeTemplateInput);
     $('#rm_group_generation_mode_join_suffix').on('input', onGroupGenerationModeTemplateInput);
     $('#group_avatar_button').on('input', uploadGroupAvatar);
@@ -4017,13 +3077,4 @@ jQuery(() => {
     $(document).on('change', '.group_member_model_input', onGroupMemberModelInput);
     eventSource.on(event_types.CHAT_CHANGED, updateGroupSpeakerControls);
     eventSource.on(event_types.GROUP_UPDATED, updateGroupSpeakerControls);
-    eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
-        triggerImmediateWholeGroupReply(messageId);
-    });
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
-        triggerImmediateMentionedGroupReply(messageId);
-    });
-    eventSource.on(event_types.ONLINE_STATUS_CHANGED, () => {
-        groupScheduleAutoMessageWorker();
-    });
 });

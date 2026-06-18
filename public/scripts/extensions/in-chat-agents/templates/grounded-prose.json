@@ -30,7 +30,7 @@
         "wrapSuffix": "",
         "patchStartTag": "<context_patch>",
         "patchEndTag": "</context_patch>",
-        "maxTokens": 32000
+        "maxTokens": 64000
     },
     "postProcess": {
         "enabled": false,

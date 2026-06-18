@@ -9,7 +9,7 @@ import { getReadableBooks, getEntryContent } from '../pathfinder-tool-bridge.js'
 import { logPipelineStageStart, logPipelineStageComplete, logPipelineError } from '../activity-feed.js';
 
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
-const DEFAULT_PIPELINE_MAX_TOKENS = 32000;
+const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 function logPathfinderPipeline(message, ...details) {
     console.log(`${PATHFINDER_LOG_PREFIX} ${message}`, ...details);
