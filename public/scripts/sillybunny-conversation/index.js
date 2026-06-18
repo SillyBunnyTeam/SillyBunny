@@ -1,6 +1,10 @@
+import './init.js';
+
 export {
     isConversationModeEnabled,
     getConversationWelcomeChats,
+} from './settings-store.js';
+export {
     openConversationWorkspaceForAvatar,
     openConversationWorkspaceFromWelcome,
-} from './sillybunny-conversation/index.js';
+} from './chrome.js';
