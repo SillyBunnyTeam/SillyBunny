@@ -2,6 +2,7 @@ import { playMessageSound } from '../power-user.js';
 import { openConversationWorkspaceForAvatar } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
+    clearLegacyConversationUnreadStorage,
     getActiveConversationBranch,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
@@ -15,6 +16,7 @@ import {
     shouldSurfaceConversationNotification,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
+import { clearConversationUnreadStore, sanitizeConversationUnreadStore } from './notification-utils.js';
 import { getSettings, isConversationModeEnabled } from './settings-store.js';
 import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
@@ -72,11 +74,44 @@ function isUnreadThreadCountable(avatar, groupId) {
     return isConversationModeEnabled(avatar, { groupId });
 }
 
+function getUnreadThreadIdentity(threadKey) {
+    const parsed = parseConversationThreadKey(threadKey);
+    return {
+        avatar: parsed.avatar,
+        groupId: parsed.groupId || '',
+    };
+}
+
+export function sanitizeConversationUnreadCounts() {
+    const result = sanitizeConversationUnreadStore(getConversationStore(), (threadKey) => {
+        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
+        return isUnreadThreadCountable(avatar, groupId);
+    });
+
+    if (result.changed) {
+        persistConversationStore();
+    }
+    return result;
+}
+
+export function clearAllConversationUnreadCounts() {
+    const storeResult = clearConversationUnreadStore(getConversationStore());
+    const removedLegacy = clearLegacyConversationUnreadStorage();
+    const changed = storeResult.changed || removedLegacy > 0;
+
+    if (storeResult.changed) {
+        persistConversationStore();
+    }
+    if (changed) {
+        updateConversationNotificationIndicators();
+    }
+
+    return { ...storeResult, changed, removedLegacy };
+}
+
 export function getTotalUnreadCount() {
     return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
-        const parsed = parseConversationThreadKey(threadKey);
-        const avatar = parsed.groupId ? parsed.avatar : threadKey;
-        const groupId = parsed.groupId || '';
+        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
         if (!isUnreadThreadCountable(avatar, groupId)) {
             return sum;
         }

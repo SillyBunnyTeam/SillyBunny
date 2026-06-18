@@ -13,7 +13,7 @@ import { disableConversationModeForCurrentCharacter, getDefaultConversationAvata
 import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getCurrentCharAvatar, isAvatarInConversationGroup, migrateConversationLocalStorage } from './context.js';
 import { loadCurrentPanelSettings } from './interface.js';
-import { updateConversationNotificationIndicators } from './notifications.js';
+import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { getSettings } from './settings-store.js';
@@ -27,6 +27,7 @@ export function init() {
 
     conversationState.initialized = true;
     migrateConversationLocalStorage();
+    sanitizeConversationUnreadCounts();
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
         scheduleInterfaceRefresh({ syncControls: false });
         if (selected_group) {

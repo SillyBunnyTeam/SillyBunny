@@ -1363,6 +1363,9 @@ export function ensureConversationChrome() {
                     <button type="button" class="menu_button menu_button_icon sb-conversation-rail-new-button" data-sb-conversation-action="open-new-group-chat" title="New Group Chat" aria-label="New Group Chat">
                         <i class="fa-solid fa-user-group" aria-hidden="true"></i>
                     </button>
+                    <button type="button" class="menu_button menu_button_icon sb-conversation-rail-new-button" data-sb-conversation-action="mark-all-read" title="Mark all Conversation pings as read" aria-label="Mark all Conversation pings as read">
+                        <i class="fa-solid fa-check-double" aria-hidden="true"></i>
+                    </button>
                     <button type="button" class="menu_button menu_button_icon sb-conversation-rail-close" data-sb-conversation-action="close-pals" title="Close Conversation pals" aria-label="Close Conversation pals">
                         <i class="fa-solid fa-xmark"></i>
                     </button>

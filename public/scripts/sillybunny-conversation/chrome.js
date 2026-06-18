@@ -31,7 +31,7 @@ import {
     updateConversationHeader,
 } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
-import { clearUnreadCount, isConversationActiveThread } from './notifications.js';
+import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
 import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
 import { editUserPersonaStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
@@ -167,6 +167,16 @@ export function bindConversationChromeControls(sheld) {
             case 'open-new-group-chat':
                 toggleConversationGroupPicker();
                 break;
+            case 'mark-all-read': {
+                const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
+                schedulePalsRailRender();
+                if (cleared > 0 || removedLegacy > 0) {
+                    toastr.success('Marked all Conversation pings as read.');
+                } else {
+                    toastr.info('No Conversation pings to clear.');
+                }
+                break;
+            }
             case 'create-conversation-group':
                 await handleCreateConversationGroupFromPicker();
                 break;

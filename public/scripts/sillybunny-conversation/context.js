@@ -511,9 +511,29 @@ export function resetCharacterConversationBranches(avatar, { groupId = getConver
     persistConversationStore();
 }
 
+export function clearLegacyConversationUnreadStorage() {
+    if (typeof localStorage === 'undefined') {
+        return 0;
+    }
+
+    const unreadKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i) || '';
+        if (key.startsWith(UNREAD_PREFIX)) {
+            unreadKeys.push(key);
+        }
+    }
+    unreadKeys.forEach(key => localStorage.removeItem(key));
+    return unreadKeys.length;
+}
+
 export function migrateConversationLocalStorage() {
     const store = getConversationStore();
-    if (store.localStorageMigrated || typeof localStorage === 'undefined') {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+    if (store.localStorageMigrated) {
+        clearLegacyConversationUnreadStorage();
         return;
     }
 
@@ -577,5 +597,6 @@ export function migrateConversationLocalStorage() {
     }
 
     store.localStorageMigrated = true;
+    clearLegacyConversationUnreadStorage();
     persistConversationStore();
 }
