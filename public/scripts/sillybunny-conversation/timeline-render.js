@@ -1098,7 +1098,7 @@ export function buildSettingsDrawerHtml() {
                     </select>
                 </div>
                 <div class="sb-conversation-field-stack">
-                    <label>User Idle Actions</label>
+                    <label>User Idle Actions <span class="sb-conversation-setting-scope">Global</span></label>
                     <div class="sb-conversation-idle-actions">
                         <label class="checkbox_label" title="After the user has been quiet, send a check-in tied to the current conversation.">
                             <input id="sb_conv_idle_followup" type="checkbox" />
@@ -1117,7 +1117,7 @@ export function buildSettingsDrawerHtml() {
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_offline_message">Offline/DND Auto-responder</label>
-                    <input id="sb_conv_offline_message" class="text_pole textarea_compact wide100p" type="text" placeholder="[Character is currently away. Leave a message!]" />
+                    <input id="sb_conv_offline_message" class="text_pole textarea_compact wide100p" type="text" placeholder="[{{user}} is currently offline. Leave a message!]" />
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label>DM Notifications</label>
@@ -1205,10 +1205,10 @@ export function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-brain" aria-hidden="true"></i><span>Chat Memories</span></h4>
-                <p class="sb-conversation-field-hint">Branch-specific notes the LLM writes for continuity. They are sent back into future Conversation replies, but they do not copy old messages.</p>
+                <p class="sb-conversation-field-hint">Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.</p>
                 <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_memory_summary">Current branch memory</label>
-                    <textarea id="sb_conv_memory_summary" class="text_pole textarea_compact wide100p sb-conversation-memory-summary" rows="5" readonly placeholder="No memory summary yet. It appears after enough messages, or you can refresh it manually once this branch has chat history."></textarea>
+                    <label for="sb_conv_memory_summary">Conversation memory</label>
+                    <textarea id="sb_conv_memory_summary" class="text_pole textarea_compact wide100p sb-conversation-memory-summary" rows="5" readonly placeholder="No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history."></textarea>
                     <p id="sb_conv_memory_meta" class="sb-conversation-field-hint sb-conversation-memory-meta"></p>
                 </div>
                 <div class="sb-conversation-field-row sb-conversation-memory-actions">
@@ -1222,10 +1222,8 @@ export function buildSettingsDrawerHtml() {
                         <i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Clear memory</span>
                     </button>
                 </div>
-                <label class="checkbox_label" title="Copy this branch's memory summary into newly created Conversation branches for this character">
-                    <input id="sb_conv_copy_memory_to_new_branch" type="checkbox" />
-                    <span>Carry current memory into new branches</span>
-                </label>
+                <input id="sb_conv_copy_memory_to_new_branch" type="checkbox" hidden />
+                <p class="sb-conversation-field-hint">Memory is kept across new chats and deleted histories until you clear it.</p>
                 <label class="checkbox_label" title="Share saved memory summaries between this character's solo and group Conversation threads">
                     <input id="sb_conv_include_related_memory" type="checkbox" />
                     <span>${relatedMemoryLabel}</span>
@@ -1377,7 +1375,7 @@ export function ensureConversationChrome() {
             </button>
             <div class="sb-conversation-header-avatar" data-sb-conversation-participants></div>
             <div class="sb-conversation-header-copy">
-                <div class="sb-conversation-header-kicker">Conversation Workspace</div>
+                <div class="sb-conversation-header-kicker">Conversation</div>
                 <div class="sb-conversation-header-name" data-sb-conversation-name>Conversation</div>
                 <div class="sb-conversation-header-status" data-sb-conversation-status>Available for live DM replies.</div>
             </div>

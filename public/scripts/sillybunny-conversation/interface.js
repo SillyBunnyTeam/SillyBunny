@@ -78,6 +78,39 @@ function buildPalsRailFingerprint(pals) {
     return hashConversationRenderFingerprint(parts.join('\u001e'));
 }
 
+function buildHeaderParticipantsFingerprint(participants, { groupId = '', status = 'online', interactive = false } = {}) {
+    const participantParts = (Array.isArray(participants) ? participants : []).map(participant => [
+        participant?.avatar || '',
+        participant?.name || '',
+        participant?.avatar ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId })) : status,
+    ].join('\u001f'));
+
+    return hashConversationRenderFingerprint([
+        groupId || '',
+        status || '',
+        interactive ? '1' : '0',
+        participantParts.join('\u001e'),
+    ].join('\u001f'));
+}
+
+function renderHeaderParticipantStack(container, participants, options = {}) {
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const fingerprint = buildHeaderParticipantsFingerprint(participants, {
+        groupId: options.groupId,
+        status: options.status,
+        interactive: typeof options.onAvatarClick === 'function',
+    });
+    if (container.dataset.sbConversationFingerprint === fingerprint) {
+        return;
+    }
+
+    container.dataset.sbConversationFingerprint = fingerprint;
+    renderConversationParticipantStack(container, participants, options);
+}
+
 export function renderPalsRail() {
     const list = document.getElementById(CHROME_IDS.palsList);
     if (!(list instanceof HTMLElement)) {
@@ -250,7 +283,7 @@ export function updateConversationHeader(settings = getSettings()) {
         if (addMemberButton instanceof HTMLButtonElement) {
             addMemberButton.hidden = true;
         }
-        renderConversationParticipantStack(participantsContainer, [], { status: 'offline' });
+        renderHeaderParticipantStack(participantsContainer, [], { status: 'offline' });
         if (name instanceof HTMLElement) {
             name.textContent = 'Conversation';
         }
@@ -272,7 +305,7 @@ export function updateConversationHeader(settings = getSettings()) {
         addMemberButton.title = label;
         addMemberButton.setAttribute('aria-label', label);
     }
-    renderConversationParticipantStack(participantsContainer, participants, {
+    renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
         onAvatarClick: groupId ? (participant) => {

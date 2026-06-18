@@ -2333,14 +2333,19 @@
 
     /* Mobile schedule modal keeps full height within viewport */
     #sb_conversation_schedule_modal.sb-conversation-schedule-modal-overlay {
-        align-items: flex-start;
-        padding: 10px;
+        align-items: flex-start !important;
+        justify-content: center !important;
+        overflow-y: auto !important;
+        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) !important;
+        box-sizing: border-box;
+        -webkit-overflow-scrolling: touch;
     }
 
     .sb-conversation-schedule-modal {
-        width: 100%;
-        max-height: calc(100vh - 20px);
-        max-height: calc(100dvh - 20px);
+        width: min(100%, calc(100vw - 20px)) !important;
+        max-height: calc(100vh - 20px) !important;
+        max-height: calc(100dvh - 20px) !important;
+        margin-block: auto !important;
     }
 
     /* Keep idle action labels on a single line */
@@ -2384,6 +2389,19 @@
     .sb-conversation-notification-grid input[type='time'] {
         margin: 0;
         min-width: 0;
+        max-inline-size: 100%;
+        box-sizing: border-box;
+    }
+
+    .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_start'],
+    .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_end'] {
+        grid-column: 1 / -1;
+    }
+
+    .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_start'] input,
+    .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_end'] input {
+        inline-size: 100%;
+        min-inline-size: 0;
     }
 }
 

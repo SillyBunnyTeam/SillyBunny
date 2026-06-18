@@ -7,11 +7,13 @@ import {
     MEMORY_SUMMARY_INTERVAL_MESSAGES,
     MEMORY_SUMMARY_MIN_MESSAGES,
     MEMORY_SUMMARY_RECENT_MESSAGES,
+    MEMORY_SUMMARY_RESPONSE_TOKENS,
     TRANSCRIPT_MESSAGE_LIMIT,
 } from './constants.js';
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationThreadStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
     getCurrentCharName,
@@ -294,7 +296,8 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         return false;
     }
 
-    const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount, 0, 0);
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    const lastSummarizedCount = parsePositiveInt(threadStore?.memoryMessageCount ?? branch?.memoryMessageCount, 0, 0);
     if (!force && messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
         return false;
     }
@@ -305,13 +308,13 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         const prompt = [
             previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
             buildConversationMemoryPrompt(avatar, messages, { groupId }),
-            'Return the updated memory summary in 6 concise bullets or fewer. No preamble.',
+            'Return the updated memory summary in concise bullets. No preamble.',
         ].filter(Boolean).join('\n\n');
         const settings = getSettings(avatar, { groupId });
         const response = await withConversationConnectionProfile(settings, () => generateRaw({
             prompt,
             systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
-            responseLength: 420,
+            responseLength: MEMORY_SUMMARY_RESPONSE_TOKENS,
             trimNames: false,
             cacheScope: 'conversation-mode-memory',
         }));

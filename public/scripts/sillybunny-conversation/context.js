@@ -25,7 +25,6 @@ import {
 } from './constants.js';
 import { getCharacterForAvatar } from './media.js';
 import { getConversationReplyMaxTokens, getScheduleStorageKey } from './schedule.js';
-import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { safeParseThread } from './thread-store.js';
 import { stripPreviewText } from './typing.js';
@@ -295,6 +294,7 @@ export function createConversationBranch(name = 'Main', id = `br_${Date.now()}_$
         sessionMarkers: {},
         memorySummary: '',
         memoryMessageCount: 0,
+        memoryUpdatedAt: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
     };
@@ -312,7 +312,24 @@ export function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
         sessionMarkers: normalized.sessionMarkers && typeof normalized.sessionMarkers === 'object' ? normalized.sessionMarkers : {},
         memorySummary: typeof normalized.memorySummary === 'string' ? normalized.memorySummary : '',
         memoryMessageCount: parsePositiveInt(normalized.memoryMessageCount, 0, 0),
+        memoryUpdatedAt: parsePositiveInt(normalized.memoryUpdatedAt, 0, 0),
     };
+}
+
+function migrateGlobalIdleActionSettings(store, settings) {
+    const globalSettings = store.settings && typeof store.settings === 'object' ? store.settings : {};
+    const alreadyGlobal = Object.prototype.hasOwnProperty.call(globalSettings, 'idle_followup')
+        || Object.prototype.hasOwnProperty.call(globalSettings, 'idle_spontaneous')
+        || Object.prototype.hasOwnProperty.call(globalSettings, 'idle_action');
+    if (alreadyGlobal || (!settings.idle_followup && !settings.idle_spontaneous && settings.idle_action === DEFAULT_SETTINGS.idle_action)) {
+        return false;
+    }
+
+    store.settings = globalSettings;
+    store.settings.idle_followup = Boolean(settings.idle_followup);
+    store.settings.idle_spontaneous = Boolean(settings.idle_spontaneous);
+    store.settings.idle_action = getIdleActionFromSettings(settings);
+    return true;
 }
 
 export function getCharacterConversationStore(avatar, { create = true } = {}) {
@@ -336,8 +353,10 @@ export function getCharacterConversationStore(avatar, { create = true } = {}) {
     }
 
     const characterStore = store.characters[avatar];
+    const normalizedSettings = safeParseSettings(characterStore.settings);
+    const migratedGlobalIdle = migrateGlobalIdleActionSettings(store, normalizedSettings);
     characterStore.settings = pickConversationSettings(
-        safeParseSettings(characterStore.settings),
+        normalizedSettings,
         parseConversationThreadKey(avatar).groupId ? CHARACTER_CONVERSATION_SETTINGS_KEYS : THREAD_CONVERSATION_SETTINGS_KEYS,
     );
     characterStore.branches = characterStore.branches && typeof characterStore.branches === 'object' ? characterStore.branches : {};
@@ -346,6 +365,18 @@ export function getCharacterConversationStore(avatar, { create = true } = {}) {
         characterStore.branches[characterStore.activeBranchId] = createConversationBranch('Main', characterStore.activeBranchId);
     }
     characterStore.branches[characterStore.activeBranchId] = normalizeConversationBranch(characterStore.branches[characterStore.activeBranchId], characterStore.activeBranchId);
+    const activeBranch = characterStore.branches[characterStore.activeBranchId];
+    characterStore.memorySummary = typeof characterStore.memorySummary === 'string' ? characterStore.memorySummary : '';
+    if (!characterStore.memorySummary && activeBranch.memorySummary) {
+        characterStore.memorySummary = activeBranch.memorySummary;
+        characterStore.memoryMessageCount = activeBranch.memoryMessageCount;
+        characterStore.memoryUpdatedAt = activeBranch.memoryUpdatedAt || activeBranch.updatedAt || Date.now();
+    }
+    characterStore.memoryMessageCount = parsePositiveInt(characterStore.memoryMessageCount, 0, 0);
+    characterStore.memoryUpdatedAt = parsePositiveInt(characterStore.memoryUpdatedAt, 0, 0);
+    if (migratedGlobalIdle) {
+        persistConversationStore();
+    }
     return characterStore;
 }
 
@@ -406,9 +437,10 @@ export function createConversationBranchForAvatar(avatar, name = 'New chat', { g
         characterStore.activeBranchId || DEFAULT_BRANCH_ID,
     );
     const branch = createConversationBranch(name || 'New chat');
-    const shouldCopyMemory = copyMemory ?? Boolean(getSettings(avatar, { groupId }).copy_memory_to_new_branch);
-    if (shouldCopyMemory && sourceBranch.memorySummary) {
-        branch.memorySummary = sourceBranch.memorySummary;
+    const memorySummary = String(characterStore.memorySummary || sourceBranch.memorySummary || '').trim();
+    const shouldCopyMemory = copyMemory ?? true;
+    if (shouldCopyMemory && memorySummary) {
+        branch.memorySummary = memorySummary;
         branch.memoryMessageCount = 0;
         branch.sessionMarkers.memory_copied_from = sourceBranch.id;
     }

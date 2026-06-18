@@ -28,13 +28,14 @@ export function collectSoloConversationMemorySummary(charactersStore, avatar) {
         return null;
     }
 
-    const branch = getActiveMemoryBranch(charactersStore[avatar]);
-    const summary = String(branch?.memorySummary || '').trim();
+    const threadStore = charactersStore[avatar];
+    const branch = getActiveMemoryBranch(threadStore);
+    const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
     if (!summary) {
         return null;
     }
 
-    const updatedAt = Number(branch?.updatedAt || branch?.createdAt || 0);
+    const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
     return {
         avatar,
         summary,
@@ -55,12 +56,12 @@ export function collectGroupConversationMemorySummaries(charactersStore, avatar,
         }
 
         const branch = getActiveMemoryBranch(threadStore);
-        const summary = String(branch?.memorySummary || '').trim();
+        const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
         if (!summary) {
             return;
         }
 
-        const updatedAt = Number(branch?.updatedAt || branch?.createdAt || 0);
+        const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
         const groupName = String(getGroupName(parsed.groupId) || '').trim();
         items.push({
             groupId: parsed.groupId,

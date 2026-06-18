@@ -120,6 +120,8 @@ export const MAX_STACKED_PARTICIPANT_AVATARS = 4;
 export const MEMORY_SUMMARY_MIN_MESSAGES = 24;
 export const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;
 export const MEMORY_SUMMARY_RECENT_MESSAGES = 36;
+export const MEMORY_SUMMARY_RESPONSE_TOKENS = 32000;
+export const SCHEDULE_GENERATION_RESPONSE_TOKENS = 8000;
 export const SELFIE_COMMAND_RE = /\[selfie(?::\s*(?:context=)?"?([^"\]]*)"?)?\]/gi;
 export const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 export const REMINDER_COMMAND_RE = /\[reminder:\s*([^|\]]+)\s*\|\s*([^\]]+)\]/gi;
@@ -160,7 +162,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     idle_followup: false,
     idle_spontaneous: false,
     idle_limit: 15,
-    offline_message: '[{{char}} is currently offline. Leave a message!]',
+    offline_message: '[{{user}} is currently offline. Leave a message!]',
     auto_message: false,
     cooldown: 60,
     ai_schedule: '',
@@ -260,6 +262,9 @@ export const GROUP_CONVERSATION_SETTINGS_KEYS = Object.freeze([
 ]);
 export const GROUP_CONVERSATION_SETTINGS_KEY_SET = new Set(GROUP_CONVERSATION_SETTINGS_KEYS);
 export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
+    'idle_action',
+    'idle_followup',
+    'idle_spontaneous',
     'custom_instructions',
     'connection_profile',
 ]);

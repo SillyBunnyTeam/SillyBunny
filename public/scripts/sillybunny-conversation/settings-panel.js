@@ -9,6 +9,7 @@ import {
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationThreadStore,
     getCurrentCharAvatar,
     parsePositiveInt,
     saveGroupConversationSettings,
@@ -25,7 +26,7 @@ import {
     parseScheduleTimeRange,
     saveStoredSchedule,
 } from './schedule.js';
-import { clearConversationMemorySummary, getSettings, saveConversationMemorySummary, saveSettings } from './settings-store.js';
+import { clearConversationMemorySummary, getConversationMemorySummary, getSettings, saveConversationMemorySummary, saveSettings } from './settings-store.js';
 import { getConversationThread, hasConversationMessageContent } from './thread-store.js';
 import {
     buildChimingPartnerOptions,
@@ -100,9 +101,13 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         backdrop-filter: blur(8px);
         z-index: 9999;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
-        padding: 20px;
+        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
     `;
 
     function createEditableSchedule(schedule) {
@@ -150,11 +155,14 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', 'sb_schedule_modal_title');
+    modal.tabIndex = -1;
     modal.style.cssText = `
         display: flex;
         flex-direction: column;
-        width: min(650px, 100%);
-        max-height: calc(100vh - 40px);
+        width: min(650px, calc(100vw - 20px));
+        max-height: calc(100vh - 20px);
+        max-height: calc(100dvh - 20px);
+        margin-block: auto;
         background: var(--SmartThemeBlurTintColor);
         border: 1px solid var(--sb-shell-border);
         border-radius: var(--sb-radius-md, 12px);
@@ -403,7 +411,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         }
     });
     setTimeout(() => {
-        modal.querySelector('button, input, select, textarea')?.focus?.({ preventScroll: true });
+        modal.focus({ preventScroll: true });
     }, 0);
 
     saveBtn?.addEventListener('click', () => {
@@ -528,9 +536,10 @@ export function renderConversationMemoryPanel() {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const branch = avatar ? getActiveConversationBranch(avatar, { create: false, groupId }) : null;
-    const memorySummary = String(branch?.memorySummary || '').trim();
+    const threadStore = avatar ? getConversationThreadStore(avatar, { create: false, groupId }) : null;
+    const memorySummary = getConversationMemorySummary(avatar, { groupId });
     const messageCount = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system').length : 0;
-    const summarizedCount = parsePositiveInt(branch?.memoryMessageCount, 0, 0);
+    const summarizedCount = parsePositiveInt(threadStore?.memoryMessageCount ?? branch?.memoryMessageCount, 0, 0);
 
     memoryInput.value = memorySummary;
     memoryInput.placeholder = messageCount
@@ -539,8 +548,7 @@ export function renderConversationMemoryPanel() {
 
     if (meta instanceof HTMLElement) {
         const branchName = branch?.name || 'Current branch';
-        const copied = branch?.sessionMarkers?.memory_copied_from ? ' · copied from previous branch' : '';
-        meta.textContent = `${branchName} · ${messageCount} message${messageCount === 1 ? '' : 's'} · summarized through ${summarizedCount}${copied}`;
+        meta.textContent = `Persistent for this Conversation · ${branchName} has ${messageCount} message${messageCount === 1 ? '' : 's'} · summarized through ${summarizedCount}`;
     }
 }
 
@@ -552,9 +560,8 @@ export async function forceCreateMemoryFromPanel() {
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const branch = getActiveConversationBranch(avatar, { groupId });
-    const currentMemory = branch?.memorySummary || '';
-    const newMemory = globalThis.prompt?.('Enter or override the memory summary for this branch:', currentMemory);
+    const currentMemory = getConversationMemorySummary(avatar, { groupId }) || '';
+    const newMemory = globalThis.prompt?.('Enter or override the memory summary for this Conversation:', currentMemory);
     if (typeof newMemory !== 'string') {
         return;
     }
@@ -588,7 +595,7 @@ export function clearConversationMemoryFromPanel() {
     }
 
     const confirmed = typeof globalThis.confirm === 'function'
-        ? globalThis.confirm('Clear the memory summary for this Conversation branch? This does not delete chat messages.')
+        ? globalThis.confirm('Clear the memory summary for this Conversation? This does not delete chat messages.')
         : true;
     if (!confirmed) {
         return;

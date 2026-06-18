@@ -32,7 +32,14 @@ import { getConversationMessagePreviewText } from './thread-store.js';
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
 function normalizeGlobalConversationSettings(settings = {}) {
-    return pickConversationSettings(safeParseSettings(settings), GLOBAL_CONVERSATION_SETTINGS_KEYS);
+    const source = settings && typeof settings === 'object' ? settings : {};
+    const normalized = safeParseSettings(source);
+    return [...GLOBAL_CONVERSATION_SETTINGS_KEYS].reduce((picked, key) => {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            picked[key] = normalized[key];
+        }
+        return picked;
+    }, {});
 }
 
 export function getGlobalConversationSettings() {
@@ -48,12 +55,13 @@ export function saveGlobalConversationSettings(settings) {
 }
 
 export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const globalSettings = getGlobalConversationSettings();
     if (!avatar) {
+        const globalSettings = getGlobalConversationSettings();
         return { ...DEFAULT_SETTINGS, ...globalSettings };
     }
 
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    const globalSettings = getGlobalConversationSettings();
     if (groupId) {
         const threadSettings = threadStore?.settings
             ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
@@ -227,7 +235,8 @@ export function getAutoCharacterChatCooldownMs(settings) {
 }
 
 export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return String(getActiveConversationBranch(avatar, { create: false, groupId })?.memorySummary || '').trim();
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    return String(threadStore?.memorySummary || getActiveConversationBranch(avatar, { create: false, groupId })?.memorySummary || '').trim();
 }
 
 export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4 } = {}) {
@@ -245,25 +254,41 @@ export function getConversationSoloMemorySummary(avatar = getCurrentCharAvatar()
 }
 
 export function saveConversationMemorySummary(avatar, summary, messageCount, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { groupId });
     const branch = getActiveConversationBranch(avatar, { groupId });
-    if (!branch) {
+    if (!threadStore || !branch) {
         return;
     }
 
-    branch.memorySummary = String(summary || '').trim();
-    branch.memoryMessageCount = Math.max(0, messageCount || 0);
+    const memorySummary = String(summary || '').trim();
+    const memoryMessageCount = Math.max(0, messageCount || 0);
+    threadStore.memorySummary = memorySummary;
+    threadStore.memoryMessageCount = memoryMessageCount;
+    threadStore.memoryUpdatedAt = Date.now();
+    branch.memorySummary = memorySummary;
+    branch.memoryMessageCount = memoryMessageCount;
+    branch.memoryUpdatedAt = threadStore.memoryUpdatedAt;
     persistConversationStore();
     renderConversationMemoryPanel();
 }
 
 export function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
     const branch = getActiveConversationBranch(avatar, { create: false, groupId });
-    if (!branch) {
+    if (!threadStore || !branch) {
         return false;
     }
 
-    branch.memorySummary = '';
-    branch.memoryMessageCount = 0;
+    threadStore.memorySummary = '';
+    threadStore.memoryMessageCount = 0;
+    threadStore.memoryUpdatedAt = Date.now();
+    Object.values(threadStore.branches || {}).forEach((item) => {
+        if (item && typeof item === 'object') {
+            item.memorySummary = '';
+            item.memoryMessageCount = 0;
+            item.memoryUpdatedAt = threadStore.memoryUpdatedAt;
+        }
+    });
     persistConversationStore();
     renderConversationMemoryPanel();
     return true;

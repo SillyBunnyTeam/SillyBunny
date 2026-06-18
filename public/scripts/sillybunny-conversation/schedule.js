@@ -3,6 +3,7 @@ import {
     DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
     MIN_CONVERSATION_REPLY_MAX_TOKENS,
+    SCHEDULE_GENERATION_RESPONSE_TOKENS,
     SCHEDULE_PREFIX,
 } from './constants.js';
 import {
@@ -104,7 +105,7 @@ export async function generateCharacterSchedule(character, { groupId = getConver
     const response = await withConversationConnectionProfile(settings, () => generateRaw({
         prompt: promptParts.join('\n\n'),
         systemPrompt,
-        responseLength: 1400,
+        responseLength: SCHEDULE_GENERATION_RESPONSE_TOKENS,
         trimNames: false,
         cacheScope: 'conversation-mode-schedule',
     }));

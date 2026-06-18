@@ -886,7 +886,10 @@ export async function handleAvailabilityAutoResponder(settings = getSettings(), 
 
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
-    const offlineText = (settings.offline_message || DEFAULT_SETTINGS.offline_message).replace('{{char}}', charName);
+    const userName = name1 || 'User';
+    const offlineText = (settings.offline_message || DEFAULT_SETTINGS.offline_message)
+        .replace(/{{char}}/g, charName)
+        .replace(/{{user}}/g, userName);
     await appendConversationMessage(offlineText, {
         extra: {
             conversation_mode_auto_responder: true,
