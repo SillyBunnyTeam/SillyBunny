@@ -188,6 +188,27 @@ export async function convertImageUrlToBase64(imageUrl) {
     }
 }
 
+export async function convertImageUrlsToBase64(imageUrls, concurrency = 3) {
+    const urls = Array.isArray(imageUrls) ? imageUrls : [];
+    if (!urls.length) {
+        return [];
+    }
+
+    const results = new Array(urls.length).fill('');
+    let nextIndex = 0;
+    const workerCount = Math.max(1, Math.min(parsePositiveInt(concurrency, 3, 1), urls.length));
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (nextIndex < urls.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await convertImageUrlToBase64(urls[index]);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
+}
+
 export async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName()) {
     const promptMessages = [{
         role: 'user',
@@ -227,18 +248,16 @@ export async function buildConversationPromptMessages(messages, directive, speak
             ? [media[mediaIndex]]
             : media;
 
-        for (const item of mediaToInline) {
-            if (item && item.url) {
-                const base64Url = await convertImageUrlToBase64(item.url);
-                if (base64Url) {
-                    contentParts.push({
-                        type: 'image_url',
-                        image_url: {
-                            url: base64Url,
-                            detail: 'high',
-                        },
-                    });
-                }
+        const base64Urls = await convertImageUrlsToBase64(mediaToInline.map(item => item?.url).filter(Boolean));
+        for (const base64Url of base64Urls) {
+            if (base64Url) {
+                contentParts.push({
+                    type: 'image_url',
+                    image_url: {
+                        url: base64Url,
+                        detail: 'high',
+                    },
+                });
             }
         }
 

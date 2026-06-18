@@ -1,5 +1,4 @@
 import { characters, generateRaw } from '../../script.js';
-import { appendConversationMessage } from './attachments.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -14,6 +13,7 @@ import {
     parseCommandArgs,
 } from './generation-utils.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getCharacterImageDetails } from './media.js';
+import { appendConversationMessage } from './message-writer.js';
 import { stripSpeakerPrefix } from './partners.js';
 import { withConversationConnectionProfile } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, formatPromptText } from './prompt.js';

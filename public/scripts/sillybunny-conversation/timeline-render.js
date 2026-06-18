@@ -7,15 +7,12 @@ import {
     name1,
 } from '../../script.js';
 import { world_names } from '../world-info.js';
-import { getValidatedConversationPendingFiles, updateConversationAttachmentPreview } from './attachments.js';
-import { bindConversationChromeControls, openConversationWorkspaceForAvatar } from './chrome.js';
 import {
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ACCEPT,
     CONVERSATION_REACTION_LABELS,
     CONVERSATION_TIMELINE_CHANNELS,
     DEFAULT_AUTO_CHAT_COOLDOWN,
-    SAFE_TOAST_OPTIONS,
 } from './constants.js';
 import {
     createConversationBranch,
@@ -32,16 +29,15 @@ import { getCharacterForAvatar, getConversationParticipants, getEffectiveConvers
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
 import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
 import { getConnectionProfiles, withConversationConnectionProfile } from './personas.js';
-import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments, updateConversationMemorySummary } from './prompt.js';
+import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
 import { registerConversationRenderer, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getConversationReplyMaxTokens } from './schedule.js';
-import { openScheduleEditorModal, renderConversationMemoryPanel } from './settings-panel.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
+import { getConversationTimelineMessages } from './timeline-search.js';
 import {
     addConversationReminder,
-    appendConversationThreadMessage,
-    getConversationAttachmentLabels,
     getConversationAttachmentSummary,
     getConversationSeenAt,
     getConversationMessagePreviewText,
@@ -50,15 +46,15 @@ import {
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation } from './typing.js';
 
-function hashConversationRenderFingerprint(value) {
-    let hash = 0;
-    const input = String(value || '');
-    for (let i = 0; i < input.length; i++) {
-        hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-    }
-
-    return hash.toString(36);
-}
+export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
+export { getConversationTimelineMessages } from './timeline-search.js';
+export {
+    appendConversationOocNote,
+    handleConversationSlashAction,
+    parseConversationReminderArgs,
+    parseConversationSlashCommand,
+    quickConversationSummarize,
+} from './timeline-slash-commands.js';
 
 function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages }) {
     const activeTyping = getActiveTypingParticipants(avatar, { groupId });
@@ -82,8 +78,7 @@ function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, mess
             message?.send_date || '',
             message?.created_at || '',
             message?.mes || '',
-            JSON.stringify(message?.extra || {}),
-            getConversationAttachmentSummary(message),
+            getConversationMessageExtraFingerprint(message),
         ].join('\u001f');
     });
 
@@ -129,8 +124,7 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, setting
         message?.send_date || '',
         message?.created_at || '',
         message?.mes || '',
-        JSON.stringify(message?.extra || {}),
-        getConversationAttachmentSummary(message),
+        getConversationMessageExtraFingerprint(message),
         getConversationMessageReceipt(message, avatar, { groupId }),
         getConversationMessageAvatar(message, avatar),
         settings?.editable_messages ? '1' : '0',
@@ -570,55 +564,6 @@ export function buildChimingPartnerOptions(selectedNames) {
     return buildPartnerOptions(selectedNames, 'Enable more characters to pick chiming partners.');
 }
 
-export function getConversationTimelineMessages(messages) {
-    const query = conversationState.conversationTimelineSearchQuery.trim().toLowerCase();
-    const channel = conversationState.conversationTimelineChannel;
-    return (Array.isArray(messages) ? messages : []).filter((message) => {
-        if (!message) {
-            return false;
-        }
-
-        if (channel === 'pinned') {
-            if (!message.extra?.conversation_pinned) {
-                return false;
-            }
-        } else if (channel === 'selfies') {
-            if (!message.extra?.conversation_mode_image) {
-                return false;
-            }
-        } else if (channel === 'media') {
-            if (!getConversationAttachmentLabels(message).length) {
-                return false;
-            }
-        } else if (channel === 'ooc') {
-            if (!message.extra?.conversation_mode_ooc) {
-                return false;
-            }
-        } else if (channel === 'memories') {
-            const isMemoryMessage = Boolean(
-                message.extra?.conversation_pinned
-                || message.extra?.conversation_mode_reminder
-                || message.extra?.conversation_mode_image,
-            );
-            if (!isMemoryMessage) {
-                return false;
-            }
-        }
-
-        if (query) {
-            const haystack = [message.name, message.role, message.mes, getConversationAttachmentSummary(message)]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
-            if (!haystack.includes(query)) {
-                return false;
-            }
-        }
-
-        return true;
-    });
-}
-
 export function setConversationTimelineChannel(channel) {
     conversationState.conversationTimelineChannel = CONVERSATION_TIMELINE_CHANNELS.includes(channel) ? channel : 'main';
     updateConversationToolsState();
@@ -847,7 +792,13 @@ export function branchConversationFromMessage(messageId) {
     store.branches[branch.id] = branch;
     store.activeBranchId = branch.id;
     persistConversationStore();
-    openConversationWorkspaceForAvatar(context.avatar, { groupId: context.groupId || null, showToast: false });
+    window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
+        detail: {
+            avatar: context.avatar,
+            groupId: context.groupId || null,
+            showToast: false,
+        },
+    }));
     scheduleTimelineRender();
     schedulePalsRailRender();
 }
@@ -888,112 +839,6 @@ export async function quickConversationReminder() {
     addConversationReminder(avatar, groupId, delay, memo);
 }
 
-export async function quickConversationSummarize() {
-    const avatar = getCurrentCharAvatar();
-    if (!avatar) {
-        return;
-    }
-
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    await updateConversationMemorySummary(avatar, { force: true, groupId, notify: true });
-    renderConversationMemoryPanel();
-}
-
-export function parseConversationSlashCommand(text) {
-    const value = String(text || '').trim();
-    if (!value.startsWith('/')) {
-        return null;
-    }
-
-    const match = value.match(/^\/([a-z]+)(?:\s+([\s\S]*))?$/i);
-    if (!match) {
-        return null;
-    }
-
-    return {
-        command: match[1].toLowerCase(),
-        args: String(match[2] || '').trim(),
-    };
-}
-
-export function parseConversationReminderArgs(args) {
-    const value = String(args || '').trim();
-    if (!value) {
-        return null;
-    }
-
-    const [delayPart, ...memoParts] = value.split('|');
-    if (memoParts.length) {
-        const delay = delayPart.trim();
-        const memo = memoParts.join('|').trim();
-        return delay && memo ? { delay, memo } : null;
-    }
-
-    const [delay, ...memoWords] = value.split(/\s+/);
-    const memo = memoWords.join(' ').trim();
-    return delay && memo ? { delay, memo } : null;
-}
-
-export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const text = String(note || '').trim();
-    if (!avatar || !text) {
-        return false;
-    }
-
-    appendConversationThreadMessage(avatar, {
-        role: 'system',
-        name: 'OOC Note',
-        mes: text,
-        extra: {
-            conversation_mode_ooc: true,
-        },
-    }, { groupId });
-    updateLastPreviewFromConversation(avatar, { groupId });
-    scheduleTimelineRender();
-    return true;
-}
-
-export async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), settings = null, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
-    const parsed = parseConversationSlashCommand(text);
-    if (!parsed || !avatar) {
-        return false;
-    }
-
-    switch (parsed.command) {
-        case 'selfie': {
-            const context = parsed.args || 'a casual selfie in the current DM conversation';
-            await generateSelfieFromContext(context, resolvedSettings, avatar, { groupId });
-            return true;
-        }
-        case 'remind': {
-            const reminder = parseConversationReminderArgs(parsed.args);
-            if (!reminder) {
-                globalThis.toastr?.warning?.('Use /remind 1h | message to schedule a reminder.', '', SAFE_TOAST_OPTIONS);
-                return true;
-            }
-
-            addConversationReminder(avatar, groupId, reminder.delay, reminder.memo);
-            return true;
-        }
-        case 'schedule':
-            openScheduleEditorModal(avatar);
-            return true;
-        case 'summarize':
-            await quickConversationSummarize();
-            return true;
-        case 'ooc':
-            if (!parsed.args) {
-                globalThis.toastr?.warning?.('Use /ooc followed by a note for the OOC channel.', '', SAFE_TOAST_OPTIONS);
-                return true;
-            }
-            appendConversationOocNote(parsed.args, { avatar, groupId });
-            return true;
-        default:
-            return false;
-    }
-}
-
 export function updateConversationNotificationSettingsVisibility() {
     const muted = document.getElementById('sb_conv_notifications_muted');
     const priority = document.getElementById('sb_conv_notification_priority');
@@ -1003,45 +848,8 @@ export function updateConversationNotificationSettingsVisibility() {
     }
 }
 
-export function addConversationFilesToInput(files) {
-    const fileInput = document.getElementById(CHROME_IDS.fileInput);
-    if (!(fileInput instanceof HTMLInputElement) || !files?.length) {
-        return;
-    }
-
-    const transfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
-    const previousTransfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
-    if (!transfer || !previousTransfer) {
-        return;
-    }
-
-    for (const file of Array.from(fileInput.files || [])) {
-        previousTransfer.items.add(file);
-        transfer.items.add(file);
-    }
-    for (const file of files) {
-        transfer.items.add(file);
-    }
-
-    fileInput.files = transfer.files;
-    if (getValidatedConversationPendingFiles({ notify: true })) {
-        updateConversationAttachmentPreview();
-    } else {
-        fileInput.files = previousTransfer.files;
-        updateConversationAttachmentPreview();
-    }
-}
-
 export function normalizeConversationReactionLabel(reaction) {
     return CONVERSATION_REACTION_LABELS[reaction] || reaction;
-}
-
-export function escapeHtmlAttribute(value) {
-    return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-export function escapeHtmlText(value) {
-    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function getConversationMentionTargets(avatar = getCurrentCharAvatar()) {
@@ -1424,6 +1232,12 @@ export function buildSettingsDrawerHtml() {
     `;
 }
 
+function bindConversationChromeControlsAsync(sheld) {
+    void import('./chrome.js')
+        .then(({ bindConversationChromeControls }) => bindConversationChromeControls(sheld))
+        .catch(error => console.warn('Conversation Mode: could not bind chrome controls', error));
+}
+
 export function ensureConversationChrome() {
     const sheld = document.getElementById('sheld');
     const chatElement = document.getElementById('chat');
@@ -1616,7 +1430,7 @@ export function ensureConversationChrome() {
         sheld.appendChild(drawer);
     }
 
-    bindConversationChromeControls(sheld);
+    bindConversationChromeControlsAsync(sheld);
     return { sheld, header, stage, palsRail, backdrop, drawer };
 }
 

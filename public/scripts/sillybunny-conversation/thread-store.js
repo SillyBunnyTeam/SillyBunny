@@ -13,7 +13,7 @@ import {
 import { isConversationActiveThread } from './notifications.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
-import { setLastConversationPreview, stripPreviewText, updateLastPreviewFromConversation } from './typing.js';
+import { stripPreviewText, updateLastPreviewFromConversation } from './typing.js';
 import { getConversationAttachmentLabels, safeParseThread } from './thread-store-utils.js';
 
 export {
@@ -152,12 +152,19 @@ export function getConversationMessagePreviewText(message) {
     return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
 }
 
+/**
+ * Returns the active branch message array by reference. Copy it before speculative mutation.
+ */
 export function getConversationThread(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!avatar) {
         return [];
     }
 
-    return [...(getActiveConversationBranch(avatar, { groupId })?.messages ?? [])];
+    return getActiveConversationBranch(avatar, { groupId })?.messages ?? [];
+}
+
+export function getConversationThreadCount(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    return getActiveConversationBranch(avatar, { create: false, groupId })?.messages?.length || 0;
 }
 
 export function saveConversationThread(avatar, messages, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
@@ -176,11 +183,22 @@ export function saveConversationThread(avatar, messages, { groupId = getConversa
 }
 
 export function appendConversationThreadMessage(avatar, messageInput, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const messages = getConversationThread(avatar, { groupId });
+    const branch = getActiveConversationBranch(avatar, { groupId });
+    if (!branch) {
+        return null;
+    }
+
     const message = createConversationMessage(messageInput);
-    messages.push(message);
-    saveConversationThread(avatar, messages, { groupId });
-    setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { groupId });
+    branch.messages.push(message);
+    if (branch.messages.length > MAX_THREAD_MESSAGES) {
+        branch.messages.splice(0, branch.messages.length - MAX_THREAD_MESSAGES);
+    }
+    const preview = getConversationMessagePreviewText(message);
+    if (preview) {
+        branch.preview = preview;
+    }
+    branch.updatedAt = Date.now();
+    persistConversationStore();
     if (isConversationActiveThread(avatar, groupId)) {
         scheduleTimelineRender();
     }

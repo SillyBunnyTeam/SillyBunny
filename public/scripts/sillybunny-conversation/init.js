@@ -3,13 +3,14 @@ import { event_types, eventSource } from '../events.js';
 import { selected_group } from '../group-chats.js';
 import {
     checkGroupChatMention,
-    conversationModeAutoMessageWorker,
     handleChatChanged,
+    startConversationAutoWorker,
+    stopConversationAutoWorker,
     triggerGroupAsideDM,
     triggerRoleplayDM,
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, openConversationWorkspaceForAvatar } from './chrome.js';
-import { AUTO_WORKER_INTERVAL_GLOBAL_KEY, AUTO_WORKER_INTERVAL_MS, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
+import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getCurrentCharAvatar, isAvatarInConversationGroup, migrateConversationLocalStorage } from './context.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { updateConversationNotificationIndicators } from './notifications.js';
@@ -17,6 +18,7 @@ import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } f
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
+import { setConversationTimeout } from './timers.js';
 
 export function init() {
     if (conversationState.initialized) {
@@ -47,10 +49,10 @@ export function init() {
                     : members[Math.floor(Math.random() * members.length)];
                 if (chosenMember?.character) {
                     const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
-                    setTimeout(() => void triggerGroupAsideDM(chosenMember.character, { reason, sourceMessageId: messageId }), 2000);
+                    setConversationTimeout(() => void triggerGroupAsideDM(chosenMember.character, { reason, sourceMessageId: messageId }), 2000);
                 }
             } else if (getSettings(getCurrentCharAvatar(), { groupId: '' }).roleplay_reactions) {
-                setTimeout(() => void triggerRoleplayDM(), 2000);
+                setConversationTimeout(() => void triggerRoleplayDM(), 2000);
             }
         }
     });
@@ -80,14 +82,9 @@ export function init() {
         openConversationWorkspaceForAvatar(avatar, { groupId, showToast: detail?.showToast !== false });
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
+    window.addEventListener('beforeunload', stopConversationAutoWorker);
 
-    const existingAutoWorkerIntervalId = globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY];
-    if (existingAutoWorkerIntervalId) {
-        window.clearInterval(existingAutoWorkerIntervalId);
-    }
-
-    conversationState.autoWorkerIntervalId = window.setInterval(() => void conversationModeAutoMessageWorker(), AUTO_WORKER_INTERVAL_MS);
-    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = conversationState.autoWorkerIntervalId;
+    startConversationAutoWorker();
     loadCurrentPanelSettings();
     updateConversationNotificationIndicators();
 }

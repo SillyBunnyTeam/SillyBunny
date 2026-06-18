@@ -31,9 +31,9 @@ import {
     safeParseWeeklySchedule,
 } from './personas.js';
 import { schedulePalsRailRender } from './render-scheduler.js';
+import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 import { closePalsRail, setConversationBackdropVisible } from './settings-panel.js';
 import { conversationState } from './state.js';
-import { escapeHtmlAttribute, escapeHtmlText } from './timeline-render.js';
 
 export function renderWeeklyScheduleEditor(container, scheduleJson) {
     const entries = safeParseWeeklySchedule(scheduleJson);

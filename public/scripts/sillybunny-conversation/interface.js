@@ -31,15 +31,19 @@ import { getConversationThread, saveConversationThread } from './thread-store.js
 import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
+import { hashConversationRenderFingerprint } from './render-utils.js';
 
-function hashConversationRenderFingerprint(value) {
-    let hash = 0;
-    const input = String(value || '');
-    for (let i = 0; i < input.length; i++) {
-        hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
-    }
-
-    return hash.toString(36);
+function buildBranchListFingerprint(characterStore, activeBranchId) {
+    return Object.entries(characterStore?.branches || {})
+        .map(([id, branch]) => [
+            branch?.id || id,
+            branch?.name || '',
+            branch?.preview || '',
+            branch?.updatedAt || '',
+            branch?.unread || 0,
+            (branch?.id || id) === activeBranchId ? '1' : '0',
+        ].join('\u001f'))
+        .join('\u001e');
 }
 
 function buildPalsRailFingerprint(pals) {
@@ -50,11 +54,12 @@ function buildPalsRailFingerprint(pals) {
         const characterStore = getConversationThreadStore(avatar, { create: false, groupId });
         const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
         const participants = getConversationParticipants(avatar, settings, { groupId })
-            .map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, getSettings(participant?.avatar, { groupId }))}`)
+            .map((participant) => {
+                const participantSettings = participant?.avatar === avatar ? settings : getSettings(participant?.avatar, { groupId });
+                return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
+            })
             .join(',');
-        const branches = getConversationBranches(avatar, { groupId })
-            .map(branch => [branch.id, branch.name || '', branch.preview || '', branch.id === activeBranchId ? '1' : '0'].join('\u001f'))
-            .join('\u001e');
+        const branches = buildBranchListFingerprint(characterStore, activeBranchId);
 
         parts.push([
             avatar,

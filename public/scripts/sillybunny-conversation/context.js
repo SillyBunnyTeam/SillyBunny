@@ -305,19 +305,27 @@ export function createConversationBranch(name = 'Main', id = `br_${Date.now()}_$
 }
 
 export function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
-    const normalized = branch && typeof branch === 'object' ? branch : {};
-    return {
-        ...createConversationBranch(id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', id),
-        ...normalized,
-        id: normalized.id || id,
-        name: normalized.name || (id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation'),
-        messages: Array.isArray(normalized.messages) ? normalized.messages : [],
-        scheduleTriggers: normalized.scheduleTriggers && typeof normalized.scheduleTriggers === 'object' ? normalized.scheduleTriggers : {},
-        sessionMarkers: normalized.sessionMarkers && typeof normalized.sessionMarkers === 'object' ? normalized.sessionMarkers : {},
-        memorySummary: typeof normalized.memorySummary === 'string' ? normalized.memorySummary : '',
-        memoryMessageCount: parsePositiveInt(normalized.memoryMessageCount, 0, 0),
-        memoryUpdatedAt: parsePositiveInt(normalized.memoryUpdatedAt, 0, 0),
-    };
+    const target = branch && typeof branch === 'object'
+        ? branch
+        : createConversationBranch(id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', id);
+    const now = Date.now();
+
+    target.id = target.id || id;
+    target.name = target.name || (id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation');
+    target.messages = Array.isArray(target.messages) ? target.messages : [];
+    target.preview = typeof target.preview === 'string' ? target.preview : 'Conversation ready';
+    target.unread = parsePositiveInt(target.unread, 0, 0);
+    target.lastActivity = parsePositiveInt(target.lastActivity, now, 0);
+    target.followupCount = parsePositiveInt(target.followupCount, 0, 0);
+    target.lastAutoMessageAt = parsePositiveInt(target.lastAutoMessageAt, 0, 0);
+    target.scheduleTriggers = target.scheduleTriggers && typeof target.scheduleTriggers === 'object' ? target.scheduleTriggers : {};
+    target.sessionMarkers = target.sessionMarkers && typeof target.sessionMarkers === 'object' ? target.sessionMarkers : {};
+    target.memorySummary = typeof target.memorySummary === 'string' ? target.memorySummary : '';
+    target.memoryMessageCount = parsePositiveInt(target.memoryMessageCount, 0, 0);
+    target.memoryUpdatedAt = parsePositiveInt(target.memoryUpdatedAt, 0, 0);
+    target.createdAt = parsePositiveInt(target.createdAt, now, 0);
+    target.updatedAt = parsePositiveInt(target.updatedAt, target.createdAt, 0);
+    return target;
 }
 
 function migrateGlobalIdleActionSettings(store, settings) {
@@ -417,7 +425,11 @@ export function getConversationBranches(avatar, { groupId = getConversationGroup
         return [];
     }
 
-    return Object.values(characterStore.branches).map((branch) => normalizeConversationBranch(branch, branch.id));
+    return Object.entries(characterStore.branches).map(([id, branch]) => {
+        const normalized = normalizeConversationBranch(branch, branch?.id || id);
+        characterStore.branches[id] = normalized;
+        return normalized;
+    });
 }
 
 export function setActiveConversationBranch(avatar, branchId, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {

@@ -1,11 +1,12 @@
 import { playMessageSound } from '../power-user.js';
 import { openConversationWorkspaceForAvatar } from './chrome.js';
-import { CHROME_IDS, DEFAULT_BRANCH_ID, GROUP_CONVERSATION_STORE_PREFIX, SAFE_TOAST_OPTIONS } from './constants.js';
+import { CHROME_IDS, DEFAULT_BRANCH_ID, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     getActiveConversationBranch,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationStore,
+    getConversationThreadStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
     parseConversationThreadKey,
@@ -23,7 +24,7 @@ export function getUnreadCount(avatar, { groupId = getConversationGroupIdForAvat
 }
 
 export function setUnreadCount(avatar, count, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const threadStore = getConversationThreadStoreForUnread(avatar, { groupId });
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
     if (!threadStore) {
         return;
     }
@@ -54,11 +55,6 @@ export function incrementUnreadCount(avatar, { groupId = getConversationGroupIdF
     }
 
     setUnreadCount(avatar, getUnreadCount(avatar, { groupId }) + 1, { groupId });
-}
-
-function getConversationThreadStoreForUnread(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const threadKey = groupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${groupId}:${avatar}` : avatar;
-    return threadKey ? getConversationStore().characters?.[threadKey] || null : null;
 }
 
 function isUnreadThreadCountable(avatar, groupId) {

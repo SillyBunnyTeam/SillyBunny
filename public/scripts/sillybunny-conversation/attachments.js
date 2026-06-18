@@ -17,10 +17,10 @@ import {
 import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
-import { incrementUnreadCount, isConversationActiveThread, notifyNewConversationMessage } from './notifications.js';
 import { isCharacterMentionedInText } from './partners.js';
-import { formatConversationFileSize, formatPromptText, scheduleConversationMemorySummary } from './prompt.js';
-import { scheduleInterfaceRefresh, schedulePalsRailRender } from './render-scheduler.js';
+import { formatConversationFileSize, formatPromptText } from './prompt.js';
+import { scheduleInterfaceRefresh } from './render-scheduler.js';
+import { escapeHtmlText } from './render-utils.js';
 import { getSettings } from './settings-store.js';
 import { conversationState, partnerReplyBusyKeys, sendQueue } from './state.js';
 import {
@@ -30,12 +30,14 @@ import {
     getConversationMediaAttachments,
     getConversationThread,
     getImageCooldownRemainingSeconds,
-    markConversationSeen,
     markImageGenerated,
     updateLastUserActivity,
 } from './thread-store.js';
-import { escapeHtmlText, handleConversationSlashAction } from './timeline-render.js';
+import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
+import { appendConversationMessage } from './message-writer.js';
+
+export { appendConversationMessage };
 
 export function getConversationPendingFiles() {
     const fileInput = document.getElementById(CHROME_IDS.fileInput);
@@ -133,6 +135,35 @@ export function clearConversationAttachmentInput() {
         fileInput.value = '';
     }
     updateConversationAttachmentPreview();
+}
+
+export function addConversationFilesToInput(files) {
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (!(fileInput instanceof HTMLInputElement) || !files?.length) {
+        return;
+    }
+
+    const transfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
+    const previousTransfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
+    if (!transfer || !previousTransfer) {
+        return;
+    }
+
+    for (const file of Array.from(fileInput.files || [])) {
+        previousTransfer.items.add(file);
+        transfer.items.add(file);
+    }
+    for (const file of files) {
+        transfer.items.add(file);
+    }
+
+    fileInput.files = transfer.files;
+    if (getValidatedConversationPendingFiles({ notify: true })) {
+        updateConversationAttachmentPreview();
+    } else {
+        fileInput.files = previousTransfer.files;
+        updateConversationAttachmentPreview();
+    }
 }
 
 export async function populateConversationUserAttachments(messageInput) {
@@ -532,28 +563,29 @@ async function collectConversationQueueItem(firstItem) {
 
 export async function processSendQueue() {
     if (conversationState.sendQueueProcessing) {
+        conversationState.sendQueueNeedsProcessing = true;
         return;
     }
 
     conversationState.sendQueueProcessing = true;
     try {
-        while (sendQueue.length) {
-            const queueItem = await collectConversationQueueItem(sendQueue.shift());
-            if (!queueItem) {
-                continue;
+        do {
+            conversationState.sendQueueNeedsProcessing = false;
+            while (sendQueue.length) {
+                const queueItem = await collectConversationQueueItem(sendQueue.shift());
+                if (!queueItem) {
+                    continue;
+                }
+                await processQueuedConversationReply(queueItem);
+                if (sendQueue.length) {
+                    await new Promise(resolve => setTimeout(resolve, SEND_QUEUE_BATCH_MS));
+                }
             }
-            await processQueuedConversationReply(queueItem);
-            if (sendQueue.length) {
-                await new Promise(resolve => setTimeout(resolve, SEND_QUEUE_BATCH_MS));
-            }
-        }
+        } while (conversationState.sendQueueNeedsProcessing && sendQueue.length);
     } finally {
+        conversationState.sendQueueNeedsProcessing = false;
         conversationState.sendQueueProcessing = false;
         focusConversationInput();
-    }
-
-    if (sendQueue.length) {
-        void processSendQueue();
     }
 }
 
@@ -654,36 +686,4 @@ export async function submitConversationInput() {
             sendButton.disabled = false;
         }
     }
-}
-
-export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, groupId = undefined } = {}, avatar = getCurrentCharAvatar()) {
-    if (!avatar) {
-        return null;
-    }
-
-    const resolvedGroupId = groupId !== undefined ? groupId : getConversationGroupIdForAvatar(avatar);
-    const message = appendConversationThreadMessage(avatar, {
-        role,
-        name,
-        mes: messageText,
-        extra,
-    }, { groupId: resolvedGroupId });
-    const shouldNotify = !['user', 'system'].includes(role) && !isConversationActiveThread(avatar, resolvedGroupId);
-    if (shouldNotify) {
-        incrementUnreadCount(avatar, { groupId: resolvedGroupId });
-    }
-    if (!['user', 'system'].includes(role)) {
-        markConversationSeen(avatar, Date.now(), { groupId: resolvedGroupId });
-    }
-
-    if (isConversationActiveThread(avatar, resolvedGroupId)) {
-        scheduleInterfaceRefresh({ syncControls: false });
-    } else if (conversationState.conversationWorkspaceOpen) {
-        schedulePalsRailRender();
-    }
-
-    notifyNewConversationMessage(avatar, message, shouldNotify, { groupId: resolvedGroupId });
-    scheduleConversationMemorySummary(avatar, { groupId: resolvedGroupId });
-
-    return message;
 }

@@ -18,6 +18,7 @@ import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrom
 import { getScheduleEditorTargets } from './pals-rail.js';
 import { bindPartnerList, bindWeeklyScheduleEditor, updateUserFooter } from './pickers.js';
 import { updateConversationMemorySummary } from './prompt.js';
+import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 import {
     clamp,
     getCurrentActivityFromSchedule,
@@ -34,8 +35,6 @@ import {
     buildLorebookOptions,
     buildSettingsDrawerHtml,
     ensureConversationChrome,
-    escapeHtmlAttribute,
-    escapeHtmlText,
 } from './timeline-render.js';
 
 export function setConversationBackdropVisible() {

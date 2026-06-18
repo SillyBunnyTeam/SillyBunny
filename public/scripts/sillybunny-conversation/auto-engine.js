@@ -1,10 +1,11 @@
 import { chat, is_send_press, name1 } from '../../script.js';
 import { selected_group } from '../group-chats.js';
-import { appendConversationMessage } from './attachments.js';
 import {
     DEFAULT_INACTIVITY_THRESHOLD,
     DEFAULT_MAX_FOLLOWUPS,
     DEFAULT_SETTINGS,
+    AUTO_WORKER_INTERVAL_GLOBAL_KEY,
+    AUTO_WORKER_INTERVAL_MS,
     GROUP_ASIDE_COOLDOWN_MS,
     GROUP_ASIDE_MENTION_COOLDOWN_MS,
     LAST_CHIME_SESSION_PREFIX,
@@ -27,6 +28,7 @@ import {
 import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar } from './media.js';
+import { appendConversationMessage } from './message-writer.js';
 import {
     buildGroupChatContext,
     getConversationRailItems,
@@ -63,8 +65,41 @@ import {
     partnerReplyBusyKeys,
     sendQueue,
 } from './state.js';
+import { clearConversationTimeouts, setConversationTimeout } from './timers.js';
 import { getConversationThread, getImageCooldownRemainingSeconds, markImageGenerated } from './thread-store.js';
 import { getConversationActivityContext, withTypingParticipant } from './typing.js';
+
+function isAutoWorkerAborted(signal = conversationState.autoWorkerAbortController?.signal) {
+    return Boolean(signal?.aborted);
+}
+
+export function stopConversationAutoWorker() {
+    const existingAutoWorkerIntervalId = globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY];
+    if (existingAutoWorkerIntervalId) {
+        window.clearInterval(existingAutoWorkerIntervalId);
+    }
+
+    if (conversationState.autoWorkerIntervalId) {
+        window.clearInterval(conversationState.autoWorkerIntervalId);
+    }
+
+    conversationState.autoWorkerIntervalId = null;
+    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = null;
+    conversationState.autoWorkerAbortController?.abort?.();
+    conversationState.autoWorkerAbortController = null;
+    clearConversationTimeouts();
+}
+
+export function startConversationAutoWorker() {
+    stopConversationAutoWorker();
+
+    const controller = new AbortController();
+    conversationState.autoWorkerAbortController = controller;
+    conversationState.autoWorkerIntervalId = window.setInterval(() => {
+        void conversationModeAutoMessageWorker({ signal: controller.signal });
+    }, AUTO_WORKER_INTERVAL_MS);
+    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = conversationState.autoWorkerIntervalId;
+}
 
 export function buildAutoMessageDirective(directive) {
     return directive;
@@ -365,7 +400,7 @@ export function buildProactiveDirective(activity, status, now = new Date()) {
     return `[System directive: It is ${timeOfDay} and you are currently ${activity} (status: ${status}). ${statusNote} The user has not replied in a while. Reach out to them yourself with a short, natural direct message. Reference your current activity or the time of day if it feels right. Do not wait for them to speak first.]`;
 }
 
-export async function checkProactiveMessaging(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function checkProactiveMessaging(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar), lastAutoMessageAt = null } = {}) {
     if (!settings.proactive_messaging) {
         return false;
     }
@@ -417,7 +452,7 @@ export async function checkProactiveMessaging(avatar, settings, now, { groupId =
             }
         } else {
             // Follow-ups use an escalating cooldown measured from the last auto message.
-            const elapsedSinceAuto = (now - getLastAutoMessageTime(avatar, { groupId })) / (60 * 1000);
+            const elapsedSinceAuto = (now - (lastAutoMessageAt ?? getLastAutoMessageTime(avatar, { groupId }))) / (60 * 1000);
             const followupThreshold = thresholdMinutes * Math.pow(2, sentCount);
             if (elapsedSinceAuto < followupThreshold) {
                 return false;
@@ -645,7 +680,7 @@ export async function checkGroupChatMention(messageId) {
         return;
     }
 
-    setTimeout(() => {
+    setConversationTimeout(() => {
         for (const { character } of mentionedMembers) {
             void triggerGroupAsideDM(character, { reason: 'mention', sourceMessageId: messageId });
         }
@@ -830,8 +865,8 @@ export async function checkConversationReminders(now) {
     }
 }
 
-export async function conversationModeAutoMessageWorker() {
-    if (getUserStatus() === 'offline') {
+export async function conversationModeAutoMessageWorker({ signal = conversationState.autoWorkerAbortController?.signal } = {}) {
+    if (isAutoWorkerAborted(signal) || getUserStatus() === 'offline') {
         return;
     }
 
@@ -844,10 +879,28 @@ export async function conversationModeAutoMessageWorker() {
     if (await checkConversationReminders(now)) {
         return;
     }
+    if (isAutoWorkerAborted(signal)) {
+        return;
+    }
 
-    for (const { character, settings, groupId = '' } of getConversationRailItems()) {
+    const railItems = getConversationRailItems();
+    const lastAutoMessageTimes = new Map();
+    const getTickLastAutoMessageTime = (avatar, groupId) => {
+        const key = `${groupId || ''}:${avatar || ''}`;
+        if (!lastAutoMessageTimes.has(key)) {
+            lastAutoMessageTimes.set(key, getLastAutoMessageTime(avatar, { groupId }));
+        }
+        return lastAutoMessageTimes.get(key);
+    };
+
+    for (const { character, settings, groupId = '' } of railItems) {
+        if (isAutoWorkerAborted(signal)) {
+            return;
+        }
+
         const avatar = character.avatar;
-        const elapsedSeconds = (now - getLastAutoMessageTime(avatar, { groupId })) / 1000;
+        const lastAutoMessageAt = getTickLastAutoMessageTime(avatar, groupId);
+        const elapsedSeconds = (now - lastAutoMessageAt) / 1000;
         if (elapsedSeconds < settings.cooldown) {
             continue;
         }
@@ -855,17 +908,26 @@ export async function conversationModeAutoMessageWorker() {
         if (await checkScheduledAutoMessages(avatar, settings, now, { groupId })) {
             return;
         }
+        if (isAutoWorkerAborted(signal)) {
+            return;
+        }
 
         // Marinara-style proactive loop takes priority over legacy idle action.
         if (settings.proactive_messaging) {
-            if (await checkProactiveMessaging(avatar, settings, now, { groupId })) {
+            if (await checkProactiveMessaging(avatar, settings, now, { groupId, lastAutoMessageAt })) {
                 return;
             }
         } else if (await checkIdleAutoMessage(avatar, settings, now, { groupId })) {
             return;
         }
+        if (isAutoWorkerAborted(signal)) {
+            return;
+        }
 
         if (await checkMultiCharacterChime(avatar, settings, now, { groupId })) {
+            return;
+        }
+        if (isAutoWorkerAborted(signal)) {
             return;
         }
 

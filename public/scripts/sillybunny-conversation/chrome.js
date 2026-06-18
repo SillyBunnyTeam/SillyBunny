@@ -3,7 +3,7 @@ import { extension_settings } from '../extensions.js';
 import { selected_group } from '../group-chats.js';
 import { setUserAvatar } from '../personas.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
-import { clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
+import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
     createConversationBranchForAvatar,
@@ -64,7 +64,6 @@ import { getSettings, resetFollowupCount, saveSettings } from './settings-store.
 import { conversationState, sendQueue } from './state.js';
 import { updateLastUserActivity } from './thread-store.js';
 import {
-    addConversationFilesToInput,
     branchConversationFromMessage,
     copyConversationMessage,
     deleteConversationMessage,
@@ -755,14 +754,6 @@ export function getSelectedConnectionProfileName() {
     return selected?.name ?? '';
 }
 
-export function applyConversationContext(settings) {
-    // Deprecated: rely entirely on temporary switches during generation to avoid corrupting global connection profile state.
-}
-
-export function restoreConversationContext() {
-    // Deprecated: rely entirely on temporary switches during generation to avoid corrupting global connection profile state.
-}
-
 export function setConversationInterfaceActive(active) {
     const chrome = active ? ensureConversationChrome() : { sheld: document.getElementById('sheld') };
     if (!(chrome?.sheld instanceof HTMLElement)) {
@@ -773,7 +764,6 @@ export function setConversationInterfaceActive(active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
         closeConversationSettings();
         closePalsRail();
-        restoreConversationContext();
         for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
             const element = document.getElementById(id);
             if (element instanceof HTMLElement) {
@@ -789,11 +779,6 @@ export function setConversationInterfaceActive(active) {
         if (element instanceof HTMLElement) {
             element.hidden = false;
         }
-    }
-    const avatar = getCurrentCharAvatar();
-    if (avatar) {
-        const groupId = getConversationGroupIdForAvatar(avatar);
-        applyConversationContext(getSettings(avatar, { groupId }));
     }
     updateUserFooter();
 }

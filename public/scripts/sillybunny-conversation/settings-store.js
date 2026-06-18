@@ -31,6 +31,31 @@ import { getConversationMessagePreviewText } from './thread-store.js';
 
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
+const GROUP_CONVERSATION_FORCED_SETTINGS = Object.freeze({
+    enabled: true,
+    multi_char: true,
+    auto_character_chat: true,
+});
+
+/**
+ * Conversation settings are stored in separate persisted scopes. Keep this
+ * precedence stable unless a migration updates existing saved data:
+ * DEFAULT < group/thread scoped settings < global overrides.
+ */
+export function mergeConversationSettingsLayers(...layers) {
+    return Object.assign({}, ...layers.filter(layer => layer && typeof layer === 'object'));
+}
+
+function getGroupThreadConversationSettings(threadStore) {
+    return threadStore?.settings
+        ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
+        : {};
+}
+
+function getSoloThreadConversationSettings(avatar, threadStore) {
+    return threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
+}
+
 function normalizeGlobalConversationSettings(settings = {}) {
     const source = settings && typeof settings === 'object' ? settings : {};
     const normalized = safeParseSettings(source);
@@ -55,30 +80,27 @@ export function saveGlobalConversationSettings(settings) {
 }
 
 export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const globalSettings = getGlobalConversationSettings();
     if (!avatar) {
-        const globalSettings = getGlobalConversationSettings();
-        return { ...DEFAULT_SETTINGS, ...globalSettings };
+        return mergeConversationSettingsLayers(DEFAULT_SETTINGS, globalSettings);
     }
 
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
-    const globalSettings = getGlobalConversationSettings();
     if (groupId) {
-        const threadSettings = threadStore?.settings
-            ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
-            : {};
-        return {
-            ...DEFAULT_SETTINGS,
-            enabled: true,
-            multi_char: true,
-            auto_character_chat: true,
-            ...getGroupConversationSettings(groupId),
-            ...threadSettings,
-            ...globalSettings,
-        };
+        return mergeConversationSettingsLayers(
+            DEFAULT_SETTINGS,
+            GROUP_CONVERSATION_FORCED_SETTINGS,
+            getGroupConversationSettings(groupId),
+            getGroupThreadConversationSettings(threadStore),
+            globalSettings,
+        );
     }
 
-    const settings = threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
-    return { ...DEFAULT_SETTINGS, ...settings, ...globalSettings };
+    return mergeConversationSettingsLayers(
+        DEFAULT_SETTINGS,
+        getSoloThreadConversationSettings(avatar, threadStore),
+        globalSettings,
+    );
 }
 
 export function isConversationModeEnabled(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {

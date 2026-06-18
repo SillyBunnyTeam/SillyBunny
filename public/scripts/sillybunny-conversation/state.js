@@ -1,11 +1,13 @@
 export const conversationState = {
     initialized: false,
     autoWorkerIntervalId: null,
+    autoWorkerAbortController: null,
     autoWorkerBusy: false,
     generationActive: false,
     conversationReplyBusy: false,
     conversationUploadActive: false,
     sendQueueProcessing: false,
+    sendQueueNeedsProcessing: false,
     conversationProfileSwitchQueue: Promise.resolve(),
     scheduleGenerationBusy: false,
     conversationWorkspaceOpen: false,
@@ -32,3 +34,4 @@ export const activeTypingParticipants = new Map();
 export const partnerReplyBusyKeys = new Set();
 export const groupAsideBusyKeys = new Set();
 export const groupAsideLastSent = new Map();
+export const conversationTimeouts = new Set();
