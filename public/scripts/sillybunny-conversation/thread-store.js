@@ -11,8 +11,8 @@ import {
     persistConversationStore,
 } from './context.js';
 import { isConversationActiveThread } from './notifications.js';
+import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
-import { renderConversationTimeline } from './timeline-render.js';
 import { setLastConversationPreview, stripPreviewText, updateLastPreviewFromConversation } from './typing.js';
 import { getConversationAttachmentLabels, safeParseThread } from './thread-store-utils.js';
 
@@ -182,7 +182,7 @@ export function appendConversationThreadMessage(avatar, messageInput, { groupId 
     saveConversationThread(avatar, messages, { groupId });
     setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { groupId });
     if (isConversationActiveThread(avatar, groupId)) {
-        renderConversationTimeline();
+        scheduleTimelineRender();
     }
     return message;
 }
@@ -201,6 +201,6 @@ export function updateConversationThreadMessage(avatar, messageId, messageText, 
     saveConversationThread(avatar, messages, { groupId });
     updateLastPreviewFromConversation(avatar, { groupId });
     if (isConversationActiveThread(avatar, groupId)) {
-        renderConversationTimeline();
+        scheduleTimelineRender();
     }
 }

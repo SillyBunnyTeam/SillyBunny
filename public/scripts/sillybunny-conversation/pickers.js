@@ -20,7 +20,7 @@ import {
     normalizeConversationBranch,
     persistConversationStore,
 } from './context.js';
-import { renderPalsRail, saveCurrentPanelSettings } from './interface.js';
+import { saveCurrentPanelSettings } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
 import {
     getActiveConversationPersonaAppendixIds,
@@ -30,6 +30,7 @@ import {
     getUserStatus,
     safeParseWeeklySchedule,
 } from './personas.js';
+import { schedulePalsRailRender } from './render-scheduler.js';
 import { closePalsRail, setConversationBackdropVisible } from './settings-panel.js';
 import { conversationState } from './state.js';
 import { escapeHtmlAttribute, escapeHtmlText } from './timeline-render.js';
@@ -518,7 +519,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
         showToast: false,
     });
     if (opened) {
-        renderPalsRail();
+        schedulePalsRailRender();
         setTimeout(() => {
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
         }, 100);

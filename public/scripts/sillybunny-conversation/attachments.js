@@ -13,10 +13,10 @@ import {
 } from './constants.js';
 import { getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import { generateConversationReply, postCharacterReply, reportConversationGenerationError } from './generation.js';
-import { refreshConversationInterface, renderPalsRail } from './interface.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
 import { incrementUnreadCount, isConversationActiveThread, notifyNewConversationMessage } from './notifications.js';
 import { formatConversationFileSize, formatPromptText, scheduleConversationMemorySummary } from './prompt.js';
+import { scheduleInterfaceRefresh, schedulePalsRailRender } from './render-scheduler.js';
 import { getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import {
@@ -228,7 +228,7 @@ export async function processQueuedConversationReply(queueItem) {
     conversationState.conversationReplyBusy = true;
     conversationState.generationActive = true;
     maybePostDelayedReplyNotice(avatar, settings, { groupId });
-    refreshConversationInterface({ syncControls: false });
+    scheduleInterfaceRefresh({ syncControls: false });
 
     try {
         const character = getCharacterForAvatar(avatar);
@@ -291,7 +291,7 @@ export async function processQueuedConversationReply(queueItem) {
     } finally {
         conversationState.conversationReplyBusy = false;
         conversationState.generationActive = false;
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     }
 }
 
@@ -399,7 +399,7 @@ export async function submitConversationInput() {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         clearConversationAttachmentInput();
         updateLastUserActivity(avatar, { groupId });
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
 
         const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
         sendQueue.push({
@@ -439,9 +439,9 @@ export async function appendConversationMessage(messageText, { name = getCurrent
     }
 
     if (isConversationActiveThread(avatar, resolvedGroupId)) {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     } else if (conversationState.conversationWorkspaceOpen) {
-        renderPalsRail();
+        schedulePalsRailRender();
     }
 
     notifyNewConversationMessage(avatar, message, shouldNotify, { groupId: resolvedGroupId });

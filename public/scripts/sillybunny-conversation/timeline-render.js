@@ -28,12 +28,12 @@ import {
     persistConversationStore,
 } from './context.js';
 import { generateSelfieFromContext, normalizeConversationOutputText, reportConversationGenerationError } from './generation.js';
-import { renderPalsRail } from './interface.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
 import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
 import { getConnectionProfiles, withConversationConnectionProfile } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments, updateConversationMemorySummary } from './prompt.js';
+import { registerConversationRenderer, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationReplyMaxTokens } from './schedule.js';
 import { openScheduleEditorModal, renderConversationMemoryPanel } from './settings-panel.js';
 import { getSettings } from './settings-store.js';
@@ -43,11 +43,78 @@ import {
     appendConversationThreadMessage,
     getConversationAttachmentLabels,
     getConversationAttachmentSummary,
+    getConversationSeenAt,
     getConversationMessagePreviewText,
     getConversationThread,
     saveConversationThread,
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation } from './typing.js';
+
+function hashConversationRenderFingerprint(value) {
+    let hash = 0;
+    const input = String(value || '');
+    for (let i = 0; i < input.length; i++) {
+        hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+    }
+
+    return hash.toString(36);
+}
+
+function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages }) {
+    const activeTyping = getActiveTypingParticipants(avatar);
+    const statusAvatars = new Set([avatar]);
+    for (const participant of activeTyping) {
+        if (participant?.avatar) {
+            statusAvatars.add(participant.avatar);
+        }
+    }
+
+    const messageParts = messages.map((message) => {
+        const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+        if (speakerAvatar && message?.role !== 'user' && message?.role !== 'system') {
+            statusAvatars.add(speakerAvatar);
+        }
+
+        return [
+            message?.id || '',
+            message?.role || '',
+            message?.name || '',
+            message?.send_date || '',
+            message?.created_at || '',
+            message?.mes || '',
+            JSON.stringify(message?.extra || {}),
+            getConversationAttachmentSummary(message),
+        ].join('\u001f');
+    });
+
+    const typingPart = activeTyping
+        .map(participant => `${participant?.avatar || ''}:${participant?.name || ''}`)
+        .join(',');
+    const statusPart = Array.from(statusAvatars)
+        .filter(Boolean)
+        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar, getSettings(statusAvatar, { groupId }))}`)
+        .join(',');
+    const settingsPart = [
+        settings?.editable_messages ? '1' : '0',
+        settings?.prose_polisher ? '1' : '0',
+    ].join(':');
+
+    return hashConversationRenderFingerprint([
+        avatar || '',
+        groupId || '',
+        conversationState.conversationTimelineChannel || '',
+        conversationState.conversationTimelineSearchQuery || '',
+        allMessages.length,
+        messages.length,
+        conversationState.generationActive ? '1' : '0',
+        conversationState.imageGenerationActive ? '1' : '0',
+        getConversationSeenAt(avatar, { groupId }),
+        settingsPart,
+        typingPart,
+        statusPart,
+        messageParts.join('\u001e'),
+    ].join('\u001d'));
+}
 
 export function renderConversationTimeline() {
     const timeline = document.getElementById(CHROME_IDS.timeline);
@@ -62,6 +129,14 @@ export function renderConversationTimeline() {
     const previousMessageCount = conversationState.lastRenderedMessageCount;
 
     if (!avatar) {
+        const fingerprint = 'no-avatar';
+        if (fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
+            updateConversationToolsState();
+            return;
+        }
+
+        conversationState.lastTimelineFingerprint = fingerprint;
+        timeline.dataset.sbConversationFingerprint = fingerprint;
         timeline.innerHTML = `
             <div class="sb-conversation-thread-empty">
                 <div class="sb-conversation-thread-empty-icon fa-solid fa-comments" aria-hidden="true"></div>
@@ -84,6 +159,14 @@ export function renderConversationTimeline() {
     const contextChanged = previousAvatar !== avatar;
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
+    const fingerprint = buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages });
+    if (fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
+        updateConversationToolsState();
+        return;
+    }
+
+    conversationState.lastTimelineFingerprint = fingerprint;
+    timeline.dataset.sbConversationFingerprint = fingerprint;
     timeline.textContent = '';
 
     if (!allMessages.length) {
@@ -447,7 +530,7 @@ export function getConversationTimelineMessages(messages) {
 export function setConversationTimelineChannel(channel) {
     conversationState.conversationTimelineChannel = CONVERSATION_TIMELINE_CHANNELS.includes(channel) ? channel : 'main';
     updateConversationToolsState();
-    renderConversationTimeline();
+    scheduleTimelineRender();
 }
 
 export function updateConversationToolsState() {
@@ -472,7 +555,7 @@ export function updateConversationToolsState() {
 
 export function updateConversationSearchQuery(value) {
     conversationState.conversationTimelineSearchQuery = String(value || '').trim();
-    renderConversationTimeline();
+    scheduleTimelineRender();
 }
 
 export function getConversationMessageById(messageId, { groupId = getConversationGroupIdForAvatar(getCurrentCharAvatar()) } = {}) {
@@ -501,7 +584,7 @@ export function saveConversationMessageThread(context) {
             persistConversationStore();
         }
     }
-    renderConversationTimeline();
+    scheduleTimelineRender();
 }
 
 export async function copyConversationMessage(messageId) {
@@ -635,8 +718,8 @@ export function branchConversationFromMessage(messageId) {
     store.activeBranchId = branch.id;
     persistConversationStore();
     openConversationWorkspaceForAvatar(context.avatar, { groupId: context.groupId || null, showToast: false });
-    renderConversationTimeline();
-    renderPalsRail();
+    scheduleTimelineRender();
+    schedulePalsRailRender();
 }
 
 export async function quickConversationSelfie() {
@@ -736,7 +819,7 @@ export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(
         },
     }, { groupId });
     updateLastPreviewFromConversation(avatar, { groupId });
-    renderConversationTimeline();
+    scheduleTimelineRender();
     return true;
 }
 
@@ -1408,3 +1491,5 @@ export function ensureConversationChrome() {
     bindConversationChromeControls(sheld);
     return { sheld, header, stage, palsRail, backdrop, drawer };
 }
+
+registerConversationRenderer('timeline', renderConversationTimeline);

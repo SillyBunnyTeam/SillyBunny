@@ -30,6 +30,53 @@ import { conversationState } from './state.js';
 import { getConversationThread, saveConversationThread } from './thread-store.js';
 import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
+import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
+
+function hashConversationRenderFingerprint(value) {
+    let hash = 0;
+    const input = String(value || '');
+    for (let i = 0; i < input.length; i++) {
+        hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+    }
+
+    return hash.toString(36);
+}
+
+function buildPalsRailFingerprint(pals) {
+    const parts = [String(pals.length), conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
+    for (const { character, index, settings, groupId, group } of pals) {
+        const avatar = character?.avatar || '';
+        const unreadCount = getUnreadCount(avatar, { groupId });
+        const characterStore = getConversationThreadStore(avatar, { create: false, groupId });
+        const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
+        const participants = getConversationParticipants(avatar, settings, { groupId })
+            .map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, getSettings(participant?.avatar, { groupId }))}`)
+            .join(',');
+        const branches = getConversationBranches(avatar, { groupId })
+            .map(branch => [branch.id, branch.name || '', branch.preview || '', branch.id === activeBranchId ? '1' : '0'].join('\u001f'))
+            .join('\u001e');
+
+        parts.push([
+            avatar,
+            index,
+            character?.name || '',
+            groupId || '',
+            group?.name || '',
+            settings?.enabled ? '1' : '0',
+            settings?.availability || '',
+            settings?.multi_char_names || '',
+            getConversationDisplayName(avatar, settings, { groupId }),
+            getLastConversationPreview(avatar, { groupId }),
+            unreadCount,
+            isConversationActiveThread(avatar, groupId) ? '1' : '0',
+            activeBranchId,
+            participants,
+            branches,
+        ].join('\u001f'));
+    }
+
+    return hashConversationRenderFingerprint(parts.join('\u001e'));
+}
 
 export function renderPalsRail() {
     const list = document.getElementById(CHROME_IDS.palsList);
@@ -38,6 +85,13 @@ export function renderPalsRail() {
     }
 
     const pals = getConversationRailItems();
+    const fingerprint = buildPalsRailFingerprint(pals);
+    if (fingerprint === conversationState.lastPalsRailFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
+        return;
+    }
+
+    conversationState.lastPalsRailFingerprint = fingerprint;
+    list.dataset.sbConversationFingerprint = fingerprint;
     list.textContent = '';
 
     if (!pals.length) {
@@ -366,7 +420,7 @@ export function saveCurrentPanelSettings() {
         saveGroupConversationSettings(groupId, settings);
     }
     saveSettings(avatar, settings, { groupId });
-    refreshConversationInterface({ syncControls: false });
+    scheduleInterfaceRefresh({ syncControls: false });
     updateGroupMembersVisibility();
 }
 
@@ -400,14 +454,14 @@ export function loadCurrentPanelSettings() {
 
     if (!avatar) {
         applySettingsToPanel(DEFAULT_SETTINGS);
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
         return;
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId });
     applySettingsToPanel(settings);
-    refreshConversationInterface({ syncControls: false });
+    scheduleInterfaceRefresh({ syncControls: false });
 }
 
 export function updateProsePolisherButtonVisibility() {
@@ -450,7 +504,7 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
             msg.mes = normalizeConversationOutputText(response.trim());
             saveConversationThread(avatar, thread, { groupId });
             updateLastPreviewFromConversation(avatar, { groupId });
-            renderConversationTimeline();
+            scheduleTimelineRender();
             globalThis.toastr?.success?.('Character reply polished successfully!');
         } else {
             globalThis.toastr?.error?.('Polishing failed. No response received.');
@@ -465,3 +519,6 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }
     }
 }
+
+registerConversationRenderer('palsRail', renderPalsRail);
+registerConversationRenderer('interface', refreshConversationInterface);

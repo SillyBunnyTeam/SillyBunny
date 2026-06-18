@@ -17,6 +17,7 @@ import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAv
 import { stripSpeakerPrefix } from './partners.js';
 import { withConversationConnectionProfile } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, formatPromptText } from './prompt.js';
+import { scheduleTimelineRender } from './render-scheduler.js';
 import { clamp, getConversationReplyMaxTokens, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
 import {
@@ -26,7 +27,6 @@ import {
     markImageGenerated,
     updateConversationThreadMessage,
 } from './thread-store.js';
-import { renderConversationTimeline } from './timeline-render.js';
 import { splitChatroomMessages, waitForReplyDelay, withTypingParticipant } from './typing.js';
 
 export {
@@ -102,12 +102,12 @@ export function editConversationMessage(messageId) {
         if (value && value !== message.mes) {
             updateConversationThreadMessage(avatar, messageId, value, null, { groupId });
         } else {
-            renderConversationTimeline();
+            scheduleTimelineRender();
         }
     };
 
     cancelButton.onclick = () => {
-        renderConversationTimeline();
+        scheduleTimelineRender();
     };
 
     textarea.onkeydown = (event) => {

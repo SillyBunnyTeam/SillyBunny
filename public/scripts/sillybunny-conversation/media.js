@@ -10,11 +10,11 @@ import {
 } from './context.js';
 import { parseAvatarList } from './partners.js';
 import { formatPromptText } from './prompt.js';
+import { scheduleTimelineRender } from './render-scheduler.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationThread } from './thread-store.js';
-import { renderConversationTimeline } from './timeline-render.js';
 
 export async function generateConversationImage(prompt, negative = '') {
     if (conversationState.imageGenerationActive) {
@@ -23,7 +23,7 @@ export async function generateConversationImage(prompt, negative = '') {
 
     conversationState.imageGenerationActive = true;
     conversationState.imageGenerationAbortController = new AbortController();
-    renderConversationTimeline();
+    scheduleTimelineRender();
     try {
         const qig = await import('./extensions/quick-image-gen/index.js');
         const entry = await qig.withTransientGenerationSettings({}, async () => {
@@ -39,7 +39,7 @@ export async function generateConversationImage(prompt, negative = '') {
     } finally {
         conversationState.imageGenerationActive = false;
         conversationState.imageGenerationAbortController = null;
-        renderConversationTimeline();
+        scheduleTimelineRender();
     }
 }
 

@@ -17,6 +17,8 @@ export const conversationState = {
     imageGenerationAbortController: null,
     lastRenderedAvatar: null,
     lastRenderedMessageCount: 0,
+    lastTimelineFingerprint: '',
+    lastPalsRailFingerprint: '',
     originalDocumentTitle: typeof document !== 'undefined' ? document.title : '',
     originalFaviconHref: '',
     faviconUpdateToken: 0,

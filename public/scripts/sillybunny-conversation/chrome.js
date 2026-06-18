@@ -24,8 +24,6 @@ import { editConversationMessage } from './generation.js';
 import {
     applySettingsToPanel,
     handleCharacterMessagePolish,
-    refreshConversationInterface,
-    renderPalsRail,
     saveCurrentPanelSettings,
     syncConversationToolsVisibility,
     updateConversationChrome,
@@ -47,6 +45,7 @@ import {
     toggleUserStatusPicker,
     updateUserFooter,
 } from './pickers.js';
+import { scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
 import {
     clearConversationMemoryFromPanel,
@@ -74,7 +73,6 @@ import {
     quickConversationSummarize,
     reactConversationMessage,
     regenerateConversationMessage,
-    renderConversationTimeline,
     setConversationTimelineChannel,
     toggleConversationMessagePin,
     updateConversationNotificationSettingsVisibility,
@@ -197,7 +195,7 @@ export function bindConversationChromeControls(sheld) {
                 conversationState.imageGenerationAbortController?.abort?.();
                 conversationState.imageGenerationActive = false;
                 conversationState.imageGenerationAbortController = null;
-                renderConversationTimeline();
+                scheduleTimelineRender();
                 toastr.info('Image generation stopped.');
                 break;
             case 'add-character-dm': {
@@ -214,7 +212,7 @@ export function bindConversationChromeControls(sheld) {
                             groupId: null,
                             showToast: false,
                         });
-                        renderPalsRail();
+                        schedulePalsRailRender();
                         setTimeout(() => {
                             const input = document.getElementById(CHROME_IDS.input);
                             if (input instanceof HTMLTextAreaElement) {
@@ -235,7 +233,7 @@ export function bindConversationChromeControls(sheld) {
                         groupId: groupId || null,
                         showToast: false,
                     });
-                    refreshConversationInterface({ syncControls: false });
+                    scheduleInterfaceRefresh({ syncControls: false });
                     renderConversationMemoryPanel();
                     document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 }
@@ -255,7 +253,7 @@ export function bindConversationChromeControls(sheld) {
                     groupId: groupId || null,
                     showToast: false,
                 });
-                refreshConversationInterface({ syncControls: false });
+                scheduleInterfaceRefresh({ syncControls: false });
                 renderConversationMemoryPanel();
                 document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
                 break;
@@ -269,7 +267,7 @@ export function bindConversationChromeControls(sheld) {
                     const name = globalThis.prompt?.('Rename Conversation branch', branch.name || 'Conversation');
                     if (name?.trim()) {
                         renameConversationBranch(avatar, branchId, name, { groupId });
-                        renderPalsRail();
+                        schedulePalsRailRender();
                         if (isConversationActiveThread(avatar, groupId)) {
                             updateConversationHeader(getSettings(avatar, { groupId }));
                             renderConversationMemoryPanel();
@@ -290,11 +288,10 @@ export function bindConversationChromeControls(sheld) {
                     if (confirmed) {
                         deleteConversationBranch(avatar, branchId, { groupId });
                         if (isConversationActiveThread(avatar, groupId)) {
-                            renderConversationTimeline();
-                            refreshConversationInterface({ syncControls: false });
+                            scheduleInterfaceRefresh({ syncControls: false });
                             renderConversationMemoryPanel();
                         } else {
-                            renderPalsRail();
+                            schedulePalsRailRender();
                         }
                     }
                 }
@@ -330,14 +327,13 @@ export function bindConversationChromeControls(sheld) {
                         if (remainingPals.length > 0) {
                             const nextPal = remainingPals[0];
                             openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
-                            renderConversationTimeline();
-                            refreshConversationInterface({ syncControls: true });
+                            scheduleInterfaceRefresh({ syncControls: true });
                         } else {
                             conversationState.conversationWorkspaceOpen = false;
-                            refreshConversationInterface({ syncControls: false });
+                            scheduleInterfaceRefresh({ syncControls: false });
                         }
                     } else {
-                        renderPalsRail();
+                        schedulePalsRailRender();
                     }
                     toastr.success(`Deleted ${historyLabel}.`);
                 }
@@ -352,8 +348,7 @@ export function bindConversationChromeControls(sheld) {
                 const groupId = getConversationGroupIdForAvatar(avatar);
                 createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
                 updateLastUserActivity(avatar, { groupId });
-                renderConversationTimeline();
-                refreshConversationInterface({ syncControls: false });
+                scheduleInterfaceRefresh({ syncControls: false });
                 renderConversationMemoryPanel();
                 toastr.success('New Conversation branch started.');
                 break;
@@ -701,7 +696,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
     }
 
     if (!targetAvatar) {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
         setTimeout(() => {
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
         }, 100);
@@ -713,7 +708,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
     settings.enabled = true;
     saveSettings(targetAvatar, settings, { groupId: targetGroupId });
     applySettingsToPanel(settings);
-    refreshConversationInterface({ syncControls: true });
+    scheduleInterfaceRefresh({ syncControls: true });
     if (showToast && !wasEnabled) {
         toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
@@ -740,7 +735,7 @@ export function disableConversationModeForCurrentCharacter({ focusRoleplay = tru
     conversationState.conversationSelectedGroupId = null;
     conversationState.conversationTimelineChannel = 'main';
     conversationState.conversationTimelineSearchQuery = '';
-    refreshConversationInterface({ syncControls: false });
+    scheduleInterfaceRefresh({ syncControls: false });
     if (focusRoleplay) {
         document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
     }

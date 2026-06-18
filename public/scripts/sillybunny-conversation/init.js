@@ -11,9 +11,10 @@ import {
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, openConversationWorkspaceForAvatar } from './chrome.js';
 import { AUTO_WORKER_INTERVAL_GLOBAL_KEY, AUTO_WORKER_INTERVAL_MS, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getCurrentCharAvatar, isAvatarInConversationGroup, migrateConversationLocalStorage } from './context.js';
-import { loadCurrentPanelSettings, refreshConversationInterface } from './interface.js';
+import { loadCurrentPanelSettings } from './interface.js';
 import { updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 
@@ -25,13 +26,13 @@ export function init() {
     conversationState.initialized = true;
     migrateConversationLocalStorage();
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
         if (selected_group) {
             checkGroupChatMention(messageId);
         }
     });
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
 
         // Occasional private asides keep Conversation Mode feeling connected
         // without forcing a public group-chat reply.
@@ -59,15 +60,15 @@ export function init() {
         }
 
         conversationState.generationActive = true;
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     });
     eventSource.on(event_types.GENERATION_ENDED, () => {
         conversationState.generationActive = false;
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     });
     eventSource.on(event_types.GENERATION_STOPPED, () => {
         conversationState.generationActive = false;
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     });
     eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
     eventSource.on(event_types.CHAT_LOADED, handleChatChanged);

@@ -6,10 +6,10 @@ import {
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
-import { refreshConversationInterface } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
 import { isConversationActiveForAvatar, updateConversationNotificationIndicators } from './notifications.js';
 import { getAvailabilityCopy } from './personas.js';
+import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getConversationSessionMarker, getLastUserActivity, setConversationSessionMarker } from './settings-store.js';
 import { activeTypingParticipants } from './state.js';
@@ -49,7 +49,7 @@ export async function waitForReplyDelay(messageText, settings, avatar) {
     }
 
     if (isConversationActiveForAvatar(avatar)) {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     }
     await new Promise(resolve => setTimeout(resolve, delay));
 }
@@ -89,7 +89,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
     }
 
     if (isConversationActiveForAvatar(threadAvatar)) {
-        refreshConversationInterface({ syncControls: false });
+        scheduleInterfaceRefresh({ syncControls: false });
     }
     try {
         return await task();
@@ -105,7 +105,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
             }
         }
         if (isConversationActiveForAvatar(threadAvatar)) {
-            refreshConversationInterface({ syncControls: false });
+            scheduleInterfaceRefresh({ syncControls: false });
         }
     }
 }
