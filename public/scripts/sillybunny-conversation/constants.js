@@ -256,7 +256,15 @@ export const GROUP_CONVERSATION_SETTINGS_KEYS = Object.freeze([
     'schedule_command_enabled',
 ]);
 export const GROUP_CONVERSATION_SETTINGS_KEY_SET = new Set(GROUP_CONVERSATION_SETTINGS_KEYS);
+export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
+    'custom_instructions',
+    'connection_profile',
+]);
+export const GLOBAL_CONVERSATION_SETTINGS_KEY_SET = new Set(GLOBAL_CONVERSATION_SETTINGS_KEYS);
+export const THREAD_CONVERSATION_SETTINGS_KEYS = Object.freeze(
+    Object.keys(DEFAULT_SETTINGS).filter(key => !GLOBAL_CONVERSATION_SETTINGS_KEY_SET.has(key)),
+);
 export const CHARACTER_CONVERSATION_SETTINGS_KEYS = Object.freeze(
-    Object.keys(DEFAULT_SETTINGS).filter(key => !GROUP_CONVERSATION_SETTINGS_KEY_SET.has(key)),
+    Object.keys(DEFAULT_SETTINGS).filter(key => !GROUP_CONVERSATION_SETTINGS_KEY_SET.has(key) && !GLOBAL_CONVERSATION_SETTINGS_KEY_SET.has(key)),
 );
 export const SAFE_TOAST_OPTIONS = Object.freeze({ escapeHtml: true });

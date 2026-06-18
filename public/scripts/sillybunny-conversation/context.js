@@ -3,6 +3,7 @@ import { extension_settings } from '../extensions.js';
 import { editGroup, groups, selected_group } from '../group-chats.js';
 import {
     CONVERSATION_NOTIFICATION_PRIORITIES,
+    CHARACTER_CONVERSATION_SETTINGS_KEYS,
     CONVERSATION_STORE_KEY,
     DEFAULT_AUTO_CHAT_COOLDOWN,
     DEFAULT_BRANCH_ID,
@@ -18,6 +19,7 @@ import {
     MAX_THREAD_MESSAGES,
     SCHEDULE_PREFIX,
     SETTINGS_KEY_PREFIX,
+    THREAD_CONVERSATION_SETTINGS_KEYS,
     THREAD_KEY_PREFIX,
     UNREAD_PREFIX,
 } from './constants.js';
@@ -261,6 +263,7 @@ export function getConversationStore() {
         extension_settings[CONVERSATION_STORE_KEY] = {
             version: 1,
             localStorageMigrated: false,
+            settings: {},
             characters: {},
             reminders: [],
         };
@@ -268,6 +271,7 @@ export function getConversationStore() {
 
     const current = extension_settings[CONVERSATION_STORE_KEY];
     current.version = current.version || 1;
+    current.settings = current.settings && typeof current.settings === 'object' ? current.settings : {};
     current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
     current.reminders = Array.isArray(current.reminders) ? current.reminders : [];
     return current;
@@ -332,7 +336,10 @@ export function getCharacterConversationStore(avatar, { create = true } = {}) {
     }
 
     const characterStore = store.characters[avatar];
-    characterStore.settings = safeParseSettings(characterStore.settings);
+    characterStore.settings = pickConversationSettings(
+        safeParseSettings(characterStore.settings),
+        parseConversationThreadKey(avatar).groupId ? CHARACTER_CONVERSATION_SETTINGS_KEYS : THREAD_CONVERSATION_SETTINGS_KEYS,
+    );
     characterStore.branches = characterStore.branches && typeof characterStore.branches === 'object' ? characterStore.branches : {};
     characterStore.activeBranchId = characterStore.activeBranchId || DEFAULT_BRANCH_ID;
     if (!characterStore.branches[characterStore.activeBranchId]) {

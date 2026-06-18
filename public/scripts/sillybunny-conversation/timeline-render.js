@@ -366,7 +366,6 @@ export function buildConnectionProfileOptions(selected) {
 export function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters to pick partners.') {
     const selectedSet = new Set(parseAvatarList(selectedNames));
     const currentAvatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(currentAvatar);
     const rows = [];
     (Array.isArray(characters) ? characters : []).forEach((character) => {
         if (!character?.avatar || character.avatar === currentAvatar) {
@@ -376,19 +375,12 @@ export function buildPartnerOptions(selectedNames, emptyText = 'Enable more char
         const charAvatar = character.avatar;
         const checked = selectedSet.has(charAvatar) ? ' checked' : '';
         const thumbUrl = getThumbnailUrl('avatar', charAvatar);
-        const profileOptions = buildConnectionProfileOptions(getSettings(charAvatar, { groupId }).connection_profile);
         rows.push(`
             <div class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
                 <label class="sb-conversation-partner-pick">
                     <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
                     <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
                     <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
-                </label>
-                <label class="sb-conversation-partner-profile-wrap" title="Connection profile for ${escapeHtmlAttribute(charName)}">
-                    <span class="sr-only">${escapeHtmlText(charName)} connection profile</span>
-                    <select class="text_pole textarea_compact sb-conversation-partner-profile" data-partner-avatar="${escapeHtmlAttribute(charAvatar)}">
-                        ${profileOptions}
-                    </select>
                 </label>
             </div>
         `);
@@ -1128,8 +1120,9 @@ export function buildSettingsDrawerHtml() {
                     </button>
                 </div>
                 <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_custom_instructions">Custom Instructions</label>
+                    <label for="sb_conv_custom_instructions">Custom Instructions <span class="sb-conversation-setting-scope">Global</span></label>
                     <textarea id="sb_conv_custom_instructions" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type any custom instructions or guidelines here..."></textarea>
+                    <p class="sb-conversation-field-hint">Applies to every solo and group Conversation DM.</p>
                 </div>
                 <label class="checkbox_label" title="Enable additional characters in the chat to chime in">
                     <input id="sb_conv_multi_char" type="checkbox" />
@@ -1167,10 +1160,11 @@ export function buildSettingsDrawerHtml() {
                     </select>
                 </div>
                 <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_connection_profile">Connection Profile</label>
+                    <label for="sb_conv_connection_profile">Connection Profile <span class="sb-conversation-setting-scope">Global</span></label>
                     <select id="sb_conv_connection_profile" class="text_pole textarea_compact wide100p">
                         ${buildConnectionProfileOptions(settings.connection_profile)}
                     </select>
+                    <p class="sb-conversation-field-hint">Used for all Conversation Mode generations unless left on the current active connection.</p>
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_authors_note">Author's Note Override</label>

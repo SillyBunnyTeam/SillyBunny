@@ -14,7 +14,6 @@ import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from
 import {
     createConversationBranch,
     getConversationGroupById,
-    getConversationGroupIdForAvatar,
     getConversationThreadStore,
     getCurrentCharAvatar,
     getDefaultGroupConversationSettings,
@@ -32,7 +31,6 @@ import {
     safeParseWeeklySchedule,
 } from './personas.js';
 import { closePalsRail, setConversationBackdropVisible } from './settings-panel.js';
-import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { escapeHtmlAttribute, escapeHtmlText } from './timeline-render.js';
 
@@ -124,18 +122,6 @@ export function readPartnersFromList(listId) {
 
 export function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
-}
-
-export function saveConversationPartnerConnectionProfile(select) {
-    const partnerAvatar = select?.dataset?.partnerAvatar;
-    if (!partnerAvatar) {
-        return;
-    }
-
-    const groupId = getConversationGroupIdForAvatar(partnerAvatar);
-    const settings = getSettings(partnerAvatar, { groupId });
-    settings.connection_profile = select.value || '';
-    saveSettings(partnerAvatar, settings, { groupId });
 }
 
 export function updateUserFooter() {
@@ -289,13 +275,9 @@ export function bindPartnerList(listId, searchId) {
     list.dataset.sbConversationBound = 'true';
     list.addEventListener('change', (event) => {
         const target = event.target instanceof Element ? event.target : null;
-        const profileSelect = target?.closest('.sb-conversation-partner-profile');
-        if (profileSelect instanceof HTMLSelectElement) {
-            saveConversationPartnerConnectionProfile(profileSelect);
-            return;
+        if (target?.closest('.sb-conversation-partner-checkbox')) {
+            saveCurrentPanelSettings();
         }
-
-        saveCurrentPanelSettings();
     });
 
     const searchInput = document.getElementById(searchId);

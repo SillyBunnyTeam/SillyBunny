@@ -5,6 +5,8 @@ import {
     DEFAULT_AUTO_CHAT_COOLDOWN,
     DEFAULT_BRANCH_ID,
     DEFAULT_SETTINGS,
+    GLOBAL_CONVERSATION_SETTINGS_KEYS,
+    THREAD_CONVERSATION_SETTINGS_KEYS,
 } from './constants.js';
 import {
     getActiveConversationBranch,
@@ -29,9 +31,26 @@ import { getConversationMessagePreviewText } from './thread-store.js';
 
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
+function normalizeGlobalConversationSettings(settings = {}) {
+    return pickConversationSettings(safeParseSettings(settings), GLOBAL_CONVERSATION_SETTINGS_KEYS);
+}
+
+export function getGlobalConversationSettings() {
+    const store = getConversationStore();
+    store.settings = normalizeGlobalConversationSettings(store.settings);
+    return { ...store.settings };
+}
+
+export function saveGlobalConversationSettings(settings) {
+    const store = getConversationStore();
+    store.settings = normalizeGlobalConversationSettings(settings);
+    persistConversationStore();
+}
+
 export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const globalSettings = getGlobalConversationSettings();
     if (!avatar) {
-        return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, ...globalSettings };
     }
 
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
@@ -39,11 +58,11 @@ export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConv
         const threadSettings = threadStore?.settings
             ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
             : {};
-        return { ...DEFAULT_SETTINGS, ...getGroupConversationSettings(groupId), ...threadSettings };
+        return { ...DEFAULT_SETTINGS, ...getGroupConversationSettings(groupId), ...threadSettings, ...globalSettings };
     }
 
     const settings = threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
-    return { ...DEFAULT_SETTINGS, ...settings };
+    return { ...DEFAULT_SETTINGS, ...settings, ...globalSettings };
 }
 
 export function isConversationModeEnabled(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
@@ -132,11 +151,12 @@ export function saveSettings(avatar, settings, { groupId = getConversationGroupI
     }
 
     const threadStore = getConversationThreadStore(avatar, { create: true, groupId });
+    const normalizedSettings = safeParseSettings(settings);
+    getConversationStore().settings = normalizeGlobalConversationSettings(normalizedSettings);
     if (threadStore) {
-        const normalizedSettings = safeParseSettings(settings);
         threadStore.settings = groupId
             ? pickConversationSettings(normalizedSettings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
-            : normalizedSettings;
+            : pickConversationSettings(normalizedSettings, THREAD_CONVERSATION_SETTINGS_KEYS);
     }
     persistConversationStore();
 }

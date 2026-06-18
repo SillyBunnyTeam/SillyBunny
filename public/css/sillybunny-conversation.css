@@ -1432,6 +1432,14 @@
     margin-block: 0;
 }
 
+.sb-conversation-setting-scope {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
+    font-size: var(--sb-type-meta);
+    font-weight: 500;
+    margin-inline-start: 4px;
+    text-transform: uppercase;
+}
+
 .sb-conversation-generate-schedule {
     align-self: flex-start;
 }
