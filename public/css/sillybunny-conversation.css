@@ -1394,6 +1394,13 @@
     grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
     gap: 8px;
     align-items: end;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+.sb-conversation-notification-grid,
+.sb-conversation-notification-grid * {
+    box-sizing: border-box;
 }
 
 .sb-conversation-notification-grid .checkbox_label {
@@ -1405,8 +1412,11 @@
 }
 
 .sb-conversation-notification-grid select,
-.sb-conversation-notification-grid input[type='time'] {
+.sb-conversation-notification-grid input[type='time'],
+.sb-conversation-notification-grid .sb-conversation-quiet-time-input {
     inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
 }
 
 .sb-conversation-settings-body .text_pole[type='number'] {
@@ -2333,11 +2343,17 @@
         flex-basis: 34px;
     }
 
-    /* Mobile schedule modal keeps full height within viewport */
+    /* Mobile schedule modal centers within the visual viewport and scrolls internally */
     #sb_conversation_schedule_modal.sb-conversation-schedule-modal-overlay {
+        display: grid !important;
         align-items: center !important;
-        justify-content: center !important;
-        overflow-y: auto !important;
+        justify-items: center !important;
+        place-items: center !important;
+        min-block-size: 100vh !important;
+        block-size: 100vh !important;
+        min-block-size: 100dvh !important;
+        block-size: 100dvh !important;
+        overflow: hidden !important;
         padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) !important;
         box-sizing: border-box;
         -webkit-overflow-scrolling: touch;
@@ -2347,7 +2363,13 @@
         width: min(100%, calc(100vw - 20px)) !important;
         max-height: calc(100vh - 20px) !important;
         max-height: calc(100dvh - 20px) !important;
-        margin-block: auto !important;
+        margin: 0 !important;
+    }
+
+    .sb-schedule-modal-body {
+        min-block-size: 0 !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
     }
 
     /* Keep idle action labels on a single line */
@@ -2391,7 +2413,8 @@
     }
 
     .sb-conversation-notification-grid select,
-    .sb-conversation-notification-grid input[type='time'] {
+    .sb-conversation-notification-grid input[type='time'],
+    .sb-conversation-notification-grid .sb-conversation-quiet-time-input {
         margin: 0 !important;
         min-width: 0 !important;
         max-width: 100% !important;

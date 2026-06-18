@@ -1,8 +1,9 @@
 import { playMessageSound } from '../power-user.js';
 import { openConversationWorkspaceForAvatar } from './chrome.js';
-import { CHROME_IDS, DEFAULT_BRANCH_ID, SAFE_TOAST_OPTIONS } from './constants.js';
+import { CHROME_IDS, DEFAULT_BRANCH_ID, GROUP_CONVERSATION_STORE_PREFIX, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     getActiveConversationBranch,
+    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationStore,
     getConversationThreadKey,
@@ -22,11 +23,25 @@ export function getUnreadCount(avatar, { groupId = getConversationGroupIdForAvat
 }
 
 export function setUnreadCount(avatar, count, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { groupId });
-    if (branch) {
-        branch.unread = Math.max(0, count);
-        persistConversationStore();
+    const threadStore = getConversationThreadStoreForUnread(avatar, { groupId });
+    if (!threadStore) {
+        return;
     }
+
+    const unread = Math.max(0, count);
+    const activeBranchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
+    const activeBranch = threadStore.branches?.[activeBranchId];
+    if (activeBranch) {
+        activeBranch.unread = unread;
+    }
+    if (unread === 0) {
+        Object.values(threadStore.branches || {}).forEach((branch) => {
+            if (branch && typeof branch === 'object') {
+                branch.unread = 0;
+            }
+        });
+    }
+    persistConversationStore();
 }
 
 export function clearUnreadCount(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
@@ -41,16 +56,32 @@ export function incrementUnreadCount(avatar, { groupId = getConversationGroupIdF
     setUnreadCount(avatar, getUnreadCount(avatar, { groupId }) + 1, { groupId });
 }
 
+function getConversationThreadStoreForUnread(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const threadKey = groupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${groupId}:${avatar}` : avatar;
+    return threadKey ? getConversationStore().characters?.[threadKey] || null : null;
+}
+
+function isUnreadThreadCountable(avatar, groupId) {
+    if (!avatar || !getCharacterForAvatar(avatar)) {
+        return false;
+    }
+
+    if (groupId) {
+        const group = getConversationGroupById(groupId);
+        if (!group?.members?.includes(avatar) || group.disabled_members?.includes(avatar)) {
+            return false;
+        }
+    }
+
+    return isConversationModeEnabled(avatar, { groupId });
+}
+
 export function getTotalUnreadCount() {
     return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
         const parsed = parseConversationThreadKey(threadKey);
         const avatar = parsed.groupId ? parsed.avatar : threadKey;
-        if (!avatar || !getCharacterForAvatar(avatar)) {
-            return sum;
-        }
-
         const groupId = parsed.groupId || '';
-        if (!isConversationModeEnabled(avatar, { groupId })) {
+        if (!isUnreadThreadCountable(avatar, groupId)) {
             return sum;
         }
 
@@ -175,12 +206,18 @@ export function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount())
             continue;
         }
         let badge = drawerButton.querySelector('.sb-drawer-notification-badge');
+        if (totalUnread <= 0) {
+            badge?.remove();
+            continue;
+        }
+
         if (!badge) {
             badge = document.createElement('span');
             badge.className = 'sb-drawer-notification-badge';
             drawerButton.appendChild(badge);
         }
-        badge.style.display = totalUnread > 0 ? 'block' : 'none';
+        badge.style.display = 'block';
+        badge.textContent = '';
     }
 }
 

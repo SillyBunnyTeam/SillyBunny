@@ -1204,11 +1204,11 @@ export function buildSettingsDrawerHtml() {
                         </label>
                         <label class="sb-conversation-field-stack" for="sb_conv_quiet_hours_start">
                             <span>Quiet start</span>
-                            <input id="sb_conv_quiet_hours_start" class="text_pole textarea_compact wide100p" type="time" />
+                            <input id="sb_conv_quiet_hours_start" class="text_pole textarea_compact wide100p sb-conversation-quiet-time-input" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" />
                         </label>
                         <label class="sb-conversation-field-stack" for="sb_conv_quiet_hours_end">
                             <span>Quiet end</span>
-                            <input id="sb_conv_quiet_hours_end" class="text_pole textarea_compact wide100p" type="time" />
+                            <input id="sb_conv_quiet_hours_end" class="text_pole textarea_compact wide100p sb-conversation-quiet-time-input" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" />
                         </label>
                     </div>
                     <p class="sb-conversation-field-hint">Unread badges still update while muted or inside quiet hours.</p>
