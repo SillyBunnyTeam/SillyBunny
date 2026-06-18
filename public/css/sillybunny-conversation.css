@@ -51,6 +51,14 @@
         radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--sb-accent) 12%, transparent), transparent 32%),
         color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
     box-shadow: 0 32px 90px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    font-family: var(--mainFontFamily);
+}
+
+#sheld[data-sb-conversation-mode='on'] button,
+#sheld[data-sb-conversation-mode='on'] input,
+#sheld[data-sb-conversation-mode='on'] select,
+#sheld[data-sb-conversation-mode='on'] textarea {
+    font-family: inherit;
 }
 
 #sheld[data-sb-conversation-mode='on'] > #sheldheader {
@@ -2118,6 +2126,7 @@
         gap: 6px;
     }
 
+    #sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_toggle,
     .sb-conversation-header-actions .menu_button_icon {
         inline-size: 36px;
         block-size: 36px;
@@ -2199,6 +2208,10 @@
 
     .sb-conversation-message {
         max-inline-size: 94%;
+    }
+
+    .sb-conversation-message-bubble {
+        padding-inline-end: 34px !important;
     }
 
     /* Mobile Triggers and Action Trays */
