@@ -11,6 +11,7 @@
 - PR #500 (2026-06-16) `feat: add availableSprites macro for Expressions Agent`
 - PR #501 (2026-06-16) `feat: add desktop top bar shortcut slots`
 - PR #502 (2026-06-16) `chore: sync Quick Image Gen v2.2.0`
+- PR #503 (2026-06-18) `feat: add character Conversation Mode for Discord-style DMs`
 
 ## v1.6.5
 
