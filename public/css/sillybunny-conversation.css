@@ -2266,10 +2266,10 @@
     .sb-conversation-mobile-menu-trigger {
         display: inline-flex;
         position: absolute;
-        top: 6px;
+        top: 2px;
         right: 8px;
         width: 28px;
-        height: 28px;
+        height: 24px;
         align-items: center;
         justify-content: center;
         border: none;
@@ -2288,7 +2288,7 @@
 
     /* On mobile, align bubble header text nicely with the top-right ellipsis */
     .sb-conversation-message-meta {
-        padding-right: 20px; /* leave room for trigger */
+        padding-inline-end: 0;
     }
 
     /* Inactive (closed) action tray on mobile */
@@ -2361,8 +2361,11 @@
 
     /* Align notification grid into a clean 2-column layout */
     .sb-conversation-notification-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        align-items: stretch;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .sb-conversation-notification-grid .checkbox_label {
@@ -2387,21 +2390,31 @@
 
     .sb-conversation-notification-grid select,
     .sb-conversation-notification-grid input[type='time'] {
-        margin: 0;
-        min-width: 0;
-        max-inline-size: 100%;
-        box-sizing: border-box;
+        margin: 0 !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        inline-size: 100% !important;
+        max-inline-size: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_start'],
     .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_end'] {
-        grid-column: 1 / -1;
+        grid-column: 1 / -1 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_start'] input,
     .sb-conversation-notification-grid .sb-conversation-field-stack[for='sb_conv_quiet_hours_end'] input {
-        inline-size: 100%;
-        min-inline-size: 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        inline-size: 100% !important;
+        max-inline-size: 100% !important;
+        min-inline-size: 0 !important;
+        box-sizing: border-box !important;
     }
 }
 

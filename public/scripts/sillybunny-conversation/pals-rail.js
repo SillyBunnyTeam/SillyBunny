@@ -190,7 +190,7 @@ export function getConversationMessageAvatar(message, avatar = getCurrentCharAva
             : default_user_avatar;
     }
 
-    if (message.role === 'partner') {
+    if (message.role === 'partner' || message.role === 'system') {
         const partnerAvatar = message.extra?.partner_avatar;
         if (partnerAvatar) {
             return getThumbnailUrl('avatar', partnerAvatar);

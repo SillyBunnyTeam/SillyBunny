@@ -133,7 +133,7 @@ export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getCon
         role: 'system',
         name: 'Status',
         mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
-        extra: { conversation_mode_notice: true, availability: current.status },
+        extra: { conversation_mode_notice: true, availability: current.status, partner_avatar: statusAvatar },
     }, { groupId });
     setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { groupId });
 }

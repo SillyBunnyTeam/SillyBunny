@@ -238,7 +238,11 @@ export function normalizeGroupConversationSettings(settings = {}) {
 }
 
 export function getDefaultGroupConversationSettings() {
-    return normalizeGroupConversationSettings(DEFAULT_SETTINGS);
+    return normalizeGroupConversationSettings({
+        ...DEFAULT_SETTINGS,
+        multi_char: true,
+        auto_character_chat: true,
+    });
 }
 
 export function getGroupConversationSettings(groupId) {

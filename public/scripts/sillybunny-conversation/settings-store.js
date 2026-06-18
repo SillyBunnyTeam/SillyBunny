@@ -66,7 +66,15 @@ export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConv
         const threadSettings = threadStore?.settings
             ? pickConversationSettings(threadStore.settings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
             : {};
-        return { ...DEFAULT_SETTINGS, ...getGroupConversationSettings(groupId), ...threadSettings, ...globalSettings };
+        return {
+            ...DEFAULT_SETTINGS,
+            enabled: true,
+            multi_char: true,
+            auto_character_chat: true,
+            ...getGroupConversationSettings(groupId),
+            ...threadSettings,
+            ...globalSettings,
+        };
     }
 
     const settings = threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
@@ -74,6 +82,9 @@ export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConv
 }
 
 export function isConversationModeEnabled(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    if (groupId) {
+        return true;
+    }
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
     return Boolean(threadStore?.settings?.enabled);
 }
