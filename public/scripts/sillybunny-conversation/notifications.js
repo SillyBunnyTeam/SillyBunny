@@ -1,17 +1,18 @@
 import { playMessageSound } from '../power-user.js';
 import { openConversationWorkspaceForAvatar } from './chrome.js';
-import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
+import { CHROME_IDS, DEFAULT_BRANCH_ID, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
+    parseConversationThreadKey,
     parsePositiveInt,
     persistConversationStore,
     shouldSurfaceConversationNotification,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
-import { getConversationRailItems } from './pals-rail.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
@@ -41,7 +42,17 @@ export function incrementUnreadCount(avatar, { groupId = getConversationGroupIdF
 }
 
 export function getTotalUnreadCount() {
-    return getConversationRailItems().reduce((sum, item) => sum + getUnreadCount(item.character.avatar, { groupId: item.groupId }), 0);
+    return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
+        const parsed = parseConversationThreadKey(threadKey);
+        const avatar = parsed.groupId ? parsed.avatar : threadKey;
+        if (!avatar || !getCharacterForAvatar(avatar)) {
+            return sum;
+        }
+
+        const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
+        const unread = parsePositiveInt(threadStore?.branches?.[branchId]?.unread, 0, 0);
+        return sum + unread;
+    }, 0);
 }
 
 export function getBadgeLabel(count) {

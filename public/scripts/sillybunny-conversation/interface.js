@@ -286,9 +286,6 @@ export function updateConversationHeader(settings = getSettings()) {
     }
     if (status instanceof HTMLElement) {
         const typingParticipants = getActiveTypingParticipants(avatar);
-        if (conversationState.generationActive && character?.avatar && !typingParticipants.some(participant => participant.avatar === character.avatar)) {
-            typingParticipants.unshift(character);
-        }
         if (typingParticipants.length) {
             const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
             status.textContent = typingNames.length > 1

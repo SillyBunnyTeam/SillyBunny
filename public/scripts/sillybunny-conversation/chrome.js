@@ -2,6 +2,7 @@ import { characters } from '../../script.js';
 import { extension_settings } from '../extensions.js';
 import { selected_group } from '../group-chats.js';
 import { setUserAvatar } from '../personas.js';
+import { shouldSendOnEnter } from '../RossAscends-mods.js';
 import { clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
@@ -528,7 +529,7 @@ export function bindConversationChromeControls(sheld) {
     if (input instanceof HTMLTextAreaElement && input.dataset.sbConversationBound !== 'true') {
         input.dataset.sbConversationBound = 'true';
         input.addEventListener('keydown', (event) => {
-            if (event.isComposing || event.key !== 'Enter' || event.shiftKey) {
+            if (event.isComposing || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || !shouldSendOnEnter()) {
                 return;
             }
 

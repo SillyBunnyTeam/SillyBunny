@@ -422,13 +422,6 @@ export function renderConversationTimeline() {
     reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings });
 
     const typingParticipants = getActiveTypingParticipants(avatar);
-    if (conversationState.generationActive && !typingParticipants.length) {
-        const fallbackTypingCharacter = getCharacterForAvatar(avatar);
-        if (fallbackTypingCharacter?.avatar) {
-            typingParticipants.unshift(fallbackTypingCharacter);
-        }
-    }
-
     for (const typingParticipant of typingParticipants) {
         const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
         const typingName = typingParticipant?.name || getCurrentCharName();

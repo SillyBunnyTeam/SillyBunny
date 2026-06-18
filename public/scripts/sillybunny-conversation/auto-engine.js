@@ -697,7 +697,7 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
             speakerName: characterName,
             trimNames: false,
             avatar: character.avatar,
-            groupId,
+            groupId: null,
         });
 
         if (response?.trim()) {
@@ -712,7 +712,7 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
                 extra.source_group_message_id = sourceMessageId;
             }
 
-            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra }, character.avatar), character.avatar);
+            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra, groupId: null }, character.avatar), character.avatar);
             groupAsideLastSent.set(key, Date.now());
             return true;
         }
