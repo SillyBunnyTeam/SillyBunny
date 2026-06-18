@@ -2330,6 +2330,61 @@
         block-size: 34px;
         flex-basis: 34px;
     }
+
+    /* Mobile schedule modal keeps full height within viewport */
+    #sb_conversation_schedule_modal.sb-conversation-schedule-modal-overlay {
+        align-items: flex-start;
+        padding: 10px;
+    }
+
+    .sb-conversation-schedule-modal {
+        width: 100%;
+        max-height: calc(100vh - 20px);
+        max-height: calc(100dvh - 20px);
+    }
+
+    /* Keep idle action labels on a single line */
+    .sb-conversation-idle-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sb-conversation-idle-actions .checkbox_label span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Align notification grid into a clean 2-column layout */
+    .sb-conversation-notification-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+    }
+
+    .sb-conversation-notification-grid .checkbox_label {
+        gap: 8px;
+    }
+
+    .sb-conversation-notification-grid .sb-conversation-field-stack:has(> select) {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .sb-conversation-notification-grid .sb-conversation-field-stack:has(> select) > span {
+        font-size: var(--sb-type-control);
+        white-space: nowrap;
+    }
+
+    .sb-conversation-notification-grid .sb-conversation-field-stack:has(> select) > select {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .sb-conversation-notification-grid select,
+    .sb-conversation-notification-grid input[type='time'] {
+        margin: 0;
+        min-width: 0;
+    }
 }
 
 @media (max-width: 420px) {
