@@ -26,7 +26,13 @@ import {
     withConversationConnectionProfile,
 } from './personas.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
-import { getConversationMemorySummary, getSettings, saveConversationMemorySummary } from './settings-store.js';
+import {
+    getConversationGroupMemorySummaries,
+    getConversationMemorySummary,
+    getConversationSoloMemorySummary,
+    getSettings,
+    saveConversationMemorySummary,
+} from './settings-store.js';
 import { memorySummaryBusyAvatars, memorySummaryTimers } from './state.js';
 import {
     getConversationAttachmentSummary,
@@ -411,6 +417,20 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     const memorySummary = getConversationMemorySummary(threadAvatar, { groupId });
     if (memorySummary) {
         fields.push(`Long-term DM memory summary:\n${memorySummary}`);
+    }
+    if (settings.include_related_memory && groupId) {
+        const soloMemory = getConversationSoloMemorySummary(avatar);
+        if (soloMemory?.summary) {
+            fields.push(`Relevant solo DM memory for ${charName}:\n${formatPromptText(soloMemory.summary, 1200)}\nUse this as remembered private context for ${charName}, but do not reveal private solo DM details unless they naturally belong in this group Conversation.`);
+        }
+    } else if (settings.include_related_memory) {
+        const groupMemories = getConversationGroupMemorySummaries(avatar, { max: 4 });
+        if (groupMemories.length) {
+            const formattedMemories = groupMemories
+                .map(item => `- ${item.groupName || `Group ${item.groupId}`}: ${formatPromptText(item.summary, 900)}`)
+                .join('\n');
+            fields.push(`Relevant group Conversation memories for ${charName}:\n${formattedMemories}\nUse these as remembered context from group DMs, but keep this solo DM private and do not act as if other group participants are present.`);
+        }
     }
 
     const schedule = getStoredSchedule(avatar);

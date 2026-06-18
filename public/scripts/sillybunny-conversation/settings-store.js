@@ -23,8 +23,11 @@ import {
     safeParseSettings,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
+import { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary } from './memory-utils.js';
 import { renderConversationMemoryPanel } from './settings-panel.js';
 import { getConversationMessagePreviewText } from './thread-store.js';
+
+export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
 export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     if (!avatar) {
@@ -205,6 +208,20 @@ export function getAutoCharacterChatCooldownMs(settings) {
 
 export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
     return String(getActiveConversationBranch(avatar, { create: false, groupId })?.memorySummary || '').trim();
+}
+
+export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4 } = {}) {
+    const store = getConversationStore();
+    return collectGroupConversationMemorySummaries(store.characters, avatar, {
+        excludeGroupId,
+        max,
+        getGroupName: groupId => getConversationGroupById(groupId)?.name || '',
+    });
+}
+
+export function getConversationSoloMemorySummary(avatar = getCurrentCharAvatar()) {
+    const store = getConversationStore();
+    return collectSoloConversationMemorySummary(store.characters, avatar);
 }
 
 export function saveConversationMemorySummary(avatar, summary, messageCount, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {

@@ -934,6 +934,10 @@ export function buildSettingsDrawerHtml() {
     const proactiveHint = isGroupConversation
         ? 'These proactive controls apply only to this group Conversation, not solo DMs.'
         : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.';
+    const relatedMemoryLabel = isGroupConversation ? 'Remember solo DMs in this group DM' : 'Remember group DMs in this solo DM';
+    const relatedMemoryHint = isGroupConversation
+        ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
+        : 'When enabled, this solo DM can reference saved memory from group DMs that include this character.';
     return `
         <div class="sb-conversation-settings-header">
             <div>
@@ -1085,6 +1089,11 @@ export function buildSettingsDrawerHtml() {
                     <input id="sb_conv_copy_memory_to_new_branch" type="checkbox" />
                     <span>Carry current memory into new branches</span>
                 </label>
+                <label class="checkbox_label" title="Share saved memory summaries between this character's solo and group Conversation threads">
+                    <input id="sb_conv_include_related_memory" type="checkbox" />
+                    <span>${relatedMemoryLabel}</span>
+                </label>
+                <p class="sb-conversation-field-hint">${relatedMemoryHint}</p>
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Manual Scheduling (optional)</span></h4>
