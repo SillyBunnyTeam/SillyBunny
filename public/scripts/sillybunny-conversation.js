@@ -2233,15 +2233,43 @@ function escapeRegExp(value) {
 }
 
 function stripSpeakerPrefix(messageText, speakerName) {
-    const text = String(messageText || '').trim();
+    const text = String(messageText || '');
     const namePattern = escapeRegExp(speakerName);
-    if (!namePattern) {
-        return normalizeConversationOutputText(text);
-    }
 
-    return normalizeConversationOutputText(text
-        .replace(new RegExp(`^\\s*(?:\\*\\*)?${namePattern}\\s*[:：-](?:\\*\\*)?\\s*`, 'i'), '')
-        .trim());
+    // Create the regexes
+    // 1. Literal {{char}}: prefix pattern
+    const charRegex = /^\s*(?:\*\*)?\{\{char\}\}(?:\*\*)?\s*[:：-](?:\*\*)?\s*/i;
+    // 2. Speaker name prefix pattern
+    const speakerRegex = namePattern ? new RegExp(`^\\s*(?:\\*\\*)?${namePattern}(?:\\*\\*)?\\s*[:：-](?:\\*\\*)?\\s*`, 'i') : null;
+
+    // Process line by line to support multi-line outputs and recursive cleaning
+    const lines = text.split(/\r?\n/);
+    const cleanedLines = lines.map(line => {
+        let currentLine = line;
+        let changed = true;
+        while (changed) {
+            changed = false;
+            // Try cleaning {{char}} prefix
+            const prevChar = currentLine;
+            currentLine = currentLine.replace(charRegex, '');
+            if (currentLine !== prevChar) {
+                changed = true;
+                continue;
+            }
+            // Try cleaning speaker name prefix
+            if (speakerRegex) {
+                const prevSpeaker = currentLine;
+                currentLine = currentLine.replace(speakerRegex, '');
+                if (currentLine !== prevSpeaker) {
+                    changed = true;
+                    continue;
+                }
+            }
+        }
+        return currentLine;
+    });
+
+    return normalizeConversationOutputText(cleanedLines.join('\n').trim());
 }
 
 function getConversationActivityContext(settings, avatar, now = new Date()) {
@@ -4491,11 +4519,6 @@ function ensureConversationChrome() {
                     <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="ooc" aria-pressed="false">OOC</button>
                     <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="memories" aria-pressed="false">Memories</button>
                 </div>
-                <label class="sb-conversation-search-wrap" for="${CHROME_IDS.search}">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <span class="sr-only">Search Conversation messages</span>
-                    <input id="${CHROME_IDS.search}" class="text_pole textarea_compact" type="search" placeholder="Search this DM" autocomplete="off" />
-                </label>
                 <div class="sb-conversation-quick-actions" aria-label="Quick actions">
                     <button type="button" class="sb-conversation-tool-button" data-sb-conversation-action="quick-selfie" title="Generate a selfie from the current context">
                         <i class="fa-solid fa-camera" aria-hidden="true"></i><span>Selfie</span>
@@ -4513,6 +4536,11 @@ function ensureConversationChrome() {
                         <i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Force</span>
                     </button>
                 </div>
+                <label class="sb-conversation-search-wrap" for="${CHROME_IDS.search}">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <span class="sr-only">Search Conversation messages</span>
+                    <input id="${CHROME_IDS.search}" class="text_pole textarea_compact" type="search" placeholder="Search this DM" autocomplete="off" />
+                </label>
             </div>
             <div id="${CHROME_IDS.dropHint}" class="sb-conversation-drop-hint" hidden>Drop files to attach</div>
             <form id="${CHROME_IDS.form}" class="sb-conversation-composer">
