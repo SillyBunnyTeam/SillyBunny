@@ -36,6 +36,7 @@ import {
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
+import { coalesceConversationQueueItems } from './send-queue-utils.js';
 
 export { appendConversationMessage };
 
@@ -520,45 +521,10 @@ export async function processQueuedConversationReply(queueItem) {
     }
 }
 
-function isSameConversationQueueThread(left, right) {
-    return Boolean(
-        left
-        && right
-        && !left.force
-        && !right.force
-        && left.avatar === right.avatar
-        && String(left.groupId || '') === String(right.groupId || ''),
-    );
-}
-
-function mergeConversationQueueItems(items) {
-    if (items.length <= 1) {
-        return items[0] || null;
-    }
-
-    const first = items[0];
-    return {
-        ...first,
-        text: items.map(item => item.text).filter(Boolean).join('\n\n'),
-        attachmentContext: items.map(item => item.attachmentContext).filter(Boolean).join('\n\n'),
-        createdAt: first.createdAt,
-        latestQueuedAt: items[items.length - 1]?.createdAt || first.createdAt,
-        messageCount: items.length,
-    };
-}
-
 async function collectConversationQueueItem(firstItem) {
-    if (!firstItem || firstItem.force || SEND_QUEUE_COALESCE_MS <= 0) {
-        return firstItem || null;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, SEND_QUEUE_COALESCE_MS));
-    const items = [firstItem];
-    while (sendQueue.length && isSameConversationQueueThread(firstItem, sendQueue[0])) {
-        items.push(sendQueue.shift());
-    }
-
-    return mergeConversationQueueItems(items);
+    return coalesceConversationQueueItems(firstItem, sendQueue, {
+        windowMs: SEND_QUEUE_COALESCE_MS,
+    });
 }
 
 export async function processSendQueue() {
