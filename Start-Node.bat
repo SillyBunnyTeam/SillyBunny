@@ -4,10 +4,18 @@ REM Use this if Bun causes high CPU usage on your platform.
 setlocal enabledelayedexpansion
 pushd %~dp0
 
+REM Prepend common Node.js install locations so double-click launches still find
+REM Node when the launching shell inherited a stale PATH (e.g. right after install,
+REM before Explorer refreshes environment variables). Mirrors the PATH augmentation
+REM Start.bat applies for Bun/Git discovery.
+set "PATH=%ProgramFiles%\nodejs;%ProgramFiles(x86)%\nodejs;%APPDATA%\npm;%LocalAppData%\Volta\bin;%USERPROFILE%\scoop\shims;%PATH%"
+
 where node > nul 2>&1
 if %errorlevel% neq 0 (
     echo Node.js was not found in PATH.
     echo Install Node.js from https://nodejs.org/ or use Start.bat for Bun.
+    echo If you just installed Node.js, restart your PC or relaunch from a fresh
+    echo Command Prompt so the updated PATH is picked up.
     goto end
 )
 
