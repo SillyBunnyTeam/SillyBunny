@@ -15,6 +15,7 @@
 - PR #505 (2026-06-18) `fix: re-apply model sampling profile after preset changes`
 - PR #506 (2026-06-19) `fix: scope conversation connection profile without switching the global profile`
 - PR #507 (2026-06-19) `chore: add missing MAX_AGENT_MAX_TOKENS export to agent-store test mocks`
+- PR #508 (2026-06-19) `chore: sync stale test expectations to current source`
 
 ## v1.6.5
 
