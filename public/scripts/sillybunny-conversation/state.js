@@ -8,7 +8,6 @@ export const conversationState = {
     conversationUploadActive: false,
     sendQueueProcessing: false,
     sendQueueNeedsProcessing: false,
-    conversationProfileSwitchQueue: Promise.resolve(),
     scheduleGenerationBusy: false,
     conversationWorkspaceOpen: false,
     conversationSelectedAvatar: null,

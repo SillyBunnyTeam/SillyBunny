@@ -1,4 +1,4 @@
-import { generateRaw, name1 } from '../../script.js';
+import { name1 } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { user_avatar } from '../personas.js';
 import { power_user } from '../power-user.js';
@@ -19,13 +19,13 @@ import {
     getCurrentCharName,
     parsePositiveInt,
 } from './context.js';
+import { generateConversationRaw } from './generation.js';
 import { getCharacterAuthorNote, getCharacterForAvatar, getConversationParticipants, getParticipantNamesForDisplay } from './media.js';
 import {
     composeConversationPersonaDescription,
     getAvailabilityCopy,
     getUserPersonaStatus,
     getUserStatus,
-    withConversationConnectionProfile,
 } from './personas.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import {
@@ -330,13 +330,13 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
             'Return the updated memory summary in concise bullets. No preamble.',
         ].filter(Boolean).join('\n\n');
         const settings = getSettings(avatar, { groupId });
-        const response = await withConversationConnectionProfile(settings, () => generateRaw({
+        const response = await generateConversationRaw({
             prompt,
             systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
             responseLength: MEMORY_SUMMARY_RESPONSE_TOKENS,
             trimNames: false,
             cacheScope: 'conversation-mode-memory',
-        }));
+        }, settings);
 
         if (response?.trim()) {
             saveConversationMemorySummary(avatar, response.trim(), messages.length, { groupId });

@@ -3,8 +3,6 @@ import { event_types, eventSource } from '../events.js';
 import { extension_settings } from '../extensions.js';
 import { user_avatar } from '../personas.js';
 import { power_user } from '../power-user.js';
-import { executeSlashCommandsWithOptions } from '../slash-commands.js';
-import { getSelectedConnectionProfileName } from './chrome.js';
 import {
     AVAILABILITY_COPY,
     CHROME_IDS,
@@ -15,7 +13,6 @@ import {
 } from './constants.js';
 import { getConversationStore, getConversationThreadKey, getCurrentCharAvatar, persistConversationStore } from './context.js';
 import { updateUserFooter } from './pickers.js';
-import { conversationState } from './state.js';
 
 export function getAvailabilityCopy(status) {
     return AVAILABILITY_COPY[status] ?? AVAILABILITY_COPY.online;
@@ -157,49 +154,4 @@ export function setActiveConversationPersonaAppendixIds(avatarId, ids) {
 
     saveSettingsDebounced();
     void eventSource.emit(event_types.PERSONA_UPDATED, avatarId);
-}
-
-export async function applyConnectionProfileByName(profileName) {
-    if (!profileName) {
-        return;
-    }
-
-    try {
-        await executeSlashCommandsWithOptions(`/profile ${quoteSlashArg(profileName)}`, {});
-    } catch (error) {
-        console.warn('Conversation Mode: could not apply connection profile', profileName, error);
-    }
-}
-
-export function quoteSlashArg(value) {
-    return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`;
-}
-
-export function queueConversationProfileSwitch(task) {
-    const run = conversationState.conversationProfileSwitchQueue.catch(() => {}).then(task);
-    conversationState.conversationProfileSwitchQueue = run.catch(() => {});
-    return run;
-}
-
-export async function withConversationConnectionProfile(settings, task) {
-    const profileName = String(settings?.connection_profile || '').trim();
-    if (!profileName) {
-        return task();
-    }
-
-    return queueConversationProfileSwitch(async () => {
-        const previousProfile = getSelectedConnectionProfileName();
-        const shouldSwitch = previousProfile !== profileName;
-        if (shouldSwitch) {
-            await applyConnectionProfileByName(profileName);
-        }
-
-        try {
-            return await task();
-        } finally {
-            if (shouldSwitch && previousProfile) {
-                await applyConnectionProfileByName(previousProfile);
-            }
-        }
-    });
 }

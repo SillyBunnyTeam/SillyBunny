@@ -1,5 +1,4 @@
 import { characters } from '../../script.js';
-import { extension_settings } from '../extensions.js';
 import { selected_group } from '../group-chats.js';
 import { setUserAvatar } from '../personas.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
@@ -753,15 +752,6 @@ export function disableConversationModeForCurrentCharacter({ focusRoleplay = tru
     if (focusRoleplay) {
         document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
     }
-}
-
-export function getSelectedConnectionProfileName() {
-    const manager = extension_settings.connectionManager;
-    if (!manager || !Array.isArray(manager.profiles)) {
-        return '';
-    }
-    const selected = manager.profiles.find((profile) => profile?.id === manager.selectedProfile);
-    return selected?.name ?? '';
 }
 
 export function setConversationInterfaceActive(active) {

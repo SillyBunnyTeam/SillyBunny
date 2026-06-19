@@ -1,4 +1,3 @@
-import { generateRaw } from '../../script.js';
 import {
     DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -13,7 +12,7 @@ import {
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
-import { withConversationConnectionProfile } from './personas.js';
+import { generateConversationRaw } from './generation.js';
 import { formatPromptText } from './prompt.js';
 import { getSettings } from './settings-store.js';
 import { runtimeStatusOverrides } from './state.js';
@@ -102,13 +101,13 @@ export async function generateCharacterSchedule(character, { groupId = getConver
     promptParts.push('Generate the weekly schedule JSON now.');
 
     const settings = getSettings(character.avatar, { groupId });
-    const response = await withConversationConnectionProfile(settings, () => generateRaw({
+    const response = await generateConversationRaw({
         prompt: promptParts.join('\n\n'),
         systemPrompt,
         responseLength: SCHEDULE_GENERATION_RESPONSE_TOKENS,
         trimNames: false,
         cacheScope: 'conversation-mode-schedule',
-    }));
+    }, settings);
 
     return parseScheduleResponse(response);
 }
