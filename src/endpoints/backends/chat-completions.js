@@ -514,7 +514,14 @@ async function sendClaudeRequest(request, response) {
 
             /** @type {any} */
             const generateResponseJson = await generateResponse.json();
-            const responseText = generateResponseJson?.content?.[0]?.text || '';
+            // SillyBunny: scan all content blocks for the first text block, not just
+            // content[0]. When adaptive thinking is enabled, content[0] is a thinking
+            // block ({ type: 'thinking', thinking: '...' }) with no .text property,
+            // causing empty responses for Fable and other thinking-enabled models.
+            const textBlock = Array.isArray(generateResponseJson?.content)
+                ? generateResponseJson.content.find(block => block?.type === 'text')
+                : null;
+            const responseText = textBlock?.text || generateResponseJson?.content?.[0]?.text || '';
             console.debug('Claude response:', summarizeLlmPayloadForLog(generateResponseJson));
 
             // Wrap it back to OAI format + save the original content
