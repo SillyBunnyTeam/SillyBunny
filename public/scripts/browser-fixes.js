@@ -121,12 +121,14 @@ function applyBrowserFixes() {
         let viewportResetScheduled = false;
         let lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
         let lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+        let lastScale = viewport?.scale || 1;
         let lastSendInteractionAt = 0;
         let lastSendFocusedAt = 0;
 
         const updateViewportBaseline = () => {
             lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
             lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            lastScale = viewport?.scale || 1;
         };
 
         const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {
@@ -213,9 +215,21 @@ function applyBrowserFixes() {
             const viewportDelta = Math.abs(currentViewportHeight - lastViewportHeight);
             const currentOffsetLeft = Math.round(viewport?.offsetLeft || 0);
             const offsetLeftDelta = Math.abs(currentOffsetLeft - lastOffsetLeft);
+            const currentScale = viewport?.scale || 1;
+            const scaleDelta = Math.abs(currentScale - lastScale);
 
             lastViewportHeight = currentViewportHeight;
             lastOffsetLeft = currentOffsetLeft;
+            lastScale = currentScale;
+
+            // SillyBunny: detect visual-viewport scale change from pinch-zoom
+            // or double-tap-zoom (Firefox mobile ignores user-scalable=no and
+            // touch-action). Reset scroll and transient position fixes so the
+            // app re-anchors to the layout viewport.
+            if (scaleDelta > 0.01) {
+                scheduleViewportReset({ restoreScroll: true });
+                return;
+            }
 
             // SillyBunny: detect horizontal visual-viewport drift from pinch-zoom
             // panning (Android Firefox ignores user-scalable=no). Reset scroll and
@@ -272,6 +286,18 @@ function applyBrowserFixes() {
             }
         }, true);
         window.addEventListener('sb-mobile-viewport-reset', handleMobileViewportReset);
+
+        // SillyBunny: Firefox mobile ignores touch-action CSS and user-scalable=no
+        // in the viewport meta for pinch-zoom. Intercept multi-touch events at the
+        // touch level and preventDefault to block the browser's zoom gesture before
+        // it can change visualViewport.scale and drift the app layout.
+        const blockMultiTouchZoom = (event) => {
+            if (event.touches.length > 1) {
+                event.preventDefault();
+            }
+        };
+        document.addEventListener('touchstart', blockMultiTouchZoom, { passive: false });
+        document.addEventListener('touchmove', blockMultiTouchZoom, { passive: false });
     }
 
     addMacOSPatch();
