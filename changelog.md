@@ -36,6 +36,7 @@
 - PR #537 (2026-06-19) `fix: block multi-touch pinch-zoom on Firefox mobile`
 - PR #538 (2026-06-19) `fix: scan all Claude content blocks for text, not just content[0]`
 - PR #543 (2026-06-19) `fix: use 5-column grid for home action buttons and update TLD site link to BotBooru`
+- PR #544 (2026-06-19) `chore: update TLD Card Conversion Preset to v8`
 
 ## v1.6.5
 
