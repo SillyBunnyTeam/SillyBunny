@@ -344,10 +344,10 @@ async function sendClaudeRequest(request, response) {
         const isFableModel = /claude-fable/.test(request.body.model);
         const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking);
         const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel) && Boolean(request.body.enable_web_search);
-        const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model);
-        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel;
-        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel;
-        const isAdaptiveModel = enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel);
+        const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
+        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel;
+        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel;
+        const isAdaptiveModel = enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel);
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];

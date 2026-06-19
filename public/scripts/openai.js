@@ -560,7 +560,7 @@ const default_settings = {
     scenario_format: default_scenario_format,
     personality_format: default_personality_format,
     openai_model: 'gpt-4-turbo',
-    claude_model: 'claude-sonnet-4-5',
+    claude_model: 'claude-opus-4-8',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
     google_model: 'gemini-2.5-pro',
@@ -587,7 +587,7 @@ const default_settings = {
     cometapi_model: 'gpt-4o',
     moonshot_model: 'kimi-latest',
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
-    zai_model: 'glm-5.1',
+    zai_model: 'glm-5.2',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
     workers_ai_model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     workers_ai_account_id: '',
@@ -7710,6 +7710,7 @@ function getZaiMaxContext(model, isUnlocked) {
     }
 
     const contextMap = {
+        'glm-5.2': max_1mil,
         'glm-5.1': max_200k,
         'glm-5-turbo': max_200k,
         'glm-5v-turbo': max_200k,
