@@ -183,23 +183,23 @@
         removeStartupLoaderArtifacts();
         preloader.innerHTML = '';
         preloader.removeAttribute('aria-hidden');
-        preloader.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#1d2128;color:#f4f7fb;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+        preloader.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#1d2128;color:#f4f7fb;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backdrop-filter:none;-webkit-backdrop-filter:none;';
 
         var panel = document.createElement('div');
-        panel.style.cssText = 'width:min(100%,520px);max-height:calc(100vh - 48px);overflow:auto;border:1px solid rgba(255,255,255,.16);border-radius:18px;background:rgba(14,18,24,.96);box-shadow:0 20px 60px rgba(0,0,0,.45);padding:22px;line-height:1.45;';
+        panel.style.cssText = 'width:min(100%,520px);max-height:calc(100vh - 48px);overflow:auto;border:1px solid rgba(255,255,255,.22);border-radius:18px;background:#0e1218;box-shadow:0 20px 60px rgba(0,0,0,.55);padding:22px;line-height:1.45;';
 
         var title = document.createElement('h1');
         title.textContent = 'SillyBunny could not finish loading';
-        title.style.cssText = 'margin:0 0 10px;font-size:22px;line-height:1.2;';
+        title.style.cssText = 'margin:0 0 10px;font-size:22px;line-height:1.2;color:#f4f7fb;';
 
         var message = document.createElement('p');
         message.textContent = 'Your browser stopped during startup. This can happen on iOS WebKit when stale cached files or blocked storage prevent the app modules from loading.';
-        message.style.cssText = 'margin:0 0 16px;color:#cbd5e1;';
+        message.style.cssText = 'margin:0 0 16px;color:#d5dce8;';
 
         var button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Clear frontend cache and reload';
-        button.style.cssText = 'width:100%;border:0;border-radius:12px;background:#6ee7b7;color:#0f172a;font-weight:700;font-size:16px;padding:12px 14px;';
+        button.style.cssText = 'width:100%;border:0;border-radius:12px;background:#6ee7b7;color:#0f172a;font-weight:700;font-size:16px;padding:12px 14px;cursor:pointer;';
         button.addEventListener('click', function () {
             reloadAfterCacheClear(button);
         });
@@ -207,7 +207,7 @@
         var dismissButton = document.createElement('button');
         dismissButton.type = 'button';
         dismissButton.textContent = 'Continue anyway';
-        dismissButton.style.cssText = 'width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.24);border-radius:12px;background:transparent;color:#e2e8f0;font-weight:600;font-size:15px;padding:11px 14px;';
+        dismissButton.style.cssText = 'width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.3);border-radius:12px;background:transparent;color:#e2e8f0;font-weight:600;font-size:15px;padding:11px 14px;cursor:pointer;';
         dismissButton.addEventListener('click', function () {
             failureDismissed = true;
             if (timeoutId) {
@@ -218,17 +218,17 @@
 
         var hint = document.createElement('p');
         hint.textContent = 'If this keeps happening, clear this site\'s Safari/Chrome website data and reload.';
-        hint.style.cssText = 'margin:14px 0 0;color:#94a3b8;font-size:14px;';
+        hint.style.cssText = 'margin:14px 0 0;color:#b0bccd;font-size:14px;';
 
         var summary = document.createElement('details');
-        summary.style.cssText = 'margin-top:16px;color:#cbd5e1;';
+        summary.style.cssText = 'margin-top:16px;color:#d5dce8;';
 
         var summaryTitle = document.createElement('summary');
         summaryTitle.textContent = 'Startup error details';
 
         var pre = document.createElement('pre');
         pre.textContent = details || lastFailure || 'Startup timed out before SillyBunny removed the preloader.';
-        pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;margin:10px 0 0;padding:12px;border-radius:10px;background:rgba(15,23,42,.9);color:#e2e8f0;font-size:12px;';
+        pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;margin:10px 0 0;padding:12px;border-radius:10px;background:#0f172a;color:#e2e8f0;font-size:12px;';
 
         summary.appendChild(summaryTitle);
         summary.appendChild(pre);
