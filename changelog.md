@@ -23,6 +23,7 @@
 - PR #513 (2026-06-19) `fix: detect Node.js in standard install paths in Start-Node.bat`
 - PR #514 (2026-06-19) `fix: snapshot client socket address so streaming abort detects Bun disconnects`
 - PR #515 (2026-06-19) `fix: exclude hidden messages from companion context threshold so the memory shard waits for fresh context`
+- PR #516 (2026-06-19) `fix(ica): guard main generation against echoing companion tracker format`
 
 ## v1.6.5
 
