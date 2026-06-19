@@ -15563,6 +15563,8 @@ function initAll() {
     window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     window.addEventListener('orientationchange', queueMobileViewportStateSync);
     window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
+    // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
+    window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
