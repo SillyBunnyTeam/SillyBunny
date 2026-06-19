@@ -14758,7 +14758,9 @@ export async function swipe(event, direction, { source, repeated, message = chat
             //Update the chat.
             await loadFromSwipeId(mesId, newSwipeId);
             //Transition to the new chat.
-            await animateSwipe();
+            // SillyBunny: skip the slide-out so the target swipe's content renders to the DOM instantly,
+            // rather than lagging behind the previous message until the slide-out completes.
+            await animateSwipe(false, true);
         }
         await endSwipe();
     }
@@ -14918,7 +14920,8 @@ export async function swipe(event, direction, { source, repeated, message = chat
     /**
      * Anime a swipe, optionally running a generation.
      * @param {boolean} run_generate
-     * @param {boolean} [skipSwipeOut=false]
+     * @param {boolean} [skipSwipeOut=false] SillyBunny: callers now pass `true` so the DOM swaps instantly
+     *     (the message is blanked/replaced immediately), keeping only the slide-in enter animation.
      */
     async function animateSwipe(run_generate = false, skipSwipeOut = false) {
         let swipeViewportUpdate = null;
@@ -15069,7 +15072,9 @@ export async function swipe(event, direction, { source, repeated, message = chat
                 clearMessageData(chat[mesId]);
                 let run_generate = true;
                 //Generate.
-                await animateSwipe(run_generate);
+                // SillyBunny: skip the slide-out so the message blanks to "..." instantly on regenerate,
+                // instead of keeping the previous generation visible during the slide-out animation.
+                await animateSwipe(run_generate, true);
                 await endSwipe();
                 return;
             } else if (overswipe == OVERSWIPE_BEHAVIOR.LOOP || overswipe == OVERSWIPE_BEHAVIOR.PRISTINE_GREETING) {
