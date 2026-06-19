@@ -37,6 +37,35 @@ const GROUP_CONVERSATION_FORCED_SETTINGS = Object.freeze({
     auto_character_chat: true,
 });
 
+let conversationUsageCache = null;
+
+function threadStoreHasConversationUsage(storeKey, threadStore) {
+    if (!threadStore || typeof threadStore !== 'object') {
+        return false;
+    }
+
+    if (threadStore.settings?.enabled === true) {
+        return true;
+    }
+
+    const parsed = parseConversationThreadKey(storeKey);
+    return Boolean(parsed.groupId && parsed.avatar);
+}
+
+export function invalidateConversationUsageCache() {
+    conversationUsageCache = null;
+}
+
+export function hasAnyConversationModeUsage() {
+    if (conversationUsageCache !== null) {
+        return conversationUsageCache;
+    }
+
+    const charactersStore = getConversationStore().characters || {};
+    conversationUsageCache = Object.entries(charactersStore).some(([storeKey, threadStore]) => threadStoreHasConversationUsage(storeKey, threadStore));
+    return conversationUsageCache;
+}
+
 /**
  * Conversation settings are stored in separate persisted scopes. Keep this
  * precedence stable unless a migration updates existing saved data:
@@ -76,6 +105,7 @@ export function getGlobalConversationSettings() {
 export function saveGlobalConversationSettings(settings) {
     const store = getConversationStore();
     store.settings = normalizeGlobalConversationSettings(settings);
+    invalidateConversationUsageCache();
     persistConversationStore();
 }
 
@@ -199,6 +229,7 @@ export function saveSettings(avatar, settings, { groupId = getConversationGroupI
             ? pickConversationSettings(normalizedSettings, CHARACTER_CONVERSATION_SETTINGS_KEYS)
             : pickConversationSettings(normalizedSettings, THREAD_CONVERSATION_SETTINGS_KEYS);
     }
+    invalidateConversationUsageCache();
     persistConversationStore();
 }
 

@@ -16,9 +16,28 @@ import { loadCurrentPanelSettings } from './interface.js';
 import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
-import { getSettings } from './settings-store.js';
+import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
 import { conversationState } from './state.js';
 import { setConversationTimeout } from './timers.js';
+
+function hasConversationRuntimeUsage() {
+    return conversationState.conversationWorkspaceOpen || hasAnyConversationModeUsage();
+}
+
+function scheduleInterfaceRefreshIfOpen() {
+    if (conversationState.conversationWorkspaceOpen) {
+        scheduleInterfaceRefresh({ syncControls: false });
+    }
+}
+
+function ensureConversationRuntimeStarted() {
+    if (conversationState.autoWorkerStarted || !hasConversationRuntimeUsage()) {
+        return;
+    }
+
+    startConversationAutoWorker();
+    updateConversationNotificationIndicators();
+}
 
 export function init() {
     if (conversationState.initialized) {
@@ -29,13 +48,21 @@ export function init() {
     migrateConversationLocalStorage();
     sanitizeConversationUnreadCounts();
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
-        scheduleInterfaceRefresh({ syncControls: false });
+        if (!hasConversationRuntimeUsage()) {
+            return;
+        }
+
+        scheduleInterfaceRefreshIfOpen();
         if (selected_group) {
             checkGroupChatMention(messageId);
         }
     });
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
-        scheduleInterfaceRefresh({ syncControls: false });
+        if (!hasConversationRuntimeUsage()) {
+            return;
+        }
+
+        scheduleInterfaceRefreshIfOpen();
 
         // Occasional private asides keep Conversation Mode feeling connected
         // without forcing a public group-chat reply.
@@ -63,18 +90,30 @@ export function init() {
         }
 
         conversationState.generationActive = true;
-        scheduleInterfaceRefresh({ syncControls: false });
+        if (!hasConversationRuntimeUsage()) {
+            return;
+        }
+
+        scheduleInterfaceRefreshIfOpen();
     });
     eventSource.on(event_types.GENERATION_ENDED, () => {
         conversationState.generationActive = false;
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefreshIfOpen();
     });
     eventSource.on(event_types.GENERATION_STOPPED, () => {
         conversationState.generationActive = false;
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefreshIfOpen();
     });
-    eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
-    eventSource.on(event_types.CHAT_LOADED, handleChatChanged);
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        if (conversationState.conversationWorkspaceOpen) {
+            handleChatChanged();
+        }
+    });
+    eventSource.on(event_types.CHAT_LOADED, () => {
+        if (conversationState.conversationWorkspaceOpen) {
+            handleChatChanged();
+        }
+    });
 
     window.addEventListener('sb:open-conversation-workspace', (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
@@ -83,11 +122,13 @@ export function init() {
         openConversationWorkspaceForAvatar(avatar, { groupId, showToast: detail?.showToast !== false });
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
+    window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
     window.addEventListener('beforeunload', stopConversationAutoWorker);
 
-    startConversationAutoWorker();
-    loadCurrentPanelSettings();
-    updateConversationNotificationIndicators();
+    if (hasAnyConversationModeUsage()) {
+        ensureConversationRuntimeStarted();
+        loadCurrentPanelSettings();
+    }
 }
 
 eventSource.on(event_types.APP_READY, init);
