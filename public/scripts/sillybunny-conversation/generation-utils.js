@@ -39,7 +39,8 @@ export function normalizeConversationOutputText(rawText) {
 }
 
 export function extractCharacterReplyCommandParts(rawText, settings = {}) {
-    let text = String(rawText || '');
+    const originalText = String(rawText || '');
+    let text = originalText;
     const scheduleUpdates = [];
     const selfieRequests = [];
     const reminders = [];
@@ -65,5 +66,13 @@ export function extractCharacterReplyCommandParts(rawText, settings = {}) {
 
     text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     text = normalizeConversationOutputText(text);
+
+    // SillyBunny: bracket-command stripping must never blank a real reply. If the strip
+    // pass consumed everything (e.g. the model echoed bracket labels it saw in the persona),
+    // fall back to the original text so the user always sees a response.
+    if (!text && originalText.trim()) {
+        text = normalizeConversationOutputText(originalText.trim());
+    }
+
     return { text, selfieRequests, scheduleUpdates, reminders };
 }

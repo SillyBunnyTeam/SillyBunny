@@ -259,7 +259,10 @@ function composePersonaDescription(avatarId = user_avatar) {
     for (const appendix of getActivePersonaAppendices(avatarId)) {
         const description = String(appendix.description ?? '').trim();
         if (description) {
-            chunks.push(`[${appendix.name}]\n${description}`);
+            // SillyBunny: wrap the appendix label in parentheses instead of square brackets.
+            // Mirrors the Conversation Mode change so the persona shape is consistent across
+            // modes and avoids colliding with any square-bracket command grammar downstream.
+            chunks.push(`(${appendix.name})\n${description}`);
         }
     }
 
