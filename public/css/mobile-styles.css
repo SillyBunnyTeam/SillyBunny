@@ -1771,6 +1771,22 @@
         display: none !important;
     }
 
+    #rightSendForm > .stscript_btn {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--sb-composer-action-size) !important;
+        min-width: var(--sb-composer-action-size) !important;
+        max-width: var(--sb-composer-action-size) !important;
+        height: var(--sb-composer-action-size) !important;
+        min-height: var(--sb-composer-action-size) !important;
+        max-height: var(--sb-composer-action-size) !important;
+        flex: 0 0 var(--sb-composer-action-size) !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+
     #leftSendForm > div,
     #rightSendForm > div:not(.stscript_btn),
     #send_but,
@@ -1857,7 +1873,7 @@
         grid-area: action !important;
         align-self: center !important;
         align-items: center !important;
-        justify-content: center !important;
+        justify-content: flex-end !important;
         height: var(--sb-composer-action-size) !important;
         min-height: var(--sb-composer-action-size) !important;
         max-height: var(--sb-composer-action-size) !important;
