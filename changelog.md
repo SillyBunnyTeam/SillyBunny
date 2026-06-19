@@ -32,6 +32,7 @@
 - PR #522 (2026-06-19) `fix: bootstrap bun-termux on Termux`
 - PR #523 (2026-06-19) `fix: restore iOS keyboard shell offset broken by invalid CSS comments`
 - PR #524 (2026-06-19) `chore: guard all first-party CSS against invalid // comments`
+- PR #536 (2026-06-19) `fix: block pinch-zoom viewport drift on Android Firefox`
 
 ## v1.6.5
 
