@@ -125,7 +125,11 @@ export function composeConversationPersonaDescription(avatarId) {
     const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
     for (const appendix of getConversationPersonaAppendices(avatarId)) {
         if (activeIds.has(appendix.id) && appendix.description.trim()) {
-            chunks.push(`[${appendix.name}]\n${appendix.description.trim()}`);
+            // SillyBunny: wrap the appendix label in parentheses instead of square brackets.
+            // Square brackets collide with Conversation Mode's reply command grammar
+            // ([selfie], [schedule_update:], [reminder:]); echoing them in a reply caused
+            // the strip pass to blank it entirely.
+            chunks.push(`(${appendix.name})\n${appendix.description.trim()}`);
         }
     }
 

@@ -44,4 +44,32 @@ describe('sillybunny conversation generation utils', () => {
     test('normalizes repeated wrapper quotes and punctuation spacing', () => {
         expect(normalizeConversationOutputText('""Hello ?!""')).toBe('Hello?!');
     });
+
+    test('does not blank a reply when bracket-stripping consumes all visible content', () => {
+        const original = '[selfie: context="smiling"]';
+        const result = extractCharacterReplyCommandParts(original, {
+            schedule_command_enabled: true,
+            selfie_command_enabled: true,
+        });
+
+        expect(result.selfieRequests).toEqual(['smiling']);
+        expect(result.scheduleUpdates).toEqual([]);
+        expect(result.reminders).toEqual([]);
+        // SillyBunny: even though the only content was a stripped command, the reply is
+        // never blanked back to the original text instead.
+        expect(result.text.length).toBeGreaterThan(0);
+    });
+
+    test('does not blank a reply composed entirely of reminder commands', () => {
+        const original = '[reminder: 15m | check back]';
+        const result = extractCharacterReplyCommandParts(original, {});
+
+        expect(result.reminders).toEqual([{ delay: '15m', memo: 'check back' }]);
+        expect(result.text.length).toBeGreaterThan(0);
+    });
+
+    test('returns empty text when input is empty or whitespace only', () => {
+        expect(extractCharacterReplyCommandParts('   \n  ', {}).text).toBe('');
+        expect(extractCharacterReplyCommandParts('', {}).text).toBe('');
+    });
 });
