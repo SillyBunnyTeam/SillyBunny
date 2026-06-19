@@ -35,6 +35,7 @@
 - PR #536 (2026-06-19) `fix: block pinch-zoom viewport drift on Android Firefox`
 - PR #537 (2026-06-19) `fix: block multi-touch pinch-zoom on Firefox mobile`
 - PR #538 (2026-06-19) `fix: scan all Claude content blocks for text, not just content[0]`
+- PR #543 (2026-06-19) `fix: use 5-column grid for home action buttons and update TLD site link to BotBooru`
 
 ## v1.6.5
 
