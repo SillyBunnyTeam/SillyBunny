@@ -11,6 +11,9 @@ import {
 describe('sillybunny conversation settings keys', () => {
     test('scopes custom instructions and connection profile globally', () => {
         expect(GLOBAL_CONVERSATION_SETTINGS_KEYS).toEqual([
+            'idle_action',
+            'idle_followup',
+            'idle_spontaneous',
             'custom_instructions',
             'connection_profile',
         ]);

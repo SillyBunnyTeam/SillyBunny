@@ -142,7 +142,7 @@ describe('in-chat agent bundled templates', () => {
             rawPrompt: true,
             inlinePhase: 'pre',
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(template.conditions.generationTypes).toEqual(['normal', 'continue', 'impersonate']);
     });
@@ -200,7 +200,7 @@ describe('in-chat agent bundled templates', () => {
             format: 'markdown',
             feedback: { enabled: true, depth: 2 },
             batch: false,
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(relationship.companion).toEqual(expect.objectContaining({
             trigger: 'manual',
@@ -247,7 +247,7 @@ describe('in-chat agent bundled templates', () => {
             contextMessages: 30,
             includeHistory: true,
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(chatroom.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
@@ -258,7 +258,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(chatroom.regexScripts).toHaveLength(6);
         expect(chatroom.prompt).toContain('chatroom-style|active-style');
@@ -288,7 +288,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 6,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(chatOnly.prompt).toContain('private side-channel conversation');
         expect(chatOnly.prompt).toContain('[Your previous notes]');
@@ -317,7 +317,7 @@ describe('in-chat agent bundled templates', () => {
             includeAuthorsNote: true,
             includeHistory: false,
             feedback: { enabled: false, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(messageInbox.regexScripts).toHaveLength(6);
         expect(messageInbox.prompt).toContain('phone-none');
@@ -345,7 +345,7 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             historyDepth: 1,
             feedback: { enabled: true, depth: 1 },
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
         expect(plotCompass.prompt).toContain('[Plot Compass Objective]');
         expect(plotCompass.prompt).not.toContain('first line of [Your previous notes]');
@@ -360,7 +360,7 @@ describe('in-chat agent bundled templates', () => {
         expect(saved.category).toBe('companion');
         expect(saved.execution).toBe('companion');
         expect(isCompanionAgent(saved)).toBe(true);
-        expect(saved.companion.maxTokens).toBe(32000);
+        expect(saved.companion.maxTokens).toBe(64000);
     });
 
     test('renders orphan greentext continuation lines inside the Chatroom interface', () => {

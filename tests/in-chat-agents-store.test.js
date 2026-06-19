@@ -303,7 +303,7 @@ describe('in-chat agent scoped enabled state', () => {
             wrapSuffix: 'suffix',
             patchStartTag: '<context_patch>',
             patchEndTag: '<done>',
-            maxTokens: 16000,
+            maxTokens: 64000,
         }));
 
         store.loadAgents([{
@@ -353,7 +353,7 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: false,
             batchAgentIds: [],
-            maxTokens: 32000,
+            maxTokens: 64000,
         });
         expect(store.isCompanionAgent(agent)).toBe(false);
     });
@@ -394,7 +394,7 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: true,
             batchAgentIds: ['continuity-companion', 'director-commentary'],
-            maxTokens: 32000,
+            maxTokens: 64000,
         }));
 
         expect(store.normalizeCompanionConfig({
