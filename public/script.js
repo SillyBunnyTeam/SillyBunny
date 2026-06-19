@@ -5301,6 +5301,11 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             TempResponseLength.restore(main_api);
             TempResponseLength.removeEventHook(main_api, eventHook);
         }
+        // SillyBunny: guarantee the send buttons are reactivated after quiet
+        // generation, regardless of whether Generate succeeded, failed, threw,
+        // or returned null data. Without this, memory refresh and other quiet
+        // generation callers can leave the chat input locked. (#527)
+        activateSendButtons();
     }
 }
 
@@ -6889,6 +6894,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // assemble the prompt so we can count its tokens regardless of whether a chat is active.)
     if (!dryRun && !hasBackendConnection) {
         is_send_press = false;
+        // SillyBunny: reactivate send buttons on early exit so the UI is not
+        // left locked when there is no backend connection. (#527)
+        activateSendButtons();
         return Promise.resolve();
     }
 
@@ -8003,7 +8011,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
      * @throws {Error} Throws an error if the response data contains an error message
      */
     async function onSuccess(data) {
-        if (!data) return;
+        if (!data) {
+            // SillyBunny: unblock generation on null/falsy data so the send
+            // buttons are not left locked. (#527)
+            unblockGeneration(type, { force: true });
+            return;
+        }
 
         if (data?.fromStream) {
             return data;
