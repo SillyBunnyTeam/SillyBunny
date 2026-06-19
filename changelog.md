@@ -22,6 +22,7 @@
 - PR #512 (2026-06-19) `fix: prevent empty conversation replies when persona description uses brackets`
 - PR #513 (2026-06-19) `fix: detect Node.js in standard install paths in Start-Node.bat`
 - PR #514 (2026-06-19) `fix: snapshot client socket address so streaming abort detects Bun disconnects`
+- PR #515 (2026-06-19) `fix: exclude hidden messages from companion context threshold so the memory shard waits for fresh context`
 
 ## v1.6.5
 
