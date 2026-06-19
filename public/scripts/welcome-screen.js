@@ -54,7 +54,7 @@ const STARTER_PACK_CREATOR_NAME = 'purachina';
 const STARTER_PACK_SITE_URL = 'https://platberlitz.github.io/';
 const GEECHAN_PRESET_NAME = 'Geechan - Universal Roleplay (Chat Completions) (v5.2)';
 const GEECHAN_SITE_URL = 'https://rentry.org/geechan';
-const TLD_CHUB_URL = 'https://chub.ai/users/thelonelydevil';
+const TLD_SITE_URL = 'https://botbooru.com/profile/25826';
 const TLD_DISCORD_PALS_URL = 'https://github.com/TheLonelyDevil9/discord-pals/';
 const STARTER_PACK_EXTENSIONS = Object.freeze({
     dialogueColors: Object.freeze({
@@ -912,11 +912,11 @@ function buildTldStarterPackItem() {
         title: 'TheLonelyDevil',
         body: 'SillyBunny bundles the TLD Card Conversion Preset for character card conversions and generations, and the Memory Sharding Quick Reply set for compressing chat history into structured memory shards. We also recommend his Discord Pals program to run LLM characters inside Discord!',
         icon: 'fa-shoe-prints',
-        chips: ['Card converter', 'Memory shards', 'Discord Pals', 'Chub'],
+        chips: ['Card converter', 'Memory shards', 'Discord Pals', 'BotBooru'],
         statusLabel: 'Card Converter',
         statusTone: 'warm',
         actionLabel: 'Visit site',
-        actionValue: TLD_CHUB_URL,
+        actionValue: TLD_SITE_URL,
         secondaryActionLabel: 'Discord Pals',
         secondaryActionValue: TLD_DISCORD_PALS_URL,
     });
