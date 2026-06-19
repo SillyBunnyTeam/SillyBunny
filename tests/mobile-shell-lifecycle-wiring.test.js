@@ -202,7 +202,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
-        expect(tabsSource).toContain('root.style.setProperty(\'--sb-shell-available-height\'');
+        expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-available-height\'');
         expect(tabsSource).toContain('function applyMobileDrawerBoundsDecision(');
         expect(tabsSource).toContain('window.visualViewport');
         expect(tabsSource).toContain('function getShellViewportTop(');
@@ -218,10 +218,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeShellSource).toContain('syncMobileShellDrawerBounds();');
         expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncMobileViewportState, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncMobileViewportState, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
+        expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
+        expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
         expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
         expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
             mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
@@ -238,7 +238,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),');
         expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({');
         expect(queueMobileShellDrawerBoundsSyncSource).toContain('followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,');
-        expect(queueMobileShellDrawerBoundsSyncSource).toContain('window.setTimeout(sync, schedule.followupDelayMs);');
+        expect(queueMobileShellDrawerBoundsSyncSource).toContain('sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {');
         expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
