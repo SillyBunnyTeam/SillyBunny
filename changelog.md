@@ -20,6 +20,7 @@
 - PR #510 (2026-06-19) `fix: navigate to exact setting from universal search`
 - PR #511 (2026-06-19) `chore(frontend-budgets): raise blocking stylesheet bytes and startup script count ceilings`
 - PR #512 (2026-06-19) `fix: prevent empty conversation replies when persona description uses brackets`
+- PR #513 (2026-06-19) `fix: detect Node.js in standard install paths in Start-Node.bat`
 
 ## v1.6.5
 
