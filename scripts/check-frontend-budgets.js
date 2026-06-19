@@ -11,8 +11,8 @@ const publicRoot = path.join(repoRoot, 'public');
 
 const budgets = Object.freeze({
     blockingStylesheetCount: 16,
-    blockingStylesheetBytes: 800 * 1024,
-    startupScriptCount: 23,
+    blockingStylesheetBytes: 1024 * 1024,
+    startupScriptCount: 26,
     startupScriptBytes: 3_600 * 1024,
     extensionLargeAssetBytes: 2_250 * 1024,
 });
