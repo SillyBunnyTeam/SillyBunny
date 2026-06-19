@@ -54,6 +54,33 @@ function getProfileByName(profileName) {
     return profiles.find(profile => profile.name === profileName) ?? null;
 }
 
+function getProfileById(profileId) {
+    const profiles = getConnectionManagerSettings().profiles;
+    if (!Array.isArray(profiles)) {
+        return null;
+    }
+
+    return profiles.find(profile => profile.id === profileId) ?? null;
+}
+
+/**
+ * Resolves a stored profile identifier to a profile object.
+ * Accepts both id-based (new) and name-based (legacy) values so existing
+ * settings migrate transparently without an explicit migration step. (#529)
+ */
+function resolveStoredProfile(storedValue) {
+    if (!storedValue) {
+        return null;
+    }
+
+    const byId = getProfileById(storedValue);
+    if (byId) {
+        return byId;
+    }
+
+    return getProfileByName(storedValue);
+}
+
 async function getCurrentProfile() {
     const settings = getConnectionManagerSettings();
     const profiles = settings.profiles;
@@ -64,17 +91,26 @@ async function getCurrentProfile() {
     return profiles.find(profile => profile.id === settings.selectedProfile)?.name ?? '';
 }
 
-async function getProfileList() {
-    const profiles = getConnectionManagerSettings().profiles;
-    return Array.isArray(profiles) ? profiles.map(profile => profile.name).filter(Boolean) : [];
+async function getCurrentProfileId() {
+    const settings = getConnectionManagerSettings();
+    return settings.selectedProfile ?? '';
 }
 
-async function getProfileApiType(profileName) {
-    if (!profileName) {
+async function getProfileList() {
+    const profiles = getConnectionManagerSettings().profiles;
+    return Array.isArray(profiles)
+        ? profiles.filter(profile => profile.id && profile.name).map(profile => ({ id: profile.id, name: profile.name }))
+        : [];
+}
+
+async function getProfileApiType(profileIdentifier) {
+    if (!profileIdentifier) {
         return normalizeApiType();
     }
 
-    const profile = getProfileByName(profileName);
+    // SillyBunny: accept both profile id (new) and profile name (legacy) so
+    // existing settings migrate transparently. (#529)
+    const profile = getProfileById(profileIdentifier) ?? getProfileByName(profileIdentifier);
     if (!profile) {
         return normalizeApiType();
     }
@@ -144,21 +180,27 @@ async function switchToProfile(profileName) {
     return true;
 }
 
-async function handleSwitching(targetProfile = '', targetPreset = '', originalProfile = '') {
-    const profileToRestore = originalProfile ?? await getCurrentProfile();
+async function handleSwitching(targetProfileId = '', targetPreset = '', originalProfileId = '') {
+    const profileToRestoreId = originalProfileId || await getCurrentProfileId();
     const apiToRestore = normalizeApiType();
     const presetToRestore = getCurrentPresetName(apiToRestore);
 
+    // Resolve ids to names for the /profile slash command which accepts names.
+    const restoreProfile = getProfileById(profileToRestoreId);
+    const profileToRestoreName = restoreProfile?.name ?? '';
+
     async function switchToTarget() {
-        if (targetProfile && targetProfile !== profileToRestore) {
-            debugLog(`[${extensionName}] Switching profile to: ${targetProfile}`);
-            await switchToProfile(targetProfile);
+        if (targetProfileId && targetProfileId !== profileToRestoreId) {
+            const targetProfile = getProfileById(targetProfileId);
+            const targetName = targetProfile?.name ?? targetProfileId;
+            debugLog(`[${extensionName}] Switching profile to: ${targetName}`);
+            await switchToProfile(targetName);
         }
 
         if (targetPreset) {
-            const apiType = await getProfileApiType(targetProfile || await getCurrentProfile());
+            const apiType = await getProfileApiType(targetProfileId || await getCurrentProfileId());
             debugLog(`[${extensionName}] Switching preset to: ${targetPreset} (${apiType})`);
-            if (targetProfile && targetPreset) {
+            if (targetProfileId && targetPreset) {
                 await getContext().executeSlashCommandsWithOptions(`/preset ${makeCommandArg(targetPreset)}`);
             } else {
                 await selectPresetByName(targetPreset, apiType);
@@ -168,10 +210,10 @@ async function handleSwitching(targetProfile = '', targetPreset = '', originalPr
 
     async function restore() {
         try {
-            const currentProfile = await getCurrentProfile();
-            if (targetProfile && currentProfile !== profileToRestore) {
-                debugLog(`[${extensionName}] Restoring profile to: ${profileToRestore || NONE_PROFILE}`);
-                await switchToProfile(profileToRestore);
+            const currentId = await getCurrentProfileId();
+            if (targetProfileId && currentId !== profileToRestoreId) {
+                debugLog(`[${extensionName}] Restoring profile to: ${profileToRestoreName || NONE_PROFILE}`);
+                await switchToProfile(profileToRestoreName);
             }
 
             if (targetPreset && presetToRestore) {
@@ -186,15 +228,18 @@ async function handleSwitching(targetProfile = '', targetPreset = '', originalPr
     return {
         switch: switchToTarget,
         restore,
-        originalProfile: profileToRestore,
+        originalProfile: profileToRestoreName,
         originalPreset: presetToRestore,
     };
 }
 
 export {
     getCurrentProfile,
+    getCurrentProfileId,
     getPresetsForApiType,
     getProfileApiType,
+    getProfileById,
     getProfileList,
     handleSwitching,
+    resolveStoredProfile,
 };

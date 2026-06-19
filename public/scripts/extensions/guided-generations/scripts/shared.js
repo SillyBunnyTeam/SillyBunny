@@ -1,10 +1,13 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import {
     getCurrentProfile,
+    getCurrentProfileId,
     getPresetsForApiType,
     getProfileApiType,
+    getProfileById,
     getProfileList,
     handleSwitching,
+    resolveStoredProfile,
 } from './presetUtils.js';
 
 const extensionName = 'guided-generations';
@@ -75,14 +78,17 @@ export {
     extension_settings,
     getContext,
     getCurrentProfile,
+    getCurrentProfileId,
     getLastAiMessage,
     getLastImpersonateResult,
     getPresetsForApiType,
     getPreviousImpersonateInput,
     getProfileApiType,
+    getProfileById,
     getProfileList,
     handleSwitching,
     isGroupChat,
+    resolveStoredProfile,
     setLastImpersonateResult,
     setPreviousImpersonateInput,
 };

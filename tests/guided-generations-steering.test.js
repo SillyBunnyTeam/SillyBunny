@@ -102,10 +102,13 @@ describe('Guided Generations steering commands', () => {
         }));
         await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/presetUtils.js', () => ({
             getCurrentProfile: jest.fn(async () => ''),
+            getCurrentProfileId: jest.fn(async () => ''),
             getPresetsForApiType: jest.fn(async () => []),
             getProfileApiType: jest.fn(async () => ''),
+            getProfileById: jest.fn(() => null),
             getProfileList: jest.fn(async () => []),
             handleSwitching: jest.fn(async () => ({ switch: jest.fn(), restore: jest.fn() })),
+            resolveStoredProfile: jest.fn(() => null),
         }));
     });
 
