@@ -12786,9 +12786,60 @@ function expandHiddenAccordions(target) {
     }
 }
 
+const SB_SEARCH_HIGHLIGHT_CLASS = 'highlighted-drawer';
+const SB_SEARCH_HIGHLIGHT_DURATION_MS = 1800;
+
 function pulseSearchTarget(target) {
     if (!(target instanceof HTMLElement)) {
         return;
+    }
+
+    const drawer = target.closest('.inline-drawer');
+    const highlightTarget = drawer instanceof HTMLElement ? drawer : target;
+
+    document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
+        .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
+
+    highlightTarget.classList.add(SB_SEARCH_HIGHLIGHT_CLASS);
+    window.setTimeout(() => {
+        highlightTarget.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS);
+    }, SB_SEARCH_HIGHLIGHT_DURATION_MS);
+}
+
+function revealSettingsCategoryFor(target) {
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    const settingsContent = document.getElementById('user-settings-block-content');
+    if (!settingsContent || !settingsContent.contains(target)) {
+        return;
+    }
+
+    const taggedDrawer = target.closest('.inline-drawer[data-settings-tab]');
+    if (taggedDrawer instanceof HTMLElement) {
+        const category = taggedDrawer.getAttribute('data-settings-tab');
+        if (category) {
+            settingsContent.setAttribute('data-active-tab', category);
+            const settingsBlock = document.getElementById('user-settings-block');
+            if (settingsBlock) {
+                settingsBlock.setAttribute('data-active-tab', category);
+            }
+            document.querySelectorAll('.sb-settings-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === category);
+            });
+            return;
+        }
+    }
+
+    settingsContent.setAttribute('data-search-active', 'true');
+    const tabNav = document.getElementById('sb-settings-tabs');
+    if (tabNav) {
+        const clearSearchActive = () => {
+            settingsContent.removeAttribute('data-search-active');
+            tabNav.removeEventListener('click', clearSearchActive);
+        };
+        tabNav.addEventListener('click', clearSearchActive);
     }
 }
 
@@ -12821,6 +12872,7 @@ function revealSearchMatch(shellKey, match) {
     openShell(shellKey, match.tabId);
 
     window.setTimeout(() => {
+        revealSettingsCategoryFor(match.element);
         expandHiddenAccordions(match.element);
         match.element.scrollIntoView({
             block: 'center',
