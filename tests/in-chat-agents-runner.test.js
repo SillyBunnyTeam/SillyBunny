@@ -300,6 +300,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
             DEFAULT_AGENT_MAX_TOKENS: 8192,
+            MAX_AGENT_MAX_TOKENS: 64000,
             areAgentsGloballyEnabled: jest.fn(() => true),
             getAgentById: jest.fn(id => enabledAgents.find(agent => agent.id === id)),
             getCompanionConfig: jest.fn(agent => ({

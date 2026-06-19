@@ -73,6 +73,7 @@ beforeAll(async () => {
         AGENT_CATEGORIES: {},
         AGENT_SUBCATEGORIES: {},
         DEFAULT_AGENT_MAX_TOKENS: 8192,
+        MAX_AGENT_MAX_TOKENS: 64000,
         LEGACY_AGENT_MAX_TOKENS: 2048,
         areAgentsGloballyEnabled: jest.fn(() => true),
         getAgents: jest.fn(() => []),
