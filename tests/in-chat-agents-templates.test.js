@@ -47,6 +47,30 @@ function readIndexSetBody(name) {
     return match[1];
 }
 
+function readIndexFunctionBody(name) {
+    const source = fs.readFileSync(indexSourceUrl, 'utf8');
+    const start = source.indexOf(`function ${name}(`);
+
+    if (start === -1) {
+        throw new Error(`Missing function definition: ${name}`);
+    }
+
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    for (let i = bodyStart; i < source.length; i++) {
+        if (source[i] === '{') {
+            depth++;
+        } else if (source[i] === '}') {
+            depth--;
+            if (depth === 0) {
+                return source.slice(start, i + 1);
+            }
+        }
+    }
+
+    throw new Error(`Unterminated function: ${name}`);
+}
+
 async function importAgentStore() {
     jest.resetModules();
 
@@ -420,5 +444,31 @@ describe('in-chat agent bundled templates', () => {
         expect(readIndexSetBody('INTERNAL_BUNDLED_TEMPLATE_IDS')).toContain(pathfinderTemplateId);
         expect(readIndexSetBody('REMOVED_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
         expect(readIndexSetBody('DEFAULT_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
+    });
+
+    test('keeps every catalog template category renderable in the browser', async () => {
+        const { AGENT_CATEGORIES } = await importAgentStore();
+        const catalog = readTemplate('index.json');
+        const knownCategories = Object.keys(AGENT_CATEGORIES);
+
+        const unknownCategories = catalog
+            .map(template => template.category)
+            .filter(category => !knownCategories.includes(category));
+
+        expect(unknownCategories).toEqual([]);
+    });
+
+    test('surfaces bundled custom-category templates such as HTML Toggle in the browser', () => {
+        const catalog = readTemplate('index.json');
+        const htmlToggle = findCatalogTemplate(catalog, 'tpl-html-toggle');
+
+        expect(htmlToggle.category).toBe('custom');
+
+        const customTemplates = catalog.filter(template => template.category === 'custom');
+        expect(customTemplates.length).toBeGreaterThan(0);
+
+        const orderSource = readIndexFunctionBody('getTemplateBrowserCategoryOrder');
+        expect(orderSource).not.toContain('category !== \'custom\'');
+        expect(orderSource).toContain('AGENT_CATEGORIES');
     });
 });
