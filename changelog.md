@@ -13,6 +13,7 @@
 - PR #502 (2026-06-16) `chore: sync Quick Image Gen v2.2.0`
 - PR #503 (2026-06-18) `feat: add character Conversation Mode for Discord-style DMs`
 - PR #505 (2026-06-18) `fix: re-apply model sampling profile after preset changes`
+- PR #506 (2026-06-19) `fix: scope conversation connection profile without switching the global profile`
 
 ## v1.6.5
 
