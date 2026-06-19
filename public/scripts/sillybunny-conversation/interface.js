@@ -1,4 +1,3 @@
-import { generateRaw } from '../../script.js';
 import { openConversationWorkspaceForAvatar, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
@@ -12,7 +11,7 @@ import {
     parsePositiveInt,
     saveGroupConversationSettings,
 } from './context.js';
-import { normalizeConversationOutputText } from './generation.js';
+import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
 import { getConversationDisplayName, getConversationParticipants, getEffectiveConversationStatus, renderConversationParticipantStack } from './media.js';
 import {
     clearUnreadCount,
@@ -22,7 +21,7 @@ import {
     updateConversationNotificationIndicators,
 } from './notifications.js';
 import { getConversationRailItems } from './pals-rail.js';
-import { getAvailabilityCopy, withConversationConnectionProfile } from './personas.js';
+import { getAvailabilityCopy } from './personas.js';
 import { readChimingPartnersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
 import { clamp, getConversationReplyMaxTokens, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings, saveSettings } from './settings-store.js';
@@ -532,12 +531,12 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         const systemPrompt = `You are an editor for ${charName}'s messages. Polish ${charName}'s reply in this instant messaging chatroom to make it more expressive, fitting for their personality, and natural. Correct any structural awkwardness while preserving the exact meaning, spelling quirks, and intent of the original text. Output only the polished reply without formatting prefixes or labels.`;
         const prompt = `Polish this message text:\n"${msg.mes}"`;
         const settings = getSettings(avatar, { groupId });
-        const response = await withConversationConnectionProfile(settings, () => generateRaw({
+        const response = await generateConversationRaw({
             prompt,
             systemPrompt,
             responseLength: 300,
             trimNames: true,
-        }));
+        }, settings);
 
         if (response?.trim()) {
             msg.mes = normalizeConversationOutputText(response.trim());

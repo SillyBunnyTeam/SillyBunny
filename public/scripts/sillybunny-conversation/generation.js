@@ -1,4 +1,5 @@
 import { characters, generateRaw } from '../../script.js';
+import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -15,7 +16,7 @@ import {
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getCharacterImageDetails } from './media.js';
 import { appendConversationMessage } from './message-writer.js';
 import { stripSpeakerPrefix } from './partners.js';
-import { withConversationConnectionProfile } from './personas.js';
+import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, formatPromptText } from './prompt.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { clamp, getConversationReplyMaxTokens, parseDurationToMs } from './schedule.js';
@@ -35,6 +36,71 @@ export {
     parseCommandArgs,
 } from './generation-utils.js';
 
+// SillyBunny: Conversation Mode diverges from the global connection-profile
+// switch pattern. Instead of flipping the active profile via /profile around
+// each generation, we issue a scoped request through ConnectionManagerRequestService
+// so the global selectedProfile (and the visible dropdown) never changes.
+function isAbortLikeError(error, signal = null) {
+    return Boolean(
+        signal?.aborted ||
+        error?.name === 'AbortError' ||
+        /abort|cancel/i.test(String(error?.message ?? error ?? '')),
+    );
+}
+
+/**
+ * SillyBunny: generate Conversation Mode text using the configured connection
+ * profile WITHOUT switching the global selected profile. Resolves the profile
+ * by name and routes through ConnectionManagerRequestService.sendRequest so no
+ * global state is mutated. Falls back to generateRaw (the active profile) when
+ * no profile is configured, the scoped request path is unavailable, or the
+ * profile name cannot be resolved.
+ * @param {Object} options - Same option shape as generateRaw (prompt, systemPrompt, responseLength, trimNames, signal, cacheScope).
+ * @param {Object} settings - Conversation settings holding connection_profile (a profile NAME).
+ * @returns {Promise<string>}
+ */
+export async function generateConversationRaw(options, settings) {
+    const profileName = String(settings?.connection_profile || '').trim();
+    const ctx = window?.SillyTavern?.getContext?.();
+    const CMRS = ctx?.ConnectionManagerRequestService;
+
+    if (profileName && CMRS) {
+        const profile = getConnectionProfiles().find(candidate => candidate?.name === profileName);
+        if (profile?.id) {
+            const messages = [];
+            if (options.systemPrompt) {
+                messages.push({ role: 'system', content: options.systemPrompt });
+            }
+            if (Array.isArray(options.prompt)) {
+                for (const message of options.prompt) {
+                    if (message && typeof message === 'object') {
+                        messages.push({ role: String(message.role || 'user'), content: message.content });
+                    }
+                }
+            } else {
+                messages.push({ role: 'user', content: options.prompt });
+            }
+
+            try {
+                const result = await CMRS.sendRequest(profile.id, messages, options.responseLength, {
+                    extractData: true,
+                    includePreset: true,
+                    stream: false,
+                    signal: options.signal ?? null,
+                });
+                return typeof result === 'string' ? result : extractProfileResponseText(result);
+            } catch (error) {
+                if (isAbortLikeError(error, options.signal)) {
+                    throw error;
+                }
+                console.warn(`Conversation Mode: scoped profile "${profileName}" request failed, falling back to the active profile`, error);
+            }
+        }
+    }
+
+    return generateRaw(options);
+}
+
 export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar, groupId = getConversationGroupIdForAvatar(threadAvatar) } = {}) {
     const messages = getConversationThread(threadAvatar, { groupId });
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
@@ -42,13 +108,13 @@ export async function generateConversationReply(directive, settings, { responseL
         : getConversationReplyMaxTokens(settings);
     const prompt = await buildConversationPromptMessages(messages, directive, speakerName);
 
-    return withConversationConnectionProfile(settings, () => generateRaw({
+    return generateConversationRaw({
         prompt,
         systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar, groupId }),
         responseLength: resolvedResponseLength,
         trimNames,
         cacheScope: 'conversation-mode',
-    }));
+    }, settings);
 }
 
 export function editConversationMessage(messageId) {
@@ -257,13 +323,13 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
 
     let imagePrompt = '';
     try {
-        imagePrompt = await withConversationConnectionProfile(settings, () => generateRaw({
+        imagePrompt = await generateConversationRaw({
             prompt: metaPrompt,
             systemPrompt: 'You output only a raw image generation prompt with no preamble.',
             responseLength: 200,
             trimNames: false,
             cacheScope: 'conversation-mode-selfie',
-        }));
+        }, settings);
     } catch (error) {
         console.warn('Conversation Mode: selfie prompt generation failed', error);
     }

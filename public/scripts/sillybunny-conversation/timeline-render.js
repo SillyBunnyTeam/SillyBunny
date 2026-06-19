@@ -1,7 +1,6 @@
 import {
     characters,
     default_user_avatar,
-    generateRaw,
     getThumbnailUrl,
     messageFormatting,
     name1,
@@ -24,11 +23,11 @@ import {
     getCurrentCharName,
     persistConversationStore,
 } from './context.js';
-import { generateSelfieFromContext, normalizeConversationOutputText, reportConversationGenerationError } from './generation.js';
+import { generateConversationRaw, generateSelfieFromContext, normalizeConversationOutputText, reportConversationGenerationError } from './generation.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
 import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
-import { getConnectionProfiles, withConversationConnectionProfile } from './personas.js';
+import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
 import { registerConversationRenderer, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
@@ -734,7 +733,7 @@ export async function regenerateConversationMessage(messageId) {
     );
 
     try {
-        const response = await withConversationConnectionProfile(settings, () => generateRaw({
+        const response = await generateConversationRaw({
             prompt,
             systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, {
                 threadAvatar: context.avatar,
@@ -743,7 +742,7 @@ export async function regenerateConversationMessage(messageId) {
             responseLength: getConversationReplyMaxTokens(settings),
             trimNames: true,
             cacheScope: 'conversation-mode',
-        }));
+        }, settings);
 
         const text = normalizeConversationOutputText(response || '');
         if (!text) {
