@@ -1266,6 +1266,87 @@ describe('in-chat agent post-processing runner', () => {
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
     });
 
+    test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
+        const trackerCompanion = createCompanionAgent({
+            id: 'tracker-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [trackerCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, trackerCompanion, {
+            status: 'done',
+            content: '[REP|Guild|Warm|Trusted]\nFaction warmed to the party.\n[/REP]\n\n[EVENT|Plot|Ambush at the gate|Tonight]\nGuards spotted.\n[/EVENT]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([trackerCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_tracker-companion'].value;
+
+        // The guard must call out the exact tracker tags detected in the body, including closers.
+        expect(injected).toContain('[REP|...]');
+        expect(injected).toContain('[/REP]');
+        expect(injected).toContain('[EVENT|...]');
+        expect(injected).toContain('[/EVENT]');
+        // Guard wording forbids echoing the bracket format.
+        expect(injected.toLowerCase()).toContain('do not emit');
+        // The original tracker body still reaches the model as reference.
+        expect(injected).toContain('[REP|Guild|Warm|Trusted]');
+    });
+
+    test('leaves non-tracker feedback verbatim with no anti-echo guard', async () => {
+        const proseCompanion = createCompanionAgent({
+            id: 'prose-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [proseCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, proseCompanion, {
+            status: 'done',
+            content: 'The scene has a tense, hushed tone. Consider raising stakes next beat.',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([proseCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_prose-companion'].value;
+
+        // No tracker tags => no guard text injected.
+        expect(injected.toLowerCase()).not.toContain('do not emit');
+        expect(injected).not.toContain('[|...]');
+        // Prose note passes through unchanged.
+        expect(injected).toContain('The scene has a tense, hushed tone.');
+    });
+
+    test('does not forbid inline-only tracker tags absent from the feedback body', async () => {
+        // A SCENE tracker lives inline (author's note), NOT in the companion feedback body.
+        // Only REP/STATUS come from companions here, so only those must be forbidden.
+        const mixedCompanion = createCompanionAgent({
+            id: 'mixed-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [mixedCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, mixedCompanion, {
+            status: 'done',
+            content: '[REP|Thieves Guild|+10|Liked]\nStole the amulet.\n[/REP]\n[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
+
+        // Companion-sourced tags are forbidden...
+        expect(injected).toContain('[REP|...]');
+        expect(injected).toContain('[STATUS|...]');
+        // ...but SCENE (kept inline) is never mentioned, so the main reply may keep producing it.
+        expect(injected).not.toContain('[SCENE');
+    });
+
     test('gates auto companions behind their context token threshold', async () => {
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
