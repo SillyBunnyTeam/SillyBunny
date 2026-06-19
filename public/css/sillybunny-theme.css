@@ -1497,14 +1497,13 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 }
 
 #chat .mes .mesAvatarWrapper > :is(.mesIDDisplay, .mes_timer, .tokenCounterDisplay) {
-    inline-size: 100%;
+    inline-size: max-content;
+    max-inline-size: 100%;
     min-block-size: calc(var(--mainFontSize) * var(--sb-message-meta-line-height));
     padding: 0 2px;
     box-sizing: border-box;
     line-height: var(--sb-message-meta-line-height);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 #chat .mes .mesAvatarWrapper > .mesIDDisplay {
