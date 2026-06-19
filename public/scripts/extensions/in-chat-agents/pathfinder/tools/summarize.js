@@ -4,6 +4,7 @@ import { getWritableBooks, resolveTargetBook, TOOL_NAMES } from '../pathfinder-t
 import { registerToolAction, registerToolFormatter } from '../../tool-action-registry.js';
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 import { setSummaryMemoryCreated } from '../summary-memory-store.js';
+import { markAutoSummaryComplete } from '../auto-summary.js';
 
 const COMPACT_DESCRIPTION = 'Create a scene or event summary with significance level and optional narrative arc.';
 const GENERIC_SUMMARY_TITLE_PATTERN = /^(recent scene summary|scene summary|memory summary|summary|untitled summary)$/i;
@@ -160,6 +161,11 @@ export async function createSeparateSummaryMemoryEntry(args = {}) {
 async function summarizeAction(args) {
     try {
         const result = await createSummaryMemoryEntry(args);
+        // SillyBunny: reset the auto-summary counter only after a summary is
+        // successfully written, not when the prompt is injected. This ensures
+        // the interval is not consumed when the model skips or fails the tool
+        // call. (#530)
+        markAutoSummaryComplete();
         return `📝 Summary "${result.title}" saved in "${result.targetBook}" (UID: ${result.uid}). Significance: ${result.significance}. ${result.arc ? `Filed under arc "${result.arc}".` : ''}`;
     } catch (err) {
         return `❌ Failed to summarize: ${err.message}`;
