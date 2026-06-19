@@ -203,6 +203,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
         expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-available-height\'');
+        expect(tabsSource).toContain('setRootViewportProperty(\'--sb-shell-viewport-top\', `${viewportSize.top}px`);');
         expect(tabsSource).toContain('function applyMobileDrawerBoundsDecision(');
         expect(tabsSource).toContain('window.visualViewport');
         expect(tabsSource).toContain('function getShellViewportTop(');
@@ -219,6 +220,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
