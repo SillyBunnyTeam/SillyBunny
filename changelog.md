@@ -24,6 +24,7 @@
 - PR #514 (2026-06-19) `fix: snapshot client socket address so streaming abort detects Bun disconnects`
 - PR #515 (2026-06-19) `fix: exclude hidden messages from companion context threshold so the memory shard waits for fresh context`
 - PR #516 (2026-06-19) `fix(ica): guard main generation against echoing companion tracker format`
+- PR #517 (2026-06-19) `fix: surface custom-category templates (HTML Toggle, etc.) in the templates browser`
 
 ## v1.6.5
 
