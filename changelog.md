@@ -29,6 +29,7 @@
 - PR #519 (2026-06-19) `fix: keep mobile shell visible during keyboard viewport shifts`
 - PR #520 (2026-06-19) `fix: lazy-load Conversation Mode runtime`
 - PR #521 (2026-06-19) `chore: hard-code Claude Opus 4.8 and GLM-5.2`
+- PR #522 (2026-06-19) `fix: bootstrap bun-termux on Termux`
 
 ## v1.6.5
 
