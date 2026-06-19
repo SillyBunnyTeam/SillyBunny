@@ -19,6 +19,7 @@
 - PR #509 (2026-06-19) `fix: coalesce consecutive user messages in conversation mode`
 - PR #510 (2026-06-19) `fix: navigate to exact setting from universal search`
 - PR #511 (2026-06-19) `chore(frontend-budgets): raise blocking stylesheet bytes and startup script count ceilings`
+- PR #512 (2026-06-19) `fix: prevent empty conversation replies when persona description uses brackets`
 
 ## v1.6.5
 
