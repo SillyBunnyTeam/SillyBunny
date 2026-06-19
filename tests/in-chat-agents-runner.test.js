@@ -1285,6 +1285,31 @@ describe('in-chat agent post-processing runner', () => {
         expect(companionRunner.meetsCompanionContextThreshold(ungated, 0)).toBe(true);
     });
 
+    test('excludes hidden messages from the context threshold so the memory shard waits for fresh context', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        // Chat grows past the shard's 30k threshold: two 15k assistant replies plus a user turn.
+        const shard = createCompanionAgent({ id: 'memory-shard', companion: { minContextTokens: 30000 } });
+        chat.push(
+            { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: { token_count: 15000 } },
+            { mes: 'Keep going.', name: 'User', is_user: true, is_system: false, extra: { token_count: 100 } },
+            { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: { token_count: 15000 } },
+        );
+
+        expect(companionRunner.getChatTokenEstimate()).toBe(30100);
+        expect(companionRunner.meetsCompanionContextThreshold(shard, 2)).toBe(true);
+
+        // The shard runs and hides everything above it (0..1), mirroring the panel's
+        // "Hide story above this shard" action via hideChatMessageRange(...).
+        chat[0].is_system = true;
+        chat[1].is_system = true;
+
+        // Hidden messages no longer count: the estimate drops to the single visible reply,
+        // so the threshold is unmet again until fresh context accrues.
+        expect(companionRunner.getChatTokenEstimate()).toBe(15000);
+        expect(companionRunner.meetsCompanionContextThreshold(shard, 2)).toBe(false);
+    });
+
     test('appends the repair instruction on fix runs', async () => {
         const fixCompanion = createCompanionAgent({ id: 'fix-companion' });
         enabledAgents = [fixCompanion];

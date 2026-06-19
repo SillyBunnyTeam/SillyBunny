@@ -970,6 +970,15 @@ export function getChatTokenEstimate(beforeMessageIndex = chat.length) {
     let total = 0;
     for (let index = 0; index < Math.min(beforeMessageIndex, chat.length); index++) {
         const message = chat[index];
+        // SillyBunny divergence: skip messages hidden from prompts (is_system). The memory shard
+        // companion hides the history it summarizes, so counting hidden messages would keep its
+        // minContextTokens threshold permanently satisfied and make it regenerate on every reply.
+        // Match how the rest of the codebase sizes context (token-counter/world-info/memory/vectors
+        // all filter out is_system). With the history hidden, the estimate drops back to ~0 and the
+        // shard waits until another minContextTokens worth of fresh, visible context accrues.
+        if (message?.is_system) {
+            continue;
+        }
         const counted = Number(message?.extra?.token_count);
         total += Number.isFinite(counted) && counted > 0
             ? counted
