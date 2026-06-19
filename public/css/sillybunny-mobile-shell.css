@@ -831,9 +831,11 @@
     @media screen and (max-width: 768px) {
         /* SillyBunny: iOS 17 WebKit can misresolve dvh for the main shell. */
         body:not(.movingUI) #sheld {
-            // SillyBunny: add visual-viewport top so that when iOS Safari shifts the
-            // viewport up (keyboard open) the shell moves with it instead of floating
-            // mid-screen above the composer.
+            /* SillyBunny: add visual-viewport top so that when iOS Safari shifts the
+               viewport up (keyboard open) the shell moves with it instead of floating
+               mid-screen above the composer. NOTE: must be a CSS block comment, not //,
+               or the parser discards tokens through the next semicolon and silently
+               swallows the top: declaration below (regressed the iOS keyboard offset). */
             top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-shell-viewport-top, 0px)) !important;
             min-height: 100px !important;
             min-width: 0 !important;
