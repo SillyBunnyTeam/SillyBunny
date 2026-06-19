@@ -26,6 +26,7 @@
 - PR #516 (2026-06-19) `fix(ica): guard main generation against echoing companion tracker format`
 - PR #517 (2026-06-19) `fix: surface custom-category templates (HTML Toggle, etc.) in the templates browser`
 - PR #518 (2026-06-19) `fix: make swipe DOM updates instant`
+- PR #519 (2026-06-19) `fix: keep mobile shell visible during keyboard viewport shifts`
 
 ## v1.6.5
 
