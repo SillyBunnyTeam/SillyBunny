@@ -95,7 +95,7 @@ When a new, stable upstream SillyTavern version releases:
 2. An IDE or editor of your choice. Visual Studio Code is a safe default.
 3. You can also use GitHub Codespaces which sets up everything for you.
 
-Native Termux contributors should use `bash start-termux-node.sh` for Node.js + npm unless specifically testing Bun behavior; use `bash start-termux-bun.sh` when checking Bun-specific behavior.
+Native Termux contributors should keep the repo inside Termux home (for example `~/SillyBunny`), not Android shared storage. Use `bash start-termux-node.sh` for Node.js + npm unless specifically testing Bun behavior; use `bash start-termux-bun.sh` when checking Bun-specific behavior. The Bun launcher bootstraps `bun-termux` automatically on first run.
 
 ## Getting the code ready
 
