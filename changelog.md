@@ -27,6 +27,7 @@
 - PR #517 (2026-06-19) `fix: surface custom-category templates (HTML Toggle, etc.) in the templates browser`
 - PR #518 (2026-06-19) `fix: make swipe DOM updates instant`
 - PR #519 (2026-06-19) `fix: keep mobile shell visible during keyboard viewport shifts`
+- PR #520 (2026-06-19) `fix: lazy-load Conversation Mode runtime`
 
 ## v1.6.5
 
