@@ -1,4 +1,5 @@
 import { characters } from '../../script.js';
+import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { selected_group } from '../group-chats.js';
 import { setUserAvatar } from '../personas.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
@@ -79,6 +80,26 @@ import {
     updateConversationSearchQuery,
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
+
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260618g';
+const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
+
+function ensureConversationStylesheet() {
+    if (conversationState.conversationCssLoaded) {
+        return;
+    }
+
+    conversationState.conversationCssLoaded = true;
+    loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+        .catch(error => {
+            conversationState.conversationCssLoaded = false;
+            console.warn('Conversation Mode: stylesheet failed to load', error);
+        });
+}
+
+function requestConversationRuntimeStart() {
+    window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
+}
 
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
@@ -707,6 +728,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
     }
+    ensureConversationStylesheet();
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
@@ -720,6 +742,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
     const wasEnabled = Boolean(settings.enabled);
     settings.enabled = true;
     saveSettings(targetAvatar, settings, { groupId: targetGroupId });
+    requestConversationRuntimeStart();
     applySettingsToPanel(settings);
     scheduleInterfaceRefresh({ syncControls: true });
     if (showToast && !wasEnabled) {
@@ -769,6 +792,15 @@ export function setConversationInterfaceActive(active) {
             if (element instanceof HTMLElement) {
                 element.hidden = true;
             }
+        }
+        const timeline = document.getElementById(CHROME_IDS.timeline);
+        if (timeline instanceof HTMLElement) {
+            // Mobile Safari keeps hidden DOM expensive; rebuild the timeline lazily on next open.
+            timeline.replaceChildren();
+            timeline.removeAttribute('data-sb-conversation-fingerprint');
+            conversationState.lastTimelineFingerprint = '';
+            conversationState.lastRenderedAvatar = null;
+            conversationState.lastRenderedMessageCount = 0;
         }
         return;
     }

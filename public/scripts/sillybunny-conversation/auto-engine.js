@@ -87,6 +87,7 @@ export function stopConversationAutoWorker() {
     globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = null;
     conversationState.autoWorkerAbortController?.abort?.();
     conversationState.autoWorkerAbortController = null;
+    conversationState.autoWorkerStarted = false;
     clearConversationTimeouts();
 }
 
@@ -99,6 +100,7 @@ export function startConversationAutoWorker() {
         void conversationModeAutoMessageWorker({ signal: controller.signal });
     }, AUTO_WORKER_INTERVAL_MS);
     globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = conversationState.autoWorkerIntervalId;
+    conversationState.autoWorkerStarted = true;
 }
 
 export function buildAutoMessageDirective(directive) {
