@@ -30,6 +30,7 @@
 - PR #520 (2026-06-19) `fix: lazy-load Conversation Mode runtime`
 - PR #521 (2026-06-19) `chore: hard-code Claude Opus 4.8 and GLM-5.2`
 - PR #522 (2026-06-19) `fix: bootstrap bun-termux on Termux`
+- PR #523 (2026-06-19) `fix: restore iOS keyboard shell offset broken by invalid CSS comments`
 
 ## v1.6.5
 
