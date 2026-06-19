@@ -120,11 +120,13 @@ function applyBrowserFixes() {
         let viewportFixScheduled = false;
         let viewportResetScheduled = false;
         let lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+        let lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
         let lastSendInteractionAt = 0;
         let lastSendFocusedAt = 0;
 
         const updateViewportBaseline = () => {
             lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+            lastOffsetLeft = Math.round(viewport?.offsetLeft || 0);
         };
 
         const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {
@@ -140,7 +142,7 @@ function applyBrowserFixes() {
             document.body.style.bottom = '';
             document.body.style.transform = '';
 
-            if (restoreScroll && (document.scrollingElement?.scrollTop || 0) > 0) {
+            if (restoreScroll && ((document.scrollingElement?.scrollTop || 0) > 0 || (document.scrollingElement?.scrollLeft || 0) > 0)) {
                 window.scrollTo(0, 0);
             }
         };
@@ -209,8 +211,19 @@ function applyBrowserFixes() {
 
             const currentViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
             const viewportDelta = Math.abs(currentViewportHeight - lastViewportHeight);
+            const currentOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            const offsetLeftDelta = Math.abs(currentOffsetLeft - lastOffsetLeft);
 
             lastViewportHeight = currentViewportHeight;
+            lastOffsetLeft = currentOffsetLeft;
+
+            // SillyBunny: detect horizontal visual-viewport drift from pinch-zoom
+            // panning (Android Firefox ignores user-scalable=no). Reset scroll and
+            // transient position fixes so the app re-anchors to the layout viewport.
+            if (offsetLeftDelta > 4) {
+                scheduleViewportReset({ restoreScroll: true });
+                return;
+            }
 
             // Ignore tiny viewport twitches from the mobile browser chrome and
             // keyboard suggestion UI. Those do not need the layout workaround.
@@ -222,6 +235,7 @@ function applyBrowserFixes() {
         };
 
         viewport?.addEventListener('resize', fixFunkyPositioning, { passive: true });
+        viewport?.addEventListener('scroll', fixFunkyPositioning, { passive: true });
         window.addEventListener('resize', fixFunkyPositioning, { passive: true });
         document.addEventListener('pointerdown', (event) => {
             if (event.target instanceof HTMLElement && event.target.closest('#send_but')) {

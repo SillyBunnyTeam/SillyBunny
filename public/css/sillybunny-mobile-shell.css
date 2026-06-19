@@ -1,6 +1,15 @@
 /* SillyBunny mobile shell foundation: final sheet contract for modal drawers.
  * Keep this at the end of the shell sheet so it beats older mobile drawer rules. */
 @media screen and (max-width: 768px) {
+    /* SillyBunny: Android Firefox ignores user-scalable=no in the viewport
+       meta, allowing pinch-zoom to drift the visual viewport away from the
+       layout viewport. pan-x pan-y permits touch scrolling but blocks
+       pinch-zoom and double-tap-zoom on the document root. */
+    html,
+    body {
+        touch-action: pan-x pan-y;
+    }
+
     /* SillyBunny: visualViewport-backed height so the shell contracts with
        the software keyboard instead of relying on dvh, which is unreliable
        with body { position: fixed } on Android Chrome. */
