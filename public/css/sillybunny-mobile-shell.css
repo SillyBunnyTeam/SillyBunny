@@ -3,11 +3,13 @@
 @media screen and (max-width: 768px) {
     /* SillyBunny: Android Firefox ignores user-scalable=no in the viewport
        meta, allowing pinch-zoom to drift the visual viewport away from the
-       layout viewport. pan-x pan-y permits touch scrolling but blocks
-       pinch-zoom and double-tap-zoom on the document root. */
+       layout viewport. pan-y permits vertical touch scrolling but blocks
+       horizontal panning, pinch-zoom, and double-tap-zoom on the document
+       root. Horizontal panning is never desired at the document level;
+       specific horizontal rails set their own touch-action. (#526) */
     html,
     body {
-        touch-action: pan-x pan-y;
+        touch-action: pan-y;
     }
 
     /* SillyBunny: visualViewport-backed height so the shell contracts with
