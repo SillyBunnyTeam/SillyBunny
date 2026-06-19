@@ -34,6 +34,7 @@
 - PR #524 (2026-06-19) `chore: guard all first-party CSS against invalid // comments`
 - PR #536 (2026-06-19) `fix: block pinch-zoom viewport drift on Android Firefox`
 - PR #537 (2026-06-19) `fix: block multi-touch pinch-zoom on Firefox mobile`
+- PR #538 (2026-06-19) `fix: scan all Claude content blocks for text, not just content[0]`
 
 ## v1.6.5
 
