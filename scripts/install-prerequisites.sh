@@ -33,6 +33,9 @@ BUN_INSTALL_DIR="${BUN_INSTALL:-$HOME/.bun}"
 TERMUX_PREFIX_DEFAULT='/data/data/com.termux/files/usr'
 TERMUX_PREFIX="${PREFIX:-$TERMUX_PREFIX_DEFAULT}"
 TERMUX_BUN_WRAPPER_MARKER='SillyBunny Termux Bun wrapper'
+TERMUX_BUN_MANAGER_URL='https://raw.githubusercontent.com/Happ1ness-dev/bun-termux/main/helper_scripts/bun-termux-manager'
+TERMUX_BUN_SOURCE_DIR="${TERMUX_BUN_SOURCE_DIR:-$HOME/bun-termux}"
+TERMUX_BUN_SHIM_PATH="$BUN_INSTALL_DIR/lib/bun-shim.so"
 
 have_command() {
     command -v "$1" >/dev/null 2>&1
@@ -56,6 +59,26 @@ is_termux() {
 
 have_working_bun() {
     have_command bun && bun --version >/dev/null 2>&1
+}
+
+have_working_termux_bun() {
+    local bun_path="$BUN_INSTALL_DIR/bin/bun"
+
+    if ! is_termux; then
+        return 1
+    fi
+
+    if [[ ! -x "$bun_path" ]]; then
+        if ! have_command bun; then
+            return 1
+        fi
+
+        bun_path="$(command -v bun)"
+    fi
+
+    "$bun_path" --version >/dev/null 2>&1 \
+        && [[ -x "$BUN_INSTALL_DIR/bin/buno" ]] \
+        && [[ -f "$TERMUX_BUN_SHIM_PATH" ]]
 }
 
 have_working_git() {
@@ -208,6 +231,21 @@ install_termux_glibc_runner() {
     fi
 }
 
+install_termux_bun_manager() {
+    if ! is_termux; then
+        return 1
+    fi
+
+    echo "Termux detected. Installing Bun through bun-termux..."
+    ensure_download_tool
+
+    if have_command curl; then
+        curl -fsSL "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
+    else
+        wget -qO- "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
+    fi
+}
+
 is_termux_bun_wrapper() {
     local bun_path="$BUN_INSTALL_DIR/bin/bun"
 
@@ -262,6 +300,15 @@ EOF
 repair_termux_bun() {
     if ! is_termux; then
         return 1
+    fi
+
+    if have_working_termux_bun; then
+        return 0
+    fi
+
+    if install_termux_bun_manager; then
+        refresh_known_paths
+        have_working_termux_bun && return 0
     fi
 
     install_termux_glibc_runner
@@ -356,6 +403,22 @@ install_node_runtime() {
 }
 
 install_bun() {
+    if is_termux; then
+        if have_working_termux_bun; then
+            return
+        fi
+
+        if repair_termux_bun; then
+            return
+        fi
+
+        echo "Termux Bun installation finished, but a Termux-compatible Bun wrapper is still unavailable in this session." >&2
+        echo "SillyBunny uses bun-termux on native Termux so Bun can install packages and run from normal home-directory checkouts." >&2
+        echo "If it still fails, rerun with network access or install manually via:" >&2
+        echo "curl -fsSL '$TERMUX_BUN_MANAGER_URL' | bash -s install" >&2
+        exit 1
+    fi
+
     if have_working_bun; then
         return
     fi

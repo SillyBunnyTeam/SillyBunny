@@ -122,8 +122,9 @@ bash start-termux-node.sh
 
 - `bash start.sh` also defaults to Node.js + npm on native Termux and ARM devices when Node.js is available
 - To force Node.js explicitly: `bash start-termux-node.sh`
-- To force Bun explicitly: `bash start-termux-bun.sh`
-- For shared storage access: `termux-setup-storage` once before starting
+- To force Bun explicitly: `bash start-termux-bun.sh` (this bootstraps `bun-termux` automatically on first run)
+- Keep the repo inside Termux home (for example `~/SillyBunny`), not `~/storage/shared` or `/storage/emulated/0`; Android shared storage blocks the `node_modules` links Bun and npm need
+- Run `termux-setup-storage` once only to grant SillyBunny access to shared files; do not clone the repo into shared storage
   
 ### How to Update
 

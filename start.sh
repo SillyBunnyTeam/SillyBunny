@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$SCRIPT_DIR"
 
 is_truthy() {
@@ -21,6 +21,21 @@ is_truthy() {
 
 is_termux() {
     [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/files/usr ]]
+}
+
+is_termux_shared_storage_repo() {
+    if ! is_termux; then
+        return 1
+    fi
+
+    case "$SCRIPT_DIR" in
+        /storage/*|/sdcard/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 prefer_node_runtime() {
@@ -139,6 +154,13 @@ while (($#)); do
     esac
     shift
 done
+
+if (( ! self_update_only )) && is_termux_shared_storage_repo; then
+    echo "[SillyBunny] Termux installs must stay in your Termux home, not Android shared storage." >&2
+    echo "[SillyBunny] Android blocks the node_modules links Bun and npm need under paths like /storage/emulated/0." >&2
+    echo "[SillyBunny] Reclone into '$HOME/SillyBunny', then rerun this launcher. Use 'termux-setup-storage' only to grant file access." >&2
+    exit 1
+fi
 
 auto_update_enabled=0
 if (( self_update_requested )); then
