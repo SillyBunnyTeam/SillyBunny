@@ -27,6 +27,7 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/path
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({
     TOOL_NAMES: { SUMMARIZE: 'Pathfinder_Summarize' },
     getWritableBooks: jest.fn(() => mockWritableBooks),
+    getActiveTunnelVisionBooks: jest.fn(() => mockWritableBooks),
     resolveTargetBook: jest.fn((requestedBook, writableBooks) => {
         if (requestedBook && writableBooks.includes(requestedBook)) {
             return requestedBook;
@@ -51,6 +52,10 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/path
     setSummaryMemoryCreated: jest.fn(payload => {
         mockSummaryState = payload;
     }),
+}));
+
+await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
+    markAutoSummaryComplete: jest.fn(),
 }));
 
 const {

@@ -55,7 +55,7 @@ import {
 import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
-import { markAutoSummaryComplete, shouldAutoSummarize } from './pathfinder/auto-summary.js';
+import { shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
 
 const PROMPT_KEY_PREFIX = 'inchat_agent_';
@@ -3594,7 +3594,11 @@ async function onGenerationAfterCommands(generationType, _options, dryRun) {
                 false,
                 extension_prompt_roles.SYSTEM,
             );
-            markAutoSummaryComplete();
+            // SillyBunny: do NOT reset the counter here. The counter is reset
+            // only after the Pathfinder_Summarize tool actually writes a summary.
+            // Resetting at injection time caused the interval to be consumed even
+            // when the model skipped or failed the tool call, preventing future
+            // summaries from triggering. (#530)
         }
     }
 
