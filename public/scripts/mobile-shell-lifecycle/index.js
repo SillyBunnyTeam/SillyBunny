@@ -42,6 +42,7 @@ export const MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS = Object.freeze(
     'view-files',
     'new-chat',
     'search-chat',
+    'delete-chat',
 ]);
 
 const MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));

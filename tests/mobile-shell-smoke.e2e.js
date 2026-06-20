@@ -395,6 +395,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
                 autoNameVisible: rectInfo(directAction('auto-name'))?.visible ?? false,
                 renameVisible: rectInfo(directAction('rename-chat'))?.visible ?? false,
                 deleteVisible: rectInfo(directAction('delete-chat'))?.visible ?? false,
+                hideBottomBarVisible: rectInfo(directAction('hide-bottom-bar'))?.visible ?? false,
                 menuOpen: menu ? !menu.hidden : false,
                 menuItems: menu ? Array.from(menu.querySelectorAll('.sb-bottom-chat-overflow-item')).map(item => item.textContent.trim()) : [],
             };
@@ -411,7 +412,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             massDeleteVisible: false,
             autoNameVisible: false,
             renameVisible: false,
-            deleteVisible: false,
+            deleteVisible: true,
+            hideBottomBarVisible: false,
             menuOpen: false,
         });
 
@@ -424,7 +426,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
                 'Mass delete chats',
                 'Ask the LLM to name this chat',
                 'Rename chat',
-                'Delete chat',
+                'Hide bottom chat bar',
             ],
         });
 

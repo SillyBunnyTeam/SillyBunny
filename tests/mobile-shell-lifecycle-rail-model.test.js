@@ -34,6 +34,7 @@ describe('mobile shell rail model lifecycle', () => {
             'view-files',
             'new-chat',
             'search-chat',
+            'delete-chat',
         ]);
     });
 
@@ -233,6 +234,7 @@ describe('mobile shell rail model lifecycle', () => {
             { id: 'rename-chat', label: 'Rename chat' },
             { id: 'search-chat', label: 'Search chat' },
             { id: 'delete-chat', label: 'Delete chat' },
+            { id: 'hide-bottom-bar', label: 'Hide bottom chat bar' },
         ];
 
         expect(resolveMobileShellBottomBarActionVisibility({
@@ -248,8 +250,8 @@ describe('mobile shell rail model lifecycle', () => {
             actions,
             isMobileViewport: true,
         })).toEqual({
-            visibleActions: [actions[0], actions[1], actions[5]],
-            overflowActions: [actions[2], actions[3], actions[4], actions[6]],
+            visibleActions: [actions[0], actions[1], actions[5], actions[6]],
+            overflowActions: [actions[2], actions[3], actions[4], actions[7]],
             shouldRenderOverflow: true,
         });
     });

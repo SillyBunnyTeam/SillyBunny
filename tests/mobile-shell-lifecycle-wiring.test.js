@@ -181,6 +181,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncBottomChatActionOverflowStateSource).toContain('isMobileViewport: isMobileViewport(),');
         expect(syncBottomChatActionOverflowStateSource).toContain('visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,');
         expect(syncBottomChatActionOverflowStateSource).toContain('action.button.classList.toggle(\'sb-bottom-chat-overflow-source\', plan.overflowActions.includes(action));');
+        expect(tabsSource).toContain('{ id: \'hide-bottom-bar\', button: bottomChatBarState.hideButton }');
+        expect(buildBottomChatBarSource).toContain('bottomChatBarState.overflowOpen = false;');
+        expect(buildBottomChatBarSource).toContain('bottomChatBarState.overflowMenu.remove();');
         expect(buildBottomChatBarSource).toContain('const overflowBtn = createBottomChatButton({ icon: \'fa-ellipsis\', title: \'More chat actions\', className: \'sb-bottom-chat-overflow-toggle\' }');
         expect(buildBottomChatBarSource).toContain('overflowBtn.setAttribute(\'aria-controls\', \'sb-bottom-chat-overflow-menu\');');
         expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-source');

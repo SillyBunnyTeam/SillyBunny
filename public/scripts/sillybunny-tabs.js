@@ -6226,6 +6226,7 @@ function getBottomChatActionModels() {
         { id: 'rename-chat', button: bottomChatBarState.renameButton },
         { id: 'search-chat', button: bottomChatBarState.searchToggleButton },
         { id: 'delete-chat', button: bottomChatBarState.deleteButton },
+        { id: 'hide-bottom-bar', button: bottomChatBarState.hideButton },
     ].filter(action => action.button instanceof HTMLElement)
         .map(action => ({
             ...action,
@@ -15246,6 +15247,14 @@ function buildBottomChatBar() {
         return;
     }
 
+    const bottomChatBarState = getBottomChatBarState();
+    bottomChatBarState.overflowOpen = false;
+    bottomChatBarState.overflowActions = [];
+    if (bottomChatBarState.overflowMenu instanceof HTMLElement) {
+        bottomChatBarState.overflowMenu.remove();
+        bottomChatBarState.overflowMenu = null;
+    }
+
     container.replaceChildren();
 
     // Persona bubble
@@ -15354,7 +15363,6 @@ function buildBottomChatBar() {
     setTimeout(() => updatePersonaBubble(personaBubble), 100);
 
     // Close persona picker when clicking outside
-    const bottomChatBarState = getBottomChatBarState();
     if (!bottomChatBarState.outsideClickBound) {
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('sb-persona-picker');
