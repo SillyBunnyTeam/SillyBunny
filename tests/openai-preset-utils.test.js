@@ -10,6 +10,7 @@ import {
     getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
     getChatCompletionSamplingSettingsKeys,
+    getCustomEndpointFavoritesKey,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeConnectionFieldsInPreset,
@@ -359,5 +360,25 @@ describe('Chat Completion sampling profile keys', () => {
     test('returns empty array for missing source or model', () => {
         expect(getChatCompletionSamplingProfileLookupKeys('', 'gpt-4o')).toEqual([]);
         expect(getChatCompletionSamplingProfileLookupKeys('openai', '')).toEqual([]);
+    });
+});
+
+describe('Custom endpoint favorites keys', () => {
+    test('passes through non-Custom sources', () => {
+        expect(getCustomEndpointFavoritesKey('claude', 'https://proxy.example/v1')).toBe('claude');
+        expect(getCustomEndpointFavoritesKey('openai', '')).toBe('openai');
+    });
+
+    test('scopes Custom favorites by endpoint URL', () => {
+        expect(getCustomEndpointFavoritesKey('custom', 'https://proxy.example/v1')).toBe('custom::https://proxy.example/v1');
+    });
+
+    test('normalizes Custom endpoint URL whitespace and trailing slashes', () => {
+        expect(getCustomEndpointFavoritesKey('custom', '  https://proxy.example/v1///  ')).toBe('custom::https://proxy.example/v1');
+    });
+
+    test('keeps legacy Custom key for empty endpoint URLs', () => {
+        expect(getCustomEndpointFavoritesKey('custom', '')).toBe('custom');
+        expect(getCustomEndpointFavoritesKey('custom', '  ///  ')).toBe('custom');
     });
 });

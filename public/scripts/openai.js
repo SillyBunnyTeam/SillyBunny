@@ -93,6 +93,7 @@ import {
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
     getChatCompletionSamplingProfileLookupKeys,
+    getCustomEndpointFavoritesKey,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
@@ -2112,24 +2113,31 @@ function ensureModelFavoritesStore(settings = oai_settings) {
 
 function getModelFavoritesForSource(source = oai_settings.chat_completion_source, settings = oai_settings) {
     const favoritesStore = ensureModelFavoritesStore(settings);
+    const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);
 
-    if (!Array.isArray(favoritesStore[source])) {
-        favoritesStore[source] = [];
+    if (source === chat_completion_sources.CUSTOM && favoritesKey !== source && !Object.hasOwn(favoritesStore, favoritesKey)) {
+        favoritesStore[favoritesKey] = Array.isArray(favoritesStore[source]) ? [...favoritesStore[source]] : [];
     }
 
-    favoritesStore[source] = [...new Set(
-        favoritesStore[source]
+    if (!Array.isArray(favoritesStore[favoritesKey])) {
+        favoritesStore[favoritesKey] = [];
+    }
+
+    favoritesStore[favoritesKey] = [...new Set(
+        favoritesStore[favoritesKey]
             .filter(model => typeof model === 'string')
             .map(model => model.trim())
             .filter(Boolean),
     )];
 
-    return favoritesStore[source];
+    return favoritesStore[favoritesKey];
 }
 
 function setModelFavoritesForSource(source, favorites, settings = oai_settings) {
     const favoritesStore = ensureModelFavoritesStore(settings);
-    favoritesStore[source] = [...new Set(
+    const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);
+
+    favoritesStore[favoritesKey] = [...new Set(
         (Array.isArray(favorites) ? favorites : [])
             .filter(model => typeof model === 'string')
             .map(model => model.trim())
@@ -2993,7 +3001,7 @@ function rebuildModelIdSearchControl(control, { preserveQuery = false } = {}) {
     const staticEntries = getModelIdSearchStaticEntries(control);
     const query = preserveQuery ? normalizeModelIdSearchValue(state.query).toLowerCase() : '';
     const selectedValue = normalizeModelIdSearchValue(oai_settings[control.setting] ?? input.value ?? select.value);
-    const favorites = getModelFavoritesForSource(control.source);
+    const favorites = [...getModelFavoritesForSource(control.source)].sort((left, right) => left.localeCompare(right));
     const favoriteValues = new Set(favorites);
     const dynamicOptions = getModelIdSearchDynamicOptions(control);
     const optionMap = new Map();
@@ -9381,6 +9389,7 @@ async function setCustomEndpointPreset(name, url, key, model, { writeKey = true,
     oai_settings.custom_model = normalizedPreset.model;
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
+    refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
 
     if (writeKey) {
         await writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key, undefined, { allowEmpty: true });
@@ -10209,6 +10218,14 @@ export function initOpenAI() {
 
     $('#custom_api_url_text').on('input', function () {
         oai_settings.custom_url = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $('#custom_api_url_text').on('change', function () {
+        oai_settings.custom_url = String($(this).val());
+        if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
+            refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+        }
         saveSettingsDebounced();
     });
 
