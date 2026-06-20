@@ -43,12 +43,13 @@ function getMediaQueryPxValues(cssSource) {
 // test landed. Lower them as cleanup PRs land; never raise them without a
 // review note explaining the regression.
 //
-// sillybunny-mobile-shell.css raised 664 -> 665: one display:none !important
-// added to unconditionally hide the unused STscript play/pause/stop controls
-// (.stscript_btn) in the mobile composer, overriding the display:flex !important
-// that mobile-styles.css added in #533.
+// sillybunny-mobile-shell.css raised 0 -> 4: staging #526 added two
+// !important height/max-height overrides for the visualViewport-backed
+// shell height (needed to beat unlayered mobile-styles.css), and #548
+// added one display:none !important to hide unused STscript controls.
+// A fourth !important appears in the #526 comment text itself.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 0,
+    'sillybunny-mobile-shell.css': 4,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 137,
@@ -84,7 +85,7 @@ const FORK_UNLAYERED_GUARD_PINS = Object.freeze({
         '/* Must beat upstream public/css/tags.css:162 .rm_tag_controls. */',
     ],
 });
-const FORK_DISTINCT_BREAKPOINT_BUDGET = 6;
+const FORK_DISTINCT_BREAKPOINT_BUDGET = 7;
 
 const forkSheetSources = Object.fromEntries(
     Object.keys(FORK_SHEET_IMPORTANT_BUDGETS).map(sheetName => [sheetName, readPublicFile('css', sheetName)]),

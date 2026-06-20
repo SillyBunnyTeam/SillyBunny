@@ -16018,6 +16018,7 @@ function initAll() {
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
