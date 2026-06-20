@@ -76,6 +76,27 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('Applied generated companion. Review and save when ready.');
     });
 
+    test('passes custom tracker regeneration instructions into the LLM prompt', () => {
+        const source = getFunctionSource('generateTrackerKitWithAI');
+
+        expect(source).toContain("extraInstructions = ''");
+        expect(source).toContain('Extra custom instructions for this generation:');
+        expect(source).toContain("extraInstructions || '(none)'");
+    });
+
+    test('wires custom tracker HTML preview and regeneration controls', () => {
+        const previewSource = getFunctionSource('buildTrackerHtmlPreviewNode');
+        const popupSource = getFunctionSource('buildTrackerPreviewPopupContent');
+
+        expect(previewSource).toContain('applyRegexScriptList');
+        expect(previewSource).toContain('AGENT_REGEX_PLACEMENT.AI_OUTPUT');
+        expect(previewSource).toContain('ica--tracker-preview-frame');
+        expect(popupSource).toContain('ica--tracker-builder-extra-instructions');
+        expect(indexSource).toContain("text: 'Regenerate'");
+        expect(indexSource).toContain('trackerPreviewPopup.content.innerHTML');
+        expect(extensionStyleSource).toContain('.ica--tracker-preview-frame');
+    });
+
     test('keeps companion settings labels clear and aligned', () => {
         expect(editorTemplateSource).toContain('ica--companion-core-grid');
         expect(extensionStyleSource).toContain('.ica--companion-core-grid');
