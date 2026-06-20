@@ -7054,6 +7054,10 @@ function getActiveMobileModalRoots() {
     return getMobileModalRootCandidates().filter(root => isMobileModalRootOpen(root));
 }
 
+function hasActiveMobileModalRoot() {
+    return getActiveMobileModalRoots().length > 0;
+}
+
 function setElementInertForMobileModal(element, shouldInert) {
     if (!(element instanceof HTMLElement)) {
         return;
@@ -7149,6 +7153,7 @@ function syncMobileModalState() {
 
     setElementInertForMobileModal(document.getElementById('sheld'), modalState.shouldInertShell);
     setElementInertForMobileModal(document.getElementById('top-bar'), modalState.shouldInertTopBar);
+    syncHomeButtonState();
 }
 
 function queueMobileModalStateSync() {
@@ -8462,16 +8467,22 @@ function isLandingPageVisible() {
 }
 
 function syncHomeButtonState() {
+    const isHomeVisible = isLandingPageVisible();
+    const isMobile = isMobileViewport();
+    const hasActiveMobileModal = isMobile && hasActiveMobileModalRoot();
+    const isHomeCurrent = isHomeVisible && !hasActiveMobileModal;
+
+    document.body?.classList.toggle('sb-mobile-home-open', isMobile && isHomeCurrent);
+
     const homeButton = document.getElementById('sb-home-toggle');
     if (!(homeButton instanceof HTMLButtonElement)) {
         return;
     }
 
-    const isHomeVisible = isLandingPageVisible();
-    setButtonPressed(homeButton, isHomeVisible);
-    homeButton.classList.toggle('is-current', isHomeVisible);
+    setButtonPressed(homeButton, isHomeCurrent);
+    homeButton.classList.toggle('is-current', isHomeCurrent);
 
-    if (isHomeVisible) {
+    if (isHomeCurrent) {
         homeButton.setAttribute('aria-current', 'page');
     } else {
         homeButton.removeAttribute('aria-current');

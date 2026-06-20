@@ -3207,6 +3207,11 @@
         height: var(--sb-topbar-layout-offset);
     }
 
+    body.sb-mobile-home-open #form_sheld,
+    body.sb-mobile-home-open #sb-bottom-chat-bar {
+        display: none;
+    }
+
     /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
         display: flex;

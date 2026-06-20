@@ -86,6 +86,21 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileModalStateSource).not.toContain('activeRoots.some(root => root.id !== \'sb-mobile-nav\')');
     });
 
+    test('keeps mobile Home state exclusive with active modal surfaces', () => {
+        const syncHomeButtonStateSource = getFunctionSource('syncHomeButtonState');
+        const syncMobileModalStateSource = getFunctionSource('syncMobileModalState');
+
+        expect(tabsSource).toContain('function hasActiveMobileModalRoot()');
+        expect(syncHomeButtonStateSource).toContain('const hasActiveMobileModal = isMobile && hasActiveMobileModalRoot();');
+        expect(syncHomeButtonStateSource).toContain('const isHomeCurrent = isHomeVisible && !hasActiveMobileModal;');
+        expect(syncHomeButtonStateSource).toContain('document.body?.classList.toggle(\'sb-mobile-home-open\', isMobile && isHomeCurrent);');
+        expect(syncHomeButtonStateSource).toContain('setButtonPressed(homeButton, isHomeCurrent);');
+        expect(syncMobileModalStateSource).toContain('syncHomeButtonState();');
+        expect(mobileShellCssSource).toContain('body.sb-mobile-home-open #form_sheld,');
+        expect(mobileShellCssSource).toContain('body.sb-mobile-home-open #sb-bottom-chat-bar');
+        expect(mobileShellCssSource).toMatch(/body\.sb-mobile-home-open #form_sheld,[\s\S]*body\.sb-mobile-home-open #sb-bottom-chat-bar\s*\{[\s\S]*display:\s*none;/);
+    });
+
     test('routes mobile nav outside-click auto-close through the lifecycle seam', () => {
         const buildMobileNavSource = getFunctionSource('buildMobileNav');
 
