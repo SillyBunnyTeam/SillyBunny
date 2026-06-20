@@ -118,6 +118,9 @@ import {
     proxies,
     loadProxyPresets,
     selected_proxy,
+    custom_endpoint_presets,
+    loadCustomEndpointPresets,
+    selected_custom_endpoint_preset,
     initOpenAI,
     reconnectOpenAi,
 } from './scripts/openai.js';
@@ -11049,6 +11052,9 @@ export async function getSettings(initLoaderHandle = null) {
         // Load proxy presets
         loadProxyPresets(settings);
 
+        // Load Custom OpenAI-compatible endpoint profiles
+        await loadCustomEndpointPresets(settings);
+
         // Allow subscribers to mutate settings
         await eventSource.emit(event_types.SETTINGS_LOADED_AFTER, settings);
 
@@ -11182,6 +11188,8 @@ async function saveSettingsInner(loopCounter = 0) {
         background: background_settings,
         proxies: proxies,
         selected_proxy: selected_proxy,
+        custom_endpoint_presets: custom_endpoint_presets,
+        selected_custom_endpoint_preset: selected_custom_endpoint_preset,
     };
 
     try {

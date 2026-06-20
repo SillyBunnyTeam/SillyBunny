@@ -4,11 +4,13 @@ import {
     buildChatCompletionPresetForSave,
     buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
+    buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
     getChatCompletionConnectionPresetKeys,
     getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
     getChatCompletionSamplingSettingsKeys,
+    normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeConnectionFieldsInPreset,
     shouldIncludeSamplingFieldsInPreset,
@@ -182,6 +184,46 @@ describe('Chat Completion preset utilities', () => {
             url: '',
             password: '',
             source: '',
+        });
+    });
+
+    test('normalizes legacy Custom endpoint profiles without keys or models', () => {
+        expect(normalizeCustomEndpointPreset({
+            name: 'Local proxy',
+            url: 'http://127.0.0.1:1234/v1',
+        })).toEqual({
+            name: 'Local proxy',
+            url: 'http://127.0.0.1:1234/v1',
+            key: '',
+            model: '',
+        });
+    });
+
+    test('saves Custom endpoint profiles with URL, key, and model', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: 'sk-story',
+            model: 'gpt-4o',
+        })).toEqual({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: 'sk-story',
+            model: 'gpt-4o',
+        });
+    });
+
+    test('clears Custom endpoint profile fields for None', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'None',
+            url: 'https://proxy.example/v1',
+            key: 'sk-story',
+            model: 'gpt-4o',
+        })).toEqual({
+            name: 'None',
+            url: '',
+            key: '',
+            model: '',
         });
     });
 
