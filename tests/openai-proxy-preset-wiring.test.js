@@ -199,6 +199,23 @@ describe('OpenAI proxy preset wiring', () => {
         expect(fetchIndex).toBeGreaterThan(secretIdIndex);
     });
 
+    test('sends selected Custom endpoint secret id with status checks', () => {
+        const statusSource = getFunctionSource('getStatusOpen');
+        const customBranchIndex = statusSource.indexOf('if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {');
+        const customUrlIndex = statusSource.indexOf('data.custom_url = oai_settings.custom_url;', customBranchIndex);
+        const customHeadersIndex = statusSource.indexOf('data.custom_include_headers = oai_settings.custom_include_headers;', customBranchIndex);
+        const customSecretGuardIndex = statusSource.indexOf('selected_custom_endpoint_preset?.secretId', customBranchIndex);
+        const secretIdIndex = statusSource.indexOf('data.secret_id = selected_custom_endpoint_preset.secretId;', customBranchIndex);
+        const fetchIndex = statusSource.indexOf('const response = await fetch(\'/api/backends/chat-completions/status\', {');
+
+        expect(customBranchIndex).toBeGreaterThanOrEqual(0);
+        expect(customUrlIndex).toBeGreaterThan(customBranchIndex);
+        expect(customHeadersIndex).toBeGreaterThan(customUrlIndex);
+        expect(customSecretGuardIndex).toBeGreaterThan(customHeadersIndex);
+        expect(secretIdIndex).toBeGreaterThan(customSecretGuardIndex);
+        expect(fetchIndex).toBeGreaterThan(secretIdIndex);
+    });
+
     test('loads and persists Custom endpoint profiles with settings', () => {
         expect(scriptSource).toContain('await loadCustomEndpointPresets(settings);');
         expect(scriptSource).toContain('custom_endpoint_presets: custom_endpoint_presets');
