@@ -38,6 +38,7 @@
 - PR #543 (2026-06-19) `fix: use 5-column grid for home action buttons and update TLD site link to BotBooru`
 - PR #544 (2026-06-19) `chore: update TLD Card Conversion Preset to v8`
 - PR #548 (2026-06-20) `fix: hide unused STscript controls in mobile composer`
+- PR #549 (2026-06-20) `fix: scroll mobile drawer inputs above the keyboard`
 
 ## v1.6.5
 
