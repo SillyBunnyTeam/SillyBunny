@@ -2433,7 +2433,7 @@ function getMobileSafeAreaBottomPx() {
                 'aria-hidden': 'true',
             },
         });
-        probe.style.cssText = 'position:fixed;left:-9999px;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
+        probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
         document.body.appendChild(probe);
     }
 
@@ -6338,14 +6338,19 @@ function syncBottomChatActionOverflowState() {
     bottomChatBarState.overflowActions = plan.overflowActions;
 
     for (const action of [...plan.visibleActions, ...plan.overflowActions]) {
-        action.button.hidden = false;
-        action.button.classList.toggle('sb-bottom-chat-overflow-source', plan.overflowActions.includes(action));
+        const isOverflowAction = plan.overflowActions.includes(action);
+        action.button.hidden = isMobileViewport() && isOverflowAction;
+        action.button.style.display = isMobileViewport()
+            ? (isOverflowAction ? 'none' : 'inline-flex')
+            : '';
+        action.button.classList.toggle('sb-bottom-chat-overflow-source', isOverflowAction);
     }
 
     const shouldRenderOverflow = plan.shouldRenderOverflow && isMobileViewport();
 
     if (bottomChatBarState.overflowButton instanceof HTMLElement) {
         bottomChatBarState.overflowButton.hidden = !shouldRenderOverflow;
+        bottomChatBarState.overflowButton.style.display = shouldRenderOverflow ? 'inline-flex' : 'none';
         bottomChatBarState.overflowButton.classList.toggle('sb-bottom-chat-overflow-active', shouldRenderOverflow);
         bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldRenderOverflow && bottomChatBarState.overflowOpen));
     }

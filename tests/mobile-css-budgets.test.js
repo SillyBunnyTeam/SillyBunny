@@ -48,8 +48,11 @@ function getMediaQueryPxValues(cssSource) {
 // shell height (needed to beat unlayered mobile-styles.css), and #548
 // added one display:none !important to hide unused STscript controls.
 // A fourth !important appears in the #526 comment text itself.
+// Raised 4 -> 6: mobile-refactor port added two !important display overrides
+// for bottom-chat overflow toggle/source to beat unlayered sillybunny-tabs.css
+// and third-party extension CSS that forces display:flex on hidden buttons.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 4,
+    'sillybunny-mobile-shell.css': 6,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 137,

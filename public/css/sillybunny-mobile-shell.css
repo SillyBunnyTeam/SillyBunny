@@ -2839,8 +2839,9 @@
         width: calc((var(--sb-bottom-chat-mobile-button-size) * 2) + var(--sb-bottom-chat-mobile-gap));
     }
 
-    .sb-bottom-chat-search-toggle {
-        display: inline-flex;
+    .sb-bottom-chat-search-toggle,
+    .sb-bottom-chat-overflow-toggle.sb-bottom-chat-overflow-active {
+        display: inline-flex !important;
     }
 
     .sb-bottom-chat-secondary-row {
@@ -2902,6 +2903,10 @@
 
     .sb-bottom-chat-management-actions {
         width: max-content;
+    }
+
+    .sb-bottom-chat-overflow-source {
+        display: none !important;
     }
 
     .sb-bottom-chat-nav-actions {

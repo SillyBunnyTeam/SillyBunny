@@ -2569,6 +2569,15 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
         return;
     }
 
+    // SillyBunny: when mobile manual-scroll suppression is active, the user has
+    // intentionally scrolled away from the bottom. Let the resize observer
+    // refresh its state without adjusting scrollTop, otherwise a stale anchor
+    // settle would fight the user's scroll position during streaming chunks.
+    if (shouldSuppressMobileChatAutoScroll()) {
+        refreshChatMessageResizeState(element, metadata, entry);
+        return;
+    }
+
     const transition = resolveChatScrollStateTransition({
         state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
@@ -3048,10 +3057,18 @@ export async function showMoreMessages(messagesToLoad = null) {
     const renderedMessageCount = getRenderedChatMessageElements().length;
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
     const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const anchor = captureVisibleChatMessageAnchor();
+    const anchorMessageId = Number(anchor?.messageId);
+    const lastDisplayedMesId = Number(getRenderedChatMessageElements().at(-1)?.getAttribute('mesid'));
+    const anchorRetentionCount = Number.isInteger(anchorMessageId)
+        && Number.isInteger(lastDisplayedMesId)
+        ? Math.max(1, lastDisplayedMesId - anchorMessageId + 1)
+        : 1;
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,
         preserveAnchor: messagesToLoad === null,
+        anchorRetentionCount,
     });
     let messageId = Number(firstDisplayedMesId);
     const showMoreButton = $(`#${CHAT_HISTORY_OLDER_BUTTON_ID}`);
@@ -3071,7 +3088,6 @@ export async function showMoreMessages(messagesToLoad = null) {
         const insertionReference = showMoreButtonElement instanceof HTMLElement
             ? showMoreButtonElement.nextSibling
             : chatElement[0]?.firstChild ?? null;
-        const anchor = captureVisibleChatMessageAnchor();
         const shouldPreserveScroll = Boolean(anchor);
 
         if (showMoreButtonElement instanceof HTMLElement) {

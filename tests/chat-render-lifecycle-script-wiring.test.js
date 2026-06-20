@@ -166,10 +166,11 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(source).toContain('const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;');
         expect(source).toContain('const windowSize = getChatRenderWindowSize(requestedWindowSize);');
+        expect(source).toContain('const anchor = captureVisibleChatMessageAnchor();');
+        expect(source).toContain('anchorRetentionCount,');
         expect(source).toContain('preserveAnchor: messagesToLoad === null');
         expect(source).toContain('const firstId = clamp(messageId - count, 0, Infinity);');
         expect(source).toContain('const messages = chat.slice(firstId, messageId);');
-        expect(source).toContain('const anchor = captureVisibleChatMessageAnchor();');
         expect(source).toContain('await renderShowMoreMessages({');
         expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: \'end\' });');
         expect(source).toContain('syncChatHistoryWindowControls();');
