@@ -41,6 +41,7 @@
 - PR #549 (2026-06-20) `fix: scroll mobile drawer inputs above the keyboard`
 - PR #550 (2026-06-20) `chore: reclassify custom in-chat agent templates into content and tracker`
 - PR #551 (2026-06-20) `feat: add custom OpenAI-compatible endpoint profiles`
+- PR #553 (2026-06-20) `feat: lock and reorder BunnyPresetTools section dropdowns`
 
 ## v1.6.5
 
