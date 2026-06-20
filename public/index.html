@@ -6473,10 +6473,6 @@
                             <i class="fa-solid fa-users" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Groups">Groups</strong></span>
                         </button>
-                        <button id="sb_character_tab_conversation" class="sb-shell-tab" type="button" role="tab" aria-selected="false" aria-controls="sb_character_conversation_panel" data-sb-character-tab="conversation">
-                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
-                            <span class="sb-shell-tab-copy"><strong data-i18n="Conversation">Conversation</strong></span>
-                        </button>
                         <button id="sb_character_tab_editor" class="sb-shell-tab" type="button" role="tab" aria-selected="false" data-sb-character-tab="editor">
                             <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Editor">Editor</strong></span>
@@ -6499,9 +6495,19 @@
                     <button id="sb_character_shell_close" class="sb-shell-close" type="button" title="Close Characters" aria-label="Close Characters">
                         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                     </button>
+                    <div id="sb_character_mode_toggle" class="sb-character-shell-mode-toggle" role="radiogroup" aria-label="Chat mode">
+                        <button type="button" class="sb-character-shell-mode-button is-active" data-sb-character-mode="roleplay" role="radio" aria-checked="true">
+                            <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
+                            <span>Roleplay</span>
+                        </button>
+                        <button type="button" class="sb-character-shell-mode-button" data-sb-character-mode="conversation" role="radio" aria-checked="false">
+                            <i class="fa-solid fa-comments" aria-hidden="true"></i>
+                            <span>Conversation</span>
+                        </button>
+                    </div>
                     <div class="sb-shell-kicker" data-i18n="Characters">Characters</div>
                     <h2 class="sb-shell-title" tabindex="-1" data-i18n="Character Menu">Character Menu</h2>
-                    <p class="sb-shell-subtitle" data-i18n="Browse, create, and tune the cast for your chats from one place.">Browse, create, and tune the cast for your chats from one place.</p>
+                    <p class="sb-shell-subtitle" data-i18n="View or create character cards here for your roleplays and chats!">View or create character cards here for your roleplays and chats!</p>
                     <p class="sb-shell-description" data-i18n="Move between characters, groups, personas, lore, and imports without leaving the writing workspace.">Move between characters, groups, personas, lore, and imports without leaving the writing workspace.</p>
                 </div>
                 <div id="CharListButtonAndHotSwaps" class="flex-container flexnowrap">
@@ -6582,8 +6588,8 @@
                     <div id="sb_character_editor_empty" class="sb-character-editor-empty" hidden>
                         <div class="sb-character-editor-empty-icon fa-solid fa-address-card" aria-hidden="true"></div>
                         <div class="sb-character-editor-empty-copy">
-                            <h3 data-i18n="Choose a character to edit">Choose a character to edit</h3>
-                            <p data-i18n="Pick someone from your cast, or start a fresh card with the editor defaults.">Pick someone from your cast, or start a fresh card with the editor defaults.</p>
+                            <h3 data-i18n="No character selected">No character selected</h3>
+                            <p data-i18n="Please pick a character card from the character menu, or create a new character.">Please pick a character card from the character menu, or create a new character.</p>
                         </div>
                         <div class="sb-character-editor-empty-actions">
                             <button id="sb_character_empty_browse" class="menu_button menu_button_icon" type="button">
@@ -6597,11 +6603,10 @@
                         </div>
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
-                    <div id="sb_character_conversation_panel" class="sb-character-conversation-panel" role="tabpanel" aria-labelledby="sb_character_tab_conversation" aria-hidden="true" hidden></div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
                         <div class="sb-character-import-intro">
-                            <h3 data-i18n="Bring in a character card">Bring in a character card</h3>
-                            <p data-i18n="Use a local file or paste a card link, then review the details before adding it to your cast.">Use a local file or paste a card link, then review the details before adding it to your cast.</p>
+                            <h3 data-i18n="Import a character card">Import a character card</h3>
+                            <p data-i18n="Upload a character card to SillyBunny using your method of choice.">Upload a character card to SillyBunny using your method of choice.</p>
                         </div>
                         <div class="sb-character-import-actions">
                             <button id="sb_character_import_file_action" class="sb-character-import-action" type="button">

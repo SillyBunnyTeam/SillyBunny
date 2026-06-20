@@ -2043,7 +2043,9 @@
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         flex: 0 0 auto;
         gap: 3px;
-        padding: 10px 52px 8px 12px;
+        padding: 10px 104px 8px 12px;
+        min-height: 60px;
+        z-index: 3;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
@@ -2053,6 +2055,27 @@
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
         min-height: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
+        top: 8px;
+        right: 56px;
+        min-height: var(--sb-mobile-touch-target, 44px);
+        padding: 3px;
+        gap: 2px;
+        z-index: 2;
+        pointer-events: auto;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
+        min-width: 36px;
+        min-height: 36px;
+        padding: 8px;
+        pointer-events: auto;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
+        width: 14px;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
@@ -2075,6 +2098,8 @@
         padding: 7px var(--sb-shell-panel-padding-inline);
         border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
         box-sizing: border-box;
+        position: relative;
+        z-index: 1;
     }
 
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {

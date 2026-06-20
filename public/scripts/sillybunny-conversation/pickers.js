@@ -9,7 +9,7 @@ import {
 } from '../../script.js';
 import { group_activation_strategy, group_generation_mode, groups } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
-import { openConversationWorkspaceForAvatar } from './chrome.js';
+import { selectConversationThread } from './chrome.js';
 import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
 import {
     createConversationBranch,
@@ -317,8 +317,8 @@ export function toggleAddDmPicker() {
     picker.removeAttribute('hidden');
     picker.innerHTML = `
         <div class="sb-conversation-add-dm-header">
-            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">Open a solo DM</span>
-            <p class="sb-conversation-field-hint" style="margin: 4px 0 0;">This opens the character alone, even if they also have a group Conversation.</p>
+            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">Create a solo DM</span>
+            <p class="sb-conversation-field-hint" style="margin: 4px 0 0;">Create a new solo DM with a character card of your choice.</p>
             <input type="text" id="sb_conversation_add_dm_search" class="text_pole textarea_compact" placeholder="Search characters..." style="inline-size: 100%; margin-top: 8px;" />
         </div>
         <div class="sb-conversation-add-dm-list" id="sb_conversation_add_dm_list" style="margin-top: 8px; max-block-size: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
@@ -514,7 +514,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
 
     hideConversationStartPicker();
     closePalsRail();
-    const opened = openConversationWorkspaceForAvatar(targetAvatar, {
+    const opened = await selectConversationThread(targetAvatar, {
         groupId: String(group.id),
         showToast: false,
     });
@@ -566,21 +566,21 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
 
     const title = sourceAvatar
         ? (normalizedSourceGroupId ? 'Add members to this group' : 'Add members to this DM')
-        : 'Start a group DM';
+        : 'Create a group DM';
     const description = sourceAvatar
         ? 'Selected members will open as a separate group Conversation with its own history and group controls.'
-        : 'Pick two or more characters to create a group Conversation independent of the active roleplay chat.';
+        : 'Create a new group chat with two or more of your character cards.';
 
     picker.innerHTML = `
         <div class="sb-conversation-add-dm-header">
-            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">${escapeHtmlText(title)}</span>
-            <p class="sb-conversation-field-hint" style="margin: 4px 0 0;">${escapeHtmlText(description)}</p>
-            <input type="text" id="sb_conversation_group_search" class="text_pole textarea_compact" placeholder="Search characters..." style="inline-size: 100%; margin-top: 8px;" />
+            <span class="sb-conversation-add-dm-title">${escapeHtmlText(title)}</span>
+            <p class="sb-conversation-field-hint sb-conversation-add-dm-description">${escapeHtmlText(description)}</p>
+            <input type="text" id="sb_conversation_group_search" class="text_pole textarea_compact sb-conversation-add-dm-search" placeholder="Search characters..." />
         </div>
-        <div class="sb-conversation-add-dm-list" id="sb_conversation_group_list" style="margin-top: 8px; max-block-size: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
-        <div class="sb-conversation-group-picker-actions" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;">
-            <span id="sb_conversation_group_selected_count" class="sb-conversation-field-hint" style="margin: 0;"></span>
-            <span style="display: flex; gap: 6px;">
+        <div class="sb-conversation-add-dm-list sb-conversation-group-list" id="sb_conversation_group_list"></div>
+        <div class="sb-conversation-group-picker-actions">
+            <span id="sb_conversation_group_selected_count" class="sb-conversation-field-hint sb-conversation-group-selected-count"></span>
+            <span class="sb-conversation-group-picker-buttons">
                 <button type="button" class="menu_button" data-sb-conversation-action="cancel-conversation-group">Cancel</button>
                 <button type="button" class="menu_button" data-sb-conversation-action="create-conversation-group">Create Group</button>
             </span>
@@ -615,17 +615,17 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
             const disabled = lockedMembers.has(character.avatar) ? ' disabled' : '';
             const thumb = getThumbnailUrl('avatar', character.avatar);
             rows.push(`
-                <label class="sb-conversation-add-dm-option sb-conversation-group-member-option" style="display: flex; align-items: center; gap: 8px; inline-size: 100%; background: none; border: none; padding: 6px; border-radius: var(--sb-radius-sm); text-align: left; cursor: pointer; color: inherit;">
+                <label class="sb-conversation-add-dm-option sb-conversation-group-member-option">
                     <input type="checkbox" class="sb-conversation-group-member-checkbox" value="${escapeHtmlAttribute(character.avatar)}"${checked}${disabled} />
-                    <img src="${escapeHtmlAttribute(thumb)}" alt="" style="inline-size: 24px; block-size: 24px; border-radius: 50%; object-fit: cover;" loading="lazy" />
-                    <span style="font-size: var(--sb-type-caption);">${escapeHtmlText(name)}</span>
+                    <img src="${escapeHtmlAttribute(thumb)}" alt="" class="sb-conversation-group-member-avatar" loading="lazy" />
+                    <span class="sb-conversation-group-member-name">${escapeHtmlText(name)}</span>
                 </label>
             `);
         });
 
         listContainer.innerHTML = rows.length
             ? rows.join('')
-            : '<div class="sb-conversation-empty" style="padding: 8px; font-size: var(--sb-type-meta); opacity: 0.7;">No matching characters found.</div>';
+            : '<div class="sb-conversation-empty sb-conversation-group-empty">No matching characters found.</div>';
         syncSelectedMembers();
     }
 

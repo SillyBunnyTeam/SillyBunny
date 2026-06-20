@@ -1,7 +1,8 @@
-import { openConversationWorkspaceForAvatar, setConversationInterfaceActive } from './chrome.js';
+import { selectConversationThread, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
     getConversationBranches,
+    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationThreadStore,
     getCurrentCharacter,
@@ -281,6 +282,9 @@ export function updateConversationHeader(settings = getSettings()) {
     const effectiveStatus = current ? current.status : settings.availability;
 
     if (!avatar || !character) {
+        const unavailableGroup = conversationState.conversationUnavailableGroupId
+            ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
+            : null;
         if (stage instanceof HTMLElement) {
             stage.dataset.ambientStatus = 'offline';
         }
@@ -289,10 +293,12 @@ export function updateConversationHeader(settings = getSettings()) {
         }
         renderHeaderParticipantStack(participantsContainer, [], { status: 'offline' });
         if (name instanceof HTMLElement) {
-            name.textContent = 'Conversation';
+            name.textContent = unavailableGroup?.name || 'Conversation';
         }
         if (status instanceof HTMLElement) {
-            status.textContent = 'Pick or start a DM from the Pals rail.';
+            status.textContent = unavailableGroup
+                ? 'No eligible Conversation members are available in this group yet.'
+                : 'Pick or start a DM from the Pals rail.';
         }
         return;
     }
@@ -314,7 +320,7 @@ export function updateConversationHeader(settings = getSettings()) {
         groupId,
         onAvatarClick: groupId ? (participant) => {
             if (participant?.avatar) {
-                openConversationWorkspaceForAvatar(participant.avatar, { groupId: null, showToast: false });
+                void selectConversationThread(participant.avatar, { groupId: null, showToast: false });
             }
         } : null,
     });
@@ -374,10 +380,6 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId });
-    if (conversationState.conversationWorkspaceOpen && avatar && !settings.enabled) {
-        settings.enabled = true;
-        saveSettings(avatar, settings, { groupId });
-    }
     const active = Boolean(conversationState.conversationWorkspaceOpen);
 
     setConversationInterfaceActive(active);
@@ -398,9 +400,16 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
         const input = document.getElementById(CHROME_IDS.input);
         const send = document.getElementById(CHROME_IDS.send);
+        const unavailableGroup = conversationState.conversationUnavailableGroupId
+            ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
+            : null;
         if (input instanceof HTMLTextAreaElement) {
             input.disabled = !avatar;
-            input.placeholder = avatar ? 'Type your message...' : 'Pick or start a DM from the Pals rail...';
+            input.placeholder = avatar
+                ? 'Type your message...'
+                : unavailableGroup
+                    ? 'This group has no eligible Conversation members yet...'
+                    : 'Pick or start a DM from the Pals rail...';
         }
         if (send instanceof HTMLButtonElement) {
             send.disabled = !avatar;

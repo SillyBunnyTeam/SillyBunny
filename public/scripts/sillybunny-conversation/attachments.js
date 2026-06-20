@@ -21,7 +21,7 @@ import { isCharacterMentionedInText } from './partners.js';
 import { formatConversationFileSize, formatPromptText } from './prompt.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
-import { getSettings } from './settings-store.js';
+import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState, partnerReplyBusyKeys, sendQueue } from './state.js';
 import {
     appendConversationThreadMessage,
@@ -573,8 +573,13 @@ export async function submitConversationInput() {
     if (!pendingFiles) {
         return;
     }
-    if (!avatar || !settings.enabled || (!text && !pendingFiles.length)) {
+    if (!avatar || (!text && !pendingFiles.length)) {
         return;
+    }
+
+    if (!settings.enabled) {
+        settings.enabled = true;
+        saveSettings(avatar, settings, { groupId });
     }
 
     if (text.startsWith('/') && !pendingFiles.length) {

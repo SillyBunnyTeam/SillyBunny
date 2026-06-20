@@ -1,5 +1,5 @@
 import { playMessageSound } from '../power-user.js';
-import { openConversationWorkspaceForAvatar } from './chrome.js';
+import { selectConversationThread } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
@@ -215,15 +215,15 @@ export function updatePalsToggleBadge(totalUnread = getTotalUnreadCount()) {
 }
 
 export function updateConversationTabBadge(totalUnread = getTotalUnreadCount()) {
-    const tabButton = document.getElementById('sb_character_tab_conversation');
-    if (!tabButton) {
+    const modeButton = document.querySelector('#sb_character_mode_toggle [data-sb-character-mode="conversation"]');
+    if (!(modeButton instanceof HTMLElement)) {
         return;
     }
-    let badge = tabButton.querySelector('.sb-tab-notification-badge');
+    let badge = modeButton.querySelector('.sb-tab-notification-badge');
     if (!badge) {
         badge = document.createElement('span');
         badge.className = 'sb-tab-notification-badge';
-        tabButton.appendChild(badge);
+        modeButton.appendChild(badge);
     }
     badge.textContent = getBadgeLabel(totalUnread);
     badge.style.display = totalUnread > 0 ? 'inline-flex' : 'none';
@@ -282,9 +282,7 @@ export function isConversationActiveForAvatar(avatar) {
 }
 
 export function openConversationFromNotification(avatar, { groupId = null } = {}) {
-    if (!openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
-        return;
-    }
+    void selectConversationThread(avatar, { groupId, showToast: false });
 }
 
 export function showConversationToast(avatar, message, { groupId = null } = {}) {

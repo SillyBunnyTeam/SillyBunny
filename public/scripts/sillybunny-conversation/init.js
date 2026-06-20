@@ -11,7 +11,7 @@ import {
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, openConversationWorkspaceForAvatar } from './chrome.js';
 import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getCurrentCharAvatar, isAvatarInConversationGroup, migrateConversationLocalStorage } from './context.js';
+import { getCurrentCharAvatar, getRoleplayCurrentCharacter, isAvatarInConversationGroup, migrateConversationLocalStorage } from './context.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
@@ -28,6 +28,44 @@ function scheduleInterfaceRefreshIfOpen() {
     if (conversationState.conversationWorkspaceOpen) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
+}
+
+function syncConversationWorkspaceToRoleplaySelection() {
+    if (!conversationState.conversationWorkspaceOpen) {
+        return;
+    }
+
+    let targetAvatar = null;
+    const roleplayGroupId = selected_group ? String(selected_group) : null;
+
+    if (roleplayGroupId) {
+        const groupMembers = getCurrentGroupConversationMembers({ groupId: roleplayGroupId, requireEnabled: false });
+        targetAvatar = groupMembers[0]?.character?.avatar || null;
+    } else {
+        targetAvatar = getRoleplayCurrentCharacter()?.avatar || null;
+    }
+    const targetGroupId = roleplayGroupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, roleplayGroupId)
+        ? roleplayGroupId
+        : null;
+
+    if (!targetAvatar) {
+        conversationState.conversationSelectedAvatar = null;
+        conversationState.conversationSelectedGroupId = null;
+        conversationState.conversationUnavailableGroupId = roleplayGroupId;
+        conversationState.conversationTimelineChannel = 'main';
+        conversationState.conversationTimelineSearchQuery = '';
+        scheduleInterfaceRefresh({ syncControls: false });
+        return;
+    }
+
+    conversationState.conversationUnavailableGroupId = null;
+
+    if (targetAvatar === conversationState.conversationSelectedAvatar
+        && targetGroupId === conversationState.conversationSelectedGroupId) {
+        return;
+    }
+
+    openConversationWorkspaceForAvatar(targetAvatar, { groupId: targetGroupId, showToast: false });
 }
 
 function ensureConversationRuntimeStarted() {
@@ -106,11 +144,13 @@ export function init() {
     });
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (conversationState.conversationWorkspaceOpen) {
+            syncConversationWorkspaceToRoleplaySelection();
             handleChatChanged();
         }
     });
     eventSource.on(event_types.CHAT_LOADED, () => {
         if (conversationState.conversationWorkspaceOpen) {
+            syncConversationWorkspaceToRoleplaySelection();
             handleChatChanged();
         }
     });
