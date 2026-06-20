@@ -216,6 +216,12 @@ describe('SillyBunny boot guard', () => {
         setNow(36000);
         timers.shift().callback();
 
+        expect(preloader.querySelector('button')).toBeNull();
+        expect(timers[0].delay).toBe(2000);
+
+        setNow(38000);
+        timers.shift().callback();
+
         expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
     });
 

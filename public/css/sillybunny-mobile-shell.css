@@ -1647,7 +1647,9 @@
 
     #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
         opacity: 1;
-        display: block;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
         visibility: visible;
         pointer-events: auto;
         z-index: var(--sb-z-modal);
@@ -1706,9 +1708,9 @@
     #sb-mobile-nav-content {
         position: relative;
         isolation: isolate;
-        width: min(100%, 620px);
-        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 32px);
-        margin: 0 auto;
+        width: min(100%, 560px);
+        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) - 16px);
+        margin: 0 auto auto;
         padding: 14px;
         display: flex;
         flex-direction: column;
@@ -1718,6 +1720,28 @@
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
         background: transparent;
         box-shadow: 0 24px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
+        transform: translateY(10px);
+        transition: transform var(--sb-transition-fast);
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='middle'] #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
+        align-items: center;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='bottom'] #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
+        align-items: flex-end;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='middle'] #sb-mobile-nav-content {
+        margin: auto;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='bottom'] #sb-mobile-nav-content {
+        margin: auto auto 0;
+    }
+
+    #sb-mobile-nav.sb-nav-open[aria-hidden='false'] #sb-mobile-nav-content {
+        transform: translateY(0);
     }
 
     #sb-mobile-nav-content::before {
@@ -2638,11 +2662,11 @@
     #right-nav-panel.openDrawer,
     #top-settings-holder #right-nav-panel.openDrawer,
     :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
-        bottom: auto !important;
-        box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
+        bottom: auto;
+        box-sizing: border-box;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
     }
 }
 
@@ -2669,6 +2693,21 @@
         --sb-proxy-underline-inset-base: 7px;
         --sb-proxy-underline-bottom-base: 3px;
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
+    }
+
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer,
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
+        bottom: auto !important;
+        box-sizing: border-box !important;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
     }
 
     :root[data-sb-compact-mode='true'] {

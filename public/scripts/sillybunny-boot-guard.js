@@ -7,8 +7,11 @@
     var failureDismissed = false;
     var lastFailure = null;
     var timeoutId = null;
+    var timeoutWarningShown = false;
+    var loaderRemovalGraceActive = false;
     var BOOT_TIMEOUT_MS = 25000;
     var BOOT_TIMEOUT_RETRY_MS = 10000;
+    var BOOT_TIMEOUT_LOADER_REMOVAL_GRACE_MS = 2000;
     var MAX_BOOT_TIMEOUT_MS = 90000;
     var bootStartedAt = Date.now();
 
@@ -161,12 +164,27 @@
             return;
         }
 
-        if (!lastFailure && isStartupLoaderActive() && getElapsedBootTimeMs() < MAX_BOOT_TIMEOUT_MS) {
+        if (!lastFailure && isStartupLoaderActive()) {
+            loaderRemovalGraceActive = false;
+
+            if (!timeoutWarningShown && getElapsedBootTimeMs() >= MAX_BOOT_TIMEOUT_MS) {
+                timeoutWarningShown = true;
+                console.warn('SillyBunny startup is still waiting for the loader to finish; no startup error was captured.');
+                showFailure('Startup timed out before SillyBunny removed the preloader.');
+                return;
+            }
+
             scheduleBootTimeout(BOOT_TIMEOUT_RETRY_MS);
             return;
         }
 
-        showFailure(lastFailure || 'Startup timed out before SillyBunny removed the preloader.');
+        if (!lastFailure && !loaderRemovalGraceActive) {
+            loaderRemovalGraceActive = true;
+            scheduleBootTimeout(BOOT_TIMEOUT_LOADER_REMOVAL_GRACE_MS);
+            return;
+        }
+
+        showFailure(lastFailure || 'Startup timed out after the preloader disappeared before SillyBunny finished booting.');
     }
 
     function showFailure(details) {
@@ -244,6 +262,7 @@
     window.SillyBunnyBootGuard = {
         bootCompleted: function () {
             bootCompleted = true;
+            loaderRemovalGraceActive = false;
             if (timeoutId) {
                 window.clearTimeout(timeoutId);
             }

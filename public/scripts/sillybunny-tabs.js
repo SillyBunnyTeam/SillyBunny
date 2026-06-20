@@ -54,6 +54,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileNavReplacementTarget: 'sb-mobile-nav-replacement-target',
     mobileQuickActions: 'sb-mobile-quick-actions-v2',
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
+    mobileQuickActionsPlacement: 'sb-mobile-quick-actions-placement',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
     frontendIcon: 'sb-frontend-icon',
@@ -653,6 +654,7 @@ const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
+const SB_MOBILE_QUICK_ACTION_PLACEMENTS = Object.freeze(['top', 'middle', 'bottom']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
     { type: 'tab', shellKey: 'left', tabId: 'api', icon: 'fa-plug', label: 'API' },
@@ -753,6 +755,7 @@ const sbState = {
         showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), false),
         replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), false),
         replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget)),
+        quickActionsPlacement: normalizeMobileQuickActionsPlacement(safeGetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement)),
     },
     desktopNav: {
         layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout)),
@@ -933,6 +936,11 @@ function normalizeStoredBoolean(value, fallback = false) {
 function normalizeMobileNavLayout(value) {
     const normalizedValue = normalizeText(value);
     return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'horizontal';
+}
+
+function normalizeMobileQuickActionsPlacement(value) {
+    const normalizedValue = normalizeText(value);
+    return SB_MOBILE_QUICK_ACTION_PLACEMENTS.includes(normalizedValue) ? normalizedValue : 'top';
 }
 
 function getNavState(mode) {
@@ -1387,6 +1395,7 @@ function restorePersistedTopbarState() {
     sbState.mobileNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), sbState.mobileNav.showQuickActions);
     sbState.mobileNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), sbState.mobileNav.replaceQuickActions);
     sbState.mobileNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget));
+    sbState.mobileNav.quickActionsPlacement = normalizeMobileQuickActionsPlacement(safeGetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement));
     sbState.desktopNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout));
     sbState.desktopNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), sbState.desktopNav.iconOnly);
     sbState.desktopNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), sbState.desktopNav.showCustomize);
@@ -1519,6 +1528,7 @@ function applyMobileNavPreferences() {
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavReplacement = sbState.mobileNav.replaceQuickActions ? 'shown' : 'hidden';
+    document.documentElement.dataset.sbMobileQuickActionsPlacement = sbState.mobileNav.quickActionsPlacement;
 }
 
 function applyDesktopNavPreferences() {
@@ -1607,6 +1617,18 @@ function setMobileNavReplacementTarget(target, { persist = true } = {}) {
     }
 
     updateMobileNavButtonLabel();
+    updateThemePickerUi();
+}
+
+function setMobileQuickActionsPlacement(placement, { persist = true } = {}) {
+    const nextPlacement = normalizeMobileQuickActionsPlacement(placement);
+    sbState.mobileNav.quickActionsPlacement = nextPlacement;
+    applyMobileNavPreferences();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement, nextPlacement);
+    }
+
     updateThemePickerUi();
 }
 
@@ -11670,6 +11692,42 @@ function createMobileNavDivider(label = '') {
     return divider;
 }
 
+function createMobileQuickActionsPlacementGroup() {
+    const group = createElement('div', {
+        className: 'sb-mobile-nav-dependent-group sb-mobile-quick-actions-placement-group',
+    });
+    const title = createElement('strong', {
+        className: 'sb-mobile-nav-dependent-title',
+        text: 'Quick Actions Position',
+    });
+    const grid = createElement('div', {
+        className: 'sb-mobile-nav-choice-grid sb-mobile-nav-choice-grid-compact',
+        attrs: {
+            role: 'radiogroup',
+            'aria-label': 'Mobile Quick Actions position',
+        },
+    });
+    const options = [
+        { value: 'top', label: 'Top', icon: 'fa-arrow-up' },
+        { value: 'middle', label: 'Middle', icon: 'fa-arrows-up-down' },
+        { value: 'bottom', label: 'Bottom', icon: 'fa-arrow-down' },
+    ];
+
+    for (const option of options) {
+        grid.appendChild(createMobileNavChoice({
+            id: `sb-mobile-quick-actions-placement-${option.value}`,
+            name: 'sb-mobile-quick-actions-placement',
+            value: option.value,
+            label: option.label,
+            icon: option.icon,
+            onChange: input => setMobileQuickActionsPlacement(input.value),
+        }));
+    }
+
+    group.append(title, grid);
+    return group;
+}
+
 function createNavigationSettingsGroup(mode = 'mobile') {
     const isDesktop = mode === 'desktop';
     const modeTitle = isDesktop ? 'Desktop' : 'Mobile';
@@ -11718,6 +11776,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-map-location-dot',
         onChange: input => isDesktop ? setDesktopNavReplaceQuickActions(input.checked) : setMobileNavReplaceQuickActions(input.checked),
     });
+    const quickActionsPlacementGroup = isDesktop ? null : createMobileQuickActionsPlacementGroup();
     const replacementField = createElement('label', {
         className: 'sb-mobile-nav-replacement-field',
         attrs: {
@@ -11778,6 +11837,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         createMobileNavDivider(),
         showCustomizeChoice,
         showQuickActionsChoice,
+        ...(quickActionsPlacementGroup ? [quickActionsPlacementGroup] : []),
         replaceQuickActionsChoice,
         replacementField,
     );
@@ -12338,10 +12398,31 @@ function updateThemePickerUi() {
         choice?.classList.toggle('is-selected', sbState.mobileNav.replaceQuickActions);
     }
 
+    const quickActionsPlacementGroup = document.querySelector('.sb-mobile-quick-actions-placement-group');
+    quickActionsPlacementGroup?.classList.toggle('is-disabled', !sbState.mobileNav.showQuickActions);
+
+    for (const input of document.querySelectorAll('input[name="sb-mobile-quick-actions-placement"]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.disabled = !sbState.mobileNav.showQuickActions;
+    }
+
     if (mobileNavReplacementSelect instanceof HTMLSelectElement) {
         mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
         mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
         mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
+    }
+
+    for (const input of document.querySelectorAll('input[name="sb-mobile-quick-actions-placement"]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        const isChecked = input.value === sbState.mobileNav.quickActionsPlacement;
+        input.checked = isChecked;
+        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
