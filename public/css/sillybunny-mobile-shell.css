@@ -128,6 +128,15 @@
         display: none !important;
     }
 
+    /* SillyBunny: the STscript execution play/pause/stop controls (.stscript_btn)
+       are unused by this fork's roleplay-focused audience. mobile-styles.css
+       forces them to display:flex (see #533), which lets them overlap the
+       composer textarea on mobile. Hide them unconditionally here -- this sheet
+       loads after mobile-styles.css so the !important wins. */
+    #rightSendForm > .stscript_btn {
+        display: none !important;
+    }
+
     #leftSendForm > div,
     #rightSendForm > div:not(.stscript_btn),
     #send_but,
