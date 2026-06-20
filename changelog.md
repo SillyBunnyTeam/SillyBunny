@@ -52,6 +52,7 @@
 - PR #562 (2026-06-20) `fix: improve WebKit prefix parity and iOS guards`
 - PR #563 (2026-06-20) `fix(ica): regenerate extract trackers from Fix Trackers`
 - PR #564 (2026-06-20) `feat(in-chat-agents): live HTML preview and regenerate for custom tracker builder`
+- PR #566 (2026-06-20) `feat(in-chat-agents): add textarea fullscreen toggles`
 
 ## v1.6.5
 
