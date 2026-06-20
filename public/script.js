@@ -17194,6 +17194,33 @@ jQuery(async function () {
                 await importEmbeddedWorldInfo();
                 saveCharacterDebounced();
                 break;
+            case 'regenerate_thumbnail': {
+                if (this_chid === undefined || this_chid === -1 || !characters[this_chid]) {
+                    break;
+                }
+                const avatarKey = characters[this_chid].avatar;
+                if (!avatarKey || avatarKey === 'none') {
+                    toastr.warning(t`This character has no avatar to regenerate a thumbnail from.`);
+                    break;
+                }
+                try {
+                    const regenResponse = await fetch('/api/characters/regenerate-thumbnail', {
+                        method: 'POST',
+                        headers: getRequestHeaders(),
+                        body: JSON.stringify({ avatar_url: avatarKey }),
+                        cache: 'no-cache',
+                    });
+                    if (!regenResponse.ok) {
+                        toastr.error(t`Failed to regenerate thumbnail (${regenResponse.status})`);
+                        break;
+                    }
+                    await refreshCharacterAvatar(avatarKey);
+                    toastr.success(t`Thumbnail regenerated successfully.`, t`Thumbnail Refreshed`);
+                } catch (error) {
+                    console.error('Failed to regenerate thumbnail:', error);
+                    toastr.error(t`An error occurred while regenerating the thumbnail.`);
+                }
+            } break;
             case 'character_source': {
                 const source = getCharacterSource(this_chid);
                 if (source && isValidUrl(source)) {
