@@ -2275,7 +2275,7 @@
         grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr);
         grid-template-areas:
             'avatar name'
-            'side-actions side-actions'
+            'avatar side-actions'
             'icon-actions icon-actions'
             'tags tags';
         gap: 6px;
