@@ -28,8 +28,13 @@ function getMediaQueryPxValues(cssSource) {
 // Ratchet budgets: ceilings match the measured state of staging when this
 // test landed. Lower them as cleanup PRs land; never raise them without a
 // review note explaining the regression.
+//
+// sillybunny-mobile-shell.css raised 664 -> 665: one display:none !important
+// added to unconditionally hide the unused STscript play/pause/stop controls
+// (.stscript_btn) in the mobile composer, overriding the display:flex !important
+// that mobile-styles.css added in #533.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 664,
+    'sillybunny-mobile-shell.css': 665,
     'sillybunny-tabs.css': 386,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 158,
