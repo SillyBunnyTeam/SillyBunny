@@ -113,7 +113,7 @@
     }
 
     #leftSendForm::-webkit-scrollbar {
-        display: none !important;
+        display: none;
     }
 
     #rightSendForm {
