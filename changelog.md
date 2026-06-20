@@ -48,6 +48,7 @@
 - PR #558 (2026-06-20) `fix: persist Pathfinder section collapse state`
 - PR #559 (2026-06-20) `chore(agents): update Grounded Prose Rules template`
 - PR #560 (2026-06-20) `fix: bind custom endpoint profiles to saved secrets`
+- PR #561 (2026-06-20) `fix(companion-panel): keep manual Play button visible after first run`
 
 ## v1.6.5
 
