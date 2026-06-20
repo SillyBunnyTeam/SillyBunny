@@ -1,6 +1,6 @@
 import { Fuse } from '../lib.js';
 
-import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character } from '../script.js';
+import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character, getEntitiesList } from '../script.js';
 import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents, uuidv4, normalizeArray, getUniqueName, logSlashCommandWarn, addLongPressEvent, escapeHtml } from './utils.js';
 import { extension_settings, getContext } from './extensions.js';
 import { NOTE_MODULE_NAME, metadata_keys, shouldWIAddPrompt } from './authors-note.js';
@@ -24,6 +24,7 @@ import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
 import { normalizeCharacterBookPosition, normalizeWorldInfoPosition } from './world-info-character-book.js';
+import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks } from './world-info-batch-helpers.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -5959,9 +5960,7 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
         }
     }
 
-    const convertedBook = convertCharacterBook(characters[chid].data.character_book);
-
-    await saveWorldInfo(bookName, convertedBook, true);
+    await importEmbeddedWorldInfoForCharacter(chid);
     await updateWorldInfoList();
     $('#character_world').val(bookName).trigger('change');
 
@@ -5976,6 +5975,124 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
     }
 
     setWorldInfoButtonClass(chid, true);
+}
+
+/**
+ * Imports the embedded lorebook for a single character by chid.
+ * Pure helper — saves the world info but does not touch the active-character UI.
+ * @param {number} chid - Character hash id
+ * @returns {Promise<{chid: number, characterName: string, bookName: string, status: 'imported'|'skipped', collision: boolean}>}
+ */
+export async function importEmbeddedWorldInfoForCharacter(chid) {
+    const character = characters[chid];
+
+    if (!character?.data?.character_book) {
+        return { chid, characterName: character?.name ?? 'Unknown', bookName: '', status: 'skipped', collision: false };
+    }
+
+    const bookName = character.data.character_book.name || `${character.name}'s Lorebook`;
+    const collision = world_names.includes(bookName);
+    const convertedBook = convertCharacterBook(character.data.character_book);
+
+    await saveWorldInfo(bookName, convertedBook, true);
+
+    return { chid, characterName: character.name, bookName, status: 'imported', collision };
+}
+
+/**
+ * Batch-imports embedded lorebooks for all visible loaded character cards.
+ * Detects embedded books, shows a confirmation dialog with collision warnings,
+ * imports each book, links via auxiliary world books (settings-only, safe for non-active chars),
+ * and reports a summary.
+ */
+export async function importEmbeddedWorldInfoBatch() {
+    const entities = getEntitiesList({ doFilter: true });
+    const visibleCharList = entities
+        .filter(e => e.type === 'character' && e.id !== undefined && e.id !== -1)
+        .map(e => ({ chid: e.id, character: e.item }));
+
+    const candidates = detectEmbeddedLorebookCandidates(visibleCharList, world_names);
+
+    if (candidates.length === 0) {
+        toastr.info(t`No visible character cards have embedded lorebooks.`, t`Batch Import`);
+        return;
+    }
+
+    const collisionCount = candidates.filter(c => c.collision).length;
+
+    let collisionNote = '';
+    if (collisionCount > 0) {
+        const collisionNames = candidates.filter(c => c.collision).map(c => escapeHtml(c.bookName));
+        collisionNote = `<div class="m-b-1">${t`Warning:`} <b>${collisionCount}</b> ${t`will overwrite existing lorebook(s):`} ${collisionNames.join(', ')}</div>`;
+    }
+
+    const html = `<h3>${t`Import embedded lorebooks for ${candidates.length} visible character(s)?`}</h3>${collisionNote}`;
+    const confirm = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { okButton: t`Import` });
+
+    if (!confirm) {
+        return;
+    }
+
+    const results = [];
+    for (const candidate of candidates) {
+        try {
+            const result = await importEmbeddedWorldInfoForCharacter(candidate.chid);
+
+            if (result.status === 'imported') {
+                const characterKey = characters[candidate.chid]?.avatar;
+                if (characterKey) {
+                    const fileName = getCharaFilename(null, { manualAvatarKey: characterKey });
+                    const linkedBooks = getLinkedAuxBooks(world_info.charLore, fileName);
+                    if (!linkedBooks.includes(result.bookName)) {
+                        await charUpdateAddAuxWorld(characterKey, result.bookName);
+                    }
+                }
+            }
+
+            results.push(result);
+        } catch (error) {
+            console.error('[Batch WI Import] Failed for', candidate.characterName, error);
+            results.push({ ...candidate, status: 'skipped', collision: false, error: error.message });
+        }
+    }
+
+    await updateWorldInfoList();
+
+    const imported = results.filter(r => r.status === 'imported');
+    const skipped = results.filter(r => r.status === 'skipped');
+    const collisions = imported.filter(r => r.collision);
+
+    let summary = `<h3>${t`Batch import complete`}</h3>`;
+    summary += `<div>${imported.length} ${t`imported`}`;
+
+    if (collisions.length > 0) {
+        summary += `, ${collisions.length} ${t`overwrote existing`}`;
+    }
+
+    if (skipped.length > 0) {
+        summary += `, ${skipped.length} ${t`skipped`}`;
+    }
+
+    summary += '.</div>';
+
+    if (imported.length > 0) {
+        summary += '<ul>';
+        for (const r of imported) {
+            summary += `<li>${escapeHtml(r.characterName)} → ${escapeHtml(r.bookName)}${r.collision ? ` (${t`overwrote`})` : ''}</li>`;
+        }
+        summary += '</ul>';
+    }
+
+    if (skipped.length > 0) {
+        summary += `<div class="m-t-1"><b>${t`Skipped:`}</b></div><ul>`;
+        for (const r of skipped) {
+            summary += `<li>${escapeHtml(r.characterName)}${r.error ? `: ${escapeHtml(r.error)}` : ` (${t`no embedded lorebook`})`}</li>`;
+        }
+        summary += '</ul>';
+    }
+
+    await callGenericPopup(summary, POPUP_TYPE.TEXT, '', { okButton: t`Close` });
+    toastr.success(t`Imported ${imported.length} lorebook(s) from ${candidates.length} character(s).`, t`Batch Import Complete`);
 }
 
 export function onWorldInfoChange(args, text) {
@@ -6419,6 +6536,8 @@ export function initWorldInfo() {
         // Will allow to select the same file twice in a row
         e.target.value = '';
     });
+
+    $('#world_batch_import_embedded').on('click', importEmbeddedWorldInfoBatch);
 
     $('#world_create_button').on('click', async () => {
         const tempName = getFreeWorldName();
