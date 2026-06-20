@@ -6397,7 +6397,7 @@ function syncBottomChatActionOverflowState() {
         action.button.style.display = isMobileViewport()
             ? (isOverflowAction ? 'none' : 'inline-flex')
             : '';
-        action.button.classList.toggle('sb-bottom-chat-overflow-source', isOverflowAction);
+        action.button.classList.toggle('sb-bottom-chat-overflow-source', plan.overflowActions.includes(action));
     }
 
     const shouldRenderOverflow = plan.shouldRenderOverflow && isMobileViewport();
