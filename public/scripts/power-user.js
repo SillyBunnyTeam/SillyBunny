@@ -158,6 +158,24 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
     ['shadow_color', '#shadow-color-picker', 'shadow'],
     ['border_color', '#border-color-picker', 'border'],
 ]);
+const SB_ACCENT_PROFILE_SEED_VERSION = 1;
+const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
+const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
+    { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
+    { name: 'Story Moss', quote_text_color: 'rgba(114, 192, 144, 1)', underline_text_color: 'rgba(161, 209, 172, 1)' },
+    { name: 'Forest Dawn', quote_text_color: 'rgba(53, 167, 124, 1)', underline_text_color: 'rgba(245, 125, 38, 1)' },
+    { name: 'Rose Glow', quote_text_color: 'rgba(156, 207, 216, 1)', underline_text_color: 'rgba(246, 193, 119, 1)' },
+    { name: 'Moonlit Rose', quote_text_color: 'rgba(244, 114, 182, 1)', underline_text_color: 'rgba(251, 207, 232, 1)' },
+    { name: 'Tidepool', quote_text_color: 'rgba(6, 182, 212, 1)', underline_text_color: 'rgba(125, 211, 252, 1)' },
+    { name: 'Bluebell', quote_text_color: 'rgba(96, 165, 250, 1)', underline_text_color: 'rgba(191, 219, 254, 1)' },
+    { name: 'Lavender Ink', quote_text_color: 'rgba(167, 139, 250, 1)', underline_text_color: 'rgba(196, 181, 253, 1)' },
+    { name: 'Foxglove', quote_text_color: 'rgba(217, 70, 239, 1)', underline_text_color: 'rgba(249, 168, 212, 1)' },
+    { name: 'Copper Sage', quote_text_color: 'rgba(217, 119, 6, 1)', underline_text_color: 'rgba(132, 204, 22, 1)' },
+    { name: 'Ember', quote_text_color: 'rgba(239, 68, 68, 1)', underline_text_color: 'rgba(251, 146, 60, 1)' },
+    { name: 'Seafoam', quote_text_color: 'rgba(45, 212, 191, 1)', underline_text_color: 'rgba(134, 239, 172, 1)' },
+    { name: 'Orchid Static', quote_text_color: 'rgba(192, 132, 252, 1)', underline_text_color: 'rgba(103, 232, 249, 1)' },
+    { name: 'Graphite Glow', quote_text_color: 'rgba(107, 114, 128, 1)', underline_text_color: 'rgba(209, 213, 219, 1)' },
+]);
 const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'main_text_color', selector: '#main-text-color-picker', type: 'main' },
     { key: 'italics_text_color', selector: '#italics-color-picker', type: 'italics' },
@@ -306,6 +324,8 @@ export const power_user = {
     italics_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeEmColor').trim()}`,
     underline_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUnderlineColor').trim()}`,
     quote_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()}`,
+    sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
+    sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -1441,6 +1461,210 @@ function syncThemeColorPickersFromState() {
     for (const [key, selector] of SILLYBUNNY_PALETTE_BINDINGS) {
         $(selector).attr('color', power_user[key]);
     }
+
+    syncCustomAccentPickersFromState();
+    renderAccentProfiles();
+}
+
+function syncCustomAccentPickersFromState() {
+    $('#sb-accent-primary-picker').attr('color', power_user.quote_text_color);
+    $('#sb-accent-secondary-picker').attr('color', power_user.underline_text_color);
+}
+
+function getSeedAccentProfiles() {
+    return SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile }));
+}
+
+function normalizeAccentProfile(profile) {
+    if (!profile || typeof profile !== 'object') {
+        return null;
+    }
+
+    const name = typeof profile.name === 'string'
+        ? profile.name.trim().replace(/\s+/g, ' ').slice(0, MAX_SB_ACCENT_PROFILE_NAME_LENGTH)
+        : '';
+    const quoteColor = typeof profile.quote_text_color === 'string' ? profile.quote_text_color.trim() : '';
+    const underlineColor = typeof profile.underline_text_color === 'string' ? profile.underline_text_color.trim() : '';
+
+    if (!name || !quoteColor || !underlineColor) {
+        return null;
+    }
+
+    return {
+        name,
+        quote_text_color: quoteColor,
+        underline_text_color: underlineColor,
+    };
+}
+
+function getAccentProfileKey(profile) {
+    return profile.name.toLocaleLowerCase();
+}
+
+function normalizeAccentProfiles() {
+    const sourceProfiles = Array.isArray(power_user.sb_accent_profiles) ? power_user.sb_accent_profiles : [];
+    const normalizedProfiles = sourceProfiles.map(normalizeAccentProfile).filter(Boolean);
+    const previousSeedVersion = Number.isInteger(power_user.sb_accent_profiles_seed_version)
+        ? power_user.sb_accent_profiles_seed_version
+        : 0;
+    let changed = normalizedProfiles.length !== sourceProfiles.length || !Array.isArray(power_user.sb_accent_profiles);
+
+    if (previousSeedVersion < SB_ACCENT_PROFILE_SEED_VERSION) {
+        const profileKeys = new Set(normalizedProfiles.map(getAccentProfileKey));
+        for (const seedProfile of getSeedAccentProfiles()) {
+            const profileKey = getAccentProfileKey(seedProfile);
+            if (!profileKeys.has(profileKey)) {
+                normalizedProfiles.push(seedProfile);
+                profileKeys.add(profileKey);
+                changed = true;
+            }
+        }
+    }
+
+    if (power_user.sb_accent_profiles_seed_version !== SB_ACCENT_PROFILE_SEED_VERSION) {
+        power_user.sb_accent_profiles_seed_version = SB_ACCENT_PROFILE_SEED_VERSION;
+        changed = true;
+    }
+
+    power_user.sb_accent_profiles = normalizedProfiles;
+    return changed;
+}
+
+function getAccentProfile(index) {
+    normalizeAccentProfiles();
+    return power_user.sb_accent_profiles[index] || null;
+}
+
+function renderAccentProfiles() {
+    const list = $('#sb-accent-profiles-list');
+    const emptyState = $('#sb-accent-profiles-empty');
+
+    if (!list.length) {
+        return;
+    }
+
+    normalizeAccentProfiles();
+    list.empty();
+    emptyState.toggle(power_user.sb_accent_profiles.length === 0);
+
+    power_user.sb_accent_profiles.forEach((profile, index) => {
+        const isSelected = profile.quote_text_color === power_user.quote_text_color && profile.underline_text_color === power_user.underline_text_color;
+        const item = $('<div></div>', { class: 'sb-accent-profile-item', role: 'listitem' });
+        const applyButton = $('<button></button>', {
+            type: 'button',
+            class: 'menu_button sb-accent-profile-apply',
+            title: `Apply ${profile.name}`,
+            'aria-label': `Apply ${profile.name} accent profile`,
+            'aria-pressed': String(isSelected),
+        })
+            .attr('data-accent-profile-index', String(index))
+            .toggleClass('is-selected', isSelected)
+            .css('--sb-accent-profile-primary', profile.quote_text_color)
+            .css('--sb-accent-profile-secondary', profile.underline_text_color);
+        const swatches = $('<span></span>', { class: 'sb-accent-profile-swatches', 'aria-hidden': 'true' })
+            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-primary' }))
+            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-secondary' }));
+        const name = $('<span></span>', { class: 'sb-accent-profile-name' }).text(profile.name);
+        const deleteButton = $('<button></button>', {
+            type: 'button',
+            class: 'menu_button menu_button_icon sb-accent-profile-delete',
+            title: `Delete ${profile.name}`,
+            'aria-label': `Delete ${profile.name} accent profile`,
+        })
+            .attr('data-accent-profile-index', String(index))
+            .append($('<i></i>', { class: 'fa-solid fa-trash-can' }));
+
+        applyButton.append(swatches, name);
+        item.append(applyButton, deleteButton);
+        list.append(item);
+    });
+}
+
+function applyAccentColors(quoteColor, underlineColor) {
+    power_user.quote_text_color = quoteColor;
+    power_user.underline_text_color = underlineColor;
+    applyThemeColor('quote');
+    applyThemeColor('underline');
+    syncCustomAccentPickersFromState();
+    renderAccentProfiles();
+    saveSettingsDebounced();
+}
+
+function applyAccentProfile(index) {
+    const profile = getAccentProfile(index);
+
+    if (!profile) {
+        return;
+    }
+
+    applyAccentColors(profile.quote_text_color, profile.underline_text_color);
+    toastr.info(`${profile.name} applied.`, 'Accent profile');
+}
+
+async function saveAccentProfile() {
+    const newName = await callGenericPopup('Save current accent colors as:', POPUP_TYPE.INPUT, 'My Accent', {
+        okButton: 'Save',
+        cancelButton: 'Cancel',
+    });
+
+    if (!newName) {
+        return;
+    }
+
+    const newProfile = normalizeAccentProfile({
+        name: String(newName),
+        quote_text_color: power_user.quote_text_color,
+        underline_text_color: power_user.underline_text_color,
+    });
+
+    if (!newProfile) {
+        toastr.warning('Accent profile name is required.', 'Accent profile');
+        return;
+    }
+
+    normalizeAccentProfiles();
+    const existingIndex = power_user.sb_accent_profiles.findIndex(profile => profile.name.toLocaleLowerCase() === newProfile.name.toLocaleLowerCase());
+
+    if (existingIndex !== -1) {
+        const confirm = await callGenericPopup(`Replace the "${newProfile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Replace',
+            cancelButton: 'Cancel',
+        });
+
+        if (!confirm) {
+            return;
+        }
+
+        power_user.sb_accent_profiles[existingIndex] = newProfile;
+    } else {
+        power_user.sb_accent_profiles.push(newProfile);
+    }
+
+    renderAccentProfiles();
+    saveSettingsDebounced();
+    toastr.success(`${newProfile.name} saved.`, 'Accent profile');
+}
+
+async function deleteAccentProfile(index) {
+    const profile = getAccentProfile(index);
+
+    if (!profile) {
+        return;
+    }
+
+    const confirm = await callGenericPopup(`Delete the "${profile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Delete',
+        cancelButton: 'Cancel',
+    });
+
+    if (!confirm) {
+        return;
+    }
+
+    power_user.sb_accent_profiles.splice(index, 1);
+    renderAccentProfiles();
+    saveSettingsDebounced();
+    toastr.success(`${profile.name} deleted.`, 'Accent profile');
 }
 
 function applySillyBunnyPalettePreset(presetId) {
@@ -1787,6 +2011,7 @@ function getExampleMessagesBehavior() {
 //MARK: loadPowerUser
 export async function loadPowerUserSettings(settings, data) {
     const defaultStscript = JSON.parse(JSON.stringify(power_user.stscript));
+    const hasAccentProfileSeedVersion = settings.power_user !== undefined && Object.hasOwn(settings.power_user, 'sb_accent_profiles_seed_version');
     customThemeStyleEntries = settings.extension_settings?.CTSI?.entries && typeof settings.extension_settings.CTSI.entries === 'object'
         ? { ...settings.extension_settings.CTSI.entries }
         : {};
@@ -1801,6 +2026,14 @@ export async function loadPowerUserSettings(settings, data) {
             delete settings.power_user.auto_sort_tags;
         }
         Object.assign(power_user, settings.power_user);
+    }
+
+    if (!hasAccentProfileSeedVersion) {
+        power_user.sb_accent_profiles_seed_version = 0;
+    }
+
+    if (normalizeAccentProfiles()) {
+        saveSettingsDebounced();
     }
 
     if (power_user.stscript === undefined) {
@@ -4583,13 +4816,21 @@ jQuery(async () => {
         }
 
         if (quoteColor && underlineColor) {
-            power_user.quote_text_color = quoteColor;
-            power_user.underline_text_color = underlineColor;
-            applyThemeColor('quote');
-            applyThemeColor('underline');
-            saveSettingsDebounced();
+            applyAccentColors(quoteColor, underlineColor);
             toastr.info('Accent colors applied.', 'SillyBunny palette');
         }
+    });
+
+    $(document).on('click', '#sb-accent-profile-save', async function () {
+        await saveAccentProfile();
+    });
+
+    $(document).on('click', '.sb-accent-profile-apply', function () {
+        applyAccentProfile(Number($(this).attr('data-accent-profile-index')));
+    });
+
+    $(document).on('click', '.sb-accent-profile-delete', async function () {
+        await deleteAccentProfile(Number($(this).attr('data-accent-profile-index')));
     });
 
     // Custom RGB accent toggle
@@ -4606,12 +4847,14 @@ jQuery(async () => {
     $('#sb-accent-primary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.quote_text_color = evt.detail.rgba;
         applyThemeColor('quote');
+        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
     $('#sb-accent-secondary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.underline_text_color = evt.detail.rgba;
         applyThemeColor('underline');
+        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
