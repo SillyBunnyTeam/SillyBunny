@@ -47,6 +47,7 @@
 - PR #557 (2026-06-20) `fix: preserve Bunny Preset Tools section icons`
 - PR #558 (2026-06-20) `fix: persist Pathfinder section collapse state`
 - PR #559 (2026-06-20) `chore(agents): update Grounded Prose Rules template`
+- PR #560 (2026-06-20) `fix: bind custom endpoint profiles to saved secrets`
 
 ## v1.6.5
 
