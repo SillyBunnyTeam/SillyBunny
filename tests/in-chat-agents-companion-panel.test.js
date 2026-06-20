@@ -290,6 +290,13 @@ describe('companion tracker panel', () => {
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
         expect(html).toContain('No state yet');
+
+        // SillyBunny: the per-companion Play button must remain visible after a companion has
+        // already produced state, otherwise manual companions can only regenerate the first run
+        // and never pick up a newer assistant reply from the draggable panel.
+        const trackerSection = html.match(/<section class="ica--tpanel-agent"[\s\S]*?data-message-index="0"[\s\S]*?<\/section>/)?.[0] ?? '';
+        const playButtonMatches = trackerSection.match(/data-action="panel-run-latest"/g) ?? [];
+        expect(playButtonMatches).toHaveLength(1);
     });
 
     test('renders edit buttons with per-entry message indices on history entries', async () => {
