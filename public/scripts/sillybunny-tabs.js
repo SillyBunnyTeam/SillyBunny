@@ -2333,6 +2333,52 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
+/**
+ * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
+ * focused input above the virtual keyboard the way a normal page would. When
+ * focus enters an input inside a shell panel or drawer scroller, manually scroll
+ * that scroller so the input sits above the keyboard. The chat composer itself
+ * is already handled by the --sb-shell-viewport-height shell sizing; this covers
+ * the remaining settings/drawer inputs (e.g. "Enter a Model ID").
+ */
+function scrollMobileFocusedInputIntoView(event) {
+    if (!isMobileViewport()) {
+        return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !target.isContentEditable) {
+        return;
+    }
+
+    const scroller = target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
+    if (!(scroller instanceof HTMLElement)) {
+        return;
+    }
+
+    function tryScroll() {
+        // visualViewport tracks the keyboard: top grows and height shrinks as the
+        // keyboard rises, so (top + height) is the bottom of the visible area.
+        const viewportSize = getShellViewportSize();
+        const viewportBottom = viewportSize.top + viewportSize.height;
+        const rect = target.getBoundingClientRect();
+        const overflow = rect.bottom - viewportBottom + 16;
+
+        if (overflow > 0) {
+            scroller.scrollTop += overflow;
+        }
+    }
+
+    // Run once immediately (keyboard may already be open) and again after the
+    // keyboard animation / visualViewport resize has settled.
+    window.requestAnimationFrame(tryScroll);
+    window.setTimeout(tryScroll, 200);
+}
+
 function getMobileShellBoundDrawers() {
     return Array.from(new Set([
         ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
@@ -15566,6 +15612,11 @@ function initAll() {
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
+
+    // SillyBunny: keep focused inputs in mobile settings drawers above the
+    // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
+    // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
+    document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).
