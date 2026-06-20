@@ -3,7 +3,8 @@
     "name": "Nightmare Difficulty Increase",
     "description": "Aggressively hostile environment -- maximum difficulty and consequences",
     "icon": "",
-    "category": "custom",
+    "category": "content",
+    "subcategory": "behaviour",
     "tags": [
         "difficulty",
         "challenge",

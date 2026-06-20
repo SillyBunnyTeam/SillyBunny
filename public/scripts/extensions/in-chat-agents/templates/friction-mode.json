@@ -3,7 +3,8 @@
     "name": "Friction Mode",
     "description": "Combats positivity bias -- characters resist, protect their pride, and take time to warm up",
     "icon": "",
-    "category": "custom",
+    "category": "content",
+    "subcategory": "behaviour",
     "tags": [
         "realism",
         "difficulty",

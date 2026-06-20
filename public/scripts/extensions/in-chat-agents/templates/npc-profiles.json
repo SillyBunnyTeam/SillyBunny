@@ -3,7 +3,8 @@
     "name": "NPC Profile Cards",
     "description": "Generate brief profile cards when introducing new named NPCs",
     "icon": "",
-    "category": "custom",
+    "category": "tracker",
+    "subcategory": "characters",
     "tags": [
         "npc",
         "characters",
@@ -38,5 +39,8 @@
             "normal",
             "continue"
         ]
+    },
+    "companion": {
+        "includeSystemPrompt": false
     }
 }
