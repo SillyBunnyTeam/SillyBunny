@@ -50,6 +50,7 @@
 - PR #560 (2026-06-20) `fix: bind custom endpoint profiles to saved secrets`
 - PR #561 (2026-06-20) `fix(companion-panel): keep manual Play button visible after first run`
 - PR #562 (2026-06-20) `fix: improve WebKit prefix parity and iOS guards`
+- PR #563 (2026-06-20) `fix(ica): regenerate extract trackers from Fix Trackers`
 
 ## v1.6.5
 
