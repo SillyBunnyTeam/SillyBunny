@@ -37,6 +37,7 @@ const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
 const PATHFINDER_LOG_MODE_KEY = 'pathfinder-retrieval-log-mode';
 const PATHFINDER_QUICKSTART_DISMISSED_KEY = 'pathfinder-quickstart-dismissed';
+const PATHFINDER_COLLAPSED_SECTIONS_KEY = 'pathfinder-collapsed-sections';
 const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 let settingsEl = null;
@@ -56,6 +57,62 @@ function applyQuickstartDismissalState() {
     if (isQuickstartDismissed()) {
         settingsEl.find('#pf--quickstart').hide();
     }
+}
+
+function getCollapsedSectionStates() {
+    const rawValue = localStorage.getItem(PATHFINDER_COLLAPSED_SECTIONS_KEY);
+    if (!rawValue) {
+        return {};
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (err) {
+        console.warn(`${PATHFINDER_LOG_PREFIX} Failed to read Pathfinder collapsed section preferences.`, err);
+        return {};
+    }
+}
+
+function getCollapseSectionKey(section) {
+    const sectionId = section.attr('id');
+    if (sectionId) {
+        return sectionId;
+    }
+
+    return section.children('.pf--collapsible-header').first().find('strong').first().text().trim();
+}
+
+function setSectionCollapsedPreference(sectionKey, collapsed) {
+    if (!sectionKey) {
+        return;
+    }
+
+    const states = getCollapsedSectionStates();
+    states[sectionKey] = collapsed;
+    localStorage.setItem(PATHFINDER_COLLAPSED_SECTIONS_KEY, JSON.stringify(states));
+}
+
+function setSectionChevronState(section, collapsed) {
+    const chevron = section.children('.pf--collapsible-header').first().find('.pf--chevron').first();
+    chevron.toggleClass('fa-chevron-down', !collapsed);
+    chevron.toggleClass('fa-chevron-right', collapsed);
+}
+
+function applyPersistedCollapseStates() {
+    const states = getCollapsedSectionStates();
+
+    settingsEl.find('.pf--section-collapsible').each(function () {
+        const section = $(this);
+        const sectionKey = getCollapseSectionKey(section);
+        if (!sectionKey || !Object.prototype.hasOwnProperty.call(states, sectionKey)) {
+            return;
+        }
+
+        const collapsed = states[sectionKey] === true;
+        section.children('.pf--section-body').first().toggle(!collapsed);
+        setSectionChevronState(section, collapsed);
+    });
 }
 
 function ensureEnabledLorebooks(settings) {
@@ -266,6 +323,7 @@ export async function openPathfinderSettings(agent) {
     await refreshLorebookList();
     applyQuickstartDismissalState();
     loadSettingsIntoUI();
+    applyPersistedCollapseStates();
     bindEvents();
     settingsEl.find('#pf--log-mode').val(retrievalLogMode);
     updateStatusBanner();
@@ -1029,13 +1087,13 @@ function bindEvents() {
     // Collapsible sections
     settingsEl.find('.pf--collapsible-header').on('click', function () {
         const section = $(this).closest('.pf--section-collapsible');
-        const body = section.find('.pf--section-body');
-        const chevron = $(this).find('.pf--chevron');
+        const body = section.children('.pf--section-body').first();
         const sectionTitle = $(this).find('strong').text().trim() || 'Unnamed section';
         const willOpen = !body.is(':visible');
 
         body.slideToggle(200);
-        chevron.toggleClass('fa-chevron-down fa-chevron-right');
+        setSectionChevronState(section, !willOpen);
+        setSectionCollapsedPreference(getCollapseSectionKey(section), !willOpen);
         logPathfinder(`${willOpen ? 'Opened' : 'Collapsed'} Pathfinder section "${sectionTitle}".`);
     });
 
