@@ -14,6 +14,7 @@ import {
     computeReorderedOrder,
     getSectionLockState,
     setSectionLockState,
+    stripDividerPrefix,
 } from './sectionOrder.js';
 
 const EXTENSION_NAME = 'BunnyPresetTools';
@@ -891,11 +892,6 @@ function createSectionRow(sectionId, title, sectionName, isOpen, isLocked) {
     lockButton.addEventListener('click', activateLockButton);
     lockButton.addEventListener('touchend', activateLockButton);
     return row;
-}
-
-function stripDividerPrefix(title, dividerRegex) {
-    const cleaned = String(title).replace(dividerRegex, '').replace(/^[\s:|~>-]+/, '').trim();
-    return cleaned || String(title).trim();
 }
 
 function refreshPromptSections() {

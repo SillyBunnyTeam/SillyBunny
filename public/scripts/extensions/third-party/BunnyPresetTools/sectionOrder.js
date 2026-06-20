@@ -22,6 +22,44 @@ function normalizeKey(value) {
     return String(value || '').trim();
 }
 
+const LEADING_DIVIDER_TRIM_REGEX = /^[\s:|~>=*+\-─━—]+/u;
+const DIVIDER_MARKER_REGEX = /[─━—-]\+/u;
+const DIVIDER_DECORATION_REGEX = /[\s:|~>=*+\-─━—]+/gu;
+
+export function stripDividerPrefix(title, dividerRegex) {
+    const rawTitle = String(title);
+    const fallbackTitle = rawTitle.trim();
+    const dividerMatch = rawTitle.match(dividerRegex);
+
+    if (!dividerMatch) {
+        return fallbackTitle;
+    }
+
+    const matchedPrefix = dividerMatch[0] || '';
+    const markerMatch = matchedPrefix.match(DIVIDER_MARKER_REGEX);
+
+    if (markerMatch) {
+        const markerIndex = markerMatch.index ?? 0;
+        const iconPrefix = matchedPrefix
+            .slice(0, markerIndex)
+            .replace(DIVIDER_DECORATION_REGEX, '')
+            .trim();
+        const cleanedTitle = `${matchedPrefix.slice(markerIndex + markerMatch[0].length)}${rawTitle.slice(matchedPrefix.length)}`
+            .replace(LEADING_DIVIDER_TRIM_REGEX, '')
+            .trim();
+        const displayTitle = [iconPrefix, cleanedTitle].filter(Boolean).join(' ');
+
+        return displayTitle || fallbackTitle;
+    }
+
+    const cleanedTitle = rawTitle
+        .replace(dividerRegex, '')
+        .replace(LEADING_DIVIDER_TRIM_REGEX, '')
+        .trim();
+
+    return cleanedTitle || fallbackTitle;
+}
+
 function ensureLockStore(settings) {
     if (!settings || typeof settings !== 'object') {
         return {};

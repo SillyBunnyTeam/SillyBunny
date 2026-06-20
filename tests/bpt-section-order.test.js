@@ -5,12 +5,23 @@ import {
     computeReorderedOrder,
     getSectionLockState,
     setSectionLockState,
+    stripDividerPrefix,
 } from '../public/scripts/extensions/third-party/BunnyPresetTools/sectionOrder.js';
 
 const sectionRow = sectionId => ({ className: 'bpt-section-row', dataset: { sectionId } });
 const promptRow = (identifier, sectionId) => ({ dataset: { pmIdentifier: identifier, sectionId } });
 
 describe('BunnyPresetTools section order helpers', () => {
+    test('keeps divider section icons in display titles', () => {
+        const dividerRegex = /^(=+|-{3,}|\*{3,}|(?:[^\w\s]+\s*)?[─━—-]\+)/u;
+
+        expect(stripDividerPrefix('🐈‍⬛ ─+ Primary Toggles', dividerRegex)).toBe('🐈‍⬛ Primary Toggles');
+        expect(stripDividerPrefix('🐈‍⬛─+ Main', dividerRegex)).toBe('🐈‍⬛ Main');
+        expect(stripDividerPrefix('⭐─+ Tracker Toggles', dividerRegex)).toBe('⭐ Tracker Toggles');
+        expect(stripDividerPrefix('=== Main Prompts ===', dividerRegex)).toBe('Main Prompts ===');
+        expect(stripDividerPrefix('Main', dividerRegex)).toBe('Main');
+    });
+
     test('defaults new sections to locked and stores id/name keys', () => {
         const settings = {};
 
