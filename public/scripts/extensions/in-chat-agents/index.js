@@ -92,6 +92,7 @@ import { collectRecentCompanionResults, initCompanionRunner } from './companion/
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
+import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -2411,6 +2412,7 @@ async function openRegexScriptEditor(existingScript = null) {
     `);
 
     html.find('#ica--regex-substitute').val(String(regexScript.substituteRegex ?? AGENT_REGEX_SUBSTITUTE.NONE));
+    attachTextareaFullscreen(html);
 
     const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
         okButton: 'Save Regex',
@@ -2418,6 +2420,7 @@ async function openRegexScriptEditor(existingScript = null) {
         wide: true,
         large: true,
     }).show();
+    closeActiveTextareaFullscreen();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return null;
@@ -2552,6 +2555,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         fullscreenButton.find('i').attr('class', `fa-solid ${editorFullscreen ? 'fa-compress' : 'fa-maximize'}`);
     };
     fullscreenButton.on('click', () => updateEditorFullscreenState(!editorFullscreen));
+    attachTextareaFullscreen(editorEl);
 
     // Injection
     editorEl.find('#ica--editor-position').val(agent.injection.position);
@@ -2990,11 +2994,13 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
                 <textarea id="ica--companion-maker-goal" class="text_pole textarea_compact" rows="8" placeholder="Example: Watch for continuity issues, unresolved promises, location changes, and character state shifts."></textarea>
             </div>
         `);
+        attachTextareaFullscreen(makerForm);
         const makerResult = await new Popup(makerForm, POPUP_TYPE.CONFIRM, '', {
             okButton: 'Generate Companion',
             cancelButton: 'Cancel',
             wide: true,
         }).show();
+        closeActiveTextareaFullscreen();
 
         if (makerResult !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -3198,6 +3204,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         large: true,
     }).show();
 
+    closeActiveTextareaFullscreen();
     document.body.classList.remove('ica--editor-fullscreen-active');
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) return;
@@ -4098,6 +4105,7 @@ function buildTrackerPreviewPopupContent(generatedKit, sampleText, extraInstruct
 
     previewContent.find('.ica--tracker-preview-slot').replaceWith(buildTrackerHtmlPreviewNode(generatedKit, sampleText));
     previewContent.find('#ica--tracker-builder-extra-instructions').val(extraInstructions);
+    attachTextareaFullscreen(previewContent);
 
     return previewContent;
 }
@@ -5000,6 +5008,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     }
 
     $('#in_chat_agents_container').append(settingsHtml);
+    attachTextareaFullscreen($('#ica--settings'));
 
     const savedState = extension_settings.inChatAgents;
     const legacyGroups = Array.isArray(savedState?.groups)
