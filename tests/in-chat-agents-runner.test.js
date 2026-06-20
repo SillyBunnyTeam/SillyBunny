@@ -2523,6 +2523,28 @@ describe('in-chat agent post-processing runner', () => {
         expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
     });
 
+    test('manual tracker fix regenerates missing extract tracker blocks', async () => {
+        usePreExtractTracker();
+        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Alice|Tired|Moderate]');
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without an inline tracker block.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
+        expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.');
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(saveChatDebounced).toHaveBeenCalledTimes(1);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers fixed');
+    });
+
     test('snapshots regex-only agents on streamed tokens before final message events', async () => {
         useRegexOnlyAgent();
 
