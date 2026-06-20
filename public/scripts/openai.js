@@ -6952,6 +6952,9 @@ async function getStatusOpen() {
         $('.model_custom_select').empty();
         data.custom_url = oai_settings.custom_url;
         data.custom_include_headers = oai_settings.custom_include_headers;
+        if (selected_custom_endpoint_preset?.secretId) {
+            data.secret_id = selected_custom_endpoint_preset.secretId;
+        }
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.AZURE_OPENAI) {
