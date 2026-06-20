@@ -1703,7 +1703,7 @@
     #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
         opacity: 1;
         display: flex;
-        align-items: flex-end;
+        align-items: flex-start;
         justify-content: center;
         visibility: visible;
         pointer-events: auto;
@@ -1764,8 +1764,8 @@
         position: relative;
         isolation: isolate;
         width: min(100%, 560px);
-        max-height: min(76dvh, calc(100dvh - var(--sb-topbar-layout-offset) - 16px));
-        margin: auto auto 0;
+        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) - 16px);
+        margin: 0 auto auto;
         padding: 14px;
         display: flex;
         flex-direction: column;
@@ -1779,6 +1779,22 @@
         box-shadow: 0 24px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
         transform: translateY(10px);
         transition: transform var(--sb-transition-fast);
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='middle'] #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
+        align-items: center;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='bottom'] #sb-mobile-nav.sb-nav-open[aria-hidden='false'] {
+        align-items: flex-end;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='middle'] #sb-mobile-nav-content {
+        margin: auto;
+    }
+
+    :root[data-sb-mobile-quick-actions-placement='bottom'] #sb-mobile-nav-content {
+        margin: auto auto 0;
     }
 
     #sb-mobile-nav.sb-nav-open[aria-hidden='false'] #sb-mobile-nav-content {
@@ -2743,8 +2759,8 @@
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
         bottom: auto;
         box-sizing: border-box;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
     }
 }
 
