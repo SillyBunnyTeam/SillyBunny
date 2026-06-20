@@ -81,61 +81,64 @@
     </div>
 
     <!-- Step 2: Choose Mode -->
-    <div class="pf--section">
-        <div class="pf--section-header">
+    <div id="pf--mode-section" class="pf--section pf--section-collapsible">
+        <div class="pf--section-header pf--collapsible-header">
+            <i class="fa-solid fa-chevron-down pf--chevron"></i>
             <span class="pf--step-badge">2</span>
             <strong>Choose How Pathfinder Works</strong>
         </div>
 
-        <!-- Warning banner when both modes enabled -->
-        <div id="pf--dual-mode-warning" class="pf--dual-mode-warning" style="display: none;">
-            <i class="fa-solid fa-triangle-exclamation"></i>
-            <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control.</span>
-        </div>
-
-        <div class="pf--mode-cards">
-            <!-- Tool Mode Card -->
-            <div class="pf--mode-card" data-mode="tools">
-                <div class="pf--mode-card-header">
-                    <label class="checkbox_label">
-                        <input type="checkbox" id="pf--enable-tools" />
-                        <span><i class="fa-solid fa-wrench"></i> Tool Mode</span>
-                    </label>
-                </div>
-                <div class="pf--mode-card-body">
-                    <p>The AI can actively <b>browse, search, and modify</b> your lorebook using function tools.</p>
-                    <ul>
-                        <li><i class="fa-solid fa-search"></i> Search & navigate waypoints</li>
-                        <li><i class="fa-solid fa-brain"></i> Remember new information</li>
-                        <li><i class="fa-solid fa-pen"></i> Update existing entries</li>
-                        <li><i class="fa-solid fa-book"></i> Private AI notebook</li>
-                    </ul>
-                    <div class="pf--mode-requirement">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
-                        Requires an API that supports tool/function calling (OpenAI, Claude, etc.)
-                    </div>
-                </div>
+        <div class="pf--section-body">
+            <!-- Warning banner when both modes enabled -->
+            <div id="pf--dual-mode-warning" class="pf--dual-mode-warning" style="display: none;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control.</span>
             </div>
 
-            <!-- Pipeline Mode Card -->
-            <div class="pf--mode-card" data-mode="pipeline">
-                <div class="pf--mode-card-header">
-                    <label class="checkbox_label">
-                        <input type="checkbox" id="pf--enable-pipeline" />
-                        <span><i class="fa-solid fa-wand-magic-sparkles"></i> Predictive Pipeline</span>
-                    </label>
+            <div class="pf--mode-cards">
+                <!-- Tool Mode Card -->
+                <div class="pf--mode-card" data-mode="tools">
+                    <div class="pf--mode-card-header">
+                        <label class="checkbox_label">
+                            <input type="checkbox" id="pf--enable-tools" />
+                            <span><i class="fa-solid fa-wrench"></i> Tool Mode</span>
+                        </label>
+                    </div>
+                    <div class="pf--mode-card-body">
+                        <p>The AI can actively <b>browse, search, and modify</b> your lorebook using function tools.</p>
+                        <ul>
+                            <li><i class="fa-solid fa-search"></i> Search & navigate waypoints</li>
+                            <li><i class="fa-solid fa-brain"></i> Remember new information</li>
+                            <li><i class="fa-solid fa-pen"></i> Update existing entries</li>
+                            <li><i class="fa-solid fa-book"></i> Private AI notebook</li>
+                        </ul>
+                        <div class="pf--mode-requirement">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            Requires an API that supports tool/function calling (OpenAI, Claude, etc.)
+                        </div>
+                    </div>
                 </div>
-                <div class="pf--mode-card-body">
-                    <p><b>Automatically</b> predicts and injects relevant lore before each AI response.</p>
-                    <ul>
-                        <li><i class="fa-solid fa-bolt"></i> Works with any API</li>
-                        <li><i class="fa-solid fa-brain"></i> AI predicts what's relevant</li>
-                        <li><i class="fa-solid fa-filter"></i> Two-stage filtering</li>
-                        <li><i class="fa-solid fa-sliders"></i> Fully customizable prompts</li>
-                    </ul>
-                    <div class="pf--mode-info">
-                        <i class="fa-solid fa-circle-info"></i>
-                        Uses a separate AI call to select entries before generation
+
+                <!-- Pipeline Mode Card -->
+                <div class="pf--mode-card" data-mode="pipeline">
+                    <div class="pf--mode-card-header">
+                        <label class="checkbox_label">
+                            <input type="checkbox" id="pf--enable-pipeline" />
+                            <span><i class="fa-solid fa-wand-magic-sparkles"></i> Predictive Pipeline</span>
+                        </label>
+                    </div>
+                    <div class="pf--mode-card-body">
+                        <p><b>Automatically</b> predicts and injects relevant lore before each AI response.</p>
+                        <ul>
+                            <li><i class="fa-solid fa-bolt"></i> Works with any API</li>
+                            <li><i class="fa-solid fa-brain"></i> AI predicts what's relevant</li>
+                            <li><i class="fa-solid fa-filter"></i> Two-stage filtering</li>
+                            <li><i class="fa-solid fa-sliders"></i> Fully customizable prompts</li>
+                        </ul>
+                        <div class="pf--mode-info">
+                            <i class="fa-solid fa-circle-info"></i>
+                            Uses a separate AI call to select entries before generation
+                        </div>
                     </div>
                 </div>
             </div>
