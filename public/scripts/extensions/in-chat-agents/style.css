@@ -1008,6 +1008,99 @@ button.ica--card-pill--version-update {
     min-height: min(54vh, 620px);
 }
 
+.ica--textarea-fullscreen-wrapper {
+    position: relative;
+    display: block;
+    width: 100%;
+}
+
+.ica--textarea-fullscreen-wrapper textarea {
+    box-sizing: border-box;
+    padding-right: 42px;
+}
+
+.ica--textarea-fullscreen-toggle {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    z-index: 2;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.72;
+}
+
+.ica--textarea-fullscreen-toggle:hover,
+.ica--textarea-fullscreen-wrapper:focus-within .ica--textarea-fullscreen-toggle {
+    opacity: 1;
+}
+
+.ica--textarea-fullscreen-active {
+    overflow: hidden;
+}
+
+.ica--textarea-fullscreen-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 42%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+    --ica-textarea-fullscreen-top: max(10px, env(safe-area-inset-top, 0px));
+    --ica-textarea-fullscreen-right: max(10px, env(safe-area-inset-right, 0px));
+    --ica-textarea-fullscreen-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    --ica-textarea-fullscreen-left: max(10px, env(safe-area-inset-left, 0px));
+    position: fixed !important;
+    inset: var(--ica-textarea-fullscreen-top) var(--ica-textarea-fullscreen-right) var(--ica-textarea-fullscreen-bottom) var(--ica-textarea-fullscreen-left);
+    z-index: 10061;
+    width: calc(100vw - var(--ica-textarea-fullscreen-left) - var(--ica-textarea-fullscreen-right));
+    width: calc(100dvw - var(--ica-textarea-fullscreen-left) - var(--ica-textarea-fullscreen-right));
+    height: calc(100vh - var(--ica-textarea-fullscreen-top) - var(--ica-textarea-fullscreen-bottom));
+    height: calc(100dvh - var(--ica-textarea-fullscreen-top) - var(--ica-textarea-fullscreen-bottom));
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 16px 56px 16px 16px;
+    resize: none;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 96%, var(--SmartThemeChatTintColor, #222) 4%);
+    box-shadow: 0 24px 80px color-mix(in srgb, var(--SmartThemeShadowColor) 42%, transparent);
+    line-height: 1.45;
+}
+
+.ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+    position: fixed;
+    top: calc(max(10px, env(safe-area-inset-top, 0px)) + 10px);
+    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 10px);
+    z-index: 10062;
+    opacity: 1;
+}
+
+@media (max-width: 600px) {
+    .ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+        --ica-textarea-fullscreen-top: max(6px, env(safe-area-inset-top, 0px));
+        --ica-textarea-fullscreen-right: max(6px, env(safe-area-inset-right, 0px));
+        --ica-textarea-fullscreen-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+        --ica-textarea-fullscreen-left: max(6px, env(safe-area-inset-left, 0px));
+        padding: 14px 52px 14px 14px;
+        border-radius: 10px;
+        font-size: 16px;
+    }
+
+    .ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+        top: calc(max(6px, env(safe-area-inset-top, 0px)) + 8px);
+        right: calc(max(6px, env(safe-area-inset-right, 0px)) + 8px);
+    }
+}
+
 .ica--prompt-preview pre {
     white-space: pre-wrap;
     word-break: break-word;
