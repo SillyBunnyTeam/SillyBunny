@@ -292,3 +292,21 @@ export function normalizeCustomEndpointPreset(preset) {
 export function buildCustomEndpointPresetForSave(preset) {
     return normalizeCustomEndpointPreset(preset);
 }
+
+/**
+ * Builds the storage key for model favorites, scoping Custom endpoint favorites by URL.
+ *
+ * @param {string} source Chat Completion source
+ * @param {string} url Custom OpenAI-compatible endpoint URL
+ * @returns {string} Model favorites storage key
+ */
+export function getCustomEndpointFavoritesKey(source, url) {
+    const normalizedSource = String(source ?? '');
+
+    if (normalizedSource !== 'custom') {
+        return normalizedSource;
+    }
+
+    const normalizedUrl = String(url ?? '').trim().replace(/\/+$/, '');
+    return normalizedUrl ? `${normalizedSource}::${normalizedUrl}` : normalizedSource;
+}
