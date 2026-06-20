@@ -32,7 +32,6 @@ import { getConversationMessagePreviewText } from './thread-store.js';
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
 const GROUP_CONVERSATION_FORCED_SETTINGS = Object.freeze({
-    enabled: true,
     multi_char: true,
     auto_character_chat: true,
 });

@@ -14,6 +14,7 @@ export const conversationState = {
     conversationWorkspaceOpen: false,
     conversationSelectedAvatar: null,
     conversationSelectedGroupId: null,
+    conversationUnavailableGroupId: null,
     conversationTimelineChannel: 'main',
     conversationTimelineSearchQuery: '',
     imageGenerationActive: false,

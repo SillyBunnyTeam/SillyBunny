@@ -60,7 +60,7 @@ export function getConversationRailItems() {
             const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
             const branch = normalizeConversationBranch(threadStore?.branches?.[branchId], branchId);
             const isEmptyThread = !branch.messages.length && !branch.unread && branch.preview === 'Conversation ready';
-            if (isEmptyThread && key !== activeKey) {
+            if (isEmptyThread) {
                 return;
             }
         }
@@ -108,8 +108,8 @@ export function getSelectedConversationGroup() {
     return getConversationGroupById(conversationState.conversationWorkspaceOpen ? conversationState.conversationSelectedGroupId : selected_group);
 }
 
-export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false } = {}) {
-    const group = getSelectedConversationGroup();
+export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false, groupId = null, requireEnabled = true } = {}) {
+    const group = groupId ? getConversationGroupById(groupId) : getSelectedConversationGroup();
     if (!group || !Array.isArray(group.members)) {
         return [];
     }
@@ -122,7 +122,7 @@ export function getCurrentGroupConversationMembers({ requireRoleplayReactions = 
             const settings = getConversationSettingsForCharacter(character, { groupId: String(group.id || '') });
             return { character, index, settings };
         })
-        .filter(item => item.character?.avatar && item.settings.enabled)
+        .filter(item => item.character?.avatar && (!requireEnabled || item.settings.enabled))
         .filter(item => !requireRoleplayReactions || item.settings.roleplay_reactions);
 }
 
@@ -148,7 +148,7 @@ export function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
             .forEach(character => addTarget(character, 'Conversation', baseGroupId));
     }
 
-    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
+    getCurrentGroupConversationMembers({ requireEnabled: false }).forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
 
     if (!targets.length && baseAvatar) {
         addTarget(getCharacterForAvatar(baseAvatar), 'Conversation', baseGroupId);

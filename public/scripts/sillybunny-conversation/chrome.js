@@ -1,6 +1,6 @@
-import { characters } from '../../script.js';
+import { characters, selectCharacterById } from '../../script.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
-import { selected_group } from '../group-chats.js';
+import { openGroupById, selected_group } from '../group-chats.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { setUserAvatar } from '../personas.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
@@ -129,6 +129,26 @@ function focusConversationInput({ skipIOS = false } = {}) {
     }
 }
 
+export async function selectConversationThread(avatar, { groupId = null, showToast = false } = {}) {
+    if (!avatar) {
+        return false;
+    }
+
+    const normalizedGroupId = groupId ? String(groupId) : '';
+    const didSyncRoleplaySelection = normalizedGroupId
+        ? await openGroupById(normalizedGroupId, { switchMenu: false })
+        : await selectCharacterById(characters.findIndex(character => character?.avatar === avatar), { switchMenu: false });
+
+    if (!didSyncRoleplaySelection) {
+        return false;
+    }
+
+    return openConversationWorkspaceForAvatar(avatar, {
+        groupId: normalizedGroupId || null,
+        showToast,
+    });
+}
+
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
@@ -173,7 +193,7 @@ export function bindConversationChromeControls(sheld) {
             const groupId = target.dataset.groupId || '';
             if (avatar) {
                 closePalsRail();
-                openConversationWorkspaceForAvatar(avatar, {
+                await selectConversationThread(avatar, {
                     groupId: groupId || null,
                     showToast: false,
                 });
@@ -199,9 +219,6 @@ export function bindConversationChromeControls(sheld) {
                 break;
             case 'close-settings':
                 closeConversationSettings();
-                break;
-            case 'return-roleplay':
-                disableConversationModeForCurrentCharacter();
                 break;
             case 'polish-character-message':
                 await handleCharacterMessagePolish(target.dataset.messageId, target);
@@ -271,7 +288,7 @@ export function bindConversationChromeControls(sheld) {
                         saveSettings(char.avatar, charSettings, { groupId: '' });
                         document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
                         closePalsRail();
-                        openConversationWorkspaceForAvatar(char.avatar, {
+                        await selectConversationThread(char.avatar, {
                             groupId: null,
                             showToast: false,
                         });
@@ -390,6 +407,7 @@ export function bindConversationChromeControls(sheld) {
                             scheduleInterfaceRefresh({ syncControls: true });
                         } else {
                             conversationState.conversationWorkspaceOpen = false;
+                            emitConversationWorkspaceStateChange();
                             scheduleInterfaceRefresh({ syncControls: false });
                         }
                     } else {
@@ -745,14 +763,24 @@ export function getDefaultConversationAvatar() {
     return (Array.isArray(characters) ? characters : []).find(character => character?.avatar)?.avatar || null;
 }
 
-export function openConversationWorkspaceForAvatar(avatar, { groupId = null, showToast = true } = {}) {
+function emitConversationWorkspaceStateChange() {
+    window.dispatchEvent(new CustomEvent('sb:conversation-workspace-state-changed', {
+        detail: {
+            open: Boolean(conversationState.conversationWorkspaceOpen),
+        },
+    }));
+}
+
+export function openConversationWorkspaceForAvatar(avatar, { groupId = null, showToast = true, enable = false } = {}) {
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
     const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
+    emitConversationWorkspaceStateChange();
     conversationState.conversationSelectedAvatar = targetAvatar;
     conversationState.conversationSelectedGroupId = targetGroupId;
+    conversationState.conversationUnavailableGroupId = null;
     if (threadChanged) {
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
@@ -769,12 +797,14 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
 
     const settings = getSettings(targetAvatar, { groupId: targetGroupId });
     const wasEnabled = Boolean(settings.enabled);
-    settings.enabled = true;
-    saveSettings(targetAvatar, settings, { groupId: targetGroupId });
+    if (enable && !settings.enabled) {
+        settings.enabled = true;
+        saveSettings(targetAvatar, settings, { groupId: targetGroupId });
+    }
     requestConversationRuntimeStart();
     applySettingsToPanel(settings);
     scheduleInterfaceRefresh({ syncControls: true });
-    if (showToast && !wasEnabled) {
+    if (showToast && enable && !wasEnabled) {
         toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
     setTimeout(() => {
@@ -798,8 +828,10 @@ export function disableConversationModeForCurrentCharacter({ focusRoleplay = tru
     conversationState.conversationWorkspaceOpen = false;
     conversationState.conversationSelectedAvatar = null;
     conversationState.conversationSelectedGroupId = null;
+    conversationState.conversationUnavailableGroupId = null;
     conversationState.conversationTimelineChannel = 'main';
     conversationState.conversationTimelineSearchQuery = '';
+    emitConversationWorkspaceStateChange();
     scheduleInterfaceRefresh({ syncControls: false });
     if (focusRoleplay) {
         document.getElementById('send_textarea')?.focus?.({ preventScroll: false });

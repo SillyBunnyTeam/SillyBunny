@@ -6,11 +6,13 @@ import {
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
+import { conversationState } from './sillybunny-conversation/state.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { flushCharacterSaveDebounced, getOneCharacter, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
+const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
 
 const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
@@ -447,40 +449,44 @@ const SB_MESSAGE_STYLES = Object.freeze([
     { id: '2', label: 'Document', icon: 'fa-file-lines' },
 ]);
 
+const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
+const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
+
 const SB_CHARACTER_TAB_COPY = Object.freeze({
     characters: {
         title: 'Character Menu',
-        subtitle: 'Browse, create, and tune the cast for your chats from one place.',
+        subtitle: 'View or create character cards here for your roleplays and chats!',
         description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
     },
     groups: {
         title: 'Group Menu',
-        subtitle: 'Build and organize group casts for multi-character scenes.',
+        subtitle: 'View or create group chats here for your roleplays and chats!',
         description: 'Sort group chats, check members, and return to character cards without losing your place.',
     },
     conversation: {
         title: 'Conversation Mode',
-        subtitle: 'Configure Discord-style DMs, presence, and autonomous follow-ups for the active character.',
+        subtitle: SB_SHELL_SUBTITLE_PLACEHOLDER,
         description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
     },
     editor: {
         title: 'Card Editor',
-        subtitle: 'Shape the selected card details, prompts, greetings, and metadata.',
+        subtitle: 'Edit your character cards or group chats in great detail here!',
         description: 'Use the subtabs to keep core identity, definitions, greetings, and metadata separated.',
     },
     'world-info': {
         title: 'World Info',
-        subtitle: 'Manage lorebooks and world details from the character workspace.',
+        subtitle: SB_WORLD_INFO_SUBTITLE_HTML,
+        subtitleIsHtml: true,
         description: 'Create, edit, import, and activate World Info entries without leaving the Characters menu.',
     },
     persona: {
         title: 'Persona',
-        subtitle: 'Choose how you appear in chat and connect personas to characters.',
+        subtitle: 'Edit your own persona here for roleplay and chats!',
         description: 'Edit persona details, locks, and defaults in the same flow as your character work.',
     },
     import: {
         title: 'Import',
-        subtitle: 'Add cards from files or links, then fold them into your local cast.',
+        subtitle: 'Directly import character cards here from various sources.',
         description: 'PNG, JSON, YAML, CHARX, BYAF, and supported URL imports stay one tab away.',
     },
 });
@@ -497,7 +503,6 @@ const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info'
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     { id: 'characters', label: 'Characters', icon: 'fa-address-book' },
     { id: 'groups', label: 'Groups', icon: 'fa-users' },
-    { id: 'conversation', label: 'Conversation', icon: 'fa-comments' },
     { id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' },
     { id: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { id: 'persona', label: 'Persona', icon: 'fa-face-smile' },
@@ -525,6 +530,7 @@ const SB_SHELLS = Object.freeze({
             id: 'presets',
             label: 'Presets',
             icon: 'fa-sliders',
+            description: 'Change or modify your Chat Completion presets, settings, and/or prompts here. We recommend our included Geechan and Pura presets if you\'re unsure.',
         },
         embeddedTabs: [
             {
@@ -532,12 +538,14 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'sys-settings-button',
                 label: 'API',
                 icon: 'fa-plug',
+                description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
             },
             {
                 id: 'advanced-formatting',
                 drawerId: 'advanced-formatting-button',
                 label: 'Formatting',
                 icon: 'fa-text-height',
+                description: 'Change Text Completion templates and system prompts here!',
             },
         ],
         customTabs: [
@@ -545,6 +553,8 @@ const SB_SHELLS = Object.freeze({
                 id: 'sampling',
                 label: 'Sampling',
                 icon: 'fa-wave-square',
+                description: SB_SAMPLING_SUBTITLE_HTML,
+                descriptionIsHtml: true,
                 searchPlaceholder: 'Search temperature, top p, repetition penalty, or backend samplers',
                 searchExamples: ['temperature', 'top p', 'repetition penalty'],
             },
@@ -552,6 +562,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'agents',
                 label: 'Agents',
                 icon: 'fa-robot',
+                description: 'Enable, disable, or modify in-chat agents here. Can be configured as pre-gen, sidecar, or post-gen.',
             },
         ],
     },
@@ -573,6 +584,7 @@ const SB_SHELLS = Object.freeze({
             id: 'settings',
             label: 'Settings',
             icon: 'fa-screwdriver-wrench',
+            description: 'Modify and customise SillyBunny\'s general appearance and configuration here.',
             searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
             searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
         },
@@ -582,6 +594,7 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'extensions-settings-button',
                 label: 'Extensions',
                 icon: 'fa-cubes',
+                description: 'Install, manage, and configure SillyTavern extensions here. Backwards compatibility isn\'t guaranteed, but should be applicable.',
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
             },
@@ -590,6 +603,7 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'backgrounds-button',
                 label: 'Background',
                 icon: 'fa-panorama',
+                description: 'Change the appearance of the background surrounding your chats here!',
                 searchPlaceholder: 'Search background names, blur, fit, or vibe words',
                 searchExamples: ['cozy', 'landscape', 'blur', 'fit'],
             },
@@ -599,6 +613,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'server',
                 label: 'Server',
                 icon: 'fa-server',
+                description: 'Edit SillyBunny backend settings and configuration here.',
                 searchPlaceholder: 'Search update, restart, config.yaml, or branch',
                 searchExamples: ['update', 'restart', 'config.yaml', 'branch'],
             },
@@ -606,12 +621,27 @@ const SB_SHELLS = Object.freeze({
                 id: 'console-logs',
                 label: 'Console Logs',
                 icon: 'fa-terminal',
+                description: 'View all SillyBunny logs for easy troubleshooting here.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
             },
         ],
     },
 });
+
+function renderShellSubtitle(target, subtitle, { isHtml = false } = {}) {
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    target.textContent = '';
+    if (isHtml) {
+        target.insertAdjacentHTML('beforeend', subtitle || '');
+        return;
+    }
+
+    target.textContent = subtitle || '';
+}
 
 const SB_DRAWER_ROUTES = Object.freeze({
     'user-settings-button': { shell: 'right', tab: 'settings' },
@@ -6890,7 +6920,6 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     const panel = getCharacterPanel();
     const normalizedView = view === 'groups' ? 'groups' : 'characters';
     sbState.characterDrawer.lastTab = normalizedView;
@@ -6929,7 +6958,6 @@ function showCharacterEditorEmptyState() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterEditorEmptyState(true);
 
@@ -7069,15 +7097,6 @@ function setCharacterWorldInfoPanelVisible(visible) {
 
     if (content instanceof HTMLElement) {
         content.setAttribute('aria-hidden', String(!visible));
-    }
-}
-
-function setCharacterConversationPanelVisible(visible) {
-    const host = document.getElementById('sb_character_conversation_panel');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
     }
 }
 
@@ -7355,7 +7374,6 @@ function openCharacterWorldInfoTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterWorldInfoPanelVisible(true);
     hideCharacterMainPanels();
@@ -7375,7 +7393,6 @@ function openCharacterPersonaTab() {
     setCharacterEditorEmptyState(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterPersonaPanelVisible(true);
     hideCharacterMainPanels();
@@ -7392,7 +7409,6 @@ function openCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
@@ -7411,7 +7427,6 @@ function preserveCharacterImportTab() {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
     syncCharacterListControls('characters');
     setCharacterImportPanelVisible(true);
     hideCharacterMainPanels();
@@ -7419,19 +7434,57 @@ function preserveCharacterImportTab() {
     syncCharacterTitlebarVisibility();
 }
 
-function openCharacterConversationTab() {
-    if (sbState.characterDrawer.lastTab === 'conversation') {
-        sbState.characterDrawer.lastTab = 'characters';
+function syncCharacterModeToggle() {
+    const toggle = document.getElementById('sb_character_mode_toggle');
+
+    if (!(toggle instanceof HTMLElement)) {
+        return;
     }
-    window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace'));
-    closeCharacterPanel();
+
+    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    toggle.dataset.activeMode = activeMode;
+    toggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const isActive = button.dataset.sbCharacterMode === activeMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-checked', String(isActive));
+    });
+}
+
+function setCharacterShellMode(mode) {
+    const normalizedMode = mode === 'conversation' ? 'conversation' : 'roleplay';
+    const isConversationMode = normalizedMode === 'conversation';
+    const mobileViewport = isMobileViewport();
+
+    if (conversationState.conversationWorkspaceOpen === isConversationMode) {
+        syncCharacterModeToggle();
+        if (mobileViewport) {
+            closeCharacterPanel();
+        }
+        return;
+    }
+
+    if (isConversationMode) {
+        window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
+            detail: { showToast: false },
+        }));
+    } else {
+        window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    }
+
+    syncCharacterModeToggle();
+
+    if (mobileViewport) {
+        closeCharacterPanel();
+    }
 }
 
 function openCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
-    if (normalizedTabId !== 'conversation') {
-        sbState.characterDrawer.lastTab = normalizedTabId;
-    }
+    sbState.characterDrawer.lastTab = normalizedTabId;
 
     if (normalizedTabId !== 'editor') {
         setCharacterEditorFullscreenState(false);
@@ -7467,9 +7520,6 @@ function openCharacterPanelTab(tabId) {
         } else if (normalizedTabId === 'world-info') {
             setCharacterPanelMenuType(panel, 'world-info');
             openCharacterWorldInfoTab();
-        } else if (normalizedTabId === 'conversation') {
-            setCharacterPanelMenuType(panel, 'conversation');
-            openCharacterConversationTab();
         } else {
             setCharacterPanelMenuType(panel, 'characters');
             void showCharacterListView();
@@ -7505,7 +7555,6 @@ async function openCharacterEditorTab() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
 
     if (await showActiveCharacterEditor()) {
         syncCharacterShellTabs('editor');
@@ -7528,19 +7577,16 @@ function syncCharacterShellTabs(activeTab = null) {
                     ? 'world-info'
                     : menuType === 'groups'
                         ? 'groups'
-                        : menuType === 'conversation'
-                            ? 'conversation'
-                            : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
+                        : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
-    if (normalizedTab !== 'conversation') {
-        sbState.characterDrawer.lastTab = normalizedTab;
-    }
+    sbState.characterDrawer.lastTab = normalizedTab;
 
     if (menuType === 'characters' || menuType === 'groups') {
         syncCharacterListControls(menuType);
     }
 
     syncCharacterHeaderCopy(normalizedTab);
+    syncCharacterModeToggle();
 
     panel?.querySelectorAll('[data-sb-character-tab]').forEach(tab => {
         if (!(tab instanceof HTMLElement)) {
@@ -7595,7 +7641,7 @@ function syncCharacterHeaderCopy(activeTab = 'characters') {
     }
 
     if (subtitle instanceof HTMLElement) {
-        subtitle.textContent = copy.subtitle;
+        renderShellSubtitle(subtitle, copy.subtitle, { isHtml: copy.subtitleIsHtml === true });
     }
 
     if (description instanceof HTMLElement) {
@@ -7656,7 +7702,6 @@ function resetCharacterPanelView() {
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
     setCharacterWorldInfoPanelVisible(false);
-    setCharacterConversationPanelVisible(false);
 
     if (listButton instanceof HTMLElement) {
         listButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -7741,7 +7786,6 @@ function bindCharacterDrawerStateObserver() {
             setCharacterPersonaPanelVisible(panel.dataset.menuType === 'persona');
             setCharacterImportPanelVisible(panel.dataset.menuType === 'import');
             setCharacterWorldInfoPanelVisible(panel.dataset.menuType === 'world-info');
-            setCharacterConversationPanelVisible(panel.dataset.menuType === 'conversation');
             syncCharacterEditorFullscreenAvailability();
             syncCharacterTitlebarVisibility();
             syncCharacterShellTabs();
@@ -12965,7 +13009,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
 
     const activeTab = shellState.tabs.get(tabId);
     shellState.headerTitle.textContent = activeTab.label;
-    shellState.headerSubtitle.textContent = activeTab.description ?? '';
+    renderShellSubtitle(shellState.headerSubtitle, activeTab.description ?? '', { isHtml: activeTab.descriptionIsHtml === true });
     scrollShellTabButtonIntoView(shellState.nav, activeTab.button, { smooth: focusButton });
     shellState.updateNavScrollIndicators?.();
 
@@ -13258,7 +13302,7 @@ function buildShell(shellKey) {
     });
     const eyebrow = createElement('div', { className: 'sb-shell-kicker', text: shellConfig.title });
     const title = createElement('h2', { className: 'sb-shell-title', text: shellConfig.baseTab.label, attrs: { tabindex: '-1' } });
-    const subtitle = createElement('p', { className: 'sb-shell-subtitle', text: shellConfig.baseTab.description ?? '' });
+    const subtitle = createElement('p', { className: 'sb-shell-subtitle' });
     const shellDescription = createElement('p', { className: 'sb-shell-description', text: shellConfig.subtitle });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
     const resizeHandle = createElement('div', {
@@ -13269,6 +13313,7 @@ function buildShell(shellKey) {
     });
 
     closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    renderShellSubtitle(subtitle, shellConfig.baseTab.description ?? '', { isHtml: shellConfig.baseTab.descriptionIsHtml === true });
     closeButton.addEventListener('click', () => closeShell(shellKey));
     shellRoot.addEventListener('keydown', event => {
         if (event.key !== 'Escape') {
@@ -14229,6 +14274,24 @@ function injectCharacterDrawerControls() {
         shellCloseButton.addEventListener('click', () => closeCharacterPanel());
     }
 
+    const modeToggle = document.getElementById('sb_character_mode_toggle');
+    if (modeToggle instanceof HTMLElement && modeToggle.dataset.sbBound !== 'true') {
+        modeToggle.dataset.sbBound = 'true';
+        modeToggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) {
+                return;
+            }
+
+            button.addEventListener('click', () => setCharacterShellMode(button.dataset.sbCharacterMode));
+        });
+    }
+
+    if (document.documentElement.dataset.sbCharacterModeStateBound !== 'true') {
+        document.documentElement.dataset.sbCharacterModeStateBound = 'true';
+        window.addEventListener('sb:conversation-workspace-state-changed', syncCharacterModeToggle);
+    }
+    syncCharacterModeToggle();
+
     const charactersTab = document.getElementById('sb_character_tab_characters');
     if (charactersTab instanceof HTMLButtonElement && charactersTab.dataset.sbBound !== 'true') {
         charactersTab.dataset.sbBound = 'true';
@@ -14239,12 +14302,6 @@ function injectCharacterDrawerControls() {
     if (groupsTab instanceof HTMLButtonElement && groupsTab.dataset.sbBound !== 'true') {
         groupsTab.dataset.sbBound = 'true';
         groupsTab.addEventListener('click', () => { void showCharacterListView('groups'); });
-    }
-
-    const conversationTab = document.getElementById('sb_character_tab_conversation');
-    if (conversationTab instanceof HTMLButtonElement && conversationTab.dataset.sbBound !== 'true') {
-        conversationTab.dataset.sbBound = 'true';
-        conversationTab.addEventListener('click', () => openCharacterConversationTab());
     }
 
     const editorTab = document.getElementById('sb_character_tab_editor');

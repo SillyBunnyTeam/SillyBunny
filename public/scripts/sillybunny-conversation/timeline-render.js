@@ -16,6 +16,7 @@ import {
 import {
     createConversationBranch,
     getActiveConversationBranch,
+    getConversationGroupById,
     getConversationBranches,
     getConversationGroupIdForAvatar,
     getConversationThreadStore,
@@ -328,7 +329,10 @@ export function renderConversationTimeline() {
     const previousMessageCount = conversationState.lastRenderedMessageCount;
 
     if (!avatar) {
-        const fingerprint = 'no-avatar';
+        const unavailableGroup = conversationState.conversationUnavailableGroupId
+            ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
+            : null;
+        const fingerprint = unavailableGroup ? `no-avatar:${unavailableGroup.id}` : 'no-avatar';
         if (fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
             updateConversationToolsState();
             return;
@@ -338,10 +342,12 @@ export function renderConversationTimeline() {
         timeline.dataset.sbConversationFingerprint = fingerprint;
         timeline.innerHTML = `
             <div class="sb-conversation-thread-empty">
-                <div class="sb-conversation-thread-empty-icon fa-solid fa-comments" aria-hidden="true"></div>
+                <div class="sb-conversation-thread-empty-icon fa-solid ${unavailableGroup ? 'fa-user-group' : 'fa-comments'}" aria-hidden="true"></div>
                 <div>
-                    <strong>Choose a DM to begin</strong>
-                    <p>Use the Pals rail plus button to start messaging a character without opening the character drawer.</p>
+                    <strong>${unavailableGroup ? 'No Conversation members available' : 'Choose a DM to begin'}</strong>
+                    <p>${unavailableGroup
+        ? `${escapeHtmlText(unavailableGroup.name || 'This group')} does not currently have any eligible Conversation members. Add or enable a member, then try again.`
+        : 'Use the Pals rail plus button to start messaging a character without opening the character drawer.'}</p>
                 </div>
             </div>
         `;
@@ -380,7 +386,7 @@ export function renderConversationTimeline() {
             <div class="sb-conversation-thread-empty-icon fa-solid fa-message" aria-hidden="true"></div>
             <div>
                 <strong>No DM messages yet</strong>
-                <p>Roleplay chat stays separate. Start a casual conversation here when you want direct messages.</p>
+                <p>Type a message to begin chatting with this character!</p>
             </div>
         `;
         timeline.appendChild(empty);
@@ -1268,10 +1274,6 @@ export function ensureConversationChrome() {
                 <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="new-chat" title="Clear DM History (New Chat)" aria-label="Clear DM History (New Chat)">
                     <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
                     <span>New Chat</span>
-                </button>
-                <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="return-roleplay" title="Return to roleplay chat" aria-label="Return to roleplay chat">
-                    <i class="fa-solid fa-masks-theater" aria-hidden="true"></i>
-                    <span>Roleplay</span>
                 </button>
                 <button type="button" class="menu_button menu_button_icon sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation settings" aria-label="Conversation settings">
                     <i class="fa-solid fa-gear"></i>
