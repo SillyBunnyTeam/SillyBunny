@@ -42,15 +42,31 @@ const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
 
 let settingsEl = null;
 let currentAgent = null;
-let retrievalLogMode = localStorage.getItem(PATHFINDER_LOG_MODE_KEY) === 'detailed' ? 'detailed' : 'summary';
+let retrievalLogMode = safeGetLocalStorageItem(PATHFINDER_LOG_MODE_KEY) === 'detailed' ? 'detailed' : 'summary';
 let summaryMemoryUnsubscribe = null;
+
+function safeGetLocalStorageItem(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+function safeSetLocalStorageItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
 
 function logPathfinder(message, ...details) {
     console.log(`${PATHFINDER_LOG_PREFIX} ${message}`, ...details);
 }
 
 function isQuickstartDismissed() {
-    return localStorage.getItem(PATHFINDER_QUICKSTART_DISMISSED_KEY) === 'true';
+    return safeGetLocalStorageItem(PATHFINDER_QUICKSTART_DISMISSED_KEY) === 'true';
 }
 
 function applyQuickstartDismissalState() {
@@ -60,7 +76,7 @@ function applyQuickstartDismissalState() {
 }
 
 function getCollapsedSectionStates() {
-    const rawValue = localStorage.getItem(PATHFINDER_COLLAPSED_SECTIONS_KEY);
+    const rawValue = safeGetLocalStorageItem(PATHFINDER_COLLAPSED_SECTIONS_KEY);
     if (!rawValue) {
         return {};
     }
@@ -90,7 +106,7 @@ function setSectionCollapsedPreference(sectionKey, collapsed) {
 
     const states = getCollapsedSectionStates();
     states[sectionKey] = collapsed;
-    localStorage.setItem(PATHFINDER_COLLAPSED_SECTIONS_KEY, JSON.stringify(states));
+    safeSetLocalStorageItem(PATHFINDER_COLLAPSED_SECTIONS_KEY, JSON.stringify(states));
 }
 
 function setSectionChevronState(section, collapsed) {
@@ -818,7 +834,7 @@ ${recentChat}`;
  */
 function bindEvents() {
     settingsEl.find('#pf--quickstart-dismiss').on('click', () => {
-        localStorage.setItem(PATHFINDER_QUICKSTART_DISMISSED_KEY, 'true');
+        safeSetLocalStorageItem(PATHFINDER_QUICKSTART_DISMISSED_KEY, 'true');
         settingsEl.find('#pf--quickstart').slideUp(180);
         logPathfinder('Dismissed Pathfinder introduction card.');
     });
@@ -1157,7 +1173,7 @@ function bindEvents() {
 
     settingsEl.find('#pf--log-mode').on('change', function () {
         retrievalLogMode = String($(this).val()) === 'detailed' ? 'detailed' : 'summary';
-        localStorage.setItem(PATHFINDER_LOG_MODE_KEY, retrievalLogMode);
+        safeSetLocalStorageItem(PATHFINDER_LOG_MODE_KEY, retrievalLogMode);
         renderRetrievalLog();
     });
 

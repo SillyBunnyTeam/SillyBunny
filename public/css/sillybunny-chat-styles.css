@@ -729,6 +729,7 @@ body.ripplestyle #chat {
         }
 
         .mesAvatarWrapper {
+            position: -webkit-sticky;
             position: sticky;
             top: 0;
             padding-bottom: 45px;
@@ -1522,6 +1523,7 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
         min-width: 0 !important;
         overflow: visible !important;
         padding: 0 0 var(--moonlit-sb-ripple-left-bottom-gap) 0 !important;
+        position: -webkit-sticky !important;
         position: sticky !important;
         top: 0 !important;
         z-index: 2;

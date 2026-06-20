@@ -282,6 +282,7 @@
 }
 
 body.sb-topbar-dragging {
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -603,6 +604,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-chatbar-button {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -846,6 +848,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-connection-strip-connect {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -1161,6 +1164,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-proxy-button {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     overflow: hidden;
@@ -1607,6 +1611,7 @@ body.movingUI #right-nav-panel.openDrawer > .sb-shell-resize-handle {
 body.sb-shell-resizing,
 body.sb-shell-resizing * {
     cursor: nwse-resize !important;
+    -webkit-user-select: none !important;
     user-select: none !important;
 }
 
@@ -1769,6 +1774,7 @@ body.sb-shell-resizing * {
 }
 
 .sb-shell-tab {
+    -webkit-appearance: none;
     appearance: none;
     border: 1px solid transparent;
     border-radius: var(--sb-radius-button, 14px);
@@ -2359,6 +2365,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-action {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     min-height: 92px;
@@ -2735,6 +2742,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-search-result {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     padding: 12px 14px;
@@ -3621,6 +3629,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-theme-option {
+    -webkit-appearance: none;
     appearance: none;
     border-radius: var(--sb-radius-md, 16px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
@@ -3763,6 +3772,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-compact-mode-option {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -3861,6 +3871,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-mobile-nav-choice {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;
@@ -4313,6 +4324,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, var(--sb-composer-surface-base, var(--SmartThemeBlurTintColor)));
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
     border-radius: calc(10px * var(--sb-bottom-bar-scale));
+    -webkit-appearance: none;
     appearance: none;
     cursor: pointer;
     overflow: hidden;
@@ -4404,6 +4416,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-bottom-chat-btn {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     border: none;
@@ -4908,6 +4921,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-persona-option {
+    -webkit-appearance: none;
     appearance: none;
     width: 100%;
     border: 0;
@@ -6704,6 +6718,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-topbar-label-option {
+    -webkit-appearance: none;
     appearance: none;
     position: relative;
     isolation: isolate;

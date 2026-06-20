@@ -516,7 +516,11 @@ function restoreUserInput() {
 
 function saveUserInput() {
     const userInput = String($('#send_textarea').val());
-    localStorage.setItem(getUserInputKey(), userInput);
+    try {
+        localStorage.setItem(getUserInputKey(), userInput);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
     console.debug('User Input -- ', userInput);
 }
 const saveUserInputDebounced = debounce(saveUserInput);

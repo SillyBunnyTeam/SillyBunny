@@ -1813,6 +1813,7 @@
     border-radius: 999px;
     cursor: pointer;
     font-size: var(--sb-type-meta);
+    -webkit-user-select: none;
     user-select: none;
     transition: background-color 160ms ease-out, border-color 160ms ease-out;
 }
@@ -2310,6 +2311,7 @@
         width: 100%;
         margin-block-start: 8px;
         box-shadow: none;
+        -webkit-backdrop-filter: none;
         backdrop-filter: none;
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 42%, transparent);
         background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 50%, var(--SmartThemeBodyColor) 4%);
