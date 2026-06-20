@@ -854,6 +854,7 @@
 
 @media screen and (max-width: 760px) {
     #PersonaManagement .persona-workspace-tabs {
+        position: -webkit-sticky;
         position: sticky;
         top: 0;
         z-index: 3;

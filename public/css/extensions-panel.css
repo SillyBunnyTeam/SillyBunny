@@ -138,6 +138,7 @@ label[for="extensions_notify_updates"] input[type="checkbox"] {
 }
 
 .extensions_info .third_party_toolbar {
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -241,6 +242,7 @@ input.extension_missing[type="checkbox"] {
 
 .extensions_toolbar {
     top: 0;
+    position: -webkit-sticky;
     position: sticky;
     display: flex;
     flex-direction: row;

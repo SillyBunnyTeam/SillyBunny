@@ -12,6 +12,15 @@ if (!Array.prototype.findLastIndex) {
     };
 }
 
+if (!Array.prototype.at) {
+    Array.prototype.at = function (index) {
+        const length = this.length;
+        let relativeIndex = Math.trunc(index) || 0;
+        if (relativeIndex < 0) relativeIndex += length;
+        return relativeIndex < 0 || relativeIndex >= length ? undefined : this[relativeIndex];
+    };
+}
+
 if (!Array.prototype.toSorted) {
     Array.prototype.toSorted = function (compareFunction) {
         return this.slice().sort(compareFunction);

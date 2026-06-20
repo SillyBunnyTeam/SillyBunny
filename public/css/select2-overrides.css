@@ -15,9 +15,11 @@
     border-radius: 10px;
     box-shadow: 0 0 5px black;
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     color: var(--SmartThemeBodyColor);
     z-index: var(--sb-z-critical);
+    -webkit-user-select: none;
     user-select: none;
     pointer-events: auto;
 }

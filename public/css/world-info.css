@@ -195,6 +195,7 @@
 
 #world_popup_bottom_holder div {
     width: fit-content;
+    -webkit-user-select: none;
     user-select: none;
 }
 

@@ -4,7 +4,11 @@
  * @deprecated THIS FUNCTION IS OBSOLETE. DO NOT USE
  */
 export function SaveLocal(target, val) {
-    localStorage.setItem(target, val);
+    try {
+        localStorage.setItem(target, val);
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
     console.debug('SaveLocal -- ' + target + ' : ' + val);
 }
 /**

@@ -1,6 +1,7 @@
 import { characters } from '../../script.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { selected_group } from '../group-chats.js';
+import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { setUserAvatar } from '../personas.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
@@ -101,6 +102,33 @@ function requestConversationRuntimeStart() {
     window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
 }
 
+function getConversationToolsVisible() {
+    try {
+        return localStorage.getItem('sb_conv_tools_visible') === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function setConversationToolsVisible(visible) {
+    try {
+        localStorage.setItem('sb_conv_tools_visible', String(visible));
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
+}
+
+function focusConversationInput({ skipIOS = false } = {}) {
+    if (skipIOS && isIOSWebKitPlatform()) {
+        return;
+    }
+
+    const input = document.getElementById(CHROME_IDS.input);
+    if (input instanceof HTMLTextAreaElement) {
+        input.focus();
+    }
+}
+
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
@@ -155,8 +183,8 @@ export function bindConversationChromeControls(sheld) {
 
         switch (target.dataset.sbConversationAction) {
             case 'toggle-tools': {
-                const currentVisible = localStorage.getItem('sb_conv_tools_visible') === 'true';
-                localStorage.setItem('sb_conv_tools_visible', String(!currentVisible));
+                const currentVisible = getConversationToolsVisible();
+                setConversationToolsVisible(!currentVisible);
                 syncConversationToolsVisibility();
                 break;
             }
@@ -234,6 +262,10 @@ export function bindConversationChromeControls(sheld) {
                 if (index >= 0) {
                     const char = characters[index];
                     if (char?.avatar) {
+                        if (isIOSWebKitPlatform()) {
+                            focusConversationInput();
+                        }
+
                         const charSettings = getSettings(char.avatar, { groupId: '' });
                         charSettings.enabled = true;
                         saveSettings(char.avatar, charSettings, { groupId: '' });
@@ -245,10 +277,7 @@ export function bindConversationChromeControls(sheld) {
                         });
                         schedulePalsRailRender();
                         setTimeout(() => {
-                            const input = document.getElementById(CHROME_IDS.input);
-                            if (input instanceof HTMLTextAreaElement) {
-                                input.focus();
-                            }
+                            focusConversationInput({ skipIOS: true });
                         }, 100);
                     }
                 }

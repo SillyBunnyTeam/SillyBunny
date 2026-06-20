@@ -95,6 +95,7 @@
 }
 
 .qig-action-bar {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 20;
@@ -991,6 +992,7 @@
 
 .qig-filter-drag-handle {
     cursor: grab;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -1072,6 +1074,7 @@
 }
 
 .qig-resizing #qig-result-img {
+    -webkit-user-select: none;
     user-select: none;
     pointer-events: none;
 }
@@ -1364,6 +1367,7 @@
     border: 1px solid var(--SmartThemeBorderColor);
     background: var(--SmartThemeBlurTintColor, rgba(20, 20, 20, 0.96));
     box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
 }
 

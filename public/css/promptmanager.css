@@ -614,6 +614,7 @@
     flex-direction: column;
     z-index: var(--sb-z-loader) !important;
     border-radius: 0;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, black 6%);
     min-width: 0;
@@ -859,6 +860,7 @@
         border-radius: 0;
         box-shadow: none;
         background: transparent;
+        -webkit-backdrop-filter: none;
         backdrop-filter: none;
         overflow: visible;
     }

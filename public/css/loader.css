@@ -12,6 +12,7 @@
     background-color: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
     /*for some reason the full screen blur does not work on iOS*/
+    -webkit-backdrop-filter: blur(30px);
     backdrop-filter: blur(30px);
     opacity: 1;
 }

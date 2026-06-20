@@ -1,5 +1,6 @@
 #sd_dropdown {
     z-index: 30000;
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
 }
 

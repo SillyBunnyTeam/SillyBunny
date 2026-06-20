@@ -1130,6 +1130,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 76%, transparent);
     align-self: center;
     min-width: 44px;
+    position: -webkit-sticky;
     position: sticky;
     bottom: 0;
     z-index: 1;

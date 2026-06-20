@@ -285,10 +285,18 @@ eventSource.on(event_types.GENERATION_STARTED, () => {
 
 let inputHistoryIdx = -1;
 export function getInputHistory() {
-    return JSON.parse(localStorage.getItem('st--inputHistory') ?? '[]');
+    try {
+        return JSON.parse(localStorage.getItem('st--inputHistory') ?? '[]');
+    } catch {
+        return [];
+    }
 }
 export function setInputHistory(inputHistory) {
-    localStorage.setItem('st--inputHistory', JSON.stringify(inputHistory));
+    try {
+        localStorage.setItem('st--inputHistory', JSON.stringify(inputHistory));
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
 }
 export function addToInputHistory(text) {
     text = text?.trim();
