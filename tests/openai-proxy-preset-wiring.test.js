@@ -155,21 +155,48 @@ describe('OpenAI proxy preset wiring', () => {
         expect(openAiSource).toContain('url: $(\'#custom_api_url_text\').val()');
         expect(openAiSource).toContain('key: $(\'#api_key_custom\').val()');
         expect(openAiSource).toContain('model: $(\'#custom_model_id\').val()');
+        expect(openAiSource).toContain('secretId: existingPreset?.secretId');
+        expect(openAiSource).toContain('await activateCustomEndpointPresetSecret(preset, { forceWrite: true });');
+        expect(openAiSource).toContain('writeKey: false');
     });
 
     test('applies Custom endpoint profile values before reconnecting', () => {
         const setCustomEndpointSource = getFunctionSource('setCustomEndpointPreset');
         const urlUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_url = normalizedPreset.url;');
         const modelUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_model = normalizedPreset.model;');
-        const secretWriteIndex = setCustomEndpointSource.indexOf('await writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key, undefined, { allowEmpty: true });');
+        const secretActivateIndex = setCustomEndpointSource.indexOf('await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);');
         const keyInputIndex = setCustomEndpointSource.indexOf('$(\'#api_key_custom\').val(normalizedPreset.key);');
         const reconnectIndex = setCustomEndpointSource.indexOf('reconnectOpenAi();');
 
         expect(urlUpdateIndex).toBeGreaterThanOrEqual(0);
         expect(modelUpdateIndex).toBeGreaterThan(urlUpdateIndex);
-        expect(secretWriteIndex).toBeGreaterThan(modelUpdateIndex);
-        expect(keyInputIndex).toBeGreaterThan(secretWriteIndex);
+        expect(secretActivateIndex).toBeGreaterThan(modelUpdateIndex);
+        expect(keyInputIndex).toBeGreaterThan(secretActivateIndex);
         expect(reconnectIndex).toBeGreaterThan(keyInputIndex);
+        expect(setCustomEndpointSource).not.toContain('writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key');
+    });
+
+    test('activates Custom endpoint profile secrets by id instead of duplicate writes', () => {
+        const activationSource = getFunctionSource('activateCustomEndpointPresetSecret');
+        const rotateIndex = activationSource.indexOf('await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);');
+        const writeIndex = activationSource.indexOf('await writeSecret(SECRET_KEYS.CUSTOM, preset.key, undefined, { allowEmpty: true });');
+
+        expect(openAiSource).toContain('import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from \'./secrets.js\';');
+        expect(rotateIndex).toBeGreaterThanOrEqual(0);
+        expect(writeIndex).toBeGreaterThan(rotateIndex);
+    });
+
+    test('sends selected Custom endpoint secret id with chat requests', () => {
+        const sendRequestSource = getFunctionSource('sendOpenAIRequest');
+        const settingsReadyIndex = sendRequestSource.indexOf('await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);');
+        const customSecretGuardIndex = sendRequestSource.indexOf('generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId');
+        const secretIdIndex = sendRequestSource.indexOf('generate_data.secret_id = selected_custom_endpoint_preset.secretId;');
+        const fetchIndex = sendRequestSource.indexOf('const response = await fetch(generate_url, {');
+
+        expect(settingsReadyIndex).toBeGreaterThanOrEqual(0);
+        expect(customSecretGuardIndex).toBeGreaterThan(settingsReadyIndex);
+        expect(secretIdIndex).toBeGreaterThan(customSecretGuardIndex);
+        expect(fetchIndex).toBeGreaterThan(secretIdIndex);
     });
 
     test('loads and persists Custom endpoint profiles with settings', () => {
