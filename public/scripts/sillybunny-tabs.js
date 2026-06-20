@@ -5451,7 +5451,14 @@ function buildMobileChatTools() {
         return existingMobileTools;
     }
 
-    const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
+    const overlay = createElement('div', {
+        id: 'sb-mobile-chat-tools',
+        attrs: {
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-labelledby': 'sb-mobile-chat-close',
+        },
+    });
     const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel' });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
@@ -5555,6 +5562,13 @@ function buildMobileChatTools() {
         }
     });
 
+    overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeMobileChatTools();
+        }
+    });
+
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value, { closeMobileTools: true });
     });
@@ -5602,6 +5616,9 @@ function setMobileChatToolsOpenState(shouldOpen) {
 
     if (isOpen) {
         scheduleChatbarRefresh(0);
+        refs.dismissButton?.focus?.({ preventScroll: true });
+    } else {
+        document.getElementById('sb-chatbar-visibility-toggle')?.focus?.({ preventScroll: true });
     }
 }
 
@@ -6217,9 +6234,24 @@ function ensureBottomChatOverflowMenu() {
         }
     });
     menu.addEventListener('keydown', event => {
+        const items = Array.from(menu.querySelectorAll('.sb-bottom-chat-overflow-item:not(.is-disabled):not(:disabled)'));
+        const currentIndex = items.indexOf(document.activeElement);
+
         if (event.key === 'Escape') {
             event.preventDefault();
             setBottomChatOverflowOpen(false, { restoreFocus: true });
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            items[(currentIndex + 1) % items.length]?.focus({ preventScroll: true });
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            items[(currentIndex - 1 + items.length) % items.length]?.focus({ preventScroll: true });
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            items[0]?.focus({ preventScroll: true });
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            items.at(-1)?.focus({ preventScroll: true });
         }
     });
 
@@ -15159,6 +15191,7 @@ function buildBottomChatBar() {
     });
     overflowBtn.setAttribute('aria-controls', 'sb-bottom-chat-overflow-menu');
     overflowBtn.setAttribute('aria-expanded', 'false');
+    overflowBtn.setAttribute('aria-haspopup', 'menu');
     overflowBtn.hidden = true;
 
     navCluster.append(topBtn, bottomBtn);

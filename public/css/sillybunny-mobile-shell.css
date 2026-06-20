@@ -1680,6 +1680,7 @@
         z-index: -1;
         padding: 8px max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
         isolation: isolate;
+        contain: layout style;
         background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
@@ -1926,6 +1927,11 @@
         transform: translateY(-1px);
     }
 
+    .sb-nav-item:active {
+        transform: translateY(0);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, var(--sb-card-bg));
+    }
+
     .sb-nav-item:focus-visible,
     .sb-mobile-panel-close:focus-visible {
         outline: 2px solid var(--sb-focus-ring, var(--SmartThemeQuoteColor));
@@ -1935,6 +1941,8 @@
     @media (prefers-reduced-motion: reduce) {
         #sb-mobile-nav,
         #sb-mobile-nav-content,
+        #sb-mobile-chat-tools,
+        #sb-mobile-chat-tools-panel,
         .sb-nav-item {
             transition: none;
         }
