@@ -45,6 +45,7 @@
 - PR #554 (2026-06-20) `feat: add custom accent color profiles`
 - PR #556 (2026-06-20) `feat: sort model favorites alphabetically and scope Custom favorites per URL`
 - PR #557 (2026-06-20) `fix: preserve Bunny Preset Tools section icons`
+- PR #558 (2026-06-20) `fix: persist Pathfinder section collapse state`
 
 ## v1.6.5
 
