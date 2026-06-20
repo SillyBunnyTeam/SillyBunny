@@ -54,6 +54,7 @@
 - PR #564 (2026-06-20) `feat(in-chat-agents): live HTML preview and regenerate for custom tracker builder`
 - PR #566 (2026-06-20) `feat(in-chat-agents): add textarea fullscreen toggles`
 - PR #567 (2026-06-20) `fix: bind Custom endpoint status checks to profile secrets`
+- PR #568 (2026-06-20) `fix: backport shell polish and loading-state fixes`
 
 ## v1.6.5
 
