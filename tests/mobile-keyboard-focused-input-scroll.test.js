@@ -1,0 +1,32 @@
+import { describe, expect, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+
+describe('mobile keyboard focused-input scroll wiring', () => {
+    test('defines the focusin scroll helper', () => {
+        expect(tabsSource).toContain('function scrollMobileFocusedInputIntoView(');
+    });
+
+    test('only runs inside the mobile viewport', () => {
+        expect(tabsSource).toMatch(/function scrollMobileFocusedInputIntoView\([\s\S]*?if \(!isMobileViewport\(\)\)/);
+    });
+
+    test('targets shell panel and drawer scrollers', () => {
+        expect(tabsSource).toMatch(/\.closest\('\.sb-shell-panel-scroller, \.scrollableInner, \.scrollableInnerFull'\)/);
+    });
+
+    test('scrolls against the visual-viewport bottom so the input clears the keyboard', () => {
+        // The visible area ends at (visualViewport.offsetTop + height); the helper
+        // must push the scroller so the focused input's rect.bottom clears it.
+        expect(tabsSource).toMatch(/viewportSize\.top \+ viewportSize\.height/);
+        expect(tabsSource).toMatch(/scroller\.scrollTop \+= overflow/);
+    });
+
+    test('wires the helper on a document focusin listener inside initAll', () => {
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scrollMobileFocusedInputIntoView)');
+    });
+});
