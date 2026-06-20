@@ -3500,7 +3500,7 @@ input[type='range']::-moz-range-thumb {
 
     @media screen and (max-width: 420px) {
         .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) {
-            display: grid !important;
+            display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
             align-items: center;
             gap: 6px;
@@ -3520,7 +3520,7 @@ input[type='range']::-moz-range-thumb {
             width: 100%;
             max-width: none;
             min-width: 0;
-            margin: 0 !important;
+            margin: 0;
         }
 
         .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > .neo-range-input {
