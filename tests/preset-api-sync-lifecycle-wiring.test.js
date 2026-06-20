@@ -77,4 +77,73 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(refreshSource).toContain('connectionMirrorState.shouldShowMobileSection');
         expect(refreshSource).toContain('connectionMirrorState.shouldDisableConnectButton');
     });
+
+    test('routes connection profile mirror updates through the lifecycle seam', () => {
+        const refreshSource = getFunctionSource('refreshChatbarState');
+
+        expect(refreshSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorUpdate({');
+        expect(refreshSource).toContain('shouldClearMirrors: connectionMirrorState.shouldClearMirrors');
+        expect(refreshSource).toContain('shouldShowMobileSection: connectionMirrorState.shouldShowMobileSection');
+        expect(refreshSource).toContain('shouldDisableConnectButton: connectionMirrorState.shouldDisableConnectButton');
+        expect(refreshSource).toContain('sourceOptionsMarkup: hasConnectionProfiles ? connectionProfilesSource.innerHTML : \'\'');
+        expect(refreshSource).toContain('sourceValue: hasConnectionProfiles ? connectionProfilesSource.value : \'\'');
+        expect(refreshSource).toContain('connectionMirrorUpdate.optionsMarkup');
+        expect(refreshSource).toContain('connectionMirrorUpdate.selectedValue');
+        expect(refreshSource).toContain('connectionMirrorUpdate.statusText');
+        expect(refreshSource).not.toContain('const optionsMarkup = connectionProfilesSource.innerHTML');
+        expect(refreshSource).not.toContain('desktopRefs.connectionSelect.value = connectionProfilesSource.value');
+    });
+
+    test('routes connection profile status text through the lifecycle seam', () => {
+        const statusSource = getFunctionSource('getConnectionStatusText');
+
+        expect(statusSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({');
+        expect(statusSource).toContain('hasContext: Boolean(context)');
+        expect(statusSource).toContain('isNoConnection: context?.onlineStatus === \'no_connection\'');
+        expect(statusSource).toContain('apiOptionText');
+        expect(statusSource).toContain('modelOptionText');
+        expect(statusSource).not.toContain('return \'No connection...\'');
+        expect(statusSource).not.toContain('modelValue ? `${apiValue} - ${modelValue}` : apiValue');
+    });
+
+    test('routes connection strip open state through the lifecycle seam', () => {
+        const stripSource = getFunctionSource('setConnectionStripOpenState');
+
+        expect(stripSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveStripOpenState({');
+        expect(stripSource).toContain('shouldOpen');
+        expect(stripSource).toContain('hasDesktopStrip: desktopRefs?.connectionStrip instanceof HTMLElement');
+        expect(stripSource).toContain('stripState.shouldApply');
+        expect(stripSource).toContain('stripState.shouldApplySurfaceExclusivity');
+        expect(stripSource).toContain('stripState.nextState');
+        expect(stripSource).not.toContain('const nextState = Boolean(shouldOpen)');
+        expect(stripSource).not.toContain('if (nextState)');
+    });
+
+    test('routes connection profile source binding through the lifecycle seam', () => {
+        const bindSource = getFunctionSource('bindConnectionProfileSourceElement');
+
+        expect(bindSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceBinding({');
+        expect(bindSource).toContain('isSameSource: chatbarState.sourceObservedElement === normalizedSource');
+        expect(bindSource).toContain('hasCurrentSource: chatbarState.sourceObservedElement instanceof HTMLSelectElement');
+        expect(bindSource).toContain('hasNextSource: normalizedSource instanceof HTMLSelectElement');
+        expect(bindSource).toContain('hasChangeHandler: typeof chatbarState.sourceChangeHandler === \'function\'');
+        expect(bindSource).toContain('bindingState.shouldSkip');
+        expect(bindSource).toContain('bindingState.shouldUnbindCurrent');
+        expect(bindSource).toContain('bindingState.shouldDisconnectObserver');
+        expect(bindSource).toContain('bindingState.shouldBindNext');
+        expect(bindSource).not.toContain('if (chatbarState.sourceObservedElement === normalizedSource)');
+        expect(bindSource).not.toContain('if (!(normalizedSource instanceof HTMLSelectElement))');
+    });
+
+    test('routes connection profile source mutation decisions through the lifecycle seam', () => {
+        const mutationSource = getFunctionSource('mutationTouchesConnectionProfilesSource');
+
+        expect(mutationSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceMutation({');
+        expect(mutationSource).toContain('targetTouchesSource: nodeTouchesConnectionProfilesSource(mutation.target)');
+        expect(mutationSource).toContain('addedTouchesSource: Array.from(mutation.addedNodes).some(nodeTouchesConnectionProfilesSource)');
+        expect(mutationSource).toContain('removedTouchesSource: Array.from(mutation.removedNodes).some(nodeTouchesConnectionProfilesSource)');
+        expect(mutationSource).toContain('return mutationState.shouldRebind;');
+        expect(mutationSource).not.toContain('for (const node of mutation.addedNodes)');
+        expect(mutationSource).not.toContain('for (const node of mutation.removedNodes)');
+    });
 });

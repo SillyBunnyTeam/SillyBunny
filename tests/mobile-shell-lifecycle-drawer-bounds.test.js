@@ -39,6 +39,21 @@ describe('mobile shell drawer bounds lifecycle', () => {
         ]);
     });
 
+    test('subtracts the mobile safe-area bottom from open drawer height', () => {
+        const decision = resolveMobileDrawerBounds({
+            isMobileViewport: true,
+            isOpen: true,
+            viewportHeight: 844,
+            baseTopOffset: 56,
+            shellGap: 3,
+            safeAreaBottom: 34,
+        });
+
+        expect(decision.styleWrites).toContainEqual({ property: 'top', value: '59px', priority: 'important' });
+        expect(decision.styleWrites).toContainEqual({ property: 'height', value: '751px', priority: 'important' });
+        expect(decision.styleWrites).toContainEqual({ property: 'max-height', value: '751px', priority: 'important' });
+    });
+
     test('clamps the top offset to the viewport and never yields negative height', () => {
         const decision = resolveMobileDrawerBounds({
             isMobileViewport: true,
@@ -46,6 +61,7 @@ describe('mobile shell drawer bounds lifecycle', () => {
             viewportHeight: 500,
             baseTopOffset: 480,
             shellGap: 200,
+            safeAreaBottom: 200,
         });
 
         expect(decision.action).toBe(MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND);

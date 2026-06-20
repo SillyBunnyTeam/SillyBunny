@@ -814,8 +814,15 @@ const sbState = {
         scrollTopButton: null,
         scrollBottomButton: null,
         managerButton: null,
+        newButton: null,
         massDeleteButton: null,
         autoNameButton: null,
+        renameButton: null,
+        deleteButton: null,
+        overflowButton: null,
+        overflowMenu: null,
+        overflowActions: [],
+        overflowOpen: false,
         secondaryOpen: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatSecondaryOpen), true),
         visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), true),
         searchOpen: false,
@@ -2432,6 +2439,29 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 }
 
+function getMobileSafeAreaBottomPx() {
+    const styles = window.getComputedStyle(document.documentElement);
+    const fallback = Number.parseFloat(styles.getPropertyValue('--sb-mobile-safe-area-bottom')) || 0;
+
+    if (!(document.body instanceof HTMLElement)) {
+        return fallback;
+    }
+
+    let probe = document.getElementById('sb-mobile-safe-area-bottom-probe');
+    if (!(probe instanceof HTMLElement)) {
+        probe = createElement('div', {
+            attrs: {
+                id: 'sb-mobile-safe-area-bottom-probe',
+                'aria-hidden': 'true',
+            },
+        });
+        probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
+        document.body.appendChild(probe);
+    }
+
+    return Number.parseFloat(window.getComputedStyle(probe).paddingBottom) || fallback;
+}
+
 function syncMobileShellDrawerBounds() {
     const drawers = getMobileShellBoundDrawers();
 
@@ -2442,6 +2472,7 @@ function syncMobileShellDrawerBounds() {
     const mobileViewport = isMobileViewport();
     const viewportSize = mobileViewport ? getShellViewportSize() : null;
     const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
+    const safeAreaBottom = mobileViewport ? getMobileSafeAreaBottomPx() : 0;
 
     for (const drawer of drawers) {
         const isOpen = drawer.classList.contains('openDrawer');
@@ -2454,6 +2485,7 @@ function syncMobileShellDrawerBounds() {
             viewportHeight: viewportSize?.height ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
+            safeAreaBottom,
         }));
     }
 }
@@ -2497,6 +2529,113 @@ function queueMobileShellDrawerBoundsSync() {
         sbMobileShellDrawerBoundsFollowupId = 0;
         sync();
     }, schedule.followupDelayMs);
+}
+
+function bindMobileDrawerGestureDismiss(drawer, closeDrawer) {
+    if (!(drawer instanceof HTMLElement) || typeof closeDrawer !== 'function' || drawer.dataset.sbDrawerGestureBound === 'true') {
+        return;
+    }
+
+    drawer.dataset.sbDrawerGestureBound = 'true';
+    let drawerGesture = null;
+    let suppressDrawerClickUntil = 0;
+
+    const getGestureHandle = () => drawer.querySelector(':scope > .sb-shell-frame .sb-shell-header')
+        ?? drawer.querySelector(':scope > .sb-character-shell-header')
+        ?? drawer;
+
+    const clearDrawerGesture = () => {
+        drawerGesture = null;
+        drawer.style.removeProperty('transform');
+        drawer.classList.remove('sb-drawer-gesture-active');
+    };
+
+    const beginDrawerGesture = event => {
+        if (!isMobileViewport() || !drawer.classList.contains('openDrawer')) {
+            return;
+        }
+
+        const handle = getGestureHandle();
+        if (!(event.target instanceof Node) || !handle?.contains(event.target)) {
+            return;
+        }
+
+        drawerGesture = sbMobileShellLifecycle.drawerGestures.createGestureState({
+            isMobileViewport: isMobileViewport(),
+            isOpen: drawer.classList.contains('openDrawer'),
+            touch: event.touches?.[0],
+        });
+    };
+
+    const updateDrawerGesture = event => {
+        if (!drawerGesture) {
+            return;
+        }
+
+        const gestureMove = sbMobileShellLifecycle.drawerGestures.resolveGestureMove({
+            gestureState: drawerGesture,
+            touch: event.touches?.[0],
+        });
+
+        drawerGesture = gestureMove.gestureState;
+
+        if (!drawerGesture) {
+            clearDrawerGesture();
+            return;
+        }
+
+        drawer.classList.toggle('sb-drawer-gesture-active', drawerGesture.dragging);
+        if (drawerGesture.dragging) {
+            drawer.style.setProperty('transform', `translateY(${gestureMove.offsetY}px)`, 'important');
+        }
+
+        if (gestureMove.shouldPreventDefault && event.cancelable) {
+            event.preventDefault();
+        }
+
+        if (gestureMove.shouldStopPropagation) {
+            event.stopPropagation();
+        }
+    };
+
+    const finishDrawerGesture = event => {
+        const gestureEnd = sbMobileShellLifecycle.drawerGestures.resolveGestureEnd({
+            gestureState: drawerGesture,
+            nowMs: Date.now(),
+        });
+
+        if (gestureEnd.suppressClickUntil) {
+            suppressDrawerClickUntil = gestureEnd.suppressClickUntil;
+        }
+
+        clearDrawerGesture();
+
+        if (gestureEnd.shouldStopPropagation) {
+            event.stopPropagation();
+        }
+
+        if (gestureEnd.shouldDismiss) {
+            closeDrawer();
+        }
+    };
+
+    const suppressClickAfterDrawerGesture = event => {
+        if (!sbMobileShellLifecycle.drawerGestures.shouldSuppressClick({
+            nowMs: Date.now(),
+            suppressClickUntil: suppressDrawerClickUntil,
+        })) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    drawer.addEventListener('touchstart', beginDrawerGesture, { passive: true });
+    drawer.addEventListener('touchmove', updateDrawerGesture, { passive: false });
+    drawer.addEventListener('touchend', finishDrawerGesture, { passive: true });
+    drawer.addEventListener('touchcancel', clearDrawerGesture, { passive: true });
+    drawer.addEventListener('click', suppressClickAfterDrawerGesture, true);
 }
 
 function isMovingUIActive() {
@@ -4402,10 +4541,6 @@ function escapeRegExp(value) {
     return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function stripDecoratedOptionText(value) {
-    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
-}
-
 function getRequestHeadersFromContext(context = getSillyTavernContext()) {
     if (typeof context?.getRequestHeaders === 'function') {
         return context.getRequestHeaders();
@@ -4738,6 +4873,7 @@ function setBottomChatActionBusy(button, busy) {
 
     button.classList.toggle('is-busy', Boolean(busy));
     setButtonDisabled(button, Boolean(busy));
+    refreshBottomChatOverflowMenu();
 }
 
 async function handleAutoNameChat() {
@@ -5337,7 +5473,14 @@ function buildMobileChatTools() {
         return existingMobileTools;
     }
 
-    const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
+    const overlay = createElement('div', {
+        id: 'sb-mobile-chat-tools',
+        attrs: {
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-labelledby': 'sb-mobile-chat-close',
+        },
+    });
     const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel' });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
@@ -5441,6 +5584,13 @@ function buildMobileChatTools() {
         }
     });
 
+    overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeMobileChatTools();
+        }
+    });
+
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value, { closeMobileTools: true });
     });
@@ -5488,6 +5638,9 @@ function setMobileChatToolsOpenState(shouldOpen) {
 
     if (isOpen) {
         scheduleChatbarRefresh(0);
+        refs.dismissButton?.focus?.({ preventScroll: true });
+    } else {
+        document.getElementById('sb-chatbar-visibility-toggle')?.focus?.({ preventScroll: true });
     }
 }
 
@@ -5586,23 +5739,26 @@ function isConnectionStripOpen() {
 
 function setConnectionStripOpenState(shouldOpen) {
     const desktopRefs = getChatDesktopRefs();
-    const nextState = Boolean(shouldOpen);
+    const stripState = sbPresetApiSyncLifecycle.connectionProfiles.resolveStripOpenState({
+        shouldOpen,
+        hasDesktopStrip: desktopRefs?.connectionStrip instanceof HTMLElement,
+    });
 
-    if (!desktopRefs?.connectionStrip) {
+    if (!stripState.shouldApply) {
         return;
     }
 
-    if (nextState) {
+    if (stripState.shouldApplySurfaceExclusivity) {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
             surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
             isMobileViewport: isMobileViewport(),
         }));
     }
 
-    getChatbarState().connectionStripOpen = nextState;
-    desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    desktopRefs.connectionStrip.hidden = !nextState;
-    setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
+    getChatbarState().connectionStripOpen = stripState.nextState;
+    desktopRefs.connectionStrip.classList.toggle('is-open', stripState.nextState);
+    desktopRefs.connectionStrip.hidden = !stripState.nextState;
+    setButtonPressed(desktopRefs.toggleConnectionButton, stripState.nextState);
 }
 
 function getCurrentMainApiValue() {
@@ -6005,6 +6161,18 @@ function createBottomChatButton({ icon, title, className = '' }, onClick) {
     return button;
 }
 
+function createBottomChatAction({ id, icon, title, className = '', onClick }) {
+    const button = createBottomChatButton({ icon, title, className }, onClick);
+    button.dataset.sbBottomActionId = id;
+
+    return {
+        id,
+        title,
+        icon,
+        button,
+    };
+}
+
 function createBottomChatSearchField() {
     const field = createElement('label', {
         id: 'sb-bottom-chat-search-field',
@@ -6040,6 +6208,214 @@ function createBottomChatSearchField() {
     return { field, input, status };
 }
 
+function getBottomChatActionModels() {
+    const bottomChatBarState = getBottomChatBarState();
+
+    return [
+        { id: 'view-files', button: bottomChatBarState.managerButton },
+        { id: 'new-chat', button: bottomChatBarState.newButton },
+        { id: 'mass-delete', button: bottomChatBarState.massDeleteButton },
+        { id: 'auto-name', button: bottomChatBarState.autoNameButton },
+        { id: 'rename-chat', button: bottomChatBarState.renameButton },
+        { id: 'search-chat', button: bottomChatBarState.searchToggleButton },
+        { id: 'delete-chat', button: bottomChatBarState.deleteButton },
+    ].filter(action => action.button instanceof HTMLElement)
+        .map(action => ({
+            ...action,
+            title: action.button.getAttribute('aria-label') || action.button.title || '',
+        }));
+}
+
+function ensureBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    if (bottomChatBarState.overflowMenu instanceof HTMLElement) {
+        return bottomChatBarState.overflowMenu;
+    }
+
+    const menu = createElement('div', {
+        id: 'sb-bottom-chat-overflow-menu',
+        className: 'sb-bottom-chat-overflow-menu',
+        attrs: {
+            role: 'menu',
+            'aria-label': 'More chat actions',
+        },
+    });
+    menu.hidden = true;
+    menu.addEventListener('click', event => {
+        const button = event.target instanceof Element
+            ? event.target.closest('.sb-bottom-chat-overflow-item')
+            : null;
+        if (!(button instanceof HTMLButtonElement) || button.disabled) {
+            return;
+        }
+
+        const actionButton = bottomChatBarState.overflowActions?.find(action => action.id === button.dataset.sbBottomActionId)?.button;
+        if (actionButton instanceof HTMLButtonElement) {
+            actionButton.click();
+            setBottomChatOverflowOpen(false, { restoreFocus: false });
+        }
+    });
+    menu.addEventListener('keydown', event => {
+        const items = Array.from(menu.querySelectorAll('.sb-bottom-chat-overflow-item:not(.is-disabled):not(:disabled)'));
+        const currentIndex = items.indexOf(document.activeElement);
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setBottomChatOverflowOpen(false, { restoreFocus: true });
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            items[(currentIndex + 1) % items.length]?.focus({ preventScroll: true });
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            items[(currentIndex - 1 + items.length) % items.length]?.focus({ preventScroll: true });
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            items[0]?.focus({ preventScroll: true });
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            items.at(-1)?.focus({ preventScroll: true });
+        }
+    });
+
+    document.body.appendChild(menu);
+    bottomChatBarState.overflowMenu = menu;
+    return menu;
+}
+
+function positionBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    const menu = bottomChatBarState.overflowMenu;
+    const button = bottomChatBarState.overflowButton;
+
+    if (!(menu instanceof HTMLElement) || !(button instanceof HTMLElement) || menu.hidden) {
+        return;
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const barRect = document.getElementById('sb-bottom-chat-bar')?.getBoundingClientRect();
+    menu.style.visibility = 'hidden';
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
+
+    window.requestAnimationFrame(() => {
+        const menuRect = menu.getBoundingClientRect();
+        const viewportPadding = 8;
+        const left = Math.min(
+            Math.max(viewportPadding, buttonRect.right - menuRect.width),
+            Math.max(viewportPadding, window.innerWidth - menuRect.width - viewportPadding),
+        );
+        const anchorTop = barRect?.top ?? buttonRect.top;
+        const topAboveBar = anchorTop - menuRect.height - viewportPadding;
+        const top = Math.min(
+            Math.max(viewportPadding, topAboveBar),
+            Math.max(viewportPadding, window.innerHeight - menuRect.height - viewportPadding),
+        );
+
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+        menu.style.visibility = '';
+    });
+}
+
+function setBottomChatOverflowOpen(open, { restoreFocus = false } = {}) {
+    const bottomChatBarState = getBottomChatBarState();
+    const shouldOpen = Boolean(open) && Boolean(bottomChatBarState.overflowActions?.length);
+    const menu = shouldOpen ? ensureBottomChatOverflowMenu() : bottomChatBarState.overflowMenu;
+
+    bottomChatBarState.overflowOpen = shouldOpen;
+
+    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
+        setButtonPressed(bottomChatBarState.overflowButton, shouldOpen);
+        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
+    if (menu instanceof HTMLElement) {
+        menu.hidden = !shouldOpen;
+        menu.classList.toggle('is-open', shouldOpen);
+        if (shouldOpen) {
+            positionBottomChatOverflowMenu();
+            window.requestAnimationFrame(() => {
+                menu.querySelector('.sb-bottom-chat-overflow-item:not(:disabled)')?.focus({ preventScroll: true });
+            });
+        }
+    }
+
+    if (restoreFocus) {
+        bottomChatBarState.overflowButton?.focus?.({ preventScroll: true });
+    }
+}
+
+function refreshBottomChatOverflowMenu() {
+    const bottomChatBarState = getBottomChatBarState();
+    if (!bottomChatBarState.overflowActions?.length) {
+        setBottomChatOverflowOpen(false);
+        return;
+    }
+
+    const menu = ensureBottomChatOverflowMenu();
+
+    menu.replaceChildren();
+
+    for (const action of bottomChatBarState.overflowActions ?? []) {
+        const item = createElement('button', {
+            className: 'sb-bottom-chat-overflow-item',
+            attrs: {
+                type: 'button',
+                role: 'menuitem',
+                title: action.title,
+                'aria-label': action.title,
+            },
+        });
+        item.dataset.sbBottomActionId = action.id;
+        item.innerHTML = action.button.innerHTML;
+        item.appendChild(createElement('span', { text: action.title }));
+        item.disabled = action.button.hasAttribute('disabled');
+        item.classList.toggle('is-disabled', item.disabled);
+        menu.appendChild(item);
+    }
+
+    if (bottomChatBarState.overflowOpen) {
+        positionBottomChatOverflowMenu();
+    }
+}
+
+function syncBottomChatActionOverflowState() {
+    const bottomChatBarState = getBottomChatBarState();
+    const plan = sbMobileShellLifecycle.railModel.resolveBottomBarActionVisibility({
+        actions: getBottomChatActionModels(),
+        isMobileViewport: isMobileViewport(),
+        visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,
+    });
+
+    bottomChatBarState.overflowActions = plan.overflowActions;
+
+    for (const action of [...plan.visibleActions, ...plan.overflowActions]) {
+        const isOverflowAction = plan.overflowActions.includes(action);
+        action.button.hidden = isMobileViewport() && isOverflowAction;
+        action.button.style.display = isMobileViewport()
+            ? (isOverflowAction ? 'none' : 'inline-flex')
+            : '';
+        action.button.classList.toggle('sb-bottom-chat-overflow-source', plan.overflowActions.includes(action));
+    }
+
+    const shouldRenderOverflow = plan.shouldRenderOverflow && isMobileViewport();
+
+    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
+        bottomChatBarState.overflowButton.hidden = !shouldRenderOverflow;
+        bottomChatBarState.overflowButton.style.display = shouldRenderOverflow ? 'inline-flex' : 'none';
+        bottomChatBarState.overflowButton.classList.toggle('sb-bottom-chat-overflow-active', shouldRenderOverflow);
+        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldRenderOverflow && bottomChatBarState.overflowOpen));
+    }
+
+    if (!shouldRenderOverflow) {
+        setBottomChatOverflowOpen(false);
+    }
+
+    refreshBottomChatOverflowMenu();
+}
+
 function setBottomChatButtonIcon(button, iconClass) {
     if (!(button instanceof HTMLElement)) {
         return;
@@ -6071,6 +6447,10 @@ function syncBottomChatBarSecondaryState() {
         button.setAttribute('aria-label', title);
         button.setAttribute('aria-expanded', String(isOpen));
         setBottomChatButtonIcon(button, isOpen ? 'fa-chevron-up' : 'fa-chevron-down');
+    }
+
+    if (isHiddenOnMobile) {
+        setBottomChatOverflowOpen(false);
     }
 }
 
@@ -6166,17 +6546,21 @@ function initChatSearchObserver() {
 
 async function getConnectionStatusText() {
     const context = getSillyTavernContext();
+    const initialStatusText = sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
+        hasContext: Boolean(context),
+        isNoConnection: context?.onlineStatus === 'no_connection',
+        apiValue: context?.mainApi,
+        modelValue: context?.onlineStatus,
+    });
 
-    if (!context) {
-        return '';
-    }
-
-    if (context.onlineStatus === 'no_connection') {
-        return 'No connection...';
+    if (!context || context.onlineStatus === 'no_connection') {
+        return initialStatusText;
     }
 
     let apiValue = String(context.mainApi ?? 'Connected').trim();
     let modelValue = String(context.onlineStatus ?? '').trim();
+    let apiOptionText;
+    let modelOptionText;
 
     try {
         const nextApiValue = await context.SlashCommandParser?.commands?.api?.callback?.({ quiet: 'true' }, '');
@@ -6203,11 +6587,18 @@ async function getConnectionStatusText() {
             ?? apiBlock.querySelector(`select#main_api option[value="${escapeSelectorValue(apiValue)}"]`);
         const modelOption = apiBlock.querySelector(`option[value="${escapeSelectorValue(modelValue)}"]`);
 
-        apiValue = stripDecoratedOptionText(apiOption?.textContent ?? apiValue);
-        modelValue = stripDecoratedOptionText(modelOption?.textContent ?? modelValue);
+        apiOptionText = apiOption?.textContent;
+        modelOptionText = modelOption?.textContent;
     }
 
-    return modelValue ? `${apiValue} - ${modelValue}` : apiValue;
+    return sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
+        hasContext: Boolean(context),
+        isNoConnection: context?.onlineStatus === 'no_connection',
+        apiValue,
+        modelValue,
+        apiOptionText,
+        modelOptionText,
+    });
 }
 
 function nodeTouchesConnectionProfilesSource(node) {
@@ -6219,42 +6610,46 @@ function nodeTouchesConnectionProfilesSource(node) {
 }
 
 function mutationTouchesConnectionProfilesSource(mutation) {
-    if (nodeTouchesConnectionProfilesSource(mutation.target)) {
-        return true;
-    }
+    const mutationState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceMutation({
+        targetTouchesSource: nodeTouchesConnectionProfilesSource(mutation.target),
+        addedTouchesSource: Array.from(mutation.addedNodes).some(nodeTouchesConnectionProfilesSource),
+        removedTouchesSource: Array.from(mutation.removedNodes).some(nodeTouchesConnectionProfilesSource),
+    });
 
-    for (const node of mutation.addedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    for (const node of mutation.removedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    return false;
+    return mutationState.shouldRebind;
 }
 
 function bindConnectionProfileSourceElement(sourceElement) {
     const chatbarState = getChatbarState();
     const normalizedSource = sourceElement instanceof HTMLSelectElement ? sourceElement : null;
+    const bindingState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceBinding({
+        isSameSource: chatbarState.sourceObservedElement === normalizedSource,
+        hasCurrentSource: chatbarState.sourceObservedElement instanceof HTMLSelectElement,
+        hasNextSource: normalizedSource instanceof HTMLSelectElement,
+        hasChangeHandler: typeof chatbarState.sourceChangeHandler === 'function',
+    });
 
-    if (chatbarState.sourceObservedElement === normalizedSource) {
+    if (bindingState.shouldSkip) {
         return;
     }
 
-    if (chatbarState.sourceObservedElement instanceof HTMLSelectElement && typeof chatbarState.sourceChangeHandler === 'function') {
+    if (bindingState.shouldUnbindCurrent) {
         chatbarState.sourceObservedElement.removeEventListener('change', chatbarState.sourceChangeHandler);
     }
 
-    chatbarState.sourceSelectObserver?.disconnect();
-    chatbarState.sourceObservedElement = normalizedSource;
-    chatbarState.sourceChangeHandler = null;
+    if (bindingState.shouldDisconnectObserver) {
+        chatbarState.sourceSelectObserver?.disconnect();
+    }
 
-    if (!(normalizedSource instanceof HTMLSelectElement)) {
+    if (bindingState.shouldStoreNextSource) {
+        chatbarState.sourceObservedElement = normalizedSource;
+    }
+
+    if (bindingState.shouldClearChangeHandler) {
+        chatbarState.sourceChangeHandler = null;
+    }
+
+    if (!bindingState.shouldBindNext) {
         return;
     }
 
@@ -6364,32 +6759,40 @@ async function refreshChatbarState() {
         setConnectionStripOpenState(false);
     }
 
-    if (connectionMirrorState.shouldClearMirrors) {
+    const connectionMirrorUpdate = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorUpdate({
+        shouldClearMirrors: connectionMirrorState.shouldClearMirrors,
+        shouldShowMobileSection: connectionMirrorState.shouldShowMobileSection,
+        shouldDisableConnectButton: connectionMirrorState.shouldDisableConnectButton,
+        sourceOptionsMarkup: hasConnectionProfiles ? connectionProfilesSource.innerHTML : '',
+        sourceValue: hasConnectionProfiles ? connectionProfilesSource.value : '',
+        connectionStatusText,
+    });
+
+    if (connectionMirrorUpdate.shouldClearMirrors) {
         if (desktopRefs) {
             desktopRefs.connectionSelect.replaceChildren();
-            desktopRefs.connectionStatus.textContent = '';
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
+            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
+            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
             mobileRefs.connectionSelect.replaceChildren();
-            mobileRefs.connectionStatus.textContent = '';
+            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
         }
     } else {
-        const optionsMarkup = connectionProfilesSource.innerHTML;
         if (desktopRefs) {
-            desktopRefs.connectionSelect.innerHTML = optionsMarkup;
-            desktopRefs.connectionSelect.value = connectionProfilesSource.value;
-            desktopRefs.connectionStatus.textContent = connectionStatusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
+            desktopRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
+            desktopRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
+            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
-            mobileRefs.connectionSelect.innerHTML = optionsMarkup;
-            mobileRefs.connectionSelect.value = connectionProfilesSource.value;
-            mobileRefs.connectionStatus.textContent = connectionStatusText;
+            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
+            mobileRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
+            mobileRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
+            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
         }
     }
 
@@ -7875,6 +8278,7 @@ document.addEventListener('click', (e) => {
 function toggleCharacterPanel({ preferredTab = null } = {}) {
     injectCharacterDrawerControls();
     ensureCharacterResizeHandle();
+    bindMobileDrawerGestureDismiss(getCharacterPanel(), closeCharacterPanel);
 
     if (isCharacterPanelOpen()) {
         closeCharacterPanel();
@@ -13083,6 +13487,8 @@ function openShell(shellKey, tabId = null) {
         return;
     }
 
+    bindMobileDrawerGestureDismiss(shellRoot, () => closeShell(shellKey));
+
     const shellSurface = getMobileShellSurfaceForShell(shellKey);
     if (shellSurface) {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
@@ -14300,7 +14706,9 @@ function closeMobileNav() {
 }
 
 function injectCharacterDrawerControls() {
-    getCharacterPanel()?.classList.add('sb-character-drawer-root');
+    const characterPanel = getCharacterPanel();
+    characterPanel?.classList.add('sb-character-drawer-root');
+    bindMobileDrawerGestureDismiss(characterPanel, closeCharacterPanel);
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
 
@@ -14813,6 +15221,7 @@ function buildBottomChatBar() {
     });
     personaBubble.addEventListener('click', (e) => {
         e.stopPropagation();
+        setBottomChatOverflowOpen(false);
         togglePersonaPicker();
     });
     updatePersonaBubble(personaBubble);
@@ -14849,18 +15258,35 @@ function buildBottomChatBar() {
 
     const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to top of chat' }, scrollCurrentChatToTop);
     const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to bottom of chat' }, scrollCurrentChatToBottom);
-    const chatManagerBtn = createBottomChatButton({ icon: 'fa-address-book', title: 'View chat files' }, handleChatManagerClick);
-    const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New chat' }, handleNewChat);
-    const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass delete chats' }, () => { void handleMassDeleteChats(); });
-    const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
-    const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
-    const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide bottom chat bar' }, () => {
-        setBottomChatBarVisible(false);
+    const chatManagerAction = createBottomChatAction({ id: 'view-files', icon: 'fa-address-book', title: 'View chat files', onClick: handleChatManagerClick });
+    const newAction = createBottomChatAction({ id: 'new-chat', icon: 'fa-plus', title: 'New chat', onClick: handleNewChat });
+    const massDeleteAction = createBottomChatAction({ id: 'mass-delete', icon: 'fa-list-check', title: 'Mass delete chats', onClick: () => { void handleMassDeleteChats(); } });
+    const autoNameAction = createBottomChatAction({ id: 'auto-name', icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat', onClick: () => { void handleAutoNameChat(); } });
+    const renameAction = createBottomChatAction({ id: 'rename-chat', icon: 'fa-pencil', title: 'Rename chat', onClick: () => { void handleRenameChat(); } });
+    const hideAction = createBottomChatAction({ id: 'hide-bottom-bar', icon: 'fa-eye-slash', title: 'Hide bottom chat bar', onClick: () => { setBottomChatBarVisible(false); } });
+    const searchAction = { id: 'search-chat', title: 'Search chat', icon: 'fa-magnifying-glass', button: searchToggleBtn };
+    searchToggleBtn.dataset.sbBottomActionId = searchAction.id;
+    const deleteAction = createBottomChatAction({ id: 'delete-chat', icon: 'fa-trash', title: 'Delete chat', onClick: () => { void handleDeleteChat(); } });
+    const overflowBtn = createBottomChatButton({ icon: 'fa-ellipsis', title: 'More chat actions', className: 'sb-bottom-chat-overflow-toggle' }, () => {
+        setBottomChatOverflowOpen(!getBottomChatBarState().overflowOpen, { restoreFocus: false });
     });
-    const deleteBtn = createBottomChatButton({ icon: 'fa-trash', title: 'Delete chat' }, () => { void handleDeleteChat(); });
+    overflowBtn.setAttribute('aria-controls', 'sb-bottom-chat-overflow-menu');
+    overflowBtn.setAttribute('aria-expanded', 'false');
+    overflowBtn.setAttribute('aria-haspopup', 'menu');
+    overflowBtn.hidden = true;
 
     navCluster.append(topBtn, bottomBtn);
-    managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, hideBtn, deleteBtn);
+    managementCluster.append(
+        chatManagerAction.button,
+        newAction.button,
+        massDeleteAction.button,
+        autoNameAction.button,
+        renameAction.button,
+        searchAction.button,
+        hideAction.button,
+        deleteAction.button,
+        overflowBtn,
+    );
     secondaryRow.append(managementCluster);
     container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow);
 
@@ -14876,11 +15302,16 @@ function buildBottomChatBar() {
         secondaryRow,
         scrollTopButton: topBtn,
         scrollBottomButton: bottomBtn,
-        managerButton: chatManagerBtn,
-        massDeleteButton: massDeleteBtn,
-        autoNameButton: autoNameBtn,
-        hideButton: hideBtn,
+        managerButton: chatManagerAction.button,
+        newButton: newAction.button,
+        massDeleteButton: massDeleteAction.button,
+        autoNameButton: autoNameAction.button,
+        renameButton: renameAction.button,
+        hideButton: hideAction.button,
+        deleteButton: deleteAction.button,
+        overflowButton: overflowBtn,
     });
+    syncBottomChatActionOverflowState();
     syncBottomChatBarSecondaryState();
     syncBottomChatBarSearchState();
     setBottomChatBarVisible(sbState.bottomChatBar.visible, { persist: false });
@@ -14893,8 +15324,16 @@ function buildBottomChatBar() {
     if (!bottomChatBarState.outsideClickBound) {
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('sb-persona-picker');
+            const overflowMenu = bottomChatBarState.overflowMenu;
             if (picker && !picker.contains(e.target) && e.target !== bottomChatBarState.personaBubble) {
                 picker.remove();
+            }
+            if (
+                overflowMenu instanceof HTMLElement
+                && !overflowMenu.contains(e.target)
+                && !bottomChatBarState.overflowButton?.contains?.(e.target)
+            ) {
+                setBottomChatOverflowOpen(false);
             }
         });
         bottomChatBarState.outsideClickBound = true;
@@ -14925,8 +15364,12 @@ async function refreshBottomChatSelect() {
     setButtonDisabled(sbState.bottomChatBar?.scrollTopButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.scrollBottomButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.managerButton, !chatContext.canBrowseChats);
+    setButtonDisabled(sbState.bottomChatBar?.newButton, !chatContext.canStartNewChat);
     setButtonDisabled(sbState.bottomChatBar?.massDeleteButton, !chatContext.canBrowseChats);
     setButtonDisabled(sbState.bottomChatBar?.autoNameButton, !chatContext.hasChat);
+    setButtonDisabled(sbState.bottomChatBar?.renameButton, !chatContext.hasChat);
+    setButtonDisabled(sbState.bottomChatBar?.deleteButton, !chatContext.hasChat);
+    syncBottomChatActionOverflowState();
 
     if (!chatContext.context) {
         return;
@@ -15205,6 +15648,7 @@ function bindBottomChatBarWindowEvents() {
     }
 
     const refreshWithContext = () => {
+        syncBottomChatActionOverflowState();
         syncBottomChatBarSecondaryState();
         syncBottomChatBarSearchState();
         scheduleBottomChatBarRefresh(0);
@@ -15693,6 +16137,7 @@ function initAll() {
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
+    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the

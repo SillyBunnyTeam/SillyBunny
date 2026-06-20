@@ -1,3 +1,6 @@
+@layer sb-theme, sb-tabs, sb-chat, sb-shell;
+
+@layer sb-theme {
 /* =============================================================================
    SillyBunny Theme Overhaul
    ============================================================================= */
@@ -459,43 +462,6 @@ body::before {
     scroll-padding-bottom: 8px;
 }
 
-#top-bar {
-    position: relative;
-    isolation: isolate;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-}
-
-#top-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg);
-    opacity: var(--sb-shell-surface-opacity);
-}
-
-/* Firefox and Chrome on macOS can mispaint the fixed header surface pseudo-element. */
-body:is(.firefox-macos, .chrome-macos) #top-bar {
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--sb-shell-header-glow) 80%, transparent), transparent 110%),
-        var(--sb-topbar-surface-bg) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-body:is(.firefox-macos, .chrome-macos) #top-bar::before {
-    display: none !important;
-}
-
 /*
  * macOS browser compositors can mispaint contained/transformed descendants in
  * the top-bar stack, which shows up as a dark block in the center header area.
@@ -508,14 +474,6 @@ body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-chatbar-layer {
 
 body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
     will-change: auto !important;
-}
-
-/* Safari on macOS can show a sub-pixel border artifact with backdrop-filter. */
-body.safari-macos #top-bar {
-    border-bottom-color: transparent;
-    box-shadow:
-        0 1px 0 color-mix(in srgb, var(--sb-shell-border) 90%, transparent),
-        0 12px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 hr {
@@ -800,7 +758,7 @@ h3:not(.popup h3):not(#chat h3) {
     margin-top: 0;
 }
 
-@media screen and (min-width: 769px) and (max-width: 1280px) and (pointer: fine) {
+@media screen and (min-width: 769px) and (max-width: 1000px) and (pointer: fine) {
     .checkbox_label {
         min-height: 32px;
         gap: 8px;
@@ -1415,62 +1373,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     }
 }
 
-@media screen and (max-width: 768px) {
-    #send_form {
-        padding: 4px 6px 6px;
-    }
-
-    #nonQRFormItems {
-        align-items: flex-end;
-        gap: 6px;
-        padding: 3px 5px 2px;
-    }
-
-    #leftSendForm,
-    #rightSendForm {
-        width: auto !important;
-        min-width: max-content;
-        flex-wrap: nowrap !important;
-    }
-
-    #leftSendForm > div,
-    #rightSendForm > div:not(.mes_stop),
-    #options_button {
-        width: var(--sb-composer-action-size) !important;
-        min-width: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
-        min-height: var(--sb-composer-action-size) !important;
-        max-width: var(--sb-composer-action-size) !important;
-        max-height: var(--sb-composer-action-size) !important;
-    }
-
-    /* Override any optional theme-specific sizing. */
-    #leftSendForm > *,
-    #rightSendForm > *:not(.mes_stop),
-    #form_sheld #options_button {
-        width: var(--sb-composer-action-size) !important;
-        min-width: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
-        min-height: var(--sb-composer-action-size) !important;
-        max-width: var(--sb-composer-action-size) !important;
-        max-height: var(--sb-composer-action-size) !important;
-    }
-
-    #send_form .mes_stop {
-        width: var(--sb-composer-action-size);
-        min-width: var(--sb-composer-action-size);
-        max-width: var(--sb-composer-action-size);
-        height: var(--sb-composer-action-size);
-        min-height: var(--sb-composer-action-size);
-        max-height: var(--sb-composer-action-size);
-    }
-
-    #send_textarea {
-        min-height: 46px;
-        padding: 8px 10px;
-        font-size: var(--mainFontSize);
-    }
-}
 .popup {
     box-shadow: 0 26px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
 }
@@ -1827,10 +1729,6 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
     }
 
-    #form_sheld {
-        padding-block-end: max(var(--sb-chat-composer-edge-gap), env(safe-area-inset-bottom, 0px));
-    }
-
     :root:not([data-sb-theme]),
     :root[data-sb-theme='clean-minimal'] {
         --sb-mobile-default-surface-solid: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, black 8%);
@@ -1862,32 +1760,8 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         }
     }
 
-    :root:not([data-sb-theme]) #top-bar,
-    :root[data-sb-theme='clean-minimal'] #top-bar {
-        background: var(--sb-topbar-surface-bg) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
-    }
-
-    :root:not([data-sb-theme]) #send_form,
-    :root[data-sb-theme='clean-minimal'] #send_form {
-        background: var(--sb-composer-surface-bg) !important;
-        border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent) !important;
-        backdrop-filter: blur(12px) saturate(110%);
-        -webkit-backdrop-filter: blur(12px) saturate(110%);
-    }
-
-    :root:not([data-sb-theme]) #send_textarea,
-    :root[data-sb-theme='clean-minimal'] #send_textarea {
-        background: var(--sb-mobile-default-input-solid);
-    }
-
-    :root:not([data-sb-theme]) #top-bar::before,
-    :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
     :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
-    :root[data-sb-theme='clean-minimal'] #top-bar::before,
-    :root[data-sb-theme='clean-minimal'] #send_form::before,
     :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
     :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
         opacity: var(--sb-shell-surface-opacity) !important;
@@ -2582,7 +2456,7 @@ input[type='range']::-moz-range-thumb {
     grid-column: span 2;
 }
 
-@media screen and (max-width: 700px) {
+@media screen and (max-width: 768px) {
     .sb-sampling-priority-row {
         grid-template-columns: 1fr;
     }
@@ -3284,7 +3158,7 @@ input[type='range']::-moz-range-thumb {
     }
 }
 
-@media screen and (max-width: 520px) {
+@media screen and (max-width: 620px) {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
         gap: 6px;
     }
@@ -4411,7 +4285,7 @@ input[type='range']::-moz-range-thumb {
     border-radius: var(--sb-radius-md);
 }
 
-@media screen and (max-width: 850px) {
+@media screen and (max-width: 1000px) {
     .sb-setting-inline-copy-center {
         width: 100%;
         min-width: 0;
@@ -5849,29 +5723,9 @@ input[type='range']::-moz-range-thumb {
         border-radius: 999px;
     }
 
-    #leftSendForm > div,
-    #rightSendForm > div:not(.mes_stop),
-    #send_form .mes_stop,
-    #options_button {
-        width: var(--sb-composer-action-size);
-        min-width: var(--sb-composer-action-size);
-        height: var(--sb-composer-action-size);
-        min-height: var(--sb-composer-action-size);
-        max-height: var(--sb-composer-action-size);
-    }
-
-    #send_textarea {
-        min-height: 46px;
-        padding: 6px 8px;
-    }
-
-    :root[data-sb-compact-mode='true'] #send_textarea {
-        min-height: 38px;
-        padding: 5px 7px;
-    }
 }
 
-@media screen and (max-width: 480px) {
+@media screen and (max-width: 620px) {
     #AdvancedFormatting .title_restorable.standoutHeader {
         gap: 6px;
     }
@@ -6180,4 +6034,70 @@ input[type='range']::-moz-range-thumb {
         padding-inline: 4px;
         text-align: center;
     }
+}
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered theme rules. */
+/* Must beat upstream public/style.css:91 :root. */
+:root {
+    --color-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
+}
+
+/* Must beat upstream public/style.css:957 #chat. */
+#chat {
+    bottom: 0;
+}
+
+/* Must beat upstream public/style.css:6130 .inline-drawer-header. */
+.inline-drawer-header {
+    background: var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%));
+}
+
+/* Must beat upstream public/style.css:971/978 #form_sheld. */
+#form_sheld {
+    margin: var(--sb-chat-composer-gap) auto 0;
+}
+
+/* Must beat upstream public/style.css:995 #nonQRFormItems. */
+#nonQRFormItems {
+    padding: 4px 6px;
+}
+
+/* Must beat upstream public/style.css:1027/1031 send-form action controls. */
+#leftSendForm > div,
+#rightSendForm > div:not(.mes_stop),
+#send_form .mes_stop,
+#options_button {
+    width: var(--sb-composer-action-size);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+}
+
+/* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
+#send_form:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));
+}
+
+/* Must beat upstream public/style.css:4909/4914 .mes_buttons, .extraMesButtons. */
+#chat .mes .mes_buttons,
+#chat .mes .extraMesButtons {
+    gap: 3px;
+    padding: 0;
+}
+
+/* Must beat upstream public/style.css:5074/5077/5078 .edit_textarea, .reasoning_edit_textarea. */
+#chat .edit_textarea,
+#chat .reasoning_edit_textarea {
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-input-bg));
+    line-height: calc(var(--mainFontSize) + 0.35rem);
+}
+
+/* Must beat upstream public/style.css:5996 #CustomCSS-textAreaBlock. */
+#CustomCSS-textAreaBlock {
+    display: flex;
+}
+
+/* Must beat upstream public/style.css:3103 #rm_extensions_block. */
+#rm_extensions_block {
+    overflow: visible;
 }

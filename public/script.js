@@ -103,6 +103,7 @@ import {
     generatedTextFiltered,
     applyStylePins,
 } from './scripts/power-user.js';
+import { isNeutralImpersonationFormat, shouldAppendImpersonationNamePrompt } from './scripts/impersonation-mode.js';
 
 import {
     setOpenAIMessageExamples,
@@ -327,6 +328,7 @@ import {
     CHAT_RENDER_LIFECYCLE_ROUTE,
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
+    CHAT_SCROLL_STATE,
     captureVisibleMessageAnchor,
     createDelegatedResizeObserver,
     createMessageUpdateQueue,
@@ -338,7 +340,7 @@ import {
     renderMessagesInBatches,
     resolveChatBottomScrollAction,
     resolveChatRenderLifecycleRollout,
-    resolveChatScrollAction,
+    resolveChatScrollStateTransition,
     restoreVisibleMessageAnchor,
     settleVisibleMessageAnchor,
     shouldApplyChatBottomScrollAction,
@@ -641,6 +643,7 @@ let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
+let chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
 const chatMessageResizeStates = new Map();
 
 let dialogueResolve = null;
@@ -2026,6 +2029,10 @@ function markMobileChatManualScroll({ touchActive = false, suppressMs = MOBILE_C
         return;
     }
 
+    chatScrollState = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL,
+    }).state;
     mobileChatBottomPinUntil = 0;
     clearMobileStreamingBottomPin();
 
@@ -2105,6 +2112,8 @@ function pinMobileChatToBottom({ waitForFrame = true, settle = false, immediate 
     if (immediate) {
         pin();
     }
+
+    chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
 
     if (waitForFrame) {
         requestAnimationFrame(pin);
@@ -2560,13 +2569,25 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
         return;
     }
 
-    const action = resolveChatScrollAction({
+    // SillyBunny: when mobile manual-scroll suppression is active, the user has
+    // intentionally scrolled away from the bottom. Let the resize observer
+    // refresh its state without adjusting scrollTop, otherwise a stale anchor
+    // settle would fight the user's scroll position during streaming chunks.
+    if (shouldSuppressMobileChatAutoScroll()) {
+        refreshChatMessageResizeState(element, metadata, entry);
+        return;
+    }
+
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom: Boolean(resizeState.isNearBottom),
         hasAnchor: Boolean(resizeState.anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
+    const action = transition.action;
 
     if (shouldApplyChatBottomScrollAction(action)) {
         // SillyBunny: coalesce media resize pins with the shared bottom-scroll rAF lane.
@@ -2671,18 +2692,41 @@ function updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessag
     queue.flush();
 }
 
+function resolveStreamingProgressScrollAction({
+    isNearBottom = isChatScrolledNearBottom(),
+    isManualScrollSuppressed = shouldSuppressMobileChatAutoScroll(),
+} = {}) {
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS,
+        autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
+        isNearBottom,
+        isManualScrollSuppressed,
+    });
+    chatScrollState = transition.state;
+
+    return transition.action;
+}
+
+function markChatScrollStateForUserScroll({ isNearBottom = isChatScrolledNearBottom() } = {}) {
+    if (isNearBottom) {
+        chatScrollState = CHAT_SCROLL_STATE.PINNED_BOTTOM;
+        return;
+    }
+
+    chatScrollState = resolveChatScrollStateTransition({
+        state: chatScrollState,
+        intent: CHAT_SCROLL_INTENT.MANUAL_SCROLL,
+    }).state;
+}
+
 function scrollStartedStreamingMessageThroughLifecycle() {
     if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_START)) {
         scrollChatToBottom({ waitForFrame: true });
         return;
     }
 
-    const action = resolveChatScrollAction({
-        intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS,
-        autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
-        isNearBottom: isChatScrolledNearBottom(),
-        isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
-    });
+    const action = resolveStreamingProgressScrollAction();
 
     if (shouldApplyChatBottomScrollAction(action)) {
         requestAnimationFrame(() => {
@@ -2706,16 +2750,18 @@ function getSwipeReplacementViewportUpdate({ isLastMessageSwipe, useLifecycleRou
 
     const isNearBottom = isChatScrolledNearBottom();
     const anchor = !isNearBottom ? captureVisibleChatMessageAnchor() : null;
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE,
         autoScrollEnabled: power_user.auto_scroll_chat_to_bottom,
         isNearBottom,
         hasAnchor: Boolean(anchor),
         isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll(),
     });
+    chatScrollState = transition.state;
 
     return {
-        action,
+        action: transition.action,
         anchor,
         scrollWithAddOneMessage: false,
     };
@@ -3011,10 +3057,18 @@ export async function showMoreMessages(messagesToLoad = null) {
     const renderedMessageCount = getRenderedChatMessageElements().length;
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
     const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const anchor = captureVisibleChatMessageAnchor();
+    const anchorMessageId = Number(anchor?.messageId);
+    const lastDisplayedMesId = Number(getRenderedChatMessageElements().at(-1)?.getAttribute('mesid'));
+    const anchorRetentionCount = Number.isInteger(anchorMessageId)
+        && Number.isInteger(lastDisplayedMesId)
+        ? Math.max(1, lastDisplayedMesId - anchorMessageId + 1)
+        : 1;
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,
         preserveAnchor: messagesToLoad === null,
+        anchorRetentionCount,
     });
     let messageId = Number(firstDisplayedMesId);
     const showMoreButton = $(`#${CHAT_HISTORY_OLDER_BUTTON_ID}`);
@@ -3034,7 +3088,6 @@ export async function showMoreMessages(messagesToLoad = null) {
         const insertionReference = showMoreButtonElement instanceof HTMLElement
             ? showMoreButtonElement.nextSibling
             : chatElement[0]?.firstChild ?? null;
-        const anchor = captureVisibleChatMessageAnchor();
         const shouldPreserveScroll = Boolean(anchor);
 
         if (showMoreButtonElement instanceof HTMLElement) {
@@ -3149,9 +3202,12 @@ function scrollLoadedChatToBottomThroughLifecycle() {
         return;
     }
 
-    const action = resolveChatScrollAction({
+    const transition = resolveChatScrollStateTransition({
+        state: chatScrollState,
         intent: CHAT_SCROLL_INTENT.INITIAL_LOAD,
     });
+    chatScrollState = transition.state;
+    const action = transition.action;
 
     if (shouldApplyChatBottomScrollAction(action)) {
         scrollLoadedChatToBottom();
@@ -6031,10 +6087,27 @@ class StreamingProcessor {
         if (shouldPinMobileBottom && shouldPinMobileChatToBottom()) {
             scheduleMobileStreamingBottomPin({ isFinal });
         } else if (!scrollLock && (!shouldUseMobileStreamingPin || !isMobileChatManualScrollSuppressionActive())) {
-            scrollChatToBottom({
-                waitForFrame: true,
+            if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS)) {
+                scrollChatToBottom({
+                    waitForFrame: true,
+                    isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                });
+                return;
+            }
+
+            const action = resolveStreamingProgressScrollAction({
                 isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                isManualScrollSuppressed: shouldUseMobileStreamingPin
+                    ? isMobileChatManualScrollSuppressionActive()
+                    : shouldSuppressMobileChatAutoScroll(),
             });
+
+            if (shouldApplyChatBottomScrollAction(action)) {
+                scrollChatToBottom({
+                    waitForFrame: true,
+                    isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom : true,
+                });
+            }
         }
     }
 
@@ -6698,6 +6771,7 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @property {string} [impersonationFormat] Optional impersonation format override.
  */
 
 /**
@@ -6742,7 +6816,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, impersonationFormat = null } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6761,6 +6835,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
     const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
     const isImpersonate = type == 'impersonate';
+    const neutralImpersonate = isImpersonate && isNeutralImpersonationFormat(impersonationFormat);
     const resolvedCacheScope = cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main');
     const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
     let textareaText = '';
@@ -7547,14 +7622,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
 
         // Get instruct mode line
-        if (isInstruct && !isContinue) {
-            const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (isImpersonate ? name1 : name2);
+        if (isInstruct && !isContinue && !neutralImpersonate) {
+            const promptAsImpersonate = isImpersonate;
+            const name = (quiet_prompt && !quietToLoud && !isImpersonate) ? (quietName ?? 'System') : (promptAsImpersonate ? name1 : name2);
             const isQuiet = quiet_prompt && type == 'quiet';
-            lastMesString += formatInstructModePrompt(name, isImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
+            lastMesString += formatInstructModePrompt(name, promptAsImpersonate, promptBias, name1, name2, isQuiet, quietToLoud);
         }
 
         // Get non-instruct impersonation line
-        if (!isInstruct && isImpersonate && !isContinue) {
+        if (shouldAppendImpersonationNamePrompt({ isInstruct, isImpersonate, isContinue, neutralImpersonate })) {
             const name = name1;
             if (!lastMesString.endsWith('\n')) {
                 lastMesString += '\n';
@@ -7781,6 +7857,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 type: type,
                 quietPrompt: quiet_prompt,
                 quietImage: quietImage,
+                impersonationFormat,
                 cyclePrompt: cyclePrompt,
                 systemPromptOverride: system,
                 jailbreakPromptOverride: jailbreak,
@@ -7880,7 +7957,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 }
 
                 const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
-                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+                activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, impersonationFormat });
 
                 hideSwipeButtons();
                 let getMessage = shouldBufferOutput
@@ -8001,7 +8078,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 }
             }
         } else {
-            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope });
+            return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, impersonationFormat });
         }
     }
 
@@ -8727,6 +8804,7 @@ function setInContextMessages(msgInContextCount, type) {
  * @typedef {object} AdditionalRequestOptions
  * @property {JsonSchema} [jsonSchema]
  * @property {'main'|'auxiliary'|'none'} [cacheScope]
+ * @property {string} [impersonationFormat]
  */
 
 /**
@@ -16022,6 +16100,7 @@ jQuery(async function () {
         }
 
         const scrollIsAtBottom = isChatScrolledNearBottom();
+        markChatScrollStateForUserScroll({ isNearBottom: scrollIsAtBottom });
 
         // Resume autoscroll if the user scrolls to the bottom
         if (scrollLock && scrollIsAtBottom) {
