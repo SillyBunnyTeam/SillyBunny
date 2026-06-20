@@ -40,6 +40,7 @@
 - PR #548 (2026-06-20) `fix: hide unused STscript controls in mobile composer`
 - PR #549 (2026-06-20) `fix: scroll mobile drawer inputs above the keyboard`
 - PR #550 (2026-06-20) `chore: reclassify custom in-chat agent templates into content and tracker`
+- PR #551 (2026-06-20) `feat: add custom OpenAI-compatible endpoint profiles`
 
 ## v1.6.5
 
