@@ -1860,9 +1860,14 @@ body.sb-shell-resizing * {
 }
 
 .sb-shell-tab i {
+    --fa-display: inline-flex;
     width: 18px;
+    height: 18px;
     margin-top: 0;
     opacity: 0.82;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     text-align: center;
 }
 
@@ -2565,11 +2570,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-action > i {
+    --fa-display: inline-flex;
     width: 48px;
     height: 48px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
     border-radius: var(--sb-radius-md, 16px);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent);
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 72%, var(--SmartThemeBodyColor));
