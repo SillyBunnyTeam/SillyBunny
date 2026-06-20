@@ -45,7 +45,7 @@ import {
 } from './PromptManager.js';
 
 import { forceCharacterEditorTokenize, getCustomStoppingStrings, persona_description_positions, power_user } from './power-user.js';
-import { SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
+import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
 
 import { getEventSourceStream } from './sse-stream.js';
 import {
@@ -698,6 +698,7 @@ export let custom_endpoint_presets = [
         url: '',
         key: '',
         model: '',
+        secretId: '',
     },
 ];
 export let selected_custom_endpoint_preset = custom_endpoint_presets[0];
@@ -5392,7 +5393,13 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
 
     const model = getChatCompletionModel(oai_settings);
     const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
+
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
+
+    if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId) {
+        // SillyBunny: Custom endpoint profiles bind chat requests to their saved secret, not the last active CUSTOM key.
+        generate_data.secret_id = selected_custom_endpoint_preset.secretId;
+    }
 
     console.log(`[OpenAI frontend] sendOpenAIRequest: type=${type} source=${generate_data.chat_completion_source} model=${generate_data.model} stream=${generate_data.stream}`);
 
@@ -9338,7 +9345,7 @@ export async function loadCustomEndpointPresets(settings) {
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
-            { reconnect: false },
+            { secretId: selected_custom_endpoint_preset.secretId, reconnect: false },
         );
     } else {
         $('#custom_endpoint_preset_name').val('None');
@@ -9368,13 +9375,32 @@ function updateCustomEndpointPresetOption(preset) {
     }
 }
 
-async function setCustomEndpointPreset(name, url, key, model, { writeKey = true, reconnect = true } = {}) {
-    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model });
+async function activateCustomEndpointPresetSecret(preset, { forceWrite = false } = {}) {
+    if (!preset || preset.name === 'None') {
+        return;
+    }
+
+    if (preset.secretId && (!forceWrite || !preset.key)) {
+        // SillyBunny: rotate to the bound profile secret instead of writing duplicate or accidental empty keys.
+        await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);
+        return;
+    }
+
+    // SillyBunny: legacy/keyless profiles get a stable per-profile secret id, even when the key is intentionally empty.
+    const secretId = await writeSecret(SECRET_KEYS.CUSTOM, preset.key, undefined, { allowEmpty: true });
+    if (secretId) {
+        preset.secretId = secretId;
+    }
+}
+
+async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
     if (preset) {
         preset.url = normalizedPreset.url;
         preset.key = normalizedPreset.key;
         preset.model = normalizedPreset.model;
+        preset.secretId = normalizedPreset.secretId || preset.secretId || '';
         selected_custom_endpoint_preset = preset;
     } else {
         const newPreset = normalizedPreset;
@@ -9392,7 +9418,7 @@ async function setCustomEndpointPreset(name, url, key, model, { writeKey = true,
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
 
     if (writeKey) {
-        await writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key, undefined, { allowEmpty: true });
+        await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
     }
     $('#api_key_custom').val(normalizedPreset.key);
 
@@ -9406,7 +9432,7 @@ async function onCustomEndpointPresetChange() {
     const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
 
     if (selectedPreset) {
-        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model);
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId });
     } else {
         console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
     }
@@ -9414,14 +9440,18 @@ async function onCustomEndpointPresetChange() {
 }
 
 $('#save_custom_endpoint').on('click', async function () {
+    const presetName = $('#custom_endpoint_preset_name').val();
+    const existingPreset = custom_endpoint_presets.find(preset => preset.name === String(presetName));
     const preset = buildCustomEndpointPresetForSave({
-        name: $('#custom_endpoint_preset_name').val(),
+        name: presetName,
         url: $('#custom_api_url_text').val(),
         key: $('#api_key_custom').val(),
         model: $('#custom_model_id').val(),
+        secretId: existingPreset?.secretId,
     });
 
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model);
+    await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
     saveSettingsDebounced();
     toastr.success(t`Custom Endpoint Profile Saved`);
     updateCustomEndpointPresetOption(preset);
@@ -9448,6 +9478,7 @@ $('#delete_custom_endpoint').on('click', async function () {
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
+            { secretId: selected_custom_endpoint_preset.secretId },
         );
 
         saveSettingsDebounced();

@@ -197,20 +197,47 @@ describe('Chat Completion preset utilities', () => {
             url: 'http://127.0.0.1:1234/v1',
             key: '',
             model: '',
+            secretId: '',
         });
     });
 
-    test('saves Custom endpoint profiles with URL, key, and model', () => {
+    test('normalizes Custom endpoint profile secret ids', () => {
+        expect(normalizeCustomEndpointPreset({
+            name: 'Bound proxy',
+            url: 'https://proxy.example/v1',
+            secretId: 'secret-1',
+        })).toEqual({
+            name: 'Bound proxy',
+            url: 'https://proxy.example/v1',
+            key: '',
+            model: '',
+            secretId: 'secret-1',
+        });
+
+        expect(normalizeCustomEndpointPreset({
+            name: 'Imported proxy',
+            'secret-id': 'secret-2',
+        }).secretId).toBe('secret-2');
+
+        expect(normalizeCustomEndpointPreset({
+            name: 'Request-shaped proxy',
+            secret_id: 'secret-3',
+        }).secretId).toBe('secret-3');
+    });
+
+    test('saves Custom endpoint profiles with URL, key, model, and secret id', () => {
         expect(buildCustomEndpointPresetForSave({
             name: 'Story proxy',
             url: 'https://proxy.example/v1',
             key: 'sk-story',
             model: 'gpt-4o',
+            secretId: 'secret-story',
         })).toEqual({
             name: 'Story proxy',
             url: 'https://proxy.example/v1',
             key: 'sk-story',
             model: 'gpt-4o',
+            secretId: 'secret-story',
         });
     });
 
@@ -225,6 +252,7 @@ describe('Chat Completion preset utilities', () => {
             url: '',
             key: '',
             model: '',
+            secretId: '',
         });
     });
 
