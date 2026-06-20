@@ -74,6 +74,7 @@ import {
 import {
     AGENT_REGEX_PLACEMENT,
     AGENT_REGEX_SUBSTITUTE,
+    applyRegexScriptList,
     createDefaultRegexScript,
     normalizeRegexScript,
 } from './regex-scripts.js';
@@ -2896,62 +2897,83 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
 
         toastr.clear();
 
-        const regexItems = generatedKit.regexScripts
-            .map(script => `<li><strong>${escapeHtml(script.scriptName || 'Regex Script')}</strong><br><code>${escapeHtml(script.findRegex || '')}</code></li>`)
-            .join('');
-        const previewHtml = $(`
-            <div class="ica--regex-editor">
-                ${generatedKit.usedFallback ? '<div class="ica--regex-note"><strong>Fallback scaffold used.</strong> The builder produced a safe starter kit locally because the AI response was unavailable or invalid. You can still apply and tweak it.</div>' : ''}
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>Prompt</strong>
-                    <pre style="white-space:pre-wrap;max-height:220px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.prompt)}</pre>
-                </div>
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>Extraction</strong>
-                    <div class="ica--regex-note"><b>Variable:</b> <code>${escapeHtml(generatedKit.postProcess.extractVariable)}</code></div>
-                    <pre style="white-space:pre-wrap;max-height:120px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.postProcess.extractPattern)}</pre>
-                </div>
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>Regex Beautifiers</strong>
-                    <ul style="margin:0;padding-left:18px">${regexItems || '<li>No regex scripts generated.</li>'}</ul>
-                </div>
-            </div>
-        `);
-
-        const previewResult = await new Popup(previewHtml, POPUP_TYPE.CONFIRM, '', {
+        let latestGeneratedKit = generatedKit;
+        const trackerPreviewPopup = new Popup(buildTrackerPreviewPopupContent(latestGeneratedKit, formatText), POPUP_TYPE.CONFIRM, '', {
             okButton: 'Apply',
             cancelButton: 'Discard',
+            customButtons: [
+                {
+                    text: 'Regenerate',
+                    icon: 'fa-rotate',
+                    tooltip: 'Regenerate the tracker kit using the extra instructions in this preview.',
+                    action: async (event) => {
+                        const button = event.currentTarget;
+                        if (!(button instanceof HTMLElement) || button.getAttribute('aria-disabled') === 'true') {
+                            return;
+                        }
+
+                        const extraInstructions = $(trackerPreviewPopup.content).find('#ica--tracker-builder-extra-instructions').val()?.toString().trim() ?? '';
+                        button.setAttribute('aria-disabled', 'true');
+                        button.classList.add('disabled');
+                        toastr.info('Regenerating tracker kit...', '', { timeOut: 0, extendedTimeOut: 0 });
+
+                        try {
+                            latestGeneratedKit = await generateTrackerKitWithAI({
+                                agentName,
+                                description,
+                                currentPrompt: latestGeneratedKit.prompt || currentPrompt,
+                                formatText,
+                                rulesText,
+                                styleNotes,
+                                connectionProfile,
+                                extraInstructions,
+                            });
+                            trackerPreviewPopup.content.innerHTML = '';
+                            $(trackerPreviewPopup.content).append(buildTrackerPreviewPopupContent(latestGeneratedKit, formatText, extraInstructions));
+                            toastr.clear();
+                            toastr.success('Regenerated tracker preview.');
+                        } catch (error) {
+                            toastr.clear();
+                            toastr.error(`Tracker regeneration failed: ${error instanceof Error ? error.message : String(error)}`);
+                        } finally {
+                            button.removeAttribute('aria-disabled');
+                            button.classList.remove('disabled');
+                        }
+                    },
+                },
+            ],
             wide: true,
             large: true,
-        }).show();
+        });
+        const previewResult = await trackerPreviewPopup.show();
 
         if (previewResult !== POPUP_RESULT.AFFIRMATIVE) {
             return;
         }
 
-        if (!agentName && generatedKit.name) {
-            editorEl.find('#ica--editor-name').val(generatedKit.name);
+        if (!agentName && latestGeneratedKit.name) {
+            editorEl.find('#ica--editor-name').val(latestGeneratedKit.name);
         }
 
-        if (!description && generatedKit.description) {
-            editorEl.find('#ica--editor-description').val(generatedKit.description);
+        if (!description && latestGeneratedKit.description) {
+            editorEl.find('#ica--editor-description').val(latestGeneratedKit.description);
         }
 
         editorEl.find('#ica--editor-category').val('tracker').trigger('change');
-        editorEl.find('#ica--editor-phase').val(generatedKit.phase).trigger('change');
-        editorEl.find('#ica--editor-prompt').val(generatedKit.prompt);
+        editorEl.find('#ica--editor-phase').val(latestGeneratedKit.phase).trigger('change');
+        editorEl.find('#ica--editor-prompt').val(latestGeneratedKit.prompt);
         editorEl.find('#ica--editor-pp-promptEnabled').prop('checked', false);
         editorEl.find('#ica--editor-pp-enabled').prop('checked', true);
         editorEl.find('#ica--editor-pp-type').val('extract');
-        editorEl.find('#ica--editor-pp-extractPattern').val(generatedKit.postProcess.extractPattern);
-        editorEl.find('#ica--editor-pp-extractVariable').val(generatedKit.postProcess.extractVariable);
+        editorEl.find('#ica--editor-pp-extractPattern').val(latestGeneratedKit.postProcess.extractPattern);
+        editorEl.find('#ica--editor-pp-extractVariable').val(latestGeneratedKit.postProcess.extractVariable);
         editorEl.find('#ica--editor-pp-appendText').val('');
-        regexScripts = generatedKit.regexScripts.map(script => normalizeRegexScript(structuredClone(script)));
+        regexScripts = latestGeneratedKit.regexScripts.map(script => normalizeRegexScript(structuredClone(script)));
         updatePPVisibility();
         renderRegexList();
 
         toastr.success(
-            generatedKit.usedFallback
+            latestGeneratedKit.usedFallback
                 ? 'Built a starter tracker kit. Review and tweak it before saving.'
                 : 'Applied generated tracker kit. Review and save when ready.',
         );
@@ -4001,6 +4023,85 @@ function normalizeTrackerKitResponse(rawResult, fallbackKit) {
     };
 }
 
+function buildTrackerHtmlPreviewNode(generatedKit, sampleText) {
+    const sampleOutput = normalizeMultilineInput(sampleText);
+    let renderedOutput = sampleOutput;
+    let previewError = '';
+
+    try {
+        renderedOutput = applyRegexScriptList(
+            sampleOutput,
+            generatedKit.regexScripts,
+            AGENT_REGEX_PLACEMENT.AI_OUTPUT,
+            {
+                isMarkdown: true,
+                substituteParamsFn: substituteParams,
+            },
+        );
+    } catch (error) {
+        previewError = error instanceof Error ? error.message : String(error);
+    }
+
+    const hasRenderedPreview = Boolean(renderedOutput && renderedOutput !== sampleOutput && !previewError);
+    const previewNode = $(`
+        <div class="ica--editor-section ica--regex-subsection">
+            <div class="ica--tracker-preview-heading">
+                <strong>HTML Preview</strong>
+                <span class="ica--tracker-preview-status">${hasRenderedPreview ? 'Rendered from sample' : 'No regex match'}</span>
+            </div>
+            <div class="ica--regex-note">Rendered from the pasted tracker format example, using the generated regex beautifier.</div>
+            <div class="ica--tracker-preview-frame"></div>
+            ${previewError ? `<div class="ica--regex-note">Preview failed: ${escapeHtml(previewError)}</div>` : ''}
+            ${!hasRenderedPreview && !previewError ? '<div class="ica--regex-note">No generated regex matched the sample, so the raw tracker example is shown instead.</div>' : ''}
+        </div>
+    `);
+    const previewFrame = previewNode.find('.ica--tracker-preview-frame').get(0);
+
+    if (previewFrame) {
+        previewFrame.innerHTML = hasRenderedPreview
+            ? renderedOutput
+            : `<pre class="ica--tracker-preview-source">${escapeHtml(sampleOutput || '(empty tracker sample)')}</pre>`;
+    }
+
+    return previewNode;
+}
+
+function buildTrackerPreviewPopupContent(generatedKit, sampleText, extraInstructions = '') {
+    const regexItems = generatedKit.regexScripts
+        .map(script => `<li><strong>${escapeHtml(script.scriptName || 'Regex Script')}</strong><br><code>${escapeHtml(script.findRegex || '')}</code></li>`)
+        .join('');
+    const previewContent = $(`
+        <div class="ica--regex-editor">
+            ${generatedKit.usedFallback ? '<div class="ica--regex-note"><strong>Fallback scaffold used.</strong> The builder produced a safe starter kit locally because the AI response was unavailable or invalid. You can still apply and tweak it.</div>' : ''}
+            <div class="ica--tracker-preview-slot"></div>
+            <div class="ica--editor-section ica--regex-subsection">
+                <strong>Prompt</strong>
+                <pre style="white-space:pre-wrap;max-height:220px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.prompt)}</pre>
+            </div>
+            <div class="ica--editor-section ica--regex-subsection">
+                <strong>Extraction</strong>
+                <div class="ica--regex-note"><b>Variable:</b> <code>${escapeHtml(generatedKit.postProcess.extractVariable)}</code></div>
+                <pre style="white-space:pre-wrap;max-height:120px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.postProcess.extractPattern)}</pre>
+            </div>
+            <div class="ica--editor-section ica--regex-subsection">
+                <strong>Regex Beautifiers</strong>
+                <ul style="margin:0;padding-left:18px">${regexItems || '<li>No regex scripts generated.</li>'}</ul>
+            </div>
+            <div class="ica--editor-section ica--regex-subsection">
+                <label>Extra instructions for regeneration <small>(optional)</small>
+                    <textarea id="ica--tracker-builder-extra-instructions" class="text_pole textarea_compact" rows="4" placeholder="Example: Make the card denser, use warmer colors, and put note text first."></textarea>
+                </label>
+                <div class="ica--regex-note">Use Regenerate to update the tracker kit and preview before applying it.</div>
+            </div>
+        </div>
+    `);
+
+    previewContent.find('.ica--tracker-preview-slot').replaceWith(buildTrackerHtmlPreviewNode(generatedKit, sampleText));
+    previewContent.find('#ica--tracker-builder-extra-instructions').val(extraInstructions);
+
+    return previewContent;
+}
+
 function buildCompanionFallbackKit({ agentName, description, currentPrompt, goalText }) {
     const name = agentName?.trim() || 'Companion Agent';
     const goal = normalizeContentText(goalText || description || currentPrompt || 'watch for useful side notes').trim();
@@ -4718,6 +4819,7 @@ async function generateTrackerKitWithAI({
     rulesText,
     styleNotes,
     connectionProfile = '',
+    extraInstructions = '',
 }) {
     const fallbackKit = buildTrackerFallbackKit({ agentName, description, formatText, rulesText });
     if (!fallbackKit) {
@@ -4779,6 +4881,9 @@ Requirements:
         '',
         'Existing prompt text to preserve if useful:',
         currentPrompt || '(none)',
+        '',
+        'Extra custom instructions for this generation:',
+        extraInstructions || '(none)',
     ].join('\n');
 
     try {

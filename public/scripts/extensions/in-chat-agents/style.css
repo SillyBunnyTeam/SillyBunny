@@ -1137,6 +1137,41 @@ button.ica--card-pill--version-update {
     padding: 10px 12px;
 }
 
+.ica--tracker-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ica--tracker-preview-status {
+    font-size: calc(var(--mainFontSize) * 0.72);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 76%, var(--SmartThemeBodyColor, #ddd) 24%);
+}
+
+.ica--tracker-preview-frame {
+    margin-top: 8px;
+    padding: 12px;
+    max-height: min(42vh, 420px);
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 76%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent);
+    -webkit-overflow-scrolling: touch;
+}
+
+.ica--tracker-preview-source {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: 1.45;
+}
+
 .ica--regex-placement-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
