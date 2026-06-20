@@ -3,7 +3,8 @@
     "name": "Don't Write for User",
     "description": "Never write {{user}}'s actions or dialogue -- only {{char}} and NPCs",
     "icon": "",
-    "category": "custom",
+    "category": "content",
+    "subcategory": "pov",
     "tags": [
         "pov",
         "user"

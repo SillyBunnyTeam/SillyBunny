@@ -3,7 +3,8 @@
     "name": "Write for User",
     "description": "Include {{user}} as a fully realized character -- write their actions, dialogue, and reactions",
     "icon": "",
-    "category": "custom",
+    "category": "content",
+    "subcategory": "pov",
     "tags": [
         "pov",
         "user"

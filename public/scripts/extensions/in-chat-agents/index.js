@@ -763,9 +763,10 @@ const TEMPLATE_BROWSER_CATEGORY_LABELS = {
 };
 
 function getTemplateBrowserCategoryOrder(templateList = templates) {
-    // SillyBunny: include 'custom' so bundled custom-category templates (e.g. HTML Toggle,
-    // Friction Mode) render in the templates browser. Upstream-only behaviour excluded it,
-    // which silently dropped these templates from the pills, sections, and search results.
+    // SillyBunny: 'custom' stays in AGENT_CATEGORIES as a fallback for user/saved
+    // agents even though no bundled templates ship in that category anymore.
+    // Former custom-category templates (HTML Toggle, Friction Mode, NPC Profile
+    // Cards, etc.) have been reclassified into content and tracker.
     return Object.keys(AGENT_CATEGORIES)
         .filter(category => templateList.some(template => template.category === category));
 }

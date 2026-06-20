@@ -458,15 +458,15 @@ describe('in-chat agent bundled templates', () => {
         expect(unknownCategories).toEqual([]);
     });
 
-    test('surfaces bundled custom-category templates such as HTML Toggle in the browser', () => {
+    test('surfaces bundled content templates such as HTML Toggle in the browser', () => {
         const catalog = readTemplate('index.json');
         const htmlToggle = findCatalogTemplate(catalog, 'tpl-html-toggle');
 
-        expect(htmlToggle.category).toBe('custom');
+        expect(htmlToggle.category).toBe('content');
+        expect(htmlToggle.subcategory).toBe('behaviour');
 
-        const customTemplates = catalog.filter(template => template.category === 'custom');
-        expect(customTemplates.length).toBeGreaterThan(0);
-
+        // 'custom' stays in AGENT_CATEGORIES as a fallback for user/saved agents
+        // even though no bundled templates ship in that category anymore.
         const orderSource = readIndexFunctionBody('getTemplateBrowserCategoryOrder');
         expect(orderSource).not.toContain('category !== \'custom\'');
         expect(orderSource).toContain('AGENT_CATEGORIES');

@@ -220,7 +220,8 @@
         "name": "Nightmare Difficulty Increase",
         "description": "Aggressively hostile environment -- maximum difficulty and consequences",
         "icon": "",
-        "category": "custom",
+        "category": "content",
+        "subcategory": "behaviour",
         "tags": [
             "difficulty",
             "challenge",
@@ -311,7 +312,8 @@
         "name": "Don't Write for User",
         "description": "Never write {{user}}'s actions or dialogue -- only {{char}} and NPCs",
         "icon": "",
-        "category": "custom",
+        "category": "content",
+        "subcategory": "pov",
         "tags": [
             "pov",
             "user"
@@ -397,7 +399,8 @@
         "name": "Friction Mode",
         "description": "Combats positivity bias -- characters resist, protect their pride, and take time to warm up",
         "icon": "",
-        "category": "custom",
+        "category": "content",
+        "subcategory": "behaviour",
         "tags": [
             "realism",
             "difficulty",
@@ -626,7 +629,8 @@
         "name": "HTML Toggle",
         "description": "Use inline HTML for diegetic in-world objects (signs, letters, screens)",
         "icon": "",
-        "category": "custom",
+        "category": "content",
+        "subcategory": "behaviour",
         "tags": [
             "html",
             "artifacts",
@@ -754,7 +758,8 @@
         "name": "NPC Profile Cards",
         "description": "Generate brief profile cards when introducing new named NPCs",
         "icon": "",
-        "category": "custom",
+        "category": "tracker",
+        "subcategory": "characters",
         "tags": [
             "npc",
             "characters",
@@ -789,6 +794,9 @@
                 "normal",
                 "continue"
             ]
+        },
+        "companion": {
+            "includeSystemPrompt": false
         }
     },
     {
@@ -1314,7 +1322,8 @@
         "name": "Write for User",
         "description": "Include {{user}} as a fully realized character -- write their actions, dialogue, and reactions",
         "icon": "",
-        "category": "custom",
+        "category": "content",
+        "subcategory": "pov",
         "tags": [
             "pov",
             "user"
