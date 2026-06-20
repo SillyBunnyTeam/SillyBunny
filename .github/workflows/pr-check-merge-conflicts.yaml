@@ -12,6 +12,10 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: pr-merge-conflicts-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   check-merge-conflicts:
     name: ⚔️ Check Merge Conflicts
