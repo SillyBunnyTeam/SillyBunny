@@ -145,6 +145,15 @@
     --sb-message-radius: 22px;
 }
 
+a,
+button,
+[role="button"],
+.menu_button,
+input[type="button"],
+input[type="submit"] {
+    -webkit-tap-highlight-color: transparent;
+}
+
 .zoomed_avatar_container,
 .avatar_zoom_container,
 .zoomed_avatar,

@@ -4854,6 +4854,27 @@ export async function runTrackerFixOnMessage(messageIndex) {
     let chatStateChanged = false;
     let messageDisplayChanged = false;
     const promptRuns = [];
+    let trackerRegenerations = 0;
+    let trackerRegenerationErrors = 0;
+    const applyExtractPostProcess = (agent, sourceText) => {
+        const postProcess = agent.postProcess;
+        if (!postProcess?.extractPattern || !postProcess.extractVariable) {
+            return false;
+        }
+
+        try {
+            const regex = new RegExp(postProcess.extractPattern, 'g');
+            const matches = String(sourceText ?? '').match(regex);
+            if (matches) {
+                chat_metadata[`agent_${postProcess.extractVariable}`] = matches.join('\n');
+                return true;
+            }
+        } catch (error) {
+            console.warn(`[InChatAgents] Extract error in agent "${agent.name}":`, error);
+        }
+
+        return false;
+    };
     let currentPromptTransformText = unwrapAssistantResponseWrapper(message.mes);
 
     if (currentPromptTransformText !== normalizeContentText(message.mes)) {
@@ -4928,8 +4949,53 @@ export async function runTrackerFixOnMessage(messageIndex) {
         messageDisplayChanged = true;
     }
 
+    const extractRegenerationAgents = trackerAgents.filter(agent =>
+        agent.postProcess?.enabled &&
+        agent.postProcess.type === 'extract' &&
+        !agent.postProcess.promptTransformEnabled &&
+        String(agent.prompt ?? '').trim() &&
+        agent.postProcess.extractPattern &&
+        agent.postProcess.extractVariable,
+    );
+    const extractRegenerationAgentIds = new Set(extractRegenerationAgents.map(agent => agent.id));
+
+    // SillyBunny divergence: repair inline extract trackers by regenerating their
+    // block; re-extraction alone cannot recover a missing [TAG|...] payload.
+    for (const agent of extractRegenerationAgents) {
+        try {
+            const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, messageIndex, {
+                applyToMessage: false,
+            });
+            const regenerated = String(result.outputText ?? '').trim()
+                ? applyExtractPostProcess(agent, result.outputText)
+                : false;
+            const extracted = regenerated || applyExtractPostProcess(agent, message.mes);
+
+            if (result.status === 'error') {
+                trackerRegenerationErrors++;
+            }
+
+            if (extracted) {
+                chatStateChanged = true;
+            }
+
+            if (regenerated) {
+                trackerRegenerations++;
+            }
+        } catch (error) {
+            trackerRegenerationErrors++;
+            console.warn(`[InChatAgents] Tracker regeneration failed in agent "${agent.name}":`, error);
+
+            if (applyExtractPostProcess(agent, message.mes)) {
+                chatStateChanged = true;
+            }
+        }
+    }
+
     const utilityAgents = trackerAgents.filter(agent =>
-        agent.postProcess?.enabled && agent.postProcess.type !== 'regex',
+        agent.postProcess?.enabled &&
+        agent.postProcess.type !== 'regex' &&
+        !extractRegenerationAgentIds.has(agent.id),
     );
 
     for (const agent of utilityAgents) {
@@ -4937,19 +5003,8 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
         switch (postProcess.type) {
             case 'extract': {
-                if (!postProcess.extractPattern || !postProcess.extractVariable) {
-                    break;
-                }
-
-                try {
-                    const regex = new RegExp(postProcess.extractPattern, 'g');
-                    const matches = message.mes.match(regex);
-                    if (matches) {
-                        chat_metadata[`agent_${postProcess.extractVariable}`] = matches.join('\n');
-                        chatStateChanged = true;
-                    }
-                } catch (error) {
-                    console.warn(`[InChatAgents] Extract error in agent "${agent.name}":`, error);
+                if (applyExtractPostProcess(agent, message.mes)) {
+                    chatStateChanged = true;
                 }
                 break;
             }
@@ -4999,11 +5054,14 @@ export async function runTrackerFixOnMessage(messageIndex) {
 
     const changedRuns = promptRuns.filter(r => r.changed);
     const failedRuns = promptRuns.filter(r => r.status === 'error');
+    const postProcessRuns = utilityAgents.length + extractRegenerationAgents.length;
+    const errorRuns = failedRuns.length + trackerRegenerationErrors;
     const parts = [];
+    if (trackerRegenerations > 0) parts.push(`${trackerRegenerations} tracker${trackerRegenerations > 1 ? 's' : ''} regenerated`);
     if (changedRuns.length > 0) parts.push(`${changedRuns.length} prompt transform${changedRuns.length > 1 ? 's' : ''} applied`);
-    if (utilityAgents.length > 0) parts.push(`${utilityAgents.length} post-process${utilityAgents.length > 1 ? 'es' : ''} run`);
+    if (postProcessRuns > 0) parts.push(`${postProcessRuns} post-process${postProcessRuns > 1 ? 'es' : ''} run`);
     if (regexSnapshotChanged) parts.push('regex snapshot updated');
-    if (failedRuns.length > 0) parts.push(`${failedRuns.length} error${failedRuns.length > 1 ? 's' : ''}`);
+    if (errorRuns > 0) parts.push(`${errorRuns} error${errorRuns > 1 ? 's' : ''}`);
 
     if (parts.length > 0) {
         toastr.success(parts.join(', '), 'Trackers fixed');

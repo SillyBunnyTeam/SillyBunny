@@ -38,7 +38,11 @@ function loadState() {
 }
 
 function persistState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+        // Ignore storage write failures in Safari Private Browsing.
+    }
     for (const listener of listeners) {
         listener(getSummaryMemoryState());
     }

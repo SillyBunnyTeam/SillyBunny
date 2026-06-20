@@ -220,6 +220,7 @@
 .ica--quick-chip-apply {
     border: none;
     color: inherit;
+    -webkit-appearance: none;
     appearance: none;
     font: inherit;
 }
@@ -335,6 +336,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
     font-size: calc(var(--mainFontSize) * 0.78);
     font-weight: 600;
@@ -805,6 +807,7 @@ button.ica--card-pill--version-update {
     background: transparent;
     border: none;
     color: inherit;
+    -webkit-appearance: none;
     appearance: none;
     font: inherit;
     text-decoration: none;
@@ -1134,6 +1137,41 @@ button.ica--card-pill--version-update {
     padding: 10px 12px;
 }
 
+.ica--tracker-preview-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ica--tracker-preview-status {
+    font-size: calc(var(--mainFontSize) * 0.72);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 76%, var(--SmartThemeBodyColor, #ddd) 24%);
+}
+
+.ica--tracker-preview-frame {
+    margin-top: 8px;
+    padding: 12px;
+    max-height: min(42vh, 420px);
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 76%, transparent);
+    border-radius: var(--sb-radius-md, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent);
+    -webkit-overflow-scrolling: touch;
+}
+
+.ica--tracker-preview-source {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: calc(var(--mainFontSize) * 0.86);
+    line-height: 1.45;
+}
+
 .ica--regex-placement-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1226,6 +1264,7 @@ button.ica--card-pill--version-update {
     min-height: 40px;
     padding: 8px 10px;
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
     list-style: none;
 }
@@ -1407,6 +1446,10 @@ button.ica--card-pill--version-update {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
+}
+
+.ica--agent-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .ica--agent-tab {
@@ -1956,6 +1999,7 @@ button.ica--card-pill--version-update {
     cursor: pointer;
     font-size: calc(var(--mainFontSize) * 0.8);
     opacity: 0.65;
+    -webkit-user-select: none;
     user-select: none;
     min-height: 32px;
     display: flex;
@@ -2093,6 +2137,7 @@ button.ica--card-pill--version-update {
 }
 
 .ica--template-filter-bar {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 2;

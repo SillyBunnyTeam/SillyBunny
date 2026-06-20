@@ -23,6 +23,7 @@ BEFORE submitting a pull request, keep the following project goals and best prac
 - While Bun is the default runtime, Node.js backwards compatibility is required. Do not use Bun-exclusive APIs (such as Bun.file() or Bun.serve()) unless a standard Node.js fallback is included. Test all structural changes in both runtime environments.
 - Keep fork-specific feature additions and upstream synchronization merges in separate pull requests. Mixing upstream code updates with SillyBunny feature logic complicates the review process.
 - Make sure new features work elegantly with parity on both mobile and desktop environments.
+- Frontend code may target Safari/WebKit 16.4+ for modern selectors and color functions, but still include required WebKit-prefixed companions for shipped Safari properties such as `backdrop-filter`, `appearance`, `user-select`, and `position: sticky`.
 
 #### Correct target branch
 

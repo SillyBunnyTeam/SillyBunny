@@ -23,6 +23,7 @@
     transition: opacity var(--sb-transition-fast), transform var(--sb-transition-fast);
     overflow: hidden;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
 }
 
@@ -39,6 +40,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    -webkit-user-select: none;
     user-select: none;
 }
 

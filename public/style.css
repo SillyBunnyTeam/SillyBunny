@@ -503,7 +503,7 @@ input[type='checkbox']:focus-visible {
     padding: 5px 5px 5px 14px;
     margin-bottom: 0.5em;
     overflow-y: auto;
-    color: hsl(from var(--reasoning-body-color) h calc(s * var(--reasoning-saturation)) l);
+    color: var(--reasoning-body-color);
 }
 
 .mes_reasoning_details {
@@ -530,6 +530,7 @@ input[type='checkbox']:focus-visible {
 .mes_reasoning_header {
     cursor: pointer;
     position: relative;
+    -webkit-user-select: none;
     user-select: none;
     margin: 0.5em 2px;
     padding: 7px 14px;
@@ -604,7 +605,7 @@ input[type='checkbox']:focus-visible {
 
 .mes_reasoning i,
 .mes_reasoning em {
-    color: hsl(from var(--reasoning-em-color) h calc(s * var(--reasoning-saturation)) l);
+    color: var(--reasoning-em-color);
 }
 
 .mes_text q i,
@@ -614,7 +615,7 @@ input[type='checkbox']:focus-visible {
 
 .mes_reasoning q i,
 .mes_reasoning q em {
-    color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
+    color: var(--SmartThemeQuoteColor);
 }
 
 .mes_text u {
@@ -622,7 +623,7 @@ input[type='checkbox']:focus-visible {
 }
 
 .mes_reasoning u {
-    color: hsl(from var(--SmartThemeUnderlineColor) h calc(s * var(--reasoning-saturation)) l);
+    color: var(--SmartThemeUnderlineColor);
 }
 
 .mes_text q {
@@ -646,6 +647,7 @@ input[type='checkbox']:focus-visible {
     line-height: 1.35;
     min-height: 44px;
     padding: 0.75em;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -665,7 +667,31 @@ input[type='checkbox']:focus-visible {
 }
 
 .mes_reasoning q {
-    color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
+    color: var(--SmartThemeQuoteColor);
+}
+
+@supports (color: rgb(from black r g b / 1)) {
+    .mes_reasoning {
+        color: hsl(from var(--reasoning-body-color) h calc(s * var(--reasoning-saturation)) l);
+    }
+
+    .mes_reasoning i,
+    .mes_reasoning em {
+        color: hsl(from var(--reasoning-em-color) h calc(s * var(--reasoning-saturation)) l);
+    }
+
+    .mes_reasoning q i,
+    .mes_reasoning q em {
+        color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
+    }
+
+    .mes_reasoning u {
+        color: hsl(from var(--SmartThemeUnderlineColor) h calc(s * var(--reasoning-saturation)) l);
+    }
+
+    .mes_reasoning q {
+        color: hsl(from var(--SmartThemeQuoteColor) h calc(s * var(--reasoning-saturation)) l);
+    }
 }
 
 .mes_text font[color] em,
@@ -999,6 +1025,7 @@ body .panelControlBar {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 0 0 1.65rem 1.65rem;
     background-color: var(--SmartThemeBlurTintColor);
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
 }
 
@@ -1436,6 +1463,7 @@ body .panelControlBar {
 }
 
 .swipe_picker_header {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 1;
@@ -2085,6 +2113,7 @@ body {
 
     --bottom: 50vh;
     background: var(--ac-color-background);
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
     border: 1px solid var(--ac-color-border);
     border-radius: 3px;
@@ -2891,6 +2920,7 @@ input[type="file"] {
     background: color-mix(in srgb, var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%)) 80%, transparent);
     border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
     border-radius: 1.65rem 1.65rem 0 0;
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -3225,6 +3255,7 @@ input[type="file"] {
 /*#################################################################*/
 
 select {
+    -webkit-appearance: none;
     appearance: none;
     padding: 3px 5px;
     background-color: var(--black30a);
@@ -4270,6 +4301,7 @@ grammarly-extension {
     cursor: grab;
     transition: background-color var(--animation-duration-2x) ease-in-out;
     position: relative;
+    -webkit-user-select: none;
     user-select: none;
     display: flex;
     align-items: center;
@@ -4373,6 +4405,7 @@ grammarly-extension {
 .drag-handle {
     cursor: grab;
     /* Make the drag handle not selectable in most browsers */
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -4677,6 +4710,7 @@ input[type='checkbox'].del_checkbox {
 }
 
 .neo-range-slider {
+    -webkit-appearance: none !important;
     appearance: none !important;
     margin: 7px 0 0 !important;
     padding: 0 !important;
@@ -5322,6 +5356,7 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
 
 .swipe_picker_block {
     cursor: pointer;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -5532,6 +5567,7 @@ body .ui-widget-content {
     border-radius: 10px;
     box-shadow: 0 0 3px var(--black50a);
     text-shadow: 0px 0px calc(var(--shadowWidth) * 1px) var(--SmartThemeShadowColor);
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     color: var(--SmartThemeBodyColor);
 }
@@ -5712,6 +5748,7 @@ a:hover {
     margin-top: 0;
     overflow: hidden;
     background-color: var(--SmartThemeBlurTintColor);
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)*2));
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 10px;
@@ -6519,6 +6556,7 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     aspect-ratio: unset;
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
     background-color: var(--SmartThemeBlurTintColor);
     padding: 5px;
@@ -6634,6 +6672,7 @@ body:not(.movingUI) .drawer-content.maximized {
     justify-content: center;
     align-items: center;
     gap: 5px;
+    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -7327,6 +7366,7 @@ body:not(.movingUI) .drawer-content.maximized {
     height: 22px;
     margin-left: 4px;
     padding: 0;
+    -webkit-appearance: none;
     appearance: none;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 50%, transparent);
     border-radius: 999px;

@@ -46,6 +46,12 @@
 - PR #556 (2026-06-20) `feat: sort model favorites alphabetically and scope Custom favorites per URL`
 - PR #557 (2026-06-20) `fix: preserve Bunny Preset Tools section icons`
 - PR #558 (2026-06-20) `fix: persist Pathfinder section collapse state`
+- PR #559 (2026-06-20) `chore(agents): update Grounded Prose Rules template`
+- PR #560 (2026-06-20) `fix: bind custom endpoint profiles to saved secrets`
+- PR #561 (2026-06-20) `fix(companion-panel): keep manual Play button visible after first run`
+- PR #562 (2026-06-20) `fix: improve WebKit prefix parity and iOS guards`
+- PR #563 (2026-06-20) `fix(ica): regenerate extract trackers from Fix Trackers`
+- PR #564 (2026-06-20) `feat(in-chat-agents): live HTML preview and regenerate for custom tracker builder`
 
 ## v1.6.5
 

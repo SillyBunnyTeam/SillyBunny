@@ -282,6 +282,7 @@
     border-radius: 5px;
     padding: 3px 3px;
     z-index: 3;
+    -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
     border: 1px solid var(--SmartThemeBorderColor);
     justify-items: center;
@@ -567,6 +568,7 @@
     border-radius: 5px;
     padding: 3px;
     z-index: 3;
+    -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
     border: 1px solid var(--SmartThemeBorderColor);
     align-items: center;

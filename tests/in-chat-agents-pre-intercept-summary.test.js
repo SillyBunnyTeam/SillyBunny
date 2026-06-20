@@ -172,6 +172,7 @@ beforeAll(async () => {
             ESCAPED: 'escaped',
         },
         createDefaultRegexScript: jest.fn(() => ({})),
+        applyRegexScriptList: jest.fn(value => value),
         normalizeRegexScript: jest.fn(value => value),
     }));
 

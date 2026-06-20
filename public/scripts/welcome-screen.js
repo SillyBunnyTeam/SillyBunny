@@ -29,6 +29,7 @@ import { deleteGroupChatByName, getGroupAvatar, groups, is_group_generating, ope
 import { enableExtension, extension_settings, findExtension, installExtension } from './extensions.js';
 import { t } from './i18n.js';
 import { getPresetManager } from './preset-manager.js';
+import { isIOSWebKitPlatform } from './mobile-send-button.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { renderTemplateAsync } from './templates.js';
 import { isAdmin } from './user.js';
@@ -1168,14 +1169,24 @@ function openShellTab(route) {
     document.querySelector(fallbackSelector)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
-function prefillSendTextarea(sendTextArea, value) {
+function focusSendTextarea(sendTextArea, { skipIOS = false } = {}) {
+    if (skipIOS && isIOSWebKitPlatform()) {
+        return;
+    }
+
+    if (sendTextArea instanceof HTMLTextAreaElement) {
+        sendTextArea.focus();
+    }
+}
+
+function prefillSendTextarea(sendTextArea, value, { skipIOSFocus = false } = {}) {
     if (!(sendTextArea instanceof HTMLTextAreaElement)) {
         return;
     }
 
     sendTextArea.value = value;
     sendTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-    sendTextArea.focus();
+    focusSendTextarea(sendTextArea, { skipIOS: skipIOSFocus });
 }
 
 async function refreshCharacterAvatarCache(avatar) {
@@ -1387,14 +1398,14 @@ async function handleWelcomeAction(button, sendTextArea) {
             }
             break;
         case 'assistant-prompt':
+            focusSendTextarea(sendTextArea);
             await openBundledAssistantCard(assistantId);
-            prefillSendTextarea(sendTextArea, value);
+            prefillSendTextarea(sendTextArea, value, { skipIOSFocus: true });
             break;
         case 'open-assistant':
+            focusSendTextarea(sendTextArea);
             await openBundledAssistantCard(assistantId);
-            if (sendTextArea instanceof HTMLTextAreaElement) {
-                sendTextArea.focus();
-            }
+            focusSendTextarea(sendTextArea, { skipIOS: true });
             break;
         case 'open-conversation': {
             const conversationModule = await import('./sillybunny-conversation.js');
@@ -1629,10 +1640,9 @@ async function sendWelcomePanel(chats, expand = false) {
         });
         fragment.querySelectorAll('button.openTemporaryChat').forEach((button) => {
             button.addEventListener('click', async () => {
+                focusSendTextarea(sendTextArea);
                 await newAssistantChat({ temporary: true });
-                if (sendTextArea instanceof HTMLTextAreaElement) {
-                    sendTextArea.focus();
-                }
+                focusSendTextarea(sendTextArea, { skipIOS: true });
             });
         });
         fragment.querySelectorAll('.recentChat.group').forEach((groupChat) => {

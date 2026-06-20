@@ -139,6 +139,10 @@
         gap: 3px;
     }
 
+    #leftSendForm::-webkit-scrollbar {
+        display: none;
+    }
+
     #rightSendForm {
         grid-area: action;
         width: 100%;
@@ -1810,6 +1814,7 @@
     }
 
     .sb-mobile-panel-close {
+        -webkit-appearance: none;
         appearance: none;
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
@@ -1864,6 +1869,7 @@
     }
 
     .sb-nav-item {
+        -webkit-appearance: none;
         appearance: none;
         position: relative;
         isolation: isolate;

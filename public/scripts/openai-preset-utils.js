@@ -261,10 +261,11 @@ export function buildReverseProxyPresetForSave(preset, { supportedSources = [] }
  * Normalizes a Custom OpenAI-compatible endpoint profile.
  *
  * @param {Record<string, any>} preset Custom endpoint profile
- * @returns {{name: string, url: string, key: string, model: string}}
+ * @returns {{name: string, url: string, key: string, model: string, secretId: string}}
  */
 export function normalizeCustomEndpointPreset(preset) {
     const name = String(preset?.name ?? 'None');
+    const secretId = String(preset?.secretId ?? preset?.['secret-id'] ?? preset?.secret_id ?? '');
 
     if (name === 'None') {
         return {
@@ -272,6 +273,7 @@ export function normalizeCustomEndpointPreset(preset) {
             url: '',
             key: '',
             model: '',
+            secretId: '',
         };
     }
 
@@ -280,6 +282,7 @@ export function normalizeCustomEndpointPreset(preset) {
         url: String(preset?.url ?? ''),
         key: String(preset?.key ?? ''),
         model: String(preset?.model ?? ''),
+        secretId,
     };
 }
 
@@ -287,7 +290,7 @@ export function normalizeCustomEndpointPreset(preset) {
  * Builds a Custom OpenAI-compatible endpoint profile from the current form.
  *
  * @param {Record<string, any>} preset Custom endpoint profile data
- * @returns {{name: string, url: string, key: string, model: string}}
+ * @returns {{name: string, url: string, key: string, model: string, secretId: string}}
  */
 export function buildCustomEndpointPresetForSave(preset) {
     return normalizeCustomEndpointPreset(preset);

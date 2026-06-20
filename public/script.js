@@ -15815,8 +15815,13 @@ function addDebugFunctions() {
         alert(message);
     });
     registerDebugFunction('toggleEventTracing', 'Toggle event tracing', 'Useful to see what triggered a certain event.', () => {
-        localStorage.setItem('eventTracing', localStorage.getItem('eventTracing') === 'true' ? 'false' : 'true');
-        toastr.info('Event tracing is now ' + (localStorage.getItem('eventTracing') === 'true' ? 'enabled' : 'disabled'));
+        try {
+            const nextEventTracing = localStorage.getItem('eventTracing') === 'true' ? 'false' : 'true';
+            localStorage.setItem('eventTracing', nextEventTracing);
+            toastr.info('Event tracing is now ' + (nextEventTracing === 'true' ? 'enabled' : 'disabled'));
+        } catch {
+            toastr.warning('Event tracing could not be persisted in this browser session.');
+        }
     });
 
     registerDebugFunction('toggleRegenerateWarning', 'Toggle Ctrl+Enter regeneration confirmation', 'Toggle the warning when regenerating a message with a Ctrl+Enter hotkey.', () => {

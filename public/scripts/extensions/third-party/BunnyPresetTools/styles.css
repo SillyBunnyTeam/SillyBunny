@@ -127,6 +127,7 @@
 }
 
 #completion_prompt_manager_list.bpt-section-reordering {
+    -webkit-user-select: none;
     user-select: none;
 }
 
