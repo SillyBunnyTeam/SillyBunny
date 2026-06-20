@@ -1,4 +1,6 @@
 #preloader {
+    --sb-loader-edge-gap: clamp(2px, 0.75vmin, 5px);
+    --sb-loader-border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 52%, var(--SmartThemeBorderColor) 48%);
     position: fixed;
     inset: 0;
     margin: 0;
@@ -21,6 +23,25 @@
     opacity: 1;
     overflow: hidden;
     overscroll-behavior: none;
+    isolation: isolate;
+}
+
+#preloader::before {
+    content: '';
+    position: absolute;
+    inset: var(--sb-loader-edge-gap);
+    z-index: 0;
+    border: 1px solid var(--sb-loader-border-color);
+    border-radius: clamp(14px, 4vmin, 26px);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--sb-loader-border-color) 20%, transparent),
+        inset 0 0 48px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 10%, transparent);
+    pointer-events: none;
+}
+
+#preloader > * {
+    position: relative;
+    z-index: 1;
 }
 
 #loader:not(.splash-screen) {
@@ -84,16 +105,17 @@
     align-items: center;
     justify-content: center;
     gap: 4rem;
-    width: min(100%, 420px);
-    min-height: min(520px, calc(100dvh - 32px));
-    height: auto;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    height: 100%;
     margin: auto;
-    padding: 32px 24px;
+    padding: max(32px, calc(var(--sb-loader-edge-gap) + 24px)) 24px;
     box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 34%, var(--SmartThemeBorderColor) 66%);
-    border-radius: 28px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%);
-    box-shadow: 0 24px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
     transition: all var(--sb-transition-slow);
 }
 

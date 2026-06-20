@@ -207,7 +207,7 @@ function isSearchShortcutTarget(target) {
     return target === 'action:search';
 }
 
-function activateShortcutTarget(target) {
+function activateShortcutTarget(target, event = null) {
     if (isSearchShortcutTarget(target)) {
         const searchState = getUniversalSearchState();
 
@@ -239,12 +239,12 @@ function activateShortcutTarget(target) {
             void setCharacterListEntityView('characters');
         }
         preloadPanelStylesheets('characters', tab);
-        toggleShellPanel(shell, tab);
+        toggleShellPanel(shell, tab, { sourceEvent: event });
         return;
     }
 
     if (shell && tab) {
-        toggleShellPanel(shell, tab);
+        toggleShellPanel(shell, tab, { sourceEvent: event });
     }
 }
 
@@ -2469,29 +2469,6 @@ function applyMobileDrawerBoundsDecision(drawer, decision) {
     }
 }
 
-function getMobileSafeAreaBottomPx() {
-    const styles = window.getComputedStyle(document.documentElement);
-    const fallback = Number.parseFloat(styles.getPropertyValue('--sb-mobile-safe-area-bottom')) || 0;
-
-    if (!(document.body instanceof HTMLElement)) {
-        return fallback;
-    }
-
-    let probe = document.getElementById('sb-mobile-safe-area-bottom-probe');
-    if (!(probe instanceof HTMLElement)) {
-        probe = createElement('div', {
-            attrs: {
-                id: 'sb-mobile-safe-area-bottom-probe',
-                'aria-hidden': 'true',
-            },
-        });
-        probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:var(--sb-mobile-safe-area-bottom,0px);pointer-events:none;visibility:hidden;contain:layout style size;';
-        document.body.appendChild(probe);
-    }
-
-    return Number.parseFloat(window.getComputedStyle(probe).paddingBottom) || fallback;
-}
-
 function syncMobileShellDrawerBounds() {
     const drawers = getMobileShellBoundDrawers();
 
@@ -2502,7 +2479,6 @@ function syncMobileShellDrawerBounds() {
     const mobileViewport = isMobileViewport();
     const viewportSize = mobileViewport ? getShellViewportSize() : null;
     const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
-    const safeAreaBottom = mobileViewport ? getMobileSafeAreaBottomPx() : 0;
 
     for (const drawer of drawers) {
         const isOpen = drawer.classList.contains('openDrawer');
@@ -2512,10 +2488,11 @@ function syncMobileShellDrawerBounds() {
             isMobileViewport: mobileViewport,
             isOpen,
             isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
+            viewportWidth: viewportSize?.width ?? 0,
             viewportHeight: viewportSize?.height ?? 0,
+            viewportLeft: viewportSize?.left ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
-            safeAreaBottom,
         }));
     }
 }
@@ -8412,7 +8389,7 @@ function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
     document.getElementById('sb-persona-picker')?.remove();
 }
 
-function toggleShellPanel(shellKey, tabId = null) {
+function toggleShellPanel(shellKey, tabId = null, { sourceEvent = null } = {}) {
     if (shellKey === 'characters') {
         if (isCharacterPanelTabOpen(tabId)) {
             closeCharacterPanel();
@@ -8437,7 +8414,7 @@ function toggleShellPanel(shellKey, tabId = null) {
     preloadPanelStylesheets(shellKey, tabId);
 
     if (tabId ? isShellTabOpen(shellKey, tabId) : isShellOpen(shellKey)) {
-        if (wasShellJustOpened(shellKey)) {
+        if (wasShellJustOpened(shellKey) && !sourceEvent?.isTrusted) {
             return;
         }
 
@@ -8766,7 +8743,7 @@ function buildTopBar() {
             label: getShellConfig('left').proxyLabel,
             title: 'Open workspace tools',
         },
-        () => toggleShellPanel('left'),
+        event => toggleShellPanel('left', null, { sourceEvent: event }),
     );
 
     const homeButton = createProxyButton(
@@ -8789,7 +8766,7 @@ function buildTopBar() {
             label: getShellConfig('right').proxyLabel,
             title: 'Open customization tools',
         },
-        () => toggleShellPanel('right'),
+        event => toggleShellPanel('right', null, { sourceEvent: event }),
     );
 
     const charactersButton = createProxyButton(
@@ -8811,7 +8788,7 @@ function buildTopBar() {
             title: `Quick access: ${leftShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only',
         },
-        () => activateShortcutTarget(getShortcutTarget('left')),
+        event => activateShortcutTarget(getShortcutTarget('left'), event),
     );
     bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget('left'));
 
@@ -8824,7 +8801,7 @@ function buildTopBar() {
             title: `Quick access: ${rightShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only',
         },
-        () => activateShortcutTarget(getShortcutTarget('right')),
+        event => activateShortcutTarget(getShortcutTarget('right'), event),
     );
     bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
@@ -8839,7 +8816,7 @@ function buildTopBar() {
                 title: `Quick access: ${shortcutConfig.label}`,
                 className: 'sb-proxy-button-icon-only sb-desktop-setting',
             },
-            () => activateShortcutTarget(getShortcutTarget(side)),
+            event => activateShortcutTarget(getShortcutTarget(side), event),
         );
         bindSearchShortcutPreFocus(shortcut, () => getShortcutTarget(side));
         desktopShortcutButtons[side] = shortcut;

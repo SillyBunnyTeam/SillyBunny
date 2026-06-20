@@ -199,7 +199,7 @@ describe('SillyBunny boot guard', () => {
         expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
     });
 
-    test('defers timeout failures while the normal startup loader is active', () => {
+    test('does not show the recovery panel for loader-only startup timeouts', () => {
         const { document, setNow, timers } = createBootGuardHarness();
         const preloader = addPreloader(document);
         const loader = document.appendChild(new FakeElement('div', { id: 'loader' }));
@@ -222,7 +222,22 @@ describe('SillyBunny boot guard', () => {
         setNow(38000);
         timers.shift().callback();
 
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button')).toBeNull();
+        expect(document.getElementById('preloader')).toBeNull();
+    });
+
+    test('removes a stale startup loader when the shell runtime is ready', () => {
+        const { document, setNow, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        document.appendChild(new FakeElement('div', { id: 'loader' }));
+        window.SillyBunnyShell = { openTab: jest.fn() };
+
+        setNow(26000);
+        timers.shift().callback();
+
+        expect(preloader.querySelector('button')).toBeNull();
+        expect(document.getElementById('loader')).toBeNull();
+        expect(document.getElementById('preloader')).toBeNull();
     });
 
     test('offers a dismiss button that removes the panel and suppresses later failures', () => {

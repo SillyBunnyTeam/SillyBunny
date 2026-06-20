@@ -155,6 +155,31 @@
         return Date.now() - bootStartedAt;
     }
 
+    function isRuntimeReady() {
+        try {
+            return Boolean(window.SillyBunnyShell && typeof window.SillyBunnyShell.openTab === 'function');
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function completeBoot() {
+        bootCompleted = true;
+        loaderRemovalGraceActive = false;
+        if (timeoutId) {
+            window.clearTimeout(timeoutId);
+        }
+    }
+
+    function completeBootSilently(removePreloader) {
+        completeBoot();
+
+        if (removePreloader) {
+            removeStartupLoaderArtifacts();
+            removeElement(document.getElementById('preloader'));
+        }
+    }
+
     function scheduleBootTimeout(delay) {
         timeoutId = window.setTimeout(handleBootTimeout, delay);
     }
@@ -164,14 +189,22 @@
             return;
         }
 
+        if (lastFailure) {
+            showFailure(lastFailure);
+            return;
+        }
+
+        if (isRuntimeReady()) {
+            completeBootSilently(true);
+            return;
+        }
+
         if (!lastFailure && isStartupLoaderActive()) {
             loaderRemovalGraceActive = false;
 
             if (!timeoutWarningShown && getElapsedBootTimeMs() >= MAX_BOOT_TIMEOUT_MS) {
                 timeoutWarningShown = true;
                 console.warn('SillyBunny startup is still waiting for the loader to finish; no startup error was captured.');
-                showFailure('Startup timed out before SillyBunny removed the preloader.');
-                return;
             }
 
             scheduleBootTimeout(BOOT_TIMEOUT_RETRY_MS);
@@ -184,7 +217,12 @@
             return;
         }
 
-        showFailure(lastFailure || 'Startup timed out after the preloader disappeared before SillyBunny finished booting.');
+        if (!timeoutWarningShown && getElapsedBootTimeMs() >= MAX_BOOT_TIMEOUT_MS) {
+            timeoutWarningShown = true;
+            console.warn('SillyBunny startup loader disappeared before boot completion, but no startup error was captured.');
+        }
+
+        completeBootSilently(true);
     }
 
     function showFailure(details) {
@@ -261,11 +299,7 @@
 
     window.SillyBunnyBootGuard = {
         bootCompleted: function () {
-            bootCompleted = true;
-            loaderRemovalGraceActive = false;
-            if (timeoutId) {
-                window.clearTimeout(timeoutId);
-            }
+            completeBoot();
         },
         showFailure: showFailure,
     };

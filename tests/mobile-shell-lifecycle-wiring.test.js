@@ -307,10 +307,14 @@ describe('mobile shell lifecycle wiring', () => {
         const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
         const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
 
-        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
-        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'right\'))');
-        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab);');
+        expect(buildTopBarSource).toContain('event => toggleShellPanel(\'left\', null, { sourceEvent: event })');
+        expect(buildTopBarSource).toContain('event => toggleShellPanel(\'right\', null, { sourceEvent: event })');
+        expect(buildTopBarSource).toContain('event => activateShortcutTarget(getShortcutTarget(\'left\'), event)');
+        expect(buildTopBarSource).toContain('event => activateShortcutTarget(getShortcutTarget(\'right\'), event)');
+        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab, { sourceEvent: event });');
         expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
+        expect(toggleShellPanelSource).toContain('{ sourceEvent = null } = {}');
+        expect(toggleShellPanelSource).toContain('wasShellJustOpened(shellKey) && !sourceEvent?.isTrusted');
         expect(toggleShellPanelSource).toContain('isCharacterPanelTabOpen(tabId)');
         expect(toggleShellPanelSource).toContain('closeCharacterPanel();');
         expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
@@ -385,7 +389,6 @@ describe('mobile shell lifecycle wiring', () => {
 
     test('routes mobile drawer bound decisions through the lifecycle seam', () => {
         const applyDecisionSource = getFunctionSource('applyMobileDrawerBoundsDecision');
-        const safeAreaSource = getFunctionSource('getMobileSafeAreaBottomPx');
         const syncBoundsSource = getFunctionSource('syncMobileShellDrawerBounds');
 
         // The adapter is the single DOM writer for drawer bound styles.
@@ -395,17 +398,14 @@ describe('mobile shell lifecycle wiring', () => {
         expect(applyDecisionSource).toContain('decision.styleWrites');
         expect(applyDecisionSource).toContain('drawer.style.setProperty(property, value, priority);');
         expect(applyDecisionSource).toContain('drawer.style.removeProperty(property);');
-        expect(safeAreaSource).toContain('window.getComputedStyle(document.documentElement)');
-        expect(safeAreaSource).toContain('--sb-mobile-safe-area-bottom');
-        expect(safeAreaSource).toContain('sb-mobile-safe-area-bottom-probe');
-        expect(safeAreaSource).toContain('padding-bottom:var(--sb-mobile-safe-area-bottom,0px)');
-        expect(safeAreaSource).toContain('window.getComputedStyle(probe).paddingBottom');
 
         // The call site resolves decisions through the seam and applies via the adapter.
         expect(syncBoundsSource).toContain('sbMobileShellLifecycle.drawerBounds.resolveBounds({');
         expect(syncBoundsSource).toContain('applyMobileDrawerBoundsDecision(drawer,');
-        expect(syncBoundsSource).toContain('const safeAreaBottom = mobileViewport ? getMobileSafeAreaBottomPx() : 0;');
-        expect(syncBoundsSource).toContain('safeAreaBottom,');
+        expect(syncBoundsSource).toContain('viewportWidth: viewportSize?.width ?? 0,');
+        expect(syncBoundsSource).toContain('viewportLeft: viewportSize?.left ?? 0,');
+        expect(tabsSource).not.toContain('function getMobileSafeAreaBottomPx(');
+        expect(syncBoundsSource).not.toContain('safeAreaBottom');
 
         // The old inline style writes are gone from the call site.
         expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');

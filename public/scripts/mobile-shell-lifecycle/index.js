@@ -874,12 +874,11 @@ export function resolveMobileModalA11yState({
 } = {}) {
     const ids = Array.isArray(activeRootIds) ? activeRootIds : [];
     const hasActiveMobileModal = ids.length > 0;
-    const shouldInertTopBar = ids.some(id => id !== 'sb-mobile-nav');
 
     return {
         hasActiveMobileModal,
         shouldInertShell: hasActiveMobileModal,
-        shouldInertTopBar,
+        shouldInertTopBar: false,
     };
 }
 
@@ -892,6 +891,11 @@ export const MOBILE_SHELL_DRAWER_BOUND_ACTION = Object.freeze({
 export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
     'top',
     'bottom',
+    'left',
+    'right',
+    'width',
+    'min-width',
+    'max-width',
     'height',
     'max-height',
     'box-sizing',
@@ -922,20 +926,22 @@ function clampBoundNumber(value, min, max) {
  * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
  * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
  * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
+ * @param {number} [options.viewportWidth=0] Current shell viewport width in px.
  * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
+ * @param {number} [options.viewportLeft=0] Current shell viewport left offset in px.
  * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
  * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
- * @param {number} [options.safeAreaBottom=0] Bottom safe-area inset reserved below the drawer.
  * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
  */
 export function resolveMobileDrawerBounds({
     isMobileViewport = false,
     isOpen = false,
     isViewportBound = false,
+    viewportWidth = 0,
     viewportHeight = 0,
+    viewportLeft = 0,
     baseTopOffset = 0,
     shellGap = 0,
-    safeAreaBottom = 0,
 } = {}) {
     const shouldBind = Boolean(isMobileViewport) && Boolean(isOpen);
 
@@ -947,21 +953,23 @@ export function resolveMobileDrawerBounds({
         };
     }
 
+    const safeViewportWidth = Math.max(0, Math.round(normalizeNumber(viewportWidth)));
     const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
+    const safeViewportLeft = Math.round(normalizeNumber(viewportLeft));
     const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
     const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
-    const bottomInset = clampBoundNumber(
-        Math.round(normalizeNumber(safeAreaBottom)),
-        0,
-        Math.max(0, safeViewportHeight - topOffset),
-    );
-    const availableHeight = Math.max(0, safeViewportHeight - topOffset - bottomInset);
+    const availableHeight = Math.max(0, safeViewportHeight - topOffset);
 
     return {
         action: MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND,
         styleWrites: [
             { property: 'top', value: `${topOffset}px`, priority: 'important' },
             { property: 'bottom', value: 'auto', priority: 'important' },
+            { property: 'left', value: `${safeViewportLeft}px`, priority: 'important' },
+            { property: 'right', value: 'auto', priority: 'important' },
+            { property: 'width', value: `${safeViewportWidth}px`, priority: 'important' },
+            { property: 'min-width', value: `${safeViewportWidth}px`, priority: 'important' },
+            { property: 'max-width', value: `${safeViewportWidth}px`, priority: 'important' },
             { property: 'box-sizing', value: 'border-box', priority: 'important' },
             { property: 'height', value: `${availableHeight}px`, priority: 'important' },
             { property: 'max-height', value: `${availableHeight}px`, priority: 'important' },
