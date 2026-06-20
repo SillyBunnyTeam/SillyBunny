@@ -51,8 +51,10 @@ function getMediaQueryPxValues(cssSource) {
 // Raised 4 -> 6: mobile-refactor port added two !important display overrides
 // for bottom-chat overflow toggle/source to beat unlayered sillybunny-tabs.css
 // and third-party extension CSS that forces display:flex on hidden buttons.
+// Raised 6 -> 11: 37f271cbc added five drawer-bound overrides to keep open
+// mobile shells locked to the visual viewport over upstream drawer rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 6,
+    'sillybunny-mobile-shell.css': 11,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 137,
@@ -88,7 +90,9 @@ const FORK_UNLAYERED_GUARD_PINS = Object.freeze({
         '/* Must beat upstream public/css/tags.css:162 .rm_tag_controls. */',
     ],
 });
-const FORK_DISTINCT_BREAKPOINT_BUDGET = 7;
+// Raised 7 -> 8: the retained 1420px group schedule breakpoint keeps the
+// desktop-width two-step controls layout from ccea8982f.
+const FORK_DISTINCT_BREAKPOINT_BUDGET = 8;
 
 const forkSheetSources = Object.fromEntries(
     Object.keys(FORK_SHEET_IMPORTANT_BUDGETS).map(sheetName => [sheetName, readPublicFile('css', sheetName)]),
