@@ -6,6 +6,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
+const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -139,5 +140,61 @@ describe('OpenAI proxy preset wiring', () => {
         expect(sourceUpdateIndex).toBeGreaterThan(capturePresetIndex);
         expect(restoreCallIndex).toBeGreaterThan(syncCallIndex);
         expect(saveIndex).toBeGreaterThan(restoreCallIndex);
+    });
+
+    test('shows an explicit Custom endpoint profile selector', () => {
+        expect(indexHtml).toContain('id="custom_endpoint_preset"');
+        expect(indexHtml).toContain('id="save_custom_endpoint"');
+        expect(indexHtml).toContain('id="delete_custom_endpoint"');
+        expect(indexHtml).toContain('id="custom_endpoint_preset_name"');
+        expect(indexHtml).toContain('Saved Custom OpenAI-compatible URLs, API keys, and model IDs.');
+    });
+
+    test('saves Custom endpoint profiles with URL, key, and model fields', () => {
+        expect(openAiSource).toContain('buildCustomEndpointPresetForSave({');
+        expect(openAiSource).toContain('url: $(\'#custom_api_url_text\').val()');
+        expect(openAiSource).toContain('key: $(\'#api_key_custom\').val()');
+        expect(openAiSource).toContain('model: $(\'#custom_model_id\').val()');
+    });
+
+    test('applies Custom endpoint profile values before reconnecting', () => {
+        const setCustomEndpointSource = getFunctionSource('setCustomEndpointPreset');
+        const urlUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_url = normalizedPreset.url;');
+        const modelUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_model = normalizedPreset.model;');
+        const secretWriteIndex = setCustomEndpointSource.indexOf('await writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key, undefined, { allowEmpty: true });');
+        const keyInputIndex = setCustomEndpointSource.indexOf('$(\'#api_key_custom\').val(normalizedPreset.key);');
+        const reconnectIndex = setCustomEndpointSource.indexOf('reconnectOpenAi();');
+
+        expect(urlUpdateIndex).toBeGreaterThanOrEqual(0);
+        expect(modelUpdateIndex).toBeGreaterThan(urlUpdateIndex);
+        expect(secretWriteIndex).toBeGreaterThan(modelUpdateIndex);
+        expect(keyInputIndex).toBeGreaterThan(secretWriteIndex);
+        expect(reconnectIndex).toBeGreaterThan(keyInputIndex);
+    });
+
+    test('loads and persists Custom endpoint profiles with settings', () => {
+        expect(scriptSource).toContain('await loadCustomEndpointPresets(settings);');
+        expect(scriptSource).toContain('custom_endpoint_presets: custom_endpoint_presets');
+        expect(scriptSource).toContain('selected_custom_endpoint_preset: selected_custom_endpoint_preset');
+    });
+
+    test('preserves legacy Custom endpoint settings until a profile is selected', () => {
+        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
+        const selectedAssignmentIndex = loadCustomEndpointSource.indexOf('selected_custom_endpoint_preset = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset) : null;');
+        const applyBranchIndex = loadCustomEndpointSource.indexOf('if (selected_custom_endpoint_preset) {');
+        const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(', applyBranchIndex);
+        const fallbackNameIndex = loadCustomEndpointSource.indexOf('$(\'#custom_endpoint_preset_name\').val(\'None\');');
+
+        expect(selectedAssignmentIndex).toBeGreaterThanOrEqual(0);
+        expect(applyBranchIndex).toBeGreaterThan(selectedAssignmentIndex);
+        expect(applyPresetIndex).toBeGreaterThan(applyBranchIndex);
+        expect(fallbackNameIndex).toBeGreaterThan(applyPresetIndex);
+        expect(loadCustomEndpointSource).not.toContain('savedSelectedPreset ||');
+    });
+
+    test('wires Custom endpoint profile selection from initOpenAI', () => {
+        const initSource = getFunctionSource('initOpenAI');
+
+        expect(initSource).toContain('$(\'#custom_endpoint_preset\').on(\'change\', onCustomEndpointPresetChange);');
     });
 });

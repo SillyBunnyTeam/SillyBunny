@@ -3824,6 +3824,41 @@
                             </div>
                         </form>
                         <form id="custom_form" data-source="custom">
+                            <div class="inline-drawer wide100p">
+                                <div class="inline-drawer-toggle inline-drawer-header">
+                                    <b data-i18n="Custom Endpoint Profiles">Custom Endpoint Profiles</b>
+                                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                                </div>
+                                <div class="inline-drawer-content">
+                                    <div class="range-block-title justifyLeft" data-i18n="Endpoint Profiles">
+                                        Endpoint Profiles
+                                    </div>
+                                    <div class="toggle-description justifyLeft">
+                                        <span data-i18n="Saved Custom OpenAI-compatible URLs, API keys, and model IDs.">
+                                            Saved Custom OpenAI-compatible URLs, API keys, and model IDs.
+                                        </span>
+                                        <br>
+                                    </div>
+                                    <div class="openai_logit_bias_preset_form">
+                                        <select id="custom_endpoint_preset">
+                                        </select>
+                                        <i id="save_custom_endpoint" class="menu_button fa-solid fa-save" title="Save Custom Endpoint Profile" data-i18n="[title]Save Custom Endpoint Profile"></i>
+                                        <i id="delete_custom_endpoint" class="menu_button fa-solid fa-trash" title="Delete Custom Endpoint Profile" data-i18n="[title]Delete Custom Endpoint Profile"></i>
+                                    </div>
+                                    <div class="range-block-title justifyLeft" data-i18n="Profile Name">
+                                        Profile Name
+                                    </div>
+                                    <div class="toggle-description justifyLeft">
+                                        <span data-i18n="This will show up as your saved endpoint profile.">
+                                            This will show up as your saved endpoint profile.
+                                        </span>
+                                        <br>
+                                    </div>
+                                    <div class="wide100p">
+                                        <input id="custom_endpoint_preset_name" type="text" class="text_pole" placeholder="..." />
+                                    </div>
+                                </div>
+                            </div>
                             <h4 data-i18n="Custom Endpoint (Base URL)">Custom Endpoint (Base URL)</h4>
                             <div class="flex-container">
                                 <input id="custom_api_url_text" class="text_pole wide100p" value="" autocomplete="off" data-i18n="[placeholder]Example: http://localhost:1234/v1" placeholder="Example: http://localhost:1234/v1">

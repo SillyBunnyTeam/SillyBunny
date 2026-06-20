@@ -90,8 +90,10 @@ import {
     buildChatCompletionPresetForSave,
     buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
+    buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
     getChatCompletionSamplingProfileLookupKeys,
+    normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
@@ -688,6 +690,16 @@ export let proxies = [
     },
 ];
 export let selected_proxy = proxies[0];
+
+export let custom_endpoint_presets = [
+    {
+        name: 'None',
+        url: '',
+        key: '',
+        model: '',
+    },
+];
+export let selected_custom_endpoint_preset = custom_endpoint_presets[0];
 
 export let openai_setting_names;
 export let openai_settings;
@@ -9279,6 +9291,164 @@ $('#delete_proxy').on('click', async function () {
     }
 });
 
+/**
+ * Custom OpenAI-compatible endpoint profile stuff
+ */
+export async function loadCustomEndpointPresets(settings) {
+    const hasSavedCustomEndpointPresets = Array.isArray(settings.custom_endpoint_presets) && settings.custom_endpoint_presets.length > 0;
+    let endpointPresets = settings.custom_endpoint_presets;
+
+    if (!hasSavedCustomEndpointPresets) {
+        endpointPresets = custom_endpoint_presets.map(preset => normalizeCustomEndpointPreset(preset));
+    } else {
+        endpointPresets = endpointPresets.map(preset => normalizeCustomEndpointPreset(preset));
+    }
+
+    custom_endpoint_presets = endpointPresets;
+
+    if (!custom_endpoint_presets.some(preset => preset.name === 'None')) {
+        custom_endpoint_presets.unshift(normalizeCustomEndpointPreset({ name: 'None' }));
+    }
+
+    const savedSelectedPreset = settings.selected_custom_endpoint_preset;
+    selected_custom_endpoint_preset = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset) : null;
+    if (selected_custom_endpoint_preset && !custom_endpoint_presets.some(preset => preset.name === selected_custom_endpoint_preset.name)) {
+        custom_endpoint_presets.push(selected_custom_endpoint_preset);
+    }
+
+    $('#custom_endpoint_preset').empty();
+
+    for (const preset of custom_endpoint_presets) {
+        appendCustomEndpointPresetOption(preset);
+    }
+
+    $('#custom_endpoint_preset').val(selected_custom_endpoint_preset?.name || 'None');
+
+    if (selected_custom_endpoint_preset) {
+        await setCustomEndpointPreset(
+            selected_custom_endpoint_preset.name,
+            selected_custom_endpoint_preset.url,
+            selected_custom_endpoint_preset.key,
+            selected_custom_endpoint_preset.model,
+            { reconnect: false },
+        );
+    } else {
+        $('#custom_endpoint_preset_name').val('None');
+    }
+}
+
+function getCustomEndpointPresetOption(name) {
+    return $('#custom_endpoint_preset option').filter((_, option) => option.value === name);
+}
+
+function appendCustomEndpointPresetOption(preset) {
+    const normalizedPreset = normalizeCustomEndpointPreset(preset);
+    const option = document.createElement('option');
+    option.innerText = normalizedPreset.name;
+    option.value = normalizedPreset.name;
+    option.selected = normalizedPreset.name === 'None';
+    $('#custom_endpoint_preset').append(option);
+}
+
+function updateCustomEndpointPresetOption(preset) {
+    const option = getCustomEndpointPresetOption(preset.name);
+
+    if (option.length > 0) {
+        option.text(preset.name);
+    } else {
+        appendCustomEndpointPresetOption(preset);
+    }
+}
+
+async function setCustomEndpointPreset(name, url, key, model, { writeKey = true, reconnect = true } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model });
+    const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
+    if (preset) {
+        preset.url = normalizedPreset.url;
+        preset.key = normalizedPreset.key;
+        preset.model = normalizedPreset.model;
+        selected_custom_endpoint_preset = preset;
+    } else {
+        const newPreset = normalizedPreset;
+        custom_endpoint_presets.push(newPreset);
+        selected_custom_endpoint_preset = newPreset;
+        appendCustomEndpointPresetOption(newPreset);
+    }
+
+    $('#custom_endpoint_preset_name').val(normalizedPreset.name);
+    oai_settings.custom_url = normalizedPreset.url;
+    $('#custom_api_url_text').val(oai_settings.custom_url);
+    oai_settings.custom_model = normalizedPreset.model;
+    $('#custom_model_id').val(oai_settings.custom_model);
+    $('#model_custom_select').val(oai_settings.custom_model);
+
+    if (writeKey) {
+        await writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key, undefined, { allowEmpty: true });
+    }
+    $('#api_key_custom').val(normalizedPreset.key);
+
+    if (reconnect && oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
+        reconnectOpenAi();
+    }
+}
+
+async function onCustomEndpointPresetChange() {
+    const value = String($('#custom_endpoint_preset').find(':selected').val());
+    const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
+
+    if (selectedPreset) {
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model);
+    } else {
+        console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
+    }
+    saveSettingsDebounced();
+}
+
+$('#save_custom_endpoint').on('click', async function () {
+    const preset = buildCustomEndpointPresetForSave({
+        name: $('#custom_endpoint_preset_name').val(),
+        url: $('#custom_api_url_text').val(),
+        key: $('#api_key_custom').val(),
+        model: $('#custom_model_id').val(),
+    });
+
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model);
+    saveSettingsDebounced();
+    toastr.success(t`Custom Endpoint Profile Saved`);
+    updateCustomEndpointPresetOption(preset);
+    $('#custom_endpoint_preset').val(preset.name);
+});
+
+$('#delete_custom_endpoint').on('click', async function () {
+    const presetName = $('#custom_endpoint_preset_name').val();
+    const index = custom_endpoint_presets.findIndex(preset => preset.name === presetName);
+
+    if (index !== -1) {
+        custom_endpoint_presets.splice(index, 1);
+        getCustomEndpointPresetOption(presetName).remove();
+
+        if (custom_endpoint_presets.length > 0) {
+            const newIndex = Math.max(0, index - 1);
+            selected_custom_endpoint_preset = custom_endpoint_presets[newIndex];
+        } else {
+            selected_custom_endpoint_preset = normalizeCustomEndpointPreset({ name: 'None' });
+        }
+
+        await setCustomEndpointPreset(
+            selected_custom_endpoint_preset.name,
+            selected_custom_endpoint_preset.url,
+            selected_custom_endpoint_preset.key,
+            selected_custom_endpoint_preset.model,
+        );
+
+        saveSettingsDebounced();
+        $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
+        toastr.success(t`Custom Endpoint Profile Deleted`);
+    } else {
+        toastr.error(t`Could not find custom endpoint profile with name '${presetName}'`);
+    }
+});
+
 function runProxyCallback(_, value) {
     if (!value) {
         return selected_proxy?.name || '';
@@ -10453,4 +10623,5 @@ export function initOpenAI() {
     $('#openai_proxy_password_show').on('click', onProxyPasswordShowClick);
     $('#customize_additional_parameters').on('click', onCustomizeParametersClick);
     $('#openai_proxy_preset').on('change', onProxyPresetChange);
+    $('#custom_endpoint_preset').on('change', onCustomEndpointPresetChange);
 }

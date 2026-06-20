@@ -256,3 +256,39 @@ export function normalizeReverseProxyPreset(preset, { supportedSources = [] } = 
 export function buildReverseProxyPresetForSave(preset, { supportedSources = [] } = {}) {
     return normalizeReverseProxyPreset(preset, { supportedSources });
 }
+
+/**
+ * Normalizes a Custom OpenAI-compatible endpoint profile.
+ *
+ * @param {Record<string, any>} preset Custom endpoint profile
+ * @returns {{name: string, url: string, key: string, model: string}}
+ */
+export function normalizeCustomEndpointPreset(preset) {
+    const name = String(preset?.name ?? 'None');
+
+    if (name === 'None') {
+        return {
+            name,
+            url: '',
+            key: '',
+            model: '',
+        };
+    }
+
+    return {
+        name,
+        url: String(preset?.url ?? ''),
+        key: String(preset?.key ?? ''),
+        model: String(preset?.model ?? ''),
+    };
+}
+
+/**
+ * Builds a Custom OpenAI-compatible endpoint profile from the current form.
+ *
+ * @param {Record<string, any>} preset Custom endpoint profile data
+ * @returns {{name: string, url: string, key: string, model: string}}
+ */
+export function buildCustomEndpointPresetForSave(preset) {
+    return normalizeCustomEndpointPreset(preset);
+}
