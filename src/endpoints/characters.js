@@ -18,7 +18,7 @@ import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValu
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
-import { invalidateThumbnail } from './thumbnails.js';
+import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
 import { getUserDirectories } from '../users.js';
 import { getChatInfo } from './chats.js';
@@ -1429,6 +1429,43 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     }
 
     return response.sendStatus(200);
+});
+
+/**
+ * HTTP POST endpoint for the "/api/characters/regenerate-thumbnail" route.
+ *
+ * Invalidates the cached avatar thumbnail for a character and regenerates it from the original avatar file.
+ *
+ * @param {import("express").Request} request The HTTP request object. Body: `{ avatar_url: string }`
+ * @param {import("express").Response} response The HTTP response object.
+ */
+router.post('/regenerate-thumbnail', validateAvatarUrlMiddleware, async function (request, response) {
+    if (!request.body || !request.body.avatar_url) {
+        return response.sendStatus(400);
+    }
+
+    if (request.body.avatar_url !== sanitize(request.body.avatar_url)) {
+        console.error('Malicious filename prevented');
+        return response.sendStatus(403);
+    }
+
+    const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+    if (!fs.existsSync(avatarPath)) {
+        return response.status(404).json({ error: 'Character avatar file not found.' });
+    }
+
+    try {
+        invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
+        const result = await generateThumbnail(request.user.directories, 'avatar', request.body.avatar_url, true);
+        return response.json({
+            ok: true,
+            regenerated: result.path !== null,
+            aspectRatio: result.aspectRatio,
+        });
+    } catch (error) {
+        console.error('Failed to regenerate thumbnail for', request.body.avatar_url, error);
+        return response.status(500).json({ error: 'Failed to regenerate thumbnail.' });
+    }
 });
 
 /**
