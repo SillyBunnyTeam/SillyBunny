@@ -413,7 +413,7 @@ describe('mobile shell lifecycle helper', () => {
         })).toBe(false);
     });
 
-    test('inerts shell for any active mobile modal and top bar for non-nav modals', () => {
+    test('inerts shell for active mobile modals while keeping the top bar operable', () => {
         expect(resolveMobileModalA11yState({
             activeRootIds: [],
         })).toEqual({
@@ -435,7 +435,7 @@ describe('mobile shell lifecycle helper', () => {
         })).toEqual({
             hasActiveMobileModal: true,
             shouldInertShell: true,
-            shouldInertTopBar: true,
+            shouldInertTopBar: false,
         });
     });
 

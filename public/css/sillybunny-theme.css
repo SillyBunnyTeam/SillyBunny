@@ -935,18 +935,28 @@ h3:not(.popup h3):not(#chat h3) {
 .inline-drawer-icon {
     inline-size: var(--sb-inline-drawer-icon-size);
     block-size: var(--sb-inline-drawer-icon-size);
+    aspect-ratio: 1;
     min-inline-size: var(--sb-inline-drawer-icon-size);
     min-block-size: var(--sb-inline-drawer-icon-size);
     max-inline-size: var(--sb-inline-drawer-icon-size);
     max-block-size: var(--sb-inline-drawer-icon-size);
     flex: 0 0 var(--sb-inline-drawer-icon-size);
+    align-self: center;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     margin-left: auto;
     border-radius: var(--sb-icon-control-radius);
+    font-size: clamp(14px, calc(var(--mainFontSize) * 1.05), 18px);
     line-height: 1;
-    overflow: hidden;
+    text-align: center;
+    vertical-align: middle;
+    overflow: visible;
+}
+
+.custom-drawer-icon::before,
+.inline-drawer-icon::before {
+    line-height: 1;
 }
 
 .drawer-icon.openIcon {
@@ -964,6 +974,38 @@ h3:not(.popup h3):not(#chat h3) {
     align-items: center;
 }
 
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header):has(> :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon)),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header):has(> :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon)) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > :is(b, strong, span, .title-container, .extension_name),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > :is(b, strong, span, .title-container, .extension_name) {
+    min-width: 0;
+    align-self: center;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon) {
+    align-self: center;
+    justify-self: end;
+    margin: 0;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > .inline-drawer-icon,
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > .inline-drawer-icon {
+    justify-self: end;
+    margin-left: 0;
+}
+
 @media (pointer: coarse), screen and (max-width: 768px) {
     .inline-drawer-header {
         align-items: center;
@@ -973,6 +1015,7 @@ h3:not(.popup h3):not(#chat h3) {
         border-radius: 12px;
     }
 
+    .inline-drawer-icon,
     .inline-drawer-icon > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i) {
         font-size: clamp(14px, calc(var(--mainFontSize) * 1.05), 18px);
     }
@@ -3300,9 +3343,9 @@ input[type='range']::-moz-range-thumb {
 
 @media (pointer: coarse) and (max-width: 1000px) {
     #left-nav-panel.openDrawer {
-        --sb-mobile-range-label-width: clamp(4.25rem, 24vw, 5.75rem);
+        --sb-mobile-range-label-width: clamp(6.75rem, 30vw, 7.75rem);
         --sb-mobile-range-counter-width: 3.25rem;
-        --sb-mobile-range-gap: 10px;
+        --sb-mobile-range-gap: 12px;
     }
 
     .sb-sampling-control-card > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider),
@@ -3370,6 +3413,33 @@ input[type='range']::-moz-range-thumb {
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-title,
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) > .range-block-title {
         min-height: 32px;
+    }
+
+    .sb-sampling-control-card > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > :is(small, label):has(> .fa-circle-info),
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers]:has(> input[type='range'].neo-range-slider) > :is(small, label):has(> .fa-circle-info),
+    .sb-sampling-control-card > .range-block:has(> .range-block-range-and-counter) > .range-block-title:has(.fa-circle-info),
+    #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) > small:has(> .fa-circle-info),
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-title:has(.fa-circle-info),
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) > .range-block-title:has(.fa-circle-info) {
+        display: grid;
+        grid-template-columns: minmax(0, auto) 28px;
+        align-items: center;
+        justify-content: start;
+        column-gap: 8px;
+        padding-inline-end: 8px;
+        min-width: 0;
+    }
+
+    .sb-sampling-control-card :is(small, label, .range-block-title) > .fa-circle-info,
+    #left-nav-panel.openDrawer :is(small, label, .range-block-title) > .fa-circle-info {
+        inline-size: 28px;
+        block-size: 28px;
+        min-inline-size: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        line-height: 1;
     }
 
     @media screen and (max-width: 420px) {
@@ -6051,6 +6121,44 @@ input[type='range']::-moz-range-thumb {
 /* Must beat upstream public/style.css:6130 .inline-drawer-header. */
 .inline-drawer-header {
     background: var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%));
+}
+
+/* Must beat upstream public/style.css:6130 .inline-drawer-header display. */
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header),
+#rm_extensions_block :is(.inline-drawer-toggle, .inline-drawer-header) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header):has(> :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon)),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header):has(> :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon)),
+#rm_extensions_block :is(.inline-drawer-toggle, .inline-drawer-header):has(> :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon)) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > :is(b, strong, span, .title-container, .extension_name),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > :is(b, strong, span, .title-container, .extension_name),
+#rm_extensions_block :is(.inline-drawer-toggle, .inline-drawer-header) > :is(b, strong, span, .title-container, .extension_name) {
+    min-width: 0;
+    align-self: center;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon),
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon),
+#rm_extensions_block :is(.inline-drawer-toggle, .inline-drawer-header) > :is([id$='_settings_popout_button'], [id$='settings_popout_button'], .menu_button, .menu_button_icon):not(.inline-drawer-icon) {
+    align-self: center;
+    justify-self: end;
+    margin: 0;
+}
+
+#extensions_settings :is(.inline-drawer-toggle, .inline-drawer-header) > .inline-drawer-icon,
+#extensions_settings2 :is(.inline-drawer-toggle, .inline-drawer-header) > .inline-drawer-icon,
+#rm_extensions_block :is(.inline-drawer-toggle, .inline-drawer-header) > .inline-drawer-icon {
+    justify-self: end;
+    margin-left: 0;
 }
 
 /* Must beat upstream public/style.css:971/978 #form_sheld. */
