@@ -1001,6 +1001,25 @@ h3:not(.popup h3):not(#chat h3) {
     transition: color var(--sb-transition-fast), opacity var(--sb-transition-fast);
 }
 
+.inline-drawer-toggle,
+.inline-drawer-header {
+    align-items: center;
+}
+
+@media (pointer: coarse), screen and (max-width: 768px) {
+    .inline-drawer-header {
+        align-items: center;
+    }
+
+    .inline-drawer-icon {
+        border-radius: 12px;
+    }
+
+    .inline-drawer-icon > :is(.fa, .fa-solid, .fa-regular, .fa-brands, i) {
+        font-size: clamp(14px, calc(var(--mainFontSize) * 1.05), 18px);
+    }
+}
+
 .text_pole,
 textarea.text_pole,
 select.text_pole,
@@ -3210,7 +3229,7 @@ input[type='range']::-moz-range-thumb {
 
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) {
         display: grid;
-        grid-template-columns: minmax(92px, 0.34fr) minmax(52px, auto);
+        grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr) minmax(52px, auto);
         align-items: center;
         gap: 8px;
         margin: 0;
@@ -3226,6 +3245,7 @@ input[type='range']::-moz-range-thumb {
     }
 
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) > .wide100p {
+        grid-column: 3;
         width: auto;
         justify-content: flex-end;
     }
@@ -3283,7 +3303,7 @@ input[type='range']::-moz-range-thumb {
     ) > .flex-container.flexFlowRow > div:has(> input[type='range'].neo-range-slider),
     .sb-sampling-multi-card > #contrastiveSearchBlock > .alignitemscenter:has(> input[type='range'].neo-range-slider),
     #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) {
-        grid-template-columns: minmax(72px, 0.32fr) minmax(0, 1fr) minmax(46px, auto);
+        grid-template-columns: minmax(58px, 0.24fr) minmax(0, 1fr) minmax(42px, auto);
         gap: 6px;
     }
 
@@ -3294,22 +3314,22 @@ input[type='range']::-moz-range-thumb {
     }
 
     .sb-sampling-control-card > .range-block:has(> .range-block-range-and-counter) {
-        grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+        grid-template-columns: minmax(62px, 0.28fr) minmax(0, 1fr) minmax(42px, auto);
     }
 
     .sb-sampling-control-card > .range-block:has(> .range-block-range-and-counter) > .range-block-range-and-counter {
-        grid-template-columns: minmax(0, 1fr) minmax(44px, auto);
+        grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
         gap: 6px;
     }
 
     .sb-sampling-control-card > .range-block:has(> .range-block-range-and-counter) .neo-range-input {
-        width: 46px;
-        min-width: 46px;
+        width: 42px;
+        min-width: 42px;
         padding-inline: 4px;
     }
 
     .sb-sampling-control-card > #cfg_block_ooba > .alignitemscenter {
-        grid-template-columns: minmax(72px, 0.32fr) minmax(0, 1fr) minmax(46px, auto);
+        grid-template-columns: minmax(58px, 0.24fr) minmax(0, 1fr) minmax(42px, auto);
     }
 
     .sb-sampling-control-card > #cfg_block_ooba > .alignitemscenter > small {
@@ -3336,23 +3356,77 @@ input[type='range']::-moz-range-thumb {
     ) > .flex-container.flexFlowRow > div:has(> input[type='range'].neo-range-slider) > .neo-range-input,
     .sb-sampling-multi-card > #contrastiveSearchBlock > .alignitemscenter:has(> input[type='range'].neo-range-slider) > .neo-range-input,
     #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) > .wide100p > .neo-range-input {
-        width: 46px;
-        min-width: 46px;
+        width: 42px;
+        min-width: 42px;
         padding-inline: 4px;
     }
 
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) {
-        grid-template-columns: minmax(72px, 0.32fr) minmax(0, 1fr);
+        grid-template-columns: minmax(62px, 0.28fr) minmax(0, 1fr);
     }
 
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) {
-        grid-template-columns: minmax(72px, 0.32fr) minmax(46px, auto);
+        grid-template-columns: minmax(62px, 0.28fr) minmax(42px, auto);
+    }
+}
+
+@media screen and (max-width: 420px) {
+    .sb-sampling-control-card > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider),
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers]:has(> input[type='range'].neo-range-slider),
+    .sb-sampling-multi-card > :is(
+        #adaptive_p_block,
+        #smoothingBlock,
+        #xtc_block,
+        #dryBlock,
+        #dynatemp_block_ooba,
+        #mirostat_block_ooba,
+        #beamSearchBlock,
+        #contrastiveSearchBlock
+    ) > .flex-container.flexFlowRow > div:has(> input[type='range'].neo-range-slider),
+    .sb-sampling-multi-card > #contrastiveSearchBlock > .alignitemscenter:has(> input[type='range'].neo-range-slider),
+    #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) {
+        grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
+    }
+
+    .sb-sampling-control-card > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > :is(small, label),
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers]:has(> input[type='range'].neo-range-slider) > :is(small, label),
+    .sb-sampling-multi-card > :is(
+        #adaptive_p_block,
+        #smoothingBlock,
+        #xtc_block,
+        #dryBlock,
+        #dynatemp_block_ooba,
+        #mirostat_block_ooba,
+        #beamSearchBlock,
+        #contrastiveSearchBlock
+    ) > .flex-container.flexFlowRow > div:has(> input[type='range'].neo-range-slider) > :is(small, label),
+    .sb-sampling-multi-card > #contrastiveSearchBlock > .alignitemscenter:has(> input[type='range'].neo-range-slider) > :is(small, label),
+    #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) > small {
+        grid-column: 1 / -1;
+    }
+
+    .sb-sampling-control-card > .range-block:has(> .range-block-range-and-counter),
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-range-and-counter {
+        width: 100%;
+    }
+
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) .neo-range-slider {
+        width: 100%;
+        min-width: 0;
+    }
+
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) {
+        grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
     }
 }
 
 @media (pointer: coarse) and (max-width: 1000px) {
     #left-nav-panel.openDrawer {
-        --sb-mobile-range-label-width: clamp(5.75rem, 30vw, 7.25rem);
+        --sb-mobile-range-label-width: clamp(4.25rem, 24vw, 5.75rem);
         --sb-mobile-range-counter-width: 3.25rem;
         --sb-mobile-range-gap: 10px;
     }
@@ -3387,6 +3461,22 @@ input[type='range']::-moz-range-thumb {
         gap: var(--sb-mobile-range-gap, 10px);
     }
 
+    @media screen and (max-width: 420px) {
+        #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-range-and-counter {
+            grid-column: 1 / -1;
+            width: 100%;
+        }
+    }
+
+    #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-title {
+        grid-column: 1 / -1;
+        min-height: auto;
+    }
+
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) {
         grid-template-columns: minmax(var(--sb-mobile-range-label-width, 92px), 0.42fr) minmax(var(--sb-mobile-range-counter-width, 52px), auto);
         gap: var(--sb-mobile-range-gap, 10px);
@@ -3406,6 +3496,39 @@ input[type='range']::-moz-range-thumb {
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) > .range-block-title,
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) > .range-block-title {
         min-height: 32px;
+    }
+
+    @media screen and (max-width: 420px) {
+        .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > :is(small, label) {
+            grid-column: 1 / -1;
+            min-height: auto;
+            min-width: 0;
+            margin: 0;
+            text-align: left;
+        }
+
+        .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider {
+            width: 100%;
+            max-width: none;
+            min-width: 0;
+            margin: 0 !important;
+        }
+
+        .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > .neo-range-input {
+            width: 42px;
+            min-width: 42px;
+            margin: 0;
+            padding-inline: 4px;
+        }
     }
 }
 
@@ -5786,15 +5909,17 @@ input[type='range']::-moz-range-thumb {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_slope']:has(> input[type='range'].neo-range-slider),
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_frequency']:has(> input[type='range'].neo-range-slider),
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_presence']:has(> input[type='range'].neo-range-slider),
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider),
     .sb-sampling-multi-card > #smoothingBlock > .flex-container.flexFlowRow > div:has(> #smoothing_factor_textgenerationwebui),
     .sb-sampling-multi-card > #xtc_block > .flex-container.flexFlowRow > div[data-tg-samplers='xtc_threshold']:has(> input[type='range'].neo-range-slider) {
-        grid-template-columns: minmax(0, 1fr) minmax(46px, auto);
+        grid-template-columns: minmax(0, 1fr) 42px;
         gap: 5px 6px;
     }
 
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_slope']:has(> input[type='range'].neo-range-slider) > :is(small, label),
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_frequency']:has(> input[type='range'].neo-range-slider) > :is(small, label),
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_presence']:has(> input[type='range'].neo-range-slider) > :is(small, label),
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > :is(small, label),
     .sb-sampling-multi-card > #smoothingBlock > .flex-container.flexFlowRow > div:has(> #smoothing_factor_textgenerationwebui) > :is(small, label),
     .sb-sampling-multi-card > #xtc_block > .flex-container.flexFlowRow > div[data-tg-samplers='xtc_threshold']:has(> input[type='range'].neo-range-slider) > :is(small, label) {
         grid-column: 1 / -1;
@@ -5803,17 +5928,24 @@ input[type='range']::-moz-range-thumb {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_slope']:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider,
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_frequency']:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider,
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_presence']:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider,
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider,
     .sb-sampling-multi-card > #smoothingBlock > .flex-container.flexFlowRow > div:has(> #smoothing_factor_textgenerationwebui) > input[type='range'].neo-range-slider,
     .sb-sampling-multi-card > #xtc_block > .flex-container.flexFlowRow > div[data-tg-samplers='xtc_threshold']:has(> input[type='range'].neo-range-slider) > input[type='range'].neo-range-slider {
         grid-column: 1;
+        width: 100%;
+        max-width: none;
     }
 
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_slope']:has(> input[type='range'].neo-range-slider) > .neo-range-input,
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_frequency']:has(> input[type='range'].neo-range-slider) > .neo-range-input,
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_presence']:has(> input[type='range'].neo-range-slider) > .neo-range-input,
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > :is(.alignitemscenter, .alignItemsCenter).flex-container:has(> input[type='range'].neo-range-slider) > .neo-range-input,
     .sb-sampling-multi-card > #smoothingBlock > .flex-container.flexFlowRow > div:has(> #smoothing_factor_textgenerationwebui) > .neo-range-input,
     .sb-sampling-multi-card > #xtc_block > .flex-container.flexFlowRow > div[data-tg-samplers='xtc_threshold']:has(> input[type='range'].neo-range-slider) > .neo-range-input {
         grid-column: 2;
+        width: 42px;
+        min-width: 42px;
+        padding-inline: 4px;
     }
 
     #left-nav-panel.openDrawer #max_context_block {
