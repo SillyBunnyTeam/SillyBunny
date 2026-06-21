@@ -3333,7 +3333,25 @@
     .sb-shell-root.openDrawer,
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
-    #right-nav-panel.openDrawer,
+    #right-nav-panel.openDrawer {
+        position: fixed;
+        inset-inline: 0;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
+        bottom: auto;
+        width: 100vw;
+        width: 100dvw;
+        max-width: 100dvw;
+        min-width: 0;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        overflow: hidden;
+        transform: translateZ(0);
+        box-sizing: border-box;
+    }
+
     :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
     #top-settings-holder #right-nav-panel.openDrawer {
         position: fixed;
