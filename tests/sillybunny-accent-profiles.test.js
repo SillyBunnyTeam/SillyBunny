@@ -52,6 +52,7 @@ describe('SillyBunny accent color profiles', () => {
     test('wires the appearance UI and responsive profile controls', () => {
         expect(indexSource).toContain('id="sb-accent-profile-save"');
         expect(indexSource).toContain('id="sb-accent-profiles-panel"');
+        expect(indexSource).toContain('data-settings-tab="appearance"');
         expect(indexSource).toContain('id="sb-accent-profiles-list"');
         expect(indexSource).toContain('id="sb-accent-profiles-empty"');
         expect(indexSource).toContain('class="inline-drawer-toggle sb-accent-profiles-toggle"');
