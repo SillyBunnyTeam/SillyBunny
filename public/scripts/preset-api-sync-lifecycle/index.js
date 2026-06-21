@@ -16,10 +16,6 @@ function normalizeString(value) {
     return String(value ?? '').trim();
 }
 
-function stripDecoratedConnectionProfileText(value) {
-    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
-}
-
 /**
  * Normalizes a main API id for preset/API sync lookups.
  * @param {unknown} value Main API id.
@@ -82,51 +78,6 @@ export function resolveConnectionProfileSelectionSync({
 }
 
 /**
- * Resolves how the shell should rebind the source connection-profile select.
- * @param {object} options Options.
- * @param {boolean} [options.isSameSource=false] Whether the current and next source are identical.
- * @param {boolean} [options.hasCurrentSource=false] Whether an old source select is bound.
- * @param {boolean} [options.hasNextSource=false] Whether a new source select is available.
- * @param {boolean} [options.hasChangeHandler=false] Whether the old source has a change handler.
- * @returns {{shouldSkip: boolean, shouldUnbindCurrent: boolean, shouldDisconnectObserver: boolean, shouldStoreNextSource: boolean, shouldClearChangeHandler: boolean, shouldBindNext: boolean}}
- */
-export function resolveConnectionProfileSourceBinding({
-    isSameSource = false,
-    hasCurrentSource = false,
-    hasNextSource = false,
-    hasChangeHandler = false,
-} = {}) {
-    const shouldSkip = Boolean(isSameSource);
-
-    return {
-        shouldSkip,
-        shouldUnbindCurrent: !shouldSkip && Boolean(hasCurrentSource && hasChangeHandler),
-        shouldDisconnectObserver: !shouldSkip,
-        shouldStoreNextSource: !shouldSkip,
-        shouldClearChangeHandler: !shouldSkip,
-        shouldBindNext: !shouldSkip && Boolean(hasNextSource),
-    };
-}
-
-/**
- * Resolves whether a source-select mutation requires the shell to rebind.
- * @param {object} options Options.
- * @param {boolean} [options.targetTouchesSource=false] Whether the mutation target is or contains the source select.
- * @param {boolean} [options.addedTouchesSource=false] Whether added nodes include the source select.
- * @param {boolean} [options.removedTouchesSource=false] Whether removed nodes include the source select.
- * @returns {{shouldRebind: boolean}}
- */
-export function resolveConnectionProfileSourceMutation({
-    targetTouchesSource = false,
-    addedTouchesSource = false,
-    removedTouchesSource = false,
-} = {}) {
-    return {
-        shouldRebind: Boolean(targetTouchesSource || addedTouchesSource || removedTouchesSource),
-    };
-}
-
-/**
  * Resolves UI state for mirrored connection-profile controls.
  * @param {object} options Options.
  * @param {boolean} [options.hasConnectionProfiles=false] Whether source select exists.
@@ -163,91 +114,6 @@ export function resolveConnectionProfileMirrorState({
 }
 
 /**
- * Resolves mirrored connection-profile control updates without touching DOM.
- * @param {object} options Options.
- * @param {boolean} [options.shouldClearMirrors=false] Whether mirrored controls should be cleared.
- * @param {boolean} [options.shouldShowMobileSection=false] Whether the mobile section should be visible.
- * @param {boolean} [options.shouldDisableConnectButton=true] Whether connect buttons should be disabled.
- * @param {unknown} [options.sourceOptionsMarkup=''] Source select option markup to mirror.
- * @param {unknown} [options.sourceValue=''] Source select value to mirror.
- * @param {unknown} [options.connectionStatusText=''] Current connection status text.
- * @returns {{shouldClearMirrors: boolean, shouldShowMobileSection: boolean, shouldDisableConnectButton: boolean, optionsMarkup: string, selectedValue: string, statusText: string}}
- */
-export function resolveConnectionProfileMirrorUpdate({
-    shouldClearMirrors = false,
-    shouldShowMobileSection = false,
-    shouldDisableConnectButton = true,
-    sourceOptionsMarkup = '',
-    sourceValue = '',
-    connectionStatusText = '',
-} = {}) {
-    const shouldClear = Boolean(shouldClearMirrors);
-
-    return {
-        shouldClearMirrors: shouldClear,
-        shouldShowMobileSection: Boolean(shouldShowMobileSection),
-        shouldDisableConnectButton: Boolean(shouldDisableConnectButton),
-        optionsMarkup: shouldClear ? '' : String(sourceOptionsMarkup ?? ''),
-        selectedValue: shouldClear ? '' : String(sourceValue ?? ''),
-        statusText: shouldClear ? '' : String(connectionStatusText ?? ''),
-    };
-}
-
-/**
- * Resolves the mirrored connection-profile status label without touching DOM.
- * @param {object} options Options.
- * @param {boolean} [options.hasContext=false] Whether SillyTavern context is available.
- * @param {boolean} [options.isNoConnection=false] Whether the active backend is disconnected.
- * @param {unknown} [options.apiValue='Connected'] API value selected by context or slash command.
- * @param {unknown} [options.modelValue=''] Model/status value selected by context or slash command.
- * @param {unknown} [options.apiOptionText] Decorated API option label, when available.
- * @param {unknown} [options.modelOptionText] Decorated model option label, when available.
- * @returns {string}
- */
-export function resolveConnectionProfileStatusText({
-    hasContext = false,
-    isNoConnection = false,
-    apiValue = 'Connected',
-    modelValue = '',
-    apiOptionText,
-    modelOptionText,
-} = {}) {
-    if (!hasContext) {
-        return '';
-    }
-
-    if (isNoConnection) {
-        return 'No connection...';
-    }
-
-    const resolvedApiValue = stripDecoratedConnectionProfileText(apiOptionText ?? apiValue);
-    const resolvedModelValue = stripDecoratedConnectionProfileText(modelOptionText ?? modelValue);
-
-    return resolvedModelValue ? `${resolvedApiValue} - ${resolvedModelValue}` : resolvedApiValue;
-}
-
-/**
- * Resolves connection-strip state transitions without touching DOM.
- * @param {object} options Options.
- * @param {boolean} [options.shouldOpen=false] Requested strip open state.
- * @param {boolean} [options.hasDesktopStrip=false] Whether the desktop strip exists.
- * @returns {{shouldApply: boolean, nextState: boolean, shouldApplySurfaceExclusivity: boolean}}
- */
-export function resolveConnectionStripOpenState({
-    shouldOpen = false,
-    hasDesktopStrip = false,
-} = {}) {
-    const nextState = Boolean(shouldOpen);
-    const shouldApply = Boolean(hasDesktopStrip);
-
-    return {
-        shouldApply,
-        nextState,
-        shouldApplySurfaceExclusivity: shouldApply && nextState,
-    };
-}
-
-/**
  * Creates the compatibility-facing preset/API sync lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -263,12 +129,7 @@ export function createPresetApiSyncLifecycle() {
         connectionProfiles: {
             sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE,
             resolveSelectionSync: resolveConnectionProfileSelectionSync,
-            resolveSourceBinding: resolveConnectionProfileSourceBinding,
-            resolveSourceMutation: resolveConnectionProfileSourceMutation,
             resolveMirrorState: resolveConnectionProfileMirrorState,
-            resolveMirrorUpdate: resolveConnectionProfileMirrorUpdate,
-            resolveStatusText: resolveConnectionProfileStatusText,
-            resolveStripOpenState: resolveConnectionStripOpenState,
         },
     };
 }

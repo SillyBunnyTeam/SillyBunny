@@ -12,11 +12,6 @@ describe('mobile shell drawer bounds lifecycle', () => {
         expect(MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES).toEqual([
             'top',
             'bottom',
-            'left',
-            'right',
-            'width',
-            'min-width',
-            'max-width',
             'height',
             'max-height',
             'box-sizing',
@@ -28,9 +23,7 @@ describe('mobile shell drawer bounds lifecycle', () => {
             isMobileViewport: true,
             isOpen: true,
             isViewportBound: false,
-            viewportWidth: 390,
             viewportHeight: 844,
-            viewportLeft: 4,
             baseTopOffset: 56,
             shellGap: 3,
         });
@@ -40,38 +33,16 @@ describe('mobile shell drawer bounds lifecycle', () => {
         expect(decision.styleWrites).toEqual([
             { property: 'top', value: '59px', priority: 'important' },
             { property: 'bottom', value: 'auto', priority: 'important' },
-            { property: 'left', value: '4px', priority: 'important' },
-            { property: 'right', value: 'auto', priority: 'important' },
-            { property: 'width', value: '390px', priority: 'important' },
-            { property: 'min-width', value: '390px', priority: 'important' },
-            { property: 'max-width', value: '390px', priority: 'important' },
             { property: 'box-sizing', value: 'border-box', priority: 'important' },
             { property: 'height', value: '785px', priority: 'important' },
             { property: 'max-height', value: '785px', priority: 'important' },
         ]);
     });
 
-    test('keeps an open drawer bound to the viewport bottom', () => {
-        const decision = resolveMobileDrawerBounds({
-            isMobileViewport: true,
-            isOpen: true,
-            viewportWidth: 390,
-            viewportHeight: 844,
-            baseTopOffset: 56,
-            shellGap: 3,
-            safeAreaBottom: 34,
-        });
-
-        expect(decision.styleWrites).toContainEqual({ property: 'top', value: '59px', priority: 'important' });
-        expect(decision.styleWrites).toContainEqual({ property: 'height', value: '785px', priority: 'important' });
-        expect(decision.styleWrites).toContainEqual({ property: 'max-height', value: '785px', priority: 'important' });
-    });
-
     test('clamps the top offset to the viewport and never yields negative height', () => {
         const decision = resolveMobileDrawerBounds({
             isMobileViewport: true,
             isOpen: true,
-            viewportWidth: 390,
             viewportHeight: 500,
             baseTopOffset: 480,
             shellGap: 200,
@@ -86,15 +57,11 @@ describe('mobile shell drawer bounds lifecycle', () => {
         const decision = resolveMobileDrawerBounds({
             isMobileViewport: true,
             isOpen: true,
-            viewportWidth: 390.4,
             viewportHeight: 844,
-            viewportLeft: 0.6,
             baseTopOffset: 55.6,
             shellGap: Number.NaN,
         });
 
-        expect(decision.styleWrites).toContainEqual({ property: 'left', value: '1px', priority: 'important' });
-        expect(decision.styleWrites).toContainEqual({ property: 'width', value: '390px', priority: 'important' });
         expect(decision.styleWrites).toContainEqual({ property: 'top', value: '56px', priority: 'important' });
         expect(decision.styleWrites).toContainEqual({ property: 'height', value: '788px', priority: 'important' });
     });

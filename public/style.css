@@ -3959,62 +3959,6 @@ grammarly-extension {
     min-width: 0;
 }
 
-@media screen and (max-width: 768px) {
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions {
-        width: 100%;
-        max-width: 100%;
-        align-self: start;
-        justify-self: stretch;
-        justify-content: flex-start;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions #favorite_button {
-        flex: 0 0 auto;
-        width: auto;
-        min-width: max(var(--sb-mobile-touch-target, 44px), 4.5rem);
-        overflow: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
-        grid-column: 1 / -1;
-        width: 100%;
-        min-width: 0;
-        height: auto;
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
-        justify-content: flex-start;
-        padding: 0;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
-        flex: 0 0 auto;
-        width: 100%;
-        min-width: 0;
-        align-items: stretch;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons {
-        width: 100%;
-        max-width: 100%;
-        box-sizing: border-box;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        overflow-x: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons .menu_button {
-        flex: 0 0 40px;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
-    }
-}
-
 #avatar_controls > label[for="char-management-dropdown"] {
     align-self: center;
     margin-inline: auto;

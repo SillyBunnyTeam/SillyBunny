@@ -61,7 +61,7 @@ export async function selectSampleCharacter(page) {
             await context.getCharacters();
         }
 
-        const characterId = context.characters.findIndex(character => /Bunny Guide|Seraphina|Natalie/.test(character?.name ?? character?.data?.name ?? ''));
+        const characterId = context.characters.findIndex(character => /Bunny Guide|Seraphina/.test(character?.name ?? character?.data?.name ?? ''));
 
         if (characterId < 0) {
             return false;
@@ -384,7 +384,6 @@ export async function getRenderedMessageIds(page) {
 export async function markFirstRenderedMessageEditing(page) {
     const firstEditButton = page.locator('#chat .mes[mesid] .mes_edit').first();
 
-    await dismissOpenDialogIfPresent(page);
     await firstEditButton.waitFor({ state: 'visible', timeout: 5000 });
     await firstEditButton.click();
     await page.locator('#chat .mes[mesid] .mes_edit_buttons:visible').first().waitFor({ state: 'visible', timeout: 5000 });
@@ -422,7 +421,6 @@ export async function scrollMessageNearTop(page, messageId, offsetTop = 24) {
         const messageRect = message.getBoundingClientRect();
 
         chat.scrollTop += messageRect.top - chatRect.top - targetOffsetTop;
-        chat.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -320 }));
         chat.dispatchEvent(new Event('scroll', { bubbles: true }));
     }, { targetMessageId: String(messageId), targetOffsetTop: offsetTop });
     await waitForAnimationFrames(page, 2);
