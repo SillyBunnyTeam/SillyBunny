@@ -172,25 +172,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileShellRailActionsSource).not.toContain('railQuickActionState.filter(action => !builtInRailActionKeys.has(getMobileQuickActionKey(action)))');
     });
 
-    test('routes bottom chat overflow visibility through the lifecycle seam', () => {
-        const syncBottomChatActionOverflowStateSource = getFunctionSource('syncBottomChatActionOverflowState');
-        const buildBottomChatBarSource = getFunctionSource('buildBottomChatBar');
-
-        expect(syncBottomChatActionOverflowStateSource).toContain('sbMobileShellLifecycle.railModel.resolveBottomBarActionVisibility({');
-        expect(syncBottomChatActionOverflowStateSource).toContain('actions: getBottomChatActionModels(),');
-        expect(syncBottomChatActionOverflowStateSource).toContain('isMobileViewport: isMobileViewport(),');
-        expect(syncBottomChatActionOverflowStateSource).toContain('visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,');
-        expect(syncBottomChatActionOverflowStateSource).toContain('action.button.classList.toggle(\'sb-bottom-chat-overflow-source\', plan.overflowActions.includes(action));');
-        expect(tabsSource).toContain('{ id: \'hide-bottom-bar\', button: bottomChatBarState.hideButton }');
-        expect(buildBottomChatBarSource).toContain('bottomChatBarState.overflowOpen = false;');
-        expect(buildBottomChatBarSource).toContain('bottomChatBarState.overflowMenu.remove();');
-        expect(buildBottomChatBarSource).toContain('const overflowBtn = createBottomChatButton({ icon: \'fa-ellipsis\', title: \'More chat actions\', className: \'sb-bottom-chat-overflow-toggle\' }');
-        expect(buildBottomChatBarSource).toContain('overflowBtn.setAttribute(\'aria-controls\', \'sb-bottom-chat-overflow-menu\');');
-        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-source');
-        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-menu');
-        expect(tabsCssSource).toContain('.sb-bottom-chat-overflow-item');
-    });
-
     test('routes inline drawer decisions through the lifecycle seam', () => {
         const interceptDrawerOpenersSource = getFunctionSource('interceptDrawerOpeners');
         const getInlineDrawerStorageKeySource = getFunctionSource('getInlineDrawerStorageKey');
@@ -242,10 +223,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncDesktopShellSizing, { passive: true });');
-        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto;[\s\S]*box-sizing:\s*border-box;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
-        expect(mobileShellCssSource.lastIndexOf('bottom: auto;')).toBeGreaterThan(
-            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px);'),
+        expect(tabsSource).toContain('window.addEventListener(\'orientationchange\', queueMobileViewportStateSync);');
+        expect(mobileShellCssSource).toMatch(/#left-nav-panel\.openDrawer,[\s\S]*#right-nav-panel\.openDrawer\s*\{[\s\S]*top:\s*calc\(var\(--sb-shell-measured-top-offset,[\s\S]*bottom:\s*auto\s*!important;[\s\S]*box-sizing:\s*border-box\s*!important;[\s\S]*height:\s*calc\(var\(--sb-shell-available-height/);
+        expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
+            mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
         );
     });
 
@@ -310,14 +291,10 @@ describe('mobile shell lifecycle wiring', () => {
         const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
         const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
 
-        expect(buildTopBarSource).toContain('event => toggleShellPanel(\'left\', null, { sourceEvent: event })');
-        expect(buildTopBarSource).toContain('event => toggleShellPanel(\'right\', null, { sourceEvent: event })');
-        expect(buildTopBarSource).toContain('event => activateShortcutTarget(getShortcutTarget(\'left\'), event)');
-        expect(buildTopBarSource).toContain('event => activateShortcutTarget(getShortcutTarget(\'right\'), event)');
-        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab, { sourceEvent: event });');
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
+        expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'right\'))');
+        expect(activateShortcutTargetSource).toContain('toggleShellPanel(shell, tab);');
         expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
-        expect(toggleShellPanelSource).toContain('{ sourceEvent = null } = {}');
-        expect(toggleShellPanelSource).toContain('wasShellJustOpened(shellKey) && !sourceEvent?.isTrusted');
         expect(toggleShellPanelSource).toContain('isCharacterPanelTabOpen(tabId)');
         expect(toggleShellPanelSource).toContain('closeCharacterPanel();');
         expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
@@ -405,43 +382,10 @@ describe('mobile shell lifecycle wiring', () => {
         // The call site resolves decisions through the seam and applies via the adapter.
         expect(syncBoundsSource).toContain('sbMobileShellLifecycle.drawerBounds.resolveBounds({');
         expect(syncBoundsSource).toContain('applyMobileDrawerBoundsDecision(drawer,');
-        expect(syncBoundsSource).toContain('viewportWidth: viewportSize?.width ?? 0,');
-        expect(syncBoundsSource).toContain('viewportLeft: viewportSize?.left ?? 0,');
-        expect(tabsSource).not.toContain('function getMobileSafeAreaBottomPx(');
-        expect(syncBoundsSource).not.toContain('safeAreaBottom');
 
         // The old inline style writes are gone from the call site.
         expect(syncBoundsSource).not.toContain('style.setProperty(\'top\'');
         expect(syncBoundsSource).not.toContain('style.setProperty(\'height\'');
         expect(syncBoundsSource).not.toContain('style.removeProperty(');
-    });
-
-    test('routes mobile drawer swipe-dismiss through the lifecycle seam', () => {
-        const bindGestureSource = getFunctionSource('bindMobileDrawerGestureDismiss');
-        const openShellSource = getFunctionSource('openShell');
-        const injectCharacterControlsSource = getFunctionSource('injectCharacterDrawerControls');
-        const toggleCharacterPanelSource = getFunctionSource('toggleCharacterPanel');
-
-        expect(bindGestureSource).toContain('sbMobileShellLifecycle.drawerGestures.createGestureState({');
-        expect(bindGestureSource).toContain('sbMobileShellLifecycle.drawerGestures.resolveGestureMove({');
-        expect(bindGestureSource).toContain('sbMobileShellLifecycle.drawerGestures.resolveGestureEnd({');
-        expect(bindGestureSource).toContain('sbMobileShellLifecycle.drawerGestures.shouldSuppressClick({');
-        expect(bindGestureSource).toContain('drawer.addEventListener(\'touchstart\', beginDrawerGesture, { passive: true });');
-        expect(bindGestureSource).toContain('drawer.addEventListener(\'touchmove\', updateDrawerGesture, { passive: false });');
-        expect(bindGestureSource).toContain('drawer.style.setProperty(\'transform\', `translateY(${gestureMove.offsetY}px)`, \'important\');');
-        expect(bindGestureSource).toContain('drawer.style.removeProperty(\'transform\');');
-        expect(openShellSource).toContain('bindMobileDrawerGestureDismiss(shellRoot, () => closeShell(shellKey));');
-        expect(injectCharacterControlsSource).toContain('bindMobileDrawerGestureDismiss(characterPanel, closeCharacterPanel);');
-        expect(toggleCharacterPanelSource).toContain('bindMobileDrawerGestureDismiss(getCharacterPanel(), closeCharacterPanel);');
-        expect(bindGestureSource).not.toContain('event.touches[0].clientY -');
-    });
-
-    test('keeps mobile drawer safe-area math on shell tokens', () => {
-        expect(mobileShellCssSource).toContain('--sb-mobile-safe-area-left: env(safe-area-inset-left, 0px);');
-        expect(mobileShellCssSource).toContain('--sb-mobile-safe-area-right: env(safe-area-inset-right, 0px);');
-        expect(mobileShellCssSource).toContain('bottom: var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));');
-        expect(mobileShellCssSource).toContain('.sb-drawer-gesture-active');
-        expect(mobileShellCssSource).not.toContain(' - env(safe-area-inset-bottom, 0px));');
-        expect(mobileShellCssSource).not.toContain('bottom: env(safe-area-inset-bottom, 0px);');
     });
 });

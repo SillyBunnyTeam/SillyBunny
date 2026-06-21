@@ -56,7 +56,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileNavReplacementTarget: 'sb-mobile-nav-replacement-target',
     mobileQuickActions: 'sb-mobile-quick-actions-v2',
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
-    mobileQuickActionsPlacement: 'sb-mobile-quick-actions-placement',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
     frontendIcon: 'sb-frontend-icon',
@@ -207,7 +206,7 @@ function isSearchShortcutTarget(target) {
     return target === 'action:search';
 }
 
-function activateShortcutTarget(target, event = null) {
+function activateShortcutTarget(target) {
     if (isSearchShortcutTarget(target)) {
         const searchState = getUniversalSearchState();
 
@@ -239,12 +238,12 @@ function activateShortcutTarget(target, event = null) {
             void setCharacterListEntityView('characters');
         }
         preloadPanelStylesheets('characters', tab);
-        toggleShellPanel(shell, tab, { sourceEvent: event });
+        toggleShellPanel(shell, tab);
         return;
     }
 
     if (shell && tab) {
-        toggleShellPanel(shell, tab, { sourceEvent: event });
+        toggleShellPanel(shell, tab);
     }
 }
 
@@ -455,7 +454,7 @@ const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful fo
 
 const SB_CHARACTER_TAB_COPY = Object.freeze({
     characters: {
-        title: 'Characters',
+        title: 'Character Menu',
         subtitle: 'View or create character cards here for your roleplays and chats!',
         description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
     },
@@ -684,7 +683,6 @@ const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
 const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
-const SB_MOBILE_QUICK_ACTION_PLACEMENTS = Object.freeze(['top', 'middle', 'bottom']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
     { type: 'tab', shellKey: 'left', tabId: 'api', icon: 'fa-plug', label: 'API' },
@@ -785,7 +783,6 @@ const sbState = {
         showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), false),
         replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), false),
         replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget)),
-        quickActionsPlacement: normalizeMobileQuickActionsPlacement(safeGetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement)),
     },
     desktopNav: {
         layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout)),
@@ -844,15 +841,8 @@ const sbState = {
         scrollTopButton: null,
         scrollBottomButton: null,
         managerButton: null,
-        newButton: null,
         massDeleteButton: null,
         autoNameButton: null,
-        renameButton: null,
-        deleteButton: null,
-        overflowButton: null,
-        overflowMenu: null,
-        overflowActions: [],
-        overflowOpen: false,
         secondaryOpen: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatSecondaryOpen), true),
         visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), true),
         searchOpen: false,
@@ -973,11 +963,6 @@ function normalizeStoredBoolean(value, fallback = false) {
 function normalizeMobileNavLayout(value) {
     const normalizedValue = normalizeText(value);
     return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'horizontal';
-}
-
-function normalizeMobileQuickActionsPlacement(value) {
-    const normalizedValue = normalizeText(value);
-    return SB_MOBILE_QUICK_ACTION_PLACEMENTS.includes(normalizedValue) ? normalizedValue : 'top';
 }
 
 function getNavState(mode) {
@@ -1432,7 +1417,6 @@ function restorePersistedTopbarState() {
     sbState.mobileNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), sbState.mobileNav.showQuickActions);
     sbState.mobileNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), sbState.mobileNav.replaceQuickActions);
     sbState.mobileNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget));
-    sbState.mobileNav.quickActionsPlacement = normalizeMobileQuickActionsPlacement(safeGetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement));
     sbState.desktopNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout));
     sbState.desktopNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), sbState.desktopNav.iconOnly);
     sbState.desktopNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), sbState.desktopNav.showCustomize);
@@ -1565,7 +1549,6 @@ function applyMobileNavPreferences() {
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
     document.documentElement.dataset.sbMobileNavReplacement = sbState.mobileNav.replaceQuickActions ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbMobileQuickActionsPlacement = sbState.mobileNav.quickActionsPlacement;
 }
 
 function applyDesktopNavPreferences() {
@@ -1654,18 +1637,6 @@ function setMobileNavReplacementTarget(target, { persist = true } = {}) {
     }
 
     updateMobileNavButtonLabel();
-    updateThemePickerUi();
-}
-
-function setMobileQuickActionsPlacement(placement, { persist = true } = {}) {
-    const nextPlacement = normalizeMobileQuickActionsPlacement(placement);
-    sbState.mobileNav.quickActionsPlacement = nextPlacement;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileQuickActionsPlacement, nextPlacement);
-    }
-
     updateThemePickerUi();
 }
 
@@ -2488,9 +2459,7 @@ function syncMobileShellDrawerBounds() {
             isMobileViewport: mobileViewport,
             isOpen,
             isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
-            viewportWidth: viewportSize?.width ?? 0,
             viewportHeight: viewportSize?.height ?? 0,
-            viewportLeft: viewportSize?.left ?? 0,
             baseTopOffset,
             shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
         }));
@@ -2536,113 +2505,6 @@ function queueMobileShellDrawerBoundsSync() {
         sbMobileShellDrawerBoundsFollowupId = 0;
         sync();
     }, schedule.followupDelayMs);
-}
-
-function bindMobileDrawerGestureDismiss(drawer, closeDrawer) {
-    if (!(drawer instanceof HTMLElement) || typeof closeDrawer !== 'function' || drawer.dataset.sbDrawerGestureBound === 'true') {
-        return;
-    }
-
-    drawer.dataset.sbDrawerGestureBound = 'true';
-    let drawerGesture = null;
-    let suppressDrawerClickUntil = 0;
-
-    const getGestureHandle = () => drawer.querySelector(':scope > .sb-shell-frame .sb-shell-header')
-        ?? drawer.querySelector(':scope > .sb-character-shell-header')
-        ?? drawer;
-
-    const clearDrawerGesture = () => {
-        drawerGesture = null;
-        drawer.style.removeProperty('transform');
-        drawer.classList.remove('sb-drawer-gesture-active');
-    };
-
-    const beginDrawerGesture = event => {
-        if (!isMobileViewport() || !drawer.classList.contains('openDrawer')) {
-            return;
-        }
-
-        const handle = getGestureHandle();
-        if (!(event.target instanceof Node) || !handle?.contains(event.target)) {
-            return;
-        }
-
-        drawerGesture = sbMobileShellLifecycle.drawerGestures.createGestureState({
-            isMobileViewport: isMobileViewport(),
-            isOpen: drawer.classList.contains('openDrawer'),
-            touch: event.touches?.[0],
-        });
-    };
-
-    const updateDrawerGesture = event => {
-        if (!drawerGesture) {
-            return;
-        }
-
-        const gestureMove = sbMobileShellLifecycle.drawerGestures.resolveGestureMove({
-            gestureState: drawerGesture,
-            touch: event.touches?.[0],
-        });
-
-        drawerGesture = gestureMove.gestureState;
-
-        if (!drawerGesture) {
-            clearDrawerGesture();
-            return;
-        }
-
-        drawer.classList.toggle('sb-drawer-gesture-active', drawerGesture.dragging);
-        if (drawerGesture.dragging) {
-            drawer.style.setProperty('transform', `translateY(${gestureMove.offsetY}px)`, 'important');
-        }
-
-        if (gestureMove.shouldPreventDefault && event.cancelable) {
-            event.preventDefault();
-        }
-
-        if (gestureMove.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-    };
-
-    const finishDrawerGesture = event => {
-        const gestureEnd = sbMobileShellLifecycle.drawerGestures.resolveGestureEnd({
-            gestureState: drawerGesture,
-            nowMs: Date.now(),
-        });
-
-        if (gestureEnd.suppressClickUntil) {
-            suppressDrawerClickUntil = gestureEnd.suppressClickUntil;
-        }
-
-        clearDrawerGesture();
-
-        if (gestureEnd.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-
-        if (gestureEnd.shouldDismiss) {
-            closeDrawer();
-        }
-    };
-
-    const suppressClickAfterDrawerGesture = event => {
-        if (!sbMobileShellLifecycle.drawerGestures.shouldSuppressClick({
-            nowMs: Date.now(),
-            suppressClickUntil: suppressDrawerClickUntil,
-        })) {
-            return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-    };
-
-    drawer.addEventListener('touchstart', beginDrawerGesture, { passive: true });
-    drawer.addEventListener('touchmove', updateDrawerGesture, { passive: false });
-    drawer.addEventListener('touchend', finishDrawerGesture, { passive: true });
-    drawer.addEventListener('touchcancel', clearDrawerGesture, { passive: true });
-    drawer.addEventListener('click', suppressClickAfterDrawerGesture, true);
 }
 
 function isMovingUIActive() {
@@ -4548,6 +4410,10 @@ function escapeRegExp(value) {
     return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function stripDecoratedOptionText(value) {
+    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
+}
+
 function getRequestHeadersFromContext(context = getSillyTavernContext()) {
     if (typeof context?.getRequestHeaders === 'function') {
         return context.getRequestHeaders();
@@ -4880,7 +4746,6 @@ function setBottomChatActionBusy(button, busy) {
 
     button.classList.toggle('is-busy', Boolean(busy));
     setButtonDisabled(button, Boolean(busy));
-    refreshBottomChatOverflowMenu();
 }
 
 async function handleAutoNameChat() {
@@ -5480,14 +5345,7 @@ function buildMobileChatTools() {
         return existingMobileTools;
     }
 
-    const overlay = createElement('div', {
-        id: 'sb-mobile-chat-tools',
-        attrs: {
-            role: 'dialog',
-            'aria-modal': 'true',
-            'aria-labelledby': 'sb-mobile-chat-close',
-        },
-    });
+    const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
     const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel' });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
@@ -5591,13 +5449,6 @@ function buildMobileChatTools() {
         }
     });
 
-    overlay.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            closeMobileChatTools();
-        }
-    });
-
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value, { closeMobileTools: true });
     });
@@ -5645,9 +5496,6 @@ function setMobileChatToolsOpenState(shouldOpen) {
 
     if (isOpen) {
         scheduleChatbarRefresh(0);
-        refs.dismissButton?.focus?.({ preventScroll: true });
-    } else {
-        document.getElementById('sb-chatbar-visibility-toggle')?.focus?.({ preventScroll: true });
     }
 }
 
@@ -5746,26 +5594,23 @@ function isConnectionStripOpen() {
 
 function setConnectionStripOpenState(shouldOpen) {
     const desktopRefs = getChatDesktopRefs();
-    const stripState = sbPresetApiSyncLifecycle.connectionProfiles.resolveStripOpenState({
-        shouldOpen,
-        hasDesktopStrip: desktopRefs?.connectionStrip instanceof HTMLElement,
-    });
+    const nextState = Boolean(shouldOpen);
 
-    if (!stripState.shouldApply) {
+    if (!desktopRefs?.connectionStrip) {
         return;
     }
 
-    if (stripState.shouldApplySurfaceExclusivity) {
+    if (nextState) {
         applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
             surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
             isMobileViewport: isMobileViewport(),
         }));
     }
 
-    getChatbarState().connectionStripOpen = stripState.nextState;
-    desktopRefs.connectionStrip.classList.toggle('is-open', stripState.nextState);
-    desktopRefs.connectionStrip.hidden = !stripState.nextState;
-    setButtonPressed(desktopRefs.toggleConnectionButton, stripState.nextState);
+    getChatbarState().connectionStripOpen = nextState;
+    desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
+    desktopRefs.connectionStrip.hidden = !nextState;
+    setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
 }
 
 function getCurrentMainApiValue() {
@@ -6168,18 +6013,6 @@ function createBottomChatButton({ icon, title, className = '' }, onClick) {
     return button;
 }
 
-function createBottomChatAction({ id, icon, title, className = '', onClick }) {
-    const button = createBottomChatButton({ icon, title, className }, onClick);
-    button.dataset.sbBottomActionId = id;
-
-    return {
-        id,
-        title,
-        icon,
-        button,
-    };
-}
-
 function createBottomChatSearchField() {
     const field = createElement('label', {
         id: 'sb-bottom-chat-search-field',
@@ -6215,215 +6048,6 @@ function createBottomChatSearchField() {
     return { field, input, status };
 }
 
-function getBottomChatActionModels() {
-    const bottomChatBarState = getBottomChatBarState();
-
-    return [
-        { id: 'view-files', button: bottomChatBarState.managerButton },
-        { id: 'new-chat', button: bottomChatBarState.newButton },
-        { id: 'mass-delete', button: bottomChatBarState.massDeleteButton },
-        { id: 'auto-name', button: bottomChatBarState.autoNameButton },
-        { id: 'rename-chat', button: bottomChatBarState.renameButton },
-        { id: 'search-chat', button: bottomChatBarState.searchToggleButton },
-        { id: 'delete-chat', button: bottomChatBarState.deleteButton },
-        { id: 'hide-bottom-bar', button: bottomChatBarState.hideButton },
-    ].filter(action => action.button instanceof HTMLElement)
-        .map(action => ({
-            ...action,
-            title: action.button.getAttribute('aria-label') || action.button.title || '',
-        }));
-}
-
-function ensureBottomChatOverflowMenu() {
-    const bottomChatBarState = getBottomChatBarState();
-    if (bottomChatBarState.overflowMenu instanceof HTMLElement) {
-        return bottomChatBarState.overflowMenu;
-    }
-
-    const menu = createElement('div', {
-        id: 'sb-bottom-chat-overflow-menu',
-        className: 'sb-bottom-chat-overflow-menu',
-        attrs: {
-            role: 'menu',
-            'aria-label': 'More chat actions',
-        },
-    });
-    menu.hidden = true;
-    menu.addEventListener('click', event => {
-        const button = event.target instanceof Element
-            ? event.target.closest('.sb-bottom-chat-overflow-item')
-            : null;
-        if (!(button instanceof HTMLButtonElement) || button.disabled) {
-            return;
-        }
-
-        const actionButton = bottomChatBarState.overflowActions?.find(action => action.id === button.dataset.sbBottomActionId)?.button;
-        if (actionButton instanceof HTMLButtonElement) {
-            actionButton.click();
-            setBottomChatOverflowOpen(false, { restoreFocus: false });
-        }
-    });
-    menu.addEventListener('keydown', event => {
-        const items = Array.from(menu.querySelectorAll('.sb-bottom-chat-overflow-item:not(.is-disabled):not(:disabled)'));
-        const currentIndex = items.indexOf(document.activeElement);
-
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            setBottomChatOverflowOpen(false, { restoreFocus: true });
-        } else if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            items[(currentIndex + 1) % items.length]?.focus({ preventScroll: true });
-        } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            items[(currentIndex - 1 + items.length) % items.length]?.focus({ preventScroll: true });
-        } else if (event.key === 'Home') {
-            event.preventDefault();
-            items[0]?.focus({ preventScroll: true });
-        } else if (event.key === 'End') {
-            event.preventDefault();
-            items.at(-1)?.focus({ preventScroll: true });
-        }
-    });
-
-    document.body.appendChild(menu);
-    bottomChatBarState.overflowMenu = menu;
-    return menu;
-}
-
-function positionBottomChatOverflowMenu() {
-    const bottomChatBarState = getBottomChatBarState();
-    const menu = bottomChatBarState.overflowMenu;
-    const button = bottomChatBarState.overflowButton;
-
-    if (!(menu instanceof HTMLElement) || !(button instanceof HTMLElement) || menu.hidden) {
-        return;
-    }
-
-    const buttonRect = button.getBoundingClientRect();
-    const barRect = document.getElementById('sb-bottom-chat-bar')?.getBoundingClientRect();
-    menu.style.visibility = 'hidden';
-    menu.style.left = '0px';
-    menu.style.top = '0px';
-    menu.style.right = 'auto';
-    menu.style.bottom = 'auto';
-
-    window.requestAnimationFrame(() => {
-        const menuRect = menu.getBoundingClientRect();
-        const viewportPadding = 8;
-        const left = Math.min(
-            Math.max(viewportPadding, buttonRect.right - menuRect.width),
-            Math.max(viewportPadding, window.innerWidth - menuRect.width - viewportPadding),
-        );
-        const anchorTop = barRect?.top ?? buttonRect.top;
-        const topAboveBar = anchorTop - menuRect.height - viewportPadding;
-        const top = Math.min(
-            Math.max(viewportPadding, topAboveBar),
-            Math.max(viewportPadding, window.innerHeight - menuRect.height - viewportPadding),
-        );
-
-        menu.style.left = `${Math.round(left)}px`;
-        menu.style.top = `${Math.round(top)}px`;
-        menu.style.visibility = '';
-    });
-}
-
-function setBottomChatOverflowOpen(open, { restoreFocus = false } = {}) {
-    const bottomChatBarState = getBottomChatBarState();
-    const shouldOpen = Boolean(open) && Boolean(bottomChatBarState.overflowActions?.length);
-    const menu = shouldOpen ? ensureBottomChatOverflowMenu() : bottomChatBarState.overflowMenu;
-
-    bottomChatBarState.overflowOpen = shouldOpen;
-
-    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
-        setButtonPressed(bottomChatBarState.overflowButton, shouldOpen);
-        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldOpen));
-    }
-
-    if (menu instanceof HTMLElement) {
-        menu.hidden = !shouldOpen;
-        menu.classList.toggle('is-open', shouldOpen);
-        if (shouldOpen) {
-            positionBottomChatOverflowMenu();
-            window.requestAnimationFrame(() => {
-                menu.querySelector('.sb-bottom-chat-overflow-item:not(:disabled)')?.focus({ preventScroll: true });
-            });
-        }
-    }
-
-    if (restoreFocus) {
-        bottomChatBarState.overflowButton?.focus?.({ preventScroll: true });
-    }
-}
-
-function refreshBottomChatOverflowMenu() {
-    const bottomChatBarState = getBottomChatBarState();
-    if (!bottomChatBarState.overflowActions?.length) {
-        setBottomChatOverflowOpen(false);
-        return;
-    }
-
-    const menu = ensureBottomChatOverflowMenu();
-
-    menu.replaceChildren();
-
-    for (const action of bottomChatBarState.overflowActions ?? []) {
-        const item = createElement('button', {
-            className: 'sb-bottom-chat-overflow-item',
-            attrs: {
-                type: 'button',
-                role: 'menuitem',
-                title: action.title,
-                'aria-label': action.title,
-            },
-        });
-        item.dataset.sbBottomActionId = action.id;
-        item.innerHTML = action.button.innerHTML;
-        item.appendChild(createElement('span', { text: action.title }));
-        item.disabled = action.button.hasAttribute('disabled');
-        item.classList.toggle('is-disabled', item.disabled);
-        menu.appendChild(item);
-    }
-
-    if (bottomChatBarState.overflowOpen) {
-        positionBottomChatOverflowMenu();
-    }
-}
-
-function syncBottomChatActionOverflowState() {
-    const bottomChatBarState = getBottomChatBarState();
-    const plan = sbMobileShellLifecycle.railModel.resolveBottomBarActionVisibility({
-        actions: getBottomChatActionModels(),
-        isMobileViewport: isMobileViewport(),
-        visibleActionIds: sbMobileShellLifecycle.railModel.bottomBarVisibleActionIds,
-    });
-
-    bottomChatBarState.overflowActions = plan.overflowActions;
-
-    for (const action of [...plan.visibleActions, ...plan.overflowActions]) {
-        const isOverflowAction = plan.overflowActions.includes(action);
-        action.button.hidden = isMobileViewport() && isOverflowAction;
-        action.button.style.display = isMobileViewport()
-            ? (isOverflowAction ? 'none' : 'inline-flex')
-            : '';
-        action.button.classList.toggle('sb-bottom-chat-overflow-source', plan.overflowActions.includes(action));
-    }
-
-    const shouldRenderOverflow = plan.shouldRenderOverflow && isMobileViewport();
-
-    if (bottomChatBarState.overflowButton instanceof HTMLElement) {
-        bottomChatBarState.overflowButton.hidden = !shouldRenderOverflow;
-        bottomChatBarState.overflowButton.style.display = shouldRenderOverflow ? 'inline-flex' : 'none';
-        bottomChatBarState.overflowButton.classList.toggle('sb-bottom-chat-overflow-active', shouldRenderOverflow);
-        bottomChatBarState.overflowButton.setAttribute('aria-expanded', String(shouldRenderOverflow && bottomChatBarState.overflowOpen));
-    }
-
-    if (!shouldRenderOverflow) {
-        setBottomChatOverflowOpen(false);
-    }
-
-    refreshBottomChatOverflowMenu();
-}
-
 function setBottomChatButtonIcon(button, iconClass) {
     if (!(button instanceof HTMLElement)) {
         return;
@@ -6455,10 +6079,6 @@ function syncBottomChatBarSecondaryState() {
         button.setAttribute('aria-label', title);
         button.setAttribute('aria-expanded', String(isOpen));
         setBottomChatButtonIcon(button, isOpen ? 'fa-chevron-up' : 'fa-chevron-down');
-    }
-
-    if (isHiddenOnMobile) {
-        setBottomChatOverflowOpen(false);
     }
 }
 
@@ -6554,21 +6174,17 @@ function initChatSearchObserver() {
 
 async function getConnectionStatusText() {
     const context = getSillyTavernContext();
-    const initialStatusText = sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
-        hasContext: Boolean(context),
-        isNoConnection: context?.onlineStatus === 'no_connection',
-        apiValue: context?.mainApi,
-        modelValue: context?.onlineStatus,
-    });
 
-    if (!context || context.onlineStatus === 'no_connection') {
-        return initialStatusText;
+    if (!context) {
+        return '';
+    }
+
+    if (context.onlineStatus === 'no_connection') {
+        return 'No connection...';
     }
 
     let apiValue = String(context.mainApi ?? 'Connected').trim();
     let modelValue = String(context.onlineStatus ?? '').trim();
-    let apiOptionText;
-    let modelOptionText;
 
     try {
         const nextApiValue = await context.SlashCommandParser?.commands?.api?.callback?.({ quiet: 'true' }, '');
@@ -6595,18 +6211,11 @@ async function getConnectionStatusText() {
             ?? apiBlock.querySelector(`select#main_api option[value="${escapeSelectorValue(apiValue)}"]`);
         const modelOption = apiBlock.querySelector(`option[value="${escapeSelectorValue(modelValue)}"]`);
 
-        apiOptionText = apiOption?.textContent;
-        modelOptionText = modelOption?.textContent;
+        apiValue = stripDecoratedOptionText(apiOption?.textContent ?? apiValue);
+        modelValue = stripDecoratedOptionText(modelOption?.textContent ?? modelValue);
     }
 
-    return sbPresetApiSyncLifecycle.connectionProfiles.resolveStatusText({
-        hasContext: Boolean(context),
-        isNoConnection: context?.onlineStatus === 'no_connection',
-        apiValue,
-        modelValue,
-        apiOptionText,
-        modelOptionText,
-    });
+    return modelValue ? `${apiValue} - ${modelValue}` : apiValue;
 }
 
 function nodeTouchesConnectionProfilesSource(node) {
@@ -6618,46 +6227,42 @@ function nodeTouchesConnectionProfilesSource(node) {
 }
 
 function mutationTouchesConnectionProfilesSource(mutation) {
-    const mutationState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceMutation({
-        targetTouchesSource: nodeTouchesConnectionProfilesSource(mutation.target),
-        addedTouchesSource: Array.from(mutation.addedNodes).some(nodeTouchesConnectionProfilesSource),
-        removedTouchesSource: Array.from(mutation.removedNodes).some(nodeTouchesConnectionProfilesSource),
-    });
+    if (nodeTouchesConnectionProfilesSource(mutation.target)) {
+        return true;
+    }
 
-    return mutationState.shouldRebind;
+    for (const node of mutation.addedNodes) {
+        if (nodeTouchesConnectionProfilesSource(node)) {
+            return true;
+        }
+    }
+
+    for (const node of mutation.removedNodes) {
+        if (nodeTouchesConnectionProfilesSource(node)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function bindConnectionProfileSourceElement(sourceElement) {
     const chatbarState = getChatbarState();
     const normalizedSource = sourceElement instanceof HTMLSelectElement ? sourceElement : null;
-    const bindingState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSourceBinding({
-        isSameSource: chatbarState.sourceObservedElement === normalizedSource,
-        hasCurrentSource: chatbarState.sourceObservedElement instanceof HTMLSelectElement,
-        hasNextSource: normalizedSource instanceof HTMLSelectElement,
-        hasChangeHandler: typeof chatbarState.sourceChangeHandler === 'function',
-    });
 
-    if (bindingState.shouldSkip) {
+    if (chatbarState.sourceObservedElement === normalizedSource) {
         return;
     }
 
-    if (bindingState.shouldUnbindCurrent) {
+    if (chatbarState.sourceObservedElement instanceof HTMLSelectElement && typeof chatbarState.sourceChangeHandler === 'function') {
         chatbarState.sourceObservedElement.removeEventListener('change', chatbarState.sourceChangeHandler);
     }
 
-    if (bindingState.shouldDisconnectObserver) {
-        chatbarState.sourceSelectObserver?.disconnect();
-    }
+    chatbarState.sourceSelectObserver?.disconnect();
+    chatbarState.sourceObservedElement = normalizedSource;
+    chatbarState.sourceChangeHandler = null;
 
-    if (bindingState.shouldStoreNextSource) {
-        chatbarState.sourceObservedElement = normalizedSource;
-    }
-
-    if (bindingState.shouldClearChangeHandler) {
-        chatbarState.sourceChangeHandler = null;
-    }
-
-    if (!bindingState.shouldBindNext) {
+    if (!(normalizedSource instanceof HTMLSelectElement)) {
         return;
     }
 
@@ -6767,40 +6372,32 @@ async function refreshChatbarState() {
         setConnectionStripOpenState(false);
     }
 
-    const connectionMirrorUpdate = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorUpdate({
-        shouldClearMirrors: connectionMirrorState.shouldClearMirrors,
-        shouldShowMobileSection: connectionMirrorState.shouldShowMobileSection,
-        shouldDisableConnectButton: connectionMirrorState.shouldDisableConnectButton,
-        sourceOptionsMarkup: hasConnectionProfiles ? connectionProfilesSource.innerHTML : '',
-        sourceValue: hasConnectionProfiles ? connectionProfilesSource.value : '',
-        connectionStatusText,
-    });
-
-    if (connectionMirrorUpdate.shouldClearMirrors) {
+    if (connectionMirrorState.shouldClearMirrors) {
         if (desktopRefs) {
             desktopRefs.connectionSelect.replaceChildren();
-            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
+            desktopRefs.connectionStatus.textContent = '';
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
+            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
             mobileRefs.connectionSelect.replaceChildren();
-            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            mobileRefs.connectionStatus.textContent = '';
         }
     } else {
+        const optionsMarkup = connectionProfilesSource.innerHTML;
         if (desktopRefs) {
-            desktopRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
-            desktopRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
-            desktopRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorUpdate.shouldDisableConnectButton);
+            desktopRefs.connectionSelect.innerHTML = optionsMarkup;
+            desktopRefs.connectionSelect.value = connectionProfilesSource.value;
+            desktopRefs.connectionStatus.textContent = connectionStatusText;
+            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
         }
 
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorUpdate.shouldShowMobileSection;
-            mobileRefs.connectionSelect.innerHTML = connectionMirrorUpdate.optionsMarkup;
-            mobileRefs.connectionSelect.value = connectionMirrorUpdate.selectedValue;
-            mobileRefs.connectionStatus.textContent = connectionMirrorUpdate.statusText;
+            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
+            mobileRefs.connectionSelect.innerHTML = optionsMarkup;
+            mobileRefs.connectionSelect.value = connectionProfilesSource.value;
+            mobileRefs.connectionStatus.textContent = connectionStatusText;
         }
     }
 
@@ -8300,7 +7897,6 @@ document.addEventListener('click', (e) => {
 function toggleCharacterPanel({ preferredTab = null } = {}) {
     injectCharacterDrawerControls();
     ensureCharacterResizeHandle();
-    bindMobileDrawerGestureDismiss(getCharacterPanel(), closeCharacterPanel);
 
     if (isCharacterPanelOpen()) {
         closeCharacterPanel();
@@ -8390,7 +7986,7 @@ function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
     document.getElementById('sb-persona-picker')?.remove();
 }
 
-function toggleShellPanel(shellKey, tabId = null, { sourceEvent = null } = {}) {
+function toggleShellPanel(shellKey, tabId = null) {
     if (shellKey === 'characters') {
         if (isCharacterPanelTabOpen(tabId)) {
             closeCharacterPanel();
@@ -8415,7 +8011,7 @@ function toggleShellPanel(shellKey, tabId = null, { sourceEvent = null } = {}) {
     preloadPanelStylesheets(shellKey, tabId);
 
     if (tabId ? isShellTabOpen(shellKey, tabId) : isShellOpen(shellKey)) {
-        if (wasShellJustOpened(shellKey) && !sourceEvent?.isTrusted) {
+        if (wasShellJustOpened(shellKey)) {
             return;
         }
 
@@ -8744,7 +8340,7 @@ function buildTopBar() {
             label: getShellConfig('left').proxyLabel,
             title: 'Open workspace tools',
         },
-        event => toggleShellPanel('left', null, { sourceEvent: event }),
+        () => toggleShellPanel('left'),
     );
 
     const homeButton = createProxyButton(
@@ -8767,7 +8363,7 @@ function buildTopBar() {
             label: getShellConfig('right').proxyLabel,
             title: 'Open customization tools',
         },
-        event => toggleShellPanel('right', null, { sourceEvent: event }),
+        () => toggleShellPanel('right'),
     );
 
     const charactersButton = createProxyButton(
@@ -8789,7 +8385,7 @@ function buildTopBar() {
             title: `Quick access: ${leftShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only',
         },
-        event => activateShortcutTarget(getShortcutTarget('left'), event),
+        () => activateShortcutTarget(getShortcutTarget('left')),
     );
     bindSearchShortcutPreFocus(leftShortcut, () => getShortcutTarget('left'));
 
@@ -8802,7 +8398,7 @@ function buildTopBar() {
             title: `Quick access: ${rightShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only',
         },
-        event => activateShortcutTarget(getShortcutTarget('right'), event),
+        () => activateShortcutTarget(getShortcutTarget('right')),
     );
     bindSearchShortcutPreFocus(rightShortcut, () => getShortcutTarget('right'));
 
@@ -8817,7 +8413,7 @@ function buildTopBar() {
                 title: `Quick access: ${shortcutConfig.label}`,
                 className: 'sb-proxy-button-icon-only sb-desktop-setting',
             },
-            event => activateShortcutTarget(getShortcutTarget(side), event),
+            () => activateShortcutTarget(getShortcutTarget(side)),
         );
         bindSearchShortcutPreFocus(shortcut, () => getShortcutTarget(side));
         desktopShortcutButtons[side] = shortcut;
@@ -12118,42 +11714,6 @@ function createMobileNavDivider(label = '') {
     return divider;
 }
 
-function createMobileQuickActionsPlacementGroup() {
-    const group = createElement('div', {
-        className: 'sb-mobile-nav-dependent-group sb-mobile-quick-actions-placement-group',
-    });
-    const title = createElement('strong', {
-        className: 'sb-mobile-nav-dependent-title',
-        text: 'Quick Actions Position',
-    });
-    const grid = createElement('div', {
-        className: 'sb-mobile-nav-choice-grid sb-mobile-nav-choice-grid-compact',
-        attrs: {
-            role: 'radiogroup',
-            'aria-label': 'Mobile Quick Actions position',
-        },
-    });
-    const options = [
-        { value: 'top', label: 'Top', icon: 'fa-arrow-up' },
-        { value: 'middle', label: 'Middle', icon: 'fa-arrows-up-down' },
-        { value: 'bottom', label: 'Bottom', icon: 'fa-arrow-down' },
-    ];
-
-    for (const option of options) {
-        grid.appendChild(createMobileNavChoice({
-            id: `sb-mobile-quick-actions-placement-${option.value}`,
-            name: 'sb-mobile-quick-actions-placement',
-            value: option.value,
-            label: option.label,
-            icon: option.icon,
-            onChange: input => setMobileQuickActionsPlacement(input.value),
-        }));
-    }
-
-    group.append(title, grid);
-    return group;
-}
-
 function createNavigationSettingsGroup(mode = 'mobile') {
     const isDesktop = mode === 'desktop';
     const modeTitle = isDesktop ? 'Desktop' : 'Mobile';
@@ -12202,7 +11762,6 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-map-location-dot',
         onChange: input => isDesktop ? setDesktopNavReplaceQuickActions(input.checked) : setMobileNavReplaceQuickActions(input.checked),
     });
-    const quickActionsPlacementGroup = isDesktop ? null : createMobileQuickActionsPlacementGroup();
     const replacementField = createElement('label', {
         className: 'sb-mobile-nav-replacement-field',
         attrs: {
@@ -12263,7 +11822,6 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         createMobileNavDivider(),
         showCustomizeChoice,
         showQuickActionsChoice,
-        ...(quickActionsPlacementGroup ? [quickActionsPlacementGroup] : []),
         replaceQuickActionsChoice,
         replacementField,
     );
@@ -12824,31 +12382,10 @@ function updateThemePickerUi() {
         choice?.classList.toggle('is-selected', sbState.mobileNav.replaceQuickActions);
     }
 
-    const quickActionsPlacementGroup = document.querySelector('.sb-mobile-quick-actions-placement-group');
-    quickActionsPlacementGroup?.classList.toggle('is-disabled', !sbState.mobileNav.showQuickActions);
-
-    for (const input of document.querySelectorAll('input[name="sb-mobile-quick-actions-placement"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        input.disabled = !sbState.mobileNav.showQuickActions;
-    }
-
     if (mobileNavReplacementSelect instanceof HTMLSelectElement) {
         mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
         mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
         mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
-    }
-
-    for (const input of document.querySelectorAll('input[name="sb-mobile-quick-actions-placement"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        const isChecked = input.value === sbState.mobileNav.quickActionsPlacement;
-        input.checked = isChecked;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
@@ -13508,8 +13045,6 @@ function openShell(shellKey, tabId = null) {
     if (!shellState || !(shellRoot instanceof HTMLElement)) {
         return;
     }
-
-    bindMobileDrawerGestureDismiss(shellRoot, () => closeShell(shellKey));
 
     const shellSurface = getMobileShellSurfaceForShell(shellKey);
     if (shellSurface) {
@@ -14729,9 +14264,7 @@ function closeMobileNav() {
 }
 
 function injectCharacterDrawerControls() {
-    const characterPanel = getCharacterPanel();
-    characterPanel?.classList.add('sb-character-drawer-root');
-    bindMobileDrawerGestureDismiss(characterPanel, closeCharacterPanel);
+    getCharacterPanel()?.classList.add('sb-character-drawer-root');
     ensureCharacterListToolbarLayout();
     bindCharacterEditorFullscreenToggle();
 
@@ -15247,14 +14780,6 @@ function buildBottomChatBar() {
         return;
     }
 
-    const bottomChatBarState = getBottomChatBarState();
-    bottomChatBarState.overflowOpen = false;
-    bottomChatBarState.overflowActions = [];
-    if (bottomChatBarState.overflowMenu instanceof HTMLElement) {
-        bottomChatBarState.overflowMenu.remove();
-        bottomChatBarState.overflowMenu = null;
-    }
-
     container.replaceChildren();
 
     // Persona bubble
@@ -15264,7 +14789,6 @@ function buildBottomChatBar() {
     });
     personaBubble.addEventListener('click', (e) => {
         e.stopPropagation();
-        setBottomChatOverflowOpen(false);
         togglePersonaPicker();
     });
     updatePersonaBubble(personaBubble);
@@ -15301,35 +14825,18 @@ function buildBottomChatBar() {
 
     const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to top of chat' }, scrollCurrentChatToTop);
     const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to bottom of chat' }, scrollCurrentChatToBottom);
-    const chatManagerAction = createBottomChatAction({ id: 'view-files', icon: 'fa-address-book', title: 'View chat files', onClick: handleChatManagerClick });
-    const newAction = createBottomChatAction({ id: 'new-chat', icon: 'fa-plus', title: 'New chat', onClick: handleNewChat });
-    const massDeleteAction = createBottomChatAction({ id: 'mass-delete', icon: 'fa-list-check', title: 'Mass delete chats', onClick: () => { void handleMassDeleteChats(); } });
-    const autoNameAction = createBottomChatAction({ id: 'auto-name', icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat', onClick: () => { void handleAutoNameChat(); } });
-    const renameAction = createBottomChatAction({ id: 'rename-chat', icon: 'fa-pencil', title: 'Rename chat', onClick: () => { void handleRenameChat(); } });
-    const hideAction = createBottomChatAction({ id: 'hide-bottom-bar', icon: 'fa-eye-slash', title: 'Hide bottom chat bar', onClick: () => { setBottomChatBarVisible(false); } });
-    const searchAction = { id: 'search-chat', title: 'Search chat', icon: 'fa-magnifying-glass', button: searchToggleBtn };
-    searchToggleBtn.dataset.sbBottomActionId = searchAction.id;
-    const deleteAction = createBottomChatAction({ id: 'delete-chat', icon: 'fa-trash', title: 'Delete chat', onClick: () => { void handleDeleteChat(); } });
-    const overflowBtn = createBottomChatButton({ icon: 'fa-ellipsis', title: 'More chat actions', className: 'sb-bottom-chat-overflow-toggle' }, () => {
-        setBottomChatOverflowOpen(!getBottomChatBarState().overflowOpen, { restoreFocus: false });
+    const chatManagerBtn = createBottomChatButton({ icon: 'fa-address-book', title: 'View chat files' }, handleChatManagerClick);
+    const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New chat' }, handleNewChat);
+    const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass delete chats' }, () => { void handleMassDeleteChats(); });
+    const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
+    const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
+    const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide bottom chat bar' }, () => {
+        setBottomChatBarVisible(false);
     });
-    overflowBtn.setAttribute('aria-controls', 'sb-bottom-chat-overflow-menu');
-    overflowBtn.setAttribute('aria-expanded', 'false');
-    overflowBtn.setAttribute('aria-haspopup', 'menu');
-    overflowBtn.hidden = true;
+    const deleteBtn = createBottomChatButton({ icon: 'fa-trash', title: 'Delete chat' }, () => { void handleDeleteChat(); });
 
     navCluster.append(topBtn, bottomBtn);
-    managementCluster.append(
-        chatManagerAction.button,
-        newAction.button,
-        massDeleteAction.button,
-        autoNameAction.button,
-        renameAction.button,
-        searchAction.button,
-        hideAction.button,
-        deleteAction.button,
-        overflowBtn,
-    );
+    managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, hideBtn, deleteBtn);
     secondaryRow.append(managementCluster);
     container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow);
 
@@ -15345,16 +14852,11 @@ function buildBottomChatBar() {
         secondaryRow,
         scrollTopButton: topBtn,
         scrollBottomButton: bottomBtn,
-        managerButton: chatManagerAction.button,
-        newButton: newAction.button,
-        massDeleteButton: massDeleteAction.button,
-        autoNameButton: autoNameAction.button,
-        renameButton: renameAction.button,
-        hideButton: hideAction.button,
-        deleteButton: deleteAction.button,
-        overflowButton: overflowBtn,
+        managerButton: chatManagerBtn,
+        massDeleteButton: massDeleteBtn,
+        autoNameButton: autoNameBtn,
+        hideButton: hideBtn,
     });
-    syncBottomChatActionOverflowState();
     syncBottomChatBarSecondaryState();
     syncBottomChatBarSearchState();
     setBottomChatBarVisible(sbState.bottomChatBar.visible, { persist: false });
@@ -15363,19 +14865,12 @@ function buildBottomChatBar() {
     setTimeout(() => updatePersonaBubble(personaBubble), 100);
 
     // Close persona picker when clicking outside
+    const bottomChatBarState = getBottomChatBarState();
     if (!bottomChatBarState.outsideClickBound) {
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('sb-persona-picker');
-            const overflowMenu = bottomChatBarState.overflowMenu;
             if (picker && !picker.contains(e.target) && e.target !== bottomChatBarState.personaBubble) {
                 picker.remove();
-            }
-            if (
-                overflowMenu instanceof HTMLElement
-                && !overflowMenu.contains(e.target)
-                && !bottomChatBarState.overflowButton?.contains?.(e.target)
-            ) {
-                setBottomChatOverflowOpen(false);
             }
         });
         bottomChatBarState.outsideClickBound = true;
@@ -15406,12 +14901,8 @@ async function refreshBottomChatSelect() {
     setButtonDisabled(sbState.bottomChatBar?.scrollTopButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.scrollBottomButton, !chatContext.hasChat);
     setButtonDisabled(sbState.bottomChatBar?.managerButton, !chatContext.canBrowseChats);
-    setButtonDisabled(sbState.bottomChatBar?.newButton, !chatContext.canStartNewChat);
     setButtonDisabled(sbState.bottomChatBar?.massDeleteButton, !chatContext.canBrowseChats);
     setButtonDisabled(sbState.bottomChatBar?.autoNameButton, !chatContext.hasChat);
-    setButtonDisabled(sbState.bottomChatBar?.renameButton, !chatContext.hasChat);
-    setButtonDisabled(sbState.bottomChatBar?.deleteButton, !chatContext.hasChat);
-    syncBottomChatActionOverflowState();
 
     if (!chatContext.context) {
         return;
@@ -15690,7 +15181,6 @@ function bindBottomChatBarWindowEvents() {
     }
 
     const refreshWithContext = () => {
-        syncBottomChatActionOverflowState();
         syncBottomChatBarSecondaryState();
         syncBottomChatBarSearchState();
         scheduleBottomChatBarRefresh(0);
@@ -16179,7 +15669,6 @@ function initAll() {
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
-    window.visualViewport?.addEventListener('scroll', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the

@@ -50,7 +50,7 @@ describe('SillyBunny accent color profiles', () => {
         expect(indexSource).toContain('id="sb-accent-profile-save"');
         expect(indexSource).toContain('id="sb-accent-profiles-list"');
         expect(indexSource).toContain('id="sb-accent-profiles-empty"');
-        expect(indexSource).toContain('css/sillybunny-theme.css?v=20260620b');
+        expect(indexSource).toContain('css/sillybunny-theme.css?v=20260620a');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'#sb-accent-profile-save\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-apply\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-delete\'');

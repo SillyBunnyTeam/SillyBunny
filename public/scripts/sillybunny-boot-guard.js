@@ -7,11 +7,8 @@
     var failureDismissed = false;
     var lastFailure = null;
     var timeoutId = null;
-    var timeoutWarningShown = false;
-    var loaderRemovalGraceActive = false;
     var BOOT_TIMEOUT_MS = 25000;
     var BOOT_TIMEOUT_RETRY_MS = 10000;
-    var BOOT_TIMEOUT_LOADER_REMOVAL_GRACE_MS = 2000;
     var MAX_BOOT_TIMEOUT_MS = 90000;
     var bootStartedAt = Date.now();
 
@@ -155,31 +152,6 @@
         return Date.now() - bootStartedAt;
     }
 
-    function isRuntimeReady() {
-        try {
-            return Boolean(window.SillyBunnyShell && typeof window.SillyBunnyShell.openTab === 'function');
-        } catch (_error) {
-            return false;
-        }
-    }
-
-    function completeBoot() {
-        bootCompleted = true;
-        loaderRemovalGraceActive = false;
-        if (timeoutId) {
-            window.clearTimeout(timeoutId);
-        }
-    }
-
-    function completeBootSilently(removePreloader) {
-        completeBoot();
-
-        if (removePreloader) {
-            removeStartupLoaderArtifacts();
-            removeElement(document.getElementById('preloader'));
-        }
-    }
-
     function scheduleBootTimeout(delay) {
         timeoutId = window.setTimeout(handleBootTimeout, delay);
     }
@@ -189,40 +161,12 @@
             return;
         }
 
-        if (lastFailure) {
-            showFailure(lastFailure);
-            return;
-        }
-
-        if (isRuntimeReady()) {
-            completeBootSilently(true);
-            return;
-        }
-
-        if (!lastFailure && isStartupLoaderActive()) {
-            loaderRemovalGraceActive = false;
-
-            if (!timeoutWarningShown && getElapsedBootTimeMs() >= MAX_BOOT_TIMEOUT_MS) {
-                timeoutWarningShown = true;
-                console.warn('SillyBunny startup is still waiting for the loader to finish; no startup error was captured.');
-            }
-
+        if (!lastFailure && isStartupLoaderActive() && getElapsedBootTimeMs() < MAX_BOOT_TIMEOUT_MS) {
             scheduleBootTimeout(BOOT_TIMEOUT_RETRY_MS);
             return;
         }
 
-        if (!lastFailure && !loaderRemovalGraceActive) {
-            loaderRemovalGraceActive = true;
-            scheduleBootTimeout(BOOT_TIMEOUT_LOADER_REMOVAL_GRACE_MS);
-            return;
-        }
-
-        if (!timeoutWarningShown && getElapsedBootTimeMs() >= MAX_BOOT_TIMEOUT_MS) {
-            timeoutWarningShown = true;
-            console.warn('SillyBunny startup loader disappeared before boot completion, but no startup error was captured.');
-        }
-
-        completeBootSilently(true);
+        showFailure(lastFailure || 'Startup timed out before SillyBunny removed the preloader.');
     }
 
     function showFailure(details) {
@@ -299,7 +243,10 @@
 
     window.SillyBunnyBootGuard = {
         bootCompleted: function () {
-            completeBoot();
+            bootCompleted = true;
+            if (timeoutId) {
+                window.clearTimeout(timeoutId);
+            }
         },
         showFailure: showFailure,
     };
