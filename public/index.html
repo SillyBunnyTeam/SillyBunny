@@ -5907,7 +5907,13 @@
                                 <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
                                     <div class="sb-settings-subdrawer-toolbar">
                                         <small>Layer your own polish on top of the active SillyBunny palette.</small>
-                                        <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="customCSS" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                        <div class="flex-container flexnowrap alignitemscenter flexGap5">
+                                            <!-- SillyBunny: AI shortcut for Custom CSS generation. -->
+                                            <div id="custom_css_ai_wand" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="Generate CSS with AI" aria-label="Generate CSS with AI" data-i18n="[title]Generate CSS with AI">
+                                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                            </div>
+                                            <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="customCSS" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
+                                        </div>
                                     </div>
                                     <div id="CustomCSS-textAreaBlock" class="flex-container flexnowrap alignitemscenter">
                                         <textarea id="customCSS" class="text_pole margin0 margin-r5 textarea_compact monospace" rows="8"></textarea>
