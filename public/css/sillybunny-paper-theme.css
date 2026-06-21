@@ -98,11 +98,11 @@ body::before {
 /* Soft, rounded app surfaces */
 .drawer-content,
 .popup,
-.menu_button,
+.menu_button:not(.gg-action-button),
 input,
 textarea,
 select,
-button:not(.ica--tpanel-handle) {
+button:not(.ica--tpanel-handle):not(.gg-action-button) {
     border-radius: 14px !important;
 }
 
