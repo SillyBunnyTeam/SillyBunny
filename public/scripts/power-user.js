@@ -26,6 +26,8 @@ import {
     entitiesFilter,
     doNewChat,
     online_status,
+    activateSendButtons,
+    deactivateSendButtons,
     messageFormatting,
     extension_prompt_types,
     extension_prompt_roles,
@@ -59,7 +61,7 @@ import { PARSER_FLAG } from './slash-commands/SlashCommandParser.js';
 import { AUTOCOMPLETE_SELECT_KEY, AUTOCOMPLETE_STATE, AUTOCOMPLETE_WIDTH } from './autocomplete/AutoComplete.js';
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
-import { POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
+import { POPUP_RESULT, POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
 import { loadSystemPrompts } from './sysprompt.js';
 import { fuzzySearchCategories } from './filters.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -71,6 +73,8 @@ import { t } from './i18n.js';
 import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
+import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
+import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -1707,6 +1711,124 @@ function applyCustomCSS() {
     }
     style.innerHTML = power_user.custom_css;
     applyCustomThemeStyleEntries();
+}
+
+function buildCustomCssAiPopup(currentCss) {
+    const content = $(`
+        <div class="flex-container flexFlowColumn flexGap5">
+            <h3>Generate Custom CSS</h3>
+            <label for="custom_css_ai_instruction"><small>Describe what you want the CSS to change</small></label>
+            <textarea id="custom_css_ai_instruction" class="text_pole textarea_compact monospace" rows="6" placeholder="Example: Make message cards softer, with rounded corners and subtle accent borders."></textarea>
+            <label for="custom_css_ai_profile"><small>Connection profile</small></label>
+            <select id="custom_css_ai_profile" class="text_pole margin0 wide100p"></select>
+            <div class="flex-container flexFlowColumn flexGap5">
+                <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="replace" checked><span>Replace current CSS</span></label>
+                <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="append"><span>Append below current CSS</span></label>
+            </div>
+            <small>The AI sees your current Custom CSS and the active SillyBunny theme variables. It should return raw CSS only.</small>
+            <small>Current Custom CSS length: ${String(currentCss ?? '').length.toLocaleString()} characters.</small>
+        </div>
+    `);
+
+    const activeProfileId = resolveCustomCssAIProfile('');
+    populateConnectionProfileSelect(content.find('#custom_css_ai_profile').get(0), {
+        emptyLabel: 'Use active connection profile',
+        selectedValue: activeProfileId,
+    });
+
+    return content;
+}
+
+function setCustomCssAiWandBusy(isBusy) {
+    const button = $('#custom_css_ai_wand');
+    const icon = button.find('i').first();
+
+    button.toggleClass('is-busy disabled', isBusy)
+        .attr('aria-busy', String(isBusy))
+        .attr('aria-disabled', String(isBusy));
+    icon.toggleClass('fa-wand-magic-sparkles', !isBusy)
+        .toggleClass('fa-spinner fa-spin', isBusy);
+}
+
+async function handleCustomCssAiWandClick() {
+    const button = $('#custom_css_ai_wand');
+    if (button.hasClass('is-busy')) {
+        return;
+    }
+
+    const currentCss = String($('#customCSS').val() ?? '');
+    const content = buildCustomCssAiPopup(currentCss);
+    const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Generate CSS',
+        cancelButton: 'Cancel',
+        wide: true,
+        leftAlign: true,
+        allowVerticalScrolling: true,
+        onOpen: () => content.find('#custom_css_ai_instruction').trigger('focus'),
+        onClosing: popup => {
+            if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
+                return true;
+            }
+
+            if (!String(content.find('#custom_css_ai_instruction').val() ?? '').trim()) {
+                globalThis.toastr?.warning?.('Describe the CSS change first.');
+                return false;
+            }
+
+            return true;
+        },
+    });
+
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return;
+    }
+
+    const instruction = String(content.find('#custom_css_ai_instruction').val() ?? '').trim();
+    const selectedProfileId = String(content.find('#custom_css_ai_profile').val() ?? '').trim();
+    const effectiveProfileId = resolveCustomCssAIProfile(selectedProfileId);
+    const applyMode = String(content.find('input[name="custom_css_ai_apply_mode"]:checked').val() ?? 'replace');
+
+    if (!effectiveProfileId && online_status === 'no_connection') {
+        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first.');
+        return;
+    }
+
+    setCustomCssAiWandBusy(true);
+    globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
+    deactivateSendButtons({ markBodyGenerating: false });
+
+    try {
+        const generatedCss = await generateCustomCssWithAI({
+            instruction,
+            currentCss,
+            profileId: effectiveProfileId,
+        });
+
+        if (!generatedCss.trim()) {
+            globalThis.toastr?.clear?.();
+            globalThis.toastr?.error?.('AI returned an empty CSS response.');
+            return;
+        }
+
+        const nextCss = applyMode === 'append' && currentCss.trim()
+            ? `${currentCss.trimEnd()}\n\n${generatedCss}`
+            : generatedCss;
+
+        $('#customCSS').val(nextCss);
+        power_user.custom_css = nextCss;
+        applyCustomCSS();
+        saveSettingsDebounced();
+        globalThis.toastr?.clear?.();
+        globalThis.toastr?.success?.('Generated custom CSS.');
+    } catch (error) {
+        globalThis.toastr?.clear?.();
+        if (!String(error?.message ?? error ?? '').match(/abort|cancel/i)) {
+            globalThis.toastr?.error?.(`Custom CSS generation failed: ${error?.message ?? error}`);
+        }
+    } finally {
+        activateSendButtons();
+        setCustomCssAiWandBusy(false);
+    }
 }
 
 function getGoogleFontStylesheetId() {
@@ -3980,6 +4102,16 @@ jQuery(async () => {
         power_user.custom_css = String($('#customCSS').val());
         saveSettingsDebounced();
         applyCustomCSS();
+    });
+
+    // SillyBunny: Custom CSS AI wand uses the active Connection Manager profile without swapping global state.
+    $('#custom_css_ai_wand').on('click', () => { void handleCustomCssAiWandClick(); });
+    $('#custom_css_ai_wand').on('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        $('#custom_css_ai_wand').trigger('click');
     });
 
     $('#google_font_preset').on('change', function () {
