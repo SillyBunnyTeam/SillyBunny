@@ -102,9 +102,15 @@ body::before {
 input,
 textarea,
 select,
-button {
+button:not(.ica--tpanel-handle) {
     border-radius: 14px !important;
 }
+
+/* Keep the draggable companion panel handle notched for the edge it snaps to */
+.ica--tpanel-handle[data-edge='right'] { border-radius: 10px 0 0 10px !important; }
+.ica--tpanel-handle[data-edge='left']  { border-radius: 0 10px 10px 0 !important; }
+.ica--tpanel-handle[data-edge='top']   { border-radius: 0 0 10px 10px !important; }
+.ica--tpanel-handle[data-edge='bottom']{ border-radius: 10px 10px 0 0 !important; }
 
 /* Add breathing room between chat and screen edges */
 #chat {
