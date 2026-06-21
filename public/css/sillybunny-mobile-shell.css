@@ -99,7 +99,7 @@
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px));
+        --sb-composer-action-size: clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
         --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
         --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
@@ -118,7 +118,7 @@
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px));
+        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
         --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
@@ -2973,7 +2973,7 @@
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px));
+        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
         --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
@@ -3202,7 +3202,7 @@
     /* Must beat upstream public/style.css:995/1027/1031 composer layout. */
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px));
+        --sb-composer-action-size: clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
         --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
         --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
@@ -3221,7 +3221,7 @@
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px));
+        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
         --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));

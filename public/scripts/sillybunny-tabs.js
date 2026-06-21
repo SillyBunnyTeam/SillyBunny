@@ -455,7 +455,7 @@ const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful fo
 
 const SB_CHARACTER_TAB_COPY = Object.freeze({
     characters: {
-        title: 'Character Menu',
+        title: 'Characters',
         subtitle: 'View or create character cards here for your roleplays and chats!',
         description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
     },

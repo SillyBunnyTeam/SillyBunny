@@ -6180,6 +6180,38 @@ input[type='range']::-moz-range-thumb {
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
 }
 
+/* Must beat unlayered mobile/grid character-list rules that hide drawer row text. */
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block {
+    display: grid;
+    min-width: 0;
+    color: var(--SmartThemeBodyColor);
+}
+
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--SmartThemeBodyColor);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    visibility: visible;
+    opacity: 1;
+}
+
 /* Must beat upstream public/style.css:4249 .menu_button for icon-only controls. */
 .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
 .menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
