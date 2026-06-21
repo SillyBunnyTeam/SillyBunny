@@ -24,6 +24,8 @@
     :root {
         --sb-mobile-safe-area-left: env(safe-area-inset-left, 0px);
         --sb-mobile-safe-area-right: env(safe-area-inset-right, 0px);
+        --sb-character-mobile-edge: clamp(12px, 4vw, 18px);
+        --sb-character-mobile-tab-height: 42px;
     }
 
     #form_sheld {
@@ -2028,21 +2030,32 @@
     }
 
     #right-nav-panel.openDrawer .sb-character-shell-nav {
-        justify-content: center;
-        padding: 8px var(--sb-shell-panel-padding-inline);
-        gap: 6px;
+        justify-content: flex-start;
+        padding: 8px var(--sb-character-mobile-edge);
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        scroll-padding-inline: var(--sb-character-mobile-edge);
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-shell-nav::-webkit-scrollbar {
+        display: none;
     }
 
     #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
-        min-height: var(--sb-mobile-touch-target, 44px);
-        padding: 7px 10px;
+        min-height: var(--sb-character-mobile-tab-height);
+        padding: 7px 12px;
         border-radius: 10px;
+        gap: 7px;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         flex: 0 0 auto;
         gap: 3px;
-        padding: 10px 104px 8px 12px;
+        padding: 9px calc(var(--sb-character-mobile-edge) + 100px) 7px var(--sb-character-mobile-edge);
         min-height: 60px;
         z-index: 3;
     }
@@ -2087,34 +2100,37 @@
 
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
         flex: 0 0 auto;
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
         align-items: center;
         width: 100%;
         min-width: 0;
-        min-height: 50px;
-        max-height: 50px;
+        min-height: 58px;
+        max-height: none;
         margin: 0;
-        padding: 7px var(--sb-shell-panel-padding-inline);
+        padding: 6px var(--sb-character-mobile-edge);
+        column-gap: 8px;
         border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
         box-sizing: border-box;
         position: relative;
         z-index: 1;
     }
 
-    #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
-        display: contents;
+    #right-nav-panel.openDrawer:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) > #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: none;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper {
         min-width: 0;
         overflow: hidden;
         justify-content: flex-start;
+        grid-column: 1;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
         min-width: 0;
         max-width: 100%;
-        max-height: 34px;
+        max-height: 42px;
         margin: 0;
         overflow: hidden;
         white-space: nowrap;
@@ -2147,6 +2163,12 @@
         flex: 0 0 32px;
     }
 
+    #right-nav-panel.openDrawer .sb-character-favorites-label {
+        min-width: 0;
+        margin-inline-end: 2px;
+        white-space: nowrap;
+    }
+
     #right-nav-panel.openDrawer #rm_button_characters {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
@@ -2159,13 +2181,55 @@
         border-radius: 10px;
     }
 
+    #right-nav-panel.openDrawer :is(#sb-character-right-lock, #sb-character-back-to-list, #sb-character-mobile-close) {
+        width: var(--sb-mobile-touch-target, 44px);
+        min-width: var(--sb-mobile-touch-target, 44px);
+        max-width: var(--sb-mobile-touch-target, 44px);
+        height: var(--sb-mobile-touch-target, 44px);
+        min-height: var(--sb-mobile-touch-target, 44px);
+        max-height: var(--sb-mobile-touch-target, 44px);
+        margin: 0;
+        padding: 0;
+        border-radius: 12px;
+        justify-self: stretch;
+    }
+
+    #right-nav-panel.openDrawer #sb-character-right-lock {
+        grid-column: 2;
+    }
+
+    #right-nav-panel.openDrawer :is(#sb-character-back-to-list, #sb-character-mobile-close) {
+        grid-column: 3;
+    }
+
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
+        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
         min-height: 54px;
         padding-block: 5px;
     }
 
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: contents;
+    }
+
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #HotSwapWrapper {
-        display: none;
+        display: none !important;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_characters {
+        grid-column: 1;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-right-lock {
+        grid-column: 3;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
+        grid-column: 4;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {
+        grid-column: 5;
     }
 
     #right-nav-panel.openDrawer > #rm_PinAndTabs {
@@ -2282,6 +2346,13 @@
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
         flex-basis: 100%;
+    }
+
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
+        display: contents !important;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar-and-name-block .sb-character-editor-controls-row > #name_div {
@@ -4000,7 +4071,28 @@
 
     /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */
     #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        align-items: center;
+        min-height: 58px;
+        max-height: none;
+        padding: 6px var(--sb-character-mobile-edge);
+        column-gap: 8px;
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:185 #right-nav-panel #HotSwapWrapper. */
+    #right-nav-panel.openDrawer #HotSwapWrapper {
+        grid-column: 1;
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:236 character editor grid columns. */
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
+        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+    }
+
+    /* Must beat the late #HotSwapWrapper grid-column guard above in editor/create mode. */
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #HotSwapWrapper {
+        display: none !important;
     }
 
     /* Must beat upstream public/style.css:2875 #right-nav-panel-tabs. */
