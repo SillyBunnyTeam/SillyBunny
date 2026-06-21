@@ -2082,7 +2082,7 @@ body.sb-shell-resizing * {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
 }
 
-@media (max-width: 900px) {
+@media screen and (max-width: 1000px) {
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         padding-right: calc(var(--sb-shell-panel-padding-inline) + 118px);
     }

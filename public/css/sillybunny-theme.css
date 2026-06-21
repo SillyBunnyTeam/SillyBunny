@@ -6180,6 +6180,41 @@ input[type='range']::-moz-range-thumb {
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
 }
 
+/* Must beat upstream public/style.css:4249 .menu_button for icon-only controls. */
+.menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
+.menu_button_icon:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
+.menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
+.menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
+.right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
+    width: var(--sb-control-icon-physical-size);
+    inline-size: var(--sb-control-icon-physical-size);
+    height: var(--sb-control-icon-physical-size);
+    block-size: var(--sb-control-icon-physical-size);
+    min-width: var(--sb-control-icon-physical-size);
+    min-inline-size: var(--sb-control-icon-physical-size);
+    min-height: var(--sb-control-icon-physical-size);
+    min-block-size: var(--sb-control-icon-physical-size);
+    max-width: var(--sb-control-icon-physical-size);
+    max-inline-size: var(--sb-control-icon-physical-size);
+    max-height: var(--sb-control-icon-physical-size);
+    max-block-size: var(--sb-control-icon-physical-size);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--sb-icon-control-radius);
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    line-height: 1;
+    text-align: center;
+    overflow: visible;
+}
+
 /* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
 #send_form:focus-within {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border));

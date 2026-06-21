@@ -162,8 +162,8 @@
     /* SillyBunny: the STscript execution play/pause/stop controls (.stscript_btn)
        are unused by this fork's roleplay-focused audience. mobile-styles.css
        forces them to display:flex (see #533), which lets them overlap the
-       composer textarea on mobile. Hide them unconditionally here -- this sheet
-       loads after mobile-styles.css so the !important wins. */
+       composer textarea on mobile. Hide them unconditionally here because this
+       sheet loads after mobile-styles.css. */
     #rightSendForm > .stscript_btn {
         display: none !important;
     }
@@ -2772,23 +2772,6 @@
     }
 }
 
-@media screen and (max-width: 768px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
-    .sb-shell-root.openDrawer,
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
-    #right-nav-panel.openDrawer,
-    #top-settings-holder #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
-        bottom: auto;
-        box-sizing: border-box;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
-    }
-}
-
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
@@ -2812,21 +2795,6 @@
         --sb-proxy-underline-inset-base: 7px;
         --sb-proxy-underline-bottom-base: 3px;
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
-    }
-
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
-    .sb-shell-root.openDrawer,
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
-    #right-nav-panel.openDrawer,
-    #top-settings-holder #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
-        bottom: auto !important;
-        box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
     }
 
     :root[data-sb-compact-mode='true'] {
@@ -3173,13 +3141,43 @@
 @media screen and (max-width: 768px) {
     /* Must beat upstream public/style.css:971 #form_sheld. */
     #form_sheld {
+        width: 100%;
+        max-width: 100%;
+        left: 0;
+        right: 0;
+        transform: none;
+        box-sizing: border-box;
         margin: var(--sb-chat-composer-gap) auto 0;
+        padding-block-end: max(var(--sb-chat-composer-edge-gap), env(safe-area-inset-bottom, 0px));
     }
 
     /* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
     #send_form {
+        margin-bottom: 0;
+        padding: 4px 6px 6px;
         border-width: 1px 0 0;
+        border-radius: 10px 10px 0 0;
         border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+        box-shadow: 0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:1096 #send_form theme surface. */
+    :root:not([data-sb-theme]) #send_form,
+    :root[data-sb-theme='clean-minimal'] #send_form {
+        background: var(--sb-composer-surface-bg);
+        border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent);
+        backdrop-filter: blur(12px) saturate(110%);
+        -webkit-backdrop-filter: blur(12px) saturate(110%);
+    }
+
+    :root:not([data-sb-theme]) #send_textarea,
+    :root[data-sb-theme='clean-minimal'] #send_textarea {
+        background: var(--sb-mobile-default-input-solid);
+    }
+
+    :root:not([data-sb-theme]) #send_form::before,
+    :root[data-sb-theme='clean-minimal'] #send_form::before {
+        opacity: var(--sb-shell-surface-opacity);
     }
 
     /* Must beat the unlayered theme focus guard after upstream public/css/mobile-styles.css:1096 #send_form. */
@@ -3202,9 +3200,341 @@
             inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent);
     }
 
+    /* Must beat upstream public/style.css:995/1027/1031 composer layout. */
+    #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
+        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px));
+        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
+        --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
+        display: grid;
+        grid-template-columns: var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width);
+        grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto);
+        grid-template-areas: 'tools input action';
+        align-items: center;
+        gap: 0 4px;
+        min-height: calc(var(--sb-mobile-composer-input-height) + 4px);
+        padding: 2px 4px;
+        box-sizing: border-box;
+        overflow: visible;
+    }
+
+    :root[data-sb-compact-mode='true'] #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
+        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px));
+        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
+        --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        gap: 0 3px;
+    }
+
+    #leftSendForm {
+        grid-area: tools;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        gap: 3px;
+    }
+
+    #leftSendForm::-webkit-scrollbar {
+        display: none;
+    }
+
+    #rightSendForm {
+        grid-area: action;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        overflow: visible;
+        justify-content: flex-end;
+        gap: 3px;
+    }
+
+    #rightSendForm > div:not(#send_but):not(#mes_stop):not(#qig-input-btn):not(.stscript_btn) {
+        display: none;
+    }
+
+    #leftSendForm > div,
+    #rightSendForm > div:not(.stscript_btn),
+    #send_but,
+    #send_form .mes_stop,
+    #send_form.sb-generating-controls #mes_stop {
+        width: var(--sb-composer-action-size);
+        min-width: var(--sb-composer-action-size);
+        max-width: var(--sb-composer-action-size);
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        max-height: var(--sb-composer-action-size);
+        flex: 0 0 var(--sb-composer-action-size);
+        padding: 0;
+        margin: 0;
+        box-sizing: border-box;
+        font-size: var(--sb-composer-action-icon-size);
+        line-height: 1;
+    }
+
+    #send_textarea {
+        grid-area: input;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: var(--sb-mobile-composer-input-height);
+        max-height: 42dvh;
+        field-sizing: content;
+        resize: none;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 5px 7px;
+        line-height: 1.18;
+        align-self: stretch;
+        justify-self: stretch;
+    }
+
+    #send_but,
+    #send_form .mes_stop,
+    #send_form.sb-generating-controls #mes_stop {
+        width: var(--sb-composer-send-width);
+        min-width: var(--sb-composer-send-width);
+        max-width: var(--sb-composer-send-width);
+        flex: 0 0 var(--sb-composer-send-width);
+    }
+
     /* Must beat upstream public/style.css:862 #top-bar. */
     #top-bar {
         height: var(--sb-topbar-layout-offset);
+        padding: 0 var(--sb-topbar-padding-x);
+    }
+
+    /* Must beat upstream public/style.css:862 #top-bar default-theme surface. */
+    :root:not([data-sb-theme]) #top-bar,
+    :root[data-sb-theme='clean-minimal'] #top-bar {
+        background: var(--sb-topbar-surface-bg);
+        backdrop-filter: blur(12px) saturate(110%);
+        -webkit-backdrop-filter: blur(12px) saturate(110%);
+    }
+
+    :root:not([data-sb-theme]) #top-bar::before,
+    :root[data-sb-theme='clean-minimal'] #top-bar::before {
+        opacity: var(--sb-shell-surface-opacity);
+    }
+
+    /* Must beat upstream public/style.css:6374 .fillRight.openDrawer. */
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer,
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer {
+        position: fixed;
+        inset-inline: 0;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
+        bottom: auto;
+        width: 100vw;
+        width: 100dvw;
+        max-width: 100dvw;
+        min-width: 0;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        overflow: hidden;
+        transform: translateZ(0);
+        box-sizing: border-box;
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:243 #right-nav-panel.openDrawer. */
+    #right-nav-panel.openDrawer,
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer {
+        inset-inline: 0 !important;
+    }
+
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Must beat upstream drawer sizing while the character shell uses vertical rail mode. */
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 84px;
+        grid-template-rows: auto auto auto auto minmax(0, 1fr);
+        grid-template-areas:
+            'header nav'
+            'charbar nav'
+            'subtabs nav'
+            'pinbar nav'
+            'content nav';
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
+        display: flex;
+        flex-direction: column;
+        grid-area: nav;
+        width: 84px;
+        min-width: 84px;
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        border-left: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+        border-bottom: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer {
+        grid-template-columns: minmax(0, 1fr) 58px;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
+        width: 58px;
+        min-width: 58px;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
+        grid-area: header;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper {
+        grid-area: subtabs;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
+        grid-area: charbar;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > #rm_PinAndTabs {
+        grid-area: pinbar;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInner,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInnerFull {
+        grid-area: content;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 6px;
+        padding: 16px 8px max(16px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        border-bottom: 0;
+        scrollbar-width: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-shortcuts {
+        display: contents;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-divider {
+        display: block;
+        width: calc(100% - 8px);
+        height: 1px;
+        min-height: 1px;
+        align-self: center;
+        margin: 4px 0;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav {
+        align-items: center;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px 6px;
+        border-radius: var(--sb-radius-button, 14px);
+        text-align: center;
+        white-space: normal;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-mobile-rail-hidden {
+        display: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--sb-shell-tab-active-bg) 86%);
+        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, var(--sb-shell-border) 66%);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 28%, transparent);
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
+        align-self: center;
+        padding: 0;
+        border-color: transparent;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
+        width: 100%;
+        margin: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
+        align-items: center;
+        text-align: center;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy strong {
+        font-size: calc(var(--mainFontSize) * 0.72);
+        line-height: 1.2;
+        white-space: normal;
+        hyphens: auto;
+        text-wrap: balance;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
+        padding: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
+        display: none;
     }
 
     /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */
