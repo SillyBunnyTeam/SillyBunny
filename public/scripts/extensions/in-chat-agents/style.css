@@ -1912,7 +1912,8 @@ button.ica--card-pill--version-update {
 .ica--tpanel:not(.is-open) {
     visibility: hidden;
     pointer-events: none;
-    transform: none;
+    /* Delay hiding until the close slide finishes so the backdrop blur leaves in lockstep. */
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
 }
 
 /* Must out-rank the per-edge closed transforms above (same class+attr specificity,
