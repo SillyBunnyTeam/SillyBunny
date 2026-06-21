@@ -18,6 +18,7 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
 import {
     areAgentsGloballyEnabled,
@@ -317,13 +318,6 @@ export function cancelAgentGeneration() {
 
     toastr.info('No agent generation is currently running.');
     return false;
-}
-
-function skipPostMainInterceptChanges() {
-    agentGenerationCancelRevision++;
-    abortActiveAgentRequests('Post-main intercept changes skipped by user.');
-    clearAllPromptTransformRunningToasts();
-    notifyAgentGenerationStateChanged();
 }
 
 function abortActiveAgentRequests(reason = 'Agent generation cancelled.') {
@@ -3668,18 +3662,6 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         let chatStateChanged = false;
         let messageDisplayChanged = false;
 
-        const postDisplayInterceptResult = await runPostDisplayPostMainGenerationInterceptors(
-            message,
-            messageIndex,
-            generationType,
-            resolvedActivationSnapshot,
-        );
-        pendingPreGenerationInterceptRuns.push(...postDisplayInterceptResult.runs);
-        if (postDisplayInterceptResult.changed) {
-            chatStateChanged = true;
-            messageDisplayChanged = true;
-        }
-
         // Companions normally run last so they see the post-transform reply; the concurrent
         // option trades that for speed and runs them against the current reply alongside the passes.
         const companionStageArgs = { messageIndex, message, generationType, activeAgents };
@@ -4414,37 +4396,38 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
     return { text: currentOutputText, runs, cancelled: false };
 }
 
-async function runPostDisplayPostMainGenerationInterceptors(message, messageIndex, generationType, activationSnapshot = null) {
-    if (!shouldShowPostMainInterceptMessageFirst()) {
-        return { runs: [], changed: false, cancelled: false };
-    }
+function buildPostMainInterceptReviewPopupContent(text) {
+    return `
+        <div class="ica--post-main-intercept-review">
+            <p>Review the main output before it is shown in chat.</p>
+            <pre class="ica--post-main-intercept-review-output"><code>${escapeToastHtml(text)}</code></pre>
+        </div>
+    `;
+}
 
-    const currentMessageText = unwrapAssistantResponseWrapper(message?.mes);
-    const result = await runPostMainGenerationInterceptorsOnText(currentMessageText, generationType, {
-        activationSnapshot,
-        skipChanges: true,
-        onCancel: skipPostMainInterceptChanges,
+async function showPostMainInterceptReviewPopup(text) {
+    const popupContent = buildPostMainInterceptReviewPopupContent(text);
+    const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+        okButton: false,
+        cancelButton: false,
+        customButtons: [
+            {
+                text: 'Skip intercept',
+                result: POPUP_RESULT.CUSTOM1,
+                classes: ['menu_button_primary'],
+            },
+            {
+                text: 'Continue intercept',
+                result: POPUP_RESULT.CUSTOM2,
+                classes: ['menu_button_primary'],
+            },
+        ],
     });
 
-    if (result.cancelled || generationStopRequested) {
-        const cancelledRuns = result.runs.map(run => ({
-            ...run,
-            status: 'cancelled',
-            changed: false,
-            afterText: currentMessageText,
-        }));
-        return { runs: cancelledRuns, changed: false, cancelled: true };
-    }
-
-    const nextMessageText = unwrapAssistantResponseWrapper(result.text);
-    if (nextMessageText === currentMessageText) {
-        return { runs: result.runs, changed: false, cancelled: false };
-    }
-
-    message.mes = nextMessageText;
-    await syncPromptTransformMessageStateAsync(message, messageIndex);
-
-    return { runs: result.runs, changed: true, cancelled: false };
+    return result === POPUP_RESULT.CUSTOM2;
 }
 
 function getPostMainGenerationInterceptorsForGeneration(generationType) {
@@ -4503,12 +4486,8 @@ async function onGenerationOutputBufferingDecision(eventData) {
 
     const interceptAgents = getPostMainGenerationInterceptorsForGeneration(eventData.type ?? currentMainGenerationType);
     if (interceptAgents.length > 0) {
-        if (shouldShowPostMainInterceptMessageFirst()) {
-            return;
-        }
-
         eventData.hasPostMainInterceptors = true;
-        if (interceptAgents.some(shouldShowPreInterceptNotifications)) {
+        if (interceptAgents.some(shouldShowPreInterceptNotifications) || shouldShowPostMainInterceptMessageFirst()) {
             showInitialGenerationToast();
         }
     }
@@ -4530,12 +4509,23 @@ async function onMainGenerationOutputReady(eventData) {
         return;
     }
 
-    if (shouldShowPostMainInterceptMessageFirst()) {
-        return;
+    const generationType = eventData.type ?? currentMainGenerationType;
+    const shouldShowMessageFirst = shouldShowPostMainInterceptMessageFirst();
+    if (shouldShowMessageFirst) {
+        const runPostMainIntercepts = await showPostMainInterceptReviewPopup(eventData.text);
+        if (generationStopRequested) {
+            eventData.cancelled = true;
+            return;
+        }
+
+        if (!runPostMainIntercepts) {
+            return;
+        }
     }
 
-    const generationType = eventData.type ?? currentMainGenerationType;
-    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType);
+    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType, {
+        skipChanges: false,
+    });
     pendingPreGenerationInterceptRuns.push(...result.runs);
 
     if (result.cancelled || generationStopRequested) {

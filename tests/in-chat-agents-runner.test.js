@@ -41,6 +41,7 @@ describe('in-chat agent post-processing runner', () => {
     let streamingProcessor;
     let updateMessageTokenAccounting;
     let updateMessageMetaBadges;
+    let callGenericPopup;
     let connectionManagerRequestService;
     let globalSettings;
     let extensionSettings;
@@ -119,6 +120,7 @@ describe('in-chat agent post-processing runner', () => {
             enabled: true,
             promptTransformShowNotifications: false,
             appendAgentsExecutionMode: 'parallel',
+            postMainInterceptShowMessageFirst: true,
         };
         extensionSettings = {
             'guided-generations': {
@@ -168,6 +170,7 @@ describe('in-chat agent post-processing runner', () => {
             success: jest.fn(),
             warning: jest.fn(),
         };
+        callGenericPopup = jest.fn();
         const createJqueryMock = () => ({
             each: jest.fn(),
             filter: jest.fn(() => createJqueryMock()),
@@ -279,6 +282,31 @@ describe('in-chat agent post-processing runner', () => {
 
         await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
             power_user: { sysprompt: { enabled: true, content: 'Global system prompt text.' } },
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
+            POPUP_RESULT: {
+                AFFIRMATIVE: 1,
+                NEGATIVE: 0,
+                CANCELLED: null,
+                CUSTOM1: 1001,
+                CUSTOM2: 1002,
+                CUSTOM3: 1003,
+                CUSTOM4: 1004,
+                CUSTOM5: 1005,
+                CUSTOM6: 1006,
+                CUSTOM7: 1007,
+                CUSTOM8: 1008,
+                CUSTOM9: 1009,
+            },
+            POPUP_TYPE: {
+                TEXT: 1,
+                CONFIRM: 2,
+                INPUT: 3,
+                DISPLAY: 4,
+                CROP: 5,
+            },
+            callGenericPopup,
         }));
 
         await jest.unstable_mockModule('../public/scripts/tool-calling.js', () => ({
@@ -1967,7 +1995,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventData.prompt).toBe('Original outgoing prompt');
     });
 
-    test('keeps streaming output unbuffered by default when post-main intercept agents are active', async () => {
+    test('marks streaming output for buffering when post-main intercept agents are active', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation' },
         })];
@@ -1979,7 +2007,7 @@ describe('in-chat agent post-processing runner', () => {
         const eventData = { type: 'normal', isStreaming: true, hasPostMainInterceptors: false };
         await eventSource.emit(eventTypes.GENERATION_OUTPUT_BUFFERING_DECISION, eventData);
 
-        expect(eventData.hasPostMainInterceptors).toBe(false);
+        expect(eventData.hasPostMainInterceptors).toBe(true);
     });
 
     test('marks streaming output for buffering when show-first post-main intercepts are disabled', async () => {
@@ -2011,22 +2039,41 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventData.hasPostMainInterceptors).toBe(false);
     });
 
-    test('runs post-main intercepts after storing the assistant message by default', async () => {
+    test('shows a review popup before storing the assistant message when show-first is enabled', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
         })];
         generateQuietPrompt.mockResolvedValue('intercepted assistant reply');
+        let resolvePopup;
+
+        callGenericPopup.mockImplementation(() => new Promise(resolve => {
+            resolvePopup = resolve;
+        }));
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         initAgentRunner();
 
         await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
         const outputData = { type: 'normal', text: 'raw assistant reply', isStreaming: false, cancelled: false };
-        await eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+        const outputReadyPromise = eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+
+        await waitFor(() => callGenericPopup.mock.calls.length === 1);
+        expect(callGenericPopup.mock.calls[0][0]).toContain('Review the main output before it is shown in chat.');
+        expect(callGenericPopup.mock.calls[0][0]).toContain('raw assistant reply');
+        expect(callGenericPopup.mock.calls[0][3]).toEqual(expect.objectContaining({
+            customButtons: expect.arrayContaining([
+                expect.objectContaining({ text: 'Skip intercept' }),
+                expect.objectContaining({ text: 'Continue intercept' }),
+            ]),
+        }));
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+
+        resolvePopup(1002);
+        await outputReadyPromise;
 
         expect(outputData.cancelled).toBe(false);
-        expect(outputData.text).toBe('raw assistant reply');
-        expect(generateQuietPrompt).not.toHaveBeenCalled();
+        expect(outputData.text).toBe('intercepted assistant reply');
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
 
         chat.push({
             name: 'Assistant',
@@ -2053,37 +2100,33 @@ describe('in-chat agent post-processing runner', () => {
         })]);
     });
 
-    test('keeps the shown assistant message when post-main intercept changes are skipped', async () => {
+    test('keeps the raw assistant message when the review popup skips intercepts', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
         })];
-        let resolveQuietPrompt;
-        let skipClick;
+        generateQuietPrompt.mockResolvedValue('intercepted assistant reply');
+        let resolvePopup;
 
-        generateQuietPrompt.mockImplementation(() => new Promise(resolve => {
-            resolveQuietPrompt = resolve;
+        callGenericPopup.mockImplementation(() => new Promise(resolve => {
+            resolvePopup = resolve;
         }));
-        globalThis.toastr.info.mockImplementation((messageHtml, title, options = {}) => {
-            const button = {
-                addEventListener: jest.fn((eventName, handler) => {
-                    if (eventName === 'click') {
-                        skipClick = handler;
-                    }
-                }),
-            };
-            const toastElement = new globalThis.HTMLElement();
-            toastElement.querySelector = jest.fn(() => button);
-            options.onShown?.call(toastElement);
-
-            return { messageHtml, title };
-        });
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         initAgentRunner();
 
         await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
         const outputData = { type: 'normal', text: 'raw assistant reply', isStreaming: false, cancelled: false };
-        await eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+        const outputReadyPromise = eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+
+        await waitFor(() => callGenericPopup.mock.calls.length === 1);
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+
+        resolvePopup(1001);
+        await outputReadyPromise;
+
+        expect(outputData.cancelled).toBe(false);
+        expect(outputData.text).toBe('raw assistant reply');
+
         chat.push({
             name: 'Assistant',
             mes: outputData.text,
@@ -2094,22 +2137,9 @@ describe('in-chat agent post-processing runner', () => {
 
         await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
-        await waitFor(() => typeof skipClick === 'function');
-
-        expect(globalThis.toastr.info.mock.calls[0][0]).toContain('Skip changes');
-        skipClick({ preventDefault: jest.fn(), stopPropagation: jest.fn() });
-        resolveQuietPrompt('intercepted assistant reply');
-        await waitFor(() => Array.isArray(chat[0].extra.inChatAgentPreGenerationInterceptHistory));
 
         expect(chat[0].mes).toBe('raw assistant reply');
-        expect(chat[0].extra.inChatAgentPreGenerationInterceptHistory).toEqual([expect.objectContaining({
-            agentId: 'agent-pre-intercept',
-            timing: 'post-main-generation',
-            beforeText: 'raw assistant reply',
-            afterText: 'raw assistant reply',
-            changed: false,
-            status: 'cancelled',
-        })]);
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
     });
 
     test('runs post-main intercepts before storing the assistant message when show-first is disabled', async () => {
@@ -2159,6 +2189,7 @@ describe('in-chat agent post-processing runner', () => {
             preProcess: { interceptTiming: 'post-main-generation' },
         })];
         generateQuietPrompt.mockRejectedValue(new Error('post-main failed'));
+        callGenericPopup.mockResolvedValue(1002);
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         try {
