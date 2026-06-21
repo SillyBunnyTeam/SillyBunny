@@ -6981,6 +6981,18 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
+        // SillyBunny: apply in-chat agent regex scripts (e.g. CYOA "Trim Choices") in prompt mode
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(chatItem?.extra?.inChatAgents);
+        if (agentRegexScripts.length > 0) {
+            const agentPlacement = chatItem.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+            message = applyRegexScriptList(message, agentRegexScripts, agentPlacement, {
+                ...options,
+                characterOverride: name2,
+                substituteParamsFn: substituteParams,
+                substituteParamsExtendedFn: substituteParamsExtended,
+            });
+        }
+
         let regexedMessage = getRegexedString(message, regexType, options);
         regexedMessage = await appendFileContent(chatItem, regexedMessage);
 
