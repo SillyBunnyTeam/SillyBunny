@@ -8001,6 +8001,110 @@ body.safari-macos #top-bar {
     z-index: var(--sb-z-shell-panel);
 }
 
+@media screen and (min-width: 769px) {
+    /* Must beat unlayered drawer flex defaults in desktop vertical character nav. */
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer {
+        --sb-character-shell-rail-width: 92px;
+        display: grid !important;
+        grid-template-columns: var(--sb-character-shell-rail-width) minmax(0, 1fr);
+        grid-template-rows: auto auto auto auto minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer {
+        --sb-character-shell-rail-width: calc((46px * var(--sb-desktop-button-scale)) + 16px);
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > :not(#right-nav-panelheader):not(.sb-character-shell-nav-wrapper) {
+        grid-column: 2;
+        min-width: 0;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
+        grid-column: 1;
+        grid-row: 1 / -1;
+        align-self: stretch;
+        width: var(--sb-character-shell-rail-width);
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInner,
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInnerFull {
+        min-width: 0;
+        min-height: 0;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav-wrapper::before,
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav-wrapper::after {
+        display: none;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 6px;
+        padding: 18px 9px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        border-right: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+        border-bottom: 0;
+        scroll-snap-type: none;
+        scrollbar-width: none;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: calc(54px * var(--sb-desktop-button-scale));
+        flex: 0 0 auto;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px 6px;
+        text-align: center;
+        white-space: normal;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab i {
+        width: 100%;
+        flex-basis: auto;
+        margin: 0;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
+        align-items: center;
+        text-align: center;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy strong {
+        font-size: calc(var(--mainFontSize) * 0.72 * var(--sb-desktop-button-scale));
+        line-height: 1.2;
+        white-space: normal;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav > .sb-shell-tab {
+        width: calc(46px * var(--sb-desktop-button-scale));
+        min-height: calc(46px * var(--sb-desktop-button-scale));
+        align-self: center;
+        padding: 0;
+    }
+
+    :root[data-sb-desktop-nav-layout='vertical'][data-sb-desktop-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
+        display: none;
+    }
+}
+
 @media screen and (max-width: 768px) {
     /* Must beat upstream mobile drawer rules for vertical side rails. */
     :root[data-sb-mobile-nav-layout='vertical'] .sb-shell-root-left.openDrawer .sb-shell-frame,

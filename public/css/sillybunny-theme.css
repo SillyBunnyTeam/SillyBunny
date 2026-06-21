@@ -1365,7 +1365,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
         0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
-    font-size: var(--sb-composer-action-icon-size) !important;
+    font-size: var(--sb-send-icon-size, var(--sb-composer-action-icon-size)) !important;
 }
 
 #send_form .mes_stop,
@@ -6178,6 +6178,14 @@ input[type='range']::-moz-range-thumb {
 #options_button {
     width: var(--sb-composer-action-size);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+}
+
+@media screen and (min-width: 769px) {
+    #send_but {
+        --sb-send-icon-size: calc(var(--bottomFormIconSize, 20px) * 0.68);
+        font-weight: 900;
+        line-height: 1;
+    }
 }
 
 /* Must beat unlayered mobile/grid character-list rules that hide drawer row text. */
