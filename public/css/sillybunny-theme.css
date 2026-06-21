@@ -1365,7 +1365,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 30%, transparent),
         0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
-    font-size: var(--sb-composer-action-icon-size) !important;
+    font-size: var(--sb-send-icon-size, var(--sb-composer-action-icon-size)) !important;
 }
 
 #send_form .mes_stop,
@@ -6178,6 +6178,81 @@ input[type='range']::-moz-range-thumb {
 #options_button {
     width: var(--sb-composer-action-size);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+}
+
+@media screen and (min-width: 769px) {
+    #send_but {
+        --sb-send-icon-size: calc(var(--bottomFormIconSize, 20px) * 0.68);
+        font-weight: 900;
+        line-height: 1;
+    }
+}
+
+/* Must beat unlayered mobile/grid character-list rules that hide drawer row text. */
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block {
+    display: grid;
+    min-width: 0;
+    color: var(--SmartThemeBodyColor);
+}
+
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
+body #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--SmartThemeBodyColor);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Must beat upstream public/style.css:4249 .menu_button for icon-only controls. */
+.menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.right_menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands):empty,
+.menu_button_icon:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
+.menu_button_icon:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
+.menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
+.menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
+.right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
+    width: var(--sb-icon-control-size);
+    inline-size: var(--sb-icon-control-size);
+    height: var(--sb-icon-control-size);
+    block-size: var(--sb-icon-control-size);
+    min-width: var(--sb-icon-control-size);
+    min-inline-size: var(--sb-icon-control-size);
+    min-height: var(--sb-icon-control-size);
+    min-block-size: var(--sb-icon-control-size);
+    max-width: var(--sb-icon-control-size);
+    max-inline-size: var(--sb-icon-control-size);
+    max-height: var(--sb-icon-control-size);
+    max-block-size: var(--sb-icon-control-size);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--sb-icon-control-radius);
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    line-height: 1;
+    text-align: center;
+    overflow: visible;
 }
 
 /* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */

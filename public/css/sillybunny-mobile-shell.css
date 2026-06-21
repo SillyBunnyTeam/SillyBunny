@@ -99,7 +99,7 @@
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px));
+        --sb-composer-action-size: clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
         --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
         --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
@@ -118,7 +118,7 @@
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px));
+        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
         --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
@@ -162,8 +162,8 @@
     /* SillyBunny: the STscript execution play/pause/stop controls (.stscript_btn)
        are unused by this fork's roleplay-focused audience. mobile-styles.css
        forces them to display:flex (see #533), which lets them overlap the
-       composer textarea on mobile. Hide them unconditionally here -- this sheet
-       loads after mobile-styles.css so the !important wins. */
+       composer textarea on mobile. Hide them unconditionally here because this
+       sheet loads after mobile-styles.css. */
     #rightSendForm > .stscript_btn {
         display: none !important;
     }
@@ -400,15 +400,12 @@
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-        align-self: center;
-        padding: 0;
-        border-color: transparent;
-        background: transparent;
-        box-shadow: none;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        align-self: stretch;
+        padding: 8px 6px;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
@@ -429,15 +426,17 @@
         text-wrap: balance;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
         width: 44px;
         min-width: 44px;
         max-width: 44px;
         min-height: 44px;
+        align-self: center;
         padding: 0;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
         display: none;
     }
@@ -2772,23 +2771,6 @@
     }
 }
 
-@media screen and (max-width: 768px) {
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
-    .sb-shell-root.openDrawer,
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
-    #right-nav-panel.openDrawer,
-    #top-settings-holder #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
-        bottom: auto;
-        box-sizing: border-box;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px));
-    }
-}
-
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
@@ -2812,21 +2794,6 @@
         --sb-proxy-underline-inset-base: 7px;
         --sb-proxy-underline-bottom-base: 3px;
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
-    }
-
-    #left-nav-panel.openDrawer,
-    #user-settings-block.openDrawer,
-    .sb-shell-root.openDrawer,
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
-    #right-nav-panel.openDrawer,
-    #top-settings-holder #right-nav-panel.openDrawer,
-    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer {
-        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
-        bottom: auto !important;
-        box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)) !important;
     }
 
     :root[data-sb-compact-mode='true'] {
@@ -3006,7 +2973,7 @@
 
     #nonQRFormItems {
         --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
-        --sb-composer-action-size: max(var(--sb-mobile-touch-target, 44px), clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px));
+        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
         --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
         --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
@@ -3049,7 +3016,7 @@
 
     #chat .mes_text,
     #chat .mes_reasoning {
-        line-height: calc(var(--mainFontSize) + 0.35rem);
+        line-height: calc(var(--mainFontSize) + 0.42rem);
     }
 
     #chat .mes_text {
@@ -3075,17 +3042,17 @@
 
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
         --moonlit-sb-avatar-column-width: max(var(--custom-ChatAvatar, 40px), 50px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
         --mesParagraphSpacingTop: 0.28em;
-        --mesParagraphSpacingBottom: 0.42em;
+        --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
     }
 
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         --moonlit-sb-ripple-avatar-mobile-width: min(var(--customRippleAvatarMobileWidth, 100px), 86px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
         --mesParagraphSpacingTop: 0.28em;
-        --mesParagraphSpacingBottom: 0.42em;
+        --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
     }
 
@@ -3173,13 +3140,43 @@
 @media screen and (max-width: 768px) {
     /* Must beat upstream public/style.css:971 #form_sheld. */
     #form_sheld {
+        width: 100%;
+        max-width: 100%;
+        left: 0;
+        right: 0;
+        transform: none;
+        box-sizing: border-box;
         margin: var(--sb-chat-composer-gap) auto 0;
+        padding-block-end: max(var(--sb-chat-composer-edge-gap), env(safe-area-inset-bottom, 0px));
     }
 
     /* Must beat upstream public/css/mobile-styles.css:1096 #send_form. */
     #send_form {
+        margin-bottom: 0;
+        padding: 4px 6px 6px;
         border-width: 1px 0 0;
+        border-radius: 10px 10px 0 0;
         border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+        box-shadow: 0 -10px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:1096 #send_form theme surface. */
+    :root:not([data-sb-theme]) #send_form,
+    :root[data-sb-theme='clean-minimal'] #send_form {
+        background: var(--sb-composer-surface-bg);
+        border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 86%, transparent);
+        backdrop-filter: blur(12px) saturate(110%);
+        -webkit-backdrop-filter: blur(12px) saturate(110%);
+    }
+
+    :root:not([data-sb-theme]) #send_textarea,
+    :root[data-sb-theme='clean-minimal'] #send_textarea {
+        background: var(--sb-mobile-default-input-solid);
+    }
+
+    :root:not([data-sb-theme]) #send_form::before,
+    :root[data-sb-theme='clean-minimal'] #send_form::before {
+        opacity: var(--sb-shell-surface-opacity);
     }
 
     /* Must beat the unlayered theme focus guard after upstream public/css/mobile-styles.css:1096 #send_form. */
@@ -3202,9 +3199,803 @@
             inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent);
     }
 
+    /* Must beat upstream public/style.css:995/1027/1031 composer layout. */
+    #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
+        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
+        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
+        --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
+        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        display: grid;
+        grid-template-columns: var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width);
+        grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto);
+        grid-template-areas: 'tools input action';
+        align-items: center;
+        gap: 0 3px;
+        min-height: calc(var(--sb-mobile-composer-input-height) + 3px);
+        padding: 1px 4px;
+        box-sizing: border-box;
+        overflow: visible;
+        border-color: transparent;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    :root[data-sb-compact-mode='true'] #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
+        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
+        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
+        --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
+        gap: 0 3px;
+    }
+
+    #leftSendForm {
+        grid-area: tools;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        gap: 3px;
+    }
+
+    #leftSendForm::-webkit-scrollbar {
+        display: none;
+    }
+
+    #rightSendForm {
+        grid-area: action;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        overflow: visible;
+        justify-content: flex-end;
+        gap: 3px;
+    }
+
+    #rightSendForm > div:not(#send_but):not(#mes_stop):not(#qig-input-btn):not(.stscript_btn) {
+        display: none;
+    }
+
+    #leftSendForm > div,
+    #rightSendForm > div:not(.stscript_btn),
+    #send_but,
+    #send_form .mes_stop,
+    #send_form.sb-generating-controls #mes_stop {
+        width: var(--sb-composer-action-size);
+        min-width: var(--sb-composer-action-size);
+        max-width: var(--sb-composer-action-size);
+        height: var(--sb-composer-action-size);
+        min-height: var(--sb-composer-action-size);
+        max-height: var(--sb-composer-action-size);
+        flex: 0 0 var(--sb-composer-action-size);
+        padding: 0;
+        margin: 0;
+        box-sizing: border-box;
+        font-size: var(--sb-composer-action-icon-size);
+        line-height: 1;
+    }
+
+    #send_textarea {
+        grid-area: input;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: var(--sb-mobile-composer-input-height);
+        max-height: 42dvh;
+        field-sizing: content;
+        resize: none;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 4px 6px;
+        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+        border-radius: 12px;
+        background: var(--sb-composer-input-bg, var(--sb-mobile-default-input-solid));
+        line-height: 1.15;
+        align-self: stretch;
+        justify-self: stretch;
+    }
+
+    #send_but,
+    #send_form .mes_stop,
+    #send_form.sb-generating-controls #mes_stop {
+        width: var(--sb-composer-send-width);
+        min-width: var(--sb-composer-send-width);
+        max-width: var(--sb-composer-send-width);
+        flex: 0 0 var(--sb-composer-send-width);
+    }
+
+    /* Must beat layered bottom-chat sizing so mobile keeps the pre-refactor compact row. */
+    #sb-bottom-chat-bar {
+        --sb-bottom-chat-mobile-gutter: max(6px, var(--sb-mobile-safe-area-left, env(safe-area-inset-left, 0px)), var(--sb-mobile-safe-area-right, env(safe-area-inset-right, 0px)));
+        --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
+        --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
+        --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
+        --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
+        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
+        width: min(var(--sb-bottom-chat-mobile-width), calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2)));
+        max-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
+        display: grid;
+        grid-template-columns: var(--sb-bottom-chat-mobile-persona-size) minmax(0, 1fr) repeat(3, var(--sb-bottom-chat-mobile-button-size));
+        align-items: center;
+        justify-content: stretch;
+        gap: var(--sb-bottom-chat-mobile-gap);
+        margin: 0 auto;
+        padding: var(--sb-bottom-chat-mobile-padding-block) var(--sb-bottom-chat-mobile-padding-inline);
+        min-height: calc(var(--sb-bottom-chat-mobile-persona-size) + var(--sb-bottom-chat-mobile-padding-block) + var(--sb-bottom-chat-mobile-padding-block));
+        border-radius: var(--sb-bottom-chat-mobile-radius);
+    }
+
+    #sb-bottom-chat-select {
+        grid-column: 2;
+        grid-row: 1;
+        width: 100%;
+        min-width: 0;
+        height: var(--sb-bottom-chat-mobile-select-height);
+        min-height: var(--sb-bottom-chat-mobile-select-height);
+        max-height: var(--sb-bottom-chat-mobile-select-height);
+        padding: 0 clamp(6px, calc(8px * var(--sb-bottom-bar-scale)), 10px);
+        font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.76 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.86));
+        line-height: var(--sb-bottom-chat-mobile-select-height);
+        border-radius: clamp(10px, calc(11px * var(--sb-bottom-bar-scale)), 14px);
+    }
+
+    .sb-bottom-chat-collapse-toggle {
+        grid-column: 5;
+        grid-row: 1;
+        display: inline-flex;
+        justify-self: stretch;
+    }
+
+    .sb-bottom-chat-nav-actions {
+        grid-column: 3 / span 2;
+        grid-row: 1;
+        display: grid;
+        grid-template-columns: repeat(2, var(--sb-bottom-chat-mobile-button-size));
+        justify-self: stretch;
+        width: calc((var(--sb-bottom-chat-mobile-button-size) * 2) + var(--sb-bottom-chat-mobile-gap));
+    }
+
+    .sb-bottom-chat-secondary-row {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-width: 0;
+        gap: var(--sb-bottom-chat-mobile-gap);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
+
+    .sb-bottom-chat-secondary-row::-webkit-scrollbar {
+        display: none;
+    }
+
+    #sb-bottom-chat-bar.sb-bottom-chat-secondary-collapsed .sb-bottom-chat-secondary-row {
+        display: none;
+    }
+
+    .sb-bottom-chat-search-field {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        min-width: 100%;
+        height: var(--sb-bottom-chat-mobile-select-height);
+        min-height: var(--sb-bottom-chat-mobile-select-height);
+        max-height: var(--sb-bottom-chat-mobile-select-height);
+        padding: 0 clamp(8px, calc(9px * var(--sb-bottom-bar-scale)), 11px);
+        border-radius: clamp(10px, calc(11px * var(--sb-bottom-bar-scale)), 14px);
+    }
+
+    #sb-bottom-chat-bar:not(.sb-bottom-chat-search-open) .sb-bottom-chat-search-field {
+        display: none;
+    }
+
+    .sb-bottom-chat-search-field input {
+        height: calc(var(--sb-bottom-chat-mobile-select-height) - 14px);
+        font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.74 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.84));
+    }
+
+    .sb-bottom-chat-search-status {
+        max-width: 92px;
+        font-size: clamp(calc(var(--mainFontSize) * 0.58), calc(var(--mainFontSize) * 0.64 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.72));
+    }
+
+    .sb-bottom-chat-nav-actions,
+    .sb-bottom-chat-management-actions {
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: var(--sb-bottom-chat-mobile-gap);
+    }
+
+    .sb-bottom-chat-management-actions {
+        width: max-content;
+    }
+
+    .sb-bottom-chat-nav-actions {
+        padding-inline-end: 0;
+        border-inline-end: 0;
+    }
+
+    #sb-persona-bubble {
+        grid-column: 1;
+        grid-row: 1;
+        flex: 0 0 var(--sb-bottom-chat-mobile-persona-size);
+        width: var(--sb-bottom-chat-mobile-persona-size);
+        min-width: var(--sb-bottom-chat-mobile-persona-size);
+        max-width: var(--sb-bottom-chat-mobile-persona-size);
+        height: var(--sb-bottom-chat-mobile-persona-size);
+        min-height: var(--sb-bottom-chat-mobile-persona-size);
+        max-height: var(--sb-bottom-chat-mobile-persona-size);
+        border-width: 1px;
+    }
+
+    .sb-bottom-chat-btn {
+        position: relative;
+        flex: 0 0 var(--sb-bottom-chat-mobile-button-size);
+        width: var(--sb-bottom-chat-mobile-button-size);
+        min-width: var(--sb-bottom-chat-mobile-button-size);
+        max-width: var(--sb-bottom-chat-mobile-button-size);
+        height: var(--sb-bottom-chat-mobile-button-size);
+        min-height: var(--sb-bottom-chat-mobile-button-size);
+        max-height: var(--sb-bottom-chat-mobile-button-size);
+        padding: 0;
+        border-radius: clamp(8px, calc(9px * var(--sb-bottom-bar-scale)), 12px);
+        font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.78 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.88));
+        line-height: 1;
+    }
+
     /* Must beat upstream public/style.css:862 #top-bar. */
     #top-bar {
         height: var(--sb-topbar-layout-offset);
+        padding: 0 var(--sb-topbar-padding-x);
+    }
+
+    /* Must beat upstream public/style.css:862 #top-bar default-theme surface. */
+    :root:not([data-sb-theme]) #top-bar,
+    :root[data-sb-theme='clean-minimal'] #top-bar {
+        background: var(--sb-topbar-surface-bg);
+        backdrop-filter: blur(12px) saturate(110%);
+        -webkit-backdrop-filter: blur(12px) saturate(110%);
+    }
+
+    :root:not([data-sb-theme]) #top-bar::before,
+    :root[data-sb-theme='clean-minimal'] #top-bar::before {
+        opacity: var(--sb-shell-surface-opacity);
+    }
+
+    /* Must beat upstream public/style.css:6374 .fillRight.openDrawer. */
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer {
+        position: fixed;
+        inset-inline: 0;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
+        bottom: auto;
+        width: 100vw;
+        width: 100dvw;
+        max-width: 100dvw;
+        min-width: 0;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        overflow: hidden;
+        transform: translateZ(0);
+        box-sizing: border-box;
+    }
+
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer {
+        position: fixed;
+        inset-inline: 0;
+        top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px));
+        bottom: auto;
+        width: 100vw;
+        width: 100dvw;
+        max-width: 100dvw;
+        min-width: 0;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px)));
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        overflow: hidden;
+        transform: translateZ(0);
+        box-sizing: border-box;
+    }
+
+    /* Must beat upstream public/css/mobile-styles.css:243 #right-nav-panel.openDrawer. */
+    #right-nav-panel.openDrawer,
+    :root[data-sb-character-drawer-lock='right'] #right-nav-panel.openDrawer,
+    #top-settings-holder #right-nav-panel.openDrawer {
+        inset-inline: 0 !important;
+    }
+
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Must beat upstream drawer sizing while the character shell uses vertical rail mode. */
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 84px;
+        grid-template-rows: auto auto auto auto minmax(0, 1fr);
+        grid-template-areas:
+            'header nav'
+            'charbar nav'
+            'subtabs nav'
+            'pinbar nav'
+            'content nav';
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
+        display: flex;
+        flex-direction: column;
+        grid-area: nav;
+        width: 84px;
+        min-width: 84px;
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        border-left: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
+        border-bottom: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer {
+        grid-template-columns: minmax(0, 1fr) 58px;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer > .sb-character-shell-nav-wrapper {
+        width: 58px;
+        min-width: 58px;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
+        grid-area: header;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-editor-subtabs-wrapper {
+        grid-area: subtabs;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
+        grid-area: charbar;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > #rm_PinAndTabs {
+        grid-area: pinbar;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInner,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .scrollableInnerFull {
+        grid-area: content;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 6px;
+        padding: 16px 8px max(16px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        border-bottom: 0;
+        scrollbar-width: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-shortcuts {
+        display: contents;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-divider {
+        display: block;
+        width: calc(100% - 8px);
+        height: 1px;
+        min-height: 1px;
+        align-self: center;
+        margin: 4px 0;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav {
+        align-items: center;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px 6px;
+        border-radius: var(--sb-radius-button, 14px);
+        text-align: center;
+        white-space: normal;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-mobile-rail-hidden {
+        display: none;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--sb-shell-tab-active-bg) 86%);
+        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, var(--sb-shell-border) 66%);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 28%, transparent);
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        align-self: stretch;
+        padding: 8px 6px;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
+        width: 100%;
+        margin: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy {
+        align-items: center;
+        text-align: center;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab-copy strong {
+        font-size: calc(var(--mainFontSize) * 0.72);
+        line-height: 1.2;
+        white-space: normal;
+        hyphens: auto;
+        text-wrap: balance;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        min-height: 44px;
+        align-self: center;
+        padding: 0;
+    }
+
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
+        display: none;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
+        --sb-character-header-control-size: 44px;
+        min-height: 52px;
+        padding: 8px calc((var(--sb-character-header-control-size) * 3) + 24px) 8px 14px;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
+        top: 8px;
+        right: 8px;
+        width: var(--sb-character-header-control-size);
+        min-width: var(--sb-character-header-control-size);
+        max-width: var(--sb-character-header-control-size);
+        height: var(--sb-character-header-control-size);
+        min-height: var(--sb-character-header-control-size);
+        max-height: var(--sb-character-header-control-size);
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
+        top: 8px;
+        right: calc(var(--sb-character-header-control-size) + 16px);
+        min-height: var(--sb-character-header-control-size);
+        padding: 0;
+        gap: 3px;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
+        flex: 0 0 var(--sb-character-header-control-size);
+        width: var(--sb-character-header-control-size);
+        min-width: var(--sb-character-header-control-size);
+        max-width: var(--sb-character-header-control-size);
+        height: var(--sb-character-header-control-size);
+        min-height: var(--sb-character-header-control-size);
+        max-height: var(--sb-character-header-control-size);
+        padding: 0;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
+        width: 1em;
+        font-size: calc(var(--mainFontSize) * 0.96);
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title {
+        position: static;
+        width: auto;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        clip: auto;
+        clip-path: none;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        border: 0;
+    }
+
+    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-title {
+        white-space: normal;
+    }
+
+    /* Must beat upstream mobile character search controls that default to 44px. */
+    #right-nav-panel.openDrawer .sb-character-create-bar {
+        --sb-character-create-control-size: 32px;
+        gap: 4px;
+        margin: 2px 0 4px;
+        padding: 3px;
+        border-radius: 10px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_button_bar {
+        gap: 4px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar :is(#character_sort_order, #rm_button_create, #rm_button_group_chats),
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-size-changer select,
+    #right-nav-panel.openDrawer #character_search_bar {
+        height: var(--sb-character-create-control-size);
+        min-height: var(--sb-character-create-control-size);
+        max-height: var(--sb-character-create-control-size);
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #character_sort_order {
+        min-width: 6.4em;
+        max-width: 8em;
+        padding-block: 0;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar :is(#rm_button_create, #rm_button_group_chats, #rm_button_search, #rm_print_characters_pagination .menu_button, #rm_print_characters_pagination .paginationjs-pages ul li a) {
+        width: var(--sb-character-create-control-size);
+        min-width: var(--sb-character-create-control-size);
+        max-width: var(--sb-character-create-control-size);
+        height: var(--sb-character-create-control-size);
+        min-height: var(--sb-character-create-control-size);
+        max-height: var(--sb-character-create-control-size);
+        padding: 0;
+        font-size: calc(var(--mainFontSize) * 0.86);
+        line-height: 1;
+    }
+
+    #right-nav-panel.openDrawer #form_character_search_form {
+        margin-top: 2px;
+    }
+
+    #right-nav-panel.openDrawer #character_search_bar {
+        padding-block: 0;
+        padding-inline: 8px;
+        font-size: max(15px, calc(var(--mainFontSize) * 0.82));
+        line-height: 1.1;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination,
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs {
+        gap: 4px;
+        padding: 0;
+        min-height: var(--sb-character-create-control-size);
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-pages ul {
+        gap: 3px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-size-changer select {
+        min-width: 5.6em;
+        padding-block: 0;
+        font-size: max(15px, calc(var(--mainFontSize) * 0.8));
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-nav {
+        min-height: var(--sb-character-create-control-size);
+        padding-inline: 3px;
+        font-size: calc(var(--mainFontSize) * 0.82);
+    }
+
+    #right-nav-panel.openDrawer .rm_tag_controls {
+        gap: 3px;
+        margin-top: 3px;
+    }
+
+    #right-nav-panel.openDrawer .rm_tag_controls :is(.tag.actionable, .tags_view, .right_menu_button) {
+        width: 30px;
+        min-width: 30px;
+        max-width: 30px;
+        height: 30px;
+        min-height: 30px;
+        max-height: 30px;
+        font-size: calc(var(--mainFontSize) * 0.84);
+    }
+
+    /* Must beat unlayered mobile/grid character-list rules that hide drawer names and tags. */
+    #right-nav-panel.openDrawer #rm_print_characters_block {
+        --sb-character-list-avatar-size: 56px;
+        display: grid;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+        padding: 0 0 10px;
+        padding-inline-end: var(--sb-character-scroll-gutter, 8px);
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+        display: grid;
+        grid-template-columns: var(--sb-character-list-avatar-size) minmax(0, 1fr);
+        align-items: center;
+        gap: 6px 10px;
+        min-height: calc(var(--sb-character-list-avatar-size) + 46px);
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        overflow: hidden;
+        padding: 9px 8px;
+        border-radius: 14px;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+        grid-column: 1;
+        grid-row: 1 / -1;
+        align-self: center;
+        justify-self: center;
+        width: var(--sb-character-list-avatar-size);
+        min-width: var(--sb-character-list-avatar-size);
+        max-width: var(--sb-character-list-avatar-size);
+        height: var(--sb-character-list-avatar-size);
+        min-height: var(--sb-character-list-avatar-size);
+        max-height: var(--sb-character-list-avatar-size);
+        flex: 0 0 var(--sb-character-list-avatar-size);
+        aspect-ratio: 1 / 1;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+        grid-column: 2;
+        grid-row: 1 / -1;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+        gap: 2px;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        overflow: hidden;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block :is(.character_name_block, .group_name_block) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: center;
+        gap: 1px;
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+        color: var(--SmartThemeBodyColor);
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block :is(.ch_name, .group_select_counter, .character_name_block_sub_line, .ch_description, .group_select_block_list) {
+        display: block;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
+        color: var(--SmartThemeBodyColor);
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        visibility: visible;
+        opacity: 1;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline {
+        display: flex;
+        grid-column: 1;
+        grid-row: auto;
+        max-width: 100%;
+        max-height: none;
+        min-width: 0;
+        margin-top: 2px;
+        overflow: visible;
+        opacity: 0.86;
+        visibility: visible;
+        flex-basis: auto;
+        align-items: flex-start;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag {
+        display: inline-flex;
+        min-height: calc(var(--mainFontSize) * 1.45);
+        line-height: 1.25;
+        max-width: 100%;
+        padding-block: 2px;
+        color: var(--SmartThemeBodyColor);
+        opacity: 1;
+        visibility: visible;
+    }
+
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag_name {
+        display: inline;
+        max-width: min(58vw, 16rem);
+        color: inherit;
+        opacity: 1;
+        visibility: visible;
+    }
+
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+        min-height: 132px;
+        padding: 10px 8px;
+    }
+
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+        width: 64px;
+        min-width: 64px;
+        max-width: 64px;
+        height: 64px;
+        min-height: 64px;
+        max-height: 64px;
+        flex-basis: 64px;
     }
 
     /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */
