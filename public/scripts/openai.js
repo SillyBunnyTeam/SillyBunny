@@ -8673,7 +8673,12 @@ async function onConnectButtonClick(e) {
     const config = apiSourceConfig[oai_settings.chat_completion_source];
     if (config) {
         const apiKey = String($(config.selector).val()).trim();
-        if (apiKey.length) {
+        const isBoundCustomEndpointProfile = oai_settings.chat_completion_source === chat_completion_sources.CUSTOM
+            && selected_custom_endpoint_preset?.name !== 'None'
+            && selected_custom_endpoint_preset?.secretId;
+
+        // SillyBunny: custom endpoint profiles keep their own secret ids; Connect must not mint duplicate active keys.
+        if (!isBoundCustomEndpointProfile && apiKey.length) {
             await writeSecret(config.key, apiKey);
         }
 
@@ -9407,6 +9412,16 @@ async function activateCustomEndpointPresetSecret(preset, { forceWrite = false }
     }
 }
 
+function updateCustomEndpointKeyInput(preset, key) {
+    if (preset?.secretId) {
+        // SillyBunny: saved profile secrets are write-only in the UI; avoid replaying stale plaintext copies.
+        $('#api_key_custom').val('').attr('placeholder', t`(saved secret)`);
+        return;
+    }
+
+    $('#api_key_custom').removeAttr('placeholder').val(key);
+}
+
 async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
     const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
@@ -9434,7 +9449,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     if (writeKey) {
         await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
     }
-    $('#api_key_custom').val(normalizedPreset.key);
+    updateCustomEndpointKeyInput(selected_custom_endpoint_preset, normalizedPreset.key);
 
     if (reconnect && oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
         reconnectOpenAi();
