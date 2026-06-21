@@ -8,22 +8,18 @@ const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'open
 
 describe('OpenAI impersonate defaults', () => {
     test('falls back to first-person impersonation prompts when user fields are empty', () => {
-        expect(openAiSource).toContain('const default_assistant_impersonation = \'{{user}}:\';');
+        expect(openAiSource).toContain("const default_assistant_impersonation = '{{user}}:';");
         expect(openAiSource).toContain('assistant_impersonation: default_assistant_impersonation,');
-        expect(openAiSource).toContain('function getEffectiveImpersonationPrompt(impersonationFormat = null)');
-        expect(openAiSource).toContain('String(oai_settings.impersonation_prompt ?? \'\').trim() || default_impersonation_prompt');
-        expect(openAiSource).toContain('const neutral_impersonation_prompt =');
-        expect(openAiSource).toContain('const impersonationPrompt = getEffectiveImpersonationPrompt(impersonationFormat);');
+        expect(openAiSource).toContain('function getEffectiveImpersonationPrompt()');
+        expect(openAiSource).toContain("String(oai_settings.impersonation_prompt ?? '').trim() || default_impersonation_prompt");
+        expect(openAiSource).toContain('const impersonationPrompt = getEffectiveImpersonationPrompt();');
         expect(openAiSource).toContain('function getEffectiveAssistantImpersonationPrefill(settings)');
-        expect(openAiSource).toContain('String(settings?.assistant_impersonation ?? \'\').trim() || default_assistant_impersonation');
-        expect(openAiSource).toContain('if (type === \'impersonate\') {');
-        expect(openAiSource).toContain('shouldUseAssistantImpersonationPrefill(type, impersonationFormat)');
-        expect(openAiSource).toContain('generate_data.assistant_prefill = getEffectiveAssistantImpersonationPrefill(settings);');
-        expect(openAiSource).toContain('impersonation_format');
+        expect(openAiSource).toContain("String(settings?.assistant_impersonation ?? '').trim() || default_assistant_impersonation");
+        expect(openAiSource).toContain('? getEffectiveAssistantImpersonationPrefill(settings)');
     });
 
     test('does not add the impersonate control prompt when prompt manager disables it', () => {
-        expect(openAiSource).toContain('if (type === \'impersonate\' && !promptManager.isPromptDisabledForActiveCharacter(\'impersonate\')) {');
+        expect(openAiSource).toContain("if (type === 'impersonate' && !promptManager.isPromptDisabledForActiveCharacter('impersonate')) {");
         expect(openAiSource).toContain('controlPrompts.add(impersonateMessage);');
     });
 });

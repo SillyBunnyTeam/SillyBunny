@@ -1,4 +1,3 @@
-@layer sb-chat {
 /* Built-in SillyBunny ports of Moonlit Echoes chat layouts.
    Extracted from SillyBunny-MoonlitEchoesTheme/style.css and kept scoped to
    the native Echo, Whisper, Hush, Ripple, and Tide body classes. */
@@ -1579,29 +1578,5 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     body.ripplestyle #chat .mes:not(.smallSysMes) .mes_text {
         margin-top: 0 !important;
         padding-top: 0 !important;
-    }
-}
-}
-
-/* Unlayered fork cascade guards for upstream rules that beat layered chat-style rules. */
-/* Must beat upstream public/style.css:1315 .mes. */
-body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes {
-    display: block;
-}
-
-/* Must beat upstream public/style.css:1662 .mes_text. */
-body.tidestyle #chat .mes .mes_text {
-    max-width: 74%;
-}
-
-/* Must beat upstream public/style.css:1378 .swipe_left, .swipe_right. */
-body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .last_mes :is(.swipe_right, .swipe_left) {
-    opacity: 0.6;
-}
-
-@media screen and (min-width: 1001px) {
-    /* Must beat upstream public/style.css:3521 .mes_block .ch_name. */
-    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) .mes_block .ch_name {
-        align-items: center;
     }
 }

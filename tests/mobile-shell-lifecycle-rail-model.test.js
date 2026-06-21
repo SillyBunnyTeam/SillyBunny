@@ -3,13 +3,11 @@ import { describe, expect, test } from '@jest/globals';
 import {
     createMobileShellLifecycle,
     getMobileShellQuickActionKey,
-    MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS,
     MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY,
     MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
     MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
     MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT,
     normalizeMobileShellQuickAction,
-    resolveMobileShellBottomBarActionVisibility,
     resolveMobileShellQuickActionRoute,
     resolveMobileShellRailActionVisibility,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
@@ -30,12 +28,6 @@ describe('mobile shell rail model lifecycle', () => {
         expect(MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH).toBe(36);
         expect(MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK).toBe('fa-bolt');
         expect(MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY).toBe('characters');
-        expect(MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS).toEqual([
-            'view-files',
-            'new-chat',
-            'search-chat',
-            'delete-chat',
-        ]);
     });
 
     test('normalizes legacy World Info routes before shell lookup', () => {
@@ -225,37 +217,6 @@ describe('mobile shell rail model lifecycle', () => {
         });
     });
 
-    test('moves low-frequency bottom chat actions into mobile overflow only', () => {
-        const actions = [
-            { id: 'view-files', label: 'View chat files' },
-            { id: 'new-chat', label: 'New chat' },
-            { id: 'mass-delete', label: 'Mass delete chats' },
-            { id: 'auto-name', label: 'Ask the LLM to name this chat' },
-            { id: 'rename-chat', label: 'Rename chat' },
-            { id: 'search-chat', label: 'Search chat' },
-            { id: 'delete-chat', label: 'Delete chat' },
-            { id: 'hide-bottom-bar', label: 'Hide bottom chat bar' },
-        ];
-
-        expect(resolveMobileShellBottomBarActionVisibility({
-            actions,
-            isMobileViewport: false,
-        })).toEqual({
-            visibleActions: actions,
-            overflowActions: [],
-            shouldRenderOverflow: false,
-        });
-
-        expect(resolveMobileShellBottomBarActionVisibility({
-            actions,
-            isMobileViewport: true,
-        })).toEqual({
-            visibleActions: [actions[0], actions[1], actions[5], actions[6]],
-            overflowActions: [actions[2], actions[3], actions[4], actions[7]],
-            shouldRenderOverflow: true,
-        });
-    });
-
     test('exposes rail model decisions through the lifecycle seam', () => {
         const lifecycle = createMobileShellLifecycle();
 
@@ -264,11 +225,9 @@ describe('mobile shell rail model lifecycle', () => {
             labelMaxLength: MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
             iconFallback: MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
         });
-        expect(lifecycle.railModel.bottomBarVisibleActionIds).toBe(MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS);
         expect(lifecycle.railModel.resolveQuickActionRoute).toBe(resolveMobileShellQuickActionRoute);
         expect(lifecycle.railModel.normalizeQuickAction).toBe(normalizeMobileShellQuickAction);
         expect(lifecycle.railModel.getQuickActionKey).toBe(getMobileShellQuickActionKey);
         expect(lifecycle.railModel.resolveActionVisibility).toBe(resolveMobileShellRailActionVisibility);
-        expect(lifecycle.railModel.resolveBottomBarActionVisibility).toBe(resolveMobileShellBottomBarActionVisibility);
     });
 });

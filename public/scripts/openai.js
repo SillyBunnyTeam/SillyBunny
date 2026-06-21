@@ -99,7 +99,6 @@ import {
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
-import { isNeutralImpersonationFormat, normalizeImpersonationFormat, shouldUseAssistantImpersonationPrefill } from './impersonation-mode.js';
 
 export {
     openai_messages_count,
@@ -121,7 +120,6 @@ const default_main_prompt = 'Write {{char}}\'s next reply in a fictional chat be
 const default_nsfw_prompt = '';
 const default_jailbreak_prompt = '';
 const default_impersonation_prompt = '[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don\'t write as {{char}} or system. Don\'t describe actions of {{char}}.]';
-const neutral_impersonation_prompt = '[Write the next reply only as {{user}}. Follow any provided impersonation guidance for grammatical person, narration style, length, and exclusions. Do not write as {{char}} or system.]';
 const default_assistant_impersonation = '{{user}}:';
 const default_enhance_definitions_prompt = 'If you have more knowledge of {{char}}, add to the character\'s lore and personality to enhance them but keep the Character Sheet\'s definitions absolute.';
 const default_wi_format = '{0}';
@@ -932,10 +930,8 @@ function setupChatCompletionPromptManager(openAiSettings) {
     return promptManager;
 }
 
-function getEffectiveImpersonationPrompt(impersonationFormat = null) {
-    const prompt = isNeutralImpersonationFormat(impersonationFormat)
-        ? neutral_impersonation_prompt
-        : String(oai_settings.impersonation_prompt ?? '').trim() || default_impersonation_prompt;
+function getEffectiveImpersonationPrompt() {
+    const prompt = String(oai_settings.impersonation_prompt ?? '').trim() || default_impersonation_prompt;
     return substituteParams(prompt);
 }
 
@@ -1590,11 +1586,11 @@ async function populateChatCompletion(prompts, chatCompletion, { bias, quietProm
  * @param {string} options.type - The type of generation that triggered the prompt
  * @returns {Promise<Object>} prompts - The prepared and merged system and user-defined prompts.
  */
-async function preparePromptsForChatCompletion({ scenario, charPersonality, name2, worldInfoBefore, worldInfoAfter, charDescription, quietPrompt, bias, extensionPrompts, systemPromptOverride, jailbreakPromptOverride, type, impersonationFormat }) {
+async function preparePromptsForChatCompletion({ scenario, charPersonality, name2, worldInfoBefore, worldInfoAfter, charDescription, quietPrompt, bias, extensionPrompts, systemPromptOverride, jailbreakPromptOverride, type }) {
     const scenarioText = scenario && oai_settings.scenario_format ? substituteParams(oai_settings.scenario_format) : (scenario || '');
     const charPersonalityText = charPersonality && oai_settings.personality_format ? substituteParams(oai_settings.personality_format) : (charPersonality || '');
     const groupNudge = substituteParams(oai_settings.group_nudge_prompt);
-    const impersonationPrompt = getEffectiveImpersonationPrompt(impersonationFormat);
+    const impersonationPrompt = getEffectiveImpersonationPrompt();
 
     // Create entries for system prompts
     const systemPrompts = [
@@ -1756,7 +1752,6 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
  * @param {string} content.type - The type of the chat, can be 'impersonate'.
  * @param {string} content.quietPrompt - The quiet prompt to be used in the conversation.
  * @param {string} content.quietImage - Image prompt for extras
- * @param {string} content.impersonationFormat - Impersonation generation format.
  * @param {string} content.cyclePrompt - The last prompt used for chat message continuation.
  * @param {string} content.systemPromptOverride - The system prompt override.
  * @param {string} content.jailbreakPromptOverride - The jailbreak prompt override.
@@ -1777,7 +1772,6 @@ export async function prepareOpenAIMessages({
     type,
     quietPrompt,
     quietImage,
-    impersonationFormat,
     extensionPrompts,
     cyclePrompt,
     systemPromptOverride,
@@ -1809,7 +1803,6 @@ export async function prepareOpenAIMessages({
             systemPromptOverride,
             jailbreakPromptOverride,
             type,
-            impersonationFormat,
         });
 
         // Fill the chat completion with as much context as the budget allows
@@ -4978,7 +4971,7 @@ function getVerbosity(settings = null) {
  * @param {import('../script.js').AdditionalRequestOptions} options Additional request options
  * @returns {Promise<object>} Final generation parameters object appropriate for the chat completion source
  */
-export async function createGenerationParameters(settings, model, type, messages, { jsonSchema = null, cacheScope = null, impersonationFormat = null } = {}) {
+export async function createGenerationParameters(settings, model, type, messages, { jsonSchema = null, cacheScope = null } = {}) {
     // HACK: Filter out null and non-object messages
     if (!Array.isArray(messages)) {
         throw new Error('messages must be an array');
@@ -5092,7 +5085,6 @@ export async function createGenerationParameters(settings, model, type, messages
         'custom_prompt_post_processing': settings.custom_prompt_post_processing,
         'verbosity': getVerbosity(settings),
         'cacheScope': cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main'),
-        'impersonation_format': normalizeImpersonationFormat(impersonationFormat),
     };
 
     if (settings.chat_completion_source === chat_completion_sources.AZURE_OPENAI) {
@@ -5143,13 +5135,9 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.stop = getCustomStoppingStrings(); // Claude shouldn't have limits on stop strings.
         // Don't add a prefill on quiet gens (summarization) and when using continue prefill.
         if (type !== 'quiet' && !(type === 'continue' && settings.continue_prefill)) {
-            if (type === 'impersonate') {
-                if (shouldUseAssistantImpersonationPrefill(type, impersonationFormat)) {
-                    generate_data.assistant_prefill = getEffectiveAssistantImpersonationPrefill(settings);
-                }
-            } else {
-                generate_data.assistant_prefill = substituteParams(settings.assistant_prefill);
-            }
+            generate_data.assistant_prefill = type === 'impersonate'
+                ? getEffectiveAssistantImpersonationPrefill(settings)
+                : substituteParams(settings.assistant_prefill);
         }
     }
 
@@ -5397,14 +5385,15 @@ export async function createGenerationParameters(settings, model, type, messages
  * @returns {Promise<unknown>}
  * @throws {Error}
  */
-async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, cacheScope = null, impersonationFormat = null } = {}) {
+async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, cacheScope = null } = {}) {
     // Provide default abort signal
     if (!signal) {
         signal = new AbortController().signal;
     }
 
     const model = getChatCompletionModel(oai_settings);
-    const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope, impersonationFormat });
+    const { generate_data, stream, canMultiSwipe } = await createGenerationParameters(oai_settings, model, type, messages, { jsonSchema, cacheScope });
+
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
 
     if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId) {

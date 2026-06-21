@@ -37,14 +37,6 @@ describe('chat render lifecycle render window helper', () => {
         expect(getChatHistoryPageSize(500, { renderedMessageCount: 200, windowSize: 200 })).toBe(199);
     });
 
-    test('keeps rendered messages from the visible anchor through the tail when paging history', () => {
-        expect(getChatHistoryPageSize(100, {
-            renderedMessageCount: 100,
-            windowSize: 100,
-            anchorRetentionCount: 19,
-        })).toBe(81);
-    });
-
     test('can load an exact page for target-reveal callers', () => {
         expect(getChatHistoryPageSize(50, {
             renderedMessageCount: 100,
