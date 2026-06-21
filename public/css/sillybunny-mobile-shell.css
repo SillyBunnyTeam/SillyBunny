@@ -400,15 +400,12 @@
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-        align-self: center;
-        padding: 0;
-        border-color: transparent;
-        background: transparent;
-        box-shadow: none;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        align-self: stretch;
+        padding: 8px 6px;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
@@ -429,15 +426,17 @@
         text-wrap: balance;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
         width: 44px;
         min-width: 44px;
         max-width: 44px;
         min-height: 44px;
+        align-self: center;
         padding: 0;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
         display: none;
     }
@@ -3513,15 +3512,12 @@
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-        align-self: center;
-        padding: 0;
-        border-color: transparent;
-        background: transparent;
-        box-shadow: none;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 54px;
+        align-self: stretch;
+        padding: 8px 6px;
     }
 
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab i {
@@ -3542,17 +3538,45 @@
         text-wrap: balance;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action {
         width: 44px;
         min-width: 44px;
         max-width: 44px;
         min-height: 44px;
+        align-self: center;
         padding: 0;
     }
 
-    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
+    :root[data-sb-mobile-nav-layout='vertical'][data-sb-mobile-nav-mode='icon-only'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-action .sb-shell-tab-copy,
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-rail-empty {
         display: none;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
+        min-height: 52px;
+        padding: 8px 56px 8px 14px;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title {
+        position: static;
+        width: auto;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        clip: auto;
+        clip-path: none;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        border: 0;
+    }
+
+    :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-title {
+        white-space: normal;
     }
 
     /* Must beat upstream public/css/mobile-styles.css:165 #right-nav-panel #CharListButtonAndHotSwaps. */

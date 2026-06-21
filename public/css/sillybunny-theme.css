@@ -6189,18 +6189,18 @@ input[type='range']::-moz-range-thumb {
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child),
 .menu_button:not(.sb-server-action):not(.api_button):not(.openrouter_authorize):not(#bg_selection_mode_button):not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> input[hidden] + :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):last-child),
 .right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child) {
-    width: var(--sb-control-icon-physical-size);
-    inline-size: var(--sb-control-icon-physical-size);
-    height: var(--sb-control-icon-physical-size);
-    block-size: var(--sb-control-icon-physical-size);
-    min-width: var(--sb-control-icon-physical-size);
-    min-inline-size: var(--sb-control-icon-physical-size);
-    min-height: var(--sb-control-icon-physical-size);
-    min-block-size: var(--sb-control-icon-physical-size);
-    max-width: var(--sb-control-icon-physical-size);
-    max-inline-size: var(--sb-control-icon-physical-size);
-    max-height: var(--sb-control-icon-physical-size);
-    max-block-size: var(--sb-control-icon-physical-size);
+    width: var(--sb-icon-control-size);
+    inline-size: var(--sb-icon-control-size);
+    height: var(--sb-icon-control-size);
+    block-size: var(--sb-icon-control-size);
+    min-width: var(--sb-icon-control-size);
+    min-inline-size: var(--sb-icon-control-size);
+    min-height: var(--sb-icon-control-size);
+    min-block-size: var(--sb-icon-control-size);
+    max-width: var(--sb-icon-control-size);
+    max-inline-size: var(--sb-icon-control-size);
+    max-height: var(--sb-icon-control-size);
+    max-block-size: var(--sb-icon-control-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
