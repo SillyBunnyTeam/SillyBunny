@@ -1184,10 +1184,33 @@ body:not(.movingUI) .drawer-content.maximized {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin: -2px -6px;
+    padding: 2px 6px;
+    border-radius: 999px;
     font-size: var(--sb-type-body);
     font-weight: var(--sb-weight-title);
     line-height: var(--sb-line-title);
     letter-spacing: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color 160ms ease-out, box-shadow 160ms ease-out, opacity 160ms ease-out;
+}
+
+.sb-brand-title:hover,
+.sb-brand-title.is-previewing,
+.sb-brand-title:focus-visible {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+}
+
+.sb-brand-title:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 58%, transparent);
+}
+
+.sb-brand-title:active {
+    opacity: 0.82;
 }
 
 .sb-brand-title.is-chat {
