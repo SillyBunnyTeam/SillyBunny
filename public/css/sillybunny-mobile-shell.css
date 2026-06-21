@@ -3016,7 +3016,7 @@
 
     #chat .mes_text,
     #chat .mes_reasoning {
-        line-height: calc(var(--mainFontSize) + 0.35rem);
+        line-height: calc(var(--mainFontSize) + 0.42rem);
     }
 
     #chat .mes_text {
@@ -3042,17 +3042,17 @@
 
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
         --moonlit-sb-avatar-column-width: max(var(--custom-ChatAvatar, 40px), 50px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
         --mesParagraphSpacingTop: 0.28em;
-        --mesParagraphSpacingBottom: 0.42em;
+        --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
     }
 
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         --moonlit-sb-ripple-avatar-mobile-width: min(var(--customRippleAvatarMobileWidth, 100px), 86px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.35rem);
+        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
         --mesParagraphSpacingTop: 0.28em;
-        --mesParagraphSpacingBottom: 0.42em;
+        --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
     }
 
@@ -3709,8 +3709,50 @@
 
     #right-nav-panel.openDrawer > .sb-character-shell-header,
     :root[data-sb-mobile-nav-layout='vertical'] #right-nav-panel.openDrawer > .sb-character-shell-header {
+        --sb-character-header-control-size: 44px;
         min-height: 52px;
-        padding: 8px 56px 8px 14px;
+        padding: 8px calc((var(--sb-character-header-control-size) * 3) + 24px) 8px 14px;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
+        top: 8px;
+        right: 8px;
+        width: var(--sb-character-header-control-size);
+        min-width: var(--sb-character-header-control-size);
+        max-width: var(--sb-character-header-control-size);
+        height: var(--sb-character-header-control-size);
+        min-height: var(--sb-character-header-control-size);
+        max-height: var(--sb-character-header-control-size);
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
+        top: 8px;
+        right: calc(var(--sb-character-header-control-size) + 16px);
+        min-height: var(--sb-character-header-control-size);
+        padding: 0;
+        gap: 3px;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
+        flex: 0 0 var(--sb-character-header-control-size);
+        width: var(--sb-character-header-control-size);
+        min-width: var(--sb-character-header-control-size);
+        max-width: var(--sb-character-header-control-size);
+        height: var(--sb-character-header-control-size);
+        min-height: var(--sb-character-header-control-size);
+        max-height: var(--sb-character-header-control-size);
+        padding: 0;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
+        width: 1em;
+        font-size: calc(var(--mainFontSize) * 0.96);
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
@@ -3731,6 +3773,94 @@
     :root[data-sb-shell-header-mode='show'] #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
     :root[data-sb-shell-header-mode='auto'] #right-nav-panel.openDrawer > .sb-character-shell-header:not(.sb-shell-header-collapsed) .sb-shell-title {
         white-space: normal;
+    }
+
+    /* Must beat upstream mobile character search controls that default to 44px. */
+    #right-nav-panel.openDrawer .sb-character-create-bar {
+        --sb-character-create-control-size: 32px;
+        gap: 4px;
+        margin: 2px 0 4px;
+        padding: 3px;
+        border-radius: 10px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_button_bar {
+        gap: 4px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar :is(#character_sort_order, #rm_button_create, #rm_button_group_chats),
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-size-changer select,
+    #right-nav-panel.openDrawer #character_search_bar {
+        height: var(--sb-character-create-control-size);
+        min-height: var(--sb-character-create-control-size);
+        max-height: var(--sb-character-create-control-size);
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #character_sort_order {
+        min-width: 6.4em;
+        max-width: 8em;
+        padding-block: 0;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar :is(#rm_button_create, #rm_button_group_chats, #rm_button_search, #rm_print_characters_pagination .menu_button, #rm_print_characters_pagination .paginationjs-pages ul li a) {
+        width: var(--sb-character-create-control-size);
+        min-width: var(--sb-character-create-control-size);
+        max-width: var(--sb-character-create-control-size);
+        height: var(--sb-character-create-control-size);
+        min-height: var(--sb-character-create-control-size);
+        max-height: var(--sb-character-create-control-size);
+        padding: 0;
+        font-size: calc(var(--mainFontSize) * 0.86);
+        line-height: 1;
+    }
+
+    #right-nav-panel.openDrawer #form_character_search_form {
+        margin-top: 2px;
+    }
+
+    #right-nav-panel.openDrawer #character_search_bar {
+        padding-block: 0;
+        padding-inline: 8px;
+        font-size: max(15px, calc(var(--mainFontSize) * 0.82));
+        line-height: 1.1;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination,
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs {
+        gap: 4px;
+        padding: 0;
+        min-height: var(--sb-character-create-control-size);
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-pages ul {
+        gap: 3px;
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-size-changer select {
+        min-width: 5.6em;
+        padding-block: 0;
+        font-size: max(15px, calc(var(--mainFontSize) * 0.8));
+    }
+
+    #right-nav-panel.openDrawer .sb-character-create-bar #rm_print_characters_pagination .paginationjs-nav {
+        min-height: var(--sb-character-create-control-size);
+        padding-inline: 3px;
+        font-size: calc(var(--mainFontSize) * 0.82);
+    }
+
+    #right-nav-panel.openDrawer .rm_tag_controls {
+        gap: 3px;
+        margin-top: 3px;
+    }
+
+    #right-nav-panel.openDrawer .rm_tag_controls :is(.tag.actionable, .tags_view, .right_menu_button) {
+        width: 30px;
+        min-width: 30px;
+        max-width: 30px;
+        height: 30px;
+        min-height: 30px;
+        max-height: 30px;
+        font-size: calc(var(--mainFontSize) * 0.84);
     }
 
     /* Must beat unlayered mobile/grid character-list rules that hide drawer names and tags. */
