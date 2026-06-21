@@ -47,21 +47,18 @@ export function getChatRenderWindowStartIndex(totalMessages, requestedSize, opti
  * @param {number} [options.renderedMessageCount=0] Number of message elements currently rendered.
  * @param {number} [options.windowSize=CHAT_RENDER_WINDOW_DEFAULT] Current DOM window size.
  * @param {boolean} [options.preserveAnchor=true] Leave one rendered message in place for scroll anchoring.
- * @param {number} [options.anchorRetentionCount=1] Rendered message count through the current scroll anchor.
  * @returns {number}
  */
 export function getChatHistoryPageSize(requestedSize, {
     renderedMessageCount = 0,
     windowSize = CHAT_RENDER_WINDOW_DEFAULT,
     preserveAnchor = true,
-    anchorRetentionCount = 1,
 } = {}) {
     const normalizedWindowSize = normalizeChatRenderWindowSize(windowSize);
     const normalizedRequestedSize = normalizeChatRenderWindowSize(requestedSize, { maxSize: normalizedWindowSize });
 
     if (preserveAnchor && renderedMessageCount > 0) {
-        const normalizedAnchorRetentionCount = Math.max(1, normalizePositiveInteger(anchorRetentionCount, 1));
-        return Math.min(normalizedRequestedSize, Math.max(1, normalizedWindowSize - normalizedAnchorRetentionCount));
+        return Math.min(normalizedRequestedSize, Math.max(1, normalizedWindowSize - 1));
     }
 
     return normalizedRequestedSize;

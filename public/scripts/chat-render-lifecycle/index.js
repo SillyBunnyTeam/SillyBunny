@@ -17,10 +17,6 @@ import {
     resolveChatScrollAction,
 } from './scroll-intent.js';
 import {
-    CHAT_SCROLL_STATE,
-    resolveChatScrollStateTransition,
-} from './scroll-state.js';
-import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
     CHAT_RENDER_LIFECYCLE_ROUTE_DEFAULTS,
@@ -60,7 +56,6 @@ export {
     CHAT_RENDER_WINDOW_AGGRESSIVE_DEFAULT,
     CHAT_SCROLL_ACTION,
     CHAT_SCROLL_INTENT,
-    CHAT_SCROLL_STATE,
     captureVisibleMessageAnchor,
     createMessageUpdateQueue,
     createDelegatedResizeObserver,
@@ -73,7 +68,6 @@ export {
     normalizeChatRenderWindowSize,
     resolveChatBottomScrollAction,
     resolveChatScrollAction,
-    resolveChatScrollStateTransition,
     restoreVisibleMessageAnchor,
     renderMessagesInBatches,
     resolveChatRenderLifecycleRollout,
@@ -105,10 +99,6 @@ export function createChatRenderLifecycle() {
             action: CHAT_SCROLL_ACTION,
             intent: CHAT_SCROLL_INTENT,
             resolve: resolveChatScrollAction,
-        },
-        scrollState: {
-            state: CHAT_SCROLL_STATE,
-            resolve: resolveChatScrollStateTransition,
         },
         rollout: {
             key: CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,

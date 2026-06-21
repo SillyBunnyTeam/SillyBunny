@@ -1909,12 +1909,6 @@ button.ica--card-pill--version-update {
     transform: translateY(100%);
 }
 
-.ica--tpanel:not(.is-open) {
-    visibility: hidden;
-    pointer-events: none;
-    transform: none;
-}
-
 /* Must out-rank the per-edge closed transforms above (same class+attr specificity,
    later source order would otherwise keep the panel off-screen while open). */
 .ica--tpanel[data-edge="right"].is-open,

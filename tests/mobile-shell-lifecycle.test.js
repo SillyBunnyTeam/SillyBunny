@@ -2,11 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     createMobileShellLifecycle,
-    createMobileShellDrawerGestureState,
     createMobileShellNavDragState,
-    MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS,
-    MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX,
-    MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX,
     MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS,
     MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX,
     MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
@@ -14,15 +10,12 @@ import {
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
     resolveMobileModalA11yState,
     resolveMobileNavOpenState,
-    resolveMobileShellDrawerGestureEnd,
-    resolveMobileShellDrawerGestureMove,
     resolveMobileShellNavPageScroll,
     resolveMobileShellNavScrollIndicators,
     resolveMobileNavToggleIntent,
     resolveMobileShellNavDragEnd,
     resolveMobileShellNavDragMove,
     shouldAutoCloseMobileNav,
-    shouldSuppressMobileShellDrawerGestureClick,
     shouldSuppressMobileShellNavClick,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
 
@@ -31,9 +24,6 @@ describe('mobile shell lifecycle helper', () => {
         expect(MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS).toBe(450);
         expect(MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX).toBe(6);
         expect(MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS).toBe(350);
-        expect(MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX).toBe(8);
-        expect(MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX).toBe(72);
-        expect(MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS).toBe(350);
     });
 
     test('captures mobile rail drag start only for mobile touch input', () => {
@@ -131,127 +121,6 @@ describe('mobile shell lifecycle helper', () => {
 
         expect(shouldSuppressMobileShellNavClick({ nowMs: 1200, suppressClickUntil: 1350 })).toBe(true);
         expect(shouldSuppressMobileShellNavClick({ nowMs: 1350, suppressClickUntil: 1350 })).toBe(false);
-    });
-
-    test('captures mobile drawer swipe-dismiss gestures only for open mobile drawers', () => {
-        expect(createMobileShellDrawerGestureState({
-            isMobileViewport: true,
-            isOpen: true,
-            touch: { clientX: 120, clientY: 40 },
-        })).toEqual({
-            startX: 120,
-            startY: 40,
-            offsetY: 0,
-            dragging: false,
-        });
-
-        expect(createMobileShellDrawerGestureState({
-            isMobileViewport: false,
-            isOpen: true,
-            touch: { clientX: 120, clientY: 40 },
-        })).toBeNull();
-        expect(createMobileShellDrawerGestureState({
-            isMobileViewport: true,
-            isOpen: false,
-            touch: { clientX: 120, clientY: 40 },
-        })).toBeNull();
-        expect(createMobileShellDrawerGestureState({ isMobileViewport: true, isOpen: true, touch: null })).toBeNull();
-    });
-
-    test('leaves drawer gestures alone until movement is downward and vertical', () => {
-        const gestureState = createMobileShellDrawerGestureState({
-            isMobileViewport: true,
-            isOpen: true,
-            touch: { clientX: 100, clientY: 100 },
-        });
-
-        expect(resolveMobileShellDrawerGestureMove({
-            gestureState,
-            touch: { clientX: 100, clientY: 106 },
-        })).toEqual({
-            gestureState: {
-                ...gestureState,
-                offsetY: 0,
-                dragging: false,
-            },
-            shouldPreventDefault: false,
-            shouldStopPropagation: false,
-            offsetY: 0,
-        });
-
-        expect(resolveMobileShellDrawerGestureMove({
-            gestureState,
-            touch: { clientX: 120, clientY: 112 },
-        })).toEqual({
-            gestureState: {
-                ...gestureState,
-                offsetY: 0,
-                dragging: false,
-            },
-            shouldPreventDefault: false,
-            shouldStopPropagation: false,
-            offsetY: 0,
-        });
-    });
-
-    test('tracks drawer drag offset once the swipe-down threshold is crossed', () => {
-        const gestureState = createMobileShellDrawerGestureState({
-            isMobileViewport: true,
-            isOpen: true,
-            touch: { clientX: 100, clientY: 100 },
-        });
-
-        expect(resolveMobileShellDrawerGestureMove({
-            gestureState,
-            touch: { clientX: 102, clientY: 124 },
-        })).toEqual({
-            gestureState: {
-                ...gestureState,
-                offsetY: 24,
-                dragging: true,
-            },
-            shouldPreventDefault: true,
-            shouldStopPropagation: true,
-            offsetY: 24,
-        });
-    });
-
-    test('dismisses drawers only after a deliberate downward swipe', () => {
-        expect(resolveMobileShellDrawerGestureEnd({
-            gestureState: { startX: 0, startY: 0, offsetY: 71, dragging: true },
-            nowMs: 1000,
-        })).toEqual({
-            gestureState: null,
-            shouldDismiss: false,
-            shouldStopPropagation: true,
-            suppressClickUntil: 1350,
-            offsetY: 0,
-        });
-
-        expect(resolveMobileShellDrawerGestureEnd({
-            gestureState: { startX: 0, startY: 0, offsetY: 72, dragging: true },
-            nowMs: 1000,
-        })).toEqual({
-            gestureState: null,
-            shouldDismiss: true,
-            shouldStopPropagation: true,
-            suppressClickUntil: 1350,
-            offsetY: 0,
-        });
-
-        expect(resolveMobileShellDrawerGestureEnd({
-            gestureState: { startX: 0, startY: 0, offsetY: 90, dragging: false },
-            nowMs: 1000,
-        })).toEqual({
-            gestureState: null,
-            shouldDismiss: false,
-            shouldStopPropagation: false,
-            suppressClickUntil: 0,
-            offsetY: 0,
-        });
-
-        expect(shouldSuppressMobileShellDrawerGestureClick({ nowMs: 1200, suppressClickUntil: 1350 })).toBe(true);
-        expect(shouldSuppressMobileShellDrawerGestureClick({ nowMs: 1350, suppressClickUntil: 1350 })).toBe(false);
     });
 
     test('resolves shell rail page scroll distance and motion preference', () => {
@@ -413,7 +282,7 @@ describe('mobile shell lifecycle helper', () => {
         })).toBe(false);
     });
 
-    test('inerts shell for active mobile modals while keeping the top bar operable', () => {
+    test('inerts shell for any active mobile modal and top bar for non-nav modals', () => {
         expect(resolveMobileModalA11yState({
             activeRootIds: [],
         })).toEqual({
@@ -435,7 +304,7 @@ describe('mobile shell lifecycle helper', () => {
         })).toEqual({
             hasActiveMobileModal: true,
             shouldInertShell: true,
-            shouldInertTopBar: false,
+            shouldInertTopBar: true,
         });
     });
 
@@ -453,16 +322,9 @@ describe('mobile shell lifecycle helper', () => {
         expect(lifecycle.nav.resolveToggleIntent).toBe(resolveMobileNavToggleIntent);
         expect(lifecycle.nav.resolveOpenState).toBe(resolveMobileNavOpenState);
         expect(lifecycle.nav.shouldAutoClose).toBe(shouldAutoCloseMobileNav);
-        expect(lifecycle.drawerGestures.createGestureState).toBe(createMobileShellDrawerGestureState);
-        expect(lifecycle.drawerGestures.resolveGestureMove).toBe(resolveMobileShellDrawerGestureMove);
-        expect(lifecycle.drawerGestures.resolveGestureEnd).toBe(resolveMobileShellDrawerGestureEnd);
-        expect(lifecycle.drawerGestures.shouldSuppressClick).toBe(shouldSuppressMobileShellDrawerGestureClick);
         expect(lifecycle.modal.resolveA11yState).toBe(resolveMobileModalA11yState);
         expect(lifecycle.timings.navOpenGraceMs).toBe(MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS);
         expect(lifecycle.timings.navDragThresholdPx).toBe(MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX);
         expect(lifecycle.timings.navClickSuppressionMs).toBe(MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS);
-        expect(lifecycle.timings.drawerGestureThresholdPx).toBe(MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX);
-        expect(lifecycle.timings.drawerDismissThresholdPx).toBe(MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX);
-        expect(lifecycle.timings.drawerClickSuppressionMs).toBe(MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS);
     });
 });

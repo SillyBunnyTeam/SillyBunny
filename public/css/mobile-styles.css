@@ -619,14 +619,7 @@
 
     #bg_menu_content,
     #bg_custom_content {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        justify-items: stretch;
-    }
-
-    #bg_menu_content .bg_example,
-    #bg_custom_content .bg_example {
-        width: 100%;
-        max-width: none;
+        grid-template-columns: repeat(var(--bg-thumb-columns, 3), 1fr);
     }
 
     .bg_folder_grid {

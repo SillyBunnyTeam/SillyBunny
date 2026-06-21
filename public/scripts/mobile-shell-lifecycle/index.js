@@ -1,9 +1,6 @@
 export const MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS = 450;
 export const MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX = 6;
 export const MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS = 350;
-export const MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX = 8;
-export const MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX = 72;
-export const MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS = 350;
 
 export const MOBILE_SHELL_NAV_TOGGLE_ACTION = Object.freeze({
     ACTIVATE_PAGE_TARGET: 'activate-page-target',
@@ -38,12 +35,6 @@ export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
 export const MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY = 'characters';
-export const MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS = Object.freeze([
-    'view-files',
-    'new-chat',
-    'search-chat',
-    'delete-chat',
-]);
 
 const MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 
@@ -301,124 +292,6 @@ export function resolveMobileShellNavDragEnd({
  * @returns {boolean}
  */
 export function shouldSuppressMobileShellNavClick({
-    nowMs = 0,
-    suppressClickUntil = 0,
-} = {}) {
-    return normalizeNumber(nowMs) < normalizeNumber(suppressClickUntil);
-}
-
-/**
- * Captures the start state for mobile drawer swipe-down dismissal.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.isOpen=false] Whether the drawer is currently open.
- * @param {object|null} [options.touch=null] First touch point.
- * @returns {{startX: number, startY: number, offsetY: number, dragging: boolean}|null}
- */
-export function createMobileShellDrawerGestureState({
-    isMobileViewport = false,
-    isOpen = false,
-    touch = null,
-} = {}) {
-    const touchPoint = getTouchPoint(touch);
-    if (!isMobileViewport || !isOpen || !touchPoint) {
-        return null;
-    }
-
-    return {
-        startX: touchPoint.clientX,
-        startY: touchPoint.clientY,
-        offsetY: 0,
-        dragging: false,
-    };
-}
-
-/**
- * Resolves one touch-move step for mobile drawer swipe-down dismissal.
- * @param {object} options Options.
- * @param {object|null} [options.gestureState=null] Existing gesture state.
- * @param {object|null} [options.touch=null] Current touch point.
- * @param {number} [options.thresholdPx=MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX] Drag threshold.
- * @returns {{gestureState: object|null, shouldPreventDefault: boolean, shouldStopPropagation: boolean, offsetY: number}}
- */
-export function resolveMobileShellDrawerGestureMove({
-    gestureState = null,
-    touch = null,
-    thresholdPx = MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX,
-} = {}) {
-    const touchPoint = getTouchPoint(touch);
-    if (!gestureState || !touchPoint) {
-        return {
-            gestureState: null,
-            shouldPreventDefault: false,
-            shouldStopPropagation: false,
-            offsetY: 0,
-        };
-    }
-
-    const deltaX = touchPoint.clientX - normalizeNumber(gestureState.startX);
-    const deltaY = touchPoint.clientY - normalizeNumber(gestureState.startY);
-    const isDownward = deltaY > 0;
-    const isVerticalIntent = Math.abs(deltaY) >= Math.abs(deltaX);
-    const isDragging = Boolean(gestureState.dragging)
-        || (isDownward && isVerticalIntent && deltaY > normalizeNumber(thresholdPx));
-    const offsetY = isDragging ? Math.max(0, deltaY) : 0;
-    const nextGestureState = {
-        ...gestureState,
-        offsetY,
-        dragging: isDragging,
-    };
-
-    return {
-        gestureState: nextGestureState,
-        shouldPreventDefault: isDragging,
-        shouldStopPropagation: isDragging,
-        offsetY,
-    };
-}
-
-/**
- * Resolves touch-end cleanup and dismiss intent after mobile drawer dragging.
- * @param {object} options Options.
- * @param {object|null} [options.gestureState=null] Existing gesture state.
- * @param {number} [options.nowMs=0] Current timestamp.
- * @param {number} [options.dismissThresholdPx=MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX] Dismiss threshold.
- * @param {number} [options.suppressionMs=MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS] Suppression window.
- * @returns {{gestureState: null, shouldDismiss: boolean, shouldStopPropagation: boolean, suppressClickUntil: number, offsetY: number}}
- */
-export function resolveMobileShellDrawerGestureEnd({
-    gestureState = null,
-    nowMs = 0,
-    dismissThresholdPx = MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX,
-    suppressionMs = MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS,
-} = {}) {
-    if (!gestureState?.dragging) {
-        return {
-            gestureState: null,
-            shouldDismiss: false,
-            shouldStopPropagation: false,
-            suppressClickUntil: 0,
-            offsetY: 0,
-        };
-    }
-
-    return {
-        gestureState: null,
-        shouldDismiss: normalizeNumber(gestureState.offsetY) >= normalizeNumber(dismissThresholdPx),
-        shouldStopPropagation: true,
-        suppressClickUntil: normalizeNumber(nowMs) + normalizeNumber(suppressionMs),
-        offsetY: 0,
-    };
-}
-
-/**
- * Resolves whether a click immediately after drawer dragging should be swallowed.
- * @param {object} options Options.
- * @param {number} [options.nowMs=0] Current timestamp.
- * @param {number} [options.suppressClickUntil=0] Suppression deadline.
- * @returns {boolean}
- */
-export function shouldSuppressMobileShellDrawerGestureClick({
     nowMs = 0,
     suppressClickUntil = 0,
 } = {}) {
@@ -686,50 +559,6 @@ export function resolveMobileShellRailActionVisibility({
 }
 
 /**
- * Resolves which chat-management actions stay visible and which move into the
- * mobile overflow menu.
- * @param {object} options Options.
- * @param {object[]} [options.actions=[]] Ordered bottom-bar action models.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile layout is active.
- * @param {string[]} [options.visibleActionIds=MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS] High-frequency action ids.
- * @returns {{visibleActions: object[], overflowActions: object[], shouldRenderOverflow: boolean}}
- */
-export function resolveMobileShellBottomBarActionVisibility({
-    actions = [],
-    isMobileViewport = false,
-    visibleActionIds = MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS,
-} = {}) {
-    const normalizedActions = Array.isArray(actions) ? actions.filter(Boolean) : [];
-    if (!isMobileViewport) {
-        return {
-            visibleActions: normalizedActions,
-            overflowActions: [],
-            shouldRenderOverflow: false,
-        };
-    }
-
-    const visibleIds = new Set(Array.isArray(visibleActionIds) ? visibleActionIds.map(id => String(id)) : []);
-    const visibleActions = [];
-    const overflowActions = [];
-
-    for (const action of normalizedActions) {
-        const actionId = String(action?.id ?? '');
-
-        if (visibleIds.has(actionId)) {
-            visibleActions.push(action);
-        } else {
-            overflowActions.push(action);
-        }
-    }
-
-    return {
-        visibleActions,
-        overflowActions,
-        shouldRenderOverflow: overflowActions.length > 0,
-    };
-}
-
-/**
  * Resolves which open inline drawer siblings should close when a drawer opens.
  * The current shell behavior is viewport-agnostic; callers still pass viewport
  * state so the decision seam owns the policy if it becomes mobile-specific.
@@ -875,11 +704,12 @@ export function resolveMobileModalA11yState({
 } = {}) {
     const ids = Array.isArray(activeRootIds) ? activeRootIds : [];
     const hasActiveMobileModal = ids.length > 0;
+    const shouldInertTopBar = ids.some(id => id !== 'sb-mobile-nav');
 
     return {
         hasActiveMobileModal,
         shouldInertShell: hasActiveMobileModal,
-        shouldInertTopBar: false,
+        shouldInertTopBar,
     };
 }
 
@@ -892,11 +722,6 @@ export const MOBILE_SHELL_DRAWER_BOUND_ACTION = Object.freeze({
 export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
     'top',
     'bottom',
-    'left',
-    'right',
-    'width',
-    'min-width',
-    'max-width',
     'height',
     'max-height',
     'box-sizing',
@@ -927,9 +752,7 @@ function clampBoundNumber(value, min, max) {
  * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
  * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
  * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
- * @param {number} [options.viewportWidth=0] Current shell viewport width in px.
  * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
- * @param {number} [options.viewportLeft=0] Current shell viewport left offset in px.
  * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
  * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
  * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
@@ -938,9 +761,7 @@ export function resolveMobileDrawerBounds({
     isMobileViewport = false,
     isOpen = false,
     isViewportBound = false,
-    viewportWidth = 0,
     viewportHeight = 0,
-    viewportLeft = 0,
     baseTopOffset = 0,
     shellGap = 0,
 } = {}) {
@@ -954,9 +775,7 @@ export function resolveMobileDrawerBounds({
         };
     }
 
-    const safeViewportWidth = Math.max(0, Math.round(normalizeNumber(viewportWidth)));
     const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
-    const safeViewportLeft = Math.round(normalizeNumber(viewportLeft));
     const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
     const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
     const availableHeight = Math.max(0, safeViewportHeight - topOffset);
@@ -966,11 +785,6 @@ export function resolveMobileDrawerBounds({
         styleWrites: [
             { property: 'top', value: `${topOffset}px`, priority: 'important' },
             { property: 'bottom', value: 'auto', priority: 'important' },
-            { property: 'left', value: `${safeViewportLeft}px`, priority: 'important' },
-            { property: 'right', value: 'auto', priority: 'important' },
-            { property: 'width', value: `${safeViewportWidth}px`, priority: 'important' },
-            { property: 'min-width', value: `${safeViewportWidth}px`, priority: 'important' },
-            { property: 'max-width', value: `${safeViewportWidth}px`, priority: 'important' },
             { property: 'box-sizing', value: 'border-box', priority: 'important' },
             { property: 'height', value: `${availableHeight}px`, priority: 'important' },
             { property: 'max-height', value: `${availableHeight}px`, priority: 'important' },
@@ -1070,22 +884,14 @@ export function createMobileShellLifecycle() {
                 labelMaxLength: MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
                 iconFallback: MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
             },
-            bottomBarVisibleActionIds: MOBILE_SHELL_BOTTOM_BAR_DEFAULT_VISIBLE_ACTION_IDS,
             resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
             normalizeQuickAction: normalizeMobileShellQuickAction,
             getQuickActionKey: getMobileShellQuickActionKey,
             resolveActionVisibility: resolveMobileShellRailActionVisibility,
-            resolveBottomBarActionVisibility: resolveMobileShellBottomBarActionVisibility,
         },
         inlineDrawers: {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
             derivePersistenceKey: deriveInlineDrawerPersistenceKey,
-        },
-        drawerGestures: {
-            createGestureState: createMobileShellDrawerGestureState,
-            resolveGestureMove: resolveMobileShellDrawerGestureMove,
-            resolveGestureEnd: resolveMobileShellDrawerGestureEnd,
-            shouldSuppressClick: shouldSuppressMobileShellDrawerGestureClick,
         },
         drawerBounds: {
             action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
@@ -1101,9 +907,6 @@ export function createMobileShellLifecycle() {
             navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
             navDragThresholdPx: MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX,
             navClickSuppressionMs: MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS,
-            drawerGestureThresholdPx: MOBILE_SHELL_LIFECYCLE_DRAWER_GESTURE_THRESHOLD_PX,
-            drawerDismissThresholdPx: MOBILE_SHELL_LIFECYCLE_DRAWER_DISMISS_THRESHOLD_PX,
-            drawerClickSuppressionMs: MOBILE_SHELL_LIFECYCLE_DRAWER_CLICK_SUPPRESSION_MS,
         },
     };
 }
