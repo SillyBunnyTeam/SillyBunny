@@ -61,6 +61,7 @@
 - PR #576 (2026-06-21) `fix: restore mobile shell cascade guards`
 - PR #577 (2026-06-21) `feat: add line spacing slider`
 - PR #579 (2026-06-21) `fix: prevent companion panel blur flash on close`
+- PR #581 (2026-06-21) `feat: add custom CSS AI wand`
 - PR #585 (2026-06-21) `fix: Desktop Padding Reverts`
 - PR #587 (2026-06-21) `fix: let in-chat agent trim regex actually work`
 - PR #588 (2026-06-21) `fix: stop custom endpoint Connect from clobbering profile keys`
