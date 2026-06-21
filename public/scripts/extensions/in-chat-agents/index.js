@@ -4734,6 +4734,10 @@ function populateGlobalNotificationToggle() {
         'checked',
         Boolean(getGlobalSettings().promptTransformShowNotifications),
     );
+    $('#ica--postMainInterceptShowMessageFirst').prop(
+        'checked',
+        getGlobalSettings().postMainInterceptShowMessageFirst !== false,
+    );
 }
 
 function populatePathfinderSubmoduleToggle() {
@@ -5404,6 +5408,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     $('#ica--promptTransformShowNotifications').on('change', function () {
         setGlobalSettings({ promptTransformShowNotifications: $(this).prop('checked') });
+        persistExtensionState();
+    });
+    $('#ica--postMainInterceptShowMessageFirst').on('change', function () {
+        setGlobalSettings({ postMainInterceptShowMessageFirst: $(this).prop('checked') });
         persistExtensionState();
     });
     $('#ica--pathfinderSubmoduleEnabled').on('change', async function () {

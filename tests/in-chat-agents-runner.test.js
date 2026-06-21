@@ -159,6 +159,7 @@ describe('in-chat agent post-processing runner', () => {
         globalThis.removeEventListener = jest.fn((event, handler) => removeListener(windowListeners, event, handler));
         globalThis.HTMLSelectElement = class HTMLSelectElement {};
         globalThis.HTMLTextAreaElement = class HTMLTextAreaElement {};
+        globalThis.HTMLElement = class HTMLElement {};
         globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
         globalThis.toastr = {
             clear: jest.fn(),
@@ -387,6 +388,7 @@ describe('in-chat agent post-processing runner', () => {
         delete globalThis.addEventListener;
         delete globalThis.removeEventListener;
         delete globalThis.HTMLSelectElement;
+        delete globalThis.HTMLElement;
         delete globalThis.requestAnimationFrame;
         delete globalThis.toastr;
         delete globalThis.$;
@@ -1965,10 +1967,26 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventData.prompt).toBe('Original outgoing prompt');
     });
 
-    test('marks streaming output for buffering when post-main intercept agents are active', async () => {
+    test('keeps streaming output unbuffered by default when post-main intercept agents are active', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation' },
         })];
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const eventData = { type: 'normal', isStreaming: true, hasPostMainInterceptors: false };
+        await eventSource.emit(eventTypes.GENERATION_OUTPUT_BUFFERING_DECISION, eventData);
+
+        expect(eventData.hasPostMainInterceptors).toBe(false);
+    });
+
+    test('marks streaming output for buffering when show-first post-main intercepts are disabled', async () => {
+        enabledAgents = [createPreInterceptAgent({
+            preProcess: { interceptTiming: 'post-main-generation' },
+        })];
+        globalSettings.postMainInterceptShowMessageFirst = false;
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         initAgentRunner();
@@ -1993,10 +2011,112 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventData.hasPostMainInterceptors).toBe(false);
     });
 
-    test('runs post-main intercepts before storing the assistant message', async () => {
+    test('runs post-main intercepts after storing the assistant message by default', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
         })];
+        generateQuietPrompt.mockResolvedValue('intercepted assistant reply');
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const outputData = { type: 'normal', text: 'raw assistant reply', isStreaming: false, cancelled: false };
+        await eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+
+        expect(outputData.cancelled).toBe(false);
+        expect(outputData.text).toBe('raw assistant reply');
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+
+        chat.push({
+            name: 'Assistant',
+            mes: outputData.text,
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+        await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
+        await waitFor(() => Array.isArray(chat[0].extra.inChatAgentPreGenerationInterceptHistory));
+
+        expect(chat[0].mes).toBe('intercepted assistant reply');
+        expect(generateQuietPrompt.mock.calls[0][0].quietPrompt).toContain('Main model output:');
+        expect(generateQuietPrompt.mock.calls[0][0].quietPrompt).toContain('raw assistant reply');
+        expect(chat[0].extra.inChatAgentPreGenerationInterceptHistory).toEqual([expect.objectContaining({
+            agentId: 'agent-pre-intercept',
+            timing: 'post-main-generation',
+            beforeText: 'raw assistant reply',
+            outputText: 'intercepted assistant reply',
+            afterText: 'intercepted assistant reply',
+            changed: true,
+            status: 'changed',
+        })]);
+    });
+
+    test('keeps the shown assistant message when post-main intercept changes are skipped', async () => {
+        enabledAgents = [createPreInterceptAgent({
+            preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
+        })];
+        let resolveQuietPrompt;
+        let skipClick;
+
+        generateQuietPrompt.mockImplementation(() => new Promise(resolve => {
+            resolveQuietPrompt = resolve;
+        }));
+        globalThis.toastr.info.mockImplementation((messageHtml, title, options = {}) => {
+            const button = {
+                addEventListener: jest.fn((eventName, handler) => {
+                    if (eventName === 'click') {
+                        skipClick = handler;
+                    }
+                }),
+            };
+            const toastElement = new globalThis.HTMLElement();
+            toastElement.querySelector = jest.fn(() => button);
+            options.onShown?.call(toastElement);
+
+            return { messageHtml, title };
+        });
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const outputData = { type: 'normal', text: 'raw assistant reply', isStreaming: false, cancelled: false };
+        await eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+        chat.push({
+            name: 'Assistant',
+            mes: outputData.text,
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+        await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
+        await waitFor(() => typeof skipClick === 'function');
+
+        expect(globalThis.toastr.info.mock.calls[0][0]).toContain('Skip changes');
+        skipClick({ preventDefault: jest.fn(), stopPropagation: jest.fn() });
+        resolveQuietPrompt('intercepted assistant reply');
+        await waitFor(() => Array.isArray(chat[0].extra.inChatAgentPreGenerationInterceptHistory));
+
+        expect(chat[0].mes).toBe('raw assistant reply');
+        expect(chat[0].extra.inChatAgentPreGenerationInterceptHistory).toEqual([expect.objectContaining({
+            agentId: 'agent-pre-intercept',
+            timing: 'post-main-generation',
+            beforeText: 'raw assistant reply',
+            afterText: 'raw assistant reply',
+            changed: false,
+            status: 'cancelled',
+        })]);
+    });
+
+    test('runs post-main intercepts before storing the assistant message when show-first is disabled', async () => {
+        enabledAgents = [createPreInterceptAgent({
+            preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
+        })];
+        globalSettings.postMainInterceptShowMessageFirst = false;
         generateQuietPrompt.mockResolvedValue('intercepted assistant reply');
 
         const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
