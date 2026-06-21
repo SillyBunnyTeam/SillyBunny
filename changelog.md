@@ -58,6 +58,7 @@
 - PR #569 (2026-06-20) `fix: continue mobile shell state and UI polish`
 - PR #571 (2026-06-20) `chore: streamline PR workflow runs`
 - PR #572 (2026-06-20) `feat: Conversation mode & general UI polish`
+- PR #576 (2026-06-21) `fix: restore mobile shell cascade guards`
 
 ## v1.6.5
 
