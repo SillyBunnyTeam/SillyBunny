@@ -14,6 +14,8 @@ const {
     applyRegexScriptList,
 } = await import('../public/scripts/extensions/in-chat-agents/regex-scripts.js');
 
+const { resolveRegexScriptsForSnapshot } = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');
+
 const regexBundles = JSON.parse(readFileSync(new URL('../public/scripts/extensions/in-chat-agents/templates/regex-bundles.json', import.meta.url), 'utf8'));
 const cyoaChoiceScripts = regexBundles['tpl-cyoa-choices'];
 
@@ -67,5 +69,38 @@ describe('CYOA choices bundled regex', () => {
         });
 
         expect(promptText).toBe('');
+    });
+
+    test('trims choices via the prompt-assembly wiring (snapshot -> resolve -> apply)', () => {
+        const snapshot = { regexScripts: cyoaChoiceScripts };
+        const resolvedScripts = resolveRegexScriptsForSnapshot(snapshot);
+        expect(resolvedScripts).toHaveLength(cyoaChoiceScripts.length);
+
+        const message = '[CHOICES]\n1. Go\n2. Stay\n3. Wait\n[/CHOICES]';
+        const trimmed = applyRegexScriptList(message, resolvedScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+            isPrompt: true,
+            depth: 2,
+        });
+
+        expect(trimmed).toBe('');
+    });
+
+    test('does not trim choices below the configured min depth', () => {
+        const snapshot = { regexScripts: cyoaChoiceScripts };
+        const resolvedScripts = resolveRegexScriptsForSnapshot(snapshot);
+        const message = '[CHOICES]\n1. Go\n2. Stay\n3. Wait\n[/CHOICES]';
+
+        const shallowDepth = applyRegexScriptList(message, resolvedScripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, {
+            isPrompt: true,
+            depth: 1,
+        });
+
+        expect(shallowDepth).toBe(message);
+    });
+
+    test('leaves the prompt untouched when no in-chat agent snapshot is present', () => {
+        expect(resolveRegexScriptsForSnapshot(undefined)).toEqual([]);
+        expect(resolveRegexScriptsForSnapshot(null)).toEqual([]);
+        expect(resolveRegexScriptsForSnapshot({})).toEqual([]);
     });
 });
