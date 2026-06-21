@@ -51,8 +51,11 @@ function getMediaQueryPxValues(cssSource) {
 // Raised 4 -> 6: mobile-refactor port added two !important display overrides
 // for bottom-chat overflow toggle/source to beat unlayered sillybunny-tabs.css
 // and third-party extension CSS that forces display:flex on hidden buttons.
+// Raised 6 -> 9: character-menu padding reverts added three display
+// overrides to keep editor/create action wrappers and hotswap controls from
+// collapsing under the refactored mobile shell cascade.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 6,
+    'sillybunny-mobile-shell.css': 9,
     'sillybunny-tabs.css': 384,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 137,
