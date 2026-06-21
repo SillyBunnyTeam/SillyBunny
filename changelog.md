@@ -60,6 +60,7 @@
 - PR #572 (2026-06-20) `feat: Conversation mode & general UI polish`
 - PR #576 (2026-06-21) `fix: restore mobile shell cascade guards`
 - PR #577 (2026-06-21) `feat: add line spacing slider`
+- PR #579 (2026-06-21) `fix: prevent companion panel blur flash on close`
 - PR #585 (2026-06-21) `fix: Desktop Padding Reverts`
 
 ## v1.6.5
