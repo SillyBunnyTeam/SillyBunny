@@ -312,6 +312,7 @@ export const power_user = {
     sort_order: 'asc',
     sort_rule: null,
     font_scale: 1,
+    line_spacing: 1, // SillyBunny: chat message line-spacing slider.
     blur_strength: 10,
     shadow_width: 2,
     'customCSS-bg-blur': 0,
@@ -1842,6 +1843,25 @@ function applyFontScale(type) {
     $('#font_scale').val(power_user.font_scale);
 }
 
+function applyLineSpacing(type) {
+    const setLineSpacing = () => {
+        const lineSpacing = Number(power_user.line_spacing);
+        const spacingScale = Number.isFinite(lineSpacing) ? lineSpacing : 1;
+
+        document.documentElement.style.setProperty('--lineSpacingDesktopLeading', `${spacingScale * 0.5}rem`);
+        document.documentElement.style.setProperty('--lineSpacingMobileLeading', `${spacingScale * 0.42}rem`);
+    };
+
+    if (type === 'forced') {
+        setLineSpacing();
+    } else {
+        $('#line_spacing').off('mouseup touchend').on('mouseup touchend', setLineSpacing);
+    }
+
+    $('#line_spacing_counter').val(power_user.line_spacing);
+    $('#line_spacing').val(power_user.line_spacing);
+}
+
 /**
  * Checks if the chat needs to be reloaded to apply media display settings.
  * @returns {boolean} True if the chat needs reload to apply media display settings
@@ -1930,6 +1950,7 @@ async function showDebugMenu() {
 export function applyPowerUserSettings() {
     switchUiMode();
     applyFontScale('forced');
+    applyLineSpacing('forced');
     applyThemeColor();
     applyChatWidth('forced');
     applyAvatarStyle();
@@ -2252,6 +2273,9 @@ export async function loadPowerUserSettings(settings, data) {
 
     $('#font_scale').val(power_user.font_scale);
     $('#font_scale_counter').val(power_user.font_scale);
+
+    $('#line_spacing').val(power_user.line_spacing);
+    $('#line_spacing_counter').val(power_user.line_spacing);
 
     $('#blur_strength').val(power_user.blur_strength);
     $('#blur_strength_counter').val(power_user.blur_strength);
@@ -4102,6 +4126,14 @@ jQuery(async () => {
         power_user.font_scale = Number($(this).val());
         $('#font_scale_counter').val(power_user.font_scale);
         applyFontScale(applyMode);
+        saveSettingsDebounced();
+    });
+
+    $('input[name="line_spacing"]').on('input', async function (e, data) {
+        const applyMode = data?.forced ? 'forced' : 'normal';
+        power_user.line_spacing = Number($(this).val());
+        $('#line_spacing_counter').val(power_user.line_spacing);
+        applyLineSpacing(applyMode);
         saveSettingsDebounced();
     });
 

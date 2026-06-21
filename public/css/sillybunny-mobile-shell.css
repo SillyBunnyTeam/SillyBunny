@@ -3042,7 +3042,7 @@
 
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
         --moonlit-sb-avatar-column-width: max(var(--custom-ChatAvatar, 40px), 50px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
+        --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingMobileLeading, 0.42rem));
         --mesParagraphSpacingTop: 0.28em;
         --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
@@ -3050,7 +3050,7 @@
 
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         --moonlit-sb-ripple-avatar-mobile-width: min(var(--customRippleAvatarMobileWidth, 100px), 86px);
-        --messageLineHeight: calc(var(--mainFontSize) + 0.42rem);
+        --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingMobileLeading, 0.42rem));
         --mesParagraphSpacingTop: 0.28em;
         --mesParagraphSpacingBottom: 0.48em;
         column-gap: 6px;
