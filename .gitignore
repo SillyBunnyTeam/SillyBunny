@@ -65,7 +65,6 @@ test-results/
 .playwright-mcp/
 .local-worklog/
 /output/
-/AGENTS.md
 
 # Local UI/performance screenshots
 screenshots/layout-clean-desktop-workspace-20260505.png
