@@ -22,7 +22,7 @@
     --charNameFontSize: inherit;
     --userNameFontSize: inherit;
     --messageTextFontSize: 15px;
-    --messageLineHeight: calc(var(--mainFontSize) + .5rem);
+    --messageLineHeight: calc(var(--mainFontSize) + var(--lineSpacingDesktopLeading, .5rem));
     --messageTextLetterSpacing: inherit;
     --customlastInContext: 1px solid var(--customThemeColor);
     --custom-EchoAvatarWidth: 22%;

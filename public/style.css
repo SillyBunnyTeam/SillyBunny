@@ -128,6 +128,8 @@
     /* 800px; */
     /*base variable calculated in rems*/
     --fontScale: 1;
+    --lineSpacingDesktopLeading: .6rem;
+    --lineSpacingMobileLeading: .504rem;
     --mainFontSize: calc(var(--fontScale) * 15px);
     --mainFontFamily: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
     --monoFontFamily: 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
@@ -1697,7 +1699,7 @@ img[src*="sillybunny-pixel-logo"] {
 .mes_reasoning {
     font-family: var(--mainFontFamily, 'Figtree', 'Noto Sans', sans-serif);
     font-weight: 500;
-    line-height: calc(var(--mainFontSize) + .5rem);
+    line-height: calc(var(--mainFontSize) + var(--lineSpacingDesktopLeading, .5rem)); /* SillyBunny: line-spacing slider. */
     max-width: 100%;
     overflow-wrap: anywhere;
 }
