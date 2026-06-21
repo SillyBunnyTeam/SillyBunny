@@ -2674,15 +2674,6 @@
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
-        --customCSS-bg-blur: 6px;
-        --topBarBlockSize: 38px;
-        --topBarIconSize: 26px;
-        --thought-box-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-        --thought-box-bg-2: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
-        --thought-box-border: color-mix(in srgb, var(--SmartThemeQuoteColor) 28%, var(--SmartThemeBorderColor));
-        --thought-box-text: var(--reasoning-body-color);
-        --thought-box-muted: var(--reasoning-em-color);
-        --thought-box-accent: var(--SmartThemeQuoteColor);
         --sb-topbar-primary-height-base: 28px;
         --sb-topbar-padding-x-base: 6px;
         --sb-topbar-stack-gap-base: 2px;
@@ -2720,23 +2711,6 @@
         --sb-message-icon-size: clamp(22px, calc(var(--bottomFormBlockSize, 36px) * 0.56), 28px);
     }
 
-    body::before {
-        background:
-            linear-gradient(115deg, rgba(255, 244, 204, 0.22), transparent 38%, rgba(91, 69, 42, 0.16)),
-            repeating-linear-gradient(
-                0deg,
-                rgba(255, 255, 255, 0.035) 0 1px,
-                transparent 1px 5px
-            ),
-            repeating-linear-gradient(
-                90deg,
-                rgba(255, 255, 255, 0.02) 0 1px,
-                transparent 1px 12px
-            ),
-            radial-gradient(circle at top left, var(--sb-ambient-a), transparent 28%),
-            radial-gradient(circle at top right, var(--sb-ambient-b), transparent 32%) !important;
-    }
-
     #sb-topbar-primary .sb-proxy-button i,
     #sb-topbar-primary .sb-chatbar-button > i,
     #sb-hamburger i,
@@ -2758,26 +2732,6 @@
         --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-radius: 0px;
-    }
-
-    #top-bar {
-        padding-inline: 6px !important;
-    }
-
-    #sb-chatbar,
-    #sb-chatbar .sb-chatbar-field,
-    .drawer-content,
-    .popup,
-    .menu_button,
-    input,
-    textarea,
-    select,
-    button {
-        border-radius: 14px !important;
-    }
-
-    body:not(.movingUI) :is(#sheld, #chat, #chat_container) {
-        scroll-padding-top: var(--sb-topbar-layout-offset) !important;
     }
 
     #chat {
@@ -2820,62 +2774,11 @@
     #send_textarea {
         padding: 8px 10px !important;
         line-height: 1.15 !important;
-        background: var(--sb-input-bg) !important;
     }
 
     #leftSendForm,
     #rightSendForm {
         gap: 2px !important;
-    }
-
-    #chat .mes:not(.smallSysMes) {
-        --avatar-base-width: 42px;
-        --avatar-base-height: 42px;
-        position: relative;
-        isolation: isolate;
-        background-color: transparent;
-        margin-bottom: 8px;
-        padding: 6px 8px 4px;
-        border: 1px solid var(--sb-shell-border);
-        border-radius: 18px;
-        box-shadow:
-            0 6px 22px rgba(0, 0, 0, 0.16),
-            inset 0 1px 0 rgba(255, 244, 210, 0.045);
-        -webkit-backdrop-filter: blur(6px);
-        backdrop-filter: blur(6px);
-    }
-
-    #chat .mes:not(.smallSysMes)::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        border-radius: inherit;
-        pointer-events: none;
-        background:
-            radial-gradient(circle at 20% 30%, rgba(255, 248, 220, 0.12) 0 1px, transparent 1.6px),
-            radial-gradient(circle at 70% 60%, rgba(82, 62, 39, 0.1) 0 0.8px, transparent 1.4px),
-            repeating-linear-gradient(
-                90deg,
-                rgba(255, 255, 255, 0.035) 0 1px,
-                transparent 1px 7px
-            ),
-            var(--SmartThemeBotMesBlurTintColor);
-        background-size: 26px 26px, 31px 31px, 100% 100%, auto;
-        opacity: 1;
-    }
-
-    #chat .mes[is_user='true']:not(.smallSysMes)::before {
-        background:
-            radial-gradient(circle at 20% 30%, rgba(255, 248, 220, 0.12) 0 1px, transparent 1.6px),
-            radial-gradient(circle at 70% 60%, rgba(82, 62, 39, 0.1) 0 0.8px, transparent 1.4px),
-            repeating-linear-gradient(
-                90deg,
-                rgba(255, 255, 255, 0.035) 0 1px,
-                transparent 1px 7px
-            ),
-            var(--SmartThemeUserMesBlurTintColor);
-        background-size: 26px 26px, 31px 31px, 100% 100%, auto;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
@@ -2919,50 +2822,6 @@
     #chat .mes .extraMesButtons {
         gap: 2px;
         min-block-size: var(--sb-message-icon-size);
-    }
-
-    #chat .mes :is(img, video, iframe, audio, pre, code) {
-        border-radius: 12px !important;
-    }
-
-    #chat .mes_reasoning_details {
-        margin-right: 0;
-    }
-
-    #chat .mes_reasoning_header {
-        margin: 6px 0 4px;
-        padding: 7px 12px;
-        border: 1px solid var(--thought-box-border);
-        border-radius: 14px;
-        background: linear-gradient(180deg, var(--thought-box-bg-2), var(--thought-box-bg));
-        color: var(--thought-box-text);
-    }
-
-    #chat .mes_reasoning_summary > span,
-    #chat .mes_reasoning_header > .icon-svg {
-        color: var(--thought-box-muted);
-    }
-
-    #chat .mes_reasoning_arrow {
-        color: var(--thought-box-accent);
-    }
-
-    #chat .mes_reasoning {
-        border: 1px solid var(--thought-box-border);
-        border-left: 1px solid var(--thought-box-border);
-        border-radius: 14px;
-        padding: 8px 10px 8px 12px;
-        background: linear-gradient(180deg, var(--thought-box-bg), var(--thought-box-bg-2));
-        color: var(--thought-box-text);
-    }
-
-    #chat .mes_reasoning :is(i, em) {
-        color: var(--thought-box-muted);
-    }
-
-    #chat .mes_reasoning :is(q, u),
-    #chat .mes_reasoning strong {
-        color: var(--thought-box-accent);
     }
 
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) {
