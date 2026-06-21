@@ -12445,6 +12445,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.desktopNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.desktopNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (desktopNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -12490,6 +12493,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.mobileNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.mobileNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (mobileNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -13844,7 +13850,7 @@ function syncMobileShellRailActions(shellKey = null) {
                     : null;
                 const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
                     hasVerticalRail,
-                    showCustomize: navState.showCustomize,
+                    showCustomize: hasVerticalRail || navState.showCustomize,
                     showQuickActions: navState.showQuickActions,
                     builtInActions: getBuiltInRailActionsForShell(currentShellKey),
                     builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
