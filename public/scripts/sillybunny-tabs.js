@@ -381,6 +381,7 @@ const SB_TOPBAR_LABEL_PARTS = Object.freeze([
 const SB_TOPBAR_LABEL_PART_ORDER = Object.freeze(SB_TOPBAR_LABEL_PARTS.map(part => part.id));
 const SB_TOPBAR_LABEL_PART_IDS = new Set(SB_TOPBAR_LABEL_PART_ORDER);
 const SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH = 48;
+const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;
 const SB_TOPBAR_DRAG_X_RATIO = 0.36;
 const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
@@ -741,6 +742,8 @@ const sbState = {
         refreshInFlight: false,
         refreshPending: false,
         refreshToken: 0,
+        cyclePart: '',
+        cycleResetTimer: 0,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -3545,6 +3548,10 @@ function setTopbarCustomText(value) {
     }
 
     sbState.topbarLabel.customText = nextText;
+    if (!nextText && sbState.topbarLabel.cyclePart === 'custom') {
+        resetTopBarLabelCycle({ refresh: false });
+    }
+
     safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);
     updateThemePickerUi();
     updateTopBarBrand();
@@ -3882,7 +3889,9 @@ function setTopbarContextTokens(tokens) {
 }
 
 function isTopbarContextLabelEnabled() {
-    return sbState.topbarLabel.desktopParts.includes('ctx') || sbState.topbarLabel.mobilePart === 'ctx';
+    return sbState.topbarLabel.desktopParts.includes('ctx')
+        || sbState.topbarLabel.mobilePart === 'ctx'
+        || sbState.topbarLabel.cyclePart === 'ctx';
 }
 
 function syncTopbarContextTokensFromPromptManager() {
@@ -3962,6 +3971,19 @@ function getConfiguredTopbarLabelParts() {
     return normalizeTopbarLabelParts(sbState.topbarLabel.desktopParts);
 }
 
+function getTopbarLabelPartOption(partId) {
+    return SB_TOPBAR_LABEL_PARTS.find(part => part.id === partId) ?? null;
+}
+
+function getTopbarLabelCycleParts() {
+    const cycleParts = ['', 'ctx', 'char'];
+    if (sbState.topbarLabel.customText) {
+        cycleParts.push('custom');
+    }
+
+    return cycleParts;
+}
+
 function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     switch (partId) {
         case 'ctx':
@@ -3979,8 +4001,88 @@ function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     }
 }
 
+function getTopBarLabelPreviewText(partId, context = getSillyTavernContext()) {
+    const normalizedPart = normalizeTopbarLabelPart(partId);
+    const labelText = normalizedPart ? getTopBarLabelPartText(normalizedPart, context) : '';
+    if (labelText) {
+        return labelText;
+    }
+
+    if (normalizedPart === 'ctx') {
+        return '...';
+    }
+
+    return getTopbarLabelPartOption(normalizedPart)?.label ?? '';
+}
+
+function resetTopBarLabelCycle({ refresh = true } = {}) {
+    const hadCyclePart = Boolean(sbState.topbarLabel.cyclePart);
+    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+    sbState.topbarLabel.cycleResetTimer = 0;
+    sbState.topbarLabel.cyclePart = '';
+
+    if (hadCyclePart && refresh) {
+        updateTopBarBrand();
+    }
+}
+
+function scheduleTopBarLabelCycleReset() {
+    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+    sbState.topbarLabel.cycleResetTimer = window.setTimeout(() => {
+        resetTopBarLabelCycle();
+    }, SB_TOPBAR_LABEL_CYCLE_RESET_MS);
+}
+
+function cycleTopBarLabel() {
+    const cycleParts = getTopbarLabelCycleParts();
+    const currentPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
+    const currentIndex = cycleParts.indexOf(currentPart);
+    const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
+    const nextPart = cycleParts[nextIndex % cycleParts.length];
+
+    sbState.topbarLabel.cyclePart = nextPart;
+    if (nextPart) {
+        scheduleTopBarLabelCycleReset();
+    } else {
+        window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
+        sbState.topbarLabel.cycleResetTimer = 0;
+    }
+
+    if (nextPart === 'ctx') {
+        scheduleTopbarContextRefresh(0);
+    }
+
+    updateTopBarBrand();
+}
+
+function bindTopBarTitleCycle(title) {
+    if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleCycleBound === 'true') {
+        return;
+    }
+
+    title.dataset.sbTopbarTitleCycleBound = 'true';
+    title.addEventListener('click', event => {
+        event.stopPropagation();
+        cycleTopBarLabel();
+    });
+    title.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        cycleTopBarLabel();
+    });
+}
+
 function getTopBarLabel() {
     const context = getSillyTavernContext();
+    const previewPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
+    if (previewPart) {
+        return getTopBarLabelPreviewText(previewPart, context);
+    }
+
     const parts = getConfiguredTopbarLabelParts()
         .map(partId => normalizeTopbarLabelPart(partId))
         .filter(Boolean);
@@ -4004,9 +4106,12 @@ function updateTopBarBrand() {
     const label = getTopBarLabel();
     const isActiveChat = hasActiveTopBarChat(context);
 
+    bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
+    title.setAttribute('aria-label', `${label}. Tap to preview top bar label options.`);
     title.classList.toggle('is-chat', isActiveChat);
+    title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
 }
 
@@ -4065,6 +4170,24 @@ function bindTopBarBrand() {
         refresh();
         scheduleTopbarContextRefresh();
     };
+    const resetCycleAndRefreshWithContext = () => {
+        resetTopBarLabelCycle({ refresh: false });
+        refreshWithContext();
+    };
+    // SillyBunny: top-bar taps only preview alternate labels; chat/context moves restore configured text.
+    const resetCycleEvents = new Set([
+        eventTypes.APP_READY,
+        eventTypes.CHAT_CHANGED,
+        eventTypes.CHAT_CREATED,
+        eventTypes.GROUP_CHAT_CREATED,
+        eventTypes.CHARACTER_EDITED,
+        eventTypes.CHARACTER_RENAMED,
+        eventTypes.CHARACTER_DELETED,
+        eventTypes.GROUP_UPDATED,
+        eventTypes.PERSONA_CHANGED,
+        eventTypes.MAIN_API_CHANGED,
+        eventTypes.SETTINGS_UPDATED,
+    ].filter(Boolean));
     const events = [
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
@@ -4084,7 +4207,8 @@ function bindTopBarBrand() {
     ].filter(Boolean);
 
     for (const eventName of new Set(events)) {
-        eventSource.on(eventName, refreshWithContext);
+        const eventHandler = resetCycleEvents.has(eventName) ? resetCycleAndRefreshWithContext : refreshWithContext;
+        eventSource.on(eventName, eventHandler);
     }
 
     if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
@@ -8420,7 +8544,7 @@ function buildTopBar() {
     }
 
     centerGroup.innerHTML = `
-        <div id="sb-topbar-title" class="sb-brand-title">${SB_IDLE_BRAND_LABEL}</div>
+        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
     leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
