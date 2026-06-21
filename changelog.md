@@ -62,6 +62,7 @@
 - PR #577 (2026-06-21) `feat: add line spacing slider`
 - PR #579 (2026-06-21) `fix: prevent companion panel blur flash on close`
 - PR #585 (2026-06-21) `fix: Desktop Padding Reverts`
+- PR #587 (2026-06-21) `fix: let in-chat agent trim regex actually work`
 
 ## v1.6.5
 
