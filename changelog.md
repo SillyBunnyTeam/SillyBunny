@@ -59,6 +59,7 @@
 - PR #571 (2026-06-20) `chore: streamline PR workflow runs`
 - PR #572 (2026-06-20) `feat: Conversation mode & general UI polish`
 - PR #576 (2026-06-21) `fix: restore mobile shell cascade guards`
+- PR #585 (2026-06-21) `fix: Desktop Padding Reverts`
 
 ## v1.6.5
 
