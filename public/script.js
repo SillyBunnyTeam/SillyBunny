@@ -5841,6 +5841,18 @@ class StreamingProcessor {
      * @param {boolean?} continueOnReasoning If continuing on reasoning
      */
     async #checkDomElements(messageId, continueOnReasoning = null) {
+        const cachedMessageDomInvalid = this.messageDom !== null
+            && (!this.messageDom.isConnected || this.messageDom.getAttribute('mesid') !== String(messageId));
+        const cachedMessageTextDomInvalid = this.messageTextDom !== null && !this.messageTextDom.isConnected;
+
+        if (cachedMessageDomInvalid || cachedMessageTextDomInvalid) {
+            // SillyBunny: refresh stale stream targets after chat-window pruning or tail-gap re-renders.
+            this.messageDom = null;
+            this.messageTextDom = null;
+            this.messageTimerDom = null;
+            this.messageTokenCounterDom = null;
+        }
+
         if (this.messageDom === null || this.messageTextDom === null) {
             this.messageDom = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
             this.messageTextDom = this.messageDom?.querySelector('.mes_text');
@@ -14969,6 +14981,11 @@ export async function swipe(event, direction, { source, repeated, message = chat
             await updateSwipeCounter(mesId);
             //shows "..." while generating
             thisMesDiv.find('.mes_text').html('...');
+            // SillyBunny: keep data in sync so MESSAGE_SWIPED listeners cannot re-render stale swipe text.
+            chat[mesId].mes = '...';
+            if (Array.isArray(chat[mesId].swipes) && chat[mesId].swipe_id < chat[mesId].swipes.length) {
+                chat[mesId].swipes[chat[mesId].swipe_id] = '...';
+            }
             // resets the timer
             thisMesDiv.find('.mes_timer').html('');
             thisMesDiv.find('.tokenCounterDisplay').text('');
