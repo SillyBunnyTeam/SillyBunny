@@ -128,8 +128,8 @@
     /* 800px; */
     /*base variable calculated in rems*/
     --fontScale: 1;
-    --lineSpacingDesktopLeading: .5rem;
-    --lineSpacingMobileLeading: .42rem;
+    --lineSpacingDesktopLeading: .6rem;
+    --lineSpacingMobileLeading: .504rem;
     --mainFontSize: calc(var(--fontScale) * 15px);
     --mainFontFamily: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
     --monoFontFamily: 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;

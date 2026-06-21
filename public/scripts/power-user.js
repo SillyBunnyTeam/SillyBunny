@@ -312,7 +312,7 @@ export const power_user = {
     sort_order: 'asc',
     sort_rule: null,
     font_scale: 1,
-    line_spacing: 1, // SillyBunny: chat message line-spacing slider.
+    line_spacing: 1.2, // SillyBunny: chat message line-spacing slider.
     blur_strength: 10,
     shadow_width: 2,
     'customCSS-bg-blur': 0,
@@ -1846,7 +1846,7 @@ function applyFontScale(type) {
 function applyLineSpacing(type) {
     const setLineSpacing = () => {
         const lineSpacing = Number(power_user.line_spacing);
-        const spacingScale = Number.isFinite(lineSpacing) ? lineSpacing : 1;
+        const spacingScale = Number.isFinite(lineSpacing) ? lineSpacing : 1.2;
 
         document.documentElement.style.setProperty('--lineSpacingDesktopLeading', `${spacingScale * 0.5}rem`);
         document.documentElement.style.setProperty('--lineSpacingMobileLeading', `${spacingScale * 0.42}rem`);
