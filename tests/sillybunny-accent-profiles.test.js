@@ -15,17 +15,20 @@ describe('SillyBunny accent color profiles', () => {
     test('ships a generous seeded profile set by default', () => {
         const seedNames = [...seedBlock.matchAll(/name: '([^']+)'/g)].map(match => match[1]);
 
-        expect(powerUserSource).toContain('const SB_ACCENT_PROFILE_SEED_VERSION = 1;');
+        expect(powerUserSource).toContain('const SB_ACCENT_PROFILE_SEED_VERSION = 2;');
         expect(powerUserSource).toContain('sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile }))');
         expect(powerUserSource).toContain('sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION');
         expect(powerUserSource).toContain('function normalizeAccentProfiles()');
-        expect(seedNames).toHaveLength(14);
+        expect(seedNames).toHaveLength(30);
         expect(seedNames).toEqual(expect.arrayContaining([
             'Warm Signal',
             'Story Moss',
             'Rose Glow',
             'Tidepool',
             'Graphite Glow',
+            'Aurora Veil',
+            'Solar Flare',
+            'Neptune',
         ]));
     });
 
@@ -48,13 +51,23 @@ describe('SillyBunny accent color profiles', () => {
 
     test('wires the appearance UI and responsive profile controls', () => {
         expect(indexSource).toContain('id="sb-accent-profile-save"');
+        expect(indexSource).toContain('id="sb-accent-profiles-panel"');
         expect(indexSource).toContain('id="sb-accent-profiles-list"');
         expect(indexSource).toContain('id="sb-accent-profiles-empty"');
-        expect(indexSource).toContain('css/sillybunny-theme.css?v=20260620a');
+        expect(indexSource).toContain('class="inline-drawer-toggle sb-accent-profiles-toggle"');
+        expect(indexSource).toContain('class="inline-drawer-content sb-accent-profiles-content"');
+        expect(indexSource).toContain('css/sillybunny-theme.css?v=20260621a');
+        expect(powerUserSource).toContain('const SB_ACCENT_PROFILES_DRAWER_KEY = \'SBAccentProfilesDrawerExpanded\';');
+        expect(powerUserSource).toContain('function bindSbAccentProfilesDrawerPersistence()');
+        expect(powerUserSource).toContain('accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY)');
+        expect(powerUserSource).toContain('accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)))');
+        expect(powerUserSource).toContain('toggleDrawer(drawer, storedExpanded ?? true);');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'#sb-accent-profile-save\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-apply\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-delete\'');
         expect(themeCssSource).toContain('.sb-accent-profiles-panel');
+        expect(themeCssSource).toContain('.sb-accent-profiles-toggle');
+        expect(themeCssSource).toContain('.sb-accent-profiles-content');
         expect(themeCssSource).toContain('grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));');
         expect(themeCssSource).toContain('@media screen and (max-width: 768px)');
         expect(themeCssSource).toContain('.sb-accent-profiles-list {\n        grid-template-columns: 1fr;\n    }');
