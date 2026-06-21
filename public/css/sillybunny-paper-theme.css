@@ -218,8 +218,12 @@ button:not(.ica--tpanel-handle):not(.gg-action-button) {
 }
 
 /* Reasoning / thought boxes styled to match the paper theme */
+.mes_reasoning_details {
+    margin: 2px 0 4px;
+}
+
 .mes_reasoning_header {
-    margin: 6px 0 4px;
+    margin: 2px 0;
     padding: 7px 12px;
     border: 1px solid var(--thought-box-border);
     border-radius: 14px;
