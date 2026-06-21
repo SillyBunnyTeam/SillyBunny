@@ -22,7 +22,7 @@ body::after {
     inset: 0;
     z-index: 9999;
     pointer-events: none;
-    opacity: 0.2;
+    opacity: var(--sb-paper-texture-opacity, 0);
     mix-blend-mode: soft-light;
     background-image:
         radial-gradient(circle at 18% 22%, rgba(255, 248, 220, 0.65) 0 1.2px, transparent 1.8px),
@@ -39,7 +39,7 @@ body::before {
     inset: 0;
     z-index: 9998;
     pointer-events: none;
-    opacity: 0.12;
+    opacity: calc(var(--sb-paper-texture-opacity, 0) * 0.6);
     mix-blend-mode: overlay;
     background:
         linear-gradient(115deg, rgba(255, 244, 204, 0.22), transparent 38%, rgba(91, 69, 42, 0.16)),
