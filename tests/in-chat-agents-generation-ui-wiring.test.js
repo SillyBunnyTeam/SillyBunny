@@ -104,15 +104,24 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('Run selected companions in one request');
         expect(editorTemplateSource).toContain('Batch With Enabled Companions');
         expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
+        expect(editorTemplateSource).toContain('ica--editor-companion-sendContextToCompanions');
+        expect(editorTemplateSource).toContain('Send context to the following Companion Agents before generation');
+        expect(editorTemplateSource).toContain('ica--editor-companion-contextRecipientAgentIds');
         expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
         expect(editorTemplateSource).toContain('Delay until selected companions finish');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
     });
 
-    test('persists companion dependency delay toggle', () => {
+    test('persists companion context-send and dependency delay toggles', () => {
         const readSource = getFunctionSource('readCompanionConfigFromEditor');
         const writeSource = getFunctionSource('writeCompanionConfigToEditor');
 
+        expect(indexSource).toContain("#ica--editor-companion-sendContextToCompanions");
+        expect(indexSource).toContain("#ica--editor-companion-contextRecipientAgentIds");
+        expect(readSource).toContain("sendContextToCompanions: root.find('#ica--editor-companion-sendContextToCompanions').prop('checked')");
+        expect(readSource).toContain("contextRecipientAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-contextRecipientAgentIds').val())");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', nextCompanion.sendContextToCompanions);");
+        expect(writeSource).toContain('updateCompanionContextRecipientOptions();');
         expect(indexSource).toContain("#ica--editor-companion-waitForDependencies");
         expect(readSource).toContain("waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked')");
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);");
@@ -128,12 +137,26 @@ describe('in-chat agents generation UI wiring', () => {
 
     test('selects companion links by saved id or source template id', () => {
         const batchSource = getFunctionSource('updateCompanionBatchAgentOptions');
+        const contextRecipientSource = getFunctionSource('updateCompanionContextRecipientOptions');
         const dependencySource = getFunctionSource('updateCompanionDependencyOptions');
 
-        for (const source of [batchSource, dependencySource]) {
+        for (const source of [batchSource, contextRecipientSource, dependencySource]) {
             expect(source).toContain('options.flatMap(option => option.referenceIds)');
             expect(source).toContain('option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))');
         }
+    });
+
+    test('migrates Level Up and User-based Stats context links once', () => {
+        const migrationSource = getFunctionSource('migrateLevelUpStatsContextLinks');
+        const defaultSource = getFunctionSource('applyLevelUpStatsContextLinkDefault');
+
+        expect(indexSource).toContain('LEVEL_UP_STATS_CONTEXT_LINKS_VERSION');
+        expect(indexSource).toContain('LEVEL_UP_COMPANION_TEMPLATE_ID');
+        expect(indexSource).toContain('USER_BASED_STATS_TEMPLATE_ID');
+        expect(defaultSource).toContain('sendContextToCompanions: true');
+        expect(defaultSource).toContain('contextRecipientAgentIds: recipientIds');
+        expect(migrationSource).toContain('levelUpStatsContextLinksVersion');
+        expect(indexSource).toContain('await migrateLevelUpStatsContextLinks();');
     });
 
     test('populates companion dependency selector during editor setup', () => {
@@ -144,7 +167,10 @@ describe('in-chat agents generation UI wiring', () => {
 
         expect(editorTemplateSource).toContain('ica--editor-companion-dependencies');
         expect(setupSource).toContain('updateCompanionBatchAgentOptions();');
+        expect(setupSource).toContain('updateCompanionContextRecipientOptions();');
         expect(setupSource).toContain('updateCompanionDependencyOptions();');
+        expect(setupSource.indexOf('updateCompanionContextRecipientOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionContextRecipientOptions();'));
         expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
     });
 

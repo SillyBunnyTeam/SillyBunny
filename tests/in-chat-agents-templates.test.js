@@ -119,10 +119,14 @@ function expectLevelUpStatsDefaults(levelUp, stats) {
         batch: true,
     }));
     expect(levelUp.companion.batchAgentIds).toContain('tpl-user-based-stats-generator');
+    expect(levelUp.companion.sendContextToCompanions).toBe(true);
+    expect(levelUp.companion.contextRecipientAgentIds).toContain('tpl-user-based-stats-generator');
     expect(stats.companion).toEqual(expect.objectContaining({
         batch: true,
     }));
     expect(stats.companion.batchAgentIds).toContain('tpl-level-up-companion');
+    expect(stats.companion.sendContextToCompanions).toBe(true);
+    expect(stats.companion.contextRecipientAgentIds).toContain('tpl-level-up-companion');
     expect(stats.companion.dependencies).toContain('tpl-level-up-companion');
     expect(stats.companion.waitForDependencies).toBe(true);
 }

@@ -324,6 +324,8 @@ describe('in-chat agent post-processing runner', () => {
                 },
                 batch: Boolean(agent?.companion?.batch),
                 batchAgentIds: Array.isArray(agent?.companion?.batchAgentIds) ? agent.companion.batchAgentIds : [],
+                sendContextToCompanions: Boolean(agent?.companion?.sendContextToCompanions),
+                contextRecipientAgentIds: Array.isArray(agent?.companion?.contextRecipientAgentIds) ? agent.companion.contextRecipientAgentIds : [],
                 dependencies: Array.isArray(agent?.companion?.dependencies) ? agent.companion.dependencies : [],
                 waitForDependencies: Boolean(agent?.companion?.waitForDependencies),
                 maxTokens: Number(agent?.companion?.maxTokens) || 32000,
@@ -1642,7 +1644,13 @@ describe('in-chat agent post-processing runner', () => {
             name: 'Level Up Companion',
             sourceTemplateId: 'tpl-level-up-companion',
             prompt: 'Check whether a level-up is earned.',
-            companion: { trigger: 'auto', batch: true, batchAgentIds: ['tpl-user-based-stats-generator'] },
+            companion: {
+                trigger: 'auto',
+                batch: true,
+                batchAgentIds: ['tpl-user-based-stats-generator'],
+                sendContextToCompanions: true,
+                contextRecipientAgentIds: ['tpl-user-based-stats-generator'],
+            },
         });
         const statsCompanion = createCompanionAgent({
             id: 'saved-user-stats-generator',
@@ -1653,6 +1661,8 @@ describe('in-chat agent post-processing runner', () => {
                 trigger: 'auto',
                 batch: true,
                 batchAgentIds: ['tpl-level-up-companion'],
+                sendContextToCompanions: true,
+                contextRecipientAgentIds: ['tpl-level-up-companion'],
                 dependencies: ['tpl-level-up-companion'],
                 waitForDependencies: true,
             },
@@ -1662,13 +1672,19 @@ describe('in-chat agent post-processing runner', () => {
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         chat.push(
+            { mes: 'What are my stats?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Previous assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
             { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
             { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
         );
+        companionRunner.setCompanionResult(chat[1], statsCompanion, {
+            status: 'done',
+            content: '[USER_STATS]\nLevel: 1\n[/USER_STATS]',
+        });
 
         await companionRunner.runCompanionStage({
-            messageIndex: 1,
-            message: chat[1],
+            messageIndex: 3,
+            message: chat[3],
             activeAgents: [levelUpCompanion, statsCompanion],
         });
 
@@ -1676,12 +1692,14 @@ describe('in-chat agent post-processing runner', () => {
         const levelUpPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
         const statsPrompt = generateQuietPrompt.mock.calls[1][0].quietPrompt;
         expect(levelUpPrompt).toContain('Check whether a level-up is earned.');
+        expect(levelUpPrompt).toContain('[Companion context: User-based Stats Generator]');
+        expect(levelUpPrompt).toContain('[USER_STATS]\nLevel: 1\n[/USER_STATS]');
         expect(levelUpPrompt).not.toContain('Update the user stats.');
         expect(statsPrompt).toContain('Update the user stats.');
         expect(statsPrompt).toContain('[Completed companion: Level Up Companion]');
         expect(statsPrompt).toContain('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
-        expect(chat[1].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
-        expect(chat[1].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('[USER_STATS]\nLevel: 2\n[/USER_STATS]');
+        expect(chat[3].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
+        expect(chat[3].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('[USER_STATS]\nLevel: 2\n[/USER_STATS]');
     });
 
     test('does not cascade to dependents when parent output is unchanged', async () => {

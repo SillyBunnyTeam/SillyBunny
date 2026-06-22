@@ -148,6 +148,8 @@ const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
 const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
+const LEVEL_UP_COMPANION_TEMPLATE_ID = 'tpl-level-up-companion';
+const USER_BASED_STATS_TEMPLATE_ID = 'tpl-user-based-stats-generator';
 const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
@@ -158,6 +160,7 @@ const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
 const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS = 2000;
+const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 1;
 const CHATROOM_STYLE_VALUES = Object.freeze([
     'mixed',
     'in-world',
@@ -359,6 +362,10 @@ function getCompanionDependencyOptionsForAgent(agent) {
             label: String(candidate.name ?? '').trim() || candidate.id,
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function getCompanionContextRecipientOptionsForAgent(agent) {
+    return getCompanionDependencyOptionsForAgent(agent);
 }
 
 function normalizeDirectorCommentaryVoice(value = '') {
@@ -582,6 +589,75 @@ async function migrateTrackerCompanionsToAutoLoop() {
     setGlobalSettings({
         trackerCompanionAutoLoopApplied: true,
         trackerCompanionAutoLoopVersion: TRACKER_COMPANION_AUTO_LOOP_VERSION,
+    });
+    persistExtensionState();
+    return migrated;
+}
+
+function getLevelUpStatsContextRecipientTemplateId(agent) {
+    const templateId = String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
+    if (templateId === LEVEL_UP_COMPANION_TEMPLATE_ID) {
+        return USER_BASED_STATS_TEMPLATE_ID;
+    }
+
+    if (templateId === USER_BASED_STATS_TEMPLATE_ID) {
+        return LEVEL_UP_COMPANION_TEMPLATE_ID;
+    }
+
+    return '';
+}
+
+function applyLevelUpStatsContextLinkDefault(agent) {
+    const recipientTemplateId = getLevelUpStatsContextRecipientTemplateId(agent);
+    if (!recipientTemplateId || !isCompanionAgent(agent)) {
+        return false;
+    }
+
+    const companion = getCompanionConfig(agent);
+    const recipientIds = normalizeCompanionBatchAgentIds(companion.contextRecipientAgentIds);
+    const recipientKey = recipientTemplateId.toLowerCase();
+    let changed = false;
+
+    if (!recipientIds.some(id => id.toLowerCase() === recipientKey)) {
+        recipientIds.push(recipientTemplateId);
+        changed = true;
+    }
+
+    if (!companion.sendContextToCompanions) {
+        companion.sendContextToCompanions = true;
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    agent.companion = {
+        ...(agent.companion || {}),
+        ...companion,
+        sendContextToCompanions: true,
+        contextRecipientAgentIds: recipientIds,
+    };
+    return true;
+}
+
+async function migrateLevelUpStatsContextLinks() {
+    const settings = getGlobalSettings();
+    const appliedVersion = Number(settings.levelUpStatsContextLinksVersion ?? 0) || 0;
+    if (appliedVersion >= LEVEL_UP_STATS_CONTEXT_LINKS_VERSION) {
+        return 0;
+    }
+
+    let migrated = 0;
+    for (const agent of getAgents()) {
+        if (applyLevelUpStatsContextLinkDefault(agent)) {
+            await saveAgent(agent);
+            migrated++;
+        }
+    }
+
+    setGlobalSettings({
+        levelUpStatsContextLinksVersion: LEVEL_UP_STATS_CONTEXT_LINKS_VERSION,
     });
     persistExtensionState();
     return migrated;
@@ -2564,7 +2640,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
+    const savedCompanionContextRecipientAgentIds = normalizeCompanionBatchAgentIds(companion.contextRecipientAgentIds);
     const savedCompanionDependencies = normalizeCompanionBatchAgentIds(companion.dependencies);
+    editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', companion.sendContextToCompanions);
     editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', companion.waitForDependencies);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
@@ -2756,6 +2834,41 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         }
     }
 
+    function updateCompanionContextRecipientOptions() {
+        const select = editorEl.find('#ica--editor-companion-contextRecipientAgentIds');
+        const currentIds = normalizeCompanionBatchAgentIds(select.val());
+        const selectedIds = currentIds.length ? currentIds : savedCompanionContextRecipientAgentIds;
+        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
+        const options = getCompanionContextRecipientOptionsForAgent(agent);
+        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
+
+        select.empty();
+        if (!options.length && !selectedIds.length) {
+            select.append($('<option>').val('').text('No other companion agents').prop('disabled', true));
+            return;
+        }
+
+        for (const option of options) {
+            select.append(
+                $('<option>')
+                    .val(option.id)
+                    .text(option.label)
+                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
+            );
+        }
+
+        for (const id of selectedIds) {
+            if (availableKeys.has(id.toLowerCase())) continue;
+
+            select.append(
+                $('<option>')
+                    .val(id)
+                    .text(`Unavailable: ${id}`)
+                    .prop('selected', true),
+            );
+        }
+    }
+
     function updateCompanionDependencyOptions() {
         const select = editorEl.find('#ica--editor-companion-dependencies');
         const currentIds = normalizeCompanionBatchAgentIds(select.val());
@@ -2812,6 +2925,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
         editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
+        editorEl.find('#ica--companion-context-recipient-row').toggle(companionExecution);
+        editorEl.find('#ica--companion-context-recipient-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked'));
         editorEl.find('#ica--companion-dependency-row').toggle(companionExecution);
         editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
         editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
@@ -2851,6 +2966,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             },
             batch: root.find('#ica--editor-companion-batch').prop('checked'),
             batchAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-batchAgentIds').val()),
+            sendContextToCompanions: root.find('#ica--editor-companion-sendContextToCompanions').prop('checked'),
+            contextRecipientAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-contextRecipientAgentIds').val()),
             dependencies: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-dependencies').val()),
             waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked'),
             maxTokens: Number(root.find('#ica--editor-companion-maxTokens').val()) || current.maxTokens,
@@ -2875,8 +2992,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
+        editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', nextCompanion.sendContextToCompanions);
         editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);
         updateCompanionBatchAgentOptions();
+        updateCompanionContextRecipientOptions();
         updateCompanionDependencyOptions();
         editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);
         updateCompanionEditorVisibility();
@@ -2891,6 +3010,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateCompanionBatchAgentOptions();
         updateCompanionEditorVisibility();
     });
+    editorEl.find('#ica--editor-companion-sendContextToCompanions').on('change', () => {
+        updateCompanionContextRecipientOptions();
+        updateCompanionEditorVisibility();
+    });
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
     updateTrackerBuilderVisibility();
@@ -2898,6 +3021,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateChatroomExtraCharacterOptions();
     updateDirectorCustomVoiceOptions();
     updateCompanionBatchAgentOptions();
+    updateCompanionContextRecipientOptions();
     updateCompanionDependencyOptions();
     updateCompanionEditorVisibility();
 
@@ -5202,6 +5326,8 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     if (migratedTrackerCompanionCount > 0) {
         toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel.`);
     }
+
+    await migrateLevelUpStatsContextLinks();
 
     if (getGlobalSettings().separateRecentChats) {
         const initializedScopedAgentState = initializeScopedAgentEnableState();

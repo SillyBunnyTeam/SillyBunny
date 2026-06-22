@@ -43,6 +43,10 @@
         "batchAgentIds": [
             "tpl-level-up-companion"
         ],
+        "sendContextToCompanions": true,
+        "contextRecipientAgentIds": [
+            "tpl-level-up-companion"
+        ],
         "dependencies": [
             "tpl-level-up-companion"
         ],

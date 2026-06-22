@@ -43,6 +43,10 @@
         "batchAgentIds": [
             "tpl-user-based-stats-generator"
         ],
+        "sendContextToCompanions": true,
+        "contextRecipientAgentIds": [
+            "tpl-user-based-stats-generator"
+        ],
         "maxTokens": 64000
     },
     "preProcess": {
