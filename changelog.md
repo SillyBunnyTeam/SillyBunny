@@ -66,6 +66,7 @@
 - PR #587 (2026-06-21) `fix: let in-chat agent trim regex actually work`
 - PR #588 (2026-06-21) `fix: stop custom endpoint Connect from clobbering profile keys`
 - PR #590 (2026-06-21) `fix: DOM content bleed over user and assistant messages`
+- PR #592 (2026-06-22) `feat: improve accent profile settings`
 - PR #594 (2026-06-22) `fix: workspace and customize shortcuts toggle use intended behaviour`
 - PR #595 (2026-06-22) `fix: PR unit test regression cleanup`
 - PR #596 (2026-06-22) `feat: add margin size slider`
