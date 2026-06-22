@@ -70,6 +70,7 @@
 - PR #595 (2026-06-22) `fix: PR unit test regression cleanup`
 - PR #596 (2026-06-22) `feat: add margin size slider`
 - PR #597 (2026-06-22) `fix: auto-close the post-generation ICA toast`
+- PR #599 (2026-06-22) `fix: make Icons Only work on horizontal side rail`
 - PR #600 (2026-06-22) `chore: add Pura's Director Preset 14.0 and RPG elements as agents`
 - PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
 
