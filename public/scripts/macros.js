@@ -53,6 +53,12 @@ export class MacrosParser {
     static #descriptions = new Map();
 
     /**
+     * A map of macro sources.
+     * @type {Map<string, string>}
+     */
+    static #sources = new Map();
+
+    /**
      * Logs a deprecation warning for MacrosParser APIs, pointing callers to
      * the new macro engine registration surface.
      *
@@ -67,7 +73,7 @@ export class MacrosParser {
 
     /**
      * Bridges a legacy MacrosParser macro registration into the new macro
-     * engine when the experimental macro engine flag is enabled.
+     * engine.
      *
      * This mirrors the simple "{{key}}" replacement behavior by registering
      * a 0-arg macro in MacroRegistry that does not take arguments and returns
@@ -118,17 +124,13 @@ export class MacrosParser {
 
     /**
      * Bridges a legacy MacrosParser macro unregistration into the new macro
-     * engine when the experimental macro engine flag is enabled.
+     * engine.
      *
      * @param {string} key
-     * @returns {void}
+     * @returns {boolean} True if a macro was removed.
      */
     static #unregisterMacroInNewEngine(key) {
-        if (!power_user.experimental_macro_engine) {
-            return;
-        }
-
-        macroSystem.registry.unregisterMacro(key);
+        return macroSystem.registry.unregisterMacro(key);
     }
 
     /**
@@ -212,6 +214,7 @@ export class MacrosParser {
         }
 
         this.#macros.set(key, value);
+        this.#sources.set(key, detectLegacyMacroSource());
 
         if (typeof description === 'string' && description) {
             this.#descriptions.set(key, description);
@@ -236,18 +239,40 @@ export class MacrosParser {
             throw new Error('Macro key must not be empty or whitespace only');
         }
 
-        if (power_user.experimental_macro_engine) {
-            MacrosParser.#unregisterMacroInNewEngine(key);
-            return;
-        }
-
         const deleted = this.#macros.delete(key);
+        const deletedInNewEngine = MacrosParser.#unregisterMacroInNewEngine(key);
 
-        if (!deleted) {
+        if (!deleted && !deletedInNewEngine) {
             console.warn(`Macro ${key} was not registered`);
         }
 
         this.#descriptions.delete(key);
+        this.#sources.delete(key);
+    }
+
+    /**
+     * Unregisters macros registered by a source, such as a disabled extension.
+     * @param {string} sourceName Source identifier.
+     * @returns {number} Number of macro entries removed.
+     */
+    static unregisterMacrosBySource(sourceName) {
+        const normalizedSource = normalizeMacroSourceName(sourceName);
+        if (!normalizedSource) {
+            return 0;
+        }
+
+        let removed = 0;
+        for (const [key, source] of this.#sources) {
+            if (normalizeMacroSourceName(source) === normalizedSource) {
+                this.#macros.delete(key);
+                this.#descriptions.delete(key);
+                this.#sources.delete(key);
+                removed++;
+            }
+        }
+
+        removed += macroSystem.registry.unregisterMacrosBySource(sourceName);
+        return removed;
     }
 
     /**
@@ -305,6 +330,33 @@ export class MacrosParser {
 
         return String(value);
     }
+}
+
+let extensionMacroCleanupBound = false;
+
+function detectLegacyMacroSource() {
+    const stack = new Error().stack?.split('\n').map(line => line.trim()) ?? [];
+
+    const thirdPartyMatch = stack.find(line => line.includes('/scripts/extensions/third-party/'));
+    if (thirdPartyMatch) {
+        return thirdPartyMatch.replace(/^.*?\/scripts\/extensions\/third-party\/([^/]+)\/.*$/, '$1');
+    }
+
+    const extensionMatch = stack.find(line => line.includes('/scripts/extensions/'));
+    if (extensionMatch) {
+        return extensionMatch.replace(/^.*?\/scripts\/extensions\/([^/]+)\/.*$/, '$1');
+    }
+
+    return 'unknown';
+}
+
+function normalizeMacroSourceName(sourceName) {
+    return String(sourceName || '')
+        .replace(/^third-party\//i, '')
+        .replace(/^\/?scripts\/extensions\/(?:third-party\/)?/i, '')
+        .split('/')[0]
+        .trim()
+        .toLowerCase();
 }
 
 /**
@@ -715,6 +767,13 @@ export function evaluateMacros(content, env, postProcessFn) {
 }
 
 export function initMacros() {
+    if (!extensionMacroCleanupBound) {
+        eventSource.on(event_types.EXTENSION_DISABLED, extensionName => {
+            MacrosParser.unregisterMacrosBySource(extensionName);
+        });
+        extensionMacroCleanupBound = true;
+    }
+
     // Only manually register those is new macro engine is not on. In the new one, they are already registered automatically
     if (!power_user.experimental_macro_engine) {
         const initLastGenerationType = () => {

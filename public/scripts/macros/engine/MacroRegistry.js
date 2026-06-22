@@ -331,6 +331,28 @@ class MacroRegistry {
     }
 
     /**
+     * Unregisters macros registered by a source, such as a disabled extension.
+     * @param {string} sourceName Source identifier.
+     * @returns {number} Number of macro entries removed.
+     */
+    unregisterMacrosBySource(sourceName) {
+        const normalizedSource = normalizeMacroSourceName(sourceName);
+        if (!normalizedSource) {
+            return 0;
+        }
+
+        let removed = 0;
+        for (const [key, definition] of this.#macros) {
+            if (normalizeMacroSourceName(definition?.source?.name) === normalizedSource) {
+                this.#macros.delete(key);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    /**
      * Checks whether a macro with the given name is registered.
      *
      * @param {string} name - Macro name (identifier).
@@ -826,4 +848,13 @@ function detectMacroSource() {
     }
 
     return { isExtension, isThirdParty, source };
+}
+
+function normalizeMacroSourceName(sourceName) {
+    return String(sourceName || '')
+        .replace(/^third-party\//i, '')
+        .replace(/^\/?scripts\/extensions\/(?:third-party\/)?/i, '')
+        .split('/')[0]
+        .trim()
+        .toLowerCase();
 }

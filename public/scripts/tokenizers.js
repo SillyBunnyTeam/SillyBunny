@@ -187,12 +187,14 @@ export async function saveTokenCache() {
     }
 }
 
-async function resetTokenCache() {
+export async function resetTokenCache({ toast = true } = {}) {
     try {
         console.debug('Chat Completions: resetting token cache');
         Object.keys(tokenCache).forEach(key => delete tokenCache[key]);
         await objectStore.removeItem('tokenCache');
-        toastr.success('Token cache cleared. Please reload the chat to re-tokenize it.');
+        if (toast) {
+            toastr.success('Token cache cleared.');
+        }
     } catch (e) {
         console.log('Chat Completions: unable to reset token cache', e);
     }

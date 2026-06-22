@@ -26,6 +26,7 @@ export const event_types = {
     SD_PROMPT_PROCESSING: 'sd_prompt_processing',
     EXTENSIONS_FIRST_LOAD: 'extensions_first_load',
     EXTENSION_SETTINGS_LOADED: 'extension_settings_loaded',
+    EXTENSION_DISABLED: 'extension_disabled',
     SETTINGS_LOADED: 'settings_loaded',
     SETTINGS_UPDATED: 'settings_updated',
     GROUP_UPDATED: 'group_updated',
