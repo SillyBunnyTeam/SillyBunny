@@ -16,7 +16,7 @@ function getFunctionSource(name) {
 describe('topbar label tap cycle', () => {
     test('keeps preview cycle state transient', () => {
         expect(tabsSource).toContain('const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;');
-        expect(tabsSource).toContain("cyclePart: ''");
+        expect(tabsSource).toContain('cyclePart: \'\'');
         expect(tabsSource).toContain('cycleResetTimer: 0');
         expect(tabsSource).toContain('function resetTopBarLabelCycle');
         expect(tabsSource).toContain('window.clearTimeout(sbState.topbarLabel.cycleResetTimer);');
@@ -24,13 +24,13 @@ describe('topbar label tap cycle', () => {
 
     test('cycles configured, context size, character name, and custom text when applicable', () => {
         const cyclePartsSource = getFunctionSource('getTopbarLabelCycleParts');
-        expect(cyclePartsSource).toContain("const cycleParts = ['', 'ctx', 'char'];");
+        expect(cyclePartsSource).toContain('const cycleParts = [\'\', \'ctx\', \'char\'];');
         expect(cyclePartsSource).toContain('if (sbState.topbarLabel.customText)');
-        expect(cyclePartsSource).toContain("cycleParts.push('custom');");
+        expect(cyclePartsSource).toContain('cycleParts.push(\'custom\');');
 
         const cycleSource = getFunctionSource('cycleTopBarLabel');
         expect(cycleSource).toContain('const nextPart = cycleParts[nextIndex % cycleParts.length];');
-        expect(cycleSource).toContain("if (nextPart === 'ctx')");
+        expect(cycleSource).toContain('if (nextPart === \'ctx\')');
         expect(cycleSource).toContain('scheduleTopbarContextRefresh(0);');
     });
 
@@ -40,16 +40,16 @@ describe('topbar label tap cycle', () => {
         expect(labelSource).toContain('return getTopBarLabelPreviewText(previewPart, context);');
 
         const previewSource = getFunctionSource('getTopBarLabelPreviewText');
-        expect(previewSource).toContain("if (normalizedPart === 'ctx')");
-        expect(previewSource).toContain("return '...';");
+        expect(previewSource).toContain('if (normalizedPart === \'ctx\')');
+        expect(previewSource).toContain('return \'...\';');
         expect(previewSource).toContain('return getTopbarLabelPartOption(normalizedPart)?.label ?? \'\';');
     });
 
     test('binds accessible pointer and keyboard activation on the title', () => {
         const bindSource = getFunctionSource('bindTopBarTitleCycle');
-        expect(bindSource).toContain("title.addEventListener('click'");
-        expect(bindSource).toContain("title.addEventListener('keydown'");
-        expect(bindSource).toContain("event.key !== 'Enter' && event.key !== ' '");
+        expect(bindSource).toContain('title.addEventListener(\'click\'');
+        expect(bindSource).toContain('title.addEventListener(\'keydown\'');
+        expect(bindSource).toContain('event.key !== \'Enter\' && event.key !== \' \'');
         expect(bindSource).toContain('event.preventDefault();');
         expect(bindSource).toContain('cycleTopBarLabel();');
 
@@ -81,5 +81,15 @@ describe('topbar label tap cycle', () => {
         expect(titleRule).toContain('user-select: none;');
         expect(cssSource).toContain('.sb-brand-title:focus-visible');
         expect(cssSource).toContain('.sb-brand-title.is-previewing');
+    });
+
+    test('does not subtract focus padding from the visible label width', () => {
+        const titleRuleMatch = cssSource.match(/\.sb-brand-title\s*\{[^}]*\}/);
+        expect(titleRuleMatch).not.toBeNull();
+
+        const titleRule = titleRuleMatch[0];
+        expect(titleRule).toContain('margin: -2px 0;');
+        expect(titleRule).toContain('padding: 2px 6px;');
+        expect(titleRule).not.toContain('margin: -2px -6px;');
     });
 });
