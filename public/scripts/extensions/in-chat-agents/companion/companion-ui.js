@@ -1,5 +1,6 @@
 import { DOMPurify, showdown } from '../../../../lib.js';
 import { chat, saveChatDebounced, substituteParams, substituteParamsExtended } from '../../../../script.js';
+import { encodeStyleTags, decodeStyleTags } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
@@ -198,10 +199,14 @@ function getMessageIndexFromElement(element) {
     return Number.isFinite(messageIndex) ? messageIndex : -1;
 }
 
-function sanitizeCompanionHtml(html = '') {
-    return DOMPurify.sanitize(String(html ?? ''), {
-        ADD_ATTR: ['target', 'rel'],
+function sanitizeCompanionHtml(html = '', { prefix = '.ica--companion-body ' } = {}) {
+    const encoded = encodeStyleTags(String(html ?? ''));
+    const sanitized = DOMPurify.sanitize(encoded, {
+        MESSAGE_SANITIZE: true,
+        ADD_TAGS: ['custom-style'],
+        ADD_ATTR: ['style', 'target', 'rel'],
     });
+    return decodeStyleTags(sanitized, { prefix });
 }
 
 function applyAgentRegexToCompanionContent(agentId, content, message) {
@@ -222,7 +227,7 @@ function applyAgentRegexToCompanionContent(agentId, content, message) {
     });
 }
 
-export function formatCompanionContent(agentId, result = {}, message = null) {
+export function formatCompanionContent(agentId, result = {}, message = null, stylePrefix = '.ica--companion-body ') {
     const rawContent = String(result.content ?? '').trim();
     if (isSuppressedCompanionResult(agentId, result)) {
         return '';
@@ -233,16 +238,17 @@ export function formatCompanionContent(agentId, result = {}, message = null) {
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
+    const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {
-        return decorateChoiceLines(sanitizeCompanionHtml(content));
+        return decorateChoiceLines(sanitizeCompanionHtml(content, sanitizeOptions));
     }
 
     if (result.format === 'text') {
         return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
     }
 
-    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content)));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content), sanitizeOptions));
 }
 
 function getResultStatus(result = {}) {
