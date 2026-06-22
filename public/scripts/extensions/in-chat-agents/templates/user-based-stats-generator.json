@@ -43,6 +43,9 @@
         "batchAgentIds": [
             "tpl-level-up-companion"
         ],
+        "dependencies": [
+            "tpl-level-up-companion"
+        ],
         "maxTokens": 64000
     },
     "preProcess": {

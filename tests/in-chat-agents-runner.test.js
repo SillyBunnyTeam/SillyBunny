@@ -303,6 +303,7 @@ describe('in-chat agent post-processing runner', () => {
             MAX_AGENT_MAX_TOKENS: 64000,
             areAgentsGloballyEnabled: jest.fn(() => true),
             getAgentById: jest.fn(id => enabledAgents.find(agent => agent.id === id)),
+            getAgents: jest.fn(() => [...enabledAgents]),
             getCompanionConfig: jest.fn(agent => ({
                 trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
                 displayMode: ['panel', 'hidden'].includes(agent?.companion?.displayMode) ? agent.companion.displayMode : 'card',
@@ -323,6 +324,7 @@ describe('in-chat agent post-processing runner', () => {
                 },
                 batch: Boolean(agent?.companion?.batch),
                 batchAgentIds: Array.isArray(agent?.companion?.batchAgentIds) ? agent.companion.batchAgentIds : [],
+                dependencies: Array.isArray(agent?.companion?.dependencies) ? agent.companion.dependencies : [],
                 maxTokens: Number(agent?.companion?.maxTokens) || 32000,
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
@@ -461,6 +463,7 @@ describe('in-chat agent post-processing runner', () => {
                 format: 'markdown',
                 contextMessages: 10,
                 feedback: { enabled: false, depth: 1 },
+                dependencies: [],
                 ...(overrides.companion ?? {}),
             },
             postProcess: {
@@ -1511,6 +1514,191 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
+    });
+
+    test('runs dependent companions after parent output changes', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt
+            .mockResolvedValueOnce('Level up!')
+            .mockResolvedValueOnce('Stats updated.');
+
+        const levelUpCompanion = createCompanionAgent({
+            id: 'level-up-companion',
+            name: 'Level Up Companion',
+            companion: { trigger: 'auto' },
+        });
+        const statsCompanion = createCompanionAgent({
+            id: 'stats-companion',
+            name: 'Stats Companion',
+            companion: { trigger: 'manual', dependencies: ['level-up-companion'] },
+        });
+        enabledAgents = [levelUpCompanion, statsCompanion];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [levelUpCompanion, statsCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        expect(chat[1].extra.inChatAgentCompanionResults['level-up-companion'].content).toBe('Level up!');
+        expect(chat[1].extra.inChatAgentCompanionResults['stats-companion'].content).toBe('Stats updated.');
+    });
+
+    test('does not cascade to dependents when parent output is unchanged', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt.mockResolvedValue('Same note');
+
+        const parentCompanion = createCompanionAgent({
+            id: 'parent-companion',
+            name: 'Parent Companion',
+            companion: { trigger: 'auto' },
+        });
+        const dependentCompanion = createCompanionAgent({
+            id: 'dependent-companion',
+            name: 'Dependent Companion',
+            companion: { trigger: 'manual', dependencies: ['parent-companion'] },
+        });
+        enabledAgents = [parentCompanion, dependentCompanion];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        companionRunner.setCompanionResult(chat[1], parentCompanion, { status: 'done', content: 'Same note' });
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [parentCompanion, dependentCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[1].extra.inChatAgentCompanionResults['parent-companion'].content).toBe('Same note');
+        expect(chat[1].extra.inChatAgentCompanionResults['dependent-companion']).toBeUndefined();
+    });
+
+    test('avoids infinite loops for circular companion dependencies', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt
+            .mockResolvedValueOnce('A note')
+            .mockResolvedValueOnce('B note');
+
+        const companionA = createCompanionAgent({
+            id: 'companion-a',
+            name: 'Companion A',
+            companion: { trigger: 'auto', dependencies: ['companion-b'] },
+        });
+        const companionB = createCompanionAgent({
+            id: 'companion-b',
+            name: 'Companion B',
+            companion: { trigger: 'manual', dependencies: ['companion-a'] },
+        });
+        enabledAgents = [companionA, companionB];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Hello', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [companionA, companionB],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
+        expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
+    });
+
+    test('runs companions manually on user messages', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt.mockResolvedValue('User note');
+
+        const companionAgent = createCompanionAgent({
+            id: 'user-companion',
+            name: 'User Companion',
+            companion: { trigger: 'manual' },
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        const results = await companionRunner.runCompanionsOnMessage(0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(results).toHaveLength(1);
+        expect(results[0].content).toBe('User note');
+        expect(chat[0].extra.inChatAgentCompanionResults['user-companion'].content).toBe('User note');
+    });
+
+    test('runs a single companion manually on a user message', async () => {
+        generateQuietPrompt.mockResolvedValue('Single user note');
+
+        const companionAgent = createCompanionAgent({
+            id: 'single-user-companion',
+            name: 'Single User Companion',
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        const result = await companionRunner.runCompanionAgentOnMessage('single-user-companion', 0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(result?.content).toBe('Single user note');
+        expect(chat[0].extra.inChatAgentCompanionResults['single-user-companion'].content).toBe('Single user note');
+    });
+
+    test('runs connected companions from wrench/fix flow', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt.mockResolvedValue('Connected note');
+
+        const connectedCompanion = createCompanionAgent({
+            id: 'connected-companion',
+            name: 'Connected Companion',
+            companion: { trigger: 'manual', dependencies: ['another-companion'] },
+        });
+        const unrelatedCompanion = createCompanionAgent({
+            id: 'unrelated-companion',
+            name: 'Unrelated Companion',
+            companion: { trigger: 'manual' },
+        });
+        enabledAgents = [connectedCompanion, unrelatedCompanion];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        expect(companionRunner.hasConnectedCompanionAgents()).toBe(true);
+        const results = await companionRunner.runConnectedCompanionsOnMessage(0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(results).toHaveLength(1);
+        expect(results[0].agentName).toBe('Connected Companion');
     });
 
     test('guards tracker companions against continuing the story even with raw prompts', async () => {

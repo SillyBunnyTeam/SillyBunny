@@ -97,3 +97,12 @@ export function normalizeChatroomReply(value = '') {
 export function isAssistantMessage(message) {
     return Boolean(message && !message.is_user && !message.is_system);
 }
+
+/**
+ * A message that can host companion results (assistant or user, but not a system note).
+ * @param {object} message
+ * @returns {boolean}
+ */
+export function isValidCompanionMessage(message) {
+    return Boolean(message && !message.is_system);
+}

@@ -191,8 +191,13 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        agentHasConnectedCompanionDependencies: jest.fn(() => false),
         collectRecentCompanionResults: jest.fn(() => []),
+        getLatestValidCompanionMessageIndex: jest.fn(() => -1),
+        hasConnectedCompanionAgentCandidates: jest.fn(() => false),
+        hasConnectedCompanionAgents: jest.fn(() => false),
         initCompanionRunner: jest.fn(),
+        runConnectedCompanionsOnMessage: jest.fn(async () => []),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({

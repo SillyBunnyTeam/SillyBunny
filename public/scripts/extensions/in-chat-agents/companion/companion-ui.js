@@ -34,6 +34,7 @@ import {
     isChatroomAgent,
     isMessageInboxAgent,
     isPlotCompassAgent,
+    isValidCompanionMessage,
     normalizeChatOnlyInput,
     normalizeChatroomReply,
     normalizePlotCompassObjective,
@@ -550,7 +551,7 @@ export function renderCompanionResultsForMessage(messageIndex) {
         return;
     }
 
-    const entries = isAssistantMessage(message) ? getRenderableCompanionEntries(message) : [];
+    const entries = isValidCompanionMessage(message) ? getRenderableCompanionEntries(message) : [];
     let ledger = messageElement.find('.ica--companion-ledger');
 
     if (entries.length === 0) {
@@ -587,8 +588,8 @@ export function updateCompanionButtonVisibility() {
     const shouldShow = hasRunnableCompanionAgents();
     $('.mes_run_companions').each(function () {
         const messageElement = $(this).closest('.mes');
-        const isAssistant = messageElement.attr('is_user') !== 'true' && messageElement.attr('is_system') !== 'true';
-        $(this).toggle(shouldShow && isAssistant);
+        const isSystem = messageElement.attr('is_system') === 'true';
+        $(this).toggle(shouldShow && !isSystem);
     });
 }
 
@@ -610,8 +611,8 @@ async function copyText(text) {
 }
 
 async function runCompanionsFromMessageButton(messageIndex, button) {
-    if (!isAssistantMessage(chat[messageIndex])) {
-        toastr.warning('Companions can run on assistant replies only.');
+    if (!isValidCompanionMessage(chat[messageIndex])) {
+        toastr.warning('Companions cannot run on this message.');
         return;
     }
 
@@ -795,7 +796,7 @@ async function handleCompanionAction(event) {
 
     const action = $(event.currentTarget).attr('data-action');
     const { messageIndex, agentId, message, result } = getCompanionActionContext(event.currentTarget);
-    if (!isAssistantMessage(message) || !agentId) {
+    if (!isValidCompanionMessage(message) || !agentId) {
         toastr.warning('Invalid companion note.');
         return;
     }
@@ -868,7 +869,7 @@ function persistCompanionCollapseState(event) {
     const agentId = $(details).attr('data-agent-id') || '';
     const message = chat[messageIndex];
 
-    if (!isAssistantMessage(message) || !agentId) {
+    if (!isValidCompanionMessage(message) || !agentId) {
         return;
     }
 

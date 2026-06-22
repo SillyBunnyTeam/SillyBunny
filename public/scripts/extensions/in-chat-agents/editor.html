@@ -219,6 +219,12 @@
             </label>
             <div class="ica--regex-note">Only selected companions can batch together. Agents with different models, profiles, or context settings still run separately.</div>
         </div>
+        <div class="ica--editor-row" id="ica--companion-dependency-row">
+            <label>Re-run After These Companions Update
+                <select id="ica--editor-companion-dependencies" class="text_pole" multiple size="5"></select>
+            </label>
+            <div class="ica--regex-note">This companion will automatically re-run when any selected companion produces new output.</div>
+        </div>
     </div>
 
     <div class="ica--editor-section" id="ica--tracker-builder-section" style="display:none">

@@ -41,6 +41,7 @@ import {
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
  * @property {string[]} batchAgentIds
+ * @property {string[]} dependencies - Companion agent IDs that should re-run when this agent produces new output
  * @property {number} maxTokens
  */
 
@@ -918,6 +919,7 @@ export function createDefaultCompanionConfig() {
         },
         batch: false,
         batchAgentIds: [],
+        dependencies: [],
         maxTokens: MAX_AGENT_MAX_TOKENS,
     };
 }
@@ -962,6 +964,7 @@ export function normalizeCompanionConfig(raw = {}) {
         },
         batch: Boolean(rawConfig.batch),
         batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
+        dependencies: normalizeStringIdList(rawConfig.dependencies),
         maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, MAX_AGENT_MAX_TOKENS),
     };
 }

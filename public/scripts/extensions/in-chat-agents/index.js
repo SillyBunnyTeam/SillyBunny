@@ -88,7 +88,7 @@ import {
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
-import { collectRecentCompanionResults, initCompanionRunner } from './companion/companion-runner.js';
+import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, agentHasConnectedCompanionDependencies, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
@@ -345,6 +345,19 @@ function getCompanionBatchOptionsForAgent(agent) {
         .sort((left, right) => left.label.localeCompare(right.label));
 }
 
+function getCompanionDependencyOptionsForAgent(agent) {
+    if (!isCompanionAgent(agent)) return [];
+
+    return getAgents()
+        .filter(candidate => candidate.id !== agent.id)
+        .filter(candidate => isCompanionAgent(candidate))
+        .map(candidate => ({
+            id: candidate.id,
+            label: String(candidate.name ?? '').trim() || candidate.id,
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 function normalizeDirectorCommentaryVoice(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
     return DIRECTOR_COMMENTARY_VOICE_VALUES.includes(normalized) ? normalized : 'active';
@@ -457,15 +470,19 @@ function hasRunnableTrackerAgents() {
     return getEnabledAgents().some(isTrackerFixAgent);
 }
 
+function hasAnyFixableAgents() {
+    return hasRunnableTrackerAgents() || hasConnectedCompanionAgents();
+}
+
 function getFixTrackersUnavailableMessage() {
     if (!areAgentsGloballyEnabled()) {
         return 'In-Chat Agents are disabled.';
     }
-    if (!hasTrackerFixAgents()) {
-        return 'No tracker agents are installed. Add one from Templates first.';
+    if (!hasTrackerFixAgents() && !hasConnectedCompanionAgentCandidates()) {
+        return 'No tracker or connected companion agents are installed. Add one from Templates first.';
     }
-    if (!hasRunnableTrackerAgents()) {
-        return `No tracker agents are enabled for ${getAgentChatScopeLabel().toLowerCase()}.`;
+    if (!hasAnyFixableAgents()) {
+        return `No tracker or connected companion agents are enabled for ${getAgentChatScopeLabel().toLowerCase()}.`;
     }
     return '';
 }
@@ -1917,20 +1934,21 @@ async function applyBulkEdit() {
 }
 
 function updateFixTrackersButtonVisibility() {
-    const shouldShowMessageButtons = areAgentsGloballyEnabled() && hasTrackerFixAgents();
+    const hasInstalledFixables = hasTrackerFixAgents() || hasConnectedCompanionAgentCandidates();
+    const shouldShowMessageButtons = areAgentsGloballyEnabled() && hasInstalledFixables;
     $('.mes_fix_trackers').each(function () {
         const $message = $(this).closest('.mes');
-        const isAssistantMessage = $message.attr('is_user') !== 'true' && $message.attr('is_system') !== 'true';
-        $(this).toggle(shouldShowMessageButtons && isAssistantMessage);
+        const isNonSystemMessage = $message.attr('is_system') !== 'true';
+        $(this).toggle(shouldShowMessageButtons && isNonSystemMessage);
     });
 
     const $agentsButton = $('#ica--fixTrackers');
-    const canRun = hasRunnableTrackerAgents();
+    const canRun = hasAnyFixableAgents();
     const unavailableMessage = getFixTrackersUnavailableMessage();
     $agentsButton.show();
     $agentsButton.prop('disabled', fixTrackersRunning);
     $agentsButton.attr('aria-disabled', String(!canRun || fixTrackersRunning));
-    $agentsButton.attr('title', unavailableMessage || 'Re-run enabled tracker agents on the last assistant reply');
+    $agentsButton.attr('title', unavailableMessage || 'Re-run enabled tracker and connected companion agents on the last message');
 }
 
 async function runTrackerFixFromButton(messageIndex, button) {
@@ -1940,7 +1958,18 @@ async function runTrackerFixFromButton(messageIndex, button) {
     $button.prop('disabled', true).addClass('mes_fix_trackers--running');
     updateFixTrackersButtonVisibility();
     try {
-        await runTrackerFixOnMessage(messageIndex);
+        const hasTrackers = hasRunnableTrackerAgents();
+        const hasConnected = hasConnectedCompanionAgents();
+        if (!hasTrackers && !hasConnected) {
+            toastr.info('No enabled tracker or connected companion agents found.');
+            return;
+        }
+        if (hasTrackers) {
+            await runTrackerFixOnMessage(messageIndex);
+        }
+        if (hasConnected) {
+            await runConnectedCompanionsOnMessage(messageIndex);
+        }
     } finally {
         fixTrackersRunning = false;
         $button.prop('disabled', false).removeClass('mes_fix_trackers--running');
@@ -2532,6 +2561,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
+    const savedCompanionDependencies = normalizeCompanionBatchAgentIds(companion.dependencies);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
     const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
@@ -2722,6 +2752,41 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         }
     }
 
+    function updateCompanionDependencyOptions() {
+        const select = editorEl.find('#ica--editor-companion-dependencies');
+        const currentIds = normalizeCompanionBatchAgentIds(select.val());
+        const selectedIds = currentIds.length ? currentIds : savedCompanionDependencies;
+        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
+        const options = getCompanionDependencyOptionsForAgent(agent);
+        const availableKeys = new Set(options.map(option => option.id.toLowerCase()));
+
+        select.empty();
+        if (!options.length && !selectedIds.length) {
+            select.append($('<option>').val('').text('No other companion agents').prop('disabled', true));
+            return;
+        }
+
+        for (const option of options) {
+            select.append(
+                $('<option>')
+                    .val(option.id)
+                    .text(option.label)
+                    .prop('selected', selectedKeys.has(option.id.toLowerCase())),
+            );
+        }
+
+        for (const id of selectedIds) {
+            if (availableKeys.has(id.toLowerCase())) continue;
+
+            select.append(
+                $('<option>')
+                    .val(id)
+                    .text(`Unavailable: ${id}`)
+                    .prop('selected', true),
+            );
+        }
+    }
+
     function updateCompanionEditorVisibility() {
         const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
         const companionExecution = isEditorCompanionExecution();
@@ -2743,6 +2808,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
         editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
+        editorEl.find('#ica--companion-dependency-row').toggle(companionExecution);
         editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
         editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
         editorEl.find('#ica--chatroom-extra-characters-row').toggle(showChatroomSettings);
@@ -2781,6 +2847,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             },
             batch: root.find('#ica--editor-companion-batch').prop('checked'),
             batchAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-batchAgentIds').val()),
+            dependencies: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-dependencies').val()),
             maxTokens: Number(root.find('#ica--editor-companion-maxTokens').val()) || current.maxTokens,
         };
     }
@@ -2804,6 +2871,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
         updateCompanionBatchAgentOptions();
+        updateCompanionDependencyOptions();
         editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);
         updateCompanionEditorVisibility();
     }
@@ -5226,9 +5294,9 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             updateFixTrackersButtonVisibility();
             return;
         }
-        const messageIndex = getLastAssistantMessageIndex();
+        const messageIndex = getLatestValidCompanionMessageIndex();
         if (messageIndex < 0) {
-            toastr.warning('No assistant reply yet to fix trackers on.');
+            toastr.warning('No message yet to fix trackers on.');
             return;
         }
         await runTrackerFixFromButton(messageIndex, this);
