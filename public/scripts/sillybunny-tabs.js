@@ -9473,12 +9473,13 @@ function getImporterRefs() {
     return getImporterState().refs;
 }
 
-async function requestServerAdmin(endpoint, body = {}) {
+async function requestServerAdmin(endpoint, body = {}, { signal } = {}) {
     const headers = await waitForAuthorizedRequestHeaders();
     const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        signal,
     });
 
     const text = await response.text();
@@ -10409,12 +10410,16 @@ async function handleServerAdminBranchSwitch(selectElement) {
     updateServerAdminInteractivity();
     setServerAdminMessage(refs.updateNote, `Switching to branch "${targetBranch}"…`);
 
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
+
     try {
         const result = await requestServerAdmin('/api/server-admin/switch-branch', {
             branch: targetBranch,
             autoStash: hasLocalChanges,
-        });
+        }, { signal: abortController.signal });
 
+        clearTimeout(abortTimeout);
         state.busy = false;
         state.restarting = true;
         updateServerAdminInteractivity();
@@ -10434,12 +10439,20 @@ async function handleServerAdminBranchSwitch(selectElement) {
             toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
         }
     } catch (error) {
+        clearTimeout(abortTimeout);
         console.error('Failed to switch branch.', error);
         state.busy = false;
         updateServerAdminInteractivity();
 
         // Reset select to current branch
         selectElement.value = currentBranch;
+
+        if (error.name === 'AbortError') {
+            const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
+            setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
+            toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
+            return;
+        }
 
         const errorMessage = error.message || 'Failed to switch branch.';
         setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
