@@ -2892,6 +2892,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateChatroomExtraCharacterOptions();
     updateDirectorCustomVoiceOptions();
     updateCompanionBatchAgentOptions();
+    updateCompanionDependencyOptions();
     updateCompanionEditorVisibility();
 
     // Show/hide sections based on phase

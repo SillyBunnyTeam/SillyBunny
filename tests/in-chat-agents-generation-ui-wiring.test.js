@@ -114,6 +114,18 @@ describe('in-chat agents generation UI wiring', () => {
         expect(source).toContain('isCompanionAgent(candidate)');
     });
 
+    test('populates companion dependency selector during editor setup', () => {
+        const source = getFunctionSource('openEditor');
+        const setupStart = source.indexOf('updateTrackerBuilderVisibility();');
+        const setupEnd = source.indexOf('// Show/hide sections based on phase');
+        const setupSource = source.slice(setupStart, setupEnd);
+
+        expect(editorTemplateSource).toContain('ica--editor-companion-dependencies');
+        expect(setupSource).toContain('updateCompanionBatchAgentOptions();');
+        expect(setupSource).toContain('updateCompanionDependencyOptions();');
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
+    });
+
     test('labels companion agent cards as side execution', () => {
         const labelSource = getFunctionSource('getAgentCardPhaseLabel');
 
