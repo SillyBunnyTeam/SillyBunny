@@ -1837,9 +1837,14 @@ body.sb-shell-resizing * {
 }
 
 .sb-shell-tab i {
+    --fa-display: inline-flex;
     width: 18px;
+    height: 18px;
     margin-top: 0;
     opacity: 0.82;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     text-align: center;
 }
 
@@ -1936,7 +1941,7 @@ body.sb-shell-resizing * {
 
 #right-nav-panel.openDrawer > .sb-character-shell-header {
     gap: 4px;
-    padding: 8px calc(var(--sb-shell-panel-padding-inline) + 204px) 10px var(--sb-shell-panel-padding-inline);
+    padding: 8px calc(var(--sb-shell-panel-padding-inline) + 52px) 10px var(--sb-shell-panel-padding-inline);
 }
 
 #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-kicker {
@@ -2542,11 +2547,13 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 .sb-character-import-action > i {
+    --fa-display: inline-flex;
     width: 48px;
     height: 48px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
     border-radius: var(--sb-radius-md, 16px);
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent);
     color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 72%, var(--SmartThemeBodyColor));
@@ -5407,7 +5414,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls > .form_create_bottom_buttons_block,
 #right-nav-panel .sb-character-editor-controls-row #avatar_controls .char-button-toolbar {
-    display: contents;
+    display: contents !important;
 }
 
 #right-nav-panel #avatar_controls .char-button-group-icons {
@@ -7718,7 +7725,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
     :root:not([data-sb-desktop-nav-layout='vertical']) #right-nav-panel.openDrawer .sb-character-shell-nav {
         justify-content: center !important;
-        padding-inline: max(var(--sb-shell-panel-padding-inline), 60px) !important;
+        padding-inline: var(--sb-shell-panel-padding-inline) !important;
     }
 
     :root[data-sb-desktop-nav-layout='vertical'] #right-nav-panel.openDrawer .sb-character-shell-nav {
@@ -7761,4 +7768,24 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* Unlayered fork cascade guards for upstream rules that beat layered shell layout rules. */
+/* Must beat unlayered public/css/sillybunny-theme.css icon-only button sizing. */
+#right-nav-panel .sb-character-create-bar #rm_button_create,
+#right-nav-panel .sb-character-create-bar #rm_button_group_chats {
+    width: auto;
+    inline-size: auto;
+    min-width: max-content;
+    min-inline-size: max-content;
+    max-width: none;
+    max-inline-size: none;
+    height: auto;
+    block-size: auto;
+    min-height: 44px;
+    max-height: none;
+    max-block-size: none;
+    padding: 0 var(--sb-shell-space-lg) !important;
+    aspect-ratio: auto;
+    flex: 0 0 auto;
 }
