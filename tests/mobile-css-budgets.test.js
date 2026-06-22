@@ -33,8 +33,14 @@ function getMediaQueryPxValues(cssSource) {
 // added to unconditionally hide the unused STscript play/pause/stop controls
 // (.stscript_btn) in the mobile composer, overriding the display:flex !important
 // that mobile-styles.css added in #533.
+// sillybunny-mobile-shell.css raised 665 -> 677: phone-only edge-to-edge
+// composer and safe-area overrides need to beat upstream mobile padding and
+// border rules without affecting desktop.
+// sillybunny-paper-theme.css starts at 55: the phone-only paper texture and
+// chrome adjustment sheet is budgeted from introduction.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 665,
+    'sillybunny-mobile-shell.css': 677,
+    'sillybunny-paper-theme.css': 55,
     'sillybunny-tabs.css': 386,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 158,
@@ -79,7 +85,7 @@ describe('index.html mobile stylesheet gates', () => {
     }
 
     test('mobile sheets keep their (max-width: 768px) media gates', () => {
-        for (const href of ['css/mobile-styles.css', 'css/sillybunny-mobile-shell.css']) {
+        for (const href of ['css/mobile-styles.css', 'css/sillybunny-paper-theme.css', 'css/sillybunny-mobile-shell.css']) {
             const tag = findStylesheetTag(href);
 
             expect(tag).toBeDefined();
@@ -92,6 +98,7 @@ describe('index.html mobile stylesheet gates', () => {
             'style.css',
             'css/mobile-styles.css',
             'css/sillybunny-theme.css',
+            'css/sillybunny-paper-theme.css',
             'css/sillybunny-tabs.css',
             'css/sillybunny-mobile-shell.css',
             'css/user.css',
