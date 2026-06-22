@@ -32,8 +32,10 @@ const PLACEHOLDER_IMAGE = `url('data:image/png;base64,${PNG_PIXEL}')`;
 
 const THUMBNAIL_COLUMNS_MIN = 2;
 const THUMBNAIL_COLUMNS_MAX = 8;
+const THUMBNAIL_COLUMNS_MAX_MOBILE = 3;
 const THUMBNAIL_COLUMNS_DEFAULT_DESKTOP = 5;
 const THUMBNAIL_COLUMNS_DEFAULT_MOBILE = 3;
+const THUMBNAIL_COLUMNS_MOBILE_QUERY = '(max-width: 768px)';
 
 /**
  * Storage for frontend-generated background thumbnails.
@@ -196,17 +198,40 @@ function createThumbnailElement(imageData) {
     return thumbnail.get(0);
 }
 
+function getMobileThumbnailColumnsQuery() {
+    return window.matchMedia?.(THUMBNAIL_COLUMNS_MOBILE_QUERY);
+}
+
+function getMaxThumbnailColumnsForViewport() {
+    return getMobileThumbnailColumnsQuery()?.matches ? THUMBNAIL_COLUMNS_MAX_MOBILE : THUMBNAIL_COLUMNS_MAX;
+}
+
+function clampThumbnailColumns(count, maxColumns = THUMBNAIL_COLUMNS_MAX) {
+    return Math.max(THUMBNAIL_COLUMNS_MIN, Math.min(count, maxColumns));
+}
+
+function getEffectiveThumbnailColumns() {
+    return clampThumbnailColumns(background_settings.thumbnailColumns, getMaxThumbnailColumnsForViewport());
+}
+
 /**
- * Applies the thumbnail column count to the CSS and updates button states.
- * @param {number} count - The number of columns to display.
+ * Updates the rendered thumbnail column count without overwriting the saved desktop preference.
+ */
+function updateThumbnailColumnsControls() {
+    const effectiveCount = getEffectiveThumbnailColumns();
+    document.documentElement.style.setProperty('--bg-thumb-columns', effectiveCount.toString());
+
+    $('#bg_thumb_zoom_in').prop('disabled', effectiveCount <= THUMBNAIL_COLUMNS_MIN);
+    $('#bg_thumb_zoom_out').prop('disabled', effectiveCount >= getMaxThumbnailColumnsForViewport());
+}
+
+/**
+ * Applies the saved thumbnail column preference to the current viewport.
+ * @param {number} count - The preferred number of columns.
  */
 function applyThumbnailColumns(count) {
-    const newCount = Math.max(THUMBNAIL_COLUMNS_MIN, Math.min(count, THUMBNAIL_COLUMNS_MAX));
-    background_settings.thumbnailColumns = newCount;
-    document.documentElement.style.setProperty('--bg-thumb-columns', newCount.toString());
-
-    $('#bg_thumb_zoom_in').prop('disabled', newCount <= THUMBNAIL_COLUMNS_MIN);
-    $('#bg_thumb_zoom_out').prop('disabled', newCount >= THUMBNAIL_COLUMNS_MAX);
+    background_settings.thumbnailColumns = clampThumbnailColumns(count);
+    updateThumbnailColumnsControls();
 
     saveSettingsDebounced();
 }
@@ -229,7 +254,7 @@ export function loadBackgroundSettings(settings) {
     // If a value is already saved, use it. Otherwise, determine default based on screen size.
     let columns = backgroundSettings.thumbnailColumns;
     if (!columns) {
-        const isNarrowScreen = window.matchMedia('(max-width: 480px)').matches;
+        const isNarrowScreen = getMobileThumbnailColumnsQuery()?.matches;
         columns = isNarrowScreen ? THUMBNAIL_COLUMNS_DEFAULT_MOBILE : THUMBNAIL_COLUMNS_DEFAULT_DESKTOP;
     }
     background_settings.thumbnailColumns = columns;
@@ -1730,6 +1755,8 @@ export function initBackgrounds() {
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     eventSource.on(event_types.FORCE_SET_BACKGROUND, forceSetBackground);
 
+    getMobileThumbnailColumnsQuery()?.addEventListener?.('change', updateThumbnailColumnsControls);
+
     // Folder event handlers
     $(document)
         .on('click', '.bg_folder_tile:not(.bg_new_folder_tile)', function (e) {
@@ -1824,10 +1851,10 @@ export function initBackgrounds() {
         });
 
     $('#bg_thumb_zoom_in').on('click', () => {
-        applyThumbnailColumns(background_settings.thumbnailColumns - 1);
+        applyThumbnailColumns(getEffectiveThumbnailColumns() - 1);
     });
     $('#bg_thumb_zoom_out').on('click', () => {
-        applyThumbnailColumns(background_settings.thumbnailColumns + 1);
+        applyThumbnailColumns(getEffectiveThumbnailColumns() + 1);
     });
     $('#auto_background').on('click', autoBackgroundCommand);
     $('#bg_selection_mode_button').on('click', () => setBackgroundSelectionMode(!isBackgroundSelectionMode));
