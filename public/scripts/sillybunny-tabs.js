@@ -876,6 +876,11 @@ const sbState = {
         paused: false,
         lastUpdatedAt: 0,
         lastError: '',
+        configBusy: false,
+        configLoaded: false,
+        configPath: '',
+        configLastModifiedMs: 0,
+        verboseLoggingEnabled: false,
     },
     importer: {
         refs: null,
@@ -9305,6 +9310,132 @@ function updateConsoleLogsInteractivity() {
 
     refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
     setButtonDisabled(refs.refreshButton, state.busy);
+    setButtonDisabled(refs.verboseLoggingActionButton, state.busy || state.configBusy || !state.configLoaded);
+}
+
+function setConsoleLogsVerboseLoggingUI(value) {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+    const enabled = Number(value) === 0;
+
+    state.verboseLoggingEnabled = enabled;
+
+    if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+        refs.verboseLoggingStatus.textContent = enabled
+            ? 'Verbose logging is enabled.'
+            : 'Standard logging is enabled.';
+        refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
+    }
+
+    if (refs?.verboseLoggingActionButton instanceof HTMLButtonElement) {
+        refs.verboseLoggingActionButton.textContent = enabled
+            ? 'Debug Logging: Enabled'
+            : 'Debug Logging: Disabled';
+    }
+
+    updateConsoleLogsInteractivity();
+}
+
+function getLoggingConfigTextFromYaml(content) {
+    if (typeof content !== 'string' || !content.trim()) {
+        return 1;
+    }
+
+    const match = content.match(/^\s*minLogLevel:\s*(\d+)\s*$/m);
+    return match ? Number(match[1]) : 1;
+}
+
+function replaceLoggingMinLogLevel(content, nextLevel) {
+    const desiredLevel = Number(nextLevel) === 0 ? 0 : 1;
+    const minLogLevelPattern = /^(\s*minLogLevel:\s*)(\d+)\s*$/m;
+
+    if (minLogLevelPattern.test(content)) {
+        return content.replace(minLogLevelPattern, `$1${desiredLevel}`);
+    }
+
+    const loggingHeaderPattern = /^(logging:\s*\n)(?:\s*#.*\n)*?/m;
+    if (loggingHeaderPattern.test(content)) {
+        return content.replace(loggingHeaderPattern, (match) => `${match}  minLogLevel: ${desiredLevel}\n`);
+    }
+
+    return `${content.trimEnd()}\n\nlogging:\n  minLogLevel: ${desiredLevel}\n`;
+}
+
+async function refreshConsoleLogsConfig() {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+
+    if (!refs) {
+        return;
+    }
+
+    state.configBusy = true;
+    updateConsoleLogsInteractivity();
+
+    try {
+        const data = await requestServerAdmin('/api/server-admin/config/get');
+        const content = String(data?.content ?? '');
+        const enabled = getLoggingConfigTextFromYaml(content) === 0;
+
+        state.configLoaded = true;
+        state.configPath = String(data?.path ?? '');
+        state.configLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
+        setConsoleLogsVerboseLoggingUI(enabled ? 0 : 1);
+    } catch (error) {
+        state.configLoaded = false;
+        state.verboseLoggingEnabled = false;
+        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to load config.yaml.';
+            refs.verboseLoggingStatus.dataset.state = 'danger';
+        }
+        console.error('Failed to load logging config for Console Logs.', error);
+    } finally {
+        state.configBusy = false;
+        updateConsoleLogsInteractivity();
+    }
+}
+
+async function toggleConsoleLogsVerboseLogging() {
+    const state = getConsoleLogsState();
+    const refs = getConsoleLogsRefs();
+
+    if (!refs || !state.configLoaded || state.configBusy || state.busy) {
+        return;
+    }
+
+    state.configBusy = true;
+    updateConsoleLogsInteractivity();
+
+    try {
+        const data = await requestServerAdmin('/api/server-admin/config/get');
+        const content = String(data?.content ?? '');
+        const nextEnabled = !state.verboseLoggingEnabled;
+        const nextContent = replaceLoggingMinLogLevel(content, nextEnabled ? 0 : 1);
+        const result = await requestServerAdmin('/api/server-admin/config/save', {
+            content: nextContent,
+            expectedLastModifiedMs: Number(data?.lastModifiedMs ?? 0) || state.configLastModifiedMs,
+            restart: false,
+        });
+
+        state.configPath = String(result?.path ?? state.configPath);
+        state.configLastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.configLastModifiedMs;
+        setConsoleLogsVerboseLoggingUI(nextEnabled ? 0 : 1);
+        if (refs.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = result?.message || 'Logging config saved.';
+            refs.verboseLoggingStatus.dataset.state = 'saved';
+        }
+        globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
+    } catch (error) {
+        console.error('Failed to save logging config for Console Logs.', error);
+        if (refs?.verboseLoggingStatus instanceof HTMLElement) {
+            refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
+            refs.verboseLoggingStatus.dataset.state = 'danger';
+        }
+        globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console logs');
+    } finally {
+        state.configBusy = false;
+        updateConsoleLogsInteractivity();
+    }
 }
 
 function renderConsoleLogsStatus() {
@@ -10799,12 +10930,27 @@ function buildConsoleLogsPanel() {
     const pauseButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
     const statusNote = createElement('div', { className: 'sb-server-note' });
     const output = createElement('pre', { className: 'sb-server-output sb-console-log-output' });
+    const verboseLoggingCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-verbose-card' });
+    const verboseLoggingHeader = createElement('div', { className: 'sb-admin-card-header' });
+    const verboseLoggingCopy = createElement('div', { className: 'sb-admin-card-copy' });
+    const verboseLoggingTitle = createElement('strong', { text: 'Verbose Debug Logging' });
+    const verboseLoggingDescription = createElement('p', { text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
+    const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
+    const verboseLoggingActionButton = createElement('button', {
+        className: 'menu_button menu_button_icon sb-server-action interactable sb-console-log-verbose-action',
+        text: 'Debug Logging: Disabled',
+        attrs: { type: 'button' },
+    });
 
     copy.append(title, description);
     header.append(copy, statusPill);
     actions.append(refreshButton, pauseButton);
     card.append(header, actions, statusNote, output);
+    verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
+    verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingStatus);
+    verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingActionButton);
     column.append(callout, card);
+    column.append(verboseLoggingCard);
     scroller.appendChild(column);
 
     const state = getConsoleLogsState();
@@ -10814,12 +10960,17 @@ function buildConsoleLogsPanel() {
         pauseButton,
         statusNote,
         output,
+        verboseLoggingStatus,
+        verboseLoggingActionButton,
     };
 
     refreshButton.addEventListener('click', () => {
         void refreshConsoleLogs({ forceFull: state.latestId === 0 });
     });
     pauseButton.addEventListener('click', toggleConsoleLogsPolling);
+    verboseLoggingActionButton.addEventListener('click', () => {
+        void toggleConsoleLogsVerboseLogging();
+    });
 
     renderConsoleLogsOutput({ preserveScroll: false });
     updateConsoleLogsInteractivity();
@@ -10830,6 +10981,7 @@ function buildConsoleLogsPanel() {
         button: null,
         searchRoot: column,
         onActivate: () => {
+            void refreshConsoleLogsConfig();
             void refreshConsoleLogs({ forceFull: getConsoleLogsState().latestId === 0 });
             scheduleConsoleLogsRefresh(0);
         },
