@@ -104,7 +104,18 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('Run selected companions in one request');
         expect(editorTemplateSource).toContain('Batch With Enabled Companions');
         expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
+        expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
+        expect(editorTemplateSource).toContain('Delay until selected companions finish');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('persists companion dependency delay toggle', () => {
+        const readSource = getFunctionSource('readCompanionConfigFromEditor');
+        const writeSource = getFunctionSource('writeCompanionConfigToEditor');
+
+        expect(indexSource).toContain("#ica--editor-companion-waitForDependencies");
+        expect(readSource).toContain("waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked')");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);");
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {
@@ -112,6 +123,17 @@ describe('in-chat agents generation UI wiring', () => {
         expect(source).not.toContain('getCompanionBatchCompatibilityKey');
         expect(source).toContain('isAgentEnabledForCurrentScope(candidate)');
         expect(source).toContain('isCompanionAgent(candidate)');
+        expect(source).toContain('referenceIds: getCompanionReferenceIds(candidate)');
+    });
+
+    test('selects companion links by saved id or source template id', () => {
+        const batchSource = getFunctionSource('updateCompanionBatchAgentOptions');
+        const dependencySource = getFunctionSource('updateCompanionDependencyOptions');
+
+        for (const source of [batchSource, dependencySource]) {
+            expect(source).toContain('options.flatMap(option => option.referenceIds)');
+            expect(source).toContain('option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))');
+        }
     });
 
     test('populates companion dependency selector during editor setup', () => {

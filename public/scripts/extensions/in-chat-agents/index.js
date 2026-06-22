@@ -89,6 +89,7 @@ import {
     populateConnectionProfileSelect,
 } from './profile-utils.js';
 import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
+import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
@@ -340,6 +341,7 @@ function getCompanionBatchOptionsForAgent(agent) {
         .filter(candidate => isAgentEnabledForCurrentScope(candidate))
         .map(candidate => ({
             id: candidate.id,
+            referenceIds: getCompanionReferenceIds(candidate),
             label: String(candidate.name ?? '').trim() || candidate.id,
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
@@ -353,6 +355,7 @@ function getCompanionDependencyOptionsForAgent(agent) {
         .filter(candidate => isCompanionAgent(candidate))
         .map(candidate => ({
             id: candidate.id,
+            referenceIds: getCompanionReferenceIds(candidate),
             label: String(candidate.name ?? '').trim() || candidate.id,
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
@@ -2562,6 +2565,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
     const savedCompanionDependencies = normalizeCompanionBatchAgentIds(companion.dependencies);
+    editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', companion.waitForDependencies);
     editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
     editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
     const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
@@ -2723,7 +2727,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         const selectedIds = currentIds.length ? currentIds : savedCompanionBatchAgentIds;
         const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
         const options = getCompanionBatchOptionsForAgent(agent);
-        const availableKeys = new Set(options.map(option => option.id.toLowerCase()));
+        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
 
         select.empty();
         if (!options.length && !selectedIds.length) {
@@ -2736,7 +2740,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
                 $('<option>')
                     .val(option.id)
                     .text(option.label)
-                    .prop('selected', selectedKeys.has(option.id.toLowerCase())),
+                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
             );
         }
 
@@ -2758,7 +2762,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         const selectedIds = currentIds.length ? currentIds : savedCompanionDependencies;
         const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
         const options = getCompanionDependencyOptionsForAgent(agent);
-        const availableKeys = new Set(options.map(option => option.id.toLowerCase()));
+        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
 
         select.empty();
         if (!options.length && !selectedIds.length) {
@@ -2771,7 +2775,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
                 $('<option>')
                     .val(option.id)
                     .text(option.label)
-                    .prop('selected', selectedKeys.has(option.id.toLowerCase())),
+                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
             );
         }
 
@@ -2848,6 +2852,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             batch: root.find('#ica--editor-companion-batch').prop('checked'),
             batchAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-batchAgentIds').val()),
             dependencies: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-dependencies').val()),
+            waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked'),
             maxTokens: Number(root.find('#ica--editor-companion-maxTokens').val()) || current.maxTokens,
         };
     }
@@ -2870,6 +2875,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
+        editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);
         updateCompanionBatchAgentOptions();
         updateCompanionDependencyOptions();
         editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);

@@ -42,6 +42,7 @@ import {
  * @property {boolean} batch
  * @property {string[]} batchAgentIds
  * @property {string[]} dependencies - Companion agent IDs that should re-run when this agent produces new output
+ * @property {boolean} waitForDependencies - Delay this companion when selected dependencies are running in the same pass
  * @property {number} maxTokens
  */
 
@@ -920,6 +921,7 @@ export function createDefaultCompanionConfig() {
         batch: false,
         batchAgentIds: [],
         dependencies: [],
+        waitForDependencies: false,
         maxTokens: MAX_AGENT_MAX_TOKENS,
     };
 }
@@ -965,6 +967,7 @@ export function normalizeCompanionConfig(raw = {}) {
         batch: Boolean(rawConfig.batch),
         batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
         dependencies: normalizeStringIdList(rawConfig.dependencies),
+        waitForDependencies: Boolean(rawConfig.waitForDependencies),
         maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, MAX_AGENT_MAX_TOKENS),
     };
 }

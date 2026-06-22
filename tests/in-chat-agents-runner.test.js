@@ -325,6 +325,7 @@ describe('in-chat agent post-processing runner', () => {
                 batch: Boolean(agent?.companion?.batch),
                 batchAgentIds: Array.isArray(agent?.companion?.batchAgentIds) ? agent.companion.batchAgentIds : [],
                 dependencies: Array.isArray(agent?.companion?.dependencies) ? agent.companion.dependencies : [],
+                waitForDependencies: Boolean(agent?.companion?.waitForDependencies),
                 maxTokens: Number(agent?.companion?.maxTokens) || 32000,
             })),
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
@@ -1516,6 +1517,46 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
     });
 
+    test('batches installed companion templates selected by source template id', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt.mockResolvedValueOnce([
+            '<<<companion:saved-level-up-companion>>>Level up!<<<end:saved-level-up-companion>>>',
+            '<<<companion:saved-user-stats-generator>>>Stats updated.<<<end:saved-user-stats-generator>>>',
+        ].join('\n'));
+
+        const levelUpCompanion = createCompanionAgent({
+            id: 'saved-level-up-companion',
+            name: 'Level Up Companion',
+            sourceTemplateId: 'tpl-level-up-companion',
+            companion: { batch: true, batchAgentIds: ['tpl-user-based-stats-generator'] },
+        });
+        const statsCompanion = createCompanionAgent({
+            id: 'saved-user-stats-generator',
+            name: 'User-based Stats Generator',
+            sourceTemplateId: 'tpl-user-based-stats-generator',
+            companion: { batch: true, batchAgentIds: ['tpl-level-up-companion'] },
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [levelUpCompanion, statsCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        const batchPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(batchPrompt).toContain('<<<companion:saved-level-up-companion>>>');
+        expect(batchPrompt).toContain('<<<companion:saved-user-stats-generator>>>');
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('Level up!');
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('Stats updated.');
+    });
+
     test('runs dependent companions after parent output changes', async () => {
         globalSettings.companionExecutionMode = 'sequential';
         generateQuietPrompt
@@ -1550,6 +1591,97 @@ describe('in-chat agent post-processing runner', () => {
         expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
         expect(chat[1].extra.inChatAgentCompanionResults['level-up-companion'].content).toBe('Level up!');
         expect(chat[1].extra.inChatAgentCompanionResults['stats-companion'].content).toBe('Stats updated.');
+    });
+
+    test('runs dependents selected by source template id after parent output changes', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt
+            .mockResolvedValueOnce('Level up!')
+            .mockResolvedValueOnce('Stats updated.');
+
+        const levelUpCompanion = createCompanionAgent({
+            id: 'saved-level-up-companion',
+            name: 'Level Up Companion',
+            sourceTemplateId: 'tpl-level-up-companion',
+            companion: { trigger: 'auto' },
+        });
+        const statsCompanion = createCompanionAgent({
+            id: 'saved-user-stats-generator',
+            name: 'User-based Stats Generator',
+            sourceTemplateId: 'tpl-user-based-stats-generator',
+            companion: { trigger: 'manual', dependencies: ['tpl-level-up-companion'] },
+        });
+        enabledAgents = [levelUpCompanion, statsCompanion];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [levelUpCompanion, statsCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('Level up!');
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('Stats updated.');
+    });
+
+    test('delays installed dependent templates until selected companion finishes and sends its output as context', async () => {
+        globalSettings.companionExecutionMode = 'sequential';
+        generateQuietPrompt
+            .mockResolvedValueOnce('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]')
+            .mockResolvedValueOnce('[USER_STATS]\nLevel: 2\n[/USER_STATS]');
+
+        const levelUpCompanion = createCompanionAgent({
+            id: 'saved-level-up-companion',
+            name: 'Level Up Companion',
+            sourceTemplateId: 'tpl-level-up-companion',
+            prompt: 'Check whether a level-up is earned.',
+            companion: { trigger: 'auto', batch: true, batchAgentIds: ['tpl-user-based-stats-generator'] },
+        });
+        const statsCompanion = createCompanionAgent({
+            id: 'saved-user-stats-generator',
+            name: 'User-based Stats Generator',
+            sourceTemplateId: 'tpl-user-based-stats-generator',
+            prompt: 'Update the user stats.',
+            companion: {
+                trigger: 'auto',
+                batch: true,
+                batchAgentIds: ['tpl-level-up-companion'],
+                dependencies: ['tpl-level-up-companion'],
+                waitForDependencies: true,
+            },
+        });
+        enabledAgents = [levelUpCompanion, statsCompanion];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Can you continue?', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 1,
+            message: chat[1],
+            activeAgents: [levelUpCompanion, statsCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        const levelUpPrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        const statsPrompt = generateQuietPrompt.mock.calls[1][0].quietPrompt;
+        expect(levelUpPrompt).toContain('Check whether a level-up is earned.');
+        expect(levelUpPrompt).not.toContain('Update the user stats.');
+        expect(statsPrompt).toContain('Update the user stats.');
+        expect(statsPrompt).toContain('[Completed companion: Level Up Companion]');
+        expect(statsPrompt).toContain('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
+        expect(chat[1].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('[USER_STATS]\nLevel: 2\n[/USER_STATS]');
     });
 
     test('does not cascade to dependents when parent output is unchanged', async () => {

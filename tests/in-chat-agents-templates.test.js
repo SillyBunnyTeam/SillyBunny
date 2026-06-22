@@ -112,6 +112,27 @@ function renderChatroomOutput(source) {
     });
 }
 
+const updatingExistingStatsSection = '## Updating Existing Stats\n\nIf an existing [USER_STATS] block is provided, update it instead of generating a new one.\n\nWhen applying a [LEVEL_UP]:\n- Increase Level by 1.\n- Apply skill increases.\n- Add earned perk, if any.\n- Preserve existing traits, perks, weaknesses, and notes unless changed.\n- Keep stats consistent and setting-specific.\n[/USER_STATS]';
+
+function expectLevelUpStatsDefaults(levelUp, stats) {
+    expect(levelUp.companion).toEqual(expect.objectContaining({
+        batch: true,
+    }));
+    expect(levelUp.companion.batchAgentIds).toContain('tpl-user-based-stats-generator');
+    expect(stats.companion).toEqual(expect.objectContaining({
+        batch: true,
+    }));
+    expect(stats.companion.batchAgentIds).toContain('tpl-level-up-companion');
+    expect(stats.companion.dependencies).toContain('tpl-level-up-companion');
+    expect(stats.companion.waitForDependencies).toBe(true);
+}
+
+function expectExistingStatsSectionOnStatsTemplate(levelUp, stats) {
+    expect(levelUp.prompt).not.toContain('## Updating Existing Stats');
+    expect(stats.prompt).toContain(updatingExistingStatsSection);
+    expect(stats.prompt.endsWith(updatingExistingStatsSection)).toBe(true);
+}
+
 describe('in-chat agent bundled templates', () => {
     test('keeps source files synced with the template browser catalog', () => {
         const catalog = readTemplate('index.json');
@@ -121,6 +142,32 @@ describe('in-chat agent bundled templates', () => {
             const catalogTemplate = catalog.find(template => template.id === source.id);
             expect(catalogTemplate).toEqual(source);
         }
+    });
+
+    test('keeps Level Up and User-based Stats connected by default', () => {
+        const catalog = readTemplate('index.json');
+
+        expectLevelUpStatsDefaults(
+            findCatalogTemplate(catalog, 'tpl-level-up-companion'),
+            findCatalogTemplate(catalog, 'tpl-user-based-stats-generator'),
+        );
+        expectLevelUpStatsDefaults(
+            readTemplate('level-up-companion.json'),
+            readTemplate('user-based-stats-generator.json'),
+        );
+    });
+
+    test('keeps existing stat update instructions on User-based Stats', () => {
+        const catalog = readTemplate('index.json');
+
+        expectExistingStatsSectionOnStatsTemplate(
+            findCatalogTemplate(catalog, 'tpl-level-up-companion'),
+            findCatalogTemplate(catalog, 'tpl-user-based-stats-generator'),
+        );
+        expectExistingStatsSectionOnStatsTemplate(
+            readTemplate('level-up-companion.json'),
+            readTemplate('user-based-stats-generator.json'),
+        );
     });
 
     test('keeps bundled companion prompts free of negative wrappers and uppercase protocols', () => {
