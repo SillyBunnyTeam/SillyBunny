@@ -62,7 +62,7 @@ describe('SillyBunny accent color profiles', () => {
         expect(powerUserSource).toContain('function bindSbAccentProfilesDrawerPersistence()');
         expect(powerUserSource).toContain('accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY)');
         expect(powerUserSource).toContain('accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)))');
-        expect(powerUserSource).toContain('toggleDrawer(drawer, storedExpanded ?? true);');
+        expect(powerUserSource).toContain('toggleDrawer(drawer, storedExpanded ?? false);');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'#sb-accent-profile-save\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-apply\'');
         expect(powerUserSource).toContain('$(document).on(\'click\', \'.sb-accent-profile-delete\'');

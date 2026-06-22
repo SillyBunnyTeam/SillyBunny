@@ -1631,8 +1631,8 @@ function bindSbAccentProfilesDrawerPersistence() {
     drawer.dataset.sbAccentProfilesDrawerBound = 'true';
 
     const storedExpanded = getStoredSbAccentProfilesDrawerExpanded();
-    toggleDrawer(drawer, storedExpanded ?? true);
-    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? true);
+    toggleDrawer(drawer, storedExpanded ?? false);
+    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? false);
 
     drawer.addEventListener('inline-drawer-toggle', () => {
         const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
