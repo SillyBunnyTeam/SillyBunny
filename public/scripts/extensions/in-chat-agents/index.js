@@ -88,7 +88,7 @@ import {
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
-import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, agentHasConnectedCompanionDependencies, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
+import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
