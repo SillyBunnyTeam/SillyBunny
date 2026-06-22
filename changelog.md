@@ -66,8 +66,14 @@
 - PR #587 (2026-06-21) `fix: let in-chat agent trim regex actually work`
 - PR #588 (2026-06-21) `fix: stop custom endpoint Connect from clobbering profile keys`
 - PR #590 (2026-06-21) `fix: DOM content bleed over user and assistant messages`
+- PR #594 (2026-06-22) `fix: workspace and customize shortcuts toggle use intended behaviour`
+- PR #595 (2026-06-22) `fix: PR unit test regression cleanup`
+- PR #596 (2026-06-22) `feat: add margin size slider`
+- PR #597 (2026-06-22) `fix: auto-close the post-generation ICA toast`
+- PR #599 (2026-06-22) `fix: make Icons Only work on horizontal side rail`
 - PR #600 (2026-06-22) `chore: add Pura's Director Preset 14.0 and RPG elements as agents`
 - PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
+- PR #602 (2026-06-22) `fix: prevent switching branches from hanging`
 
 ## v1.6.5
 

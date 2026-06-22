@@ -317,6 +317,7 @@ export const power_user = {
     sort_rule: null,
     font_scale: 1,
     line_spacing: 1.2, // SillyBunny: chat message line-spacing slider.
+    message_margin_size: 1, // SillyBunny: chat message margin-size slider.
     blur_strength: 10,
     shadow_width: 2,
     'customCSS-bg-blur': 0,
@@ -1984,6 +1985,24 @@ function applyLineSpacing(type) {
     $('#line_spacing').val(power_user.line_spacing);
 }
 
+function applyMessageMarginSize(type) {
+    const setMessageMarginSize = () => {
+        const marginSize = Number(power_user.message_margin_size);
+        const marginScale = Number.isFinite(marginSize) ? marginSize : 1;
+
+        document.documentElement.style.setProperty('--messageMarginScale', String(marginScale));
+    };
+
+    if (type === 'forced') {
+        setMessageMarginSize();
+    } else {
+        $('#message_margin_size').off('mouseup touchend').on('mouseup touchend', setMessageMarginSize);
+    }
+
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
+    $('#message_margin_size').val(power_user.message_margin_size);
+}
+
 /**
  * Checks if the chat needs to be reloaded to apply media display settings.
  * @returns {boolean} True if the chat needs reload to apply media display settings
@@ -2073,6 +2092,7 @@ export function applyPowerUserSettings() {
     switchUiMode();
     applyFontScale('forced');
     applyLineSpacing('forced');
+    applyMessageMarginSize('forced');
     applyThemeColor();
     applyChatWidth('forced');
     applyAvatarStyle();
@@ -2398,6 +2418,9 @@ export async function loadPowerUserSettings(settings, data) {
 
     $('#line_spacing').val(power_user.line_spacing);
     $('#line_spacing_counter').val(power_user.line_spacing);
+
+    $('#message_margin_size').val(power_user.message_margin_size);
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
 
     $('#blur_strength').val(power_user.blur_strength);
     $('#blur_strength_counter').val(power_user.blur_strength);
@@ -4266,6 +4289,14 @@ jQuery(async () => {
         power_user.line_spacing = Number($(this).val());
         $('#line_spacing_counter').val(power_user.line_spacing);
         applyLineSpacing(applyMode);
+        saveSettingsDebounced();
+    });
+
+    $('input[name="message_margin_size"]').on('input', async function (e, data) {
+        const applyMode = data?.forced ? 'forced' : 'normal';
+        power_user.message_margin_size = Number($(this).val());
+        $('#message_margin_size_counter').val(power_user.message_margin_size);
+        applyMessageMarginSize(applyMode);
         saveSettingsDebounced();
     });
 

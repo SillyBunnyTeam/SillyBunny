@@ -2255,12 +2255,12 @@ function clearPromptTransformRunningToast(toast) {
     }
 
     activePromptTransformToasts.delete(toast);
-    toastr.clear(toast);
+    toastr.clear(toast, { force: true });
 }
 
 function clearAllPromptTransformRunningToasts() {
     for (const toast of activePromptTransformToasts) {
-        toastr.clear(toast);
+        toastr.clear(toast, { force: true });
     }
 
     activePromptTransformToasts.clear();
@@ -2270,7 +2270,7 @@ function clearAllPromptTransformRunningToasts() {
         const message = $(element).find('.toast-message').text().trim();
         return $(element).find('.ica--toast-cancel-agent').length > 0 ||
             (title === 'In-Chat Agent' && /^Running (?:prompt (?:rewrite|append) via |pre-generation )/u.test(message));
-    }).each((_, element) => toastr.clear($(element)));
+    }).each((_, element) => toastr.clear($(element), { force: true }));
 }
 
 async function commitOpenEditorForMessage(messageIndex) {

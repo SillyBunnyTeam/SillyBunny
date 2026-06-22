@@ -163,12 +163,14 @@
 
     #right-nav-panel #CharListButtonAndHotSwaps {
         display: grid;
-        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         width: 100%;
         box-sizing: border-box;
-        padding: 4px 0 6px;
+        min-height: 58px;
+        max-height: none;
+        padding: 6px var(--sb-character-mobile-edge, var(--sb-shell-panel-padding-inline, 12px));
     }
 
     #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
@@ -181,7 +183,12 @@
         min-width: var(--sb-mobile-touch-target, 44px);
     }
 
+    #right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: none;
+    }
+
     #right-nav-panel #HotSwapWrapper {
+        grid-column: 1;
         min-width: 0;
         width: auto;
         max-width: 100%;
@@ -221,19 +228,36 @@
     }
 
     #right-nav-panel #sb-character-right-lock {
-        grid-column: 3;
+        grid-column: 2;
     }
 
     #right-nav-panel #sb-character-back-to-list {
-        grid-column: 4;
+        grid-column: 3;
     }
 
     #right-nav-panel #sb-character-mobile-close {
-        grid-column: 4;
+        grid-column: 3;
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps {
-        grid-template-columns: 36px minmax(0, 1fr) 36px 36px 36px;
+        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
+        display: flex;
+        grid-column: 1;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_characters {
+        grid-column: 1;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-right-lock {
+        grid-column: 3;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
+        grid-column: 4;
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {

@@ -1546,7 +1546,7 @@ function setMobileButtonScale(value, { persist = true } = {}) {
 
 function applyMobileNavPreferences() {
     const quickActionsShown = sbState.mobileNav.showQuickActions;
-    const useIconOnly = sbState.mobileNav.layout === 'vertical' && sbState.mobileNav.iconOnly;
+    const useIconOnly = sbState.mobileNav.iconOnly;
     document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
     document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
@@ -1556,7 +1556,7 @@ function applyMobileNavPreferences() {
 
 function applyDesktopNavPreferences() {
     const quickActionsShown = sbState.desktopNav.showQuickActions;
-    const useIconOnly = sbState.desktopNav.layout === 'vertical' && sbState.desktopNav.iconOnly;
+    const useIconOnly = sbState.desktopNav.iconOnly;
     document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
     document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
@@ -9473,12 +9473,13 @@ function getImporterRefs() {
     return getImporterState().refs;
 }
 
-async function requestServerAdmin(endpoint, body = {}) {
+async function requestServerAdmin(endpoint, body = {}, { signal } = {}) {
     const headers = await waitForAuthorizedRequestHeaders();
     const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        signal,
     });
 
     const text = await response.text();
@@ -10409,12 +10410,16 @@ async function handleServerAdminBranchSwitch(selectElement) {
     updateServerAdminInteractivity();
     setServerAdminMessage(refs.updateNote, `Switching to branch "${targetBranch}"…`);
 
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), 45000);
+
     try {
         const result = await requestServerAdmin('/api/server-admin/switch-branch', {
             branch: targetBranch,
             autoStash: hasLocalChanges,
-        });
+        }, { signal: abortController.signal });
 
+        clearTimeout(abortTimeout);
         state.busy = false;
         state.restarting = true;
         updateServerAdminInteractivity();
@@ -10434,12 +10439,20 @@ async function handleServerAdminBranchSwitch(selectElement) {
             toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
         }
     } catch (error) {
+        clearTimeout(abortTimeout);
         console.error('Failed to switch branch.', error);
         state.busy = false;
         updateServerAdminInteractivity();
 
         // Reset select to current branch
         selectElement.value = currentBranch;
+
+        if (error.name === 'AbortError') {
+            const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
+            setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
+            toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
+            return;
+        }
 
         const errorMessage = error.message || 'Failed to switch branch.';
         setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
@@ -12445,6 +12458,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.desktopNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.desktopNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (desktopNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -12490,6 +12506,9 @@ function updateThemePickerUi() {
         }
         choice?.classList.toggle('is-selected', sbState.mobileNav.showCustomize);
         choice?.classList.toggle('is-disabled', false);
+        if (choice instanceof HTMLElement) {
+            choice.style.display = sbState.mobileNav.layout === 'vertical' ? 'none' : '';
+        }
     }
 
     if (mobileNavShowQuickActionsInput instanceof HTMLInputElement) {
@@ -13844,7 +13863,7 @@ function syncMobileShellRailActions(shellKey = null) {
                     : null;
                 const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
                     hasVerticalRail,
-                    showCustomize: navState.showCustomize,
+                    showCustomize: hasVerticalRail || navState.showCustomize,
                     showQuickActions: navState.showQuickActions,
                     builtInActions: getBuiltInRailActionsForShell(currentShellKey),
                     builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
