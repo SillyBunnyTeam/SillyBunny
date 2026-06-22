@@ -18,7 +18,8 @@
             "tpl-secrets-tracker",
             "tpl-status-tracker",
             "tpl-time-tracker",
-            "tpl-world-detail"
+            "tpl-world-detail",
+            "tpl-cyoa-choices-skill-checks"
         ]
     },
     {
@@ -54,7 +55,9 @@
             "tpl-chatroom-companion",
             "tpl-chat-only-companion",
             "tpl-message-inbox-companion",
-            "tpl-expressions-agent"
+            "tpl-expressions-agent",
+            "tpl-level-up-companion",
+            "tpl-user-based-stats-generator"
         ]
     }
 ]
