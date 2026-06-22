@@ -67,6 +67,7 @@
 - PR #588 (2026-06-21) `fix: stop custom endpoint Connect from clobbering profile keys`
 - PR #590 (2026-06-21) `fix: DOM content bleed over user and assistant messages`
 - PR #600 (2026-06-22) `chore: add Pura's Director Preset 14.0 and RPG elements as agents`
+- PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
 
 ## v1.6.5
 
