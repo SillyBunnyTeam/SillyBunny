@@ -1012,8 +1012,6 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
             await git.stash(['push', '-u', '-m', `Auto-stash before switching to ${branch}`]);
         }
 
-        // The branch dropdown already refreshed remote refs; resolve locally first
-        // and only fetch when the selected branch is not known yet.
         let branchSummary = await git.branch(['-r']);
         let remoteBranches = getRemoteBranchesFromSummary(branchSummary);
         let remoteBranch = resolveRemoteBranchName(remoteBranches, branch);
