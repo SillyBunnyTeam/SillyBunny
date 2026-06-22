@@ -1546,7 +1546,7 @@ function setMobileButtonScale(value, { persist = true } = {}) {
 
 function applyMobileNavPreferences() {
     const quickActionsShown = sbState.mobileNav.showQuickActions;
-    const useIconOnly = sbState.mobileNav.layout === 'vertical' && sbState.mobileNav.iconOnly;
+    const useIconOnly = sbState.mobileNav.iconOnly;
     document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
     document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
@@ -1556,7 +1556,7 @@ function applyMobileNavPreferences() {
 
 function applyDesktopNavPreferences() {
     const quickActionsShown = sbState.desktopNav.showQuickActions;
-    const useIconOnly = sbState.desktopNav.layout === 'vertical' && sbState.desktopNav.iconOnly;
+    const useIconOnly = sbState.desktopNav.iconOnly;
     document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
     document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
     document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
