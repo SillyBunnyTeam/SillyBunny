@@ -451,7 +451,7 @@ function buildPanelEntryBody(agentId, entry) {
         return `<div class="ica--companion-error">${escapeHtml(entry.result.error || 'Companion run failed.')}</div>`;
     }
 
-    return formatCompanionContent(agentId, entry.result, chat[entry.messageIndex]);
+    return formatCompanionContent(agentId, entry.result, chat[entry.messageIndex], '.ica--tpanel-agent-body ');
 }
 
 function buildChatOnlyComposer(state) {

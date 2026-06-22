@@ -53,7 +53,7 @@ import { tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment } from './utils.js';
+import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, toggleDrawer } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -162,7 +162,8 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
     ['shadow_color', '#shadow-color-picker', 'shadow'],
     ['border_color', '#border-color-picker', 'border'],
 ]);
-const SB_ACCENT_PROFILE_SEED_VERSION = 1;
+const SB_ACCENT_PROFILE_SEED_VERSION = 2;
+const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
 const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
     { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
@@ -179,6 +180,22 @@ const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
     { name: 'Seafoam', quote_text_color: 'rgba(45, 212, 191, 1)', underline_text_color: 'rgba(134, 239, 172, 1)' },
     { name: 'Orchid Static', quote_text_color: 'rgba(192, 132, 252, 1)', underline_text_color: 'rgba(103, 232, 249, 1)' },
     { name: 'Graphite Glow', quote_text_color: 'rgba(107, 114, 128, 1)', underline_text_color: 'rgba(209, 213, 219, 1)' },
+    { name: 'Aurora Veil', quote_text_color: 'rgba(52, 211, 153, 1)', underline_text_color: 'rgba(129, 140, 248, 1)' },
+    { name: 'Solar Flare', quote_text_color: 'rgba(249, 115, 22, 1)', underline_text_color: 'rgba(250, 204, 21, 1)' },
+    { name: 'Mint Glass', quote_text_color: 'rgba(110, 231, 183, 1)', underline_text_color: 'rgba(167, 243, 208, 1)' },
+    { name: 'Berry Stain', quote_text_color: 'rgba(190, 24, 93, 1)', underline_text_color: 'rgba(244, 114, 182, 1)' },
+    { name: 'Slate Mist', quote_text_color: 'rgba(148, 163, 184, 1)', underline_text_color: 'rgba(203, 213, 225, 1)' },
+    { name: 'Desert Bloom', quote_text_color: 'rgba(234, 88, 12, 1)', underline_text_color: 'rgba(244, 114, 182, 1)' },
+    { name: 'Glacier', quote_text_color: 'rgba(14, 165, 233, 1)', underline_text_color: 'rgba(186, 230, 253, 1)' },
+    { name: 'Coral Reef', quote_text_color: 'rgba(251, 113, 133, 1)', underline_text_color: 'rgba(45, 212, 191, 1)' },
+    { name: 'Plum Wine', quote_text_color: 'rgba(126, 34, 206, 1)', underline_text_color: 'rgba(216, 180, 254, 1)' },
+    { name: 'Sage Smoke', quote_text_color: 'rgba(74, 222, 128, 1)', underline_text_color: 'rgba(163, 163, 163, 1)' },
+    { name: 'Lichen', quote_text_color: 'rgba(132, 204, 22, 1)', underline_text_color: 'rgba(190, 242, 100, 1)' },
+    { name: 'Harvest Gold', quote_text_color: 'rgba(202, 138, 4, 1)', underline_text_color: 'rgba(253, 224, 71, 1)' },
+    { name: 'Indigo Dusk', quote_text_color: 'rgba(79, 70, 229, 1)', underline_text_color: 'rgba(165, 180, 252, 1)' },
+    { name: 'Pearl', quote_text_color: 'rgba(226, 232, 240, 1)', underline_text_color: 'rgba(148, 163, 184, 1)' },
+    { name: 'Mango Tango', quote_text_color: 'rgba(251, 146, 60, 1)', underline_text_color: 'rgba(253, 186, 116, 1)' },
+    { name: 'Neptune', quote_text_color: 'rgba(37, 99, 235, 1)', underline_text_color: 'rgba(34, 211, 238, 1)' },
 ]);
 const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'main_text_color', selector: '#main-text-color-picker', type: 'main' },
@@ -317,6 +334,7 @@ export const power_user = {
     sort_rule: null,
     font_scale: 1,
     line_spacing: 1.2, // SillyBunny: chat message line-spacing slider.
+    message_margin_size: 1, // SillyBunny: chat message margin-size slider.
     blur_strength: 10,
     shadow_width: 2,
     'customCSS-bg-blur': 0,
@@ -1585,6 +1603,50 @@ function renderAccentProfiles() {
     });
 }
 
+function getStoredSbAccentProfilesDrawerExpanded() {
+    const storedValue = accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY);
+    if (storedValue === null) {
+        return null;
+    }
+
+    return storedValue === 'true';
+}
+
+function setStoredSbAccentProfilesDrawerExpanded(expanded) {
+    accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)));
+}
+
+function syncSbAccentProfilesDrawerExpandedState(drawer, expanded) {
+    const toggle = drawer.querySelector(':scope > .inline-drawer-header .sb-accent-profiles-toggle');
+    if (toggle instanceof HTMLElement) {
+        toggle.setAttribute('aria-expanded', String(Boolean(expanded)));
+    }
+}
+
+function bindSbAccentProfilesDrawerPersistence() {
+    const drawer = document.getElementById('sb-accent-profiles-panel');
+    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbAccentProfilesDrawerBound === 'true') {
+        return;
+    }
+
+    drawer.dataset.sbAccentProfilesDrawerBound = 'true';
+
+    const storedExpanded = getStoredSbAccentProfilesDrawerExpanded();
+    toggleDrawer(drawer, storedExpanded ?? false);
+    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? false);
+
+    drawer.addEventListener('inline-drawer-toggle', () => {
+        const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
+        if (!(icon instanceof HTMLElement)) {
+            return;
+        }
+
+        const expanded = icon.classList.contains('up');
+        syncSbAccentProfilesDrawerExpandedState(drawer, expanded);
+        setStoredSbAccentProfilesDrawerExpanded(expanded);
+    });
+}
+
 function applyAccentColors(quoteColor, underlineColor) {
     power_user.quote_text_color = quoteColor;
     power_user.underline_text_color = underlineColor;
@@ -1984,6 +2046,24 @@ function applyLineSpacing(type) {
     $('#line_spacing').val(power_user.line_spacing);
 }
 
+function applyMessageMarginSize(type) {
+    const setMessageMarginSize = () => {
+        const marginSize = Number(power_user.message_margin_size);
+        const marginScale = Number.isFinite(marginSize) ? marginSize : 1;
+
+        document.documentElement.style.setProperty('--messageMarginScale', String(marginScale));
+    };
+
+    if (type === 'forced') {
+        setMessageMarginSize();
+    } else {
+        $('#message_margin_size').off('mouseup touchend').on('mouseup touchend', setMessageMarginSize);
+    }
+
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
+    $('#message_margin_size').val(power_user.message_margin_size);
+}
+
 /**
  * Checks if the chat needs to be reloaded to apply media display settings.
  * @returns {boolean} True if the chat needs reload to apply media display settings
@@ -2073,6 +2153,7 @@ export function applyPowerUserSettings() {
     switchUiMode();
     applyFontScale('forced');
     applyLineSpacing('forced');
+    applyMessageMarginSize('forced');
     applyThemeColor();
     applyChatWidth('forced');
     applyAvatarStyle();
@@ -2398,6 +2479,9 @@ export async function loadPowerUserSettings(settings, data) {
 
     $('#line_spacing').val(power_user.line_spacing);
     $('#line_spacing_counter').val(power_user.line_spacing);
+
+    $('#message_margin_size').val(power_user.message_margin_size);
+    $('#message_margin_size_counter').val(power_user.message_margin_size);
 
     $('#blur_strength').val(power_user.blur_strength);
     $('#blur_strength_counter').val(power_user.blur_strength);
@@ -4269,6 +4353,14 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    $('input[name="message_margin_size"]').on('input', async function (e, data) {
+        const applyMode = data?.forced ? 'forced' : 'normal';
+        power_user.message_margin_size = Number($(this).val());
+        $('#message_margin_size_counter').val(power_user.message_margin_size);
+        applyMessageMarginSize(applyMode);
+        saveSettingsDebounced();
+    });
+
     $('input[name="blur_strength"]').on('input', async function (e) {
         power_user.blur_strength = Number($(this).val());
         $('#blur_strength_counter').val(power_user.blur_strength);
@@ -4984,6 +5076,8 @@ jQuery(async () => {
             toastr.info('Accent colors applied.', 'SillyBunny palette');
         }
     });
+
+    bindSbAccentProfilesDrawerPersistence();
 
     $(document).on('click', '#sb-accent-profile-save', async function () {
         await saveAccentProfile();

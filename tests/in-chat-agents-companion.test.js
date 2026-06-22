@@ -33,11 +33,19 @@ describe('companion card ui', () => {
     let eventTypes;
     let agents;
     let sanitize;
+    let encodeStyleTags;
+    let decodeStyleTags;
 
     async function importCompanionUi() {
         jest.resetModules();
 
         sanitize = jest.fn(html => String(html));
+        encodeStyleTags = jest.fn(text => String(text).replaceAll(/<style>(.+?)<\/style>/gims, (_, match) => {
+            return `<custom-style>${encodeURIComponent(match)}</custom-style>`;
+        }));
+        decodeStyleTags = jest.fn((text, { prefix } = {}) => String(text).replaceAll(/<custom-style>(.+?)<\/custom-style>/gms, (_, match) => {
+            return `<style data-prefix="${prefix}">${decodeURIComponent(match)}</style>`;
+        }));
 
         await jest.unstable_mockModule('../public/lib.js', () => ({
             DOMPurify: { sanitize },
@@ -48,6 +56,11 @@ describe('companion card ui', () => {
                     }
                 },
             },
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/chats.js', () => ({
+            encodeStyleTags,
+            decodeStyleTags,
         }));
 
         await jest.unstable_mockModule('../public/script.js', () => ({
@@ -228,6 +241,56 @@ describe('companion card ui', () => {
 
         expect(html).toBe('<div class="status">calm</div>');
         expect(sanitize).toHaveBeenCalledWith('<div class="status">calm</div>', expect.anything());
+    });
+
+    test('preserves style tags emitted by regex scripts in card bodies', async () => {
+        agents[0].regexScripts = [{
+            id: 'styled-card',
+            scriptName: 'Styled Card',
+            findRegex: '/\\[STYLE\\]/g',
+            replaceString: '<style>.terminal { color: red; }</style><div class="terminal">stats</div>',
+            placement: [2],
+            disabled: false,
+            markdownOnly: true,
+            promptOnly: false,
+            substituteRegex: 0,
+        }];
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '[STYLE]',
+            format: 'html',
+        }, { name: 'Aria' });
+
+        expect(html).toContain('<style data-prefix=".ica--companion-body ">');
+        expect(html).toContain('.terminal { color: red; }');
+        expect(html).toContain('<div class="terminal">stats</div>');
+        expect(sanitize).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), expect.anything());
+        expect(encodeStyleTags).toHaveBeenCalled();
+        expect(decodeStyleTags).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), { prefix: '.ica--companion-body ' });
+    });
+
+    test('scopes panel bodies with the tracker panel CSS prefix', async () => {
+        agents[0].regexScripts = [{
+            id: 'styled-card',
+            scriptName: 'Styled Card',
+            findRegex: '/\\[STYLE\\]/g',
+            replaceString: '<style>.terminal { color: red; }</style><div class="terminal">stats</div>',
+            placement: [2],
+            disabled: false,
+            markdownOnly: true,
+            promptOnly: false,
+            substituteRegex: 0,
+        }];
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '[STYLE]',
+            format: 'html',
+        }, { name: 'Aria' }, '.ica--tpanel-agent-body ');
+
+        expect(html).toContain('<style data-prefix=".ica--tpanel-agent-body ">');
+        expect(decodeStyleTags).toHaveBeenCalledWith(expect.stringContaining('<custom-style>'), { prefix: '.ica--tpanel-agent-body ' });
     });
 
     test('normalizes markerless Chatroom pipe streams before rendering', async () => {

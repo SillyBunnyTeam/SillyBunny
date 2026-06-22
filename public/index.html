@@ -47,7 +47,7 @@
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20260610a" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260620a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20260621a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20260622g" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260622b" media="(max-width: 768px)">
@@ -5149,19 +5149,25 @@
                                             <span class="sb-accent-picker-label">Secondary Accent</span>
                                         </div>
                                     </div>
-                                    <div class="sb-accent-profiles-panel">
-                                        <div class="sb-accent-profiles-header">
-                                            <div class="sb-accent-profiles-copy">
-                                                <span class="sb-accent-profile-title" data-i18n="Accent Profiles">Accent Profiles</span>
-                                                <small data-i18n="Save or reuse primary and secondary accent pairs.">Save or reuse primary and secondary accent pairs.</small>
+                                    <!-- SillyBunny: keep reusable accent pairs compact without hiding the Save Current action. -->
+                                    <div id="sb-accent-profiles-panel" class="inline-drawer sb-accent-profiles-panel" data-settings-tab="appearance">
+                                        <div class="inline-drawer-header sb-accent-profiles-header">
+                                            <div class="inline-drawer-toggle sb-accent-profiles-toggle" aria-expanded="false">
+                                                <div class="sb-accent-profiles-copy">
+                                                    <span class="sb-accent-profile-title" data-i18n="Accent Profiles">Accent Profiles</span>
+                                                    <small data-i18n="Save or reuse primary and secondary accent pairs.">Save or reuse primary and secondary accent pairs.</small>
+                                                </div>
+                                                <i class="fa-solid fa-circle-chevron-down inline-drawer-icon down" aria-hidden="true"></i>
                                             </div>
                                             <button type="button" id="sb-accent-profile-save" class="menu_button sb-accent-profile-save" title="Save current accent colors" data-i18n="[title]Save current accent colors">
                                                 <i class="fa-solid fa-floppy-disk"></i>
                                                 <span data-i18n="Save Current">Save Current</span>
                                             </button>
                                         </div>
-                                        <div id="sb-accent-profiles-list" class="sb-accent-profiles-list" role="list" aria-label="Accent color profiles"></div>
-                                        <small id="sb-accent-profiles-empty" class="sb-accent-profiles-empty" data-i18n="No saved accent profiles yet.">No saved accent profiles yet.</small>
+                                        <div class="inline-drawer-content sb-accent-profiles-content" style="display: none;">
+                                            <div id="sb-accent-profiles-list" class="sb-accent-profiles-list" role="list" aria-label="Accent color profiles"></div>
+                                            <small id="sb-accent-profiles-empty" class="sb-accent-profiles-empty" data-i18n="No saved accent profiles yet.">No saved accent profiles yet.</small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -5300,6 +5306,15 @@
                                             </small>
                                             <input class="neo-range-slider" type="range" id="line_spacing" name="line_spacing" min="0.8" max="2" step="0.05">
                                             <input class="neo-range-input" type="number" min="0.8" max="2" step="0.05" data-for="line_spacing" id="line_spacing_counter">
+                                        </div>
+
+                                        <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
+                                            <small>
+                                                <span data-i18n="Margin Size">Margin Size</span>
+                                                <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Horizontal padding around chat messages" title="Horizontal padding around chat messages"></div>
+                                            </small>
+                                            <input class="neo-range-slider" type="range" id="message_margin_size" name="message_margin_size" min="0.5" max="2" step="0.05">
+                                            <input class="neo-range-input" type="number" min="0.5" max="2" step="0.05" data-for="message_margin_size" id="message_margin_size_counter">
                                         </div>
 
                                         <div id="blur-strength-block" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
