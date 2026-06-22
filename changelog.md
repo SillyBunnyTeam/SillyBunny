@@ -75,6 +75,7 @@
 - PR #600 (2026-06-22) `chore: add Pura's Director Preset 14.0 and RPG elements as agents`
 - PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
 - PR #602 (2026-06-22) `fix: prevent switching branches from hanging`
+- PR #606 (2026-06-22) `feat(console): add verbose logging toggle`
 
 ## v1.6.5
 
