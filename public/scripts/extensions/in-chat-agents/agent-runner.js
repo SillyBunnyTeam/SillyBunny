@@ -4510,6 +4510,12 @@ async function onMainGenerationOutputReady(eventData) {
     }
 
     const generationType = eventData.type ?? currentMainGenerationType;
+    const activationSnapshot = getGenerationContextSnapshot(generationType);
+    const interceptAgents = getPostMainGenerationInterceptAgents(getSnapshotAgents(activationSnapshot));
+    if (interceptAgents.length === 0) {
+        return;
+    }
+
     const shouldShowMessageFirst = shouldShowPostMainInterceptMessageFirst();
     if (shouldShowMessageFirst) {
         const runPostMainIntercepts = await showPostMainInterceptReviewPopup(eventData.text);
@@ -4524,6 +4530,7 @@ async function onMainGenerationOutputReady(eventData) {
     }
 
     const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType, {
+        activationSnapshot,
         skipChanges: false,
     });
     pendingPreGenerationInterceptRuns.push(...result.runs);

@@ -2039,6 +2039,34 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventData.hasPostMainInterceptors).toBe(false);
     });
 
+    test('ignores main output-ready events when only pre-generation intercept agents are active', async () => {
+        enabledAgents = [createPreInterceptAgent()];
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const outputData = { type: 'normal', text: 'raw assistant reply', isStreaming: false, cancelled: false };
+        await eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
+
+        expect(callGenericPopup).not.toHaveBeenCalled();
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+        expect(outputData.cancelled).toBe(false);
+        expect(outputData.text).toBe('raw assistant reply');
+
+        chat.push({
+            name: 'Assistant',
+            mes: outputData.text,
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal');
+        await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
+
+        expect(chat[0].extra.inChatAgentPreGenerationInterceptHistory).toBeUndefined();
+    });
+
     test('shows a review popup before storing the assistant message when show-first is enabled', async () => {
         enabledAgents = [createPreInterceptAgent({
             preProcess: { interceptTiming: 'post-main-generation', applyMode: 'replace' },
