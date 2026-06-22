@@ -1138,7 +1138,7 @@ body:not(.movingUI) .drawer-content.maximized {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin: -2px -6px;
+    margin: -2px 0;
     padding: 2px 6px;
     border-radius: 999px;
     font-size: var(--sb-type-body);
