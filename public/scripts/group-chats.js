@@ -291,6 +291,8 @@ function buildGroupGreetingMessage(avatarId) {
         name: character.name,
         is_user: false,
         is_system: false,
+        force_avatar: getThumbnailUrl('avatar', character.avatar),
+        original_avatar: character.avatar,
         send_date: getMessageTimeStamp(),
         mes: getRegexedString(firstMes, regex_placement.AI_OUTPUT),
         extra: {},

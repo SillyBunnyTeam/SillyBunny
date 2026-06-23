@@ -11,6 +11,8 @@ describe('group chat greetings QoL', () => {
 
         expect(groupChatSource).toContain('import { getRegexedString, regex_placement } from \'./extensions/regex/engine.js\';');
         expect(groupChatSource).toContain('function buildGroupGreetingMessage(avatarId)');
+        expect(groupChatSource).toContain('force_avatar: getThumbnailUrl(\'avatar\', character.avatar),');
+        expect(groupChatSource).toContain('original_avatar: character.avatar,');
         expect(groupChatSource).toContain('const greeting = getGroupGreetingMember(group, selectedGroupSpeakerAvatar);');
         expect(getGroupChatBody).toContain('freshGroupGreetingMessageId = addFreshGroupGreeting(group);');
         expect(getGroupChatBody.indexOf('freshGroupGreetingMessageId = addFreshGroupGreeting(group);'))
@@ -41,7 +43,7 @@ describe('group chat greetings QoL', () => {
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
 
         expect(indexSource).toContain('id="group_add_greeting"');
-        expect(indexSource).toContain('class="fa-solid fa-plus"');
+        expect(indexSource).toContain('class="fa-solid fa-hand-sparkles"');
         expect(indexSource).toContain('Add New Greeting');
         expect(groupChatSource).toContain('container.on(\'click\', \'#group_add_greeting\', addSelectedGroupGreeting);');
         expect(styleSource).toContain('grid-template-areas: "typing typing typing" "avatars greeting speak";');
