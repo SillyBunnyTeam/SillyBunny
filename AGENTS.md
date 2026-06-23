@@ -28,9 +28,9 @@
 
 ## Workflow Notes
 
-- PR targets must go to `staging` by default; `release` is only for documentation, GitHub Actions, or critical hotfixes that must be backported to staging.
+- PR targets must go to `staging` by default; `main` is only for documentation, GitHub Actions, or critical hotfixes that must be backported to staging.
 - Prefer purposeful larger PRs that address a complete problem over tiny micro PRs, except for hotfixes or critical bug fixes.
-- Do not write PR descriptions for the user. You may prepare branches, commits, and a ready-to-open PR link, but ask the end user to manually write the PR title/body before submission.
+- Do not write PR descriptions for the user. PR descriptions must be manually written without AI assistance; you may prepare branches, commits, and a ready-to-open PR link, but ask the end user to provide the PR title/body before submission.
 - Keep upstream SillyTavern syncs separate from feature/fix work. Use `docs/upstream-sync.md` before preparing or reviewing an upstream sync.
 - `changelog.md` may receive mechanical PR ledgers via `npm run changelog:merged-prs`; release summaries, README changelog copy, and Discord copy must be provided by the end user before running `bash scripts/sync-readme-mirror.sh`.
 - For normal releases, agents may update user-facing/hardcoded SillyBunny version references after the release target is confirmed. Hotfixes skip version bumps, README updates, changelog summary work, and Discord copy unless the user explicitly asks otherwise.
