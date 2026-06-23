@@ -77,6 +77,7 @@
 - PR #602 (2026-06-22) `fix: prevent switching branches from hanging`
 - PR #606 (2026-06-22) `feat(console): add verbose logging toggle`
 - PR #608 (2026-06-23) `fix: use set group chat greetings + harden group chat creation`
+- PR #609 (2026-06-23) `fix(group_chat): fix group chat new messages + add greetings button QoL`
 
 ## v1.6.5
 
