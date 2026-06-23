@@ -3,6 +3,7 @@ import {
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
+import { isIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
@@ -2330,11 +2331,28 @@ function readFiniteViewportNumber(value, fallback = 0) {
     return Number.isFinite(number) ? number : fallback;
 }
 
-function getShellViewportSize() {
+function getLayoutViewportSize() {
     const doc = document.documentElement;
-    const visualViewport = window.visualViewport;
     const fallbackWidth = window.innerWidth || doc?.clientWidth || 0;
     const fallbackHeight = window.innerHeight || doc?.clientHeight || 0;
+
+    const width = Math.max(0, Math.round(readFiniteViewportNumber(fallbackWidth, 0)));
+    const height = Math.max(0, Math.round(readFiniteViewportNumber(fallbackHeight, 0)));
+
+    return {
+        width,
+        height,
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+}
+
+function getVisualViewportSize(fallbackViewport = getLayoutViewportSize()) {
+    const visualViewport = window.visualViewport;
+    const fallbackWidth = fallbackViewport.width;
+    const fallbackHeight = fallbackViewport.height;
     const width = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.width, fallbackWidth)));
     const height = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.height, fallbackHeight)));
 
@@ -2346,6 +2364,76 @@ function getShellViewportSize() {
         right: width,
         bottom: height,
     };
+}
+
+function isEditableElement(element) {
+    return element instanceof HTMLElement
+        && (['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) || element.isContentEditable);
+}
+
+function isMobileShellPanelEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'));
+}
+
+function isChatComposerEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#send_textarea, #send_form, #form_sheld'));
+}
+
+function hasOpenMobileShellDrawer() {
+    return getMobileShellBoundDrawers().some(drawer => drawer.classList.contains('openDrawer'));
+}
+
+function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
+    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+        return false;
+    }
+
+    const activeElement = document.activeElement;
+    if (isChatComposerEditableElement(activeElement)) {
+        return false;
+    }
+
+    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
+}
+
+function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    return keyboardHeight > 80 || visualViewportSize.top > 2;
+}
+
+function syncIOSKeyboardBottomInset() {
+    const root = document.documentElement;
+    let bottomInset = 0;
+
+    if (isMobileViewport() && isIOSWebKitPlatform()) {
+        const layoutViewport = getLayoutViewportSize();
+        const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+        if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+            bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+        }
+    }
+
+    const value = `${bottomInset}px`;
+    if (root.style.getPropertyValue('--sb-ios-keyboard-bottom-inset') !== value) {
+        root.style.setProperty('--sb-ios-keyboard-bottom-inset', value);
+    }
+}
+
+function getShellViewportSize() {
+    const layoutViewport = getLayoutViewportSize();
+    const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+    // SillyBunny: iOS keyboard edits inside shell panels should not resize or
+    // raise the Customize/Workspace windows. Keep shell geometry on the stable
+    // layout viewport while focused-input scrolling still uses visualViewport.
+    if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
+        return layoutViewport;
+    }
+
+    return visualViewportSize;
 }
 
 function syncShellViewportBounds() {
@@ -2366,8 +2454,8 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
     // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
-    // when the keyboard opens; without this var the shell stays anchored at
-    // the layout viewport top and the composer floats mid-screen.
+    // when the keyboard opens; composer-focused edits use that offset, while
+    // panel-focused edits keep the stable layout top so windows are not raised.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
@@ -2376,8 +2464,8 @@ function syncShellViewportBounds() {
  * focused input above the virtual keyboard the way a normal page would. When
  * focus enters an input inside a shell panel or drawer scroller, manually scroll
  * that scroller so the input sits above the keyboard. The chat composer itself
- * is already handled by the --sb-shell-viewport-height shell sizing; this covers
- * the remaining settings/drawer inputs (e.g. "Enter a Model ID").
+ * stays on visual-viewport shell sizing when it has focus; this covers the
+ * remaining settings/drawer inputs (e.g. "Enter a Model ID").
  */
 function scrollMobileFocusedInputIntoView(event) {
     if (!isMobileViewport()) {
@@ -2389,7 +2477,7 @@ function scrollMobileFocusedInputIntoView(event) {
         return;
     }
 
-    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !target.isContentEditable) {
+    if (!isEditableElement(target)) {
         return;
     }
 
@@ -2401,7 +2489,13 @@ function scrollMobileFocusedInputIntoView(event) {
     function tryScroll() {
         // visualViewport tracks the keyboard: top grows and height shrinks as the
         // keyboard rises, so (top + height) is the bottom of the visible area.
-        const viewportSize = getShellViewportSize();
+        const layoutViewport = getLayoutViewportSize();
+        const viewportSize = getVisualViewportSize(layoutViewport);
+
+        if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+            return;
+        }
+
         const viewportBottom = viewportSize.top + viewportSize.height;
         const rect = target.getBoundingClientRect();
         const overflow = rect.bottom - viewportBottom + 16;
@@ -14961,6 +15055,11 @@ function syncMobileViewportState() {
 
         handler();
     }
+
+    // SillyBunny: after viewport sizing settles, give iOS shell scrollers enough
+    // bottom inset to move focused bottom fields above the keyboard without
+    // locking the document and exposing a blank Safari background.
+    syncIOSKeyboardBottomInset();
 }
 
 let sbMobileViewportStateFrameId = 0;
@@ -15969,6 +16068,13 @@ function initAll() {
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
     // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
     document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
+
+    // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
+    // this provides scroll range for bottom inputs without fixing the document.
+    if (isIOSWebKitPlatform()) {
+        document.addEventListener('focusin', syncIOSKeyboardBottomInset);
+        document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+    }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).

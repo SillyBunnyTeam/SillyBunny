@@ -753,7 +753,7 @@
         overflow-x: hidden !important;
         overscroll-behavior: contain !important;
         -webkit-overflow-scrolling: touch !important;
-        padding-bottom: max(24px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
@@ -769,7 +769,7 @@
         box-sizing: border-box !important;
         scrollbar-gutter: stable !important;
         padding-inline-end: var(--sb-character-scroll-gutter, 8px) !important;
-        padding-bottom: max(24px, var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))) !important;
+        padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > .scrollableInner,
