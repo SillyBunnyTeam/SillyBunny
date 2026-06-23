@@ -18,6 +18,7 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
 import {
     areAgentsGloballyEnabled,
@@ -2156,6 +2157,10 @@ function shouldShowPreInterceptNotifications(agent) {
     );
 }
 
+function shouldShowPostMainInterceptMessageFirst() {
+    return getGlobalSettings()?.postMainInterceptShowMessageFirst !== false;
+}
+
 function describePromptTransformTarget(profileId = '', runner = '') {
     if (runner === 'main') {
         return 'the main model';
@@ -2211,17 +2216,24 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
     const applyMode = ['wrap', 'patch'].includes(String(options?.applyMode))
         ? String(options.applyMode)
         : 'replace';
-    const runningLabel = kind === 'preIntercept'
-        ? `Running pre-generation ${applyMode} intercept...`
-        : kind === 'postMainIntercept'
-            ? `Running post-main ${applyMode} intercept...`
-            : `Running ${modeLabel} via ${targetLabel}...`;
+    const skipChanges = Boolean(options?.skipChanges && kind === 'postMainIntercept');
+    const cancelHandler = typeof options?.onCancel === 'function'
+        ? options.onCancel
+        : cancelAgentGeneration;
+    const runningLabel = skipChanges
+        ? 'Generating main output for pre-generation intercept'
+        : kind === 'preIntercept'
+            ? `Running pre-generation ${applyMode} intercept...`
+            : kind === 'postMainIntercept'
+                ? `Running post-main ${applyMode} intercept...`
+                : `Running ${modeLabel} via ${targetLabel}...`;
+    const cancelLabel = skipChanges ? 'Skip changes' : 'Cancel Agent';
     const messageHtml = `
         <div>${escapeToastHtml(runningLabel)}</div>
         <div>${escapeToastHtml(`Order ${metadata.order} | Model: ${metadata.modelLabel}`)}</div>
         <button type="button" class="menu_button menu_button_icon caution ${cancelButtonClass}">
             <i class="fa-solid fa-stop"></i>
-            <span>Cancel Agent</span>
+            <span>${escapeToastHtml(cancelLabel)}</span>
         </button>
     `;
 
@@ -2237,7 +2249,7 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
             cancelButton?.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
-                cancelAgentGeneration();
+                cancelHandler();
             });
         },
     });
@@ -3647,8 +3659,11 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         markPostProcessingRunProcessed(message, runKey, messageIndex, indexRunKey);
 
         const activeAgents = getActiveAgentsForMessage(generationType, resolvedActivationSnapshot);
+        let chatStateChanged = false;
+        let messageDisplayChanged = false;
+
         // Companions normally run last so they see the post-transform reply; the concurrent
-        // option trades that for speed and runs them against the raw reply alongside the passes.
+        // option trades that for speed and runs them against the current reply alongside the passes.
         const companionStageArgs = { messageIndex, message, generationType, activeAgents };
         const concurrentCompanionStage = getGlobalSettings().companionConcurrentWithPostGen && companionRuntime?.runCompanionStage
             ? companionRuntime.runCompanionStage(companionStageArgs).catch(error => {
@@ -3669,8 +3684,6 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
                 ),
             );
 
-        let chatStateChanged = false;
-        let messageDisplayChanged = false;
         if (storePreGenerationInterceptHistory(message, takePendingPreGenerationInterceptRuns())) {
             chatStateChanged = true;
             messageDisplayChanged = true;
@@ -4052,10 +4065,14 @@ async function runContextInterceptAgent(agent, currentContextText, generationTyp
         buildContextInterceptMessages(expandedPrompt, currentContextText, generationType, contextFormat, timing),
     );
     const cancelRevision = agentGenerationCancelRevision;
-    const runningToast = shouldShowPreInterceptNotifications(agent)
+    const skipChanges = timing === POST_MAIN_GENERATION_INTERCEPT_TIMING && Boolean(options?.skipChanges);
+    const showRunningToast = skipChanges || shouldShowPreInterceptNotifications(agent);
+    const runningToast = showRunningToast
         ? showPromptTransformRunningToast(agent, applyMode, profileId, {
             kind: timing === POST_MAIN_GENERATION_INTERCEPT_TIMING ? 'postMainIntercept' : 'preIntercept',
             applyMode,
+            skipChanges,
+            onCancel: skipChanges ? options?.onCancel : null,
         })
         : null;
 
@@ -4295,7 +4312,7 @@ async function runPreGenerationInterceptorsOnChat(initialChatMessages, generatio
     return { chat: currentChatMessages, runs };
 }
 
-async function runPostMainGenerationInterceptorsOnText(initialOutputText, generationType) {
+async function runPostMainGenerationInterceptorsOnText(initialOutputText, generationType, options = {}) {
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return { text: initialOutputText, runs: [], cancelled: false };
     }
@@ -4309,7 +4326,9 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
         return { text: currentOutputText, runs: [], cancelled: true };
     }
 
-    const activationSnapshot = getGenerationContextSnapshot(generationType);
+    const activationSnapshot = options?.activationSnapshot
+        ? cloneActivationSnapshot(options.activationSnapshot, generationType)
+        : getGenerationContextSnapshot(generationType);
     const interceptAgents = getPostMainGenerationInterceptAgents(getSnapshotAgents(activationSnapshot));
     if (interceptAgents.length === 0) {
         return { text: currentOutputText, runs: [], cancelled: false };
@@ -4327,7 +4346,11 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
                 currentOutputText,
                 activationSnapshot.generationType,
                 'text',
-                { timing: POST_MAIN_GENERATION_INTERCEPT_TIMING },
+                {
+                    timing: POST_MAIN_GENERATION_INTERCEPT_TIMING,
+                    skipChanges: Boolean(options?.skipChanges),
+                    onCancel: options?.onCancel,
+                },
             );
 
             if (generationStopRequested || result.status === 'cancelled') {
@@ -4371,6 +4394,40 @@ async function runPostMainGenerationInterceptorsOnText(initialOutputText, genera
     }
 
     return { text: currentOutputText, runs, cancelled: false };
+}
+
+function buildPostMainInterceptReviewPopupContent(text) {
+    return `
+        <div class="ica--post-main-intercept-review">
+            <p>Review the main output before it is shown in chat.</p>
+            <pre class="ica--post-main-intercept-review-output"><code>${escapeToastHtml(text)}</code></pre>
+        </div>
+    `;
+}
+
+async function showPostMainInterceptReviewPopup(text) {
+    const popupContent = buildPostMainInterceptReviewPopupContent(text);
+    const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+        okButton: false,
+        cancelButton: false,
+        customButtons: [
+            {
+                text: 'Skip intercept',
+                result: POPUP_RESULT.CUSTOM1,
+                classes: ['menu_button_primary'],
+            },
+            {
+                text: 'Continue intercept',
+                result: POPUP_RESULT.CUSTOM2,
+                classes: ['menu_button_primary'],
+            },
+        ],
+    });
+
+    return result === POPUP_RESULT.CUSTOM2;
 }
 
 function getPostMainGenerationInterceptorsForGeneration(generationType) {
@@ -4430,7 +4487,7 @@ async function onGenerationOutputBufferingDecision(eventData) {
     const interceptAgents = getPostMainGenerationInterceptorsForGeneration(eventData.type ?? currentMainGenerationType);
     if (interceptAgents.length > 0) {
         eventData.hasPostMainInterceptors = true;
-        if (interceptAgents.some(shouldShowPreInterceptNotifications)) {
+        if (interceptAgents.some(shouldShowPreInterceptNotifications) || shouldShowPostMainInterceptMessageFirst()) {
             showInitialGenerationToast();
         }
     }
@@ -4453,7 +4510,29 @@ async function onMainGenerationOutputReady(eventData) {
     }
 
     const generationType = eventData.type ?? currentMainGenerationType;
-    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType);
+    const activationSnapshot = getGenerationContextSnapshot(generationType);
+    const interceptAgents = getPostMainGenerationInterceptAgents(getSnapshotAgents(activationSnapshot));
+    if (interceptAgents.length === 0) {
+        return;
+    }
+
+    const shouldShowMessageFirst = shouldShowPostMainInterceptMessageFirst();
+    if (shouldShowMessageFirst) {
+        const runPostMainIntercepts = await showPostMainInterceptReviewPopup(eventData.text);
+        if (generationStopRequested) {
+            eventData.cancelled = true;
+            return;
+        }
+
+        if (!runPostMainIntercepts) {
+            return;
+        }
+    }
+
+    const result = await runPostMainGenerationInterceptorsOnText(eventData.text, generationType, {
+        activationSnapshot,
+        skipChanges: false,
+    });
     pendingPreGenerationInterceptRuns.push(...result.runs);
 
     if (result.cancelled || generationStopRequested) {
