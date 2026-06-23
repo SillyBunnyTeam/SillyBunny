@@ -11,10 +11,16 @@ const loginHtml = readFileSync(path.join(repoRoot, 'public', 'login.html'), 'utf
 describe('mobile keyboard focused-input scroll wiring', () => {
     test('keeps virtual keyboards from resizing the layout viewport', () => {
         for (const html of [indexHtml, loginHtml]) {
-            expect(html).toContain('interactive-widget=overlays-content');
+            expect(html).toContain('interactive-widget=resizes-visual');
             expect(html).not.toContain('interactive-widget=resizes-content');
-            expect(html).not.toContain('interactive-widget=resizes-visual');
+            expect(html).not.toContain('interactive-widget=overlays-content');
         }
+    });
+
+    test('locks iOS document scroll while the keyboard is open', () => {
+        expect(tabsSource).toContain('function syncIOSKeyboardScrollLock(');
+        expect(tabsSource).toContain('body.classList.toggle(\'sb-ios-keyboard-locked\'');
+        expect(tabsSource).toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardScrollLock/);
     });
 
     test('defines the focusin scroll helper', () => {

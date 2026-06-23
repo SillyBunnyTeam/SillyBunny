@@ -2386,6 +2386,24 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
         || visualViewportSize.left > 2;
 }
 
+function syncIOSKeyboardScrollLock() {
+    if (!isMobileViewport() || !isIOSWebKitPlatform()) {
+        document.body.classList.remove('sb-ios-keyboard-locked');
+        return;
+    }
+
+    const layoutViewport = getLayoutViewportSize();
+    const visualViewportSize = getVisualViewportSize(layoutViewport);
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    const isKeyboardOpen = keyboardHeight > 80 || visualViewportSize.top > 2;
+
+    document.body.classList.toggle('sb-ios-keyboard-locked', isKeyboardOpen);
+
+    if (isKeyboardOpen && (window.scrollY > 0 || window.scrollX > 0)) {
+        window.scrollTo(0, 0);
+    }
+}
+
 function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
@@ -15013,6 +15031,10 @@ function syncMobileViewportState() {
 
         handler();
     }
+
+    // SillyBunny: after all viewport sizing settles, freeze the iOS document
+    // scroll position so Safari cannot auto-pan the page for focused inputs.
+    syncIOSKeyboardScrollLock();
 }
 
 let sbMobileViewportStateFrameId = 0;
@@ -16021,6 +16043,15 @@ function initAll() {
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
     // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
     document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
+
+    // SillyBunny: iOS Safari auto-pans the document when focusing inputs near the
+    // keyboard. Keep the scroll lock in sync with viewport and focus changes so the
+    // page cannot drift before our visualViewport-based shell sizing takes over.
+    if (isIOSWebKitPlatform()) {
+        window.addEventListener('scroll', syncIOSKeyboardScrollLock, { passive: true });
+        document.addEventListener('focusin', syncIOSKeyboardScrollLock);
+        document.addEventListener('focusout', syncIOSKeyboardScrollLock);
+    }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
     // panels narrow alongside the chat container (matches standard ST behaviour).
