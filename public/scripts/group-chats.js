@@ -639,26 +639,25 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     await validateGroup(group, { trustActiveChat: newlyCreated });
     await unshallowGroupMembers(groupId);
 
-    let createdChat = newlyCreated;
-
     if (!group.chat_id) {
         const freshChatId = humanizedDateTime();
         group.chat_id = freshChatId;
         group.chats = Array.isArray(group.chats) ? group.chats : [];
         group.chats.push(freshChatId);
         await editGroup(group.id, true, false);
-        createdChat = true;
     }
 
     const chat_id = group.chat_id;
     const data = await loadGroupChat(chat_id);
     const metadata = data?.[0]?.chat_metadata ?? {};
-    const freshChat = createdChat && !metadata.tainted && (!Array.isArray(data) || !data.length);
 
     // Remove chat file header if present
     if (Array.isArray(data) && data.length && Object.hasOwn(data[0], 'chat_metadata')) {
         data.shift();
     }
+
+    // SillyBunny: initialize empty, untainted group chats even when the chat id was created before this load.
+    const freshChat = !metadata.tainted && (!Array.isArray(data) || !data.length);
 
     // Add integrity slug if missing
     if (!metadata.integrity) {
