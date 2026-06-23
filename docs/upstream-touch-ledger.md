@@ -63,15 +63,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 chat integrity rotation fix. |
 | Owner | Bugfix integrator. |
 
-### `public/script.js` and `public/scripts/group-chats.js` - group chat branch creation
+### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css`, `public/script.js`, and `public/scripts/group-chats.js` - group chat branch creation
 | Field | Value |
 | --- | --- |
-| Area | Chat lifecycle. |
-| Divergence reason | SillyBunny's Start new chat menu path already flushes pending saves and clears the active chat before delegating to group chat creation, so the group branch creator must not run a second navigation-save guard that can abort and repaint the current chat. |
+| Area | Chat lifecycle and mobile shell. |
+| Divergence reason | SillyBunny's Start new chat menu path already flushes pending saves and clears the active chat before delegating to group chat creation, so the group branch creator must not run a second navigation-save guard that can abort and repaint the current chat. New group branches also need fresh integrity metadata and a member greeting before the first save, plus a compact group-greeting action beside Speak Now on desktop and mobile. |
 | Target seam | None yet; group chat branch creation still lives in the upstream-origin chat modules. |
-| Adapter shape | Keep `doNewChat()` as the stock menu adapter and pass a narrow `chatAlreadyPrepared` option; keep standalone group creation guarded, and tell `getGroupChat()` when the chat id was freshly created so validation trusts the active empty branch until its JSONL exists. Initialize empty, untainted group chats as fresh so first-time groups opened after creation still emit the group-created lifecycle event for greeting handlers. |
-| Protecting tests | Future focused group-chat new-branch coverage; current protection is static validation. |
-| Validation | `node --check public/scripts/group-chats.js`, `npm run lint`, `npm run test:unit --prefix tests -- group-chat-info.test.js`, `git diff --check`. |
+| Adapter shape | Keep `doNewChat()` as the stock menu adapter and pass a narrow `chatAlreadyPrepared` option; keep standalone group creation guarded, and tell `getGroupChat()` when the chat id was freshly created so validation trusts the active empty branch until its JSONL exists. Initialize empty, untainted group chats as fresh, seed one member greeting before the first save, emit first-message events after the chat-changed event, and keep the Add New Greeting button in the existing group speaker control row. |
+| Protecting tests | `tests/group-chat-greetings-qol.test.js`, `tests/group-chat-info.test.js`, static validation in `tests/chat-integrity-rotation.test.js`. |
+| Validation | `node --check public/scripts/group-chats.js`, `npm run test:unit --prefix tests -- group-chat-greetings-qol.test.js chat-integrity-rotation.test.js group-chat-info.test.js`, `npm run lint`, `git diff --check`. |
 | Rollback path | Revert the state-based fresh-chat detection, option plumbing, and newly-created load hint to restore the previous `createNewGroupChat(groupId)` path. |
 | Last reviewed | 2026-06-23 group chat greeting initialization fix. |
 | Owner | Bugfix integrator. |

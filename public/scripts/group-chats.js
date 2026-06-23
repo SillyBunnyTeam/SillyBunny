@@ -19,7 +19,7 @@ import {
     waitUntilCondition,
     uuidv4,
 } from './utils.js';
-import { RA_CountCharTokens, humanizedDateTime, dragElement, favsToHotswap } from './RossAscends-mods.js';
+import { RA_CountCharTokens, humanizedDateTime, dragElement, favsToHotswap, getMessageTimeStamp } from './RossAscends-mods.js';
 import { power_user, loadMovingUIState, sortEntitiesList } from './power-user.js';
 import { debounce_timeout } from './constants.js';
 
@@ -90,6 +90,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { chat_completion_sources, oai_settings } from './openai.js';
+import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
 
 export {
     selected_group,
@@ -278,6 +279,103 @@ function getSelectedGroupSpeakerChid(group) {
     return getCharacterIdByAvatar(selectedGroupSpeakerAvatar);
 }
 
+function buildGroupGreetingMessage(avatarId) {
+    const character = characters[getCharacterIdByAvatar(avatarId)];
+    if (!character) {
+        return null;
+    }
+
+    const firstMes = character.first_mes || '';
+    const alternateGreetings = character.data?.alternate_greetings;
+    const message = {
+        name: character.name,
+        is_user: false,
+        is_system: false,
+        send_date: getMessageTimeStamp(),
+        mes: getRegexedString(firstMes, regex_placement.AI_OUTPUT),
+        extra: {},
+    };
+
+    if (Array.isArray(alternateGreetings) && alternateGreetings.length > 0) {
+        const swipes = [message.mes, ...(alternateGreetings.map(greeting => getRegexedString(greeting, regex_placement.AI_OUTPUT)))];
+
+        if (!message.mes) {
+            swipes.shift();
+            message.mes = swipes[0];
+        }
+
+        message.swipe_id = 0;
+        message.swipes = swipes;
+        message.swipe_info = swipes.map(_ => ({
+            send_date: message.send_date,
+            gen_started: void 0,
+            gen_finished: void 0,
+            extra: {},
+        }));
+    }
+
+    return message.mes ? message : null;
+}
+
+function getGroupGreetingMember(group, preferredAvatar = '') {
+    const members = getGroupEnabledMembers(group);
+    const orderedMembers = members.includes(preferredAvatar)
+        ? [preferredAvatar, ...members.filter(avatarId => avatarId !== preferredAvatar)]
+        : members;
+
+    for (const avatarId of orderedMembers) {
+        const message = buildGroupGreetingMessage(avatarId);
+        if (message) {
+            return { avatarId, message };
+        }
+    }
+
+    return null;
+}
+
+async function emitGroupGreetingMessageEvents(messageId) {
+    await eventSource.emit(event_types.MESSAGE_RECEIVED, messageId, 'first_message');
+    await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, messageId, 'first_message');
+}
+
+function addFreshGroupGreeting(group) {
+    const greeting = getGroupGreetingMember(group, selectedGroupSpeakerAvatar);
+    if (!greeting) {
+        return -1;
+    }
+
+    const messageId = chat.length;
+    chat.push(greeting.message);
+    return messageId;
+}
+
+async function addSelectedGroupGreeting() {
+    if (!selected_group || !selectedGroupSpeakerAvatar) {
+        toastr.warning(t`Pick a group member first.`);
+        return;
+    }
+
+    const group = groups.find(x => x.id === selected_group);
+    if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
+        selectedGroupSpeakerAvatar = '';
+        updateGroupSpeakerControls();
+        toastr.warning(t`Pick a group member first.`);
+        return;
+    }
+
+    const message = buildGroupGreetingMessage(selectedGroupSpeakerAvatar);
+    if (!message) {
+        toastr.warning(t`Selected group member has no greeting.`);
+        return;
+    }
+
+    const messageId = chat.length;
+    chat.push(message);
+    await saveGroupChat(selected_group, false);
+    await printMessages();
+    await emitGroupGreetingMessageEvents(messageId);
+}
+
 function buildContextAwareGroupPrompt(speakerName, options = {}) {
     const targetName = options.targetName || '';
     const targetText = targetName ? ` The immediate call or message is directed at ${speakerName} by ${targetName}; ${speakerName} should answer ${targetName}.` : '';
@@ -424,6 +522,8 @@ function initGroupSpeakerControls() {
             Generate('normal', { force_chid: chid });
         }
     });
+
+    container.on('click', '#group_add_greeting', addSelectedGroupGreeting);
 }
 
 export const group_activation_strategy = {
@@ -666,12 +766,19 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
 
     await loadItemizedPrompts(getCurrentChatId());
 
+    let freshGroupGreetingMessageId = -1;
+
     if (group && Array.isArray(group.members) && freshChat) {
         chat.splice(0, chat.length);
         chatElement.find('.mes').remove();
+        freshGroupGreetingMessageId = addFreshGroupGreeting(group);
         metadata.tainted = true;
         updateChatMetadata(metadata, true);
-        await saveGroupChat(groupId, false);
+        const savedFreshGroupChat = await saveGroupChat(groupId, false);
+        if (savedFreshGroupChat && chat_metadata.integrity) {
+            metadata.integrity = chat_metadata.integrity;
+        }
+        await printMessages();
     } else if (Array.isArray(data) && data.length) {
         chat.splice(0, chat.length, ...data);
         chat.forEach(ensureMessageMediaIsArray);
@@ -687,6 +794,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
 
     await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
     if (freshChat) await eventSource.emit(event_types.GROUP_CHAT_CREATED);
+    if (freshGroupGreetingMessageId !== -1) await emitGroupGreetingMessageEvents(freshGroupGreetingMessageId);
 }
 
 /**
@@ -2719,7 +2827,7 @@ export async function createNewGroupChat(groupId, { chatAlreadyPrepared = false 
     group.chats = Array.isArray(group.chats) ? group.chats : [];
     group.chats.push(newChatName);
     group.chat_id = newChatName;
-    updateChatMetadata({}, true);
+    updateChatMetadata({ integrity: uuidv4() }, true);
 
     await editGroup(group.id, true, false);
     await getGroupChat(group.id, false, { newlyCreated: true });
