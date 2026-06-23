@@ -1,5 +1,6 @@
 import { chat_metadata, getCurrentChatId, saveSettingsDebounced } from '../script.js';
 import { extension_settings, saveMetadataDebounced } from './extensions.js';
+import { deletePromptVariableScopedValue, getPromptVariableScopedValue, hasActivePromptVariableScope, setPromptVariableScopedValue } from './prompt-variable-scope.js';
 import { executeSlashCommandsWithOptions } from './slash-commands.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { SlashCommandAbortController } from './slash-commands/SlashCommandAbortController.js';
@@ -19,12 +20,50 @@ import { isFalseBoolean, convertValueType, isTrueBoolean } from './utils.js';
 
 const MAX_LOOPS = 100;
 
+function setScopedVariableValue(scopeName, name, value, args, fallbackVariables = {}) {
+    if (!hasActivePromptVariableScope()) {
+        return false;
+    }
+
+    if (args.index !== undefined) {
+        try {
+            const scopedVariable = getPromptVariableScopedValue(scopeName, name);
+            const currentValue = scopedVariable.scoped ? scopedVariable.value : fallbackVariables?.[name];
+            let variable = JSON.parse(currentValue ?? 'null');
+            const numIndex = Number(args.index);
+
+            if (Number.isNaN(numIndex)) {
+                if (variable === null) {
+                    variable = {};
+                }
+                variable[args.index] = convertValueType(value, args.as);
+            } else {
+                if (variable === null) {
+                    variable = [];
+                }
+                variable[numIndex] = convertValueType(value, args.as);
+            }
+
+            setPromptVariableScopedValue(scopeName, name, JSON.stringify(variable));
+        } catch {
+            // that didn't work
+        }
+    } else {
+        setPromptVariableScopedValue(scopeName, name, value);
+    }
+
+    return true;
+}
+
 export function getLocalVariable(name, args = {}) {
-    if (!chat_metadata.variables) {
+    const key = args.key ?? name;
+    const scopedVariable = getPromptVariableScopedValue('local', key);
+
+    if (!scopedVariable.scoped && !chat_metadata.variables) {
         chat_metadata.variables = {};
     }
 
-    let localVariable = chat_metadata?.variables[args.key ?? name];
+    let localVariable = scopedVariable.scoped ? scopedVariable.value : chat_metadata?.variables[key];
     if (args.index !== undefined) {
         try {
             localVariable = JSON.parse(localVariable);
@@ -48,6 +87,11 @@ export function getLocalVariable(name, args = {}) {
 export function setLocalVariable(name, value, args = {}) {
     if (!name) {
         throw new Error('Variable name cannot be empty or undefined.');
+    }
+
+    // SillyBunny: prompt rendering scopes setvar side effects without saving chat metadata.
+    if (setScopedVariableValue('local', name, value, args, chat_metadata.variables)) {
+        return value;
     }
 
     if (!chat_metadata.variables) {
@@ -81,7 +125,10 @@ export function setLocalVariable(name, value, args = {}) {
 }
 
 export function getGlobalVariable(name, args = {}) {
-    let globalVariable = extension_settings.variables.global[args.key ?? name];
+    const key = args.key ?? name;
+    const scopedVariable = getPromptVariableScopedValue('global', key);
+    let globalVariable = scopedVariable.scoped ? scopedVariable.value : extension_settings.variables.global[key];
+
     if (args.index !== undefined) {
         try {
             globalVariable = JSON.parse(globalVariable);
@@ -105,6 +152,11 @@ export function getGlobalVariable(name, args = {}) {
 export function setGlobalVariable(name, value, args = {}) {
     if (!name) {
         throw new Error('Variable name cannot be empty or undefined.');
+    }
+
+    // SillyBunny: prompt rendering scopes setglobalvar side effects without saving settings.
+    if (setScopedVariableValue('global', name, value, args, extension_settings.variables.global)) {
+        return value;
     }
 
     if (args.index !== undefined) {
@@ -420,6 +472,12 @@ async function ifCallback(args, value) {
  * @returns {boolean} True if the local variable exists, false otherwise
  */
 export function existsLocalVariable(name) {
+    const scopedVariable = getPromptVariableScopedValue('local', name);
+
+    if (scopedVariable.scoped) {
+        return scopedVariable.value !== undefined;
+    }
+
     return chat_metadata.variables && chat_metadata.variables[name] !== undefined;
 }
 
@@ -429,6 +487,12 @@ export function existsLocalVariable(name) {
  * @returns {boolean} True if the global variable exists, false otherwise
  */
 export function existsGlobalVariable(name) {
+    const scopedVariable = getPromptVariableScopedValue('global', name);
+
+    if (scopedVariable.scoped) {
+        return scopedVariable.value !== undefined;
+    }
+
     return extension_settings.variables.global && extension_settings.variables.global[name] !== undefined;
 }
 
@@ -590,6 +654,10 @@ async function executeSubCommands(command, scope = null, parserFlags = null, abo
  * @returns {string} Empty string
  */
 export function deleteLocalVariable(name) {
+    if (deletePromptVariableScopedValue('local', name)) {
+        return '';
+    }
+
     if (!existsLocalVariable(name)) {
         console.warn(`The local variable "${name}" does not exist.`);
         return '';
@@ -606,6 +674,10 @@ export function deleteLocalVariable(name) {
  * @returns {string} Empty string
  */
 export function deleteGlobalVariable(name) {
+    if (deletePromptVariableScopedValue('global', name)) {
+        return '';
+    }
+
     if (!existsGlobalVariable(name)) {
         console.warn(`The global variable "${name}" does not exist.`);
         return '';
