@@ -3,6 +3,7 @@ import {
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
+import { isIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
@@ -2330,11 +2331,28 @@ function readFiniteViewportNumber(value, fallback = 0) {
     return Number.isFinite(number) ? number : fallback;
 }
 
-function getShellViewportSize() {
+function getLayoutViewportSize() {
     const doc = document.documentElement;
-    const visualViewport = window.visualViewport;
     const fallbackWidth = window.innerWidth || doc?.clientWidth || 0;
     const fallbackHeight = window.innerHeight || doc?.clientHeight || 0;
+
+    const width = Math.max(0, Math.round(readFiniteViewportNumber(fallbackWidth, 0)));
+    const height = Math.max(0, Math.round(readFiniteViewportNumber(fallbackHeight, 0)));
+
+    return {
+        width,
+        height,
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+}
+
+function getVisualViewportSize(fallbackViewport = getLayoutViewportSize()) {
+    const visualViewport = window.visualViewport;
+    const fallbackWidth = fallbackViewport.width;
+    const fallbackHeight = fallbackViewport.height;
     const width = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.width, fallbackWidth)));
     const height = Math.max(0, Math.round(readFiniteViewportNumber(visualViewport?.height, fallbackHeight)));
 
@@ -2346,6 +2364,40 @@ function getShellViewportSize() {
         right: width,
         bottom: height,
     };
+}
+
+function isEditableElement(element) {
+    return element instanceof HTMLElement
+        && (['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) || element.isContentEditable);
+}
+
+function isMobileShellPanelEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'));
+}
+
+function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
+    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isMobileShellPanelEditableElement(document.activeElement)) {
+        return false;
+    }
+
+    return layoutViewport.height - visualViewportSize.height > 2
+        || visualViewportSize.top > 2
+        || visualViewportSize.left > 2;
+}
+
+function getShellViewportSize() {
+    const layoutViewport = getLayoutViewportSize();
+    const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+    // SillyBunny: iOS keyboard edits inside shell panels should not resize or
+    // raise the Customize/Workspace windows. Keep shell geometry on the stable
+    // layout viewport while focused-input scrolling still uses visualViewport.
+    if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
+        return layoutViewport;
+    }
+
+    return visualViewportSize;
 }
 
 function syncShellViewportBounds() {
@@ -2366,8 +2418,8 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
     // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
-    // when the keyboard opens; without this var the shell stays anchored at
-    // the layout viewport top and the composer floats mid-screen.
+    // when the keyboard opens; composer-focused edits use that offset, while
+    // panel-focused edits keep the stable layout top so windows are not raised.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
@@ -2376,8 +2428,8 @@ function syncShellViewportBounds() {
  * focused input above the virtual keyboard the way a normal page would. When
  * focus enters an input inside a shell panel or drawer scroller, manually scroll
  * that scroller so the input sits above the keyboard. The chat composer itself
- * is already handled by the --sb-shell-viewport-height shell sizing; this covers
- * the remaining settings/drawer inputs (e.g. "Enter a Model ID").
+ * stays on visual-viewport shell sizing when it has focus; this covers the
+ * remaining settings/drawer inputs (e.g. "Enter a Model ID").
  */
 function scrollMobileFocusedInputIntoView(event) {
     if (!isMobileViewport()) {
@@ -2389,7 +2441,7 @@ function scrollMobileFocusedInputIntoView(event) {
         return;
     }
 
-    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !target.isContentEditable) {
+    if (!isEditableElement(target)) {
         return;
     }
 
@@ -2401,7 +2453,7 @@ function scrollMobileFocusedInputIntoView(event) {
     function tryScroll() {
         // visualViewport tracks the keyboard: top grows and height shrinks as the
         // keyboard rises, so (top + height) is the bottom of the visible area.
-        const viewportSize = getShellViewportSize();
+        const viewportSize = getVisualViewportSize();
         const viewportBottom = viewportSize.top + viewportSize.height;
         const rect = target.getBoundingClientRect();
         const overflow = rect.bottom - viewportBottom + 16;

@@ -190,7 +190,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
     });
 
-    test('clamps resizable shell panels against the visual viewport and panel top', () => {
+    test('clamps shell panels while keeping iOS keyboard edits on stable panel bounds', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
         const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
@@ -199,6 +199,11 @@ describe('mobile shell lifecycle wiring', () => {
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
 
         expect(tabsSource).toContain('function getShellViewportSize(');
+        expect(tabsSource).toContain('function getVisualViewportSize(');
+        expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
+        expect(tabsSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(tabsSource).toContain('!isMobileViewport() || !isIOSWebKitPlatform() || !isMobileShellPanelEditableElement(document.activeElement)');
+        expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).toContain('function queueMobileShellDrawerBoundsSync(');
