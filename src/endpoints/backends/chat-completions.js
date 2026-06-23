@@ -36,7 +36,7 @@ import {
     flattenSchema,
     summarizeLlmPayloadForLog,
 } from '../../util.js';
-import { isRequestCancellationError } from '../../request-cancellation.js';
+import { isBenignStreamAbort } from '../../stream-disconnect-guard.js';
 import {
     convertClaudeMessages,
     convertGooglePrompt,
@@ -529,6 +529,10 @@ async function sendClaudeRequest(request, response) {
             return response.send(reply);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error(color.red(`Error communicating with Claude: ${error}\n${divider}`));
         if (!response.headersSent) {
             return response.status(500).send({ error: true });
@@ -826,6 +830,10 @@ async function sendMakerSuiteRequest(request, response) {
                 // Pipe remote SSE stream to Express response
                 forwardFetchResponse(generateResponse, response, request, () => controller.abort());
             } catch (error) {
+                if (handleExpectedStreamAbort(error, request, response)) {
+                    return;
+                }
+
                 console.error('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
                     return response.status(500).send({ error: true });
@@ -869,6 +877,10 @@ async function sendMakerSuiteRequest(request, response) {
             return response.send(reply);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error(`Error communicating with ${apiName} API:`, error);
         if (!response.headersSent) {
             return response.status(500).send({ error: true });
@@ -945,6 +957,10 @@ async function sendAI21Request(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with AI21 API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1032,6 +1048,10 @@ async function sendMistralAIRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with MistralAI API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1129,6 +1149,10 @@ async function sendCohereRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with Cohere API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1243,6 +1267,10 @@ async function sendDeepSeekRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with DeepSeek API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1348,6 +1376,10 @@ async function sendXaiRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with xAI API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1450,6 +1482,10 @@ async function sendAimlapiRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with AI/ML API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1559,6 +1595,10 @@ async function sendElectronHubRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with Electron Hub: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1657,6 +1697,10 @@ async function sendChutesRequest(request, response) {
             return response.send(generateResponseJson);
         }
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with Chutes: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1735,6 +1779,10 @@ async function sendMinimaxRequest(request, response) {
         console.debug('MiniMax response:', summarizeLlmPayloadForLog(generateResponseJson));
         return response.send(generateResponseJson);
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         console.error('Error communicating with MiniMax: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
@@ -1830,6 +1878,10 @@ async function sendAzureOpenAIRequest(request, response) {
         const data = tryParse(text) || { error: { message: fetchResponse.statusText || 'Unknown error occurred' } };
         return response.status(500).send(data);
     } catch (error) {
+        if (handleExpectedStreamAbort(error, request, response)) {
+            return;
+        }
+
         const message = error.name === 'AbortError'
             ? 'Request was aborted by the client.'
             : (error.message || 'An unknown network error occurred.');
@@ -2490,8 +2542,29 @@ function transformResponsesApiResponse(data) {
     };
 }
 
-function isExpectedStreamAbort(error) {
-    return isRequestCancellationError(error);
+function isExpectedStreamAbort(error, request = null, response = null) {
+    return isBenignStreamAbort(error, { request, response });
+}
+
+function endExpectedStreamAbortResponse(response) {
+    if (!response || response.destroyed) {
+        return;
+    }
+
+    if (!response.headersSent && !response.writableEnded) {
+        response.status(499).end();
+    } else if (!response.writableEnded) {
+        response.end();
+    }
+}
+
+function handleExpectedStreamAbort(error, request, response) {
+    if (!isExpectedStreamAbort(error, request, response)) {
+        return false;
+    }
+
+    endExpectedStreamAbortResponse(response);
+    return true;
 }
 
 /**
@@ -2603,7 +2676,7 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
 
     fetchResponse.body.on('error', (err) => {
         stopPolling();
-        if (done || isExpectedStreamAbort(err) || expressResponse.destroyed) {
+        if (done || isExpectedStreamAbort(err, request, expressResponse) || expressResponse.destroyed) {
             done = true;
             if (!expressResponse.destroyed && !expressResponse.writableEnded) {
                 expressResponse.end();
@@ -2766,10 +2839,7 @@ async function sendOpenAIResponsesRequest(request, response) {
             }
         }
     } catch (error) {
-        if (isExpectedStreamAbort(error)) {
-            if (!response.headersSent && !response.destroyed) {
-                response.end();
-            }
+        if (handleExpectedStreamAbort(error, request, response)) {
             return;
         }
 
@@ -3229,13 +3299,7 @@ router.post('/generate', async function (request, response) {
             }
         }
     } catch (error) {
-        if (isExpectedStreamAbort(error) || request.socket.destroyed) {
-            if (!response.headersSent && !response.writableEnded) {
-                response.status(499).end();
-            } else if (!response.writableEnded) {
-                response.end();
-            }
-
+        if (handleExpectedStreamAbort(error, request, response)) {
             return;
         }
 

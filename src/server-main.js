@@ -71,7 +71,6 @@ import {
     setWindowTitle,
     getConfigValue,
 } from './util.js';
-import { isBenignStreamAbort } from './stream-disconnect-guard.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
 
 // Routers
@@ -514,23 +513,7 @@ async function preSetupTasks() {
     process.on('SIGINT', () => exitProcess(0));
     process.on('SIGTERM', () => exitProcess(0));
     process.on('uncaughtException', (err) => {
-        // SillyBunny: ignore expected stream disconnects from cancelled generations.
-        if (isBenignStreamAbort(err)) {
-            console.warn('Ignored streaming disconnect error:', err?.message ?? err);
-            return;
-        }
-
         console.error('Uncaught exception:', err);
-        exitProcess();
-    });
-    process.on('unhandledRejection', (reason) => {
-        // SillyBunny: ignore expected stream disconnects from cancelled generations.
-        if (isBenignStreamAbort(reason)) {
-            console.warn('Ignored streaming disconnect rejection:', reason?.message ?? reason);
-            return;
-        }
-
-        console.error('Unhandled rejection:', reason);
         exitProcess();
     });
 
