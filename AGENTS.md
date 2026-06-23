@@ -1,5 +1,8 @@
 # AGENTS.md
 
+> [!WARNING]
+> IMPORTANT: this file should never be added to .gitignore. This is to synchronise Opencode workflow between all maintainers.
+
 ## Project Priorities
 
 - SillyBunny is a fork of SillyTavern; keep compatibility with upstream data, settings, characters, chats, presets, and extensions unless a task explicitly changes that.
