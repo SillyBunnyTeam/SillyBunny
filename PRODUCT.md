@@ -8,13 +8,15 @@ product
 
 SillyBunny serves creative roleplay and storytelling users who want to start writing quickly without first mastering the full SillyTavern surface. Many users arrive with characters, chats, presets, lorebooks, or extensions from SillyTavern, so familiarity and compatibility matter, but the primary design audience is the writer trying to keep a scene moving.
 
-Users may be on desktop, tablets, phones, or Termux-style mobile setups. They often need to connect a model, choose a preset, pick or edit a character, adjust persona and world info, and then return to the chat without feeling lost in configuration depth. More advanced users also rely on in-chat agents, Pathfinder, prompt stacks, and extension workflows, but those capabilities should sit behind clear progressive access instead of dominating the default experience.
+Users may be on desktop, tablets, phones, or Termux-style mobile setups. They often need to connect a model, choose a preset, pick or edit a character, adjust persona and world info, and then return to the chat without feeling lost in configuration depth. More advanced users also rely on in-chat agents, Companion Agents, Conversation Mode, Pathfinder, prompt stacks, custom endpoint profiles, accent profiles, and extension workflows, but those capabilities should sit behind clear progressive access instead of dominating the default experience.
 
 ## Product Purpose
 
-SillyBunny is an elegant, Bun-first SillyTavern fork for creative writing, roleplay, and agent-assisted storytelling. It keeps SillyTavern data and feature compatibility while replacing the default interaction model with a cleaner graphical shell, mobile-aware navigation, global search, built-in tutorials, curated presets, optional extensions, and in-chat agents.
+SillyBunny is an elegant, Bun-first SillyTavern fork for creative writing, roleplay, and agent-assisted storytelling. It keeps SillyTavern data and feature compatibility while replacing the default interaction model with a cleaner graphical shell, mobile-aware navigation, global search, built-in tutorials, curated presets, optional extensions, in-chat agents, and companion-style helper workflows.
 
 Success means a new creative user can reach a useful chat with sane defaults and plain guidance, while an experienced user can still find the full power of presets, APIs, sampling, world info, personas, backgrounds, extensions, server tools, and agent workflows without upstream compatibility becoming fragile.
+
+Agent-facing product updates should describe durable behavior and decision criteria only. Do not turn this file into release notes, changelog copy, or a list of every shipped feature.
 
 ## Brand Personality
 
@@ -35,6 +37,7 @@ Avoid generic SaaS polish, sterile upstream-clone blandness, and designs that hi
 3. Express personality through usefulness. Playful or stylized moments should guide, reassure, or clarify rather than decorate without purpose.
 4. Stay close to upstream where it matters. New UI and feature work should be modular, compatible with SillyTavern data, and easy to reconcile during upstream syncs.
 5. Mobile is a primary workspace. Desktop and mobile should have parity in capability, with special care for iOS WebKit rendering, scrolling, safe areas, focus behavior, and touch ergonomics.
+6. Make agentic power inspectable. In-chat and companion workflows should expose run state, source context, edits, regeneration, and recovery paths without interrupting the main writing flow.
 
 ## Accessibility & Inclusion
 

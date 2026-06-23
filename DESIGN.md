@@ -118,6 +118,8 @@ SillyBunny should feel like a creative control room for roleplay and storytellin
 
 The product must preserve the PRODUCT.md line: "Express personality through usefulness." Personality belongs in onboarding, assistant surfaces, launchpad cards, and creative workflow affordances. Settings, API setup, presets, sampling, and server tools stay familiar, predictable, and compact.
 
+This document is agent-facing design guidance, not release copy. Keep it aligned with README.md and PRODUCT.md, but do not use it to announce features or draft marketing language.
+
 This system rejects needless complexity, generic SaaS polish, sterile upstream-clone blandness, hover-only discovery, tiny touch targets, and browser behavior that breaks on iOS WebKit.
 
 **Key Characteristics:**
@@ -158,6 +160,8 @@ The palette is a Soft Console: charcoal surfaces, linen text, and a warm signal 
 
 **The Theme-Compatible Rule.** SillyBunny themes use `SmartTheme*` and `sb-*` CSS variables. New colors must flow through those variables or documented semantic aliases, not hard-coded one-off values.
 
+**The Accent Profile Rule.** Custom accent profiles and theme settings are user state. Do not reset, rename, or reinterpret saved accent values without a compatibility path.
+
 **The No Pure Extremes Rule.** Do not introduce new pure black or pure white surfaces. Tint darks toward the charcoal system and lights toward the linen system.
 
 ## 3. Typography
@@ -182,6 +186,8 @@ The palette is a Soft Console: charcoal surfaces, linen text, and a warm signal 
 **The Interface Sans Rule.** Do not introduce display fonts for controls, labels, tabs, or dense setting surfaces. The tool should stay readable under pressure.
 
 **The No Viewport Type Rule.** Product UI type should scale from `--mainFontSize` and user settings, not from viewport width.
+
+**The User Preference Rule.** New spacing, line-height, font-size, and density controls must compose with existing user settings instead of hardcoding a separate visual scale.
 
 ## 4. Elevation
 
@@ -264,6 +270,10 @@ Compact desktop is `769px` through `1000px`: no fork mobile chrome. The 820x1180
 **Theme Options** are compact selectable cards. Selected state uses the active shell background and shadow rather than loud color flooding.
 
 **In-Chat Agent Chips** are modular control chips. Enabled states use accent tints and status icons while keeping the chip layout compact enough for dense agent lists.
+
+**Companion Agent Panels** are sidecar workspaces, not modals. They must preserve chat visibility, make source-message context reachable, and keep regenerate, edit, copy, delete, and manual-run controls touch-safe.
+
+**Conversation Mode Surfaces** should read like focused character DMs while preserving SillyTavern chat data expectations. Keep coalesced messages, persona context, and group handoff behavior visually clear.
 
 ## 6. Do's and Don'ts
 

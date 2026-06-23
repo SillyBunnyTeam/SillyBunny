@@ -2,6 +2,8 @@
 
 ## v1.7.0
 
+Status: Unreleased. This section is currently a mechanical staging PR ledger generated for release preparation; it is not final user-facing release copy.
+
 ### Merged Staging PRs
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
 - PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
