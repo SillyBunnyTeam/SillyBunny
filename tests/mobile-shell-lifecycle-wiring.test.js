@@ -202,7 +202,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function getVisualViewportSize(');
         expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
         expect(tabsSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
-        expect(tabsSource).toContain('!isMobileViewport() || !isIOSWebKitPlatform() || !isMobileShellPanelEditableElement(document.activeElement)');
+        expect(tabsSource).toContain('function isChatComposerEditableElement(');
+        expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
+        expect(tabsSource).toContain('!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
+        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();');
         expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');

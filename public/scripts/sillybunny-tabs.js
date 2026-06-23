@@ -2376,14 +2376,26 @@ function isMobileShellPanelEditableElement(element) {
         && Boolean(element.closest('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'));
 }
 
+function isChatComposerEditableElement(element) {
+    return isEditableElement(element)
+        && Boolean(element.closest('#send_textarea, #send_form, #form_sheld'));
+}
+
+function hasOpenMobileShellDrawer() {
+    return getMobileShellBoundDrawers().some(drawer => drawer.classList.contains('openDrawer'));
+}
+
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
-    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isMobileShellPanelEditableElement(document.activeElement)) {
+    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
         return false;
     }
 
-    return layoutViewport.height - visualViewportSize.height > 2
-        || visualViewportSize.top > 2
-        || visualViewportSize.left > 2;
+    const activeElement = document.activeElement;
+    if (isChatComposerEditableElement(activeElement)) {
+        return false;
+    }
+
+    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
 function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
