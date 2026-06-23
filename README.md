@@ -3,6 +3,12 @@
 <img src="screenshots/banner.jpg" width="100%">
 </div>
 
+<div align="center">
+
+English | [Deutsch](.github/readme-de_de.md) | [中文](.github/readme-zh_cn.md) | [繁體中文](.github/readme-zh_tw.md) | [日本語](.github/readme-ja_jp.md) | [Русский](.github/readme-ru_ru.md) | [한국어](.github/readme-ko_kr.md)
+
+</div>
+
 ---
 
 An elegant fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern), designed with a cleaner, graphical shell UI; Bun-based backend; built-in tutorials, presets, extensions, and a quick-start dashboard; and a lightweight agentic system to facilitate modern agent functionality.
