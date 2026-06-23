@@ -62,6 +62,8 @@ const SB_STORAGE_KEYS = Object.freeze({
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
+    paperTextureEnabled: 'sb-paper-texture-enabled',
+    paperTextureOpacity: 'sb-paper-texture-opacity',
 });
 
 const SB_SHORTCUT_TARGETS = Object.freeze([
@@ -361,6 +363,12 @@ const SB_TOPBAR_SCALE = Object.freeze({
     max: 150,
     step: 5,
     defaultValue: 100,
+});
+const SB_PAPER_TEXTURE_OPACITY = Object.freeze({
+    min: 0,
+    max: 100,
+    step: 5,
+    defaultValue: 20,
 });
 const SB_TOPBAR_LABEL_PARTS = Object.freeze([
     {
@@ -722,6 +730,8 @@ const sbState = {
     theme: normalizeTheme(safeGetItem(SB_STORAGE_KEYS.theme)),
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
+    paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
+    paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
@@ -1059,6 +1069,21 @@ function normalizeSurfaceTransparency(value) {
 
 function formatSurfaceTransparency(value) {
     return `${normalizeSurfaceTransparency(value)}%`;
+}
+
+function normalizePaperTextureOpacity(value) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return SB_PAPER_TEXTURE_OPACITY.defaultValue;
+    }
+
+    const snappedValue = Math.round(numericValue / SB_PAPER_TEXTURE_OPACITY.step) * SB_PAPER_TEXTURE_OPACITY.step;
+    return Math.min(SB_PAPER_TEXTURE_OPACITY.max, Math.max(SB_PAPER_TEXTURE_OPACITY.min, snappedValue));
+}
+
+function formatPaperTextureOpacity(value) {
+    return `${normalizePaperTextureOpacity(value)}%`;
 }
 
 function clampNumber(value, min, max) {
@@ -3600,6 +3625,36 @@ function setSurfaceTransparency(value, { persist = true } = {}) {
 
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.surfaceTransparency, String(nextTransparency));
+    }
+
+    updateThemePickerUi();
+}
+
+function applyPaperTextureOpacity() {
+    const enabled = sbState.paperTextureEnabled;
+    const opacity = enabled ? normalizePaperTextureOpacity(sbState.paperTextureOpacity) / 100 : 0;
+    document.documentElement.style.setProperty('--sb-paper-texture-opacity', opacity.toFixed(2));
+}
+
+function setPaperTextureEnabled(enabled, { persist = true } = {}) {
+    const nextEnabled = normalizeStoredBoolean(enabled, false);
+    sbState.paperTextureEnabled = nextEnabled;
+    applyPaperTextureOpacity();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.paperTextureEnabled, String(nextEnabled));
+    }
+
+    updateThemePickerUi();
+}
+
+function setPaperTextureOpacity(value, { persist = true } = {}) {
+    const nextOpacity = normalizePaperTextureOpacity(value);
+    sbState.paperTextureOpacity = nextOpacity;
+    applyPaperTextureOpacity();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.paperTextureOpacity, String(nextOpacity));
     }
 
     updateThemePickerUi();
@@ -12243,6 +12298,42 @@ function createDesktopShellSizingSettingsGroup() {
     return group;
 }
 
+function createPaperTextureSettingsGroup() {
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-paper-texture-group',
+    });
+    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
+    const title = createElement('strong', { text: 'Paper Texture' });
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Add a subtle paper grain and wash overlay to the chat background.',
+    });
+    const toggleChoice = createMobileNavChoice({
+        id: 'sb-paper-texture-enabled-input',
+        type: 'checkbox',
+        value: 'paper-texture-enabled',
+        label: 'Enable paper texture',
+        icon: 'fa-scroll',
+        onChange: input => setPaperTextureEnabled(input.checked),
+    });
+    const opacitySliderGroup = createThemeSliderGroup({
+        title: 'Texture opacity',
+        valueId: 'sb-paper-texture-opacity-value',
+        inputId: 'sb-paper-texture-opacity-input',
+        value: sbState.paperTextureOpacity,
+        min: SB_PAPER_TEXTURE_OPACITY.min,
+        max: SB_PAPER_TEXTURE_OPACITY.max,
+        step: SB_PAPER_TEXTURE_OPACITY.step,
+        ariaLabel: 'Paper texture opacity',
+        caption: 'Higher values make the paper grain and wash more visible.',
+        onInput: nextValue => setPaperTextureOpacity(nextValue),
+    });
+
+    header.append(title, description);
+    group.append(header, toggleChoice, opacitySliderGroup);
+    return group;
+}
+
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-frontend-icon-group',
@@ -12471,6 +12562,7 @@ function injectThemePicker() {
     const mobileCompactModeSettingsGroup = createCompactModeSettingsGroup('mobile');
     const desktopBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('desktop');
     const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
+    const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
@@ -12518,6 +12610,7 @@ function injectThemePicker() {
             mobileButtonSliderGroup,
             mobileCompactModeSettingsGroup,
             mobileBottomChatBarSettingsGroup,
+            paperTextureSettingsGroup,
             mobileQuickActionSettingsGroup,
         );
     }
@@ -12572,6 +12665,9 @@ function updateThemePickerUi() {
     const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
     const mobileNavReplaceQuickActionsInput = document.getElementById('sb-mobile-nav-replace-quick-actions-input');
     const mobileNavReplacementSelect = document.getElementById('sb-mobile-nav-replacement-select');
+    const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
+    const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
+    const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
 
     for (const button of document.querySelectorAll('[data-sb-theme-option]')) {
         const themeId = button.getAttribute('data-sb-theme-option');
@@ -12775,6 +12871,25 @@ function updateThemePickerUi() {
         mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
         mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
         mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
+    }
+
+    if (paperTextureEnabledInput instanceof HTMLInputElement) {
+        paperTextureEnabledInput.checked = sbState.paperTextureEnabled;
+        const choice = paperTextureEnabledInput.closest('.sb-mobile-nav-choice');
+        choice?.classList.toggle('is-selected', sbState.paperTextureEnabled);
+    }
+
+    if (paperTextureOpacityInput instanceof HTMLInputElement) {
+        paperTextureOpacityInput.min = String(SB_PAPER_TEXTURE_OPACITY.min);
+        paperTextureOpacityInput.max = String(SB_PAPER_TEXTURE_OPACITY.max);
+        paperTextureOpacityInput.step = String(SB_PAPER_TEXTURE_OPACITY.step);
+        paperTextureOpacityInput.value = String(sbState.paperTextureOpacity);
+        paperTextureOpacityInput.disabled = !sbState.paperTextureEnabled;
+        paperTextureOpacityInput.closest('.sb-theme-slider-group')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
+    }
+
+    if (paperTextureOpacityValue instanceof HTMLElement) {
+        paperTextureOpacityValue.textContent = formatPaperTextureOpacity(sbState.paperTextureOpacity);
     }
 
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
@@ -16024,6 +16139,8 @@ function initAll() {
     setShellTheme(sbState.theme, { persist: false });
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
+    setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
+    setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
     setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
     setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });

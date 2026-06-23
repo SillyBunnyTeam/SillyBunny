@@ -2681,40 +2681,40 @@
 /* SillyBunny: final mobile density pass for phone chat chrome and message rhythm. */
 @media screen and (max-width: 768px) {
     :root {
-        --sb-topbar-primary-height-base: 30px;
+        --sb-topbar-primary-height-base: 28px;
         --sb-topbar-padding-x-base: 6px;
-        --sb-topbar-stack-gap-base: 3px;
+        --sb-topbar-stack-gap-base: 2px;
         --sb-topbar-bottom-padding-base: 2px;
         --sb-topbar-inline-gap-base: 4px;
         --sb-topbar-search-row-height-base: 28px;
         --sb-topbar-group-gap-base: 3px;
-        --sb-chatbar-height-base: 34px;
+        --sb-chatbar-height-base: 32px;
         --sb-chatbar-gap-base: 4px;
         --sb-chatbar-padding-y-base: 2px;
         --sb-chatbar-padding-x-base: 4px;
-        --sb-chatbar-button-size-base: 24px;
-        --sb-chatbar-field-height-base: 24px;
+        --sb-chatbar-button-size-base: 22px;
+        --sb-chatbar-field-height-base: 22px;
         --sb-chatbar-field-padding-x-base: 6px;
         --sb-chatbar-input-font-scale-base: 0.64;
-        --sb-mobile-toggle-size-base: 36px;
-        --sb-home-toggle-min-width-base: 36px;
+        --sb-mobile-toggle-size-base: 34px;
+        --sb-home-toggle-min-width-base: 34px;
         --sb-proxy-underline-inset-base: 7px;
         --sb-proxy-underline-bottom-base: 3px;
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 44px) * 0.56), 30px);
     }
 
     :root[data-sb-compact-mode='true'] {
-        --sb-topbar-primary-height-base: 32px;
+        --sb-topbar-primary-height-base: 26px;
         --sb-topbar-padding-x-base: 5px;
         --sb-topbar-inline-gap-base: 3px;
-        --sb-topbar-search-row-height-base: 30px;
-        --sb-chatbar-height-base: 32px;
-        --sb-chatbar-button-size-base: 22px;
-        --sb-chatbar-field-height-base: 22px;
+        --sb-topbar-search-row-height-base: 28px;
+        --sb-chatbar-height-base: 30px;
+        --sb-chatbar-button-size-base: 21px;
+        --sb-chatbar-field-height-base: 21px;
         --sb-chatbar-field-padding-x-base: 5px;
-        --sb-mobile-toggle-size-base: 34px;
-        --sb-home-toggle-min-width-base: 34px;
-        --sb-mobile-tools-min-size: 34px;
+        --sb-mobile-toggle-size-base: 32px;
+        --sb-home-toggle-min-width-base: 32px;
+        --sb-mobile-tools-min-size: 32px;
         --sb-message-icon-size: clamp(22px, calc(var(--bottomFormBlockSize, 36px) * 0.56), 28px);
     }
 
@@ -2731,14 +2731,39 @@
     }
 
     #sb-bottom-chat-bar {
-        --sb-bottom-chat-mobile-gutter: max(6px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+        --sb-bottom-chat-mobile-gutter: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
         --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
         --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
+        --sb-bottom-chat-mobile-radius: 0px;
+    }
+
+    #chat {
+        padding-inline: max(clamp(6px, 1.5vw, 16px), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) !important;
+    }
+
+    #form_sheld {
+        padding: 0 0 env(safe-area-inset-bottom, 0px) !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    #send_form {
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        border-radius: 0 !important;
+        background: var(--sb-composer-surface-bg);
+        border: 1px solid var(--sb-shell-border) !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.05);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
     }
 
     #nonQRFormItems {
@@ -2754,19 +2779,13 @@
     }
 
     #send_textarea {
-        padding: 4px 6px !important;
+        padding: 8px 10px !important;
         line-height: 1.15 !important;
     }
 
     #leftSendForm,
     #rightSendForm {
         gap: 2px !important;
-    }
-
-    #chat .mes:not(.smallSysMes) {
-        --avatar-base-width: 42px;
-        --avatar-base-height: 42px;
-        padding: 6px 8px 2px;
     }
 
     #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
@@ -2781,7 +2800,8 @@
     }
 
     #chat .mes:not(.smallSysMes) .mes_block {
-        padding-left: 6px;
+        padding: 2px 4px;
+        margin: 0;
     }
 
     #chat .mes_text,
@@ -2791,6 +2811,7 @@
 
     #chat .mes_text {
         padding: 2px max(18px, calc(var(--mes-right-spacing) - 10px)) 2px 0;
+        margin: 0;
     }
 
     #chat .mes_text p,
