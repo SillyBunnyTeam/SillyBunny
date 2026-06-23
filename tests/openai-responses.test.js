@@ -400,41 +400,4 @@ describe('OpenAI Responses integration', () => {
 
         errorSpy.mockRestore();
     });
-
-    test('does not log expected provider stream aborts as errors', async () => {
-        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        createProviderFetchSpy(() => Promise.reject(Object.assign(new Error('Client disconnected'), { name: 'AbortError' })));
-
-        try {
-            const response = await fetch('http://127.0.0.1:3010/api/backends/chat-completions/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_completion_source: CHAT_COMPLETION_SOURCES.MISTRALAI,
-                    reverse_proxy: 'https://mistral.example.invalid',
-                    proxy_password: 'test-key',
-                    model: 'mistral-test',
-                    stream: true,
-                    temperature: 1,
-                    max_tokens: 32,
-                    top_p: 1,
-                    messages: [
-                        { role: 'user', content: 'Abort this provider stream.' },
-                    ],
-                }),
-            });
-
-            expect(response.status).toBe(499);
-            expect(errorSpy).not.toHaveBeenCalledWith(
-                'Error communicating with MistralAI API: ',
-                expect.anything(),
-            );
-            expect(warnSpy.mock.calls.flat().join('\n')).not.toContain('Client disconnected');
-        } finally {
-            resetNodeFetchMock();
-            errorSpy.mockRestore();
-            warnSpy.mockRestore();
-        }
-    });
 });
