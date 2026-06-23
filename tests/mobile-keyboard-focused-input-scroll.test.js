@@ -20,6 +20,7 @@ describe('mobile keyboard focused-input scroll wiring', () => {
     test('locks iOS document scroll while the keyboard is open', () => {
         expect(tabsSource).toContain('function syncIOSKeyboardScrollLock(');
         expect(tabsSource).toContain('body.classList.toggle(\'sb-ios-keyboard-locked\'');
+        expect(tabsSource).not.toContain('window.scrollTo(0, 0)');
         expect(tabsSource).toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardScrollLock/);
     });
 
@@ -39,7 +40,9 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         // The visible area ends at (visualViewport.offsetTop + height); the helper
         // must push the scroller so the focused input's rect.bottom clears it.
         expect(tabsSource).toContain('function getVisualViewportSize(');
-        expect(tabsSource).toMatch(/const viewportSize = getVisualViewportSize\(\);/);
+        expect(tabsSource).toContain('function isVisualViewportKeyboardOpen(');
+        expect(tabsSource).toMatch(/const viewportSize = getVisualViewportSize\(layoutViewport\);/);
+        expect(tabsSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
         expect(tabsSource).toMatch(/viewportSize\.top \+ viewportSize\.height/);
         expect(tabsSource).toMatch(/scroller\.scrollTop \+= overflow/);
     });

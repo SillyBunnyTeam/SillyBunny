@@ -2386,6 +2386,11 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
         || visualViewportSize.left > 2;
 }
 
+function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    return keyboardHeight > 80 || visualViewportSize.top > 2;
+}
+
 function syncIOSKeyboardScrollLock() {
     if (!isMobileViewport() || !isIOSWebKitPlatform()) {
         document.body.classList.remove('sb-ios-keyboard-locked');
@@ -2394,14 +2399,9 @@ function syncIOSKeyboardScrollLock() {
 
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
-    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
-    const isKeyboardOpen = keyboardHeight > 80 || visualViewportSize.top > 2;
+    const isKeyboardOpen = isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize);
 
     document.body.classList.toggle('sb-ios-keyboard-locked', isKeyboardOpen);
-
-    if (isKeyboardOpen && (window.scrollY > 0 || window.scrollX > 0)) {
-        window.scrollTo(0, 0);
-    }
 }
 
 function getShellViewportSize() {
@@ -2471,7 +2471,13 @@ function scrollMobileFocusedInputIntoView(event) {
     function tryScroll() {
         // visualViewport tracks the keyboard: top grows and height shrinks as the
         // keyboard rises, so (top + height) is the bottom of the visible area.
-        const viewportSize = getVisualViewportSize();
+        const layoutViewport = getLayoutViewportSize();
+        const viewportSize = getVisualViewportSize(layoutViewport);
+
+        if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+            return;
+        }
+
         const viewportBottom = viewportSize.top + viewportSize.height;
         const rect = target.getBoundingClientRect();
         const overflow = rect.bottom - viewportBottom + 16;
