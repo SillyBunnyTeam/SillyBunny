@@ -57,6 +57,7 @@ All PRs must have their descriptions *manually* written, without AI assistance. 
 Project maintainers will test and can change your code before merging. To keep our workflow smooth, please ensure the following:
 - The "Allow edits from maintainers" option is checked.
 - Avoid force-pushing your branch once the PR is out of draft state.
+- Do not self commit any PR. It must be reviewed by at least one other contributor.
 #### Release and hotfix hygiene
 
 If you're helping ship a SillyBunny release, keep the release copy in sync with the code:
