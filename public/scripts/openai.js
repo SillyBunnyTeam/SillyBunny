@@ -86,7 +86,6 @@ import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } fr
 import { syncOpenRouterProvidersForModel, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
-import { applyPromptVariableAssignments, collectPromptVariableNames, createPromptVariableScope, withPromptVariableScope } from './prompt-variable-scope.js';
 import {
     buildChatCompletionPresetForSave,
     buildChatCompletionSamplingProfileKey,
@@ -941,154 +940,6 @@ function getEffectiveAssistantImpersonationPrefill(settings) {
     return substituteParams(prefill);
 }
 
-const knownRelativeExtensionPrompts = [
-    '1_memory',
-    '2_floating_prompt',
-    '3_vectors',
-    '4_vectors_data_bank',
-    'chromadb',
-];
-
-const knownExtensionPrompts = [
-    ...knownRelativeExtensionPrompts,
-    'PERSONA_DESCRIPTION',
-    'QUIET_PROMPT',
-    'DEPTH_PROMPT',
-];
-
-function getChatCompletionCorePromptVariableSources({ scenario, charPersonality, worldInfoBefore, worldInfoAfter, charDescription, quietPrompt, bias, systemPromptOverride, jailbreakPromptOverride }) {
-    return [
-        { content: scenario },
-        { content: charPersonality },
-        { content: worldInfoBefore },
-        { content: worldInfoAfter },
-        { content: charDescription },
-        { content: quietPrompt },
-        { content: bias },
-        { content: systemPromptOverride },
-        { content: jailbreakPromptOverride },
-        { content: oai_settings.scenario_format },
-        { content: oai_settings.personality_format },
-        { content: oai_settings.group_nudge_prompt },
-        { content: oai_settings.impersonation_prompt },
-        { content: oai_settings.new_chat_prompt },
-        { content: oai_settings.new_group_chat_prompt },
-        { content: oai_settings.new_example_chat_prompt },
-        { content: oai_settings.continue_nudge_prompt },
-        { content: oai_settings.send_if_empty },
-        { content: oai_settings.assistant_prefill },
-        { content: power_user.persona_description },
-    ];
-}
-
-function getEnabledChatCompletionCorePromptVariableSources({ scenario, charPersonality, worldInfoBefore, worldInfoAfter, charDescription, quietPrompt, bias, systemPromptOverride, jailbreakPromptOverride }) {
-    const sources = [
-        { content: scenario },
-        { content: charPersonality },
-        { content: worldInfoBefore },
-        { content: worldInfoAfter },
-        { content: charDescription },
-        { content: quietPrompt },
-        { content: bias },
-        { content: systemPromptOverride },
-        { content: jailbreakPromptOverride },
-        { content: oai_settings.scenario_format },
-        { content: oai_settings.personality_format },
-        { content: oai_settings.group_nudge_prompt },
-        { content: oai_settings.impersonation_prompt },
-    ];
-
-    if (power_user.persona_description && power_user.persona_description_position === persona_description_positions.IN_PROMPT) {
-        sources.push({ content: power_user.persona_description });
-    }
-
-    return sources;
-}
-
-function getChatCompletionExtensionPromptVariableSources(extensionPrompts = {}) {
-    const sources = [];
-
-    for (const key in extensionPrompts) {
-        if (Object.hasOwn(extensionPrompts, key)) {
-            sources.push({ content: extensionPrompts[key]?.value });
-        }
-    }
-
-    return sources;
-}
-
-async function shouldPreseedExtensionPromptVariableSource(key, prompt) {
-    if (!prompt?.value) {
-        return false;
-    }
-
-    const isKnownRelativePrompt = knownRelativeExtensionPrompts.includes(key) && getPromptPosition(prompt.position);
-    const isGenericRelativePrompt = !knownExtensionPrompts.includes(key) && [extension_prompt_types.BEFORE_PROMPT, extension_prompt_types.IN_PROMPT].includes(prompt.position);
-    const isInChatPrompt = prompt.position == extension_prompt_types.IN_CHAT;
-
-    if (!isKnownRelativePrompt && !isGenericRelativePrompt && !isInChatPrompt) {
-        return false;
-    }
-
-    if (isKnownRelativePrompt) {
-        return true;
-    }
-
-    const hasFilter = typeof prompt.filter === 'function';
-    if (hasFilter && !await prompt.filter()) {
-        return false;
-    }
-
-    return true;
-}
-
-async function getEnabledChatCompletionExtensionPromptVariableSources(extensionPrompts = {}) {
-    const sources = [];
-
-    for (const key in extensionPrompts) {
-        if (Object.hasOwn(extensionPrompts, key) && await shouldPreseedExtensionPromptVariableSource(key, extensionPrompts[key])) {
-            sources.push({ content: extensionPrompts[key].value });
-        }
-    }
-
-    return sources;
-}
-
-function getEnabledPromptManagerPromptVariableSources(type) {
-    const generationType = String(type || 'normal').toLowerCase().trim();
-    const sources = [];
-    const promptOrder = promptManager.getPromptOrderForCharacter(promptManager.activeCharacter);
-
-    for (const entry of promptOrder) {
-        const prompt = promptManager.getPromptById(entry.identifier);
-
-        if (entry.enabled && promptManager.shouldTrigger(prompt, generationType)) {
-            sources.push(prompt);
-        }
-    }
-
-    return sources;
-}
-
-async function createChatCompletionPromptVariableScope(options) {
-    const promptVariableNames = collectPromptVariableNames([
-        ...promptManager.getPromptsForCharacter(promptManager.activeCharacter),
-        ...getChatCompletionCorePromptVariableSources(options),
-        ...getChatCompletionExtensionPromptVariableSources(options.extensionPrompts),
-    ]);
-    const scope = createPromptVariableScope(promptVariableNames);
-
-    await withPromptVariableScope(scope, async () => {
-        applyPromptVariableAssignments(scope, [
-            ...getEnabledPromptManagerPromptVariableSources(options.type),
-            ...getEnabledChatCompletionCorePromptVariableSources(options),
-        ]);
-        applyPromptVariableAssignments(scope, await getEnabledChatCompletionExtensionPromptVariableSources(options.extensionPrompts));
-    });
-
-    return scope;
-}
-
 /**
  * Parses the example messages into individual messages.
  * @param {string} messageExampleString - The string containing the example messages
@@ -1805,6 +1656,17 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
         systemPrompts.push({ role: 'system', content: power_user.persona_description, identifier: 'personaDescription' });
     }
 
+    const knownExtensionPrompts = [
+        '1_memory',
+        '2_floating_prompt',
+        '3_vectors',
+        '4_vectors_data_bank',
+        'chromadb',
+        'PERSONA_DESCRIPTION',
+        'QUIET_PROMPT',
+        'DEPTH_PROMPT',
+    ];
+
     // Anything that is not a known extension prompt
     for (const key in extensionPrompts) {
         if (Object.hasOwn(extensionPrompts, key)) {
@@ -1927,7 +1789,8 @@ export async function prepareOpenAIMessages({
     chatCompletion.setTokenBudget(userSettings.openai_max_context, userSettings.openai_max_tokens);
 
     try {
-        const promptVariableScope = await createChatCompletionPromptVariableScope({
+        // Merge markers and ordered user prompts with system prompts
+        const prompts = await preparePromptsForChatCompletion({
             scenario,
             charPersonality,
             name2,
@@ -1942,27 +1805,8 @@ export async function prepareOpenAIMessages({
             type,
         });
 
-        // SillyBunny: prompt-set variables are render-local across the whole OpenAI prompt build.
-        await withPromptVariableScope(promptVariableScope, async () => {
-            // Merge markers and ordered user prompts with system prompts
-            const prompts = await preparePromptsForChatCompletion({
-                scenario,
-                charPersonality,
-                name2,
-                worldInfoBefore,
-                worldInfoAfter,
-                charDescription,
-                quietPrompt,
-                bias,
-                extensionPrompts,
-                systemPromptOverride,
-                jailbreakPromptOverride,
-                type,
-            });
-
-            // Fill the chat completion with as much context as the budget allows
-            await populateChatCompletion(prompts, chatCompletion, { bias, quietPrompt, quietImage, type, cyclePrompt, messages, messageExamples });
-        });
+        // Fill the chat completion with as much context as the budget allows
+        await populateChatCompletion(prompts, chatCompletion, { bias, quietPrompt, quietImage, type, cyclePrompt, messages, messageExamples });
     } catch (error) {
         if (error instanceof TokenBudgetExceededError) {
             toastr.error(t`Mandatory prompts exceed the context size.`);
