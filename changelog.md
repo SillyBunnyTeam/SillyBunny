@@ -76,6 +76,7 @@
 - PR #601 (2026-06-22) `fix: make regex HTMLs work universally on ICA`
 - PR #602 (2026-06-22) `fix: prevent switching branches from hanging`
 - PR #606 (2026-06-22) `feat(console): add verbose logging toggle`
+- PR #608 (2026-06-23) `fix: use set group chat greetings + harden group chat creation`
 
 ## v1.6.5
 
