@@ -6,6 +6,8 @@ import vm from 'node:vm';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bootGuardSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-boot-guard.js'), 'utf8');
+const IOS_WEBKIT_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const DESKTOP_CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 class FakeElement {
     constructor(tagName, { id = '', className = '' } = {}) {
@@ -138,16 +140,18 @@ function matchesSelector(element, selector) {
     return true;
 }
 
-function createBootGuardHarness() {
+function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5 } = {}) {
     const document = new FakeDocument();
     const timers = [];
     const listeners = new Map();
     let now = 0;
+    const fakeNavigator = { maxTouchPoints, platform, userAgent };
 
     const window = {
         addEventListener: (type, listener) => listeners.set(type, listener),
         clearTimeout: jest.fn(),
         location: { reload: jest.fn() },
+        navigator: fakeNavigator,
         setTimeout: (callback, delay) => {
             timers.push({ callback, delay });
             return timers.length;
@@ -158,7 +162,7 @@ function createBootGuardHarness() {
         console,
         Date: { now: () => now },
         document,
-        navigator: {},
+        navigator: fakeNavigator,
         Promise,
         window,
     });
@@ -182,6 +186,23 @@ function addPreloader(document) {
 }
 
 describe('SillyBunny boot guard', () => {
+    test('stays hidden when the browser is not iOS WebKit', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness({
+            maxTouchPoints: 0,
+            platform: 'Linux x86_64',
+            userAgent: DESKTOP_CHROME_USER_AGENT,
+        });
+        const preloader = addPreloader(document);
+
+        expect(timers).toHaveLength(0);
+        expect(listeners.has('error')).toBe(false);
+        expect(listeners.has('unhandledrejection')).toBe(false);
+
+        window.SillyBunnyBootGuard.showFailure('boom');
+
+        expect(preloader.querySelector('button')).toBeNull();
+    });
+
     test('removes startup loader artifacts before showing the recovery panel', () => {
         const { document, window } = createBootGuardHarness();
         const preloader = addPreloader(document);
@@ -257,7 +278,7 @@ describe('SillyBunny boot guard', () => {
         expect(preloader.querySelector('button')).toBeNull();
     });
 
-    test('still surfaces non-extension startup errors', () => {
+    test('still surfaces non-extension startup errors on iOS WebKit', () => {
         const { document, listeners, timers } = createBootGuardHarness();
         const preloader = addPreloader(document);
         const initialTimerCount = timers.length;
