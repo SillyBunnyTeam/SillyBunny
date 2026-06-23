@@ -353,6 +353,10 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: false,
             batchAgentIds: [],
+            sendContextToCompanions: false,
+            contextRecipientAgentIds: [],
+            dependencies: [],
+            waitForDependencies: false,
             maxTokens: 64000,
         });
         expect(store.isCompanionAgent(agent)).toBe(false);
@@ -377,6 +381,10 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: true,
             batchAgentIds: ['continuity-companion', 'director-commentary'],
+            sendContextToCompanions: true,
+            contextRecipientAgentIds: ['level-up-companion', 'stats-companion'],
+            dependencies: ['level-up-companion'],
+            waitForDependencies: true,
             maxTokens: 999999,
         })).toEqual(expect.objectContaining({
             trigger: 'manual',
@@ -394,6 +402,10 @@ describe('in-chat agent scoped enabled state', () => {
             },
             batch: true,
             batchAgentIds: ['continuity-companion', 'director-commentary'],
+            sendContextToCompanions: true,
+            contextRecipientAgentIds: ['level-up-companion', 'stats-companion'],
+            dependencies: ['level-up-companion'],
+            waitForDependencies: true,
             maxTokens: 64000,
         }));
 

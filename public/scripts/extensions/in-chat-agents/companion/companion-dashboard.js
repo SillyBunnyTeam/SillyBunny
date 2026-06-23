@@ -13,14 +13,15 @@ import {
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
+    getLatestValidCompanionMessageIndex,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
 import { openCompanionPanel } from './companion-panel.js';
 import {
     MESSAGE_INBOX_EMPTY_OUTPUTS,
-    isAssistantMessage,
     isMessageInboxAgent,
+    isValidCompanionMessage,
 } from './companion-shared.js';
 
 const RECENT_NOTES_LIMIT = 20;
@@ -124,7 +125,7 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
 
     for (let messageIndex = chat.length - 1; messageIndex >= 0 && entries.length < limit; messageIndex--) {
         const message = chat[messageIndex];
-        if (!isAssistantMessage(message)) {
+        if (!isValidCompanionMessage(message)) {
             continue;
         }
 
@@ -182,9 +183,9 @@ export function buildDashboardHtml() {
             <div class="ica--cdash-subtitle">Companions run as separate auxiliary LLM calls and render as collapsible note cards under assistant replies — they never edit the reply itself.</div>
             ${noticeHtml}
             <div class="ica--cdash-toolbar">
-                <button type="button" class="menu_button menu_button_icon" data-action="run-all" title="Run every enabled companion on the last assistant reply"${disabledAttribute}>
+                <button type="button" class="menu_button menu_button_icon" data-action="run-all" title="Run every enabled companion on the last message"${disabledAttribute}>
                     <i class="fa-solid fa-play"></i>
-                    <span>Run All on Last Reply</span>
+                    <span>Run All on Last Message</span>
                 </button>
                 <button type="button" class="menu_button menu_button_icon" data-action="open-panel" title="Open the slide-out companion panel with the latest state">
                     <i class="fa-solid fa-user-astronaut"></i>
@@ -246,16 +247,16 @@ async function handleDashboardAction(event, root, rerender) {
     const agent = agentId ? getAgentById(agentId) : null;
 
     if (action === 'run-all') {
-        const lastIndex = dashboardHooks.getLastAssistantMessageIndex();
+        const lastIndex = getLatestValidCompanionMessageIndex();
         if (lastIndex < 0) {
-            toastr.warning('No assistant reply yet to run companions on.');
+            toastr.warning('No message yet to run companions on.');
             return;
         }
         button.prop('disabled', true);
         try {
             const results = await runCompanionsOnMessage(lastIndex);
             if (!Object.keys(results ?? {}).length) {
-                toastr.info('No companion agents ran for this reply.');
+                toastr.info('No companion agents ran for this message.');
             }
         } finally {
             button.prop('disabled', false);
@@ -303,9 +304,9 @@ async function handleDashboardAction(event, root, rerender) {
     }
 
     if (action === 'run') {
-        const lastIndex = dashboardHooks.getLastAssistantMessageIndex();
+        const lastIndex = getLatestValidCompanionMessageIndex();
         if (lastIndex < 0) {
-            toastr.warning('No assistant reply yet to run this companion on.');
+            toastr.warning('No message yet to run this companion on.');
             return;
         }
         button.prop('disabled', true);

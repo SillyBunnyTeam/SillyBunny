@@ -47,6 +47,20 @@ export function getAgentTemplateId(agent = {}) {
     return String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
 }
 
+export function getCompanionReferenceIds(agent = {}) {
+    const ids = [agent?.id, getAgentTemplateId(agent)];
+    const seenIds = new Set();
+
+    return ids
+        .map(id => String(id ?? '').trim())
+        .filter(id => {
+            if (!id || seenIds.has(id)) return false;
+
+            seenIds.add(id);
+            return true;
+        });
+}
+
 export function isMessageInboxAgent(agent = null) {
     return getAgentTemplateId(agent) === MESSAGE_INBOX_TEMPLATE_ID;
 }
@@ -96,4 +110,13 @@ export function normalizeChatroomReply(value = '') {
  */
 export function isAssistantMessage(message) {
     return Boolean(message && !message.is_user && !message.is_system);
+}
+
+/**
+ * A message that can host companion results (assistant or user, but not a system note).
+ * @param {object} message
+ * @returns {boolean}
+ */
+export function isValidCompanionMessage(message) {
+    return Boolean(message && !message.is_system);
 }

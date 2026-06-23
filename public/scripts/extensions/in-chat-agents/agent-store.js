@@ -41,6 +41,10 @@ import {
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
  * @property {string[]} batchAgentIds
+ * @property {boolean} sendContextToCompanions - Send this companion's latest output to selected companions before they generate
+ * @property {string[]} contextRecipientAgentIds - Companion agent IDs that should receive this companion's latest output as context
+ * @property {string[]} dependencies - Companion agent IDs that should re-run when this agent produces new output
+ * @property {boolean} waitForDependencies - Delay this companion when selected dependencies are running in the same pass
  * @property {number} maxTokens
  */
 
@@ -920,6 +924,10 @@ export function createDefaultCompanionConfig() {
         },
         batch: false,
         batchAgentIds: [],
+        sendContextToCompanions: false,
+        contextRecipientAgentIds: [],
+        dependencies: [],
+        waitForDependencies: false,
         maxTokens: MAX_AGENT_MAX_TOKENS,
     };
 }
@@ -964,6 +972,10 @@ export function normalizeCompanionConfig(raw = {}) {
         },
         batch: Boolean(rawConfig.batch),
         batchAgentIds: normalizeStringIdList(rawConfig.batchAgentIds),
+        sendContextToCompanions: Boolean(rawConfig.sendContextToCompanions),
+        contextRecipientAgentIds: normalizeStringIdList(rawConfig.contextRecipientAgentIds),
+        dependencies: normalizeStringIdList(rawConfig.dependencies),
+        waitForDependencies: Boolean(rawConfig.waitForDependencies),
         maxTokens: clampNumber(rawConfig.maxTokens, defaults.maxTokens, 16, MAX_AGENT_MAX_TOKENS),
     };
 }

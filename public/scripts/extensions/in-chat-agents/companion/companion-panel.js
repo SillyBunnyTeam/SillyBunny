@@ -14,6 +14,7 @@ import {
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     getCompanionResults,
+    getLatestValidCompanionMessageIndex,
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
@@ -34,6 +35,7 @@ import {
     isChatOnlyAgent,
     isChatroomAgent,
     isPlotCompassAgent,
+    isValidCompanionMessage,
     normalizeChatOnlyInput,
     normalizeChatroomReply,
     normalizePlotCompassObjective,
@@ -350,6 +352,10 @@ function getLatestAssistantIndex() {
     return chat.findLastIndex(isAssistantMessage);
 }
 
+function getLatestValidCompanionIndex() {
+    return getLatestValidCompanionMessageIndex();
+}
+
 async function savePlotCompassObjective(agent, objective) {
     if (!agent || !isPlotCompassAgent(agent)) {
         return;
@@ -379,7 +385,7 @@ export function collectPanelAgentStates() {
 
     for (let messageIndex = chat.length - 1; messageIndex >= 0; messageIndex--) {
         const message = chat[messageIndex];
-        if (!isAssistantMessage(message)) {
+        if (!isValidCompanionMessage(message)) {
             continue;
         }
 
@@ -683,14 +689,14 @@ async function handlePanelAction(event) {
     }
 
     if (action === 'panel-regenerate-all') {
-        const lastAssistantIndex = getLatestAssistantIndex();
-        if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to run companions on.');
+        const lastValidIndex = getLatestValidCompanionIndex();
+        if (lastValidIndex < 0) {
+            toastr.warning('No message yet to run companions on.');
             return;
         }
         button.prop('disabled', true);
         try {
-            await runCompanionsOnMessage(lastAssistantIndex);
+            await runCompanionsOnMessage(lastValidIndex);
         } finally {
             button.prop('disabled', false);
             if (panelOpen) {
@@ -709,14 +715,14 @@ async function handlePanelAction(event) {
             toastr.warning('No companion selected.');
             return;
         }
-        const lastAssistantIndex = getLatestAssistantIndex();
-        if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to run this companion on.');
+        const lastValidIndex = getLatestValidCompanionIndex();
+        if (lastValidIndex < 0) {
+            toastr.warning('No message yet to run this companion on.');
             return;
         }
         button.prop('disabled', true);
         try {
-            await runCompanionAgentOnMessage(agentId, lastAssistantIndex);
+            await runCompanionAgentOnMessage(agentId, lastValidIndex);
         } finally {
             button.prop('disabled', false);
             if (panelOpen) {

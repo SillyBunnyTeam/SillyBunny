@@ -100,6 +100,7 @@ describe('companion dashboard', () => {
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
             COMPANION_RESULTS_UPDATED_EVENT: 'companion_results_updated',
             getCompanionResults: jest.fn(message => companionResultsByMessage.get(message) ?? {}),
+            getLatestValidCompanionMessageIndex: jest.fn(() => chat.length - 1),
             runCompanionAgentOnMessage: jest.fn(async () => ({})),
             runCompanionsOnMessage: jest.fn(async () => ({})),
         }));

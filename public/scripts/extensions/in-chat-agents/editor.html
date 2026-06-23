@@ -219,6 +219,22 @@
             </label>
             <div class="ica--regex-note">Only selected companions can batch together. Agents with different models, profiles, or context settings still run separately.</div>
         </div>
+        <div class="ica--editor-row" id="ica--companion-context-recipient-row">
+            <label class="checkbox_label" title="Send this companion's latest completed output to selected companions as extra prompt context before they generate."><input type="checkbox" id="ica--editor-companion-sendContextToCompanions" /><span>Send context to the following Companion Agents before generation</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-context-recipient-select-row" style="display:none">
+            <label>Companion Agents Receiving This Context
+                <select id="ica--editor-companion-contextRecipientAgentIds" class="text_pole" multiple size="5"></select>
+            </label>
+            <div class="ica--regex-note">Selected companions receive this companion's latest available output in their prompt context before they generate.</div>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-dependency-row">
+            <label>Re-run After These Companions Update
+                <select id="ica--editor-companion-dependencies" class="text_pole" multiple size="5"></select>
+            </label>
+            <label class="checkbox_label" title="When selected companions are also running, wait for them to finish before this companion generates."><input type="checkbox" id="ica--editor-companion-waitForDependencies" /><span>Delay until selected companions finish</span></label>
+            <div class="ica--regex-note">This companion will automatically re-run when any selected companion produces new output.</div>
+        </div>
     </div>
 
     <div class="ica--editor-section" id="ica--tracker-builder-section" style="display:none">

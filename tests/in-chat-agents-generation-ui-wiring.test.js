@@ -104,7 +104,27 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('Run selected companions in one request');
         expect(editorTemplateSource).toContain('Batch With Enabled Companions');
         expect(editorTemplateSource).toContain('Turn it on to fetch currently enabled side companions');
+        expect(editorTemplateSource).toContain('ica--editor-companion-sendContextToCompanions');
+        expect(editorTemplateSource).toContain('Send context to the following Companion Agents before generation');
+        expect(editorTemplateSource).toContain('ica--editor-companion-contextRecipientAgentIds');
+        expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
+        expect(editorTemplateSource).toContain('Delay until selected companions finish');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
+    });
+
+    test('persists companion context-send and dependency delay toggles', () => {
+        const readSource = getFunctionSource('readCompanionConfigFromEditor');
+        const writeSource = getFunctionSource('writeCompanionConfigToEditor');
+
+        expect(indexSource).toContain("#ica--editor-companion-sendContextToCompanions");
+        expect(indexSource).toContain("#ica--editor-companion-contextRecipientAgentIds");
+        expect(readSource).toContain("sendContextToCompanions: root.find('#ica--editor-companion-sendContextToCompanions').prop('checked')");
+        expect(readSource).toContain("contextRecipientAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-contextRecipientAgentIds').val())");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', nextCompanion.sendContextToCompanions);");
+        expect(writeSource).toContain('updateCompanionContextRecipientOptions();');
+        expect(indexSource).toContain("#ica--editor-companion-waitForDependencies");
+        expect(readSource).toContain("waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked')");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);");
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {
@@ -112,6 +132,68 @@ describe('in-chat agents generation UI wiring', () => {
         expect(source).not.toContain('getCompanionBatchCompatibilityKey');
         expect(source).toContain('isAgentEnabledForCurrentScope(candidate)');
         expect(source).toContain('isCompanionAgent(candidate)');
+        expect(source).toContain('referenceIds: getCompanionReferenceIds(candidate)');
+    });
+
+    test('selects companion links by saved id or source template id', () => {
+        const batchSource = getFunctionSource('updateCompanionBatchAgentOptions');
+        const contextRecipientSource = getFunctionSource('updateCompanionContextRecipientOptions');
+        const dependencySource = getFunctionSource('updateCompanionDependencyOptions');
+
+        for (const source of [batchSource, contextRecipientSource, dependencySource]) {
+            expect(source).toContain('options.flatMap(option => option.referenceIds)');
+            expect(source).toContain('option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))');
+        }
+    });
+
+    test('migrates Level Up and User-based Stats context links once', () => {
+        const migrationSource = getFunctionSource('migrateLevelUpStatsContextLinks');
+        const defaultSource = getFunctionSource('applyLevelUpStatsContextLinkDefault');
+
+        expect(indexSource).toContain('LEVEL_UP_STATS_CONTEXT_LINKS_VERSION');
+        expect(indexSource).toContain('LEVEL_UP_COMPANION_TEMPLATE_ID');
+        expect(indexSource).toContain('USER_BASED_STATS_TEMPLATE_ID');
+        expect(defaultSource).toContain('sendContextToCompanions: true');
+        expect(defaultSource).toContain('contextRecipientAgentIds: recipientIds');
+        expect(defaultSource).toContain('dependencies: dependencyIds');
+        expect(defaultSource).toContain('waitForDependencies');
+        expect(indexSource).toContain('const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 2;');
+        expect(migrationSource).toContain('levelUpStatsContextLinksVersion');
+        expect(indexSource).toContain('await migrateLevelUpStatsContextLinks();');
+    });
+
+    test('targets tracker fixes only at assistant messages while allowing connected companions on user messages', () => {
+        const visibilitySource = getFunctionSource('updateFixTrackersButtonVisibility');
+        const runSource = getFunctionSource('runTrackerFixFromButton');
+        const globalButtonStart = indexSource.indexOf("$('#ica--fixTrackers').on('click'");
+        const globalButtonEnd = indexSource.indexOf("$('#ica--templatesCallout')", globalButtonStart);
+        const globalButtonSource = indexSource.slice(globalButtonStart, globalButtonEnd);
+
+        expect(visibilitySource).toContain('hasTrackerCandidates');
+        expect(visibilitySource).toContain('hasConnectedCandidates');
+        expect(visibilitySource).toContain('const isAssistantMessage = isNonSystemMessage');
+        expect(visibilitySource).toContain('(hasTrackerCandidates && isAssistantMessage)');
+        expect(visibilitySource).toContain('(hasConnectedCandidates && isNonSystemMessage)');
+        expect(runSource).toContain('canRunTrackersOnMessage');
+        expect(runSource).toContain('hasTrackers && canRunTrackersOnMessage');
+        expect(runSource).toContain('No assistant reply selected to fix trackers on.');
+        expect(globalButtonSource).toContain('hasConnectedCompanionAgents()');
+        expect(globalButtonSource).toContain('getLastAssistantMessageIndex()');
+    });
+
+    test('populates companion dependency selector during editor setup', () => {
+        const source = getFunctionSource('openEditor');
+        const setupStart = source.indexOf('updateTrackerBuilderVisibility();');
+        const setupEnd = source.indexOf('// Show/hide sections based on phase');
+        const setupSource = source.slice(setupStart, setupEnd);
+
+        expect(editorTemplateSource).toContain('ica--editor-companion-dependencies');
+        expect(setupSource).toContain('updateCompanionBatchAgentOptions();');
+        expect(setupSource).toContain('updateCompanionContextRecipientOptions();');
+        expect(setupSource).toContain('updateCompanionDependencyOptions();');
+        expect(setupSource.indexOf('updateCompanionContextRecipientOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionContextRecipientOptions();'));
+        expect(setupSource.indexOf('updateCompanionDependencyOptions();')).toBeGreaterThan(setupSource.indexOf('updateCompanionBatchAgentOptions();'));
     });
 
     test('labels companion agent cards as side execution', () => {

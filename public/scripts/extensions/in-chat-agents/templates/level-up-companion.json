@@ -8,7 +8,7 @@
     "tags": [],
     "version": 1,
     "author": "Purachina",
-    "prompt": "## Leveling and Growth Rules\n\nTrack {{user}}'s progress. Only level up after a major milestone, such as completing an arc, surviving a deadly encounter, solving a major mystery, defeating or saving someone important, making a major world-state choice, or repeatedly committing to a clear playstyle.\n\nDo not level up after minor successes, routine checks, or ordinary conversations.\n\nA level-up grants:\n- +1 Level.\n- 5-15 total skill points in recently used skills.\n- Optional story-supported changes to reputation, items, conditions, relationships, factions, or resources.\n- A new perk only if clearly earned through repeated behavior, a major achievement, or a defining choice.\n\nOnly output [LEVEL_UP] when warranted.\n\n## Level-Up Output Format\n\n[LEVEL_UP]\nLevel: X\nReason: Brief major milestone description.\n\nSkill Growth:\n- Skill Name: +X, now X/100\n- Skill Name: +X, now X/100\n\nNew Perk:\n- Perk Name: Mechanical or narrative effect.\nEarned By: One sentence describing what unlocked it.\n\nOther Changes:\n- Optional reputation, item, condition, companion, faction, relationship, resource, or story-state change.\n[/LEVEL_UP]\n\nIf no perk is earned:\n\nNew Perk:\n- None this level.\nEarned By: No new perk was clearly earned.\n\n## Updating Existing Stats\n\nIf an existing [USER_STATS] block is provided, update it instead of generating a new one.\n\nWhen applying a [LEVEL_UP]:\n- Increase Level by 1.\n- Apply skill increases.\n- Add earned perk, if any.\n- Preserve existing traits, perks, weaknesses, and notes unless changed.\n- Keep stats consistent and setting-specific.\n[/USER_STATS]",
+    "prompt": "## Leveling and Growth Rules\n\nTrack {{user}}'s progress. Only level up after a major milestone, such as completing an arc, surviving a deadly encounter, solving a major mystery, defeating or saving someone important, making a major world-state choice, or repeatedly committing to a clear playstyle.\n\nDo not level up after minor successes, routine checks, or ordinary conversations.\n\nA level-up grants:\n- +1 Level.\n- 5-15 total skill points in recently used skills.\n- Optional story-supported changes to reputation, items, conditions, relationships, factions, or resources.\n- A new perk only if clearly earned through repeated behavior, a major achievement, or a defining choice.\n\nOnly output [LEVEL_UP] when warranted.\n\n## Level-Up Output Format\n\n[LEVEL_UP]\nLevel: X\nReason: Brief major milestone description.\n\nSkill Growth:\n- Skill Name: +X, now X/100\n- Skill Name: +X, now X/100\n\nNew Perk:\n- Perk Name: Mechanical or narrative effect.\nEarned By: One sentence describing what unlocked it.\n\nOther Changes:\n- Optional reputation, item, condition, companion, faction, relationship, resource, or story-state change.\n[/LEVEL_UP]\n\nIf no perk is earned:\n\nNew Perk:\n- None this level.\nEarned By: No new perk was clearly earned.",
     "phase": "pre",
     "connectionProfile": "",
     "modelOverride": "",
@@ -41,6 +41,10 @@
         },
         "batch": true,
         "batchAgentIds": [
+            "tpl-user-based-stats-generator"
+        ],
+        "sendContextToCompanions": true,
+        "contextRecipientAgentIds": [
             "tpl-user-based-stats-generator"
         ],
         "maxTokens": 64000
