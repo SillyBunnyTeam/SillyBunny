@@ -7,15 +7,15 @@
     --topBarBlockSize: 40px;
     --topBarIconSize: 28px;
 
-    --thought-box-bg: rgba(24, 23, 20, 0.96);
-    --thought-box-bg-2: rgba(33, 31, 27, 0.96);
-    --thought-box-border: rgba(170, 150, 115, 0.36);
-    --thought-box-text: rgba(216, 204, 180, 1);
-    --thought-box-muted: rgba(216, 204, 180, 0.68);
-    --thought-box-accent: rgba(186, 150, 88, 1);
+    --thought-box-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(24, 23, 20, 0.96)) 92%, var(--SmartThemeChatTintColor, rgba(0, 0, 0, 0.96)) 8%);
+    --thought-box-bg-2: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(33, 31, 27, 0.96)) 82%, var(--SmartThemeQuoteColor, rgba(186, 150, 88, 1)) 18%);
+    --thought-box-border: color-mix(in srgb, var(--SmartThemeBorderColor, rgba(170, 150, 115, 0.36)) 72%, transparent);
+    --thought-box-text: var(--SmartThemeBodyColor, rgba(216, 204, 180, 1));
+    --thought-box-muted: color-mix(in srgb, var(--SmartThemeBodyColor, rgba(216, 204, 180, 1)) 68%, transparent);
+    --thought-box-accent: var(--SmartThemeQuoteColor, rgba(186, 150, 88, 1));
 }
 
-/* Paper grain overlay */
+/* Paper grain and wash overlay */
 body::after {
     content: '';
     position: fixed;
@@ -28,26 +28,14 @@ body::after {
         radial-gradient(circle at 18% 22%, rgba(255, 248, 220, 0.65) 0 1.2px, transparent 1.8px),
         radial-gradient(circle at 74% 38%, rgba(80, 62, 42, 0.5) 0 1px, transparent 1.6px),
         radial-gradient(circle at 41% 79%, rgba(255, 255, 240, 0.42) 0 1.2px, transparent 1.9px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.04));
-    background-size: 30px 30px, 25px 25px, 38px 38px, 100% 100%;
-}
-
-/* Subtle paper wash */
-body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-    pointer-events: none;
-    opacity: calc(var(--sb-paper-texture-opacity, 0) * 0.6);
-    mix-blend-mode: overlay;
-    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.04)),
         linear-gradient(115deg, rgba(255, 244, 204, 0.22), transparent 38%, rgba(91, 69, 42, 0.16)),
         repeating-linear-gradient(
             0deg,
             rgba(255, 255, 255, 0.035) 0 1px,
             transparent 1px 5px
         );
+    background-size: 30px 30px, 25px 25px, 38px 38px, 100% 100%, 100% 100%, 100% 100%;
 }
 
 /* Slimmer top bar with centered icons */
@@ -149,7 +137,7 @@ button:not(.ica--tpanel-handle):not(.gg-action-button) {
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    opacity: 0.09;
+    opacity: calc(var(--sb-paper-texture-opacity, 0) * 0.09);
     mix-blend-mode: soft-light;
     background-image:
         radial-gradient(circle at 20% 30%, rgba(255, 248, 220, 0.65) 0 1px, transparent 1.6px),

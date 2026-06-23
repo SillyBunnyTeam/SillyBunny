@@ -76,6 +76,31 @@ describe('mobile css ratchet budgets', () => {
     });
 });
 
+describe('paper texture regression guards', () => {
+    const paperThemeCss = forkSheetSources['sillybunny-paper-theme.css'];
+
+    test('keeps the base ambient body pseudo-element available', () => {
+        expect(paperThemeCss).not.toMatch(/body::before\s*\{/);
+        expect(paperThemeCss).toMatch(/body::after\s*\{/);
+    });
+
+    test('gates both page and message paper overlays behind texture opacity', () => {
+        const bodyAfterRule = paperThemeCss.match(/body::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+        const messageAfterRule = paperThemeCss.match(/\.mes::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+
+        expect(bodyAfterRule).toContain('--sb-paper-texture-opacity');
+        expect(messageAfterRule).toContain('--sb-paper-texture-opacity');
+    });
+
+    test('derives thought box colors from active SmartTheme tokens', () => {
+        const thoughtBoxTokenBlock = paperThemeCss.match(/--thought-box-bg:[\s\S]*?--thought-box-accent:[^;]+;/)?.[0] ?? '';
+
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBlurTintColor');
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeBodyColor');
+        expect(thoughtBoxTokenBlock).toContain('--SmartThemeQuoteColor');
+    });
+});
+
 describe('index.html mobile stylesheet gates', () => {
     const indexHtml = readPublicFile('index.html');
     const stylesheetTags = [...indexHtml.matchAll(/<link\s[^>]*rel="stylesheet"[^>]*>/g)].map(match => match[0]);
