@@ -7598,8 +7598,8 @@ body:not(.movingUI) .drawer-content.maximized {
 @media screen and (max-width: 600px) {
     .group_speaker_controls {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 34px;
-        grid-template-areas: "typing typing" "avatars speak";
+        grid-template-columns: minmax(0, 1fr) 34px 34px;
+        grid-template-areas: "typing typing typing" "avatars greeting speak";
         align-items: center;
         gap: 4px;
         padding: 4px 6px;
@@ -7642,6 +7642,7 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 
     .group_speaker_avatar span,
+    #group_add_greeting span,
     #group_speaker_now span {
         display: none;
     }
@@ -7651,6 +7652,7 @@ body:not(.movingUI) .drawer-content.maximized {
         height: 24px;
     }
 
+    #group_add_greeting,
     #group_speaker_now {
         width: 34px;
         min-width: 34px;
@@ -7664,6 +7666,10 @@ body:not(.movingUI) .drawer-content.maximized {
         font-size: calc(var(--mainFontSize) * 0.95);
     }
 
+    #group_add_greeting {
+        grid-area: greeting;
+    }
+
     #group_speaker_now {
         grid-area: speak;
     }
@@ -7672,9 +7678,10 @@ body:not(.movingUI) .drawer-content.maximized {
 
 @media screen and (max-width: 420px) {
     .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) 30px;
+        grid-template-columns: minmax(0, 1fr) 30px 30px;
     }
 
+    #group_add_greeting,
     #group_speaker_now {
         width: 30px;
         min-width: 30px;
