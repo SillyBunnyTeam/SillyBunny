@@ -155,8 +155,30 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('USER_BASED_STATS_TEMPLATE_ID');
         expect(defaultSource).toContain('sendContextToCompanions: true');
         expect(defaultSource).toContain('contextRecipientAgentIds: recipientIds');
+        expect(defaultSource).toContain('dependencies: dependencyIds');
+        expect(defaultSource).toContain('waitForDependencies');
+        expect(indexSource).toContain('const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 2;');
         expect(migrationSource).toContain('levelUpStatsContextLinksVersion');
         expect(indexSource).toContain('await migrateLevelUpStatsContextLinks();');
+    });
+
+    test('targets tracker fixes only at assistant messages while allowing connected companions on user messages', () => {
+        const visibilitySource = getFunctionSource('updateFixTrackersButtonVisibility');
+        const runSource = getFunctionSource('runTrackerFixFromButton');
+        const globalButtonStart = indexSource.indexOf("$('#ica--fixTrackers').on('click'");
+        const globalButtonEnd = indexSource.indexOf("$('#ica--templatesCallout')", globalButtonStart);
+        const globalButtonSource = indexSource.slice(globalButtonStart, globalButtonEnd);
+
+        expect(visibilitySource).toContain('hasTrackerCandidates');
+        expect(visibilitySource).toContain('hasConnectedCandidates');
+        expect(visibilitySource).toContain('const isAssistantMessage = isNonSystemMessage');
+        expect(visibilitySource).toContain('(hasTrackerCandidates && isAssistantMessage)');
+        expect(visibilitySource).toContain('(hasConnectedCandidates && isNonSystemMessage)');
+        expect(runSource).toContain('canRunTrackersOnMessage');
+        expect(runSource).toContain('hasTrackers && canRunTrackersOnMessage');
+        expect(runSource).toContain('No assistant reply selected to fix trackers on.');
+        expect(globalButtonSource).toContain('hasConnectedCompanionAgents()');
+        expect(globalButtonSource).toContain('getLastAssistantMessageIndex()');
     });
 
     test('populates companion dependency selector during editor setup', () => {

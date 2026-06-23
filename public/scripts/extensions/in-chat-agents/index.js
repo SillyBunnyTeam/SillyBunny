@@ -160,7 +160,7 @@ const DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE = 'custom';
 const DIRECTOR_COMMENTARY_CUSTOM_VOICES_MAX_CHARS = 6000;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_NAME_MAX_CHARS = 80;
 const DIRECTOR_COMMENTARY_CUSTOM_VOICE_PROMPT_MAX_CHARS = 2000;
-const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 1;
+const LEVEL_UP_STATS_CONTEXT_LINKS_VERSION = 2;
 const CHATROOM_STYLE_VALUES = Object.freeze([
     'mixed',
     'in-world',
@@ -595,7 +595,7 @@ async function migrateTrackerCompanionsToAutoLoop() {
 }
 
 function getLevelUpStatsContextRecipientTemplateId(agent) {
-    const templateId = String(agent?.sourceTemplateId ?? agent?.id ?? '').trim();
+    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
     if (templateId === LEVEL_UP_COMPANION_TEMPLATE_ID) {
         return USER_BASED_STATS_TEMPLATE_ID;
     }
@@ -615,6 +615,8 @@ function applyLevelUpStatsContextLinkDefault(agent) {
 
     const companion = getCompanionConfig(agent);
     const recipientIds = normalizeCompanionBatchAgentIds(companion.contextRecipientAgentIds);
+    const dependencyIds = normalizeCompanionBatchAgentIds(companion.dependencies);
+    const templateId = String(agent?.sourceTemplateId || agent?.id || '').trim();
     const recipientKey = recipientTemplateId.toLowerCase();
     let changed = false;
 
@@ -628,6 +630,19 @@ function applyLevelUpStatsContextLinkDefault(agent) {
         changed = true;
     }
 
+    if (templateId === USER_BASED_STATS_TEMPLATE_ID) {
+        const dependencyKey = LEVEL_UP_COMPANION_TEMPLATE_ID.toLowerCase();
+        if (!dependencyIds.some(id => id.toLowerCase() === dependencyKey)) {
+            dependencyIds.push(LEVEL_UP_COMPANION_TEMPLATE_ID);
+            changed = true;
+        }
+
+        if (!companion.waitForDependencies) {
+            companion.waitForDependencies = true;
+            changed = true;
+        }
+    }
+
     if (!changed) {
         return false;
     }
@@ -637,6 +652,8 @@ function applyLevelUpStatsContextLinkDefault(agent) {
         ...companion,
         sendContextToCompanions: true,
         contextRecipientAgentIds: recipientIds,
+        dependencies: dependencyIds,
+        waitForDependencies: templateId === USER_BASED_STATS_TEMPLATE_ID ? true : companion.waitForDependencies,
     };
     return true;
 }
@@ -2013,12 +2030,18 @@ async function applyBulkEdit() {
 }
 
 function updateFixTrackersButtonVisibility() {
-    const hasInstalledFixables = hasTrackerFixAgents() || hasConnectedCompanionAgentCandidates();
+    const hasTrackerCandidates = hasTrackerFixAgents();
+    const hasConnectedCandidates = hasConnectedCompanionAgentCandidates();
+    const hasInstalledFixables = hasTrackerCandidates || hasConnectedCandidates;
     const shouldShowMessageButtons = areAgentsGloballyEnabled() && hasInstalledFixables;
     $('.mes_fix_trackers').each(function () {
         const $message = $(this).closest('.mes');
         const isNonSystemMessage = $message.attr('is_system') !== 'true';
-        $(this).toggle(shouldShowMessageButtons && isNonSystemMessage);
+        const isAssistantMessage = isNonSystemMessage && $message.attr('is_user') !== 'true';
+        $(this).toggle(shouldShowMessageButtons && (
+            (hasTrackerCandidates && isAssistantMessage) ||
+            (hasConnectedCandidates && isNonSystemMessage)
+        ));
     });
 
     const $agentsButton = $('#ica--fixTrackers');
@@ -2043,11 +2066,20 @@ async function runTrackerFixFromButton(messageIndex, button) {
             toastr.info('No enabled tracker or connected companion agents found.');
             return;
         }
-        if (hasTrackers) {
+
+        const message = chat[messageIndex];
+        const canRunTrackersOnMessage = message && !message.is_user && !message.is_system;
+        const canRunConnectedOnMessage = message && !message.is_system;
+
+        if (hasTrackers && canRunTrackersOnMessage) {
             await runTrackerFixOnMessage(messageIndex);
+        } else if (hasTrackers && !hasConnected) {
+            toastr.warning('No assistant reply selected to fix trackers on.');
         }
-        if (hasConnected) {
+        if (hasConnected && canRunConnectedOnMessage) {
             await runConnectedCompanionsOnMessage(messageIndex);
+        } else if (hasConnected && !hasTrackers) {
+            toastr.warning('No message selected to run connected companions on.');
         }
     } finally {
         fixTrackersRunning = false;
@@ -5427,9 +5459,11 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             updateFixTrackersButtonVisibility();
             return;
         }
-        const messageIndex = getLatestValidCompanionMessageIndex();
+        const messageIndex = hasConnectedCompanionAgents()
+            ? getLatestValidCompanionMessageIndex()
+            : getLastAssistantMessageIndex();
         if (messageIndex < 0) {
-            toastr.warning('No message yet to fix trackers on.');
+            toastr.warning('No assistant reply yet to fix trackers on.');
             return;
         }
         await runTrackerFixFromButton(messageIndex, this);

@@ -950,6 +950,17 @@ function getUnitExtraContextSections(agents, extraContextSectionsByAgentId) {
     return sections;
 }
 
+function getCompanionExtraContextSignature(agent, extraContextSectionsByAgentId) {
+    if (!extraContextSectionsByAgentId) {
+        return '[]';
+    }
+
+    return JSON.stringify((extraContextSectionsByAgentId.get(agent.id) ?? []).map(section => ({
+        title: String(section?.title ?? ''),
+        content: String(section?.content ?? ''),
+    })));
+}
+
 function findCompanionDependents(changedAgent, candidates) {
     const changedReferenceIds = getCompanionReferenceIds(changedAgent);
 
@@ -963,7 +974,28 @@ function findCompanionDependents(changedAgent, candidates) {
     });
 }
 
-function partitionCompanionRuns(agents, messageIndex) {
+function collectConnectedCompanionRunAgents(runnableAgents = []) {
+    const agentByReferenceId = buildCompanionReferenceMap(runnableAgents);
+    const selectedIds = new Set();
+
+    for (const agent of runnableAgents) {
+        if (!hasConnectedCompanionDependencies(agent)) {
+            continue;
+        }
+
+        selectedIds.add(agent.id);
+        for (const dependencyId of getCompanionDependencyIdSet(agent)) {
+            const dependencyAgent = agentByReferenceId.get(dependencyId);
+            if (dependencyAgent) {
+                selectedIds.add(dependencyAgent.id);
+            }
+        }
+    }
+
+    return runnableAgents.filter(agent => selectedIds.has(agent.id));
+}
+
+function partitionCompanionRuns(agents, messageIndex, extraContextSectionsByAgentId = null) {
     const singles = [];
     const agentById = new Map(agents.map(agent => [agent.id, agent]));
     const agentByReferenceId = buildCompanionReferenceMap(agents);
@@ -975,11 +1007,13 @@ function partitionCompanionRuns(agents, messageIndex) {
         if (selectedIds.size === 0) continue;
 
         const key = getBatchKey(agent, messageIndex);
+        const extraContextSignature = getCompanionExtraContextSignature(agent, extraContextSectionsByAgentId);
         for (const selectedId of selectedIds) {
             const selectedAgent = agentByReferenceId.get(selectedId);
             if (!selectedAgent) continue;
             if (selectedAgent.id === agent.id) continue;
             if (getBatchKey(selectedAgent, messageIndex) !== key) continue;
+            if (getCompanionExtraContextSignature(selectedAgent, extraContextSectionsByAgentId) !== extraContextSignature) continue;
 
             if (!adjacency.has(selectedAgent.id)) {
                 adjacency.set(selectedAgent.id, new Set());
@@ -1277,6 +1311,54 @@ async function runCompanionUnits(units, messageIndex, generationType, cancelRevi
     return results;
 }
 
+async function runCompanionAgentSet(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, contextSourceAgents = agents } = {}) {
+    if (!agents.length) {
+        return [];
+    }
+
+    const message = chat[messageIndex];
+    if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
+        return agents.map(agent => ({ agentId: agent.id, changed: false, result: null }));
+    }
+
+    const previousContents = new Map(agents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
+    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(agents, messageIndex, contextSourceAgents);
+    for (const agent of agents) {
+        setCompanionResult(message, agent, {
+            status: 'pending',
+            content: '',
+            error: '',
+        });
+        await emitCompanionResultsUpdated(messageIndex, agent.id);
+    }
+
+    const units = partitionCompanionRuns(agents, messageIndex, extraContextSectionsByAgentId);
+    return await runCompanionUnits(units, messageIndex, generationType, cancelRevision, { allowUserMessage, previousContents, extraContextSectionsByAgentId });
+}
+
+async function runCompanionAgentsWithDependencyDelay(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, contextSourceAgents = agents } = {}) {
+    const { readyAgents, delayedAgents } = splitCompanionAgentsByDependencyDelay(agents);
+    const visited = new Set();
+    const results = [];
+
+    for (const agent of readyAgents) {
+        visited.add(agent.id);
+    }
+    results.push(...(await runCompanionAgentSet(readyAgents, messageIndex, generationType, cancelRevision, { allowUserMessage, contextSourceAgents })));
+
+    for (const agent of delayedAgents) {
+        visited.add(agent.id);
+    }
+    results.push(...(await runCompanionAgentSet(delayedAgents, messageIndex, generationType, cancelRevision, { allowUserMessage, contextSourceAgents })));
+
+    const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
+    if (changedAgentIds.length > 0) {
+        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited);
+    }
+
+    return results;
+}
+
 async function runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited = new Set()) {
     if (!changedAgentIds?.length) {
         return [];
@@ -1306,19 +1388,7 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
         return [];
     }
 
-    const previousContents = new Map(dependents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
-    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(dependents, messageIndex, runnable);
-    for (const agent of dependents) {
-        setCompanionResult(message, agent, {
-            status: 'pending',
-            content: '',
-            error: '',
-        });
-        await emitCompanionResultsUpdated(messageIndex, agent.id);
-    }
-
-    const units = partitionCompanionRuns(dependents, messageIndex);
-    const results = await runCompanionUnits(units, messageIndex, generationType, cancelRevision, { allowUserMessage: true, previousContents, extraContextSectionsByAgentId });
+    const results = await runCompanionAgentSet(dependents, messageIndex, generationType, cancelRevision, { allowUserMessage: true, contextSourceAgents: runnable });
     const nextChangedIds = results.filter(r => r?.changed).map(r => r.agentId);
 
     if (nextChangedIds.length > 0) {
@@ -1338,27 +1408,9 @@ export async function runCompanionStage({ messageIndex, message, generationType 
         return [];
     }
 
-    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex });
-    const { readyAgents } = splitCompanionAgentsByDependencyDelay(agents);
-    const previousContents = new Map(readyAgents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
-    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(readyAgents, messageIndex, contextSourceAgents);
-    for (const agent of readyAgents) {
-        setCompanionResult(message, agent, {
-            status: 'pending',
-            content: '',
-            error: '',
-        });
-        await emitCompanionResultsUpdated(messageIndex, agent.id);
-    }
-
     const cancelRevision = getAgentGenerationCancelRevision();
-    const units = partitionCompanionRuns(readyAgents, messageIndex);
-    const results = await runCompanionUnits(units, messageIndex, generationType, cancelRevision, { previousContents, extraContextSectionsByAgentId });
-
-    const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
-    if (changedAgentIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, new Set(readyAgents.map(a => a.id)));
-    }
+    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex });
+    await runCompanionAgentsWithDependencyDelay(agents, messageIndex, generationType, cancelRevision, { contextSourceAgents });
 
     saveChatDebounced({ deferBackup: false });
     return agents.map(agent => getCompanionResults(message)[agent.id]);
@@ -1456,26 +1508,8 @@ export async function runCompanionsOnMessage(messageIndex, { allowUserMessage = 
         return [];
     }
 
-    const { readyAgents } = splitCompanionAgentsByDependencyDelay(agents);
-    const previousContents = new Map(readyAgents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
-    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(readyAgents, messageIndex, agents);
-    for (const agent of readyAgents) {
-        setCompanionResult(message, agent, {
-            status: 'pending',
-            content: '',
-            error: '',
-        });
-        await emitCompanionResultsUpdated(messageIndex, agent.id);
-    }
-
     const cancelRevision = getAgentGenerationCancelRevision();
-    const units = partitionCompanionRuns(readyAgents, messageIndex);
-    const results = await runCompanionUnits(units, messageIndex, 'normal', cancelRevision, { allowUserMessage, previousContents, extraContextSectionsByAgentId });
-
-    const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
-    if (changedAgentIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, changedAgentIds, 'normal', cancelRevision, new Set(readyAgents.map(a => a.id)));
-    }
+    await runCompanionAgentsWithDependencyDelay(agents, messageIndex, 'normal', cancelRevision, { allowUserMessage, contextSourceAgents: agents });
 
     saveChatDebounced({ deferBackup: false });
     return agents.map(agent => getCompanionResults(message)[agent.id]);
@@ -1505,31 +1539,13 @@ export async function runConnectedCompanionsOnMessage(messageIndex, { cancelRevi
         return [];
     }
 
-    const agents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex })
-        .filter(agent => hasConnectedCompanionDependencies(agent));
+    const runnable = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex });
+    const agents = collectConnectedCompanionRunAgents(runnable);
     if (agents.length === 0) {
         return [];
     }
 
-    const { readyAgents } = splitCompanionAgentsByDependencyDelay(agents);
-    const previousContents = new Map(readyAgents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
-    const extraContextSectionsByAgentId = buildCompanionExtraContextSectionsByAgentId(readyAgents, messageIndex, agents);
-    for (const agent of readyAgents) {
-        setCompanionResult(message, agent, {
-            status: 'pending',
-            content: '',
-            error: '',
-        });
-        await emitCompanionResultsUpdated(messageIndex, agent.id);
-    }
-
-    const units = partitionCompanionRuns(readyAgents, messageIndex);
-    const results = await runCompanionUnits(units, messageIndex, 'normal', cancelRevision, { allowUserMessage: true, previousContents, extraContextSectionsByAgentId });
-
-    const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
-    if (changedAgentIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, changedAgentIds, 'normal', cancelRevision, new Set(readyAgents.map(a => a.id)));
-    }
+    await runCompanionAgentsWithDependencyDelay(agents, messageIndex, 'normal', cancelRevision, { allowUserMessage: true, contextSourceAgents: runnable });
 
     saveChatDebounced({ deferBackup: false });
     return agents.map(agent => getCompanionResults(message)[agent.id]);
