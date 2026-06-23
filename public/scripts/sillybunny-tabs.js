@@ -2391,17 +2391,23 @@ function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), 
     return keyboardHeight > 80 || visualViewportSize.top > 2;
 }
 
-function syncIOSKeyboardScrollLock() {
-    if (!isMobileViewport() || !isIOSWebKitPlatform()) {
-        document.body.classList.remove('sb-ios-keyboard-locked');
-        return;
+function syncIOSKeyboardBottomInset() {
+    const root = document.documentElement;
+    let bottomInset = 0;
+
+    if (isMobileViewport() && isIOSWebKitPlatform()) {
+        const layoutViewport = getLayoutViewportSize();
+        const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+        if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+            bottomInset = Math.max(0, Math.round(layoutViewport.height - visualViewportSize.top - visualViewportSize.height));
+        }
     }
 
-    const layoutViewport = getLayoutViewportSize();
-    const visualViewportSize = getVisualViewportSize(layoutViewport);
-    const isKeyboardOpen = isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize);
-
-    document.body.classList.toggle('sb-ios-keyboard-locked', isKeyboardOpen);
+    const value = `${bottomInset}px`;
+    if (root.style.getPropertyValue('--sb-ios-keyboard-bottom-inset') !== value) {
+        root.style.setProperty('--sb-ios-keyboard-bottom-inset', value);
+    }
 }
 
 function getShellViewportSize() {
@@ -15038,9 +15044,10 @@ function syncMobileViewportState() {
         handler();
     }
 
-    // SillyBunny: after all viewport sizing settles, freeze the iOS document
-    // scroll position so Safari cannot auto-pan the page for focused inputs.
-    syncIOSKeyboardScrollLock();
+    // SillyBunny: after viewport sizing settles, give iOS shell scrollers enough
+    // bottom inset to move focused bottom fields above the keyboard without
+    // locking the document and exposing a blank Safari background.
+    syncIOSKeyboardBottomInset();
 }
 
 let sbMobileViewportStateFrameId = 0;
@@ -16050,13 +16057,11 @@ function initAll() {
     // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
     document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
 
-    // SillyBunny: iOS Safari auto-pans the document when focusing inputs near the
-    // keyboard. Keep the scroll lock in sync with viewport and focus changes so the
-    // page cannot drift before our visualViewport-based shell sizing takes over.
+    // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
+    // this provides scroll range for bottom inputs without fixing the document.
     if (isIOSWebKitPlatform()) {
-        window.addEventListener('scroll', syncIOSKeyboardScrollLock, { passive: true });
-        document.addEventListener('focusin', syncIOSKeyboardScrollLock);
-        document.addEventListener('focusout', syncIOSKeyboardScrollLock);
+        document.addEventListener('focusin', syncIOSKeyboardBottomInset);
+        document.addEventListener('focusout', syncIOSKeyboardBottomInset);
     }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings

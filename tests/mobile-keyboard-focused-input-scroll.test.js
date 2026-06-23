@@ -17,11 +17,20 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         }
     });
 
-    test('locks iOS document scroll while the keyboard is open', () => {
-        expect(tabsSource).toContain('function syncIOSKeyboardScrollLock(');
-        expect(tabsSource).toContain('body.classList.toggle(\'sb-ios-keyboard-locked\'');
+    test('adds iOS keyboard bottom inset without locking document scroll', () => {
+        expect(tabsSource).toContain('function syncIOSKeyboardBottomInset(');
+        expect(tabsSource).toContain('--sb-ios-keyboard-bottom-inset');
+        expect(tabsSource).toMatch(/layoutViewport\.height - visualViewportSize\.top - visualViewportSize\.height/);
+        expect(tabsSource).not.toContain('sb-ios-keyboard-locked');
         expect(tabsSource).not.toContain('window.scrollTo(0, 0)');
-        expect(tabsSource).toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardScrollLock/);
+        expect(tabsSource).not.toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardBottomInset/);
+    });
+
+    test('applies the iOS keyboard inset to mobile drawer scroller padding', () => {
+        const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+
+        expect(mobileShellCss).toContain('var(--sb-ios-keyboard-bottom-inset, 0px)');
+        expect(mobileShellCss).not.toContain('body.sb-ios-keyboard-locked');
     });
 
     test('defines the focusin scroll helper', () => {
