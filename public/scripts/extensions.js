@@ -754,6 +754,7 @@ export async function disableExtension(name, reload = true) {
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(x => !areExtensionIdsEqual(x, extensionName));
     extension_settings.disabledExtensions.push(extensionName);
     markExtensionInactive(extensionName);
+    await eventSource.emit(event_types.EXTENSION_DISABLED, extensionName);
     stateChanged = true;
     await saveSettings();
     if (reload) {

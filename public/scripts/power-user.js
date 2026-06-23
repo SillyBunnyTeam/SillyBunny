@@ -33,6 +33,8 @@ import {
     extension_prompt_roles,
     deleteMessage,
     settingsReady,
+    updateMessageMetaBadges,
+    updateMessageTokenAccounting,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -49,7 +51,7 @@ import {
 } from './instruct-mode.js';
 
 import { getTagsList, tag_import_setting, tag_map, tag_sort_mode, tags } from './tags.js';
-import { tokenizers } from './tokenizers.js';
+import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
@@ -689,6 +691,69 @@ function switchIcons() {
 function switchTokenCount() {
     $('body').toggleClass('no-tokenCount', !power_user.message_token_count_enabled);
     $('#messageTokensEnabled').prop('checked', power_user.message_token_count_enabled);
+}
+
+let tokenizationCacheRefreshId = 0;
+
+async function refreshTokenizationCachesForSettingsChange() {
+    const refreshId = ++tokenizationCacheRefreshId;
+
+    await resetTokenCache({ toast: false });
+
+    let hasChatTokenCounts = false;
+    for (const message of chat) {
+        if (!message || typeof message !== 'object') {
+            continue;
+        }
+
+        if (message.extra && Object.hasOwn(message.extra, 'token_count')) {
+            delete message.extra.token_count;
+            hasChatTokenCounts = true;
+        }
+
+        if (!Array.isArray(message.swipe_info)) {
+            continue;
+        }
+
+        for (const swipeInfo of message.swipe_info) {
+            if (swipeInfo?.extra && Object.hasOwn(swipeInfo.extra, 'token_count')) {
+                delete swipeInfo.extra.token_count;
+                hasChatTokenCounts = true;
+            }
+        }
+    }
+
+    if (refreshId !== tokenizationCacheRefreshId) {
+        return;
+    }
+
+    if (power_user.message_token_count_enabled) {
+        for (const [messageId, message] of chat.entries()) {
+            if (!message || typeof message !== 'object') {
+                continue;
+            }
+
+            await updateMessageTokenAccounting(message, { countOutput: true });
+            if (refreshId !== tokenizationCacheRefreshId) {
+                return;
+            }
+
+            updateMessageMetaBadges($(`#chat .mes[mesid="${messageId}"]`), message);
+        }
+        hasChatTokenCounts = true;
+    } else {
+        $('#chat .tokenCounterDisplay').text('');
+    }
+
+    if (hasChatTokenCounts) {
+        await saveChatConditional();
+    }
+}
+
+function resetTokenizationCachesForSettingsChange() {
+    void refreshTokenizationCachesForSettingsChange().catch(error => {
+        console.error('Failed to refresh token counts after tokenizer settings changed', error);
+    });
 }
 
 function switchMesIDDisplay() {
@@ -4566,6 +4631,7 @@ jQuery(async () => {
         const value = $(this).find(':selected').val();
         power_user.tokenizer = Number(value);
         BIAS_CACHE.clear();
+        resetTokenizationCachesForSettingsChange();
         saveSettingsDebounced();
 
         // Trigger character editor re-tokenize
@@ -4606,6 +4672,7 @@ jQuery(async () => {
 
     $('#token_padding').on('input', function () {
         power_user.token_padding = Number($(this).val());
+        resetTokenizationCachesForSettingsChange();
         saveSettingsDebounced();
     });
 

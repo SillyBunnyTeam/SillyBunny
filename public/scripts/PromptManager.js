@@ -15,6 +15,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
+import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import {
     resolvePromptManagerRenderState,
     resolvePromptManagerScrollRestore,
@@ -662,6 +663,16 @@ class PromptManager {
 
             counts[promptID] = null;
             promptOrderEntry.enabled = !promptOrderEntry.enabled;
+
+            // SillyBunny: clear persisted variables owned by a prompt when it is disabled.
+            if (!promptOrderEntry.enabled) {
+                const prompt = this.getPromptById(promptID);
+
+                if (prompt?.content) {
+                    clearPromptSetVariables(prompt.content);
+                }
+            }
+
             this.setStoredDrawerExpanded(drawerExpanded);
             this.render();
             this.saveServiceSettings();
