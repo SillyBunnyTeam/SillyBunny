@@ -82,6 +82,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #608 (2026-06-23) `fix: use set group chat greetings + harden group chat creation`
 - PR #609 (2026-06-23) `fix(group_chat): fix group chat new messages + add greetings button QoL`
 - PR #610 (2026-06-23) `fix: hide the iOS "not loading" warning when not applicable`
+- PR #616 (2026-06-23) `docs: update alt language README files`
 
 ## v1.6.5
 
