@@ -24,6 +24,20 @@ describe('prompt variable cleanup', () => {
         expect(names.global).toEqual([]);
     });
 
+    test('collects scoped setvar names', () => {
+        const names = collectPromptSetVariableNames('{{setvar::first}}Hello{{/setvar}}{{#setvar::second}}World{{/setvar}}');
+
+        expect(names.local.sort()).toEqual(['first', 'second']);
+        expect(names.global).toEqual([]);
+    });
+
+    test('collects scoped global setvar names', () => {
+        const names = collectPromptSetVariableNames('{{setglobalvar::mode}}slow{{/setglobalvar}}{{#setGlobalVar::flag}}on{{/setglobalvar}}');
+
+        expect(names.local).toEqual([]);
+        expect(names.global.sort()).toEqual(['flag', 'mode']);
+    });
+
     test('ignores non-setter variable macros', () => {
         const names = collectPromptSetVariableNames('{{getvar::nsfw}}{{addvar::counter::1}}{{incvar::x}}{{deletevar::y}}');
 
