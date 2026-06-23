@@ -11,8 +11,9 @@ const loginHtml = readFileSync(path.join(repoRoot, 'public', 'login.html'), 'utf
 describe('mobile keyboard focused-input scroll wiring', () => {
     test('keeps virtual keyboards from resizing the layout viewport', () => {
         for (const html of [indexHtml, loginHtml]) {
-            expect(html).toContain('interactive-widget=resizes-visual');
+            expect(html).toContain('interactive-widget=overlays-content');
             expect(html).not.toContain('interactive-widget=resizes-content');
+            expect(html).not.toContain('interactive-widget=resizes-visual');
         }
     });
 
