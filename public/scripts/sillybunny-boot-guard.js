@@ -13,6 +13,24 @@
     var bootStartedAt = Date.now();
 
     var THIRD_PARTY_EXTENSION_PATH = '/scripts/extensions/third-party/';
+    var isBootGuardApplicable = isIOSWebKitBrowser();
+
+    function isIOSWebKitBrowser() {
+        try {
+            if (typeof navigator === 'undefined') {
+                return false;
+            }
+
+            var userAgent = String(navigator.userAgent || '');
+            var platform = String(navigator.platform || '');
+            var isiPadOSDesktopUA = platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
+            var isIOS = /iPad|iPhone|iPod/.test(userAgent) || /iPad|iPhone|iPod/.test(platform) || isiPadOSDesktopUA;
+
+            return isIOS && /WebKit/i.test(userAgent);
+        } catch (_error) {
+            return false;
+        }
+    }
 
     function isThirdPartyExtensionSource(value) {
         try {
@@ -47,6 +65,10 @@
     }
 
     function recordFailure(message, error) {
+        if (!isBootGuardApplicable) {
+            return;
+        }
+
         var details = message || 'SillyBunny startup failed.';
         var errorDetails = describeError(error);
 
@@ -170,7 +192,7 @@
     }
 
     function showFailure(details) {
-        if (bootCompleted || failureShown || failureDismissed) {
+        if (!isBootGuardApplicable || bootCompleted || failureShown || failureDismissed) {
             return;
         }
 
@@ -250,6 +272,10 @@
         },
         showFailure: showFailure,
     };
+
+    if (!isBootGuardApplicable) {
+        return;
+    }
 
     window.addEventListener('error', function (event) {
         if (bootCompleted) {
