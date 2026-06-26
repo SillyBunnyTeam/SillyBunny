@@ -757,10 +757,10 @@
     }
 
     #left-nav-panel.openDrawer .sb-shell-panel-scroller > :is(.scrollableInner, .scrollableInnerFull) {
-        min-height: 0 !important;
-        max-height: none !important;
-        overflow: visible !important;
-        -webkit-overflow-scrolling: auto !important;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
+        -webkit-overflow-scrolling: auto;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
