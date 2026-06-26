@@ -2063,6 +2063,31 @@ body.bubblechat .mes[is_user='true'] .mes_block {
         max-block-size: var(--sb-control-icon-physical-size);
         padding: 0 !important;
     }
+
+    #chat .mes_edit_buttons {
+        max-inline-size: 100%;
+        flex-wrap: wrap;
+        column-gap: 4px;
+        row-gap: 4px;
+    }
+
+    #chat .mes_edit_buttons .menu_button {
+        width: var(--sb-message-icon-size);
+        inline-size: var(--sb-message-icon-size);
+        height: var(--sb-message-icon-size);
+        block-size: var(--sb-message-icon-size);
+        min-width: var(--sb-message-icon-size);
+        min-inline-size: var(--sb-message-icon-size);
+        min-height: var(--sb-message-icon-size);
+        min-block-size: var(--sb-message-icon-size);
+        max-width: var(--sb-message-icon-size);
+        max-inline-size: var(--sb-message-icon-size);
+        max-height: var(--sb-message-icon-size);
+        max-block-size: var(--sb-message-icon-size);
+        flex: 0 0 var(--sb-message-icon-size);
+        font-size: calc(var(--sb-message-icon-size) * 0.52);
+        line-height: 1;
+    }
 }
 
 .character_select:hover,
