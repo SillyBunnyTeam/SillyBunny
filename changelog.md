@@ -85,6 +85,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #616 (2026-06-23) `docs: update alt language README files`
 - PR #617 (2026-06-26) `chore: update Quick Image Gen to 2.2.1`
 - PR #618 (2026-06-26) `fix: viewport escaping out of bounds due to dragging in general`
+- PR #619 (2026-06-26) `fix(ui): make edit message icons smaller on mobile`
 
 ## v1.6.5
 
