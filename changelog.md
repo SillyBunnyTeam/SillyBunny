@@ -83,6 +83,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #609 (2026-06-23) `fix(group_chat): fix group chat new messages + add greetings button QoL`
 - PR #610 (2026-06-23) `fix: hide the iOS "not loading" warning when not applicable`
 - PR #616 (2026-06-23) `docs: update alt language README files`
+- PR #617 (2026-06-26) `chore: update Quick Image Gen to 2.2.1`
 - PR #618 (2026-06-26) `fix: viewport escaping out of bounds due to dragging in general`
 
 ## v1.6.5
