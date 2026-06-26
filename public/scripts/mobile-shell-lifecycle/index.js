@@ -741,6 +741,108 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
+const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
+    '#chat',
+    '#leftSendForm',
+    '#qr--bar',
+    '#ica--tracker-panel',
+    '.scrollableInner',
+    '.scrollableInnerFull',
+    '.sb-shell-panel-scroller',
+    '.sb-shell-scroller',
+    '.popup-body',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
+    'input',
+    'textarea',
+    'select',
+    '[contenteditable="true"]',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR = '#ica--tracker-panel-handle';
+
+function closestMatchingElement(target, selector) {
+    let element = target;
+
+    while (element && typeof element === 'object') {
+        if (typeof element.matches === 'function' && element.matches(selector)) {
+            return element;
+        }
+
+        if (typeof element.closest === 'function') {
+            const closest = element.closest(selector);
+            if (closest) {
+                return closest;
+            }
+        }
+
+        element = element.parentElement ?? null;
+    }
+
+    return null;
+}
+
+function findTouchByIdentifier(touches, identifier) {
+    return Array.from(touches ?? []).find(touch => touch?.identifier === identifier) ?? null;
+}
+
+function getGestureDelta(event, touchStart) {
+    if (!touchStart) {
+        return null;
+    }
+
+    const currentTouch = findTouchByIdentifier(event.touches, touchStart.identifier) ?? event.touches?.[0] ?? null;
+    if (!currentTouch) {
+        return null;
+    }
+
+    return {
+        x: normalizeNumber(currentTouch.clientX) - normalizeNumber(touchStart.clientX),
+        y: normalizeNumber(currentTouch.clientY) - normalizeNumber(touchStart.clientY),
+    };
+}
+
+function canElementScrollForGesture(element, delta) {
+    if (!element || !delta) {
+        return false;
+    }
+
+    const absX = Math.abs(delta.x);
+    const absY = Math.abs(delta.y);
+    const wantsHorizontalScroll = absX > absY;
+    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > 1;
+    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > 1;
+
+    return wantsHorizontalScroll ? canScrollX : canScrollY;
+}
+
+/**
+ * Decides whether a mobile touchmove started on non-scrollable document chrome
+ * should be cancelled before the browser pans the visual viewport.
+ * @param {TouchEvent|object} event Touchmove-like event.
+ * @param {object} [options] Options.
+ * @param {{identifier: number, clientX: number, clientY: number}|null} [options.touchStart=null] Starting touch point.
+ * @returns {boolean}
+ */
+export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) {
+    if (!event?.cancelable || event.defaultPrevented || event.touches?.length !== 1) {
+        return false;
+    }
+
+    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)
+        || closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR)) {
+        return false;
+    }
+
+    const scrollElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR);
+    if (canElementScrollForGesture(scrollElement, getGestureDelta(event, touchStart))) {
+        return false;
+    }
+
+    return true;
+}
+
 function clampBoundNumber(value, min, max) {
     return Math.min(Math.max(normalizeNumber(value, min), min), max);
 }
