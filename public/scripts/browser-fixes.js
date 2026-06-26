@@ -1,4 +1,5 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
+import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -124,6 +125,7 @@ function applyBrowserFixes() {
         let lastScale = viewport?.scale || 1;
         let lastSendInteractionAt = 0;
         let lastSendFocusedAt = 0;
+        let documentPanTouchStart = null;
 
         const updateViewportBaseline = () => {
             lastViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
@@ -170,6 +172,30 @@ function applyBrowserFixes() {
 
         const handleMobileViewportReset = (event) => {
             scheduleViewportReset({ restoreScroll: Boolean(event?.detail?.restoreScroll) });
+        };
+
+        const blockDocumentPanFromShellGaps = (event) => {
+            if (shouldBlockMobileDocumentPan(event, { touchStart: documentPanTouchStart })) {
+                event.preventDefault();
+            }
+        };
+
+        const captureDocumentPanStart = (event) => {
+            if (event.touches?.length !== 1) {
+                documentPanTouchStart = null;
+                return;
+            }
+
+            const touch = event.touches[0];
+            documentPanTouchStart = {
+                identifier: touch.identifier,
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+            };
+        };
+
+        const clearDocumentPanStart = () => {
+            documentPanTouchStart = null;
         };
 
         const applyPositionFix = ({ force = false } = {}) => {
@@ -297,7 +323,11 @@ function applyBrowserFixes() {
             }
         };
         document.addEventListener('touchstart', blockMultiTouchZoom, { passive: false });
+        document.addEventListener('touchstart', captureDocumentPanStart, { passive: true, capture: true });
         document.addEventListener('touchmove', blockMultiTouchZoom, { passive: false });
+        document.addEventListener('touchmove', blockDocumentPanFromShellGaps, { passive: false, capture: true });
+        document.addEventListener('touchend', clearDocumentPanStart, { passive: true, capture: true });
+        document.addEventListener('touchcancel', clearDocumentPanStart, { passive: true, capture: true });
     }
 
     addMacOSPatch();

@@ -3,13 +3,56 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { MOBILE_SHELL_VIEWPORT_SYNC_STEP } from '../public/scripts/mobile-shell-lifecycle/index.js';
+import {
+    MOBILE_SHELL_VIEWPORT_SYNC_STEP,
+    shouldBlockMobileDocumentPan,
+} from '../public/scripts/mobile-shell-lifecycle/index.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 const browserFixesSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'browser-fixes.js'), 'utf8');
 const tabsCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
 const mobileShellCssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+
+function createElementStub({
+    parentElement = null,
+    matches = () => false,
+    closest = () => null,
+    scrollWidth = 0,
+    clientWidth = 0,
+    scrollHeight = 0,
+    clientHeight = 0,
+} = {}) {
+    return {
+        parentElement,
+        matches,
+        closest,
+        scrollWidth,
+        clientWidth,
+        scrollHeight,
+        clientHeight,
+    };
+}
+
+function selectorListIncludes(selector, token) {
+    return String(selector ?? '')
+        .split(',')
+        .map(part => part.trim())
+        .includes(token);
+}
+
+function createTouchMove(target, { startX = 0, startY = 0, x = 0, y = 0, cancelable = true, touches = null } = {}) {
+    const touchStart = { identifier: 1, clientX: startX, clientY: startY };
+
+    return {
+        event: {
+            target,
+            cancelable,
+            touches: touches ?? [{ identifier: 1, clientX: x, clientY: y }],
+        },
+        touchStart,
+    };
+}
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -55,6 +98,51 @@ function getFunctionSource(name) {
 }
 
 describe('mobile shell lifecycle wiring', () => {
+    test('blocks mobile document panning from non-scrollable shell gaps only', () => {
+        expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
+        expect(browserFixesSource).toContain('captureDocumentPanStart');
+        expect(browserFixesSource).toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
+
+        const chatScroller = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#chat'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const composerGap = createElementStub();
+        const textarea = createElementStub({
+            matches: selector => selector.includes('textarea'),
+        });
+        const quickReplyRail = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#leftSendForm'),
+            scrollWidth: 600,
+            clientWidth: 240,
+        });
+        const quickReplyButton = createElementStub({ parentElement: quickReplyRail });
+        const genericButton = createElementStub({
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const companionHandle = createElementStub({
+            closest: selector => selectorListIncludes(selector, '#ica--tracker-panel-handle') ? companionHandle : null,
+        });
+        const chatMove = createTouchMove(chatScroller, { y: -40 });
+        const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
+        const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
+        const gapMove = createTouchMove(composerGap, { y: -40 });
+        const buttonMove = createTouchMove(genericButton, { y: -40 });
+        const multiTouchMove = createTouchMove(composerGap, { touches: [{}, {}] });
+        const nonCancelableMove = createTouchMove(composerGap, { cancelable: false });
+
+        expect(shouldBlockMobileDocumentPan(chatMove.event, { touchStart: chatMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(createTouchMove(textarea, { y: -40 }).event)).toBe(false);
+        expect(shouldBlockMobileDocumentPan(railHorizontalMove.event, { touchStart: railHorizontalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(createTouchMove(companionHandle, { x: -40 }).event)).toBe(false);
+        expect(shouldBlockMobileDocumentPan(gapMove.event, { touchStart: gapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(multiTouchMove.event, { touchStart: multiTouchMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
+    });
+
     test('imports the mobile shell lifecycle seam into the shell adapter', () => {
         expect(tabsSource).toContain('createMobileShellLifecycle');
         expect(tabsSource).toContain('MOBILE_SHELL_NAV_TOGGLE_ACTION');
