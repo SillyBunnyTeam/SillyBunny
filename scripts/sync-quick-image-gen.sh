@@ -116,6 +116,34 @@ mkdir -p "$WORK_DIR"
 cp "$SOURCE_DIR/index.js" "$WORK_DIR/index.js"
 cp "$SOURCE_DIR/style.css" "$WORK_DIR/style.css"
 
+node - "$WORK_DIR/style.css" <<'NODE'
+const fs = require('fs');
+
+const stylePath = process.argv[2];
+const lines = fs.readFileSync(stylePath, 'utf8').split('\n');
+
+for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const stickyMatch = line.match(/^(\s*)position:\s*sticky;$/);
+    const userSelectMatch = line.match(/^(\s*)user-select:\s*(.+);$/);
+    const backdropMatch = line.match(/^(\s*)backdrop-filter:\s*(.+);$/);
+    const prefix = stickyMatch
+        ? `${stickyMatch[1]}position: -webkit-sticky;`
+        : userSelectMatch
+            ? `${userSelectMatch[1]}-webkit-user-select: ${userSelectMatch[2]};`
+            : backdropMatch
+                ? `${backdropMatch[1]}-webkit-backdrop-filter: ${backdropMatch[2]};`
+                : null;
+
+    if (!prefix || lines[index - 1]?.trim() === prefix.trim()) continue;
+
+    lines.splice(index, 0, prefix);
+    index++;
+}
+
+fs.writeFileSync(stylePath, lines.join('\n'));
+NODE
+
 node - "$WORK_DIR/index.js" "$TARGET_DIR" <<'NODE'
 const fs = require('fs');
 const path = require('path');

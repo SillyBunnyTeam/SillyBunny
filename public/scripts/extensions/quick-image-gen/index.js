@@ -8498,7 +8498,7 @@ async function genZai(prompt, negative, s, signal) {
     throw new Error("No image in Z.AI response");
 }
 
-async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, apiKey, model, prompt, negative, s, signal) {
+async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, apiKey, model, prompt, negative, s, signal, options = {}) {
     if (!apiKey) throw new Error(`${providerName} API key required`);
     const trimmedModel = String(model || "").trim();
     if (!trimmedModel) throw new Error(`${providerName} model required`);
@@ -8506,19 +8506,20 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
         ? `${prompt}\n\nAvoid in the image: ${negative}`
         : prompt;
     const size = getOpenAICompatibleImageSize(provider, trimmedModel, s);
+    const payload = {
+        model: trimmedModel,
+        prompt: effectivePrompt,
+        size,
+        n: 1,
+    };
+    if (options.includeResponseFormat !== false) payload.response_format = "b64_json";
     const res = await fetch(apiUrl, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-            model: trimmedModel,
-            prompt: effectivePrompt,
-            size,
-            n: 1,
-            response_format: "b64_json",
-        }),
+        body: JSON.stringify(payload),
         signal,
     });
 
@@ -8527,11 +8528,51 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
         throw new Error(`${providerName} error ${res.status}: ${detail || res.statusText}`);
     }
 
-    const data = await res.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    if (b64) return extractGptImageDataUrl(b64, "png");
-    const image = extractProxyImageFromJson(data);
-    if (image) return image;
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("image/")) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        blobUrls.add(url);
+        return url;
+    }
+
+    const text = await res.text();
+    const trimmedText = text.trim();
+    const extractJsonImage = (data) => {
+        const b64 = data?.data?.[0]?.b64_json;
+        if (b64) return extractGptImageDataUrl(b64, "png");
+        return extractProxyImageFromJson(data);
+    };
+    const looksJson = contentType.includes("application/json") || /^[\[{]/.test(trimmedText);
+    let jsonError = null;
+
+    if (looksJson) {
+        try {
+            const image = extractJsonImage(JSON.parse(trimmedText));
+            if (image) return image;
+            throw new Error(`No image in ${providerName} response`);
+        } catch (e) {
+            jsonError = e;
+        }
+    }
+
+    const directImage = extractProxyImageFromString(trimmedText);
+    if (directImage) return directImage;
+
+    if (!looksJson) {
+        try {
+            const image = extractJsonImage(JSON.parse(trimmedText));
+            if (image) return image;
+        } catch (e) {
+            jsonError = e;
+        }
+    }
+
+    if (jsonError?.message?.startsWith(`No image in ${providerName} response`)) throw jsonError;
+    if (jsonError) {
+        const preview = trimmedText.replace(/\s+/g, " ").slice(0, 300);
+        throw new Error(`Invalid ${providerName} response: ${preview || jsonError.message}`);
+    }
     throw new Error(`No image in ${providerName} response`);
 }
 
@@ -8560,6 +8601,7 @@ async function genNavy(prompt, negative, s, signal) {
         negative,
         s,
         signal,
+        { includeResponseFormat: false },
     );
 }
 
