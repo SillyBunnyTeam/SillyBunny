@@ -756,6 +756,13 @@
         padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px))) !important;
     }
 
+    #left-nav-panel.openDrawer .sb-shell-panel-scroller > :is(.scrollableInner, .scrollableInnerFull) {
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        -webkit-overflow-scrolling: auto !important;
+    }
+
     #right-nav-panel.openDrawer > .scrollableInner,
     #right-nav-panel.openDrawer > .scrollableInnerFull {
         flex: 1 1 auto !important;

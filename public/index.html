@@ -184,46 +184,54 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
-                                        <label for="bind_preset_to_connection" title="Bind presets to API connections" data-i18n="[title]Bind presets to API connections" class="checkbox_label widthFreeExpand">
-                                            <input id="bind_preset_to_connection" type="checkbox" />
-                                            <span data-i18n="Keep API/model linked to preset">Keep API/model linked to preset</span>
-                                        </label>
-                                        <div id="bind_preset_to_connection_copy" class="toggle-description justifyLeft marginBot5">
-                                            Independent mode keeps your current provider and model, so one preset can be reused across multiple connections.
+                                    <div class="inline-drawer marginTop10 wide100p">
+                                        <div class="inline-drawer-toggle inline-drawer-header">
+                                            <b data-i18n="Preset API/Sampler Linking">Preset API/Sampler Linking</b>
+                                            <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
                                         </div>
-                                        <strong id="bind_preset_to_connection_tip" class="toggle-description justifyLeft">
-                                            Recommended for most setups and especially for shared preset libraries.
-                                        </strong>
-                                    </div>
-                                    <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
-                                        <label for="bind_preset_to_sampling" title="Bind presets to Sampling settings" data-i18n="[title]Bind presets to Sampling settings" class="checkbox_label widthFreeExpand">
-                                            <input id="bind_preset_to_sampling" type="checkbox" checked />
-                                            <span data-i18n="Keep sampling settings linked to preset">Keep sampling settings linked to preset</span>
-                                        </label>
-                                        <div id="bind_preset_to_sampling_copy" class="toggle-description justifyLeft marginBot5">
-                                            Linked mode updates temperature, penalties, and other sampling sliders when switching presets.
-                                        </div>
-                                        <strong id="bind_preset_to_sampling_tip" class="toggle-description justifyLeft">
-                                            Use this when each preset stores its own sampling values.
-                                        </strong>
-                                    </div>
-                                    <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
-                                        <label for="model_sampling_profiles_enabled" title="Enable per-model sampling profiles" data-i18n="[title]Enable per-model sampling profiles" class="checkbox_label widthFreeExpand">
-                                            <input id="model_sampling_profiles_enabled" type="checkbox" />
-                                            <span data-i18n="Remember sampling settings per model">Remember sampling settings per model</span>
-                                        </label>
-                                        <div id="model_sampling_profiles_container">
-                                            <div class="toggle-description justifyLeft marginBot5">
-                                                When enabled, sampling settings are automatically saved and restored for each model. Use the buttons below to manage profiles for the current model.
+                                        <div class="inline-drawer-content" style="display:none">
+                                            <div class="sb-setting-inline-copy sb-setting-inline-copy-center">
+                                                <label for="bind_preset_to_connection" title="Bind presets to API connections" data-i18n="[title]Bind presets to API connections" class="checkbox_label widthFreeExpand">
+                                                    <input id="bind_preset_to_connection" type="checkbox" />
+                                                    <span data-i18n="Keep API/model linked to preset">Keep API/model linked to preset</span>
+                                                </label>
+                                                <div id="bind_preset_to_connection_copy" class="toggle-description justifyLeft marginBot5">
+                                                    Independent mode keeps your current provider and model, so one preset can be reused across multiple connections.
+                                                </div>
+                                                <strong id="bind_preset_to_connection_tip" class="toggle-description justifyLeft">
+                                                    Recommended for most setups and especially for shared preset libraries.
+                                                </strong>
                                             </div>
-                                            <div class="flex-container gap3px">
-                                                <button id="model_sampling_profile_save" class="menu_button" title="Save current sampling for this model" data-i18n="[title]Save current sampling for this model">
-                                                    <i class="fa-fw fa-solid fa-floppy-disk"></i> <span data-i18n="Save Profile">Save Profile</span>
-                                                </button>
-                                                <button id="model_sampling_profile_clear" class="menu_button" title="Clear saved profile for this model" data-i18n="[title]Clear saved profile for this model">
-                                                    <i class="fa-fw fa-solid fa-trash"></i> <span data-i18n="Clear Profile">Clear Profile</span>
-                                                </button>
+                                            <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
+                                                <label for="bind_preset_to_sampling" title="Bind presets to Sampling settings" data-i18n="[title]Bind presets to Sampling settings" class="checkbox_label widthFreeExpand">
+                                                    <input id="bind_preset_to_sampling" type="checkbox" checked />
+                                                    <span data-i18n="Keep sampling settings linked to preset">Keep sampling settings linked to preset</span>
+                                                </label>
+                                                <div id="bind_preset_to_sampling_copy" class="toggle-description justifyLeft marginBot5">
+                                                    Linked mode updates temperature, penalties, and other sampling sliders when switching presets.
+                                                </div>
+                                                <strong id="bind_preset_to_sampling_tip" class="toggle-description justifyLeft">
+                                                    Use this when each preset stores its own sampling values.
+                                                </strong>
+                                            </div>
+                                            <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
+                                                <label for="model_sampling_profiles_enabled" title="Enable per-model sampling profiles" data-i18n="[title]Enable per-model sampling profiles" class="checkbox_label widthFreeExpand">
+                                                    <input id="model_sampling_profiles_enabled" type="checkbox" />
+                                                    <span data-i18n="Remember sampling settings per model">Remember sampling settings per model</span>
+                                                </label>
+                                                <div id="model_sampling_profiles_container">
+                                                    <div class="toggle-description justifyLeft marginBot5">
+                                                        When enabled, sampling settings are automatically saved and restored for each model. Use the buttons below to manage profiles for the current model.
+                                                    </div>
+                                                    <div class="flex-container gap3px">
+                                                        <button id="model_sampling_profile_save" class="menu_button" title="Save current sampling for this model" data-i18n="[title]Save current sampling for this model">
+                                                            <i class="fa-fw fa-solid fa-floppy-disk"></i> <span data-i18n="Save Profile">Save Profile</span>
+                                                        </button>
+                                                        <button id="model_sampling_profile_clear" class="menu_button" title="Clear saved profile for this model" data-i18n="[title]Clear saved profile for this model">
+                                                            <i class="fa-fw fa-solid fa-trash"></i> <span data-i18n="Clear Profile">Clear Profile</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
