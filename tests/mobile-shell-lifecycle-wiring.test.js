@@ -362,6 +362,18 @@ describe('mobile shell lifecycle wiring', () => {
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
     });
 
+    test('refreshes mobile shell layout after tab activation', () => {
+        const setActiveTabSource = getFunctionSource('setActiveTab');
+        const buildShellSource = getFunctionSource('buildShell');
+        const activationRefreshSource = getFunctionSource('queueMobileShellActivationRefresh');
+
+        expect(activationRefreshSource).toContain('if (!isMobileViewport()) {');
+        expect(activationRefreshSource).toContain('queueMobileShellDrawerBoundsSync();');
+        expect(activationRefreshSource).toContain('queueMobileViewportStateSync();');
+        expect(setActiveTabSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n        queueMobileShellActivationRefresh();');
+        expect(buildShellSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n            queueMobileShellActivationRefresh();');
+    });
+
     test('pins every mobile viewport sync step to a dispatch handler', () => {
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
 

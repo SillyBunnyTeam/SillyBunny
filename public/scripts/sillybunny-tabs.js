@@ -13531,6 +13531,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     const shellRoot = document.getElementById(shellConfig.rootPanelId);
     if (shellRoot instanceof HTMLElement && shellRoot.classList.contains('openDrawer')) {
         dispatchShellTabActivated(shellKey, activeTab);
+        queueMobileShellActivationRefresh();
     }
 }
 
@@ -13869,6 +13870,7 @@ function buildShell(shellKey) {
             const activeTab = shellState.tabs.get(shellState.activeTabId);
             activeTab?.onActivate?.();
             dispatchShellTabActivated(shellKey, activeTab);
+            queueMobileShellActivationRefresh();
             updateNavScrollIndicators();
             window.requestAnimationFrame(() => focusShellPanel(shellKey));
             queueMobileModalStateSync();
@@ -14341,6 +14343,15 @@ function dispatchShellTabActivated(shellKey, tabState) {
             label: tabState.label,
         },
     }));
+}
+
+function queueMobileShellActivationRefresh() {
+    if (!isMobileViewport()) {
+        return;
+    }
+
+    queueMobileShellDrawerBoundsSync();
+    queueMobileViewportStateSync();
 }
 
 function getInlineDrawerAutoCloseId(drawer, index = 0) {
