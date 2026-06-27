@@ -15,7 +15,7 @@ import { SlashCommandScope } from '../../slash-commands/SlashCommandScope.js';
 import { cancelDebounce, collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
 import { t } from '../../i18n.js';
 import { getSecretLabelById } from '../../secrets.js';
-import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset } from '../../openai.js';
+import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from '../../openai.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
 import { ConnectionManagerRequestService } from '../shared.js';
@@ -54,6 +54,7 @@ const CC_COMMANDS = [
     'preset',
     // Do not fix; CC needs to set the API twice because it could be overridden by the preset
     'api',
+    'secret-id',
     'api-url',
     'model',
     'proxy',
@@ -74,7 +75,6 @@ const CC_COMMANDS = [
     'custom-reasoning-enabled-value',
     'custom-reasoning-disabled-value',
     'prompt-post-processing',
-    'secret-id',
     'regex-preset',
 ];
 
@@ -600,7 +600,21 @@ function getCustomEndpointProfileSecretId(mode) {
         return '';
     }
 
+    // SillyBunny: Custom endpoint profiles bind to their saved preset secret, not the active fallback key.
     return String(selected_custom_endpoint_preset?.secretId ?? '').trim();
+}
+
+function syncAppliedCustomEndpointProfileSecret(mode, secretId) {
+    if (
+        mode !== 'cc' ||
+        main_api !== 'openai' ||
+        oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM
+    ) {
+        return;
+    }
+
+    // SillyBunny: Custom status/model fetches read the selected preset secret after profile apply.
+    syncCustomEndpointPresetSelectionBySecretId(secretId);
 }
 
 /**
@@ -985,7 +999,10 @@ async function applyConnectionProfile(profile) {
                 // Keep persistence centralized in the explicit save after the full profile is applied.
                 cancelDebounce(saveSettingsDebounced);
                 try {
-                    await commandPromise;
+                    const result = await commandPromise;
+                    if (command === 'secret-id') {
+                        syncAppliedCustomEndpointProfileSecret(mode, result || argument);
+                    }
                 } finally {
                     cancelDebounce(saveSettingsDebounced);
                 }
