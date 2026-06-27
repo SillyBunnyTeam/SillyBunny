@@ -87,6 +87,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #618 (2026-06-26) `fix: viewport escaping out of bounds due to dragging in general`
 - PR #619 (2026-06-26) `fix(ui): make edit message icons smaller on mobile`
 - PR #620 (2026-06-26) `feat(ui): preset settings dropdown`
+- PR #621 (2026-06-27) `fix(connection_profile): persist custom endpoint profiles secret`
 - PR #623 (2026-06-27) `fix(mobile_ui): soften touch guards and re-allow scrolling`
 - PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
 
