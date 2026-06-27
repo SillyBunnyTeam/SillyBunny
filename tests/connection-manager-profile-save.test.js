@@ -49,4 +49,25 @@ describe('connection manager profile save wiring', () => {
         expect(readSource).toContain('if (cleanUp && CLEAR_ON_EMPTY_RESULT.includes(command)) {');
         expect(readSource).toContain('delete profile[command];');
     });
+
+    test('persists selected Custom endpoint profile secrets instead of active fallback secrets', () => {
+        const helperSource = getFunctionSource('getCustomEndpointProfileSecretId');
+        const readSource = getFunctionSource('readProfileFromCommands');
+
+        expect(connectionManagerSource).toContain('import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset } from \'../../openai.js\';');
+        expect(helperSource).toContain('mode !== \'cc\'');
+        expect(helperSource).toContain('oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM');
+        expect(helperSource).toContain('selected_custom_endpoint_preset?.name === \'None\'');
+        expect(helperSource).toContain('return String(selected_custom_endpoint_preset?.secretId ?? \'\').trim();');
+
+        const secretCommandIndex = readSource.indexOf('if (command === \'secret-id\') {');
+        const profileSecretIndex = readSource.indexOf('const customEndpointSecretId = getCustomEndpointProfileSecretId(mode);', secretCommandIndex);
+        const assignIndex = readSource.indexOf('profile[command] = customEndpointSecretId;', profileSecretIndex);
+        const fallbackIndex = readSource.indexOf('const result = await SlashCommandParser.commands[command].callback(args, \'\');');
+
+        expect(secretCommandIndex).toBeGreaterThanOrEqual(0);
+        expect(profileSecretIndex).toBeGreaterThan(secretCommandIndex);
+        expect(assignIndex).toBeGreaterThan(profileSecretIndex);
+        expect(fallbackIndex).toBeGreaterThan(assignIndex);
+    });
 });

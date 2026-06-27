@@ -15,6 +15,7 @@ import { SlashCommandScope } from '../../slash-commands/SlashCommandScope.js';
 import { cancelDebounce, collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
 import { t } from '../../i18n.js';
 import { getSecretLabelById } from '../../secrets.js';
+import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset } from '../../openai.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
 import { ConnectionManagerRequestService } from '../shared.js';
@@ -589,6 +590,19 @@ function findProfileByName(value) {
     return bestMatch.item;
 }
 
+function getCustomEndpointProfileSecretId(mode) {
+    if (
+        mode !== 'cc' ||
+        main_api !== 'openai' ||
+        oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM ||
+        selected_custom_endpoint_preset?.name === 'None'
+    ) {
+        return '';
+    }
+
+    return String(selected_custom_endpoint_preset?.secretId ?? '').trim();
+}
+
 /**
  * Reads the connection profile from the commands.
  * @param {string} mode Mode of the connection profile
@@ -607,6 +621,14 @@ async function readProfileFromCommands(mode, profile, cleanUp = false) {
 
             const allowEmpty = ALLOW_EMPTY.includes(command);
             const args = getNamedArguments();
+            if (command === 'secret-id') {
+                const customEndpointSecretId = getCustomEndpointProfileSecretId(mode);
+                if (customEndpointSecretId) {
+                    profile[command] = customEndpointSecretId;
+                    continue;
+                }
+            }
+
             const result = await SlashCommandParser.commands[command].callback(args, '');
             if (result || (allowEmpty && result === '')) {
                 profile[command] = result;
