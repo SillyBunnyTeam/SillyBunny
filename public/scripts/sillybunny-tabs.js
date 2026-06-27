@@ -774,7 +774,7 @@ const sbState = {
             left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
             right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
         },
-        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), false),
+        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true),
         activeResize: null,
     },
     characterDrawer: {
