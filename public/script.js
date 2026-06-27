@@ -13988,6 +13988,25 @@ export function isMessageSwipeable(messageId, message = undefined) {
     }
 }
 
+// SillyBunny: one-click recovery for replacing a failed current swipe.
+function canDeleteAddSwipe(messageId, message = chat[messageId]) {
+    if (!message) {
+        return false;
+    }
+
+    const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
+    const selectedSwipe = Number(message.swipe_id);
+    const overswipe = getOverswipeBehavior(messageId, message);
+
+    return isSwipingAllowed() &&
+        isMessageSwipeable(messageId, message) &&
+        overswipe === OVERSWIPE_BEHAVIOR.REGENERATE &&
+        swipesArray.length > 1 &&
+        Number.isInteger(selectedSwipe) &&
+        selectedSwipe >= 0 &&
+        selectedSwipe < swipesArray.length;
+}
+
 /**
  * Returns the message's behavior when swiped past it's last branch.
  * This does not check if the message can currently be swiped. See isMessageSwipeable().
@@ -14031,6 +14050,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
     //If swipes are disabled or hidden, hide all swipe buttons.
     if (!isSwipingAllowed()) {
         $('body').addClass('hideAllSwipeButtons');
+        chatElement.find('.mes_delete_add_swipe').hide();
         return;
         //Don't hide all swipe buttons.
     } else {
@@ -14059,6 +14079,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             const hasSwipes = (message?.swipes?.length > 1);
             const overswipe = getOverswipeBehavior(messageId, message);
             const swipePickerButton = $(div).find('.mes_swipe_picker');
+            const deleteAddSwipeButton = $(div).find('.mes_delete_add_swipe');
             const canOpenSwipePicker = canOpenSwipePickerForMessage(messageId);
 
             // Chevrons should always be shown on pristine greetings: https://github.com/SillyTavern/SillyTavern/pull/4712#issuecomment-3557893373
@@ -14074,6 +14095,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             //If there's only one swipe, the left arrow should not be shown.
             div.classList.toggle('swipes_visible', hasSwipes || pristineGreeting);
             swipePickerButton.toggle(canOpenSwipePicker);
+            deleteAddSwipeButton.toggle(canDeleteAddSwipe(messageId, message));
 
             //updateSwipeCounter does not need to be awaited, It can run a bit later.
             if (updateCounters) updateSwipeCounter(messageId, { message, messageElement: $(div) });
@@ -14081,6 +14103,7 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
             //Hide all messages that are not swipeable.
             div.classList.remove('swipes_visible', 'last_swipe');
             $(div).find('.mes_swipe_picker').toggle(canOpenSwipePickerForMessage(messageId));
+            $(div).find('.mes_delete_add_swipe').hide();
         }
     });
 }
@@ -15890,6 +15913,40 @@ jQuery(async function () {
     //limit swiping to only last message clicks
     $(document).on('click', '.last_mes .swipe_right', async (e, data) => await swipe(e, SWIPE_DIRECTION.RIGHT, data));
     $(document).on('click', '.last_mes .swipe_left', async (e, data) => await swipe(e, SWIPE_DIRECTION.LEFT, data));
+
+    $(document).on('click', '.mes_delete_add_swipe', async function () {
+        const button = $(this);
+        if (button.data('deleteAddSwipePending')) {
+            return;
+        }
+
+        button.data('deleteAddSwipePending', true);
+        try {
+            if (is_delete_mode) {
+                return;
+            }
+
+            const mesId = Number(button.closest('.mes').attr('mesid'));
+            const message = chat[mesId];
+            if (!canDeleteAddSwipe(mesId, message)) {
+                return;
+            }
+
+            const selectedSwipe = Number(message.swipe_id);
+            const newSwipeId = await deleteSwipe(selectedSwipe, mesId);
+            if (newSwipeId === undefined || !isSwipingAllowed()) {
+                return;
+            }
+
+            await swipe(null, SWIPE_DIRECTION.RIGHT, {
+                forceMesId: mesId,
+                forceSwipeId: message.swipes.length,
+                message,
+            });
+        } finally {
+            button.removeData('deleteAddSwipePending');
+        }
+    });
 
     initCharacterSearch();
 
