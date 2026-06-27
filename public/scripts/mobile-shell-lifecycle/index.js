@@ -741,16 +741,16 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
-const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
-    '#chat',
+const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
+    '#nonQRFormItems',
     '#leftSendForm',
     '#qr--bar',
-    '#ica--tracker-panel',
-    '.scrollableInner',
-    '.scrollableInnerFull',
-    '.sb-shell-panel-scroller',
-    '.sb-shell-scroller',
-    '.popup-body',
+    '#rightSendForm',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
+    '#leftSendForm',
+    '#qr--bar',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
@@ -818,7 +818,7 @@ function canElementScrollForGesture(element, delta) {
 }
 
 /**
- * Decides whether a mobile touchmove started on non-scrollable document chrome
+ * Decides whether a mobile touchmove started on non-scrollable composer chrome
  * should be cancelled before the browser pans the visual viewport.
  * @param {TouchEvent|object} event Touchmove-like event.
  * @param {object} [options] Options.
@@ -832,6 +832,10 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
 
     if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)
         || closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR)) {
+        return false;
+    }
+
+    if (!closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR)) {
         return false;
     }
 
