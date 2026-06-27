@@ -144,7 +144,7 @@ describe('mobile streaming helpers', () => {
         })).toBe(false);
     });
 
-    test('uses instant streaming bottom pins on iOS WebKit', () => {
+    test('uses instant streaming bottom pins on reduced mobile platforms', () => {
         expect(getMobileStreamingBottomPinBehavior({
             navigatorRef: { platform: 'Linux x86_64', maxTouchPoints: 1 },
         })).toBe('smooth');
