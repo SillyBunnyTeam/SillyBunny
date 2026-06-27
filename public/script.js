@@ -321,7 +321,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval } from './scripts/mobile-streaming.js';
+import { getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, shouldReduceStreamingDomWork } from './scripts/mobile-streaming.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -5922,8 +5922,14 @@ class StreamingProcessor {
     async onProgressStreaming(messageId, text, isFinal) {
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        const isIOSWebKit = isIOSWebKitPlatform();
-        const shouldReduceIntermediateStreamingWork = !isFinal && isIOSWebKit && power_user.ios_webkit_reduce_streaming_work;
+        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_reduce_streaming_work,
+            androidEnabled: power_user.android_reduce_streaming_work,
+        });
+        const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
+            androidEnabled: power_user.android_disable_stream_fade_in,
+        });
         const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();
         const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();
 
@@ -6030,7 +6036,7 @@ class StreamingProcessor {
                     shouldRefreshTokenCount,
                     shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork,
                     shouldUseStreamFadeIn: power_user.stream_fade_in,
-                    bypassFadeIn: isIOSWebKit && power_user.ios_webkit_disable_stream_fade_in,
+                    bypassFadeIn: shouldBypassStreamingFadeIn,
                 },
                 isFinal,
             });
@@ -6246,7 +6252,8 @@ class StreamingProcessor {
 
         try {
             const sw = new Stopwatch(getStreamingUpdateInterval(1000 / power_user.streaming_fps, {
-                enabled: power_user.ios_webkit_conservative_streaming,
+                iosEnabled: power_user.ios_webkit_conservative_streaming,
+                androidEnabled: power_user.android_conservative_streaming,
             }));
             const timestamps = [];
             for await (const { text, swipes, logprobs, toolCalls, state } of this.generator()) {

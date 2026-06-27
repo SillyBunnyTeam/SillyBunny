@@ -5594,6 +5594,27 @@
                                 </label>
                             </div>
 
+                            <div name="AndroidStreamingToggles" data-sb-persistent-menu="true">
+                                <h4><span data-i18n="Android Streaming Stability">Android Streaming Stability</span></h4>
+                                <small data-i18n="Android Streaming Stability_desc">Applies when the browser is Android, even if the server runs on another machine.</small>
+                                <label class="checkbox_label" for="android_conservative_streaming" title="Throttle live Android stream updates and reasoning refreshes." data-i18n="[title]Throttle live Android stream updates and reasoning refreshes.">
+                                    <input id="android_conservative_streaming" type="checkbox" />
+                                    <small data-i18n="Throttle Android stream updates">Throttle Android stream updates</small>
+                                </label>
+                                <label class="checkbox_label" for="android_reduce_streaming_work" title="Save Android main-thread work by deferring live token counts, badges, and swipe snapshots until the final render." data-i18n="[title]Save Android main-thread work by deferring live token counts, badges, and swipe snapshots until the final render.">
+                                    <input id="android_reduce_streaming_work" type="checkbox" />
+                                    <small data-i18n="Defer Android stream extras">Defer Android stream extras</small>
+                                </label>
+                                <label class="checkbox_label" for="android_disable_smooth_streaming" title="Avoid Android per-character smoothing and render provider chunks directly." data-i18n="[title]Avoid Android per-character smoothing and render provider chunks directly.">
+                                    <input id="android_disable_smooth_streaming" type="checkbox" />
+                                    <small data-i18n="Use raw Android stream chunks">Use raw Android stream chunks</small>
+                                </label>
+                                <label class="checkbox_label" for="android_disable_stream_fade_in" title="Skip Android fade-in text segmentation during live streaming." data-i18n="[title]Skip Android fade-in text segmentation during live streaming.">
+                                    <input id="android_disable_stream_fade_in" type="checkbox" />
+                                    <small data-i18n="Skip Android fade-in segmentation">Skip Android fade-in segmentation</small>
+                                </label>
+                            </div>
+
                             <!-- SillyBunny: aggressive DOM unloading for low-memory devices -->
                             <div name="AggressiveDomUnloadToggles">
                                 <h4><span data-i18n="Aggressive DOM Unloading">Aggressive DOM Unloading</span></h4>
