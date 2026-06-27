@@ -370,8 +370,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(activationRefreshSource).toContain('if (!isMobileViewport()) {');
         expect(activationRefreshSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(activationRefreshSource).toContain('queueMobileViewportStateSync();');
-        expect(setActiveTabSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n        queueMobileShellActivationRefresh();');
-        expect(buildShellSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n            queueMobileShellActivationRefresh();');
+        expect(setActiveTabSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
+        expect(buildShellSource).toMatch(/dispatchShellTabActivated\(shellKey, activeTab\);\r?\n\s+queueMobileShellActivationRefresh\(\);/);
     });
 
     test('pins every mobile viewport sync step to a dispatch handler', () => {
