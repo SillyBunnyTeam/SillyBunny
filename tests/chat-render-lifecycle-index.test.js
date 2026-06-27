@@ -17,6 +17,7 @@ import {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
     normalizeChatRenderWindowSize,
     resolveChatBottomScrollAction,
@@ -44,6 +45,7 @@ describe('chat render lifecycle index seam', () => {
         expect(typeof normalizeChatRenderWindowSize).toBe('function');
         expect(typeof getChatRenderWindowStartIndex).toBe('function');
         expect(typeof getChatHistoryPageSize).toBe('function');
+        expect(typeof getNonSystemMessageDepth).toBe('function');
         expect(typeof createMessageUpdateQueue).toBe('function');
         expect(typeof createStreamWriteBuffer).toBe('function');
         expect(typeof createDelegatedResizeObserver).toBe('function');
@@ -90,6 +92,7 @@ describe('chat render lifecycle index seam', () => {
         expect(lifecycle.renderWindow.normalizeSize).toBe(normalizeChatRenderWindowSize);
         expect(lifecycle.renderWindow.getStartIndex).toBe(getChatRenderWindowStartIndex);
         expect(lifecycle.renderWindow.getPageSize).toBe(getChatHistoryPageSize);
+        expect(lifecycle.renderWindow.getNonSystemMessageDepth).toBe(getNonSystemMessageDepth);
         expect(lifecycle.streamBuffer.create).toBe(createStreamWriteBuffer);
         expect(lifecycle.updateQueue.create).toBe(createMessageUpdateQueue);
         expect(lifecycle.resizeObserver.create).toBe(createDelegatedResizeObserver);

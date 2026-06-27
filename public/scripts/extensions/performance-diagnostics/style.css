@@ -1,0 +1,11 @@
+.sb-performance-diagnostics-extension-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sb-performance-diagnostics-extension-body pre {
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+}

@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 test.describe('frontend performance smoke', () => {
     test('mobile shell exposes core performance marks and bounded assets', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.addInitScript(() => globalThis.performance.setResourceTimingBufferSize(1000));
         await page.goto('/', { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => {
             const browserGlobal = globalThis;
@@ -33,7 +34,10 @@ test.describe('frontend performance smoke', () => {
         });
 
         expect(snapshot.title).toBe('SillyBunny');
+        expect(snapshot.hasShell).toBe(true);
         expect(snapshot.resourceCount).toBeLessThan(260);
+        expect(snapshot.jsBytes).toBeLessThan(8 * 1024 * 1024);
+        expect(snapshot.cssBytes).toBeLessThan(2 * 1024 * 1024);
         expect(snapshot.fontRequests).toBeLessThan(18);
     });
 });

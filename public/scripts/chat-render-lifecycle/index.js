@@ -34,6 +34,9 @@ import {
     normalizeChatRenderWindowSize,
 } from './render-window.js';
 import {
+    getNonSystemMessageDepth,
+} from './message-depth.js';
+import {
     createStreamWriteBuffer,
 } from './stream-buffer.js';
 import {
@@ -64,6 +67,7 @@ export {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
     normalizeChatRenderWindowSize,
     resolveChatBottomScrollAction,
@@ -114,6 +118,7 @@ export function createChatRenderLifecycle() {
             maxSize: CHAT_RENDER_WINDOW_MAX,
             getPageSize: getChatHistoryPageSize,
             getStartIndex: getChatRenderWindowStartIndex,
+            getNonSystemMessageDepth,
             normalizeSize: normalizeChatRenderWindowSize,
         },
         streamBuffer: {
