@@ -98,7 +98,7 @@ function getFunctionSource(name) {
 }
 
 describe('mobile shell lifecycle wiring', () => {
-    test('blocks mobile document panning from non-scrollable shell gaps only', () => {
+    test('blocks mobile document panning from non-scrollable composer chrome only', () => {
         expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
         expect(browserFixesSource).toContain('captureDocumentPanStart');
         expect(browserFixesSource).toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
@@ -108,11 +108,15 @@ describe('mobile shell lifecycle wiring', () => {
             scrollHeight: 1200,
             clientHeight: 600,
         });
-        const composerGap = createElementStub();
+        const composerChrome = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#nonQRFormItems'),
+        });
+        const composerGap = createElementStub({ parentElement: composerChrome });
         const textarea = createElementStub({
             matches: selector => selector.includes('textarea'),
         });
         const quickReplyRail = createElementStub({
+            parentElement: composerChrome,
             matches: selector => selectorListIncludes(selector, '#leftSendForm'),
             scrollWidth: 600,
             clientWidth: 240,
@@ -124,11 +128,25 @@ describe('mobile shell lifecycle wiring', () => {
         const companionHandle = createElementStub({
             closest: selector => selectorListIncludes(selector, '#ica--tracker-panel-handle') ? companionHandle : null,
         });
+        const presetPopupBody = createElementStub({
+            matches: selector => selectorListIncludes(selector, '.popup-body'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const presetButton = createElementStub({ parentElement: presetPopupBody });
+        const characterDrawerScroller = createElementStub({
+            matches: selector => selectorListIncludes(selector, '.sb-shell-panel-scroller'),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const characterCard = createElementStub({ parentElement: characterDrawerScroller });
         const chatMove = createTouchMove(chatScroller, { y: -40 });
         const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
         const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
         const gapMove = createTouchMove(composerGap, { y: -40 });
         const buttonMove = createTouchMove(genericButton, { y: -40 });
+        const presetMove = createTouchMove(presetButton, { y: -40 });
+        const characterDrawerMove = createTouchMove(characterCard, { y: -40 });
         const multiTouchMove = createTouchMove(composerGap, { touches: [{}, {}] });
         const nonCancelableMove = createTouchMove(composerGap, { cancelable: false });
 
@@ -138,7 +156,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(createTouchMove(companionHandle, { x: -40 }).event)).toBe(false);
         expect(shouldBlockMobileDocumentPan(gapMove.event, { touchStart: gapMove.touchStart })).toBe(true);
-        expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(presetMove.event, { touchStart: presetMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(multiTouchMove.event, { touchStart: multiTouchMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
@@ -340,6 +360,18 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (!isMobileViewport()) {');
         expect(queueMobileShellDrawerBoundsSyncSource).not.toContain('if (typeof window.requestAnimationFrame === \'function\') {');
+    });
+
+    test('refreshes mobile shell layout after tab activation', () => {
+        const setActiveTabSource = getFunctionSource('setActiveTab');
+        const buildShellSource = getFunctionSource('buildShell');
+        const activationRefreshSource = getFunctionSource('queueMobileShellActivationRefresh');
+
+        expect(activationRefreshSource).toContain('if (!isMobileViewport()) {');
+        expect(activationRefreshSource).toContain('queueMobileShellDrawerBoundsSync();');
+        expect(activationRefreshSource).toContain('queueMobileViewportStateSync();');
+        expect(setActiveTabSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n        queueMobileShellActivationRefresh();');
+        expect(buildShellSource).toContain('dispatchShellTabActivated(shellKey, activeTab);\n            queueMobileShellActivationRefresh();');
     });
 
     test('pins every mobile viewport sync step to a dispatch handler', () => {

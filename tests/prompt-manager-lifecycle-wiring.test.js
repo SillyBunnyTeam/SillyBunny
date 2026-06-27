@@ -7,8 +7,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const promptManagerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'PromptManager.js'), 'utf8');
 
 function getMethodSource(name) {
-    const marker = `\n    ${name}(`;
-    const start = promptManagerSource.indexOf(marker);
+    const markers = [`\n    ${name}(`, `\n    async ${name}(`];
+    const start = markers.reduce((match, marker) => {
+        const index = promptManagerSource.indexOf(marker);
+        return match === -1 || (index !== -1 && index < match) ? index : match;
+    }, -1);
 
     expect(start).toBeGreaterThanOrEqual(0);
 
@@ -86,5 +89,40 @@ describe('prompt manager lifecycle wiring', () => {
         expect(source).toContain('if (!readyRenderState.shouldRender)');
         expect(source).toContain('if (readyRenderState.shouldRunDryGenerate)');
         expect(source).not.toContain('if (true === afterTryGenerate)');
+    });
+
+    test('guards async render writes with a current render token', () => {
+        const renderSource = getMethodSource('render');
+        const promptManagerRenderSource = getMethodSource('renderPromptManager');
+        const promptListRenderSource = getMethodSource('renderPromptManagerListItems');
+
+        expect(promptManagerSource).toContain('this.renderRequestId = 0;');
+        expect(promptManagerSource).toContain('#isRenderCurrent(renderRequestId)');
+        expect(renderSource).toContain('const renderRequestId = ++this.renderRequestId;');
+        expect(renderSource).toContain('const renderedPromptManager = await this.renderPromptManager(renderRequestId);');
+        expect(renderSource).toContain('const renderedListItems = await this.renderPromptManagerListItems(renderRequestId);');
+        expect(renderSource).toContain('!this.#isRenderCurrent(renderRequestId)');
+
+        const headerAwaitIndex = promptManagerRenderSource.indexOf('const headerHtml = await renderTemplateAsync(\'promptManagerHeader\'');
+        const promptManagerClearIndex = promptManagerRenderSource.indexOf('promptManagerDiv.innerHTML = \'\';');
+        const promptManagerHeaderGuardIndex = promptManagerRenderSource.indexOf('if (!this.#isRenderCurrent(renderRequestId))', headerAwaitIndex);
+
+        expect(promptManagerRenderSource).toContain('async renderPromptManager(renderRequestId = this.renderRequestId)');
+        expect(headerAwaitIndex).toBeGreaterThanOrEqual(0);
+        expect(promptManagerHeaderGuardIndex).toBeGreaterThan(headerAwaitIndex);
+        expect(promptManagerClearIndex).toBeGreaterThan(promptManagerHeaderGuardIndex);
+        expect(promptManagerRenderSource).toContain('return false;');
+        expect(promptManagerRenderSource).toContain('return true;');
+
+        const listHeaderAwaitIndex = promptListRenderSource.indexOf('let listItemHtml = await renderTemplateAsync(\'promptManagerListHeader\'');
+        const promptListClearIndex = promptListRenderSource.indexOf('promptManagerList.innerHTML = \'\';');
+        const promptListGuardIndex = promptListRenderSource.indexOf('if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement)', listHeaderAwaitIndex);
+
+        expect(promptListRenderSource).toContain('async renderPromptManagerListItems(renderRequestId = this.renderRequestId)');
+        expect(listHeaderAwaitIndex).toBeGreaterThanOrEqual(0);
+        expect(promptListGuardIndex).toBeGreaterThan(listHeaderAwaitIndex);
+        expect(promptListClearIndex).toBeGreaterThan(promptListGuardIndex);
+        expect(promptListRenderSource).toContain('return false;');
+        expect(promptListRenderSource).toContain('return true;');
     });
 });

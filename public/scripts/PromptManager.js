@@ -386,6 +386,9 @@ class PromptManager {
         this.sourcePromptTokenCounts = {};
         this.sourcePromptTokenUsage = 0;
 
+        // Monotonic render token used to discard stale async renders.
+        this.renderRequestId = 0;
+
         // Error state, contains error message.
         this.error = null;
 
@@ -1217,12 +1220,17 @@ class PromptManager {
         }
     }
 
+    #isRenderCurrent(renderRequestId) {
+        return renderRequestId === this.renderRequestId;
+    }
+
     /**
      * Main rendering function
      *
      * @param afterTryGenerate - Whether a dry run should be attempted before rendering
      */
     render(afterTryGenerate = true) {
+        const renderRequestId = ++this.renderRequestId;
         const renderState = resolvePromptManagerRenderState({
             mainApi: main_api,
             promptOrderStrategy: this.configuration.promptOrder.strategy,
@@ -1234,7 +1242,37 @@ class PromptManager {
         if (!renderState.shouldRender && !renderState.shouldWaitForGeneration) return;
         this.error = null;
 
+        const renderPromptManagerDom = async () => {
+            this.profileStart('render');
+            try {
+                const scrollPosition = this.#getScrollPosition();
+                await this.populateSourcePromptTokenCounts();
+                if (!this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                const renderedPromptManager = await this.renderPromptManager(renderRequestId);
+                if (!renderedPromptManager || !this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                const renderedListItems = await this.renderPromptManagerListItems(renderRequestId);
+                if (!renderedListItems || !this.#isRenderCurrent(renderRequestId)) {
+                    return;
+                }
+
+                this.makeDraggable();
+                this.#setScrollPosition(scrollPosition);
+            } finally {
+                this.profileEnd('render');
+            }
+        };
+
         waitUntilCondition(() => !is_send_press && !is_group_generating, 1024 * 1024, 100).then(async () => {
+            if (!this.#isRenderCurrent(renderRequestId)) {
+                return;
+            }
+
             const readyRenderState = resolvePromptManagerRenderState({
                 mainApi: main_api,
                 promptOrderStrategy: this.configuration.promptOrder.strategy,
@@ -1250,25 +1288,15 @@ class PromptManager {
                 this.profileStart('filling context');
                 this.tryGenerate().finally(async () => {
                     this.profileEnd('filling context');
-                    this.profileStart('render');
-                    const scrollPosition = this.#getScrollPosition();
-                    await this.populateSourcePromptTokenCounts();
-                    await this.renderPromptManager();
-                    await this.renderPromptManagerListItems();
-                    this.makeDraggable();
-                    this.#setScrollPosition(scrollPosition);
-                    this.profileEnd('render');
+                    if (!this.#isRenderCurrent(renderRequestId)) {
+                        return;
+                    }
+
+                    await renderPromptManagerDom();
                 });
             } else {
                 // Executed during live communication
-                this.profileStart('render');
-                const scrollPosition = this.#getScrollPosition();
-                await this.populateSourcePromptTokenCounts();
-                await this.renderPromptManager();
-                await this.renderPromptManagerListItems();
-                this.makeDraggable();
-                this.#setScrollPosition(scrollPosition);
-                this.profileEnd('render');
+                await renderPromptManagerDom();
             }
         }).catch(() => {
             console.log('Timeout while waiting for send press to be false');
@@ -2076,16 +2104,20 @@ class PromptManager {
 
     /**
      * Empties, then re-assembles the container containing the prompt list.
+     * @param {number} renderRequestId Current render request token.
+     * @returns {Promise<boolean>} True when the current render completed.
      */
-    async renderPromptManager() {
+    async renderPromptManager(renderRequestId = this.renderRequestId) {
+        if (!this.#isRenderCurrent(renderRequestId)) {
+            return false;
+        }
+
         let selectedPromptIndex = 0;
         const existingAppendSelect = document.getElementById(`${this.configuration.prefix}prompt_manager_footer_append_prompt`);
         if (existingAppendSelect instanceof HTMLSelectElement) {
             selectedPromptIndex = existingAppendSelect.selectedIndex;
         }
         const promptManagerDiv = this.containerElement;
-        this.restorePopupToOrigin();
-        promptManagerDiv.innerHTML = '';
 
         const errorDiv = this.error ? `
                 <div class="${this.configuration.prefix}prompt_manager_error">
@@ -2096,18 +2128,11 @@ class PromptManager {
         const totalActiveTokens = this.getDisplayTokenUsage();
 
         const headerHtml = await renderTemplateAsync('promptManagerHeader', { error: this.error, errorDiv, prefix: this.configuration.prefix, totalActiveTokens, dragLocked: power_user.prompt_manager_drag_locked });
-        promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
-
-        this.listElement = promptManagerDiv.querySelector(`#${this.configuration.prefix}prompt_manager_list`);
-
-        if (this.selectedPromptId && !this.getPromptById(this.selectedPromptId)) {
-            this.hidePopup();
-            this.clearEditForm();
-            this.clearInspectForm();
-            this.selectedPromptId = null;
-            this.activePopupArea = '';
+        if (!this.#isRenderCurrent(renderRequestId)) {
+            return false;
         }
 
+        let footerHtml = '';
         if (null !== this.activeCharacter) {
             const prompts = [...this.serviceSettings.prompts]
                 .filter(prompt => prompt && !prompt?.system_prompt)
@@ -2122,7 +2147,27 @@ class PromptManager {
                 selectedPromptIndex = 0;
             }
 
-            const footerHtml = await renderTemplateAsync('promptManagerFooter', { promptsHtml, prefix: this.configuration.prefix });
+            footerHtml = await renderTemplateAsync('promptManagerFooter', { promptsHtml, prefix: this.configuration.prefix });
+            if (!this.#isRenderCurrent(renderRequestId)) {
+                return false;
+            }
+        }
+
+        if (this.selectedPromptId && !this.getPromptById(this.selectedPromptId)) {
+            this.hidePopup();
+            this.clearEditForm();
+            this.clearInspectForm();
+            this.selectedPromptId = null;
+            this.activePopupArea = '';
+        }
+
+        this.restorePopupToOrigin();
+        promptManagerDiv.innerHTML = '';
+        promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
+
+        this.listElement = promptManagerDiv.querySelector(`#${this.configuration.prefix}prompt_manager_list`);
+
+        if (null !== this.activeCharacter) {
             const footerSlot = promptManagerDiv.querySelector(`.${this.configuration.prefix}prompt_manager_footer_slot`);
             footerSlot?.insertAdjacentHTML('beforeend', footerHtml);
 
@@ -2130,7 +2175,7 @@ class PromptManager {
             if (!(footerDiv instanceof HTMLElement)) {
                 this.bindDrawerPersistence();
                 this.bindDragLockButton();
-                return;
+                return true;
             }
 
             footerDiv?.querySelector('#prompt-manager-reset-character')?.addEventListener('click', this.handleCharacterReset);
@@ -2149,6 +2194,7 @@ class PromptManager {
         this.syncPopupPlacement();
         this.syncEditorPaneState();
         this.syncListSelection();
+        return true;
     }
 
     bindDragLockButton() {
@@ -2168,17 +2214,22 @@ class PromptManager {
 
     /**
      * Empties, then re-assembles the prompt list
+     * @param {number} renderRequestId Current render request token.
+     * @returns {Promise<boolean>} True when the current render completed.
      */
-    async renderPromptManagerListItems() {
-        if (!this.serviceSettings.prompts) return;
+    async renderPromptManagerListItems(renderRequestId = this.renderRequestId) {
+        if (!this.serviceSettings.prompts || !this.#isRenderCurrent(renderRequestId)) return false;
 
         const promptManagerList = this.listElement;
-        promptManagerList.innerHTML = '';
+        if (!(promptManagerList instanceof HTMLElement)) return false;
 
         const { prefix } = this.configuration;
         const displayTokenCounts = this.getActivePromptTokenCounts();
 
         let listItemHtml = await renderTemplateAsync('promptManagerListHeader', { prefix });
+        if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
+            return false;
+        }
 
         this.getPromptsForCharacter(this.activeCharacter).forEach(prompt => {
             if (!prompt) return;
@@ -2290,6 +2341,11 @@ class PromptManager {
             `;
         });
 
+        if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
+            return false;
+        }
+
+        promptManagerList.innerHTML = '';
         promptManagerList.insertAdjacentHTML('beforeend', listItemHtml);
 
         // Now that the new elements are in the DOM, you can add the event listeners.
@@ -2318,6 +2374,7 @@ class PromptManager {
         });
 
         this.syncListSelection();
+        return true;
     }
 
     /**
