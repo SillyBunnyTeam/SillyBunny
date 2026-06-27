@@ -3675,6 +3675,7 @@ function setDesktopTopbarLabelPart(partId, enabled) {
 
     sbState.topbarLabel.desktopParts = normalizeTopbarLabelParts(Array.from(nextParts), []);
     safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
     scheduleTopbarContextRefresh(0);
@@ -3690,6 +3691,7 @@ function setMobileTopbarLabelPart(partId, enabled) {
 
     sbState.topbarLabel.mobilePart = nextPart;
     safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
     scheduleTopbarContextRefresh(0);
@@ -3707,6 +3709,7 @@ function setTopbarCustomText(value) {
     }
 
     safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);
+    flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
 }

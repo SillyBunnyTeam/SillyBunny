@@ -45,6 +45,12 @@ describe('topbar label tap cycle', () => {
         expect(previewSource).toContain('return getTopbarLabelPartOption(normalizedPart)?.label ?? \'\';');
     });
 
+    test('flushes configured label settings immediately after storage writes', () => {
+        expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));\n    flushSbStorageWrites();');
+        expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);\n    flushSbStorageWrites();');
+        expect(tabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);\n    flushSbStorageWrites();');
+    });
+
     test('binds accessible pointer and keyboard activation on the title', () => {
         const bindSource = getFunctionSource('bindTopBarTitleCycle');
         expect(bindSource).toContain('title.addEventListener(\'click\'');
