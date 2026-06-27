@@ -721,7 +721,7 @@ export class QuickReply {
                         message.blur();
                         await this.executeFromEditor();
                         if (document.activeElement != message) {
-                            message.focus();
+                            message.focus({ preventScroll: true });
                             message.selectionStart = selectionStart;
                             message.selectionEnd = selectionEnd;
                         }
@@ -899,7 +899,7 @@ export class QuickReply {
                 updateScrollDebounced(evt);
                 if (document.activeElement == message) {
                     message.blur();
-                    message.focus();
+                    message.focus({ preventScroll: true });
                 }
             });
             window.addEventListener('resize', resizeListener);

@@ -109,10 +109,48 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
+function addDocumentViewportAnchorPatch() {
+    let resetScheduled = false;
+
+    const resetDocumentScroll = () => {
+        const scrollingElement = document.scrollingElement;
+        const scrollLeft = Math.max(window.scrollX || 0, scrollingElement?.scrollLeft || 0);
+        const scrollTop = Math.max(window.scrollY || 0, scrollingElement?.scrollTop || 0);
+
+        if (scrollLeft <= 0 && scrollTop <= 0) {
+            return;
+        }
+
+        if (scrollingElement instanceof Element) {
+            scrollingElement.scrollLeft = 0;
+            scrollingElement.scrollTop = 0;
+        }
+
+        window.scrollTo(0, 0);
+    };
+
+    const scheduleDocumentScrollReset = () => {
+        if (resetScheduled) {
+            return;
+        }
+
+        resetScheduled = true;
+        requestAnimationFrame(() => {
+            resetDocumentScroll();
+            resetScheduled = false;
+        });
+    };
+
+    resetDocumentScroll();
+    window.addEventListener('scroll', scheduleDocumentScrollReset, { passive: true });
+}
+
 function applyBrowserFixes() {
     if (isFirefox()) {
         sanitizeInlineQuotationOnCopy();
     }
+
+    addDocumentViewportAnchorPatch();
 
     if (isMobile()) {
         const viewport = window.visualViewport;

@@ -354,7 +354,7 @@ export function toggleAddDmPicker() {
     renderList();
 
     if (searchInput instanceof HTMLInputElement) {
-        searchInput.focus();
+        searchInput.focus({ preventScroll: true });
         searchInput.addEventListener('input', () => {
             renderList(searchInput.value.toLowerCase().trim());
         });
@@ -648,7 +648,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
     renderList();
 
     if (searchInput instanceof HTMLInputElement) {
-        searchInput.focus();
+        searchInput.focus({ preventScroll: true });
         searchInput.addEventListener('input', () => {
             renderList(searchInput.value.toLowerCase().trim());
         });

@@ -125,7 +125,7 @@ function focusConversationInput({ skipIOS = false } = {}) {
 
     const input = document.getElementById(CHROME_IDS.input);
     if (input instanceof HTMLTextAreaElement) {
-        input.focus();
+        input.focus({ preventScroll: true });
     }
 }
 

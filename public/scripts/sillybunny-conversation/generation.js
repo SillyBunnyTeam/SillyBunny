@@ -161,7 +161,7 @@ export function editConversationMessage(messageId) {
 
     textElement.textContent = '';
     textElement.append(textarea, buttonContainer);
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
 
     saveButton.onclick = () => {
         const value = textarea.value.trim();

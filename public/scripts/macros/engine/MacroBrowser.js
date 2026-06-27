@@ -293,7 +293,7 @@ export class MacroBrowser {
             evt.preventDefault();
             evt.stopPropagation();
             evt.stopImmediatePropagation();
-            this.searchInput?.focus();
+            this.searchInput?.focus({ preventScroll: true });
         }
     }
 }

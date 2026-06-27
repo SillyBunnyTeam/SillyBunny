@@ -661,7 +661,7 @@ export function replyToConversationMessage(messageId) {
 
     input.value = newText;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
+    input.focus({ preventScroll: true });
 
     // Position cursor at the very end
     input.setSelectionRange(input.value.length, input.value.length);

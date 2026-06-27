@@ -505,7 +505,7 @@ export function insertChoiceIntoMessageInput(rawText) {
     textarea.value = current.trim() ? `${current.replace(/\s+$/, '')}\n${choice}` : choice;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     globalThis.$?.(textarea).trigger('input');
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     toastr.success('Added to the message box.');
     return true;
 }
