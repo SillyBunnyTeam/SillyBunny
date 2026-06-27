@@ -9411,6 +9411,32 @@ function updateCustomEndpointKeyInput(preset, key) {
     $('#api_key_custom').removeAttr('placeholder').val(key);
 }
 
+// SillyBunny: connection profiles can rotate CUSTOM secrets without using the endpoint preset dropdown.
+export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
+    const normalizedSecretId = String(secretId ?? '').trim();
+    if (!normalizedSecretId) {
+        return false;
+    }
+
+    const matchedPreset = custom_endpoint_presets.find(preset => preset.name !== 'None' && String(preset.secretId ?? '').trim() === normalizedSecretId);
+    if (matchedPreset) {
+        selected_custom_endpoint_preset = matchedPreset;
+        $('#custom_endpoint_preset').val(matchedPreset.name);
+        updateCustomEndpointKeyInput(matchedPreset, matchedPreset.key);
+        return true;
+    }
+
+    const selectedSecretId = String(selected_custom_endpoint_preset?.secretId ?? '').trim();
+    if (selectedSecretId && selectedSecretId !== normalizedSecretId) {
+        selected_custom_endpoint_preset = custom_endpoint_presets.find(preset => preset.name === 'None') ?? normalizeCustomEndpointPreset({ name: 'None' });
+        $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
+        updateCustomEndpointKeyInput(selected_custom_endpoint_preset, '');
+        return true;
+    }
+
+    return false;
+}
+
 async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
     const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
