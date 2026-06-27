@@ -87,6 +87,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #618 (2026-06-26) `fix: viewport escaping out of bounds due to dragging in general`
 - PR #619 (2026-06-26) `fix(ui): make edit message icons smaller on mobile`
 - PR #620 (2026-06-26) `feat(ui): preset settings dropdown`
+- PR #623 (2026-06-27) `fix(mobile_ui): soften touch guards and re-allow scrolling`
 
 ## v1.6.5
 
