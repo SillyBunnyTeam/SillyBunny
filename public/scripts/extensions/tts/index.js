@@ -51,6 +51,7 @@ let lastMessageHash = null;
 let periodicMessageGenerationTimer = null;
 let lastPositionOfParagraphEnd = -1;
 let currentInitVoiceMapPromise = null;
+let activeNarrateButton = null;
 
 const DEFAULT_VOICE_MARKER = '[Default Voice]';
 const DISABLED_VOICE_MARKER = 'disabled';
@@ -170,6 +171,12 @@ let ttsProviderName;
 
 
 async function onNarrateOneMessage() {
+    if (isTtsProcessing()) {
+        resetTtsPlayback();
+        resetNarrateButtonIcon();
+        return;
+    }
+
     audioElement.src = '/sounds/silence.mp3';
     const context = getContext();
     const id = $(this).closest('.mes').attr('mesid');
@@ -182,6 +189,9 @@ async function onNarrateOneMessage() {
     resetTtsPlayback();
     processAndQueueTtsMessage(message, Number(id), { manual: true });
     moduleWorker();
+
+    activeNarrateButton = $(this);
+    activeNarrateButton.removeClass('fa-bullhorn').addClass('fa-stop');
 }
 
 async function onNarrateText(args, text) {
@@ -250,6 +260,14 @@ function resetTtsPlayback() {
 
     // Set audio ready to process again
     audioQueueProcessorReady = true;
+    resetNarrateButtonIcon();
+}
+
+function resetNarrateButtonIcon() {
+    if (activeNarrateButton) {
+        activeNarrateButton.removeClass('fa-stop').addClass('fa-bullhorn');
+        activeNarrateButton = null;
+    }
 }
 
 function isTtsProcessing() {
@@ -460,6 +478,9 @@ function addAudioControl() {
 function completeCurrentAudioJob() {
     audioQueueProcessorReady = true;
     currentAudioJob = null;
+    if (!isTtsProcessing()) {
+        resetNarrateButtonIcon();
+    }
     // updateUiPlayState();
     wrapper.update();
 }
