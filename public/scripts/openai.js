@@ -2343,6 +2343,76 @@ function getModelSelectPickerOptionEntries(select) {
     return entries.filter(entry => entry.value);
 }
 
+function clampScrollValue(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function getLayoutViewportScrollAnchor() {
+    const scrollingElement = document.scrollingElement;
+
+    return {
+        left: Math.max(0, Math.round(window.scrollX || scrollingElement?.scrollLeft || 0)),
+        top: Math.max(0, Math.round(window.scrollY || scrollingElement?.scrollTop || 0)),
+    };
+}
+
+function restoreLayoutViewportScroll(anchor) {
+    if (!anchor) {
+        return;
+    }
+
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement instanceof Element) {
+        scrollingElement.scrollLeft = anchor.left;
+        scrollingElement.scrollTop = anchor.top;
+    }
+
+    if (window.scrollX !== anchor.left || window.scrollY !== anchor.top) {
+        window.scrollTo(anchor.left, anchor.top);
+    }
+}
+
+function scrollElementIntoNearestPanelScroller(element, { block = 'nearest' } = {}) {
+    if (!(element instanceof HTMLElement)) {
+        return;
+    }
+
+    const anchor = getLayoutViewportScrollAnchor();
+    const scroller = element.closest('.sb-model-id-picker-menu, .sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
+
+    if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
+        element.scrollIntoView({ block, inline: 'nearest' });
+        restoreLayoutViewportScroll(anchor);
+        requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+        return;
+    }
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const topOverflow = elementRect.top - scrollerRect.top;
+    const bottomOverflow = elementRect.bottom - scrollerRect.bottom;
+    let delta = 0;
+
+    if (block === 'center') {
+        delta = topOverflow - ((scrollerRect.height - elementRect.height) / 2);
+    } else if (block === 'start') {
+        delta = topOverflow;
+    } else if (block === 'end') {
+        delta = bottomOverflow;
+    } else if (topOverflow < 0) {
+        delta = topOverflow;
+    } else if (bottomOverflow > 0) {
+        delta = bottomOverflow;
+    }
+
+    if (Math.abs(delta) > 1) {
+        scroller.scrollTop = clampScrollValue(scroller.scrollTop + delta, 0, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+    }
+
+    restoreLayoutViewportScroll(anchor);
+    requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+}
+
 function openInlineModelSelectPicker(select, { input = null, source = select.id } = {}) {
     const row = input instanceof HTMLInputElement && input.parentElement instanceof HTMLElement ? input.parentElement : null;
     const menuParent = row?.parentElement;
@@ -2406,7 +2476,7 @@ function openInlineModelSelectPicker(select, { input = null, source = select.id 
     menu.hidden = !willOpen;
 
     if (!menu.hidden) {
-        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        scrollElementIntoNearestPanelScroller(menu.querySelector('[aria-selected="true"]'));
     }
 
     return true;
@@ -2529,7 +2599,7 @@ function openInlineSelectPicker(select, { source = select.id, label = select.id,
     menu.hidden = !willOpen;
 
     if (!menu.hidden) {
-        menu.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        scrollElementIntoNearestPanelScroller(menu.querySelector('[aria-selected="true"]'));
     }
 
     return true;
@@ -2604,7 +2674,7 @@ function openModelSelectPicker(select, options = {}) {
         return;
     }
 
-    select.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    scrollElementIntoNearestPanelScroller(select);
 
     if (shouldUseInlineModelSelectPicker() && openInlineModelSelectPicker(select, options)) {
         return;

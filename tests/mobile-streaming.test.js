@@ -1,9 +1,11 @@
 import {
     getMobileStreamingBottomPinBehavior,
+    getStreamingReasoningRenderInterval,
     getStreamingUpdateInterval,
     IOS_REASONING_RENDER_INTERVAL_MS,
     IOS_STREAMING_UPDATE_INTERVAL_MS,
     isSmoothStreamingEffectivelyEnabled,
+    shouldReduceStreamingDomWork,
     shouldRenderLiveReasoningContent,
 } from '../public/scripts/mobile-streaming.js';
 
@@ -34,6 +36,38 @@ describe('mobile streaming helpers', () => {
             navigatorRef: { platform: 'iPhone', maxTouchPoints: 1 },
             enabled: false,
         })).toBe(33);
+    });
+
+    test('honors platform-specific reduced DOM work toggles', () => {
+        expect(shouldReduceStreamingDomWork({ platform: 'iPhone', maxTouchPoints: 1 }, {
+            iosEnabled: false,
+        })).toBe(false);
+
+        expect(shouldReduceStreamingDomWork({ platform: 'iPhone', maxTouchPoints: 1 }, {
+            iosEnabled: true,
+        })).toBe(true);
+
+        expect(shouldReduceStreamingDomWork({
+            platform: 'Linux armv8l',
+            userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+        }, {
+            androidEnabled: true,
+        })).toBe(true);
+
+        expect(shouldReduceStreamingDomWork({
+            platform: 'Linux armv8l',
+            userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+        })).toBe(false);
+    });
+
+    test('exports the live reasoning render interval helper', () => {
+        expect(getStreamingReasoningRenderInterval({ platform: 'iPhone', maxTouchPoints: 1 }))
+            .toBe(IOS_REASONING_RENDER_INTERVAL_MS);
+
+        expect(getStreamingReasoningRenderInterval({
+            platform: 'Linux armv8l',
+            userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+        })).toBe(IOS_REASONING_RENDER_INTERVAL_MS);
     });
 
     test('reports effective Smooth Streaming after iOS WebKit bypasses', () => {

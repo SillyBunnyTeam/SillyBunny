@@ -57,6 +57,24 @@ let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
+
+function scrollChatMessageIntoView(messageElement) {
+    const chatRoot = document.getElementById('chat');
+
+    if (!(messageElement instanceof HTMLElement) || !(chatRoot instanceof HTMLElement) || !chatRoot.contains(messageElement)) {
+        return;
+    }
+
+    const chatRect = chatRoot.getBoundingClientRect();
+    const messageRect = messageElement.getBoundingClientRect();
+    const delta = (messageRect.top - chatRect.top) - ((chatRect.height - messageRect.height) / 2);
+
+    chatRoot.scrollTo({
+        top: Math.min(Math.max(chatRoot.scrollTop + delta, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+        behavior: 'smooth',
+    });
+}
+
 /** Behavior owned by index.js (the agent editor) arrives through this seam — no import cycle. */
 let panelHooks = null;
 
@@ -890,7 +908,7 @@ async function handlePanelAction(event) {
         closeCompanionPanel();
         const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
         if (messageElement) {
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrollChatMessageIntoView(messageElement);
         } else {
             toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
         }

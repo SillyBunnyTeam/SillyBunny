@@ -1986,7 +1986,16 @@ function onTagCreateClick() {
     printViewTagList($('#tag_view_list .tag_view_list_tags'));
 
     const tagElement = ($('#tag_view_list .tag_view_list_tags')).find(`.tag_view_item[id="${tag.id}"]`);
-    tagElement[0]?.scrollIntoView();
+    const tagElementNode = tagElement[0];
+    const tagList = tagElementNode?.closest?.('.tag_view_list_tags');
+    if (tagElementNode instanceof HTMLElement && tagList instanceof HTMLElement) {
+        const listRect = tagList.getBoundingClientRect();
+        const tagRect = tagElementNode.getBoundingClientRect();
+        const overflow = tagRect.bottom - listRect.bottom;
+        if (overflow > 0) {
+            tagList.scrollTop = Math.min(tagList.scrollTop + overflow, Math.max(0, tagList.scrollHeight - tagList.clientHeight));
+        }
+    }
     flashHighlight(tagElement);
 
     printCharactersDebounced();
@@ -2809,7 +2818,7 @@ export function initTags() {
         // If the new focus would've been inside the now redrawn tag list, we should at least move back the focus to the current name
         // Otherwise tab-navigation gets a bit weird
         if (evt.relatedTarget instanceof HTMLElement && $(evt.relatedTarget).closest('#tag_view_list')) {
-            $(`#tag_view_list .tag_view_item[id="${tagId}"] .tag_view_name`)[0]?.focus();
+            $(`#tag_view_list .tag_view_item[id="${tagId}"] .tag_view_name`)[0]?.focus({ preventScroll: true });
         }
 
         const newOrder = $('#tag_view_list .tag_view_item').map((_, el) => el.id).get();
