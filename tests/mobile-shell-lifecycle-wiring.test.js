@@ -241,6 +241,15 @@ describe('mobile shell lifecycle wiring', () => {
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
+        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
+        expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing && isEditableFocusTarget(document.activeElement);');
+        expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
+        expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
+        expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isMobileViewport && isIOSWebKit });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
