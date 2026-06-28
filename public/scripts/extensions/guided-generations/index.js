@@ -342,7 +342,7 @@ function updateFlushGuideButton() {
         labelElement.textContent = 'Flush Guide';
     }
     if (countElement) {
-        countElement.textContent = activeCount > 0 ? `(${activeCount} active)` : '';
+        countElement.textContent = activeCount > 0 ? String(activeCount) : '';
     }
 
     button.title = label;
@@ -371,7 +371,7 @@ function createFlushGuidesButton() {
     const button = document.createElement('button');
     button.id = 'gg_flush_guides_button';
     button.type = 'button';
-    button.className = 'gg-action-button gg-flush-guides-button menu_button';
+    button.className = 'gg-action-button gg-flush-guides-button menu_button menu_button_icon';
 
     const icon = document.createElement('span');
     icon.className = 'fa-solid fa-broom';
@@ -442,12 +442,12 @@ function updateExtensionButtons() {
     container.append(qrContainer, actionsContainer);
 
     const buttons = [
+        settings.showFlushGuidesButton !== false && createFlushGuidesButton(),
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
         settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user-pen', guidedImpersonate),
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),
         settings.showGuidedCorrection && createActionButton('gg_correction_button', 'Guided Correction', 'fa-solid fa-pen-to-square', guidedCorrection),
         settings.showGuidedResponse && createActionButton('gg_response_button', 'Guided Response', 'fa-solid fa-compass', guidedResponse),
-        settings.showFlushGuidesButton && createFlushGuidesButton(),
     ].filter(Boolean);
 
     actionsContainer.append(...buttons);
