@@ -204,7 +204,10 @@ describe('in-chat agent post-processing runner', () => {
             setExtensionPrompt: jest.fn((key, value) => {
                 extensionPrompts[key] = { value };
             }),
-            substituteParams: jest.fn(value => String(value ?? '')),
+            substituteParams: jest.fn((value, options = {}) => String(value ?? '')
+                .replaceAll('{{user}}', 'Traveler')
+                .replaceAll('{{char}}', options.name2Override || 'Assistant')
+                .replaceAll('{{original}}', options.original ?? '')),
             generateQuietPrompt,
             getCurrentChatId: jest.fn(() => currentChatId),
             normalizeContentText: jest.fn(value => String(value ?? '')),
@@ -1235,7 +1238,7 @@ describe('in-chat agent post-processing runner', () => {
         const plotCompass = createCompanionAgent({
             id: 'plot-compass-companion',
             sourceTemplateId: 'tpl-plot-compass-companion',
-            settings: { plotCompassObjective: 'Reach the tower' },
+            settings: { plotCompassObjective: '{{user}} helps {{char}} after {{original}}' },
             companion: { rawPrompt: true },
             prompt: 'Plan from the objective.',
         });
@@ -1243,12 +1246,29 @@ describe('in-chat agent post-processing runner', () => {
 
         chat.push(
             { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
-            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Mira', is_user: false, is_system: false, extra: {} },
         );
 
         const messages = await companionRunner.buildCompanionPromptMessages(plotCompass, 1);
 
-        expect(messages[0].content).toContain('[Plot Compass Objective]\nReach the tower');
+        expect(messages[0].content).toContain('[Plot Compass Objective]\nTraveler helps Mira after Assistant reply');
+    });
+
+    test('uses the active character for Plot Compass objective macros on user-sourced runs', async () => {
+        const plotCompass = createCompanionAgent({
+            id: 'plot-compass-companion',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            settings: { plotCompassObjective: 'Guide {{char}} after {{original}}' },
+            companion: { rawPrompt: true },
+            prompt: 'Plan from the objective.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push({ mes: 'I step through the gate.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+
+        const messages = await companionRunner.buildCompanionPromptMessages(plotCompass, 0);
+
+        expect(messages[0].content).toContain('[Plot Compass Objective]\nGuide Assistant after I step through the gate.');
     });
 
     test('includes the system prompt and authors note sections when toggled on', async () => {
@@ -1300,6 +1320,28 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('resolves companion macros before injecting feedback prompts', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'feedback-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'The door opened.', name: 'Mira', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, feedbackCompanion, {
+            status: 'done',
+            content: '{{user}} saw {{char}} write: {{original}}',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_feedback-companion'].value;
+
+        expect(injected).toContain('Traveler saw Mira write: The door opened.');
+        expect(injected).not.toContain('{{user}}');
     });
 
     test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
@@ -1458,12 +1500,13 @@ describe('in-chat agent post-processing runner', () => {
             { mes: 'Keep going.', name: 'User', is_user: true, is_system: false, extra: {} },
             { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} },
         );
-        companionRunner.setCompanionResult(chat[0], historyCompanion, { status: 'done', content: 'State after reply one' });
+        companionRunner.setCompanionResult(chat[0], historyCompanion, { status: 'done', content: '{{user}} saw {{char}} write: {{original}}' });
 
         const messages = await companionRunner.buildCompanionPromptMessages(historyCompanion, 2);
 
         expect(messages[1].content).toContain('[Your previous notes]');
-        expect(messages[1].content).toContain('State after reply one');
+        expect(messages[1].content).toContain('Traveler saw Assistant write: Reply one');
+        expect(messages[1].content).not.toContain('{{user}}');
 
         const noHistoryCompanion = createCompanionAgent({ id: 'no-history-companion', companion: { includeHistory: false } });
         const plainMessages = await companionRunner.buildCompanionPromptMessages(noHistoryCompanion, 2);

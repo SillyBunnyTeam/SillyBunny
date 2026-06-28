@@ -257,6 +257,17 @@ describe('companion card ui', () => {
         expect(html).toBe('<md>Traveler noticed Aria said the door is open</md>');
     });
 
+    test('keeps the active character macro when the source message is from the user', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '{{user}} asked {{char}} about {{original}}',
+            format: 'markdown',
+        }, { name: 'Traveler', is_user: true, mes: 'the hidden door' });
+
+        expect(html).toBe('<md>Traveler asked Assistant about the hidden door</md>');
+    });
+
     test('preserves style tags emitted by regex scripts in card bodies', async () => {
         agents[0].regexScripts = [{
             id: 'styled-card',
