@@ -118,6 +118,11 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+.sb-conversation-message-avatar[data-sb-conversation-action='zoom-avatar'] {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
 .sb-conversation-participant-avatar.is-interactive:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--sb-accent) 72%, var(--SmartThemeBodyColor));
     outline-offset: 2px;
@@ -844,6 +849,12 @@
     inline-size: 34px;
     block-size: 34px;
     flex: 0 0 34px;
+}
+
+.sb-conversation-message-avatar:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--sb-accent) 72%, var(--SmartThemeBodyColor));
+    outline-offset: 2px;
+    border-radius: var(--sb-radius-button, 14px);
 }
 
 .sb-conversation-message-avatar .sb-conversation-status-dot {
