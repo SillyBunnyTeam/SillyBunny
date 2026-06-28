@@ -111,6 +111,9 @@ describe('mobile shell lifecycle wiring', () => {
         const composerChrome = createElementStub({
             matches: selector => selectorListIncludes(selector, '#nonQRFormItems'),
         });
+        const sendFormChrome = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#send_form'),
+        });
         const composerGap = createElementStub({ parentElement: composerChrome });
         const textarea = createElementStub({
             matches: selector => selector.includes('textarea'),
@@ -128,6 +131,11 @@ describe('mobile shell lifecycle wiring', () => {
         const companionHandle = createElementStub({
             closest: selector => selectorListIncludes(selector, '#ica--tracker-panel-handle') ? companionHandle : null,
         });
+        const guidedActionsContainer = createElementStub({
+            parentElement: sendFormChrome,
+            matches: selector => selectorListIncludes(selector, '.gg-action-buttons-container'),
+        });
+        const guidedActionsGap = createElementStub({ parentElement: guidedActionsContainer });
         const presetPopupBody = createElementStub({
             matches: selector => selectorListIncludes(selector, '.popup-body'),
             scrollHeight: 1200,
@@ -144,6 +152,7 @@ describe('mobile shell lifecycle wiring', () => {
         const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
         const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
         const gapMove = createTouchMove(composerGap, { y: -40 });
+        const guidedActionsGapMove = createTouchMove(guidedActionsGap, { y: -40 });
         const buttonMove = createTouchMove(genericButton, { y: -40 });
         const presetMove = createTouchMove(presetButton, { y: -40 });
         const characterDrawerMove = createTouchMove(characterCard, { y: -40 });
@@ -156,6 +165,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(createTouchMove(companionHandle, { x: -40 }).event)).toBe(false);
         expect(shouldBlockMobileDocumentPan(gapMove.event, { touchStart: gapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(guidedActionsGapMove.event, { touchStart: guidedActionsGapMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(presetMove.event, { touchStart: presetMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);

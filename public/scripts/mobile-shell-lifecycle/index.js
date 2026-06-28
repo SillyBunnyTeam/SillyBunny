@@ -742,6 +742,7 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
 });
 
 const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
+    '#send_form',
     '#nonQRFormItems',
     '#leftSendForm',
     '#qr--bar',
