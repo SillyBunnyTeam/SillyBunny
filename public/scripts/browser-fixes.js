@@ -1,5 +1,6 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
 import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
+import { isIOSWebKitPlatform } from './mobile-send-button.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -109,10 +110,16 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
-function addDocumentViewportAnchorPatch() {
+function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     let resetScheduled = false;
 
+    const shouldSuspendDocumentScrollReset = () => suspendWhileEditing && isEditableFocusTarget(document.activeElement);
+
     const resetDocumentScroll = () => {
+        if (shouldSuspendDocumentScrollReset()) {
+            return;
+        }
+
         const scrollingElement = document.scrollingElement;
         const scrollLeft = Math.max(window.scrollX || 0, scrollingElement?.scrollLeft || 0);
         const scrollTop = Math.max(window.scrollY || 0, scrollingElement?.scrollTop || 0);
@@ -130,7 +137,7 @@ function addDocumentViewportAnchorPatch() {
     };
 
     const scheduleDocumentScrollReset = () => {
-        if (resetScheduled) {
+        if (resetScheduled || shouldSuspendDocumentScrollReset()) {
             return;
         }
 
@@ -143,6 +150,10 @@ function addDocumentViewportAnchorPatch() {
 
     resetDocumentScroll();
     window.addEventListener('scroll', scheduleDocumentScrollReset, { passive: true });
+
+    if (suspendWhileEditing) {
+        document.addEventListener('focusout', scheduleDocumentScrollReset, true);
+    }
 }
 
 function applyBrowserFixes() {
@@ -150,11 +161,13 @@ function applyBrowserFixes() {
         sanitizeInlineQuotationOnCopy();
     }
 
-    addDocumentViewportAnchorPatch();
+    const isMobileViewport = isMobile();
+    const isIOSWebKit = isIOSWebKitPlatform();
 
-    if (isMobile()) {
+    addDocumentViewportAnchorPatch({ suspendWhileEditing: isMobileViewport && isIOSWebKit });
+
+    if (isMobileViewport) {
         const viewport = window.visualViewport;
-        const isIOSWebKit = /iPad|iPhone|iPod/.test(navigator.platform) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         const viewportResetSettleMs = 360;
         let viewportFixScheduled = false;
         let viewportResetScheduled = false;
