@@ -6893,7 +6893,7 @@ function clearSamplingProfileForCurrentModel() {
     }
 }
 
-function maybeApplyModelSamplingProfile() {
+export function maybeApplyModelSamplingProfile() {
     if (!oai_settings.model_sampling_profiles_enabled) {
         return;
     }
