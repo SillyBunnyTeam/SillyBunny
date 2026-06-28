@@ -323,7 +323,7 @@ function createActionButton(id, title, iconClass, actionFunc) {
 }
 
 function getFlushGuideButtonLabel(activeCount) {
-    return `Flush Guide (${activeCount} active)`;
+    return `Flush guides (${activeCount} active)`;
 }
 
 function updateFlushGuideButton() {
@@ -334,12 +334,8 @@ function updateFlushGuideButton() {
 
     const activeCount = getActiveGuides().length;
     const label = getFlushGuideButtonLabel(activeCount);
-    const labelElement = button.querySelector('.gg-flush-guides-label');
     const countElement = button.querySelector('.gg-flush-guides-count');
 
-    if (labelElement) {
-        labelElement.textContent = 'Guides';
-    }
     if (countElement) {
         countElement.textContent = String(activeCount);
     }
@@ -373,16 +369,13 @@ function createFlushGuidesButton() {
     button.className = 'gg-action-button gg-flush-guides-button menu_button menu_button_icon';
 
     const icon = document.createElement('span');
-    icon.className = 'fa-solid fa-broom';
+    icon.className = 'fa-solid fa-broom gg-flush-guides-icon';
     icon.setAttribute('aria-hidden', 'true');
-
-    const label = document.createElement('span');
-    label.className = 'gg-flush-guides-label';
 
     const count = document.createElement('span');
     count.className = 'gg-flush-guides-count';
 
-    button.append(icon, label, count);
+    button.append(icon, count);
     button.addEventListener('click', async event => {
         event.preventDefault();
         await flushGuides();
