@@ -39,6 +39,7 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    isAgentHidden,
 } from './companion-shared.js';
 
 export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
@@ -1289,9 +1290,15 @@ export function meetsCompanionContextThreshold(agent, messageIndex = chat.length
 function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1 } = {}) {
     return activeAgents.filter(agent => {
         const companion = getCompanionConfig(agent);
-        return isCompanionAgent(agent) &&
-            String(agent.prompt ?? '').trim() &&
-            (manual || (companion.trigger === 'auto' && meetsCompanionContextThreshold(agent, messageIndex)));
+        if (!isCompanionAgent(agent) || !String(agent.prompt ?? '').trim()) {
+            return false;
+        }
+
+        if (!manual && isAgentHidden(agent.id)) {
+            return false;
+        }
+
+        return manual || (companion.trigger === 'auto' && meetsCompanionContextThreshold(agent, messageIndex));
     });
 }
 
@@ -1377,7 +1384,7 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
     for (const changedId of changedAgentIds) {
         const changedAgent = agentByReferenceId.get(changedId) ?? { id: changedId };
         for (const dependent of findCompanionDependents(changedAgent, runnable)) {
-            if (!visited.has(dependent.id)) {
+            if (!visited.has(dependent.id) && !isAgentHidden(dependent.id)) {
                 dependents.push(dependent);
                 visited.add(dependent.id);
             }

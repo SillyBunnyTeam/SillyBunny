@@ -1,8 +1,8 @@
 /**
- * Shared companion constants and pure helpers.
+ * Shared companion constants and helpers.
  *
- * This module has ZERO imports and no side effects on purpose: it is the single
- * source of truth for the template IDs, value sets and small normalizers that
+ * This module has ZERO imports and no side effects on import: it is the single
+ * source of truth for the template IDs, value sets and small helpers that
  * the companion runner, UI, panel and dashboard all need. Keeping it dependency
  * free means every consumer (and every test) can import it as the real module
  * without dragging in script.js or other heavy runtime singletons.
@@ -37,6 +37,60 @@ export const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE'])
 export const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
 export const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
 export const PLOT_COMPASS_OBJECTIVE_MAX_CHARS = 2000;
+
+const HIDDEN_AGENT_IDS_STORAGE_KEY = 'ica--tracker-panel-hidden-agents';
+
+let hiddenAgentIdsFallback = new Set();
+
+function normalizeHiddenAgentIds(ids = []) {
+    return new Set([...ids]
+        .map(id => String(id ?? '').trim())
+        .filter(Boolean)
+        .sort());
+}
+
+export function getHiddenAgentIds() {
+    let rawValue = null;
+
+    try {
+        rawValue = globalThis.localStorage?.getItem?.(HIDDEN_AGENT_IDS_STORAGE_KEY) ?? null;
+    } catch {
+        return new Set(hiddenAgentIdsFallback);
+    }
+
+    if (!rawValue) {
+        return new Set(hiddenAgentIdsFallback);
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue);
+        if (!Array.isArray(parsed)) {
+            return new Set();
+        }
+
+        const ids = normalizeHiddenAgentIds(parsed);
+        hiddenAgentIdsFallback = new Set(ids);
+        return ids;
+    } catch {
+        return new Set();
+    }
+}
+
+export function setHiddenAgentIds(ids) {
+    const normalizedIds = normalizeHiddenAgentIds(ids);
+    hiddenAgentIdsFallback = new Set(normalizedIds);
+
+    try {
+        globalThis.localStorage?.setItem?.(HIDDEN_AGENT_IDS_STORAGE_KEY, JSON.stringify([...normalizedIds]));
+    } catch {
+        // Private browsing or storage quota: the hidden state still applies for this session.
+    }
+}
+
+export function isAgentHidden(agentId) {
+    const normalizedId = String(agentId ?? '').trim();
+    return Boolean(normalizedId && getHiddenAgentIds().has(normalizedId));
+}
 
 /**
  * The template an agent was created from, falling back to its own id.
