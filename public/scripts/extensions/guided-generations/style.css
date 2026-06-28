@@ -40,23 +40,21 @@
 
 .gg-flush-guides-button {
     position: relative;
-    width: var(--bottomFormBlockSize);
+    width: auto;
     min-width: var(--bottomFormBlockSize);
-    max-width: var(--bottomFormBlockSize);
-    gap: 0;
-    flex: 0 0 var(--bottomFormBlockSize);
-    padding: 0;
+    max-width: 140px;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding: 0 10px;
     overflow: visible;
 }
 
 .gg-flush-guides-label {
-    display: none;
+    display: inline;
 }
 
 .gg-flush-guides-count {
-    position: absolute;
-    top: 1px;
-    right: 1px;
+    position: static;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -75,7 +73,9 @@
 }
 
 .gg-flush-guides-button[data-active-count="0"] .gg-flush-guides-count {
-    display: none;
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.72;
 }
 
 .gg-flush-guides-button.gg-flush-guides-active {
@@ -160,6 +160,16 @@
         flex: 0 0 var(--gg-mobile-action-size) !important;
         gap: 0 !important;
         padding: 0 !important;
+    }
+
+    .gg-flush-guides-label {
+        display: none;
+    }
+
+    .gg-flush-guides-count {
+        position: absolute;
+        top: 1px;
+        right: 1px;
     }
 
     .gg-profile-row {

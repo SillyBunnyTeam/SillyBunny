@@ -29,7 +29,6 @@ const defaultSettings = {
     showGuidedCorrection: true,
     showImpersonate1stPerson: true,
     showSimpleSendButton: true,
-    showFlushGuidesButton: true,
     integrateQrBar: true,
     injectionEndRole: 'system',
     debugMode: false,
@@ -324,7 +323,7 @@ function createActionButton(id, title, iconClass, actionFunc) {
 }
 
 function getFlushGuideButtonLabel(activeCount) {
-    return activeCount > 0 ? `Flush Guide (${activeCount} active)` : 'Flush Guide';
+    return `Flush Guide (${activeCount} active)`;
 }
 
 function updateFlushGuideButton() {
@@ -339,10 +338,10 @@ function updateFlushGuideButton() {
     const countElement = button.querySelector('.gg-flush-guides-count');
 
     if (labelElement) {
-        labelElement.textContent = 'Flush Guide';
+        labelElement.textContent = 'Guides';
     }
     if (countElement) {
-        countElement.textContent = activeCount > 0 ? String(activeCount) : '';
+        countElement.textContent = String(activeCount);
     }
 
     button.title = label;
@@ -442,7 +441,7 @@ function updateExtensionButtons() {
     container.append(qrContainer, actionsContainer);
 
     const buttons = [
-        settings.showFlushGuidesButton !== false && createFlushGuidesButton(),
+        createFlushGuidesButton(),
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
         settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user-pen', guidedImpersonate),
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),
