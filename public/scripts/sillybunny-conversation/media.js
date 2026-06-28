@@ -127,6 +127,7 @@ export function renderConversationParticipantStack(container, participants, {
     max = MAX_STACKED_PARTICIPANT_AVATARS,
     groupId = getConversationGroupIdForAvatar(getCurrentCharAvatar()),
     onAvatarClick = null,
+    zoomable = false,
 } = {}) {
     if (!(container instanceof HTMLElement)) {
         return;
@@ -171,9 +172,8 @@ export function renderConversationParticipantStack(container, participants, {
                     onAvatarClick(participant);
                 }
             });
-        } else {
+        } else if (zoomable) {
             avatarItem.classList.add('is-interactive');
-            avatarItem.dataset.sbZoomable = 'true';
             avatarItem.dataset.sbConversationAction = 'zoom-avatar';
             avatarItem.dataset.avatarFile = participant.avatar;
             avatarItem.dataset.avatarType = 'avatar';
