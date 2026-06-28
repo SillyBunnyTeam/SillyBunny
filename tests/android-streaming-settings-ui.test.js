@@ -29,7 +29,7 @@ describe('Android streaming settings UI', () => {
         expect(powerUserSource).toContain('shouldInitializeAndroidStreamingSettings');
 
         for (const settingId of androidSettingIds) {
-            expect(powerUserSource).toContain(`${settingId}: false`);
+            expect(powerUserSource).toContain(`${settingId}: true`);
             expect(powerUserSource).toContain(`$('#${settingId}').prop('checked', power_user.${settingId});`);
             expect(powerUserSource).toContain(`power_user.${settingId} = !!$(this).prop('checked');`);
         }

@@ -106,6 +106,10 @@ describe('mobile streaming helpers', () => {
         })).toBe(33);
     });
 
+    test('uses Android reduced DOM work by default', () => {
+        expect(shouldReduceStreamingDomWork(androidNavigator)).toBe(true);
+    });
+
     test('reports effective Smooth Streaming after platform-specific bypasses', () => {
         expect(isSmoothStreamingEffectivelyEnabled({
             smoothStreaming: true,

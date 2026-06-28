@@ -308,7 +308,7 @@ async function openSwipePicker(messageId) {
         onOpen: function () {
             scrollToSelectedSwipe();
             if (swipeIdInput instanceof HTMLInputElement) {
-                swipeIdInput.focus();
+                swipeIdInput.focus({ preventScroll: true });
                 swipeIdInput.select();
             }
         },
@@ -323,7 +323,7 @@ async function openSwipePicker(messageId) {
             if (!Number.isInteger(targetSwipeNumber) || targetSwipeNumber < 1 || targetSwipeNumber > message.swipes.length) {
                 toastr.warning(t`Enter a swipe ID between 1 and ${message.swipes.length}.`, t`Jump to Swipe`);
                 if (swipeIdInput instanceof HTMLInputElement) {
-                    swipeIdInput.focus();
+                    swipeIdInput.focus({ preventScroll: true });
                     swipeIdInput.select();
                 }
                 return false;

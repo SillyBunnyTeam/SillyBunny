@@ -168,10 +168,10 @@ const SB_ACCENT_PROFILE_SEED_VERSION = 2;
 const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
 const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
 const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({
-    android_conservative_streaming: false,
-    android_reduce_streaming_work: false,
-    android_disable_smooth_streaming: false,
-    android_disable_stream_fade_in: false,
+    android_conservative_streaming: true,
+    android_reduce_streaming_work: true,
+    android_disable_smooth_streaming: true,
+    android_disable_stream_fade_in: true,
 });
 const ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY = 'android_streaming_settings_initialized';
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([

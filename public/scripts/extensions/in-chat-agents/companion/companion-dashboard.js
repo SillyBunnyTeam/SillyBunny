@@ -51,6 +51,23 @@ function isSuppressedDashboardResult(agentId, result = {}) {
 let dashboardHooks = null;
 let activeDashboardPopup = null;
 
+function scrollChatMessageIntoView(messageElement) {
+    const chatRoot = document.getElementById('chat');
+
+    if (!(messageElement instanceof HTMLElement) || !(chatRoot instanceof HTMLElement) || !chatRoot.contains(messageElement)) {
+        return;
+    }
+
+    const chatRect = chatRoot.getBoundingClientRect();
+    const messageRect = messageElement.getBoundingClientRect();
+    const delta = (messageRect.top - chatRect.top) - ((chatRect.height - messageRect.height) / 2);
+
+    chatRoot.scrollTo({
+        top: Math.min(Math.max(chatRoot.scrollTop + delta, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+        behavior: 'smooth',
+    });
+}
+
 export function configureCompanionDashboard(hooks) {
     dashboardHooks = hooks;
 }
@@ -234,7 +251,7 @@ async function closeDashboard() {
 function jumpToMessage(messageIndex) {
     const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
     if (messageElement) {
-        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollChatMessageIntoView(messageElement);
     } else {
         toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
     }

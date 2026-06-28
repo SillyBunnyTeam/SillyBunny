@@ -1421,7 +1421,7 @@ function setReasoningEventHandlers() {
             resetHeight();
         }
 
-        textarea.focus();
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
         const textareaRect = textarea.getBoundingClientRect();

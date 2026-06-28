@@ -166,7 +166,7 @@ export function sendSystemMessage(type, text, extra = {}) {
         const parent = spinner.parentElement;
         spinner.remove();
         browser.renderInto(parent);
-        browser.search.focus();
+        browser.search.focus({ preventScroll: true });
     }
 
     if (type === system_message_types.MACROS) {
@@ -176,7 +176,7 @@ export function sendSystemMessage(type, text, extra = {}) {
             const parent = spinner.parentElement;
             spinner.remove();
             browser.renderInto(parent);
-            browser.searchInput?.focus();
+            browser.searchInput?.focus({ preventScroll: true });
         }
     }
 }

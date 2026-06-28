@@ -115,9 +115,9 @@ export function getMobileStreamingBottomPinBehavior({
  * Checks whether live streaming DOM work should be reduced for the current browser.
  * @param {Navigator} [navigatorRef] Navigator-like object
  * @param {object} [options]
- * @param {boolean} [options.enabled] Legacy all-mobile override
- * @param {boolean} [options.iosEnabled] Whether iOS WebKit reduction is enabled
- * @param {boolean} [options.androidEnabled] Whether Android reduction is enabled
+ * @param {boolean} [options.enabled] Legacy all-mobile reduction toggle
+ * @param {boolean} [options.iosEnabled] Whether the iOS WebKit reduction is enabled
+ * @param {boolean} [options.androidEnabled] Whether the Android reduction is enabled
  * @returns {boolean}
  */
 export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator, options = {}) {
