@@ -10229,6 +10229,7 @@ export function initOpenAI() {
         syncProxyPresetToBoundSource(oai_settings.chat_completion_source);
         // SillyBunny: source switches should not reset the selected settings preset.
         restoreOpenAIPresetSelection(presetName);
+        maybeApplyModelSamplingProfile();
         saveSettingsDebounced();
         reconnectOpenAi();
         forceCharacterEditorTokenize();

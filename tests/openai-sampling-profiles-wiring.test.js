@@ -62,4 +62,26 @@ describe('OpenAI sampling profile wiring', () => {
         expect(indexHtml).not.toContain('id="model_sampling_profile_save" class="menu_button menu_button_icon"');
         expect(indexHtml).not.toContain('id="model_sampling_profile_clear" class="menu_button menu_button_icon"');
     });
+
+    test('applies the selected model sampling profile when the chat completion source changes', () => {
+        const initOpenAISource = getFunctionSource('initOpenAI');
+        const sourceChangeStart = initOpenAISource.indexOf('$(\'#chat_completion_source\').on(\'change\', function () {');
+        const nextHandlerStart = initOpenAISource.indexOf('$(\'#oai_max_context_unlocked\')', sourceChangeStart);
+
+        expect(sourceChangeStart).toBeGreaterThanOrEqual(0);
+        expect(nextHandlerStart).toBeGreaterThan(sourceChangeStart);
+
+        const sourceChangeHandler = initOpenAISource.slice(sourceChangeStart, nextHandlerStart);
+        const toggleFormsIndex = sourceChangeHandler.indexOf('toggleChatCompletionForms();');
+        const restorePresetIndex = sourceChangeHandler.indexOf('restoreOpenAIPresetSelection(presetName);');
+        const applyProfileIndex = sourceChangeHandler.indexOf('maybeApplyModelSamplingProfile();');
+        const saveSettingsIndex = sourceChangeHandler.indexOf('saveSettingsDebounced();');
+        const reconnectIndex = sourceChangeHandler.indexOf('reconnectOpenAi();');
+
+        expect(toggleFormsIndex).toBeGreaterThanOrEqual(0);
+        expect(restorePresetIndex).toBeGreaterThan(toggleFormsIndex);
+        expect(applyProfileIndex).toBeGreaterThan(restorePresetIndex);
+        expect(saveSettingsIndex).toBeGreaterThan(applyProfileIndex);
+        expect(reconnectIndex).toBeGreaterThan(applyProfileIndex);
+    });
 });
