@@ -403,6 +403,10 @@ function capResultContent(value = '') {
     return stripMarkdownFence(value).slice(0, MAX_COMPANION_RESULT_CHARS);
 }
 
+function resolveGeneratedCompanionContent(value = '', message = null) {
+    return capResultContent(resolveCompanionContentMacros(value, message));
+}
+
 function getProfileLabel(agent, responseProfileId = '') {
     const profileId = String(responseProfileId || resolveCompanionConnectionProfile(agent?.connectionProfile) || '').trim();
     if (!profileId) {
@@ -1123,7 +1127,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
 
         setCompanionResult(message, agent, {
             status: 'done',
-            content: capResultContent(response.output),
+            content: resolveGeneratedCompanionContent(response.output, message),
             error: '',
             profileId: response.profileId,
             profileLabel: getProfileLabel(agent, response.profileId),
@@ -1216,7 +1220,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
             setCompanionResult(message, agent, {
                 status: 'done',
-                content: parsed.get(agent.id),
+                content: resolveGeneratedCompanionContent(parsed.get(agent.id), message),
                 error: '',
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),

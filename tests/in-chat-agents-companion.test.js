@@ -257,6 +257,17 @@ describe('companion card ui', () => {
         expect(html).toBe('<md>Traveler noticed Aria said the door is open</md>');
     });
 
+    test('resolves escaped companion output macro delimiters before rendering', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: 'Objective: \\{\\{user\\}\\} ends up with &#123;&#123;char&#125;&#125;',
+            format: 'markdown',
+        }, { name: 'Aria', mes: 'the door is open' });
+
+        expect(html).toBe('<md>Objective: Traveler ends up with Aria</md>');
+    });
+
     test('keeps the active character macro when the source message is from the user', async () => {
         const { formatCompanionContent } = await importCompanionUi();
 
