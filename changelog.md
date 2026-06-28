@@ -92,6 +92,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
 - PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
 - PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
+- PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
 
 ## v1.6.5
 
