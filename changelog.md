@@ -91,6 +91,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #623 (2026-06-27) `fix(mobile_ui): soften touch guards and re-allow scrolling`
 - PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
 - PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
+- PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
 
 ## v1.6.5
 
