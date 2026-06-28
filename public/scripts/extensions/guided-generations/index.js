@@ -1,6 +1,14 @@
 import { saveSettingsDebounced, eventSource, event_types } from '../../../script.js';
 import { extensionNames, extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
-import { extensionName, getPresetsForApiType, getProfileApiType, getProfileList, resolveStoredProfile } from './scripts/shared.js';
+import {
+    extensionName,
+    flushActiveGuides,
+    getActiveGuides,
+    getPresetsForApiType,
+    getProfileApiType,
+    getProfileList,
+    resolveStoredProfile,
+} from './scripts/shared.js';
 import { guidedCorrection } from './scripts/guidedCorrection.js';
 import { guidedImpersonate } from './scripts/guidedImpersonate.js';
 import { guidedResponse } from './scripts/guidedResponse.js';
@@ -21,6 +29,7 @@ const defaultSettings = {
     showGuidedCorrection: true,
     showImpersonate1stPerson: true,
     showSimpleSendButton: true,
+    showFlushGuidesButton: true,
     integrateQrBar: true,
     injectionEndRole: 'system',
     debugMode: false,
@@ -39,6 +48,7 @@ const defaultSettings = {
 
 let qrObserver;
 let qrPollTimer;
+let flushGuidePollTimer;
 
 function isLegacySystemPromptPreset(value) {
     return typeof value === 'string' && legacySystemPromptPresetNames.has(value.trim());
@@ -313,6 +323,83 @@ function createActionButton(id, title, iconClass, actionFunc) {
     return button;
 }
 
+function getFlushGuideButtonLabel(activeCount) {
+    return activeCount > 0 ? `Flush Guide (${activeCount} active)` : 'Flush Guide';
+}
+
+function updateFlushGuideButton() {
+    const button = document.getElementById('gg_flush_guides_button');
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const activeCount = getActiveGuides().length;
+    const label = getFlushGuideButtonLabel(activeCount);
+    const labelElement = button.querySelector('.gg-flush-guides-label');
+    const countElement = button.querySelector('.gg-flush-guides-count');
+
+    if (labelElement) {
+        labelElement.textContent = 'Flush Guide';
+    }
+    if (countElement) {
+        countElement.textContent = activeCount > 0 ? `(${activeCount} active)` : '';
+    }
+
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.activeCount = String(activeCount);
+    button.disabled = activeCount === 0;
+    button.classList.toggle('gg-flush-guides-active', activeCount > 0);
+}
+
+async function flushGuides() {
+    if (getActiveGuides().length === 0) {
+        updateFlushGuideButton();
+        return;
+    }
+
+    try {
+        await flushActiveGuides();
+    } catch (error) {
+        console.warn('[GuidedGenerations][Flush] Could not flush active guides:', error);
+    } finally {
+        updateFlushGuideButton();
+    }
+}
+
+function createFlushGuidesButton() {
+    const button = document.createElement('button');
+    button.id = 'gg_flush_guides_button';
+    button.type = 'button';
+    button.className = 'gg-action-button gg-flush-guides-button menu_button';
+
+    const icon = document.createElement('span');
+    icon.className = 'fa-solid fa-broom';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.className = 'gg-flush-guides-label';
+
+    const count = document.createElement('span');
+    count.className = 'gg-flush-guides-count';
+
+    button.append(icon, label, count);
+    button.addEventListener('click', async event => {
+        event.preventDefault();
+        await flushGuides();
+    });
+    updateFlushGuideButton();
+    return button;
+}
+
+function startFlushGuideButtonUpdates() {
+    if (flushGuidePollTimer) {
+        return;
+    }
+
+    flushGuidePollTimer = window.setInterval(updateFlushGuideButton, 500);
+}
+
 function ensureButtonContainer() {
     const sendForm = document.getElementById('send_form');
     const nonQrFormItems = document.getElementById('nonQRFormItems');
@@ -360,9 +447,11 @@ function updateExtensionButtons() {
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),
         settings.showGuidedCorrection && createActionButton('gg_correction_button', 'Guided Correction', 'fa-solid fa-pen-to-square', guidedCorrection),
         settings.showGuidedResponse && createActionButton('gg_response_button', 'Guided Response', 'fa-solid fa-compass', guidedResponse),
+        settings.showFlushGuidesButton && createFlushGuidesButton(),
     ].filter(Boolean);
 
     actionsContainer.append(...buttons);
+    updateFlushGuideButton();
     integrateQrBar();
 }
 
@@ -414,6 +503,7 @@ export async function init() {
     maybeWarnOldExtensionDeprecated();
     await loadSettingsPanel();
     updateExtensionButtons();
+    startFlushGuideButtonUpdates();
     startQrIntegration();
 
     // SillyBunny: re-populate profile/preset dropdowns when Connection Manager
