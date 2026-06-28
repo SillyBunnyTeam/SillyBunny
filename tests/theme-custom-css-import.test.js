@@ -25,8 +25,11 @@ describe('theme custom CSS import wiring', () => {
     test('import selects and applies the saved theme instead of only adding it', () => {
         const importThemeSource = getSourceSection('async function importTheme(file)', '/**\n * Saves the current theme to the server.');
 
-        expect(importThemeSource).toContain('await saveTheme(parsed.name, getNewTheme(parsed));');
+        expect(importThemeSource).toContain('const theme = getNewTheme(parsed);');
+        expect(importThemeSource).toContain('await saveTheme(parsed.name, theme);');
         expect(importThemeSource).toContain('applyTheme(parsed.name);');
+        expect(importThemeSource).toContain('power_user.custom_css = theme.custom_css;');
+        expect(importThemeSource).toContain('applyCustomCSS();');
         expect(importThemeSource).toContain('saveSettingsDebounced();');
         expect(importThemeSource).not.toContain('themes.push(parsed);');
     });

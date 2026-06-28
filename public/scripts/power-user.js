@@ -3396,8 +3396,13 @@ async function importTheme(file) {
         }
     }
 
-    await saveTheme(parsed.name, getNewTheme(parsed));
+    const theme = getNewTheme(parsed);
+    await saveTheme(parsed.name, theme);
     applyTheme(parsed.name);
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
     saveSettingsDebounced();
     toastr.success(parsed.name, 'Theme imported');
 }
