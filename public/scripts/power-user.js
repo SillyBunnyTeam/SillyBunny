@@ -314,6 +314,8 @@ export const power_user = {
     ios_webkit_reduce_streaming_work: true,
     ios_webkit_disable_smooth_streaming: true,
     ios_webkit_disable_stream_fade_in: true,
+    android_conservative_streaming: true,
+    android_disable_stream_fade_in: true,
 
     // SillyBunny: aggressive DOM unloading for low-memory devices
     aggressive_dom_unload: false,

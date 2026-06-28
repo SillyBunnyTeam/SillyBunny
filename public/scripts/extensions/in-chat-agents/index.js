@@ -4846,7 +4846,7 @@ function scrollElementIntoNearestPanelScroller(element, { block = 'nearest' } = 
 
     const scroller = element.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
     if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
-        element.focus?.({ preventScroll: true });
+        element.scrollIntoView({ block, inline: 'nearest', behavior: 'smooth' });
         return;
     }
 
