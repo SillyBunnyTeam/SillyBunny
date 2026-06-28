@@ -14,6 +14,7 @@ import {
     saveAgent,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -239,7 +240,7 @@ export function formatCompanionContent(agentId, result = {}, message = null, sty
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
-    const resolved = substituteParams(content);
+    const resolved = resolveCompanionContentMacros(content, message);
     const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {

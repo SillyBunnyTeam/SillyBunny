@@ -66,7 +66,10 @@ describe('companion card ui', () => {
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
             saveChatDebounced: jest.fn(),
-            substituteParams: jest.fn(value => String(value ?? '')),
+            substituteParams: jest.fn((value, options = {}) => String(value ?? '')
+                .replaceAll('{{user}}', 'Traveler')
+                .replaceAll('{{char}}', options.name2Override || 'Assistant')
+                .replaceAll('{{original}}', options.original ?? '')),
             substituteParamsExtended: jest.fn(value => String(value ?? '')),
         }));
 
@@ -243,6 +246,17 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalledWith('<div class="status">calm</div>', expect.anything());
     });
 
+    test('resolves companion output macros with the source message context', async () => {
+        const { formatCompanionContent } = await importCompanionUi();
+
+        const html = formatCompanionContent('companion-tracker', {
+            content: '{{user}} noticed {{char}} said {{original}}',
+            format: 'markdown',
+        }, { name: 'Aria', mes: 'the door is open' });
+
+        expect(html).toBe('<md>Traveler noticed Aria said the door is open</md>');
+    });
+
     test('preserves style tags emitted by regex scripts in card bodies', async () => {
         agents[0].regexScripts = [{
             id: 'styled-card',
@@ -305,14 +319,14 @@ describe('companion card ui', () => {
         const { formatCompanionContent } = await importCompanionUi();
 
         const html = formatCompanionContent('chatroom', {
-            content: "mixed|mixed @Rover_Stan/user/18/omg she's so precious/so sweet @Rinascita_Historian/user/42/The contrast is wild/analytical @CatEarEnthusiast/user/92/Kris is a real one/hype",
+            content: 'mixed|mixed @Rover_Stan/user/18/omg she\'s so precious/so sweet @Rinascita_Historian/user/42/The contrast is wild/analytical @CatEarEnthusiast/user/92/Kris is a real one/hype',
             format: 'html',
         }, { name: 'Assistant' });
 
         expect(html).toContain('Chatroom');
         expect(html).toContain('STYLE: mixed');
         expect(html).toContain('Rover_Stan');
-        expect(html).toContain("omg she's so precious");
+        expect(html).toContain('omg she\'s so precious');
         expect(html).toContain('Rinascita_Historian');
         expect(html).toContain('The contrast is wild');
         expect(html).toContain('CatEarEnthusiast');
@@ -334,7 +348,7 @@ describe('companion card ui', () => {
         const html = formatCompanionContent('chatroom', {
             content: [
                 'chatroom-style|reddit',
-                "chatroom|Laurus_Fan_99|meta|18|top comment|181|He's so pure!",
+                'chatroom|Laurus_Fan_99|meta|18|top comment|181|He\'s so pure!',
                 'chatroom|Gale_Watcher|meta|42|reply|42|She looks exhausted.',
                 'chatroom-end',
             ].join('\n'),
@@ -345,9 +359,9 @@ describe('companion card ui', () => {
         expect(html).toContain('Gale_Watcher');
         expect(html).toContain('top comment');
         expect(html).toContain('reply');
-        expect(html).toContain("He's so pure!");
+        expect(html).toContain('He\'s so pure!');
         expect(html).toContain('She looks exhausted.');
-        expect(html).not.toContain("top comment|181|He's so pure!");
+        expect(html).not.toContain('top comment|181|He\'s so pure!');
         expect(html).not.toContain('reply|42|She looks exhausted.');
     });
 
