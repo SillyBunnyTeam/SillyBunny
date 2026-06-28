@@ -239,17 +239,18 @@ export function formatCompanionContent(agentId, result = {}, message = null, sty
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
+    const resolved = substituteParams(content);
     const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {
-        return decorateChoiceLines(sanitizeCompanionHtml(content, sanitizeOptions));
+        return decorateChoiceLines(sanitizeCompanionHtml(resolved, sanitizeOptions));
     }
 
     if (result.format === 'text') {
-        return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
+        return `<pre class="ica--companion-text">${escapeHtml(resolved)}</pre>`;
     }
 
-    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content), sanitizeOptions));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(resolved), sanitizeOptions));
 }
 
 function getResultStatus(result = {}) {
