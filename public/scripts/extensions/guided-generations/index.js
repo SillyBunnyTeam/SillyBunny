@@ -347,8 +347,8 @@ function updateFlushGuideButton() {
 
     button.title = label;
     button.setAttribute('aria-label', label);
+    button.setAttribute('aria-disabled', String(activeCount === 0));
     button.dataset.activeCount = String(activeCount);
-    button.disabled = activeCount === 0;
     button.classList.toggle('gg-flush-guides-active', activeCount > 0);
 }
 
