@@ -2181,6 +2181,11 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
+
     console.log('theme applied: ' + name);
 }
 
@@ -3391,13 +3396,8 @@ async function importTheme(file) {
         }
     }
 
-    themes.push(parsed);
     await saveTheme(parsed.name, getNewTheme(parsed));
-    const option = document.createElement('option');
-    option.selected = false;
-    option.value = parsed.name;
-    option.innerText = parsed.name;
-    $('#themes').append(option);
+    applyTheme(parsed.name);
     saveSettingsDebounced();
     toastr.success(parsed.name, 'Theme imported');
 }
