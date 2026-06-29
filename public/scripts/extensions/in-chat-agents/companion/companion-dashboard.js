@@ -91,16 +91,53 @@ function partitionDashboardAgents(agents = []) {
     return { companions, convertible };
 }
 
+function normalizeTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function formatTokenCount(value) {
+    return normalizeTokenCount(value).toLocaleString();
+}
+
+function buildCompanionTokenUsagePillsHtml(result = {}) {
+    const inputTokens = normalizeTokenCount(result?.tokenUsage?.inputTokens);
+    const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
+
+    return [
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+    ].filter(Boolean).join('');
+}
+
+function getLatestDashboardResult(agentId) {
+    for (let messageIndex = chat.length - 1; messageIndex >= 0; messageIndex--) {
+        const message = chat[messageIndex];
+        if (!isValidCompanionMessage(message)) {
+            continue;
+        }
+
+        const result = getCompanionResults(message)[agentId];
+        if (result && typeof result === 'object' && !isSuppressedDashboardResult(agentId, result)) {
+            return result;
+        }
+    }
+
+    return null;
+}
+
 export function buildCompanionAgentRowHtml(agent) {
     const companion = getCompanionConfig(agent);
     const enabled = isAgentEnabledForCurrentScope(agent);
-    const pills = [
+    const configPills = [
         companion.trigger === 'manual' ? 'manual' : 'auto',
         ['panel', 'hidden'].includes(companion.displayMode) ? companion.displayMode : 'card',
         companion.format,
         companion.batch ? 'batch' : '',
         companion.feedback.enabled ? `feedback ×${companion.feedback.depth}` : '',
     ].filter(Boolean).map(label => `<span class="ica--card-pill">${escapeHtml(label)}</span>`).join('');
+    const tokenPills = buildCompanionTokenUsagePillsHtml(getLatestDashboardResult(agent.id));
+    const pills = `${configPills}${tokenPills}`;
 
     return `
         <div class="ica--cdash-row${enabled ? ' is-enabled' : ''}" data-agent-id="${escapeHtml(agent.id)}">

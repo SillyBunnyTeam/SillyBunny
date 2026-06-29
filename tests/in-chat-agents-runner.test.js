@@ -1944,6 +1944,32 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].extra.inChatAgentCompanionResults['single-user-companion'].content).toBe('Single user note');
     });
 
+    test('stores estimated input and output token usage on companion results', async () => {
+        generateQuietPrompt.mockResolvedValue('Token note');
+
+        const companionAgent = createCompanionAgent({
+            id: 'token-companion',
+            name: 'Token Companion',
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        const result = await companionRunner.runCompanionAgentOnMessage('token-companion', 0);
+
+        expect(result?.tokenUsage).toEqual(expect.objectContaining({
+            inputTokens: expect.any(Number),
+            outputTokens: expect.any(Number),
+        }));
+        expect(result.tokenUsage.inputTokens).toBeGreaterThan(0);
+        expect(result.tokenUsage.outputTokens).toBeGreaterThan(0);
+        expect(chat[0].extra.inChatAgentCompanionResults['token-companion'].tokenUsage).toEqual(result.tokenUsage);
+    });
+
     test('runs connected companions from wrench/fix flow', async () => {
         globalSettings.companionExecutionMode = 'sequential';
         generateQuietPrompt

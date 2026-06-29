@@ -625,6 +625,16 @@ button.ica--card-pill--version-update {
     animation: ica--version-pulse 0.85s ease-in-out;
 }
 
+.ica--card-pill--tokens {
+    font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 13%, var(--SmartThemeBorderColor, #555) 18%, transparent);
+    opacity: 0.86;
+}
+
+.ica--card-pill--tokens strong {
+    font-weight: 700;
+}
+
 @keyframes ica--version-pulse {
     0%, 100% {
         box-shadow: 0 0 0 0 color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 0%, transparent);
@@ -1990,6 +2000,7 @@ button.ica--card-pill--version-update {
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -2019,6 +2030,14 @@ button.ica--card-pill--version-update {
     align-items: center;
     gap: 4px;
     flex: 0 0 auto;
+}
+
+.ica--tpanel-agent-token-pills {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
 }
 
 .ica--tpanel-agent-body {

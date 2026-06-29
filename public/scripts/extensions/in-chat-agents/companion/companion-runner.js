@@ -87,6 +87,55 @@ function normalizeText(value = '') {
     return normalizeContentText(String(value ?? '')).trim();
 }
 
+function normalizeCompanionTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function stringifyCompanionTokenPayload(value) {
+    if (Array.isArray(value)) {
+        return value.map(message => stringifyCompanionTokenPayload(message)).filter(Boolean).join('\n\n');
+    }
+
+    if (value && typeof value === 'object') {
+        const role = String(value.role ?? 'user').trim().toUpperCase() || 'USER';
+        const content = normalizeText(value.content ?? '');
+        return content ? `${role}:\n${content}` : '';
+    }
+
+    return normalizeText(value);
+}
+
+async function countCompanionTokens(value) {
+    const fallbackText = stringifyCompanionTokenPayload(value);
+    if (!fallbackText) {
+        return 0;
+    }
+
+    try {
+        const tokenHandler = getContext()?.promptManager?.tokenHandler;
+        if (typeof tokenHandler?.countUntrackedAsync === 'function') {
+            const tokenCount = normalizeCompanionTokenCount(await tokenHandler.countUntrackedAsync(value));
+            if (tokenCount > 0) {
+                return tokenCount;
+            }
+        }
+    } catch {
+        // Fall back to the same rough chars/4 estimate used elsewhere in companion sizing.
+    }
+
+    return Math.ceil(fallbackText.length / 4);
+}
+
+async function buildCompanionTokenUsage(inputPayload, outputText = '') {
+    const [inputTokens, outputTokens] = await Promise.all([
+        countCompanionTokens(inputPayload),
+        countCompanionTokens({ role: 'assistant', content: outputText }),
+    ]);
+
+    return { inputTokens, outputTokens };
+}
+
 function normalizeChatroomStyle(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
     return CHATROOM_STYLE_VALUES.has(normalized) ? normalized : 'mixed';
@@ -1104,6 +1153,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
                 status: 'cancelled',
                 content: '',
                 error: 'Cancelled.',
+                tokenUsage: null,
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
                 modelLabel: getModelLabel(agent),
@@ -1114,10 +1164,13 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             return { agentId: agent.id, changed, result };
         }
 
+        const content = capResultContent(response.output);
+        const tokenUsage = await buildCompanionTokenUsage(promptMessages, content);
         setCompanionResult(message, agent, {
             status: 'done',
-            content: capResultContent(response.output),
+            content,
             error: '',
+            tokenUsage,
             profileId: response.profileId,
             profileLabel: getProfileLabel(agent, response.profileId),
             modelLabel: getModelLabel(agent),
@@ -1128,6 +1181,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             status: cancelled ? 'cancelled' : 'error',
             content: '',
             error: cancelled ? 'Cancelled.' : (error instanceof Error ? error.message : String(error)),
+            tokenUsage: null,
         });
     }
 
@@ -1186,6 +1240,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                     status: 'cancelled',
                     content: '',
                     error: 'Cancelled.',
+                    tokenUsage: null,
                     profileId: response.profileId,
                     profileLabel: getProfileLabel(agent, response.profileId),
                     modelLabel: getModelLabel(agent),
@@ -1199,6 +1254,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             });
         }
 
+        const batchInputTokens = await countCompanionTokens(promptMessages);
         const parsed = parseBatchResponse(response.output);
         const missingAgents = [];
         for (const agent of agents) {
@@ -1207,10 +1263,15 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                 continue;
             }
 
+            const content = parsed.get(agent.id);
             setCompanionResult(message, agent, {
                 status: 'done',
-                content: parsed.get(agent.id),
+                content,
                 error: '',
+                tokenUsage: {
+                    inputTokens: batchInputTokens,
+                    outputTokens: await countCompanionTokens({ role: 'assistant', content }),
+                },
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
                 modelLabel: getModelLabel(agent),
@@ -1328,6 +1389,7 @@ async function runCompanionAgentSet(agents, messageIndex, generationType, cancel
             status: 'pending',
             content: '',
             error: '',
+            tokenUsage: null,
         });
         await emitCompanionResultsUpdated(messageIndex, agent.id);
     }
@@ -1480,6 +1542,7 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
         status: 'pending',
         content: capResultContent(pendingContent),
         error: '',
+        tokenUsage: null,
     });
     await emitCompanionResultsUpdated(messageIndex, agent.id);
     const { changed, result } = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, {

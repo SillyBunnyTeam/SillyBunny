@@ -159,6 +159,31 @@ describe('companion dashboard', () => {
         expect(html).not.toContain('Tool Agent');
     });
 
+    test('shows latest companion input and output token estimates in rows', async () => {
+        agents = [{ id: 'companion-1', name: 'Scene Notes', execution: 'companion', enabled: true }];
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'companion-1': {
+                status: 'done',
+                content: 'note',
+                tokenUsage: { inputTokens: 1234, outputTokens: 56 },
+            },
+        });
+        const dashboard = await importDashboard();
+        dashboard.configureCompanionDashboard({
+            getVisibleAgents: () => agents,
+            getLastAssistantMessageIndex: () => 0,
+        });
+
+        const html = dashboard.buildDashboardHtml();
+
+        expect(html).toContain('Input');
+        expect(html).toContain('1,234');
+        expect(html).toContain('Output');
+        expect(html).toContain('56');
+    });
+
     test('shows the disabled notice and empty states when nothing is configured', async () => {
         const dashboard = await importDashboard();
         const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
