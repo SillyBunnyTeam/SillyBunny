@@ -39,6 +39,8 @@ function debouncePromise(func, delay) {
 const DEFAULT_DEPTH = 4;
 const DEFAULT_ORDER = 100;
 const PROMPT_MANAGER_DESKTOP_SPLIT_QUERY = '(min-width: 961px)';
+// SillyBunny In-Chat Agents reserve this extension prompt key prefix.
+const IN_CHAT_AGENT_PROMPT_KEY_PREFIX = 'inchat_agent_';
 
 /**
  * @enum {number}
@@ -2084,6 +2086,17 @@ class PromptManager {
         return this.hasRuntimePromptTokenCounts() ? this.tokenUsage : this.sourcePromptTokenUsage;
     }
 
+    getInChatAgentTokenUsage() {
+        return Object.entries(this.getActivePromptTokenCounts() ?? {}).reduce((total, [identifier, tokens]) => {
+            if (!identifier.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX)) {
+                return total;
+            }
+
+            const tokenCount = Number(tokens);
+            return total + (Number.isFinite(tokenCount) ? tokenCount : 0);
+        }, 0);
+    }
+
     async populateSourcePromptTokenCounts() {
         if (this.hasRuntimePromptTokenCounts() || !this.activeCharacter || !this.tokenHandler) {
             this.sourcePromptTokenCounts = {};
@@ -2126,8 +2139,9 @@ class PromptManager {
         ` : '';
 
         const totalActiveTokens = this.getDisplayTokenUsage();
+        const totalAgentTokens = this.getInChatAgentTokenUsage();
 
-        const headerHtml = await renderTemplateAsync('promptManagerHeader', { error: this.error, errorDiv, prefix: this.configuration.prefix, totalActiveTokens, dragLocked: power_user.prompt_manager_drag_locked });
+        const headerHtml = await renderTemplateAsync('promptManagerHeader', { error: this.error, errorDiv, prefix: this.configuration.prefix, totalActiveTokens, totalAgentTokens, dragLocked: power_user.prompt_manager_drag_locked });
         if (!this.#isRenderCurrent(renderRequestId)) {
             return false;
         }

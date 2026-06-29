@@ -5,6 +5,7 @@ import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../
 import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
 import { is_group_generating } from '../../group-chats.js';
+import { promptManager } from '../../openai.js';
 import {
     areAgentsGloballyEnabled,
     getAgents,
@@ -2119,11 +2120,29 @@ function syncAgentTabStrip(activeTab) {
 /**
  * Re-renders the agent list panel.
  */
+function getInChatAgentTokenUsage() {
+    const tokenCount = Number(promptManager?.getInChatAgentTokenUsage?.() ?? 0);
+    return Number.isFinite(tokenCount) ? tokenCount : 0;
+}
+
+function updateAgentTokenCounter() {
+    const tokenCounter = document.getElementById('ica--agent-token-counter');
+    const tokenValue = document.getElementById('ica--total-tokens-val');
+    if (!(tokenCounter instanceof HTMLElement) || !(tokenValue instanceof HTMLElement)) {
+        return;
+    }
+
+    const tokenCount = getInChatAgentTokenUsage();
+    tokenValue.textContent = String(tokenCount);
+    tokenCounter.classList.toggle('is-empty', tokenCount <= 0);
+}
+
 function renderAgentList() {
     const container = $('#ica--agentList');
     const scrollState = captureAgentListScrollState(container[0]);
     container.empty();
     updateCancelGenerationButton();
+    updateAgentTokenCounter();
     const profileNames = buildConnectionProfileNameMap();
     const allAgents = sortAgentsByOrder(getVisibleInChatAgents());
     const activeTab = getActiveAgentListTab();
@@ -5864,6 +5883,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     document.addEventListener('sb:shell-tab-activated', (event) => {
         if (event.detail?.tabId === 'agents') {
             syncToolAgentRegistrations();
+            updateAgentTokenCounter();
         }
     });
 
@@ -5891,12 +5911,15 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         event_types.CHAT_CHANGED,
         event_types.USER_MESSAGE_RENDERED,
         event_types.CHARACTER_MESSAGE_RENDERED,
+        event_types.CHAT_COMPLETION_PROMPT_READY,
     ].filter(Boolean)) {
         eventSource.on(eventName, () => {
             updateFixTrackersButtonVisibility();
             updateCompanionButtonVisibility();
+            updateAgentTokenCounter();
         });
     }
     updateFixTrackersButtonVisibility();
     updateCompanionButtonVisibility();
+    updateAgentTokenCounter();
 })();
