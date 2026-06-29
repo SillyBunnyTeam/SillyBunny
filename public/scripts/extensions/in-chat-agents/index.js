@@ -5,7 +5,6 @@ import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../
 import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
 import { is_group_generating } from '../../group-chats.js';
-import { promptManager } from '../../openai.js';
 import {
     areAgentsGloballyEnabled,
     getAgents,
@@ -2121,7 +2120,13 @@ function syncAgentTabStrip(activeTab) {
  * Re-renders the agent list panel.
  */
 function getInChatAgentTokenUsage() {
-    const tokenCount = Number(promptManager?.getInChatAgentTokenUsage?.() ?? 0);
+    let tokenCount = 0;
+    try {
+        tokenCount = Number(getContext()?.promptManager?.getInChatAgentTokenUsage?.() ?? 0);
+    } catch {
+        tokenCount = 0;
+    }
+
     return Number.isFinite(tokenCount) ? tokenCount : 0;
 }
 
