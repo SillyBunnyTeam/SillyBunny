@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
+const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 const powerUserSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'power-user.js'), 'utf8');
 const settingsTabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-settings-tabs.js'), 'utf8');
 
@@ -39,5 +40,10 @@ describe('Android streaming settings UI', () => {
         expect(settingsTabsSource).toContain('const androidBlock = document.querySelector(\'[name="AndroidStreamingToggles"]\');');
         expect(settingsTabsSource).toContain('androidDrawer.id = \'sb-android-streaming-drawer\';');
         expect(settingsTabsSource).toContain('\'sb-android-streaming-drawer\': \'system-device\'');
+    });
+
+    test('routes reduced Android stream ticks through the plain-text preview path', () => {
+        expect(scriptSource).toContain('shouldUsePlainTextStreamingPreview({');
+        expect(scriptSource).toContain('formatPlainTextStreamingPreview(processedText)');
     });
 });

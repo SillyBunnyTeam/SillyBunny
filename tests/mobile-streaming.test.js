@@ -1,6 +1,7 @@
 import {
     ANDROID_REASONING_RENDER_INTERVAL_MS,
     ANDROID_STREAMING_UPDATE_INTERVAL_MS,
+    formatPlainTextStreamingPreview,
     isReducedStreamingDomWorkPlatform,
     getMobileStreamingBottomPinBehavior,
     getStreamingReasoningRenderInterval,
@@ -10,6 +11,7 @@ import {
     isSmoothStreamingEffectivelyEnabled,
     shouldReduceStreamingDomWork,
     shouldRenderLiveReasoningContent,
+    shouldUsePlainTextStreamingPreview,
 } from '../public/scripts/mobile-streaming.js';
 
 const androidNavigator = {
@@ -108,6 +110,37 @@ describe('mobile streaming helpers', () => {
 
     test('uses Android reduced DOM work by default', () => {
         expect(shouldReduceStreamingDomWork(androidNavigator)).toBe(true);
+    });
+
+    test('uses plain text streaming previews only for reduced non-final mobile ticks', () => {
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: false,
+            isReducedDomWork: true,
+            isImpersonate: false,
+        })).toBe(true);
+
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: true,
+            isReducedDomWork: true,
+            isImpersonate: false,
+        })).toBe(false);
+
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: false,
+            isReducedDomWork: false,
+            isImpersonate: false,
+        })).toBe(false);
+
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: false,
+            isReducedDomWork: true,
+            isImpersonate: true,
+        })).toBe(false);
+    });
+
+    test('escapes plain text streaming previews and preserves line breaks', () => {
+        expect(formatPlainTextStreamingPreview('<tag a="1">A & B</tag>\nnext line'))
+            .toBe('&lt;tag a=&quot;1&quot;&gt;A &amp; B&lt;/tag&gt;<br>next line');
     });
 
     test('reports effective Smooth Streaming after platform-specific bypasses', () => {

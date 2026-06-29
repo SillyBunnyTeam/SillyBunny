@@ -321,7 +321,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, shouldReduceStreamingDomWork } from './scripts/mobile-streaming.js';
+import { formatPlainTextStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -6011,15 +6011,22 @@ class StreamingProcessor {
                 }
             }
 
-            const formattedText = messageFormatting(
-                processedText,
-                chat[messageId].name,
-                chat[messageId].is_system,
-                chat[messageId].is_user,
-                messageId,
-                {},
-                false,
-            );
+            const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({
+                isFinal,
+                isReducedDomWork: shouldReduceIntermediateStreamingWork,
+                isImpersonate,
+            });
+            const formattedText = shouldUsePlainTextPreview
+                ? formatPlainTextStreamingPreview(processedText)
+                : messageFormatting(
+                    processedText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    {},
+                    false,
+                );
             const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,

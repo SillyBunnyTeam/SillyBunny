@@ -4,6 +4,14 @@ export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
 export const ANDROID_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const ANDROID_REASONING_RENDER_INTERVAL_MS = 1500;
+const STREAMING_PREVIEW_ESCAPE_PATTERN = /[&<>"']/g;
+const STREAMING_PREVIEW_ESCAPE_MAP = Object.freeze({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    '\'': '&#39;',
+});
 
 /**
  * Detects Android browser surfaces, including Chromium mobile emulation.
@@ -65,6 +73,34 @@ export function getStreamingReasoningRenderInterval(navigatorRef = globalThis.na
     }
 
     return IOS_REASONING_RENDER_INTERVAL_MS;
+}
+
+/**
+ * Checks whether reduced mobile streaming should use a plain-text preview before the final render.
+ * @param {object} options Options
+ * @param {boolean} [options.isFinal] Whether this is the final streamed render
+ * @param {boolean} [options.isReducedDomWork] Whether reduced mobile DOM work is active
+ * @param {boolean} [options.isImpersonate] Whether the stream writes to the user input box
+ * @returns {boolean}
+ */
+export function shouldUsePlainTextStreamingPreview({
+    isFinal = false,
+    isReducedDomWork = false,
+    isImpersonate = false,
+} = {}) {
+    return Boolean(isReducedDomWork) && !isFinal && !isImpersonate;
+}
+
+/**
+ * Formats an interim streaming preview without running the full markdown and sanitizer pipeline.
+ * The final streamed render still uses normal message formatting.
+ * @param {string} text Raw streamed message text
+ * @returns {string} Safe HTML preview
+ */
+export function formatPlainTextStreamingPreview(text = '') {
+    return String(text)
+        .replace(STREAMING_PREVIEW_ESCAPE_PATTERN, character => STREAMING_PREVIEW_ESCAPE_MAP[character])
+        .replace(/\r\n|\r|\n/g, '<br>');
 }
 
 /**

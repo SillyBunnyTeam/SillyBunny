@@ -317,6 +317,50 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
                 maxStepMs = Math.max(maxStepMs, browserGlobal.performance.now() - stepStart);
             }
 
+            let plainPreview = {
+                available: false,
+                reason: 'plain-preview-module-unavailable',
+            };
+            try {
+                const { formatPlainTextStreamingPreview } = await import('/scripts/mobile-streaming.js');
+                const previewTarget = browserGlobal.document.createElement('div');
+                previewTarget.className = 'mes_text';
+                host.appendChild(previewTarget);
+
+                let previewFormatTotalMs = 0;
+                let previewWriteTotalMs = 0;
+                let previewMaxStepMs = 0;
+                const previewStart = browserGlobal.performance.now();
+
+                for (const step of steps) {
+                    const stepStart = browserGlobal.performance.now();
+                    const formatStart = browserGlobal.performance.now();
+                    const formatted = formatPlainTextStreamingPreview(step);
+                    previewFormatTotalMs += browserGlobal.performance.now() - formatStart;
+
+                    const writeStart = browserGlobal.performance.now();
+                    previewTarget.innerHTML = formatted;
+                    previewWriteTotalMs += browserGlobal.performance.now() - writeStart;
+                    previewMaxStepMs = Math.max(previewMaxStepMs, browserGlobal.performance.now() - stepStart);
+                }
+
+                plainPreview = {
+                    available: true,
+                    totalMs: browserGlobal.performance.now() - previewStart,
+                    formatTotalMs: previewFormatTotalMs,
+                    writeTotalMs: previewWriteTotalMs,
+                    averageStepMs: (browserGlobal.performance.now() - previewStart) / Math.max(1, steps.length),
+                    maxStepMs: previewMaxStepMs,
+                    finalHtmlBytes: new TextEncoder().encode(previewTarget.innerHTML).length,
+                    domNodeCount: previewTarget.querySelectorAll('*').length,
+                };
+            } catch (error) {
+                plainPreview = {
+                    available: false,
+                    reason: error?.message ?? String(error),
+                };
+            }
+
             await new Promise(resolve => browserGlobal.requestAnimationFrame(() => browserGlobal.requestAnimationFrame(resolve)));
             const totalMs = browserGlobal.performance.now() - start;
 
@@ -333,6 +377,7 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
                 finalHtmlBytes: new TextEncoder().encode(target.innerHTML).length,
                 domNodeCount: target.querySelectorAll('*').length,
                 codeBlockCount: target.querySelectorAll('pre code').length,
+                plainPreview,
             };
         } finally {
             host.remove();
