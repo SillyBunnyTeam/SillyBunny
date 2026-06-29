@@ -251,6 +251,15 @@ describe('mobile shell lifecycle wiring', () => {
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
+        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
+        expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing && isEditableFocusTarget(document.activeElement);');
+        expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
+        expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
+        expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
+        expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isMobileViewport && isIOSWebKit });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
@@ -308,7 +317,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getInlineDrawerStorageKeySource).not.toContain('`${SB_STORAGE_KEYS.settingsDrawerStatePrefix}:${contextSegments.join(\'/\')}:drawer:${drawerLabel}:${drawerIndex}`');
     });
 
-    test('clamps shell panels while keeping iOS keyboard edits on stable panel bounds', () => {
+    test('clamps shell panels and iOS composer edits on stable viewport bounds', () => {
         const getResolvedShellTopbarOffsetSource = getFunctionSource('getResolvedShellTopbarOffset');
         const getDesktopShellResizeBoundsSource = getFunctionSource('getDesktopShellResizeBounds');
         const setShellSizeOverrideSource = getFunctionSource('setShellSizeOverride');
@@ -323,7 +332,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
-        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();');
+        expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();');
+        expect(tabsSource).not.toContain('if (isChatComposerEditableElement(activeElement)) {');
         expect(tabsSource).toContain('return layoutViewport;');
         expect(tabsSource).toContain('function syncShellViewportBounds(');
         expect(tabsSource).toContain('function syncMobileShellDrawerBounds(');
