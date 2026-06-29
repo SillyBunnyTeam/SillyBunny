@@ -804,7 +804,7 @@ function getGestureDelta(event, touchStart) {
     };
 }
 
-function canElementScrollForGesture(element, delta) {
+function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
     if (!element || !delta) {
         return false;
     }
@@ -815,7 +815,27 @@ function canElementScrollForGesture(element, delta) {
     const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > 1;
     const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > 1;
 
-    return wantsHorizontalScroll ? canScrollX : canScrollY;
+    if (!requireAvailableScrollInDirection) {
+        return wantsHorizontalScroll ? canScrollX : canScrollY;
+    }
+
+    if (wantsHorizontalScroll) {
+        if (!canScrollX) {
+            return false;
+        }
+
+        const scrollLeft = normalizeNumber(element.scrollLeft);
+        const maxScrollLeft = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth);
+        return delta.x > 0 ? scrollLeft > 0 : scrollLeft < maxScrollLeft - 1;
+    }
+
+    if (!canScrollY) {
+        return false;
+    }
+
+    const scrollTop = normalizeNumber(element.scrollTop);
+    const maxScrollTop = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight);
+    return delta.y > 0 ? scrollTop > 0 : scrollTop < maxScrollTop - 1;
 }
 
 /**
@@ -831,8 +851,7 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
         return false;
     }
 
-    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)
-        || closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR)) {
+    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)) {
         return false;
     }
 
@@ -840,8 +859,14 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
         return false;
     }
 
+    const gestureDelta = getGestureDelta(event, touchStart);
+    const editableElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
+    if (canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
+        return false;
+    }
+
     const scrollElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR);
-    if (canElementScrollForGesture(scrollElement, getGestureDelta(event, touchStart))) {
+    if (canElementScrollForGesture(scrollElement, gestureDelta)) {
         return false;
     }
 

@@ -22,6 +22,8 @@ function createElementStub({
     clientWidth = 0,
     scrollHeight = 0,
     clientHeight = 0,
+    scrollLeft = 0,
+    scrollTop = 0,
 } = {}) {
     return {
         parentElement,
@@ -31,6 +33,8 @@ function createElementStub({
         clientWidth,
         scrollHeight,
         clientHeight,
+        scrollLeft,
+        scrollTop,
     };
 }
 
@@ -116,7 +120,22 @@ describe('mobile shell lifecycle wiring', () => {
         });
         const composerGap = createElementStub({ parentElement: composerChrome });
         const textarea = createElementStub({
+            parentElement: composerChrome,
             matches: selector => selector.includes('textarea'),
+        });
+        const scrollableTextarea = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selector.includes('textarea'),
+            scrollHeight: 400,
+            clientHeight: 120,
+            scrollTop: 100,
+        });
+        const textareaAtBottom = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selector.includes('textarea'),
+            scrollHeight: 400,
+            clientHeight: 120,
+            scrollTop: 280,
         });
         const quickReplyRail = createElementStub({
             parentElement: composerChrome,
@@ -125,6 +144,7 @@ describe('mobile shell lifecycle wiring', () => {
             clientWidth: 240,
         });
         const quickReplyButton = createElementStub({ parentElement: quickReplyRail });
+        const sendFormButton = createElementStub({ parentElement: sendFormChrome });
         const genericButton = createElementStub({
             matches: selector => selectorListIncludes(selector, 'button'),
         });
@@ -153,6 +173,10 @@ describe('mobile shell lifecycle wiring', () => {
         const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
         const gapMove = createTouchMove(composerGap, { y: -40 });
         const guidedActionsGapMove = createTouchMove(guidedActionsGap, { y: -40 });
+        const textareaMove = createTouchMove(textarea, { y: -40 });
+        const scrollableTextareaMove = createTouchMove(scrollableTextarea, { y: -40 });
+        const textareaAtBottomMove = createTouchMove(textareaAtBottom, { y: -40 });
+        const sendFormButtonMove = createTouchMove(sendFormButton, { y: -40 });
         const buttonMove = createTouchMove(genericButton, { y: -40 });
         const presetMove = createTouchMove(presetButton, { y: -40 });
         const characterDrawerMove = createTouchMove(characterCard, { y: -40 });
@@ -160,12 +184,15 @@ describe('mobile shell lifecycle wiring', () => {
         const nonCancelableMove = createTouchMove(composerGap, { cancelable: false });
 
         expect(shouldBlockMobileDocumentPan(chatMove.event, { touchStart: chatMove.touchStart })).toBe(false);
-        expect(shouldBlockMobileDocumentPan(createTouchMove(textarea, { y: -40 }).event)).toBe(false);
+        expect(shouldBlockMobileDocumentPan(textareaMove.event, { touchStart: textareaMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(scrollableTextareaMove.event, { touchStart: scrollableTextareaMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(textareaAtBottomMove.event, { touchStart: textareaAtBottomMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(railHorizontalMove.event, { touchStart: railHorizontalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(createTouchMove(companionHandle, { x: -40 }).event)).toBe(false);
         expect(shouldBlockMobileDocumentPan(gapMove.event, { touchStart: gapMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(guidedActionsGapMove.event, { touchStart: guidedActionsGapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(sendFormButtonMove.event, { touchStart: sendFormButtonMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(presetMove.event, { touchStart: presetMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
