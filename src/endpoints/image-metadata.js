@@ -39,8 +39,8 @@ export const METADATA_FILE = 'image-metadata.json';
 
 const THUMBNAIL_DIMENSION_DEFAULTS = Object.freeze({
     bg: Object.freeze([240, 135]),
-    avatar: Object.freeze([864, 1280]),
-    persona: Object.freeze([864, 1280]),
+    avatar: Object.freeze([320, 480]),
+    persona: Object.freeze([320, 480]),
 });
 
 function normalizeDimensionPair(value, fallback) {

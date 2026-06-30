@@ -4645,8 +4645,9 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     }
 
     messageElement.find('.avatar img').attr({
-        src: originalAvatarImg,
+        src: avatarImg,
         'data-thumbnail-src': avatarImg,
+        'data-original-src': originalAvatarImg,
         decoding: 'async',
         loading: messageId > 8 ? 'lazy' : 'eager',
     });
@@ -10556,15 +10557,21 @@ export async function refreshCharacterAvatar(avatarKey) {
 
         const srcAvatar = parseAvatarSource(img.getAttribute('src'));
         const thumbnailAvatar = parseAvatarSource(img.getAttribute('data-thumbnail-src'));
+        const originalAvatar = parseAvatarSource(img.getAttribute('data-original-src'));
         const srcMatches = srcAvatar?.type === 'avatar' && srcAvatar.file === avatarKey;
         const thumbnailMatches = thumbnailAvatar?.type === 'avatar' && thumbnailAvatar.file === avatarKey;
+        const originalMatches = originalAvatar?.type === 'avatar' && originalAvatar.file === avatarKey;
 
-        if (!srcMatches && !thumbnailMatches) {
+        if (!srcMatches && !thumbnailMatches && !originalMatches) {
             continue;
         }
 
         if (thumbnailMatches) {
             img.setAttribute('data-thumbnail-src', cacheBustedThumbnailUrl);
+        }
+
+        if (originalMatches) {
+            img.setAttribute('data-original-src', cacheBustedFullAvatarUrl);
         }
 
         if (srcMatches) {
@@ -17152,8 +17159,8 @@ jQuery(async function () {
     $(document).on('click', '.mes .avatar', function () {
         const messageElement = $(this).closest('.mes');
         const avatarImage = $(this).children('img');
-        const fullAvatarURL = avatarImage.attr('src');
-        const thumbURL = avatarImage.attr('data-thumbnail-src') || fullAvatarURL;
+        const fullAvatarURL = avatarImage.attr('data-original-src') || avatarImage.attr('src');
+        const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
         const charname = targetAvatarImg.replace('.png', '');

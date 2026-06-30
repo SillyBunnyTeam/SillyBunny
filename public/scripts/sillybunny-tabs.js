@@ -9961,12 +9961,12 @@ function getThumbnailSettingsFromRefs(refs = getServerAdminRefs()) {
                 parseSize(refs?.thumbnailBgHeight, 135),
             ],
             avatar: [
-                parseSize(refs?.thumbnailAvatarWidth, 864),
-                parseSize(refs?.thumbnailAvatarHeight, 1280),
+                parseSize(refs?.thumbnailAvatarWidth, 320),
+                parseSize(refs?.thumbnailAvatarHeight, 480),
             ],
             persona: [
-                parseSize(refs?.thumbnailPersonaWidth, 864),
-                parseSize(refs?.thumbnailPersonaHeight, 1280),
+                parseSize(refs?.thumbnailPersonaWidth, 320),
+                parseSize(refs?.thumbnailPersonaHeight, 480),
             ],
         },
     };
@@ -9979,13 +9979,13 @@ function setThumbnailInputValues(settings = {}, refs = getServerAdminRefs()) {
 
     refs.thumbnailEnabled.checked = Boolean(settings.enabled);
     refs.thumbnailFormat.value = settings.format === 'jpg' ? 'jpg' : 'png';
-    refs.thumbnailQuality.value = String(settings.quality ?? 100);
+    refs.thumbnailQuality.value = String(settings.quality ?? 82);
     refs.thumbnailBgWidth.value = String(settings.dimensions?.bg?.[0] ?? 240);
     refs.thumbnailBgHeight.value = String(settings.dimensions?.bg?.[1] ?? 135);
-    refs.thumbnailAvatarWidth.value = String(settings.dimensions?.avatar?.[0] ?? 864);
-    refs.thumbnailAvatarHeight.value = String(settings.dimensions?.avatar?.[1] ?? 1280);
-    refs.thumbnailPersonaWidth.value = String(settings.dimensions?.persona?.[0] ?? 864);
-    refs.thumbnailPersonaHeight.value = String(settings.dimensions?.persona?.[1] ?? 1280);
+    refs.thumbnailAvatarWidth.value = String(settings.dimensions?.avatar?.[0] ?? 320);
+    refs.thumbnailAvatarHeight.value = String(settings.dimensions?.avatar?.[1] ?? 480);
+    refs.thumbnailPersonaWidth.value = String(settings.dimensions?.persona?.[0] ?? 320);
+    refs.thumbnailPersonaHeight.value = String(settings.dimensions?.persona?.[1] ?? 480);
 }
 
 function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
@@ -10915,7 +10915,7 @@ function buildServerAdminPanel() {
     const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
     const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
     const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Use PNG at 100 quality with larger avatar/persona dimensions for sharper character thumbnails, then clear the cache to rebuild them.' });
+    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Use JPG around 82 quality with 320x480 avatar/persona thumbnails for faster mobile lists, then clear the cache to rebuild them.' });
     thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
     thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailActions, thumbnailNote);
 

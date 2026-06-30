@@ -51,22 +51,22 @@ const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
 });
 const THUMBNAIL_CONFIG_DEFAULTS = Object.freeze({
     enabled: true,
-    format: 'png',
-    quality: 100,
+    format: 'jpg',
+    quality: 82,
     dimensions: Object.freeze({
         bg: Object.freeze([240, 135]),
-        avatar: Object.freeze([864, 1280]),
-        persona: Object.freeze([864, 1280]),
+        avatar: Object.freeze([320, 480]),
+        persona: Object.freeze([320, 480]),
     }),
 });
 const SILLYBUNNY_RECOMMENDED_THUMBNAILS = Object.freeze({
     enabled: true,
-    format: 'png',
-    quality: 100,
+    format: 'jpg',
+    quality: 82,
     dimensions: Object.freeze({
         bg: Object.freeze([240, 135]),
-        avatar: Object.freeze([864, 1280]),
-        persona: Object.freeze([864, 1280]),
+        avatar: Object.freeze([320, 480]),
+        persona: Object.freeze([320, 480]),
     }),
 });
 

@@ -25,9 +25,30 @@ export const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif'
 
 const thumbnailRuntimeSettings = {
     enabled: !!getConfigValue('thumbnails.enabled', true, 'boolean'),
-    quality: Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 100, 'number')))),
-    format: String(getConfigValue('thumbnails.format', 'png')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
+    quality: Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 82, 'number')))),
+    format: String(getConfigValue('thumbnails.format', 'jpg')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
 };
+
+function setCachedThumbnailContentType(response, filePath) {
+    let fd = null;
+    try {
+        fd = fs.openSync(filePath, 'r');
+        const header = Buffer.alloc(12);
+        fs.readSync(fd, header, 0, header.length, 0);
+
+        if (header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+            response.type('jpg');
+        } else if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+            response.type('png');
+        }
+    } catch {
+        // Fall back to Express' extension-based content type.
+    } finally {
+        if (fd !== null) {
+            fs.closeSync(fd);
+        }
+    }
+}
 
 /**
  * @typedef {'bg' | 'avatar' | 'persona'} ThumbnailType
@@ -101,8 +122,8 @@ export function invalidateThumbnail(directories, type, file) {
 
 export function setThumbnailRuntimeSettings(settings = {}) {
     thumbnailRuntimeSettings.enabled = Boolean(settings.enabled);
-    thumbnailRuntimeSettings.quality = Math.min(100, Math.max(1, parseInt(settings.quality, 10) || 100));
-    thumbnailRuntimeSettings.format = String(settings.format ?? 'png').toLowerCase().trim() === 'png' ? 'png' : 'jpg';
+    thumbnailRuntimeSettings.quality = Math.min(100, Math.max(1, parseInt(settings.quality, 10) || 82));
+    thumbnailRuntimeSettings.format = String(settings.format ?? 'jpg').toLowerCase().trim() === 'png' ? 'png' : 'jpg';
 }
 
 export function getThumbnailRuntimeSettings() {
@@ -314,6 +335,7 @@ publicRouter.get('/', async function (request, response) {
 
         if (fs.existsSync(pathToCachedFile)) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
+            setCachedThumbnailContentType(response, pathToCachedFile);
             return response.sendFile(file, { root: thumbnailFolder, dotfiles: 'allow' });
         }
 
