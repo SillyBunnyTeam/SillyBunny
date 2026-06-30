@@ -765,10 +765,14 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#left-nav-panel',
     '#right-nav-panel',
     '#user-settings-block',
+    '#ica--tracker-panel',
+    '#ica--tracker-panel-handle',
     'dialog.popup',
     '.popup',
     '.sb-shell-root',
     '.sb-shell-header',
+    '.ica--tpanel',
+    '.ica--tpanel-handle',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
@@ -783,6 +787,8 @@ const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
     '.sb-shell-panel-scroller',
     '.scrollableInner',
     '.scrollableInnerFull',
+    '#ica--tracker-panel',
+    '.ica--tpanel',
     '.popup-body',
     '.popup-content',
     '.select2-results__options',
@@ -800,9 +806,10 @@ const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
     '.popup-controls',
     '.popup-button-close',
     '.select2-selection',
+    '#ica--tracker-panel-handle',
+    '.ica--tpanel-handle',
 ].join(', ');
 
-const MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR = '#ica--tracker-panel-handle';
 const MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX = 3;
 const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
 
@@ -931,10 +938,6 @@ function closestScrollableElementForGesture(target, delta, { requireAvailableScr
  */
 export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) {
     if (!event?.cancelable || event.defaultPrevented || event.touches?.length !== 1) {
-        return false;
-    }
-
-    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)) {
         return false;
     }
 
