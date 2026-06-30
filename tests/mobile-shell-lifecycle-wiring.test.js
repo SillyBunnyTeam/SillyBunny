@@ -102,7 +102,7 @@ function getFunctionSource(name) {
 }
 
 describe('mobile shell lifecycle wiring', () => {
-    test('blocks mobile document panning from non-scrollable composer chrome only', () => {
+    test('blocks mobile document panning from non-scrollable composer, bottom bar, and modal chrome', () => {
         expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
         expect(browserFixesSource).toContain('captureDocumentPanStart');
         expect(browserFixesSource).toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
@@ -156,12 +156,63 @@ describe('mobile shell lifecycle wiring', () => {
             matches: selector => selectorListIncludes(selector, '.gg-action-buttons-container'),
         });
         const guidedActionsGap = createElementStub({ parentElement: guidedActionsContainer });
+        const bottomChatBar = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#sb-bottom-chat-bar'),
+        });
+        const bottomChatButton = createElementStub({ parentElement: bottomChatBar });
+        const bottomChatSelect = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selector.includes('select'),
+        });
+        const bottomChatSecondaryRow = createElementStub({
+            parentElement: bottomChatBar,
+            matches: selector => selectorListIncludes(selector, '#sb-bottom-chat-secondary-row') || selectorListIncludes(selector, '.sb-bottom-chat-secondary-row'),
+            scrollWidth: 700,
+            clientWidth: 260,
+        });
+        const bottomChatSecondaryButton = createElementStub({ parentElement: bottomChatSecondaryRow });
         const presetPopupBody = createElementStub({
             matches: selector => selectorListIncludes(selector, '.popup-body'),
             scrollHeight: 1200,
             clientHeight: 600,
         });
         const presetButton = createElementStub({ parentElement: presetPopupBody });
+        const legacyDialog = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup'),
+        });
+        const legacyDialogText = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup_text'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const legacyDialogInput = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selector.includes('textarea'),
+        });
+        const legacyDialogControls = createElementStub({
+            parentElement: legacyDialog,
+            matches: selector => selectorListIncludes(selector, '#dialogue_popup_controls'),
+        });
+        const legacyDialogButton = createElementStub({ parentElement: legacyDialogControls });
+        const genericPopup = createElementStub({
+            matches: selector => selectorListIncludes(selector, 'dialog.popup') || selectorListIncludes(selector, '.popup'),
+        });
+        const genericPopupBody = createElementStub({
+            parentElement: genericPopup,
+            matches: selector => selectorListIncludes(selector, '.popup-body'),
+            scrollHeight: 1200,
+            clientHeight: 600,
+        });
+        const genericPopupInput = createElementStub({
+            parentElement: genericPopupBody,
+            matches: selector => selector.includes('textarea') || selectorListIncludes(selector, '.popup-input'),
+        });
+        const genericPopupControls = createElementStub({
+            parentElement: genericPopupBody,
+            matches: selector => selectorListIncludes(selector, '.popup-controls'),
+        });
+        const genericPopupButton = createElementStub({ parentElement: genericPopupControls });
         const characterDrawerScroller = createElementStub({
             matches: selector => selectorListIncludes(selector, '.sb-shell-panel-scroller'),
             scrollHeight: 1600,
@@ -178,7 +229,17 @@ describe('mobile shell lifecycle wiring', () => {
         const textareaAtBottomMove = createTouchMove(textareaAtBottom, { y: -40 });
         const sendFormButtonMove = createTouchMove(sendFormButton, { y: -40 });
         const buttonMove = createTouchMove(genericButton, { y: -40 });
+        const bottomChatButtonMove = createTouchMove(bottomChatButton, { y: -40 });
+        const bottomChatSelectMove = createTouchMove(bottomChatSelect, { y: -40 });
+        const bottomChatHorizontalMove = createTouchMove(bottomChatSecondaryButton, { x: 40, y: 2 });
+        const bottomChatVerticalMove = createTouchMove(bottomChatSecondaryButton, { x: 2, y: -40 });
         const presetMove = createTouchMove(presetButton, { y: -40 });
+        const legacyDialogTextMove = createTouchMove(legacyDialogText, { y: -40 });
+        const legacyDialogInputMove = createTouchMove(legacyDialogInput, { y: -40 });
+        const legacyDialogButtonMove = createTouchMove(legacyDialogButton, { y: -40 });
+        const genericPopupBodyMove = createTouchMove(genericPopupBody, { y: -40 });
+        const genericPopupInputMove = createTouchMove(genericPopupInput, { y: -40 });
+        const genericPopupButtonMove = createTouchMove(genericPopupButton, { y: -40 });
         const characterDrawerMove = createTouchMove(characterCard, { y: -40 });
         const multiTouchMove = createTouchMove(composerGap, { touches: [{}, {}] });
         const nonCancelableMove = createTouchMove(composerGap, { cancelable: false });
@@ -194,7 +255,17 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(guidedActionsGapMove.event, { touchStart: guidedActionsGapMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(sendFormButtonMove.event, { touchStart: sendFormButtonMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(buttonMove.event, { touchStart: buttonMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(bottomChatButtonMove.event, { touchStart: bottomChatButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatSelectMove.event, { touchStart: bottomChatSelectMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(bottomChatHorizontalMove.event, { touchStart: bottomChatHorizontalMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(bottomChatVerticalMove.event, { touchStart: bottomChatVerticalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(presetMove.event, { touchStart: presetMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(legacyDialogTextMove.event, { touchStart: legacyDialogTextMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(legacyDialogInputMove.event, { touchStart: legacyDialogInputMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(legacyDialogButtonMove.event, { touchStart: legacyDialogButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(genericPopupBodyMove.event, { touchStart: genericPopupBodyMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(multiTouchMove.event, { touchStart: multiTouchMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);

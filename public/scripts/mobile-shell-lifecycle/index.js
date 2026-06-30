@@ -747,11 +747,23 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#leftSendForm',
     '#qr--bar',
     '#rightSendForm',
+    '#sb-bottom-chat-bar',
+    '#sb-persona-picker',
+    '#shadow_popup',
+    '#dialogue_popup',
+    'dialog.popup',
+    '.popup',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
     '#leftSendForm',
     '#qr--bar',
+    '#sb-bottom-chat-secondary-row',
+    '.sb-bottom-chat-secondary-row',
+    '#sb-persona-picker',
+    '#dialogue_popup_text',
+    '.popup-body',
+    '.popup-content',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
@@ -759,6 +771,12 @@ const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
     'textarea',
     'select',
     '[contenteditable="true"]',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
+    '#dialogue_popup_controls',
+    '.popup-controls',
+    '.popup-button-close',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR = '#ica--tracker-panel-handle';
@@ -839,8 +857,8 @@ function canElementScrollForGesture(element, delta, { requireAvailableScrollInDi
 }
 
 /**
- * Decides whether a mobile touchmove started on non-scrollable composer chrome
- * should be cancelled before the browser pans the visual viewport.
+ * Decides whether a mobile touchmove started on fixed mobile chrome should be
+ * cancelled before the browser pans the visual viewport.
  * @param {TouchEvent|object} event Touchmove-like event.
  * @param {object} [options] Options.
  * @param {{identifier: number, clientX: number, clientY: number}|null} [options.touchStart=null] Starting touch point.
@@ -863,6 +881,14 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     const editableElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
     if (canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
         return false;
+    }
+
+    if (editableElement) {
+        return true;
+    }
+
+    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR)) {
+        return true;
     }
 
     const scrollElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR);
