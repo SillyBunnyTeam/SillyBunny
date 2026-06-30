@@ -794,6 +794,16 @@ const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
     '.select2-results__options',
 ].join(', ');
 
+const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
+    '#leftSendForm',
+    '#qr--bar',
+    '#sb-bottom-chat-secondary-row',
+    '.sb-bottom-chat-secondary-row',
+    '#sb-persona-picker',
+    '.sb-shell-nav',
+    '.select2-results__options',
+].join(', ');
+
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
     'input',
     'textarea',
@@ -813,11 +823,35 @@ const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
 const MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX = 3;
 const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
 
+function elementMatchesSelector(element, selector) {
+    return Boolean(element && typeof element.matches === 'function' && element.matches(selector));
+}
+
+function getParentElementLike(element) {
+    if (!element || typeof element !== 'object') {
+        return null;
+    }
+
+    if (element.parentElement && typeof element.parentElement === 'object') {
+        return element.parentElement;
+    }
+
+    if (element.parentNode && typeof element.parentNode === 'object' && element.parentNode !== element) {
+        return element.parentNode;
+    }
+
+    if (element.host && typeof element.host === 'object' && element.host !== element) {
+        return element.host;
+    }
+
+    return null;
+}
+
 function closestMatchingElement(target, selector) {
     let element = target;
 
     while (element && typeof element === 'object') {
-        if (typeof element.matches === 'function' && element.matches(selector)) {
+        if (elementMatchesSelector(element, selector)) {
             return element;
         }
 
@@ -828,7 +862,7 @@ function closestMatchingElement(target, selector) {
             }
         }
 
-        element = element.parentElement ?? null;
+        element = getParentElementLike(element);
     }
 
     return null;
@@ -922,7 +956,7 @@ function closestScrollableElementForGesture(target, delta, { requireAvailableScr
             return element;
         }
 
-        element = element.parentElement ?? null;
+        element = getParentElementLike(element);
     }
 
     return null;
@@ -963,8 +997,14 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     }
 
     const scrollElement = closestScrollableElementForGesture(event.target, gestureDelta, { requireAvailableScrollInDirection: true });
-    if (scrollElement && (isHorizontalGesture(gestureDelta) || closestMatchingElement(scrollElement, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR))) {
-        return false;
+    if (scrollElement) {
+        if (isHorizontalGesture(gestureDelta)) {
+            return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
+        }
+
+        if (elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR)) {
+            return false;
+        }
     }
 
     return true;

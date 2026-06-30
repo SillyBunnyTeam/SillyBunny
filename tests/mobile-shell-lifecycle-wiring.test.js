@@ -118,6 +118,13 @@ describe('mobile shell lifecycle wiring', () => {
             scrollHeight: 1200,
             clientHeight: 600,
         });
+        const wideMessageText = createElementStub({
+            parentElement: chatScroller,
+            matches: selector => selectorListIncludes(selector, '.mes_text'),
+            scrollWidth: 900,
+            clientWidth: 320,
+        });
+        const wideMessageTextNode = { parentNode: wideMessageText };
         const shellSurface = createElementStub({
             matches: selector => selectorListIncludes(selector, '#sheld'),
         });
@@ -285,6 +292,9 @@ describe('mobile shell lifecycle wiring', () => {
         const chatMove = createTouchMove(chatScroller, { y: -40 });
         const chatHorizontalMove = createTouchMove(chatScroller, { x: -70, y: 4 });
         const chatAtTopPullDownMove = createTouchMove(chatScrollerAtTop, { x: 2, y: 40 });
+        const wideMessageTextMove = createTouchMove(wideMessageText, { x: -70, y: 4 });
+        const wideMessageTextNodeMove = createTouchMove(wideMessageTextNode, { x: -70, y: 4 });
+        const wideMessageTextVerticalMove = createTouchMove(wideMessageTextNode, { x: 2, y: -40 });
         const shellRightEdgeHorizontalMove = createTouchMove(shellSurface, { startX: 390, x: 310, y: 4 });
         const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
         const railAtStartEdgeMove = createTouchMove(quickReplyStartButton, { x: 40, y: 2 });
@@ -324,6 +334,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(chatMove.event, { touchStart: chatMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(chatHorizontalMove.event, { touchStart: chatHorizontalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(chatAtTopPullDownMove.event, { touchStart: chatAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextMove.event, { touchStart: wideMessageTextMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextNodeMove.event, { touchStart: wideMessageTextNodeMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(wideMessageTextVerticalMove.event, { touchStart: wideMessageTextVerticalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(shellRightEdgeHorizontalMove.event, { touchStart: shellRightEdgeHorizontalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(textareaMove.event, { touchStart: textareaMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(scrollableTextareaMove.event, { touchStart: scrollableTextareaMove.touchStart })).toBe(false);
