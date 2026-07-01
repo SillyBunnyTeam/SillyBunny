@@ -1987,14 +1987,14 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].extra.inChatAgentCompanionResults['single-user-companion'].content).toBe('Single user note');
     });
 
-    test('stores generated companion notes with macros resolved from the source message', async () => {
+    test('stores generated companion notes raw and resolves them once when reused', async () => {
         generateQuietPrompt.mockResolvedValue('Objective: {{user}} ends up living with {{char}} after {{original}}');
 
         const companionAgent = createCompanionAgent({
             id: 'plot-compass',
             name: 'Plot Compass',
             sourceTemplateId: 'tpl-plot-compass-companion',
-            companion: { trigger: 'manual', displayMode: 'panel' },
+            companion: { trigger: 'manual', displayMode: 'panel', feedback: { enabled: true, depth: 1 } },
         });
         enabledAgents = [companionAgent];
 
@@ -2002,15 +2002,19 @@ describe('in-chat agent post-processing runner', () => {
 
         chat.push(
             { mes: 'User message', name: 'Traveler', is_user: true, is_system: false, extra: {} },
-            { mes: 'Mira opens the window.', name: 'Mira', is_user: false, is_system: false, extra: {} },
+            { mes: 'Mira sees literal {{char}} text.', name: 'Mira', is_user: false, is_system: false, extra: {} },
         );
 
         const result = await companionRunner.runCompanionAgentOnMessage('plot-compass', 1);
 
-        expect(result?.content).toBe('Objective: Traveler ends up living with Mira after Mira opens the window.');
-        expect(chat[1].extra.inChatAgentCompanionResults['plot-compass'].content).toBe('Objective: Traveler ends up living with Mira after Mira opens the window.');
-        expect(result?.content).not.toContain('{{user}}');
-        expect(result?.content).not.toContain('{{char}}');
+        expect(result?.content).toBe('Objective: {{user}} ends up living with {{char}} after {{original}}');
+        expect(chat[1].extra.inChatAgentCompanionResults['plot-compass'].content).toBe('Objective: {{user}} ends up living with {{char}} after {{original}}');
+
+        chat.push({ mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+        companionRunner.injectCompanionFeedbackPrompts([companionAgent]);
+        const injected = extensionPrompts['inchat_agent_companion_plot-compass'].value;
+        expect(injected).toContain('Objective: Traveler ends up living with Mira after Mira sees literal {{char}} text.');
+        expect(injected).not.toContain('{{user}}');
     });
 
     test('runs connected companions from wrench/fix flow', async () => {
