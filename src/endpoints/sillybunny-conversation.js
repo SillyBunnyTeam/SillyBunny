@@ -407,6 +407,32 @@ function getConversationMessagePreviewText(message) {
     return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
 }
 
+function truncateConversationReplyPreview(value, maxLength = 160) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function buildConversationMessageReplyReference(message) {
+    if (!message?.id) {
+        return null;
+    }
+
+    const text = truncateConversationReplyPreview(getConversationMessagePreviewText(message));
+    const attachmentSummary = truncateConversationReplyPreview(getConversationAttachmentSummary(message));
+    if (!text && !attachmentSummary) {
+        return null;
+    }
+
+    return {
+        messageId: message.id,
+        name: message.name || 'Speaker',
+        role: message.role || 'character',
+        text,
+        attachmentSummary,
+        createdAt: message.created_at || Date.now(),
+    };
+}
+
 function refreshBranchPreview(branch) {
     const lastMessage = branch.messages[branch.messages.length - 1];
     branch.preview = getConversationMessagePreviewText(lastMessage) || 'Conversation ready';
@@ -1191,11 +1217,13 @@ router.post('/message/send', async (request, response) => {
         });
     }
 
+    const userReplyReference = buildConversationMessageReplyReference(userMessage);
     const replyMessage = appendConversationMessage(store, avatar, {
         role: 'character',
         name: character.name || 'Character',
         mes: replyText,
         extra: {
+            ...(userReplyReference ? { conversation_reply_to: userReplyReference } : {}),
             conversation_commands: {
                 selfieRequests: commandParts.selfieRequests,
                 scheduleUpdates: commandParts.scheduleUpdates,

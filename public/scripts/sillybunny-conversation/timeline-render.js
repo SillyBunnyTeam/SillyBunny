@@ -41,6 +41,7 @@ import { getConversationTimelineMessages } from './timeline-search.js';
 import { narrateConversationMessage } from './tts.js';
 import {
     addConversationReminder,
+    buildConversationMessageReplyReference,
     getConversationAttachmentSummary,
     getConversationSeenAt,
     getConversationMessagePreviewText,
@@ -193,21 +194,6 @@ function createConversationSelfieCommandActions(message) {
 function truncateConversationReplyPreview(value, maxLength = 160) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
-}
-
-function buildConversationReplyReference(message) {
-    if (!message?.id) {
-        return null;
-    }
-
-    return {
-        messageId: message.id,
-        name: message.name || 'Speaker',
-        role: message.role || 'character',
-        text: truncateConversationReplyPreview(getConversationMessagePreviewText(message)),
-        attachmentSummary: truncateConversationReplyPreview(getConversationAttachmentSummary(message)),
-        createdAt: message.created_at || Date.now(),
-    };
 }
 
 function getConversationReplyReferencePreview(reference) {
@@ -836,7 +822,7 @@ export function replyToConversationMessage(messageId) {
         return;
     }
 
-    const reference = buildConversationReplyReference(context.message);
+    const reference = buildConversationMessageReplyReference(context.message);
     if (!reference) {
         return;
     }

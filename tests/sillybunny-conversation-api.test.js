@@ -476,6 +476,12 @@ describe('SillyBunny Conversation REST API', () => {
             name: 'Nova',
             mes: 'Hello from Nova.',
         });
+        expect(json.replyMessage.extra.conversation_reply_to).toMatchObject({
+            messageId: json.userMessage.id,
+            name: 'Riley',
+            role: 'user',
+            text: 'Can you say hi?',
+        });
         expect(json.replyMessage.extra.conversation_commands.selfieRequests).toHaveLength(1);
         expect(json.generation.choices[0].message.content).toBe('[selfie] Hello from Nova.');
         expect(json.prompt.systemPrompt).toContain('You are Nova');
@@ -497,5 +503,6 @@ describe('SillyBunny Conversation REST API', () => {
             .branches[DEFAULT_BRANCH_ID]
             .messages;
         expect(messages.map(message => message.mes)).toEqual(['Can you say hi?', 'Hello from Nova.']);
+        expect(messages[1].extra.conversation_reply_to.messageId).toBe(messages[0].id);
     });
 });

@@ -15,7 +15,7 @@ import { isConversationActiveThread } from './notifications.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
 import { stripPreviewText, updateLastPreviewFromConversation } from './typing.js';
-import { getConversationAttachmentLabels, safeParseThread } from './thread-store-utils.js';
+import { getConversationAttachmentLabels, getConversationAttachmentSummary, safeParseThread } from './thread-store-utils.js';
 import { narrateConversationMessage } from './tts.js';
 
 export {
@@ -153,6 +153,32 @@ export function createConversationMessage({ role = 'character', name = getCurren
 
 export function getConversationMessagePreviewText(message) {
     return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
+}
+
+function truncateConversationReplyPreview(value, maxLength = 160) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+export function buildConversationMessageReplyReference(message) {
+    if (!message?.id) {
+        return null;
+    }
+
+    const text = truncateConversationReplyPreview(getConversationMessagePreviewText(message));
+    const attachmentSummary = truncateConversationReplyPreview(getConversationAttachmentSummary(message));
+    if (!text && !attachmentSummary) {
+        return null;
+    }
+
+    return {
+        messageId: message.id,
+        name: message.name || 'Speaker',
+        role: message.role || 'character',
+        text,
+        attachmentSummary,
+        createdAt: message.created_at || Date.now(),
+    };
 }
 
 /**

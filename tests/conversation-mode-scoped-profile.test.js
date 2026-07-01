@@ -173,6 +173,15 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('formatConversationReplyReference');
     });
 
+    test('lets generated character replies use message reply metadata', () => {
+        expect(threadStoreSource).toContain('export function buildConversationMessageReplyReference');
+        expect(timelineSource).toContain('buildConversationMessageReplyReference(context.message)');
+        expect(generationSource).toContain('getGeneratedReplyReference');
+        expect(generationSource).toContain('buildConversationMessageReplyReference(message)');
+        expect(generationSource).toContain('resolvedExtra.conversation_reply_to = replyReference');
+        expect(generationSource).toContain('attachReplyReference = false');
+    });
+
     test('adds Quick Image Gen actions for actual selfie commands', () => {
         expect(timelineSource).toContain('getConversationSelfieCommandRequests');
         expect(timelineSource).toContain('conversation_commands?.selfieRequests');
