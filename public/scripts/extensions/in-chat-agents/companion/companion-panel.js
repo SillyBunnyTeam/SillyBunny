@@ -60,6 +60,24 @@ let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
+
+function scrollChatMessageIntoView(messageElement) {
+    const chatRoot = document.getElementById('chat');
+
+    if (!(messageElement instanceof HTMLElement) || !(chatRoot instanceof HTMLElement) || !chatRoot.contains(messageElement)) {
+        return;
+    }
+
+    const chatRect = chatRoot.getBoundingClientRect();
+    const messageRect = messageElement.getBoundingClientRect();
+    const delta = (messageRect.top - chatRect.top) - ((chatRect.height - messageRect.height) / 2);
+
+    chatRoot.scrollTo({
+        top: Math.min(Math.max(chatRoot.scrollTop + delta, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+        behavior: 'smooth',
+    });
+}
+
 /** Behavior owned by index.js (the agent editor) arrives through this seam — no import cycle. */
 let panelHooks = null;
 
@@ -450,6 +468,27 @@ function getStateIcon(state) {
     return icon || 'fa-user-astronaut';
 }
 
+function normalizeTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function formatTokenCount(value) {
+    return normalizeTokenCount(value).toLocaleString();
+}
+
+function buildCompanionTokenUsagePillsHtml(result = {}) {
+    const inputTokens = normalizeTokenCount(result?.tokenUsage?.inputTokens);
+    const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
+
+    const pills = [
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+    ].filter(Boolean).join('');
+
+    return pills ? `<span class="ica--tpanel-agent-token-pills">${pills}</span>` : '';
+}
+
 function buildPanelEntryBody(agentId, entry) {
     const status = String(entry.result.status ?? 'done');
     if (status === 'pending') {
@@ -565,6 +604,7 @@ function buildPanelAgentSection(state) {
                     <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}">
                         <div class="ica--tpanel-history-head">
                             <span>Message #${entry.messageIndex}</span>
+                            ${buildCompanionTokenUsagePillsHtml(entry.result)}
                             <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
@@ -579,6 +619,7 @@ function buildPanelAgentSection(state) {
             <div class="ica--tpanel-agent-head">
                 <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
+                ${buildCompanionTokenUsagePillsHtml(latest.result)}
                 <span class="ica--tpanel-agent-actions">
                     ${hiddenButton}
                     ${runLatestButton}
@@ -920,7 +961,7 @@ async function handlePanelAction(event) {
         closeCompanionPanel();
         const messageElement = document.querySelector(`.mes[mesid="${messageIndex}"]`);
         if (messageElement) {
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrollChatMessageIntoView(messageElement);
         } else {
             toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
         }

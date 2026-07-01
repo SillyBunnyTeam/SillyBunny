@@ -40,7 +40,9 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    normalizePlotCompassObjective,
 } from './companion-shared.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 
 export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -86,6 +88,55 @@ let companionRunnerInitialized = false;
 
 function normalizeText(value = '') {
     return normalizeContentText(String(value ?? '')).trim();
+}
+
+function normalizeCompanionTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function stringifyCompanionTokenPayload(value) {
+    if (Array.isArray(value)) {
+        return value.map(message => stringifyCompanionTokenPayload(message)).filter(Boolean).join('\n\n');
+    }
+
+    if (value && typeof value === 'object') {
+        const role = String(value.role ?? 'user').trim().toUpperCase() || 'USER';
+        const content = normalizeText(value.content ?? '');
+        return content ? `${role}:\n${content}` : '';
+    }
+
+    return normalizeText(value);
+}
+
+async function countCompanionTokens(value) {
+    const fallbackText = stringifyCompanionTokenPayload(value);
+    if (!fallbackText) {
+        return 0;
+    }
+
+    try {
+        const tokenHandler = getContext()?.promptManager?.tokenHandler;
+        if (typeof tokenHandler?.countUntrackedAsync === 'function') {
+            const tokenCount = normalizeCompanionTokenCount(await tokenHandler.countUntrackedAsync(value));
+            if (tokenCount > 0) {
+                return tokenCount;
+            }
+        }
+    } catch {
+        // Fall back to the same rough chars/4 estimate used elsewhere in companion sizing.
+    }
+
+    return Math.ceil(fallbackText.length / 4);
+}
+
+async function buildCompanionTokenUsage(inputPayload, outputText = '') {
+    const [inputTokens, outputTokens] = await Promise.all([
+        countCompanionTokens(inputPayload),
+        countCompanionTokens({ role: 'assistant', content: outputText }),
+    ]);
+
+    return { inputTokens, outputTokens };
 }
 
 function normalizeChatroomStyle(value = '') {
@@ -354,7 +405,7 @@ function getDirectorCommentaryVoicePrompt(voice, settings = {}) {
     return DIRECTOR_COMMENTARY_VOICE_PRESETS[normalizedVoice] || DIRECTOR_COMMENTARY_VOICE_PRESETS['conspiratorial-absurdity'];
 }
 
-function getTemplateSettingsPromptBlock(agent = {}) {
+function getTemplateSettingsPromptBlock(agent = {}, message = null) {
     const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
 
     if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
@@ -385,7 +436,7 @@ function getTemplateSettingsPromptBlock(agent = {}) {
     }
 
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
-        const objective = String(agent.settings?.plotCompassObjective ?? '').trim();
+        const objective = normalizePlotCompassObjective(resolveCompanionContentMacros(agent.settings?.plotCompassObjective ?? '', message));
         return `[Plot Compass Objective]\n${objective || 'none set'}`;
     }
 
@@ -599,7 +650,11 @@ function getPreviousNotesSection(agent, messageIndex, companion) {
     return collectRecentCompanionResults(agent.id, {
         beforeMessageIndex: messageIndex,
         depth: companion.historyDepth,
-    }).map(result => `Message ${result.messageIndex}:\n${normalizeText(result.content)}`).join('\n\n');
+    }).map(result => `Message ${result.messageIndex}:\n${getResolvedCompanionResultContent(result, result.messageIndex)}`).join('\n\n');
+}
+
+function getResolvedCompanionResultContent(result = {}, messageIndex = -1) {
+    return normalizeText(resolveCompanionContentMacros(result.content ?? '', chat[messageIndex]));
 }
 
 function getSystemPromptSection(companion) {
@@ -719,7 +774,7 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
         dynamicMacros: buildPromptDynamicMacros(messageText, message, agent, generationType),
     }).trim();
 
-    return [prompt, getTemplateSettingsPromptBlock(agent)].filter(Boolean).join('\n\n').trim();
+    return [prompt, getTemplateSettingsPromptBlock(agent, message)].filter(Boolean).join('\n\n').trim();
 }
 
 const COMPANION_REPAIR_INSTRUCTION = 'Repair mode: produce the requested result again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
@@ -858,12 +913,13 @@ function getCurrentCompanionContextContent(agent, messageIndex) {
     }
 
     const result = getCompanionResults(message)[agent.id];
-    return result?.status === 'done' ? normalizeText(result.content) : '';
+    return result?.status === 'done' ? getResolvedCompanionResultContent(result, messageIndex) : '';
 }
 
 function getLatestCompanionContextContent(agent, messageIndex) {
+    const latest = collectRecentCompanionResults(agent.id, { beforeMessageIndex: messageIndex, depth: 1 })[0];
     return getCurrentCompanionContextContent(agent, messageIndex)
-        || normalizeText(collectRecentCompanionResults(agent.id, { beforeMessageIndex: messageIndex, depth: 1 })[0]?.content);
+        || getResolvedCompanionResultContent(latest, latest?.messageIndex);
 }
 
 function getCompanionLinkedContextSections(agent, messageIndex, contextSourceAgents, agentByReferenceId) {
@@ -1105,6 +1161,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
                 status: 'cancelled',
                 content: '',
                 error: 'Cancelled.',
+                tokenUsage: null,
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
                 modelLabel: getModelLabel(agent),
@@ -1115,10 +1172,13 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             return { agentId: agent.id, changed, result };
         }
 
+        const content = capResultContent(response.output);
+        const tokenUsage = await buildCompanionTokenUsage(promptMessages, content);
         setCompanionResult(message, agent, {
             status: 'done',
-            content: capResultContent(response.output),
+            content,
             error: '',
+            tokenUsage,
             profileId: response.profileId,
             profileLabel: getProfileLabel(agent, response.profileId),
             modelLabel: getModelLabel(agent),
@@ -1129,6 +1189,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             status: cancelled ? 'cancelled' : 'error',
             content: '',
             error: cancelled ? 'Cancelled.' : (error instanceof Error ? error.message : String(error)),
+            tokenUsage: null,
         });
     }
 
@@ -1138,24 +1199,49 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
     return { agentId: agent.id, changed, result };
 }
 
-async function buildBatchPromptMessages(agents, messageIndex, generationType, { extraContextSections = [] } = {}) {
-    const contextSections = await buildCompanionContextSections(agents[0], messageIndex, { extraContextSections });
-    const tasks = agents.map(agent => {
-        const companion = getCompanionConfig(agent);
-        const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
-        return [
-            `<<<companion:${agent.id}>>>`,
-            `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
-            COMPANION_GUARD_INSTRUCTION,
-            'Instruction:',
-            expandCompanionPrompt(agent, messageIndex, generationType),
-            ...formatLines,
-            COMPANION_FINAL_BOUNDARY,
-            `<<<end:${agent.id}>>>`,
-        ].join('\n');
-    }).join('\n\n');
-
+function buildBatchAgentTask(agent, messageIndex, generationType) {
+    const companion = getCompanionConfig(agent);
+    const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
     return [
+        `<<<companion:${agent.id}>>>`,
+        `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
+        COMPANION_GUARD_INSTRUCTION,
+        'Instruction:',
+        expandCompanionPrompt(agent, messageIndex, generationType),
+        ...formatLines,
+        COMPANION_FINAL_BOUNDARY,
+        `<<<end:${agent.id}>>>`,
+    ].join('\n');
+}
+
+async function buildBatchInputTokenUsage(promptMessages, taskPayloads) {
+    const batchInputTokens = await countCompanionTokens(promptMessages);
+    if (!taskPayloads.length) {
+        return new Map();
+    }
+
+    const taskTokenPairs = await Promise.all(taskPayloads.map(async payload => [
+        payload.agentId,
+        await countCompanionTokens(payload.content),
+    ]));
+    const totalTaskTokens = taskTokenPairs.reduce((total, [, tokens]) => total + tokens, 0);
+    const sharedTokens = Math.max(0, batchInputTokens - totalTaskTokens);
+    const sharedTokensPerAgent = sharedTokens / taskTokenPairs.length;
+
+    return new Map(taskTokenPairs.map(([agentId, tokens]) => [
+        agentId,
+        normalizeCompanionTokenCount(tokens + sharedTokensPerAgent),
+    ]));
+}
+
+async function buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections = [] } = {}) {
+    const contextSections = await buildCompanionContextSections(agents[0], messageIndex, { extraContextSections });
+    const taskPayloads = agents.map(agent => ({
+        agentId: agent.id,
+        content: buildBatchAgentTask(agent, messageIndex, generationType),
+    }));
+    const tasks = taskPayloads.map(payload => payload.content).join('\n\n');
+    const promptMessages = [
         {
             role: 'system',
             content: 'Run each side-channel task independently. These are not chat replies or scene continuations. Put every result inside its matching <<<companion:agentId>>> and <<<end:agentId>>> markers. Text outside markers is ignored.',
@@ -1165,6 +1251,8 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType, { 
             content: `${contextSections || '[Recent conversation]\nConversation context is empty.'}\n\n[Tasks]\n${tasks}\n\nPlace every result inside its markers now.\n${COMPANION_BATCH_FINAL_BOUNDARY}`,
         },
     ];
+
+    return { promptMessages, taskPayloads };
 }
 
 async function runBatchCompanionAgents(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
@@ -1177,7 +1265,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
     try {
         const extraContextSections = getUnitExtraContextSections(agents, extraContextSectionsByAgentId);
-        const promptMessages = await buildBatchPromptMessages(agents, messageIndex, generationType, { extraContextSections });
+        const { promptMessages, taskPayloads } = await buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections });
         const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
@@ -1187,6 +1275,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                     status: 'cancelled',
                     content: '',
                     error: 'Cancelled.',
+                    tokenUsage: null,
                     profileId: response.profileId,
                     profileLabel: getProfileLabel(agent, response.profileId),
                     modelLabel: getModelLabel(agent),
@@ -1200,6 +1289,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             });
         }
 
+        const inputTokensByAgentId = await buildBatchInputTokenUsage(promptMessages, taskPayloads);
         const parsed = parseBatchResponse(response.output);
         const missingAgents = [];
         for (const agent of agents) {
@@ -1208,10 +1298,15 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                 continue;
             }
 
+            const content = capResultContent(parsed.get(agent.id));
             setCompanionResult(message, agent, {
                 status: 'done',
-                content: parsed.get(agent.id),
+                content,
                 error: '',
+                tokenUsage: {
+                    inputTokens: inputTokensByAgentId.get(agent.id) ?? 0,
+                    outputTokens: await countCompanionTokens({ role: 'assistant', content }),
+                },
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
                 modelLabel: getModelLabel(agent),
@@ -1335,6 +1430,7 @@ async function runCompanionAgentSet(agents, messageIndex, generationType, cancel
             status: 'pending',
             content: '',
             error: '',
+            tokenUsage: null,
         });
         await emitCompanionResultsUpdated(messageIndex, agent.id);
     }
@@ -1450,7 +1546,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
             continue;
         }
 
-        const body = notes.map(result => normalizeText(result.content)).filter(Boolean).join('\n\n');
+        const body = notes.map(result => getResolvedCompanionResultContent(result, result.messageIndex)).filter(Boolean).join('\n\n');
         if (!body) {
             continue;
         }
@@ -1490,6 +1586,7 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
         status: 'pending',
         content: capResultContent(pendingContent),
         error: '',
+        tokenUsage: null,
     });
     await emitCompanionResultsUpdated(messageIndex, agent.id);
     const { changed, result } = await runSingleCompanionAgent(agent, messageIndex, 'normal', cancelRevision, {

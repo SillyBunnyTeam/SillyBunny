@@ -63,7 +63,10 @@ describe('connection manager profile save wiring', () => {
         const helperSource = getFunctionSource('getCustomEndpointProfileSecretId');
         const readSource = getFunctionSource('readProfileFromCommands');
 
-        expect(connectionManagerSource).toContain('import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from \'../../openai.js\';');
+        expect(connectionManagerSource).toContain('chat_completion_sources');
+        expect(connectionManagerSource).toContain('oai_settings');
+        expect(connectionManagerSource).toContain('selected_custom_endpoint_preset');
+        expect(connectionManagerSource).toContain('syncCustomEndpointPresetSelectionBySecretId');
         expect(helperSource).toContain('mode !== \'cc\'');
         expect(helperSource).toContain('oai_settings.chat_completion_source !== chat_completion_sources.CUSTOM');
         expect(helperSource).toContain('selected_custom_endpoint_preset?.name === \'None\'');

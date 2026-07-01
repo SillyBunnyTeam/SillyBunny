@@ -14,6 +14,7 @@ import {
     saveAgent,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -239,17 +240,18 @@ export function formatCompanionContent(agentId, result = {}, message = null, sty
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
+    const resolved = resolveCompanionContentMacros(content, message);
     const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {
-        return decorateChoiceLines(sanitizeCompanionHtml(content, sanitizeOptions));
+        return decorateChoiceLines(sanitizeCompanionHtml(resolved, sanitizeOptions));
     }
 
     if (result.format === 'text') {
-        return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
+        return `<pre class="ica--companion-text">${escapeHtml(resolved)}</pre>`;
     }
 
-    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content), sanitizeOptions));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(resolved), sanitizeOptions));
 }
 
 function getResultStatus(result = {}) {
@@ -505,7 +507,7 @@ export function insertChoiceIntoMessageInput(rawText) {
     textarea.value = current.trim() ? `${current.replace(/\s+$/, '')}\n${choice}` : choice;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     globalThis.$?.(textarea).trigger('input');
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     toastr.success('Added to the message box.');
     return true;
 }

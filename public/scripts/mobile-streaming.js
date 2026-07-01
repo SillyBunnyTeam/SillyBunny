@@ -3,6 +3,12 @@ import { isIOSWebKitPlatform } from './mobile-send-button.js';
 export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
 
+const ANDROID_REASONING_RENDER_INTERVAL_MS = IOS_REASONING_RENDER_INTERVAL_MS;
+
+function isAndroidPlatform(navigatorRef = globalThis.navigator) {
+    return /Android/i.test(String(navigatorRef?.userAgent || ''));
+}
+
 /**
  * Checks whether Smooth Streaming is effectively active for the current platform.
  * @param {object} [options]
@@ -47,11 +53,27 @@ export function getMobileStreamingBottomPinBehavior({
  * Checks whether live streaming DOM work should be reduced for the current browser.
  * @param {Navigator} [navigatorRef] Navigator-like object
  * @param {object} [options]
- * @param {boolean} [options.enabled] Whether the iOS WebKit reduction is enabled
+ * @param {boolean} [options.enabled] Backwards-compatible iOS WebKit reduction toggle
+ * @param {boolean} [options.iosEnabled] Whether the iOS WebKit reduction is enabled
+ * @param {boolean} [options.androidEnabled] Whether the Android reduction is enabled
  * @returns {boolean}
  */
-export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator, { enabled = true } = {}) {
-    return Boolean(enabled) && isIOSWebKitPlatform(navigatorRef);
+export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator, { enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
+    return (Boolean(iosEnabled) && isIOSWebKitPlatform(navigatorRef))
+        || (Boolean(androidEnabled) && isAndroidPlatform(navigatorRef));
+}
+
+/**
+ * Resolves the minimum live reasoning render interval for reduced streaming platforms.
+ * @param {Navigator} [navigatorRef] Navigator-like object
+ * @returns {number}
+ */
+export function getStreamingReasoningRenderInterval(navigatorRef = globalThis.navigator) {
+    if (isAndroidPlatform(navigatorRef)) {
+        return ANDROID_REASONING_RENDER_INTERVAL_MS;
+    }
+
+    return IOS_REASONING_RENDER_INTERVAL_MS;
 }
 
 /**

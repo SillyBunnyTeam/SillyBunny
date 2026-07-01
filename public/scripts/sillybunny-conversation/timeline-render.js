@@ -5,6 +5,7 @@ import {
     messageFormatting,
     name1,
 } from '../../script.js';
+import { user_avatar } from '../personas.js';
 import { world_names } from '../world-info.js';
 import {
     CHROME_IDS,
@@ -144,13 +145,25 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
 
     const avatarWrap = document.createElement('div');
     avatarWrap.className = 'sb-conversation-message-avatar';
+    const messageAvatar = message.role === 'user'
+        ? user_avatar
+        : message.role === 'partner' || message.role === 'system'
+            ? message.extra?.partner_avatar || avatar
+            : avatar;
+    if (messageAvatar) {
+        avatarWrap.dataset.sbConversationAction = 'zoom-avatar';
+        avatarWrap.dataset.avatarFile = messageAvatar;
+        avatarWrap.dataset.avatarType = message.role === 'user' ? 'persona' : 'avatar';
+        avatarWrap.tabIndex = 0;
+        avatarWrap.role = 'button';
+        avatarWrap.setAttribute('aria-label', `Show full picture for ${message.name || (message.role === 'user' ? name1 || 'You' : getCurrentCharName())}`);
+    }
     const image = document.createElement('img');
     image.alt = '';
     image.loading = index > 8 ? 'lazy' : 'eager';
     image.src = getConversationMessageAvatar(message, avatar);
     avatarWrap.appendChild(image);
 
-    const messageAvatar = message.role === 'partner' ? message.extra?.partner_avatar : avatar;
     if (messageAvatar && message.role !== 'user' && message.role !== 'system') {
         const statusDot = document.createElement('span');
         statusDot.className = 'sb-conversation-status-dot';
@@ -661,7 +674,7 @@ export function replyToConversationMessage(messageId) {
 
     input.value = newText;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
+    input.focus({ preventScroll: true });
 
     // Position cursor at the very end
     input.setSelectionRange(input.value.length, input.value.length);

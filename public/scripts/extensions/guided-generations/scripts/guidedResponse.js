@@ -5,6 +5,7 @@ import {
     extension_settings,
     getContext,
     getPreviousImpersonateInput,
+    guidedResponseInjectId,
     isGroupChat,
     setPreviousImpersonateInput,
 } from './shared.js';
@@ -50,7 +51,7 @@ async function guidedResponse() {
     setPreviousImpersonateInput(originalInput);
 
     let stscriptCommand = `// Single character logic|
-/inject id=instruct position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt}|
+/inject id=${guidedResponseInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt}|
 /trigger await=true|
 `;
 
@@ -60,7 +61,7 @@ async function guidedResponse() {
             stscriptCommand = `// Group chat logic|
 /buttons labels=${JSON.stringify(characterNames)} "Select member to respond as" |
 /setglobalvar key=selection {{pipe}} |
-/inject id=instruct position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |
+/inject id=${guidedResponseInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |
 /trigger await=true {{getglobalvar::selection}}|
 `;
         } else {
@@ -78,7 +79,7 @@ async function guidedResponse() {
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         try {
-            await getContext().executeSlashCommandsWithOptions('/flushinject instruct');
+            await getContext().executeSlashCommandsWithOptions(`/flushinject ${guidedResponseInjectId}`);
         } catch (error) {
             console.warn('[GuidedGenerations][Response] Could not flush guided response injection:', error);
         }

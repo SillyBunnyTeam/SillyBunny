@@ -553,7 +553,7 @@ export function copyText(text) {
     const textArea = document.createElement('textarea');
     textArea.value = text;
     parent.appendChild(textArea);
-    textArea.focus();
+    textArea.focus({ preventScroll: true });
     textArea.select();
     document.execCommand('copy');
     parent.removeChild(textArea);

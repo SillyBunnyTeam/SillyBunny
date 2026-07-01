@@ -58,6 +58,10 @@ describe('companion dashboard', () => {
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
+            substituteParams: jest.fn((value, options = {}) => String(value ?? '')
+                .replaceAll('{{user}}', 'Traveler')
+                .replaceAll('{{char}}', options.name2Override || 'Assistant')
+                .replaceAll('{{original}}', options.original ?? '')),
         }));
 
         await jest.unstable_mockModule('../public/scripts/events.js', () => ({
@@ -159,6 +163,31 @@ describe('companion dashboard', () => {
         expect(html).not.toContain('Tool Agent');
     });
 
+    test('shows latest companion input and output token estimates in rows', async () => {
+        agents = [{ id: 'companion-1', name: 'Scene Notes', execution: 'companion', enabled: true }];
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'companion-1': {
+                status: 'done',
+                content: 'note',
+                tokenUsage: { inputTokens: 1234, outputTokens: 56 },
+            },
+        });
+        const dashboard = await importDashboard();
+        dashboard.configureCompanionDashboard({
+            getVisibleAgents: () => agents,
+            getLastAssistantMessageIndex: () => 0,
+        });
+
+        const html = dashboard.buildDashboardHtml();
+
+        expect(html).toContain('Input');
+        expect(html).toContain('1,234');
+        expect(html).toContain('Output');
+        expect(html).toContain('56');
+    });
+
     test('shows the disabled notice and empty states when nothing is configured', async () => {
         const dashboard = await importDashboard();
         const store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
@@ -206,6 +235,21 @@ describe('companion dashboard', () => {
         expect(entries[1].snippet.length).toBeLessThanOrEqual(121);
         expect(entries.some(entry => entry.agentName === 'Pending')).toBe(false);
         expect(entries.some(entry => entry.agentName === 'Message Inbox')).toBe(false);
+    });
+
+    test('resolves macros in recent note snippets with the source message context', async () => {
+        const dashboard = await importDashboard();
+        const message = { name: 'Mona', is_user: false, is_system: false, mes: 'the stars are bright' };
+        chat.push(message);
+
+        companionResultsByMessage.set(message, {
+            'agent-a': { status: 'done', agentName: 'Notes', content: '{{user}} saw {{char}} write: {{original}}' },
+        });
+
+        const entries = dashboard.collectRecentNoteEntries();
+
+        expect(entries).toHaveLength(1);
+        expect(entries[0].snippet).toBe('Traveler saw Mona write: the stars are bright');
     });
 
     test('appends the wand menu item once and wires its click handler', async () => {

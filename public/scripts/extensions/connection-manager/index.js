@@ -15,7 +15,7 @@ import { SlashCommandScope } from '../../slash-commands/SlashCommandScope.js';
 import { cancelDebounce, collapseSpaces, getUniqueName, isFalseBoolean, isTrueBoolean, uuidv4, waitUntilCondition } from '../../utils.js';
 import { t } from '../../i18n.js';
 import { getSecretLabelById } from '../../secrets.js';
-import { chat_completion_sources, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from '../../openai.js';
+import { chat_completion_sources, maybeApplyModelSamplingProfile, oai_settings, selected_custom_endpoint_preset, syncCustomEndpointPresetSelectionBySecretId } from '../../openai.js';
 import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
 import { ConnectionManagerRequestService } from '../shared.js';
@@ -1017,6 +1017,11 @@ async function applyConnectionProfile(profile) {
             if (spinner.isAborted()) {
                 throw new Error(PROFILE_APPLICATION_ABORTED);
             }
+        }
+
+        if (mode === 'cc') {
+            maybeApplyModelSamplingProfile();
+            cancelDebounce(saveSettingsDebounced);
         }
     } finally {
         spinner.stop();

@@ -204,7 +204,10 @@ describe('in-chat agent post-processing runner', () => {
             setExtensionPrompt: jest.fn((key, value) => {
                 extensionPrompts[key] = { value };
             }),
-            substituteParams: jest.fn(value => String(value ?? '')),
+            substituteParams: jest.fn((value, options = {}) => String(value ?? '')
+                .replaceAll('{{user}}', 'Traveler')
+                .replaceAll('{{char}}', options.name2Override || 'Assistant')
+                .replaceAll('{{original}}', options.original ?? '')),
             generateQuietPrompt,
             getCurrentChatId: jest.fn(() => currentChatId),
             normalizeContentText: jest.fn(value => String(value ?? '')),
@@ -1237,7 +1240,7 @@ describe('in-chat agent post-processing runner', () => {
         const plotCompass = createCompanionAgent({
             id: 'plot-compass-companion',
             sourceTemplateId: 'tpl-plot-compass-companion',
-            settings: { plotCompassObjective: 'Reach the tower' },
+            settings: { plotCompassObjective: '{{user}} helps {{char}} after {{original}}' },
             companion: { rawPrompt: true },
             prompt: 'Plan from the objective.',
         });
@@ -1245,12 +1248,29 @@ describe('in-chat agent post-processing runner', () => {
 
         chat.push(
             { mes: 'Hello there.', name: 'User', is_user: true, is_system: false, extra: {} },
-            { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Assistant reply', name: 'Mira', is_user: false, is_system: false, extra: {} },
         );
 
         const messages = await companionRunner.buildCompanionPromptMessages(plotCompass, 1);
 
-        expect(messages[0].content).toContain('[Plot Compass Objective]\nReach the tower');
+        expect(messages[0].content).toContain('[Plot Compass Objective]\nTraveler helps Mira after Assistant reply');
+    });
+
+    test('uses the active character for Plot Compass objective macros on user-sourced runs', async () => {
+        const plotCompass = createCompanionAgent({
+            id: 'plot-compass-companion',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            settings: { plotCompassObjective: 'Guide {{char}} after {{original}}' },
+            companion: { rawPrompt: true },
+            prompt: 'Plan from the objective.',
+        });
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push({ mes: 'I step through the gate.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+
+        const messages = await companionRunner.buildCompanionPromptMessages(plotCompass, 0);
+
+        expect(messages[0].content).toContain('[Plot Compass Objective]\nGuide Assistant after I step through the gate.');
     });
 
     test('includes the system prompt and authors note sections when toggled on', async () => {
@@ -1332,6 +1352,28 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(extensionPrompts['inchat_agent_companion_hidden-feedback-companion']).toBeUndefined();
         expect(extensionPrompts['inchat_agent_companion_visible-feedback-companion'].value).toContain('Visible note that should feed back.');
+    });
+
+    test('resolves companion macros before injecting feedback prompts', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'feedback-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'The door opened.', name: 'Mira', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, feedbackCompanion, {
+            status: 'done',
+            content: '{{user}} saw {{char}} write: {{original}}',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_feedback-companion'].value;
+
+        expect(injected).toContain('Traveler saw Mira write: The door opened.');
+        expect(injected).not.toContain('{{user}}');
     });
 
     test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
@@ -1490,12 +1532,13 @@ describe('in-chat agent post-processing runner', () => {
             { mes: 'Keep going.', name: 'User', is_user: true, is_system: false, extra: {} },
             { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} },
         );
-        companionRunner.setCompanionResult(chat[0], historyCompanion, { status: 'done', content: 'State after reply one' });
+        companionRunner.setCompanionResult(chat[0], historyCompanion, { status: 'done', content: '{{user}} saw {{char}} write: {{original}}' });
 
         const messages = await companionRunner.buildCompanionPromptMessages(historyCompanion, 2);
 
         expect(messages[1].content).toContain('[Your previous notes]');
-        expect(messages[1].content).toContain('State after reply one');
+        expect(messages[1].content).toContain('Traveler saw Assistant write: Reply one');
+        expect(messages[1].content).not.toContain('{{user}}');
 
         const noHistoryCompanion = createCompanionAgent({ id: 'no-history-companion', companion: { includeHistory: false } });
         const plainMessages = await companionRunner.buildCompanionPromptMessages(noHistoryCompanion, 2);
@@ -1541,6 +1584,7 @@ describe('in-chat agent post-processing runner', () => {
         const companionB = createCompanionAgent({
             id: 'companion-b',
             name: 'Companion B',
+            prompt: 'Write the Companion B note with a little more detail than the first companion.',
             companion: { batch: false, batchAgentIds: [] },
         });
         const companionC = createCompanionAgent({
@@ -1579,6 +1623,13 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
+        const batchInputTokens = Math.ceil(batchPrompt.length / 4);
+        const companionAInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-a'].tokenUsage.inputTokens;
+        const companionBInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-b'].tokenUsage.inputTokens;
+        expect(companionAInputTokens).toBeGreaterThan(0);
+        expect(companionBInputTokens).toBeGreaterThan(companionAInputTokens);
+        expect(companionAInputTokens).toBeLessThan(batchInputTokens);
+        expect(companionBInputTokens).toBeLessThan(batchInputTokens);
     });
 
     test('does not batch companions with different linked context', async () => {
@@ -2019,6 +2070,62 @@ describe('in-chat agent post-processing runner', () => {
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(result?.content).toBe('Single user note');
         expect(chat[0].extra.inChatAgentCompanionResults['single-user-companion'].content).toBe('Single user note');
+    });
+
+    test('stores estimated input and output token usage on companion results', async () => {
+        generateQuietPrompt.mockResolvedValue('Token note');
+
+        const companionAgent = createCompanionAgent({
+            id: 'token-companion',
+            name: 'Token Companion',
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        const result = await companionRunner.runCompanionAgentOnMessage('token-companion', 0);
+
+        expect(result?.tokenUsage).toEqual(expect.objectContaining({
+            inputTokens: expect.any(Number),
+            outputTokens: expect.any(Number),
+        }));
+        expect(result.tokenUsage.inputTokens).toBeGreaterThan(0);
+        expect(result.tokenUsage.outputTokens).toBeGreaterThan(0);
+        expect(chat[0].extra.inChatAgentCompanionResults['token-companion'].tokenUsage).toEqual(result.tokenUsage);
+    });
+
+    test('stores generated companion notes raw and resolves them once when reused', async () => {
+        generateQuietPrompt.mockResolvedValue('Objective: {{user}} ends up living with {{char}} after {{original}}');
+
+        const companionAgent = createCompanionAgent({
+            id: 'plot-compass',
+            name: 'Plot Compass',
+            sourceTemplateId: 'tpl-plot-compass-companion',
+            companion: { trigger: 'manual', displayMode: 'panel', feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'Traveler', is_user: true, is_system: false, extra: {} },
+            { mes: 'Mira sees literal {{char}} text.', name: 'Mira', is_user: false, is_system: false, extra: {} },
+        );
+
+        const result = await companionRunner.runCompanionAgentOnMessage('plot-compass', 1);
+
+        expect(result?.content).toBe('Objective: {{user}} ends up living with {{char}} after {{original}}');
+        expect(chat[1].extra.inChatAgentCompanionResults['plot-compass'].content).toBe('Objective: {{user}} ends up living with {{char}} after {{original}}');
+
+        chat.push({ mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
+        companionRunner.injectCompanionFeedbackPrompts([companionAgent]);
+        const injected = extensionPrompts['inchat_agent_companion_plot-compass'].value;
+        expect(injected).toContain('Objective: Traveler ends up living with Mira after Mira sees literal {{char}} text.');
+        expect(injected).not.toContain('{{user}}');
     });
 
     test('runs connected companions from wrench/fix flow', async () => {

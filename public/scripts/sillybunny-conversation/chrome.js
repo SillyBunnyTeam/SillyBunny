@@ -1,9 +1,10 @@
-import { characters, selectCharacterById } from '../../script.js';
+import { animation_duration, characters, selectCharacterById } from '../../script.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { openGroupById, selected_group } from '../group-chats.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
-import { setUserAvatar } from '../personas.js';
-import { shouldSendOnEnter } from '../RossAscends-mods.js';
+import { getUserAvatar, setUserAvatar } from '../personas.js';
+import { loadMovingUIState, power_user } from '../power-user.js';
+import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
@@ -125,7 +126,92 @@ function focusConversationInput({ skipIOS = false } = {}) {
 
     const input = document.getElementById(CHROME_IDS.input);
     if (input instanceof HTMLTextAreaElement) {
-        input.focus();
+        input.focus({ preventScroll: true });
+    }
+}
+
+function getConversationFullAvatarUrl(file, type) {
+    if (!file || file === 'none') {
+        return '';
+    }
+
+    if (type === 'persona') {
+        return getUserAvatar(file);
+    }
+
+    return `/characters/${encodeURIComponent(file)}`;
+}
+
+function getConversationZoomedAvatarElement(avatarKey) {
+    return $('.zoomed_avatar').filter(function () {
+        return $(this).attr('forChar') === avatarKey;
+    });
+}
+
+function removeConversationZoomedAvatar($avatar) {
+    $avatar.fadeOut(animation_duration, () => {
+        $avatar.remove();
+    });
+}
+
+function showConversationZoomedAvatar(target) {
+    const file = target.dataset.avatarFile || '';
+    const type = target.dataset.avatarType || 'avatar';
+    const avatarSrc = getConversationFullAvatarUrl(file, type);
+    if (!avatarSrc) {
+        return;
+    }
+
+    const avatarKey = `${type}:${file}`;
+    const existingAvatar = getConversationZoomedAvatarElement(avatarKey);
+    if (existingAvatar.length) {
+        removeConversationZoomedAvatar(existingAvatar);
+        return;
+    }
+
+    if (!power_user.movingUI) {
+        $('.zoomed_avatar').each(function () {
+            const currentForChar = $(this).attr('forChar');
+            if (currentForChar && currentForChar !== avatarKey) {
+                $(this).remove();
+            }
+        });
+    }
+
+    const template = $('#zoomed_avatar_template').html();
+    if (!template) {
+        return;
+    }
+
+    const safeId = avatarKey.replace(/[^\w-]/g, '_');
+    const newElement = $(template);
+    newElement.attr('forChar', avatarKey);
+    newElement.attr('id', `zoomFor_${safeId}`);
+    newElement.addClass('draggable');
+    newElement.find('.drag-grabber').attr('id', `zoomFor_${safeId}header`);
+
+    const zoomedAvatarImgElement = newElement.find('.zoomed_avatar_img');
+    zoomedAvatarImgElement.attr('src', avatarSrc);
+    zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
+    zoomedAvatarImgElement.on('dragstart', (event) => {
+        event.preventDefault();
+        return false;
+    });
+
+    newElement.on('click touchend', '.dragClose', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeConversationZoomedAvatar(newElement);
+    });
+
+    $('body').append(newElement);
+    newElement.fadeIn(animation_duration);
+    loadMovingUIState();
+    newElement.css('display', 'flex');
+    dragElement(newElement);
+
+    if (power_user.zoomed_avatar_magnification) {
+        newElement.find('.zoomed_avatar_container').izoomify();
     }
 }
 
@@ -155,6 +241,20 @@ export function bindConversationChromeControls(sheld) {
     }
 
     sheld.dataset.sbConversationChromeBound = 'true';
+    sheld.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action="zoom-avatar"]') : null;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        target.click();
+    });
+
     sheld.addEventListener('click', async (event) => {
         const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal, .sb-conversation-mobile-menu-trigger') : null;
 
@@ -202,6 +302,11 @@ export function bindConversationChromeControls(sheld) {
         }
 
         switch (target.dataset.sbConversationAction) {
+            case 'zoom-avatar':
+                event.preventDefault();
+                event.stopPropagation();
+                showConversationZoomedAvatar(target);
+                break;
             case 'toggle-tools': {
                 const currentVisible = getConversationToolsVisible();
                 setConversationToolsVisible(!currentVisible);

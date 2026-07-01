@@ -280,7 +280,12 @@ describe('companion tracker panel', () => {
         const message = { is_user: false, is_system: false, mes: 'reply' };
         chat.push(message);
         companionResultsByMessage.set(message, {
-            'tracker-1': { status: 'done', content: 'Sumeru City Market', agentName: 'Scene Tracker' },
+            'tracker-1': {
+                status: 'done',
+                content: 'Sumeru City Market',
+                agentName: 'Scene Tracker',
+                tokenUsage: { inputTokens: 321, outputTokens: 45 },
+            },
         });
 
         const html = panel.buildPanelHtml();
@@ -297,6 +302,10 @@ describe('companion tracker panel', () => {
         expect(html).toContain('data-action="panel-run-latest"');
         expect(html).toContain('data-action="panel-regenerate-all"');
         expect(html).toContain('data-message-index="0"');
+        expect(html).toContain('Input');
+        expect(html).toContain('321');
+        expect(html).toContain('Output');
+        expect(html).toContain('45');
         expect(html).toContain('No state yet');
 
         // SillyBunny: the per-companion Play button must remain visible after a companion has

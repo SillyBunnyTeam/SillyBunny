@@ -2315,6 +2315,89 @@ function restoreShellFocus(shellKey) {
     }
 }
 
+function getLayoutViewportScrollAnchor() {
+    const scrollingElement = document.scrollingElement;
+
+    return {
+        left: Math.max(0, Math.round(window.scrollX || scrollingElement?.scrollLeft || 0)),
+        top: Math.max(0, Math.round(window.scrollY || scrollingElement?.scrollTop || 0)),
+    };
+}
+
+function restoreLayoutViewportScroll(anchor) {
+    if (!anchor) {
+        return;
+    }
+
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement instanceof Element) {
+        scrollingElement.scrollLeft = anchor.left;
+        scrollingElement.scrollTop = anchor.top;
+    }
+
+    if (window.scrollX !== anchor.left || window.scrollY !== anchor.top) {
+        window.scrollTo(anchor.left, anchor.top);
+    }
+}
+
+function queueLayoutViewportScrollRestore(anchor) {
+    restoreLayoutViewportScroll(anchor);
+    window.requestAnimationFrame(() => restoreLayoutViewportScroll(anchor));
+    window.setTimeout(() => restoreLayoutViewportScroll(anchor), 120);
+}
+
+function getManagedScrollContainer(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+
+    return target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat');
+}
+
+function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'auto' } = {}) {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    const anchor = getLayoutViewportScrollAnchor();
+    const scroller = getManagedScrollContainer(target);
+
+    if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) {
+        target.scrollIntoView({ block, behavior });
+        queueLayoutViewportScrollRestore(anchor);
+        return false;
+    }
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const topOverflow = targetRect.top - scrollerRect.top;
+    const bottomOverflow = targetRect.bottom - scrollerRect.bottom;
+    let delta = 0;
+
+    if (block === 'center') {
+        delta = topOverflow - ((scrollerRect.height - targetRect.height) / 2);
+    } else if (block === 'end') {
+        delta = bottomOverflow;
+    } else if (block === 'start') {
+        delta = topOverflow;
+    } else if (topOverflow < 0) {
+        delta = topOverflow;
+    } else if (bottomOverflow > 0) {
+        delta = bottomOverflow;
+    }
+
+    if (Math.abs(delta) > 1) {
+        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        scroller.scrollTo({
+            top: clampNumber(scroller.scrollTop + delta, 0, maxScrollTop),
+            behavior,
+        });
+    }
+
+    queueLayoutViewportScrollRestore(anchor);
+    return true;
+}
+
 function scrollShellTabButtonIntoView(nav, button, { smooth = false } = {}) {
     if (!(nav instanceof HTMLElement) || !(button instanceof HTMLElement)) {
         return;
@@ -2416,11 +2499,7 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
     }
 
     const activeElement = document.activeElement;
-    if (isChatComposerEditableElement(activeElement)) {
-        return false;
-    }
-
-    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
+    return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
 function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
@@ -2451,9 +2530,9 @@ function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
 
-    // SillyBunny: iOS keyboard edits inside shell panels should not resize or
-    // raise the Customize/Workspace windows. Keep shell geometry on the stable
-    // layout viewport while focused-input scrolling still uses visualViewport.
+    // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
+    // should not feed Safari visualViewport jitter back into shell geometry.
+    // Keep layout stable while focused panel scrolling still uses visualViewport.
     if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
         return layoutViewport;
     }
@@ -2478,9 +2557,8 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
-    // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
-    // when the keyboard opens; composer-focused edits use that offset, while
-    // panel-focused edits keep the stable layout top so windows are not raised.
+    // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
+    // keyboard edit paths intentionally keep the stable layout top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
@@ -2488,9 +2566,9 @@ function syncShellViewportBounds() {
  * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
  * focused input above the virtual keyboard the way a normal page would. When
  * focus enters an input inside a shell panel or drawer scroller, manually scroll
- * that scroller so the input sits above the keyboard. The chat composer itself
- * stays on visual-viewport shell sizing when it has focus; this covers the
- * remaining settings/drawer inputs (e.g. "Enter a Model ID").
+ * that scroller so the input sits above the keyboard. The chat composer and
+ * stable iOS shell sizing are handled separately; this covers the remaining
+ * settings/drawer inputs (e.g. "Enter a Model ID").
  */
 function scrollMobileFocusedInputIntoView(event) {
     if (!isMobileViewport()) {
@@ -5253,7 +5331,7 @@ function showBottomChatMassDeleteDialog(files, currentChatId) {
         document.addEventListener('keydown', handleKeydown);
         updateStatus();
         if (!isMobileViewport()) {
-            ageInput.focus();
+            ageInput.focus({ preventScroll: true });
         }
     });
 }
@@ -6223,7 +6301,7 @@ async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
     setSearchStatusText(getChatSearchStatusText(totalMatches, renderedMatches));
 
     if (scrollToFirst && firstMatch instanceof HTMLElement) {
-        firstMatch.scrollIntoView({
+        scrollElementIntoManagedView(firstMatch, {
             block: 'center',
             behavior: getReducedMotionScrollBehavior(),
         });
@@ -6232,7 +6310,7 @@ async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
         if (messageElement instanceof HTMLElement) {
             messageElement.classList.add('sb-search-hit');
             window.setTimeout(() => messageElement.classList.remove('sb-search-hit'), 2400);
-            messageElement.scrollIntoView({
+            scrollElementIntoManagedView(messageElement, {
                 block: 'center',
                 behavior: getReducedMotionScrollBehavior(),
             });
@@ -7471,7 +7549,7 @@ function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {
     }
 
     if (isExpanded && !wasExpanded) {
-        document.getElementById('sb_character_editor_subtabs')?.scrollIntoView({ block: 'nearest' });
+        scrollElementIntoManagedView(document.getElementById('sb_character_editor_subtabs'), { block: 'nearest' });
     }
 }
 
@@ -11354,7 +11432,7 @@ async function handleSillyTavernFolderImport() {
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your SillyTavern folder or user data folder first.', 'warn');
         toastr.warning('Paste a SillyTavern folder path first.', 'Import SillyTavern');
-        refs.pathInput.focus();
+        refs.pathInput.focus({ preventScroll: true });
         return;
     }
 
@@ -11397,7 +11475,7 @@ async function handleSillyTavernExtensionSync() {
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your existing SillyTavern folder before syncing extensions.', 'warn');
         toastr.warning('Paste a SillyTavern folder path first.', 'Sync Extensions');
-        refs.pathInput.focus();
+        refs.pathInput.focus({ preventScroll: true });
         return;
     }
 
@@ -13351,7 +13429,7 @@ function setUniversalSearchActiveIndex(index) {
         button.setAttribute('aria-selected', String(active));
         if (active) {
             input?.setAttribute('aria-activedescendant', button.id);
-            button.scrollIntoView({ block: 'nearest' });
+            scrollElementIntoManagedView(button, { block: 'nearest' });
         }
     }
 
@@ -13455,7 +13533,7 @@ function revealSearchMatch(shellKey, match) {
         if (match.element instanceof HTMLElement) {
             window.setTimeout(() => {
                 expandHiddenAccordions(match.element);
-                match.element.scrollIntoView({
+                scrollElementIntoManagedView(match.element, {
                     block: 'center',
                     behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
                 });
@@ -13471,7 +13549,7 @@ function revealSearchMatch(shellKey, match) {
     window.setTimeout(() => {
         revealSettingsCategoryFor(match.element);
         expandHiddenAccordions(match.element);
-        match.element.scrollIntoView({
+        scrollElementIntoManagedView(match.element, {
             block: 'center',
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         });
@@ -13521,7 +13599,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     shellState.updateNavScrollIndicators?.();
 
     if (focusButton && isActuallyVisible(activeTab.button)) {
-        activeTab.button?.focus();
+        activeTab.button?.focus({ preventScroll: true });
     } else if (isShellOpen(shellKey)) {
         window.requestAnimationFrame(() => focusShellPanel(shellKey, { force: true }));
     }
@@ -15950,7 +16028,7 @@ function openPersonaAppendicesManager() {
         document.getElementById('persona_editor_tab_prompt')?.click();
         const appendicesHeading = document.getElementById('persona_appendices_heading');
         const addButton = document.getElementById('persona_appendix_add');
-        (appendicesHeading ?? addButton)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
         addButton?.focus({ preventScroll: true });
     }, 160);
 }

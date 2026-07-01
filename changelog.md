@@ -91,6 +91,13 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #623 (2026-06-27) `fix(mobile_ui): soften touch guards and re-allow scrolling`
 - PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
 - PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
+- PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
+- PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
+- PR #630 (2026-07-01) `fix(ica): render macros in Companion Agents drawer`
+- PR #633 (2026-07-01) `fix(sampling_profile): automatic sampling profile switch`
+- PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
+- PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
+- PR #637 (2026-07-01) `feat(ica): include the number of tokens used by agents in the UI`
 
 ## v1.6.5
 

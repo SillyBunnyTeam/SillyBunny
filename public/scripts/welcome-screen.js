@@ -1046,7 +1046,13 @@ async function highlightLaunchpadItem(extensionId) {
         return false;
     }
 
-    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const panelRect = welcomePanel.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const delta = (cardRect.top - panelRect.top) - ((panelRect.height - cardRect.height) / 2);
+    welcomePanel.scrollTo({
+        top: Math.min(Math.max(welcomePanel.scrollTop + delta, 0), Math.max(0, welcomePanel.scrollHeight - welcomePanel.clientHeight)),
+        behavior: 'smooth',
+    });
     flashHighlight($(card), 1400);
     return true;
 }
@@ -1175,7 +1181,7 @@ function focusSendTextarea(sendTextArea, { skipIOS = false } = {}) {
     }
 
     if (sendTextArea instanceof HTMLTextAreaElement) {
-        sendTextArea.focus();
+        sendTextArea.focus({ preventScroll: true });
     }
 }
 

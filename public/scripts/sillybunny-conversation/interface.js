@@ -1,4 +1,4 @@
-import { selectConversationThread, setConversationInterfaceActive } from './chrome.js';
+import { setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
     getConversationBranches,
@@ -106,7 +106,7 @@ function renderHeaderParticipantStack(container, participants, options = {}) {
     const fingerprint = buildHeaderParticipantsFingerprint(participants, {
         groupId: options.groupId,
         status: options.status,
-        interactive: typeof options.onAvatarClick === 'function',
+        interactive: typeof options.onAvatarClick === 'function' || Boolean(options.zoomable),
     });
     if (container.dataset.sbConversationFingerprint === fingerprint) {
         return;
@@ -318,11 +318,7 @@ export function updateConversationHeader(settings = getSettings()) {
     renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
-        onAvatarClick: groupId ? (participant) => {
-            if (participant?.avatar) {
-                void selectConversationThread(participant.avatar, { groupId: null, showToast: false });
-            }
-        } : null,
+        zoomable: true,
     });
     if (name instanceof HTMLElement) {
         name.textContent = getConversationDisplayName(avatar, settings);

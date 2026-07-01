@@ -11893,7 +11893,7 @@ async function promptForMessageScreenshotRange(messageId) {
         onOpen: function () {
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
-                startInput.focus();
+                startInput.focus({ preventScroll: true });
                 startInput.select();
             }
         },
@@ -11911,7 +11911,7 @@ async function promptForMessageScreenshotRange(messageId) {
             if (!range) {
                 toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}.`, t`Screenshot messages`);
                 if (startInput instanceof HTMLInputElement) {
-                    startInput.focus();
+                    startInput.focus({ preventScroll: true });
                     startInput.select();
                 }
                 return false;
@@ -12139,11 +12139,7 @@ export async function messageEdit(editMessageId) {
         }
     };
 
-    try {
-        editTextArea.focus({ preventScroll: true });
-    } catch {
-        editTextArea.focus();
-    }
+    editTextArea.focus({ preventScroll: true });
 
     // Sets the cursor at the end of the text
     editTextArea.setSelectionRange(text.length, text.length);

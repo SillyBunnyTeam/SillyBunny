@@ -188,7 +188,7 @@ export class QuickReplySet {
         }
 
         ta.value = substituteParams(input);
-        ta.focus();
+        ta.focus({ preventScroll: true });
 
         if (!this.disableSend) {
             // @ts-ignore
@@ -344,7 +344,7 @@ export class QuickReplySet {
                 (dlg.ok ?? dlg.okButton).insertAdjacentElement('afterend', copyBtn);
             }
             const prom = dlg.show();
-            sel.focus();
+            sel.focus({ preventScroll: true });
             await prom;
             if (dlg.result == POPUP_RESULT.AFFIRMATIVE) {
                 const qrs = QuickReplySet.get(sel.value);

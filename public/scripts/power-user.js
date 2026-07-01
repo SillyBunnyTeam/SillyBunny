@@ -314,6 +314,8 @@ export const power_user = {
     ios_webkit_reduce_streaming_work: true,
     ios_webkit_disable_smooth_streaming: true,
     ios_webkit_disable_stream_fade_in: true,
+    android_conservative_streaming: true,
+    android_disable_stream_fade_in: true,
 
     // SillyBunny: aggressive DOM unloading for low-memory devices
     aggressive_dom_unload: false,
@@ -2179,6 +2181,11 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
+
     console.log('theme applied: ' + name);
 }
 
@@ -3389,13 +3396,13 @@ async function importTheme(file) {
         }
     }
 
-    themes.push(parsed);
-    await saveTheme(parsed.name, getNewTheme(parsed));
-    const option = document.createElement('option');
-    option.selected = false;
-    option.value = parsed.name;
-    option.innerText = parsed.name;
-    $('#themes').append(option);
+    const theme = getNewTheme(parsed);
+    await saveTheme(parsed.name, theme);
+    applyTheme(parsed.name);
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
     saveSettingsDebounced();
     toastr.success(parsed.name, 'Theme imported');
 }
@@ -3482,6 +3489,9 @@ function getNewTheme(parsed) {
         if (Object.hasOwn(theme, key)) {
             theme[key] = parsed[key];
         }
+    }
+    if (typeof parsed.custom_css === 'string') {
+        theme.custom_css = parsed.custom_css;
     }
     return theme;
 }

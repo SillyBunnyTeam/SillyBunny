@@ -127,6 +127,7 @@ export function renderConversationParticipantStack(container, participants, {
     max = MAX_STACKED_PARTICIPANT_AVATARS,
     groupId = getConversationGroupIdForAvatar(getCurrentCharAvatar()),
     onAvatarClick = null,
+    zoomable = false,
 } = {}) {
     if (!(container instanceof HTMLElement)) {
         return;
@@ -171,6 +172,14 @@ export function renderConversationParticipantStack(container, participants, {
                     onAvatarClick(participant);
                 }
             });
+        } else if (zoomable) {
+            avatarItem.classList.add('is-interactive');
+            avatarItem.dataset.sbConversationAction = 'zoom-avatar';
+            avatarItem.dataset.avatarFile = participant.avatar;
+            avatarItem.dataset.avatarType = 'avatar';
+            avatarItem.tabIndex = 0;
+            avatarItem.role = 'button';
+            avatarItem.setAttribute('aria-label', `Show full picture for ${participant.name || 'Character'}`);
         }
 
         const image = document.createElement('img');

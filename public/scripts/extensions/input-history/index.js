@@ -169,7 +169,7 @@ const showHistoryMenu = async () => {
                 item.addEventListener('click', async () => {
                     hideHistoryMenu();
                     ta.value = c;
-                    ta.focus();
+                    ta.focus({ preventScroll: true });
                 });
                 historyMenu.append(item);
             }
@@ -334,5 +334,5 @@ export function inputHistoryForward() {
 }
 export function showInputHistory() {
     showHistoryMenu();
-    ta.focus();
+    ta.focus({ preventScroll: true });
 }

@@ -124,6 +124,32 @@
     flex-shrink: 0;
 }
 
+.ica--token-counter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 35%, transparent);
+    border-radius: var(--sb-radius-md, 10px);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 8%, transparent);
+}
+
+.ica--token-counter.is-empty {
+    opacity: 0.75;
+}
+
+.ica--token-counter-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#ica--total-tokens-val {
+    font-variant-numeric: tabular-nums;
+}
+
 /* ── Agent List ─────────────────────────────────────── */
 
 .ica--agentList {
@@ -597,6 +623,16 @@ button.ica--card-pill--version-update {
     border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 72%, transparent);
     background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 22%, transparent);
     animation: ica--version-pulse 0.85s ease-in-out;
+}
+
+.ica--card-pill--tokens {
+    font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 13%, var(--SmartThemeBorderColor, #555) 18%, transparent);
+    opacity: 0.86;
+}
+
+.ica--card-pill--tokens strong {
+    font-weight: 700;
 }
 
 @keyframes ica--version-pulse {
@@ -1981,6 +2017,7 @@ button.ica--card-pill--version-update {
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -2010,6 +2047,14 @@ button.ica--card-pill--version-update {
     align-items: center;
     gap: 4px;
     flex: 0 0 auto;
+}
+
+.ica--tpanel-agent-token-pills {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
 }
 
 .ica--tpanel-agent-body {

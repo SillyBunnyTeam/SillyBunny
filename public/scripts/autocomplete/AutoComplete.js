@@ -754,7 +754,7 @@ export class AutoComplete {
             const nextCursor = effectiveStart + replacementText.length;
             const supportsExecCommand = !this.isNativeReplacing && !this.isComposing && typeof document.execCommand === 'function';
 
-            this.textarea.focus();
+            this.textarea.focus({ preventScroll: true });
             this.textarea.setSelectionRange(effectiveStart, replaceEnd);
 
             if (supportsExecCommand && document.execCommand('insertText', false, replacementText)) {
