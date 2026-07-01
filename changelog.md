@@ -93,6 +93,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
 - PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
 - PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
+- PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
 
 ## v1.6.5
 
