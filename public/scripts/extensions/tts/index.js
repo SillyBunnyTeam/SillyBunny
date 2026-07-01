@@ -276,7 +276,7 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
     }
 
     processAndQueueTtsMessage(message, messageId, { manual: isManual });
-    await moduleWorker();
+    await wrapper.update();
     return true;
 }
 
@@ -300,8 +300,8 @@ async function moduleWorker() {
         return;
     }
 
-    processTtsQueue();
-    processAudioJobQueue();
+    await processTtsQueue();
+    await processAudioJobQueue();
     updateUiAudioPlayState();
 }
 
@@ -853,6 +853,7 @@ async function processTtsQueue() {
 
         // Clear current job so the segmented jobs can be processed
         currentTtsJob = null;
+        setTimeout(() => wrapper.update(), 0);
     } catch (error) {
         toastr.error(error.toString());
         console.error(error);
