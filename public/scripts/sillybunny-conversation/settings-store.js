@@ -13,7 +13,9 @@ import {
     getCharacterConversationStore,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
+    getConversationGroups,
     getConversationStore,
+    getConversationThreadKey,
     getConversationThreadStore,
     getCurrentCharAvatar,
     getGroupConversationSettings,
@@ -56,12 +58,10 @@ export function invalidateConversationUsageCache() {
 }
 
 export function hasAnyConversationModeUsage() {
-    if (conversationUsageCache !== null) {
-        return conversationUsageCache;
-    }
-
-    const charactersStore = getConversationStore().characters || {};
-    conversationUsageCache = Object.entries(charactersStore).some(([storeKey, threadStore]) => threadStoreHasConversationUsage(storeKey, threadStore));
+    const store = getConversationStore();
+    const charactersStore = store.characters || {};
+    const hasConversationGroups = Array.isArray(store.groups) && store.groups.length > 0;
+    conversationUsageCache = hasConversationGroups || Object.entries(charactersStore).some(([storeKey, threadStore]) => threadStoreHasConversationUsage(storeKey, threadStore));
     return conversationUsageCache;
 }
 
@@ -146,17 +146,33 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
     }
 
     const chats = [];
+    const pushedKeys = new Set();
+    const pushedGroupIds = new Set();
+    const getGroupDisplayCharacter = group => (group?.members || [])
+        .map(avatar => getCharacterForAvatar(avatar))
+        .find(character => character?.avatar) || null;
     const pushConversationChat = (character, threadStore, group = null) => {
         const avatar = character?.avatar;
+        const groupId = group?.id ? String(group.id) : '';
         const settings = avatar ? getSettings(avatar, { groupId: group?.id || '' }) : { ...DEFAULT_SETTINGS };
-        if (!avatar || !settings.enabled || !threadStore) {
+        if (!avatar || (!group && !settings.enabled) || (!threadStore && !group)) {
             return;
         }
 
-        const branchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
-        const branch = normalizeConversationBranch(threadStore.branches?.[branchId], branchId);
+        const key = getConversationThreadKey(avatar, groupId);
+        if (!key || pushedKeys.has(key) || (groupId && pushedGroupIds.has(groupId))) {
+            return;
+        }
+
+        const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
+        const branch = normalizeConversationBranch(threadStore?.branches?.[branchId], branchId);
+        if (!threadStore && group) {
+            const groupTimestamp = parsePositiveInt(group.updatedAt || group.createdAt, Date.now(), 0);
+            branch.createdAt = groupTimestamp;
+            branch.updatedAt = groupTimestamp;
+        }
         const messages = Array.isArray(branch?.messages) ? branch.messages : [];
-        if (group && !messages.length && !branch.unread && branch.preview === 'Conversation ready') {
+        if (group && !group.is_conversation_group && !messages.length && !branch.unread && branch.preview === 'Conversation ready') {
             return;
         }
 
@@ -164,9 +180,13 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         const date = new Date(timestamp);
         const branchName = branch?.name && branch.name !== 'Main' ? branch.name : 'Conversation Mode';
         const groupName = group?.name || '';
+        pushedKeys.add(key);
+        if (groupId) {
+            pushedGroupIds.add(groupId);
+        }
         chats.push({
             avatar,
-            group: group?.id || '',
+            group: groupId,
             char_name: groupName || character.name || 'Character',
             char_thumbnail: getThumbnailUrl('avatar', avatar),
             chat_name: groupName ? `${character.name || 'Character'} · ${branchName}` : branchName,
@@ -208,6 +228,15 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         }
 
         pushConversationChat(character, threadStore, group);
+    });
+
+    getConversationGroups().forEach((group) => {
+        const character = getGroupDisplayCharacter(group);
+        if (!character?.avatar) {
+            return;
+        }
+
+        pushConversationChat(character, getConversationThreadStore(character.avatar, { create: false, groupId: String(group.id || '') }), group);
     });
 
     return chats

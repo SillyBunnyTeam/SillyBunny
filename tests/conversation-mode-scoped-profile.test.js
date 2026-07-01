@@ -38,7 +38,9 @@ const generationSource = readConversationSource('generation.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const initSource = readConversationSource('init.js');
+const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
+const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
 
 describe('conversation mode scoped connection profile', () => {
@@ -95,5 +97,13 @@ describe('conversation mode scoped connection profile', () => {
         expect(generationSource).toContain('getSpeakerPrefixMatch');
         expect(generationSource).toContain('resolveConversationReplySpeaker');
         expect(generationSource).toContain('resolvedExtra.partner_avatar = speakerAvatar');
+    });
+
+    test('keeps saved Conversation-owned group DMs visible without messages', () => {
+        expect(settingsStoreSource).toContain('const hasConversationGroups');
+        expect(settingsStoreSource).toContain('getConversationGroups().forEach');
+        expect(settingsStoreSource).toContain('!group.is_conversation_group');
+        expect(palsRailSource).toContain('getConversationGroups().forEach');
+        expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
     });
 });
