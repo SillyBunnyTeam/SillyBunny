@@ -46,6 +46,7 @@ describe('SillyBunny Conversation REST API', () => {
     /** @type {import('../src/users.js').UserDirectoryList} */
     let userDirectories;
     let baseUrl;
+    let aliasBaseUrl;
     let upstreamUrl;
     let upstreamReplyText;
     const upstreamRequests = [];
@@ -91,10 +92,12 @@ describe('SillyBunny Conversation REST API', () => {
             next();
         });
         app.use('/api/sillybunny-conversation', router);
+        app.use('/api/sillybunny/conversation', router);
 
         appServer = http.createServer(app);
         const appAddress = await listen(appServer);
         baseUrl = `http://127.0.0.1:${appAddress.port}/api/sillybunny-conversation`;
+        aliasBaseUrl = `http://127.0.0.1:${appAddress.port}/api/sillybunny/conversation`;
     });
 
     beforeEach(() => {
@@ -138,6 +141,14 @@ describe('SillyBunny Conversation REST API', () => {
         });
     }
 
+    async function postAliasJson(endpoint, body) {
+        return fetch(`${aliasBaseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    }
+
     function readSettings() {
         return JSON.parse(fs.readFileSync(path.join(userDirectories.root, SETTINGS_FILE), 'utf8'));
     }
@@ -145,6 +156,40 @@ describe('SillyBunny Conversation REST API', () => {
     function readConversationStore() {
         return readSettings().extension_settings[CONVERSATION_STORE_KEY];
     }
+
+    test('info describes browser-primary and curl-capable REST paths', async () => {
+        const response = await postJson('/info', {});
+
+        expect(response.status).toBe(200);
+        const json = await response.json();
+        expect(json.primaryPath).toMatchObject({
+            type: 'browser-client',
+            usesRestApiAsPrimaryDriver: false,
+        });
+        expect(json.primaryPath.flow.map(step => step.function)).toEqual(expect.arrayContaining([
+            'submitConversationInput',
+            'appendConversationThreadMessage',
+            'processSendQueue',
+            'generateConversationRaw',
+        ]));
+        expect(json.restPath).toMatchObject({
+            type: 'json-rest',
+            curlDriven: true,
+            basePath: '/api/sillybunny-conversation',
+            aliasBasePaths: ['/api/sillybunny/conversation'],
+        });
+        expect(json.restPath.endpoints.map(endpoint => endpoint.path)).toEqual(expect.arrayContaining([
+            '/info',
+            '/store/get',
+            '/message/send',
+        ]));
+        expect(json.caveats.join(' ')).toContain('Browser-only automation');
+        expect(json.caveats.join(' ')).toContain('Bracket commands are extracted');
+
+        const aliasResponse = await postAliasJson('/info', {});
+        expect(aliasResponse.status).toBe(200);
+        await expect(aliasResponse.json()).resolves.toMatchObject({ feature: 'Conversation Mode' });
+    });
 
     test('store/get returns the current Conversation Mode store shape', async () => {
         const response = await postJson('/store/get', {});

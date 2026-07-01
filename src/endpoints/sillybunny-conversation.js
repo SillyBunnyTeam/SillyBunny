@@ -42,6 +42,65 @@ const GENERATION_BACKENDS = Object.freeze({
 });
 
 const PERSONA_CONVERSATION_STORE_PREFIX = 'persona:';
+const CONVERSATION_API_BASE_PATH = '/api/sillybunny-conversation';
+const CONVERSATION_API_ALIAS_BASE_PATHS = ['/api/sillybunny/conversation'];
+const CONVERSATION_API_INFO = {
+    feature: 'Conversation Mode',
+    primaryPath: {
+        type: 'browser-client',
+        summary: 'The running app drives live Conversation Mode from browser-side JavaScript, not this REST router.',
+        flow: [
+            {
+                step: 'submit',
+                file: 'public/scripts/sillybunny-conversation/attachments.js',
+                function: 'submitConversationInput',
+            },
+            {
+                step: 'store-thread-message',
+                file: 'public/scripts/sillybunny-conversation/thread-store.js',
+                function: 'appendConversationThreadMessage',
+            },
+            {
+                step: 'queue-reply',
+                file: 'public/scripts/sillybunny-conversation/send-queue.js',
+                function: 'processSendQueue',
+            },
+            {
+                step: 'generate-reply',
+                file: 'public/scripts/sillybunny-conversation/generation.js',
+                function: 'generateConversationRaw',
+            },
+        ],
+        usesRestApiAsPrimaryDriver: false,
+    },
+    restPath: {
+        type: 'json-rest',
+        summary: 'The REST API can be driven by JSON clients, but it is not the primary in-app Conversation Mode driver.',
+        curlDriven: true,
+        basePath: CONVERSATION_API_BASE_PATH,
+        aliasBasePaths: CONVERSATION_API_ALIAS_BASE_PATHS,
+        endpoints: [
+            { method: 'POST', path: '/info', purpose: 'Describe Conversation Mode REST capabilities and caveats.' },
+            { method: 'POST', path: '/store/get', purpose: 'Read the Conversation Mode store.' },
+            { method: 'POST', path: '/store/save', purpose: 'Replace the Conversation Mode store.' },
+            { method: 'POST', path: '/group/list', purpose: 'List Conversation-owned group DMs for a persona.' },
+            { method: 'POST', path: '/group/create', purpose: 'Create a Conversation-owned group DM.' },
+            { method: 'POST', path: '/thread/get', purpose: 'Read a solo or group DM thread.' },
+            { method: 'POST', path: '/thread/save', purpose: 'Replace a solo or group DM thread.' },
+            { method: 'POST', path: '/message/append', purpose: 'Append one message without generating a reply.' },
+            { method: 'POST', path: '/message/send', purpose: 'Append a user message, generate a reply, and persist both.' },
+        ],
+        messageSend: {
+            requiredFields: ['avatar', 'message or text', 'generation'],
+            optionalFields: ['groupId', 'personaId', 'settings', 'character', 'userName', 'includePrompt', 'includeGeneration'],
+        },
+    },
+    caveats: [
+        'Browser-only automation is not run by the REST API: idle followups, scheduled messages, proactive messages, partner chimes, group aside DMs, and reminder timers.',
+        'Bracket commands are extracted into reply metadata by /message/send, but REST does not run image generation, schedule edits, or reminder side effects.',
+        'REST callers must provide the backend generation payload shape used by the existing completion endpoints.',
+    ],
+};
 
 function isObject(value) {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -937,6 +996,8 @@ function extractGeneratedText(generationResponse) {
         ?? '',
     );
 }
+
+router.post('/info', (_request, response) => response.send(CONVERSATION_API_INFO));
 
 router.post('/store/get', (request, response) => {
     const settings = readUserSettings(request);

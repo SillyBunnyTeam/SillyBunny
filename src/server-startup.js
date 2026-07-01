@@ -121,6 +121,7 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/server-admin', serverAdminRouter);
     app.use('/api/in-chat-agents', inChatAgentsRouter);
     app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter);
+    app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter);
 }
 
 /**

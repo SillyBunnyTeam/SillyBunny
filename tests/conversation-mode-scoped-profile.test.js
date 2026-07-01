@@ -49,6 +49,7 @@ const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
 const timelineSource = readConversationSource('timeline-render.js');
 const timelineSlashSource = readConversationSource('timeline-slash-commands.js');
+const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
 describe('conversation mode scoped connection profile', () => {
@@ -192,5 +193,10 @@ describe('conversation mode scoped connection profile', () => {
         expect(welcomeSource).toContain('clearConversationWelcomeOpeningSuppressionAfterRender');
         expect(welcomeSource).toContain('requestAnimationFrame(() => requestAnimationFrame(clearSuppression))');
         expect(welcomeSource).toContain('setConversationWelcomeOpeningSuppressed(false)');
+    });
+
+    test('exposes Conversation REST discovery on both supported API base paths', () => {
+        expect(serverStartupSource).toContain("app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter)");
+        expect(serverStartupSource).toContain("app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter)");
     });
 });
