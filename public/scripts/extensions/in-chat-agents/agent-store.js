@@ -169,11 +169,12 @@ let globalSettings = {
     companionExecutionMode: 'parallel',
     companionConcurrentWithPostGen: false,
     helperPrefillMessages: '',
+    hiddenCompanionAgentIds: [],
 };
 
 /**
  * Returns the global settings.
- * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, postMainInterceptShowMessageFirst: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string }}
+ * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, postMainInterceptShowMessageFirst: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string, hiddenCompanionAgentIds: string[] }}
  */
 export function getGlobalSettings() {
     return globalSettings;
@@ -195,6 +196,7 @@ export function setGlobalSettings(update) {
     globalSettings.helperPrefillMessages = typeof globalSettings.helperPrefillMessages === 'string'
         ? globalSettings.helperPrefillMessages
         : '';
+    globalSettings.hiddenCompanionAgentIds = normalizeAgentIdCollection(globalSettings.hiddenCompanionAgentIds);
 
     if (!globalSettings.scopedEnabledAgentIdsInitialized) {
         const scopedSetting = update.enabledAgentIdsByChatType;
@@ -204,6 +206,14 @@ export function setGlobalSettings(update) {
             AGENT_CHAT_SCOPE_KEYS.some(scope => Object.hasOwn(scopedSetting, scope)),
         );
     }
+}
+
+function normalizeAgentIdCollection(value = []) {
+    if (!value || typeof value[Symbol.iterator] !== 'function') {
+        return [];
+    }
+
+    return normalizeAgentIdList([...value]).sort();
 }
 
 function normalizeAgentIdList(value) {
@@ -216,6 +226,26 @@ function normalizeAgentIdList(value) {
             .map(id => String(id ?? '').trim())
             .filter(Boolean),
     ));
+}
+
+export function getHiddenAgentIds() {
+    return new Set(globalSettings.hiddenCompanionAgentIds);
+}
+
+export function setHiddenAgentIds(ids) {
+    const nextHiddenIds = normalizeAgentIdCollection(ids);
+    const previous = JSON.stringify(globalSettings.hiddenCompanionAgentIds);
+    const next = JSON.stringify(nextHiddenIds);
+
+    globalSettings.hiddenCompanionAgentIds = nextHiddenIds;
+    if (previous !== next) {
+        persistAgentGlobalSettings();
+    }
+}
+
+export function isAgentHidden(agentId) {
+    const normalizedAgentId = String(agentId ?? '').trim();
+    return Boolean(normalizedAgentId && getHiddenAgentIds().has(normalizedAgentId));
 }
 
 function normalizeAgentChatScope(scope = AGENT_CHAT_SCOPES.INDIVIDUAL) {

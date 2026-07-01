@@ -6,7 +6,7 @@
         <div class="inline-drawer-toggle inline-drawer-header">
             <div class="flex-container flexFlowColumn">
                 <b data-i18n="Prompts">Prompts</b>
-                <small class="sb-group-meta"><span data-i18n="Inspect, reorder, toggle, and edit injected prompts">Inspect, reorder, toggle, and edit injected prompts</span> &middot; <span data-i18n="Total Tokens:">Total Tokens:</span> {{totalActiveTokens}}</small>
+                <small class="sb-group-meta"><span data-i18n="Inspect, reorder, toggle, and edit injected prompts">Inspect, reorder, toggle, and edit injected prompts</span> &middot; <span data-i18n="Total Tokens:">Total Tokens:</span> {{totalActiveTokens}}{{#if totalAgentTokens}} &middot; <span data-i18n="Agent Tokens:">Agent Tokens:</span> {{totalAgentTokens}}{{/if}}</small>
             </div>
             <div class="prompt_manager_header_controls {{prefix}}prompt_manager_header_controls">
                 <button type="button" id="{{prefix}}prompt_manager_drag_lock" class="menu_button menu_button_icon toggleable prompt_manager_drag_lock_button {{#if dragLocked}}toggled{{/if}}" title="Lock/unlock prompt reordering" aria-label="Lock/unlock prompt reordering" aria-pressed="{{#if dragLocked}}true{{else}}false{{/if}}" data-i18n="[title]Lock/unlock prompt reordering;[aria-label]Lock/unlock prompt reordering">
