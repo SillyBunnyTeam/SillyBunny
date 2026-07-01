@@ -143,6 +143,7 @@ export const CHROME_IDS = Object.freeze({
     attach: 'sb_conversation_attach',
     fileInput: 'sb_conversation_file_input',
     attachmentPreview: 'sb_conversation_attachment_preview',
+    replyPreview: 'sb_conversation_reply_preview',
     send: 'sb_conversation_send',
     composerPolish: 'sb_conversation_composer_polish',
     settingsBackdrop: 'sb_conversation_settings_backdrop',

@@ -17,6 +17,7 @@ export const conversationState = {
     conversationUnavailableGroupId: null,
     conversationTimelineChannel: 'main',
     conversationTimelineSearchQuery: '',
+    conversationReplyTarget: null,
     imageGenerationActive: false,
     imageGenerationAbortController: null,
     lastRenderedAvatar: null,

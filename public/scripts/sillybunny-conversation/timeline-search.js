@@ -36,7 +36,16 @@ export function getConversationTimelineMessages(messages, { channel = conversati
         }
 
         if (normalizedQuery) {
-            const haystack = [message.name, message.role, message.mes, getConversationAttachmentSummary(message)]
+            const replyReference = message.extra?.conversation_reply_to;
+            const haystack = [
+                message.name,
+                message.role,
+                message.mes,
+                getConversationAttachmentSummary(message),
+                replyReference?.name,
+                replyReference?.text,
+                replyReference?.attachmentSummary,
+            ]
                 .filter(Boolean)
                 .join(' ')
                 .toLowerCase();

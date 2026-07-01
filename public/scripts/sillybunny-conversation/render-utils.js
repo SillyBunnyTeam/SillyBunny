@@ -30,6 +30,21 @@ function compactAttachmentFingerprint(item) {
     ].join('\u001e');
 }
 
+function compactReplyFingerprint(reply) {
+    if (!reply || typeof reply !== 'object') {
+        return '';
+    }
+
+    return [
+        reply.messageId || '',
+        reply.name || '',
+        reply.role || '',
+        reply.text || '',
+        reply.attachmentSummary || '',
+        reply.createdAt || '',
+    ].join('\u001e');
+}
+
 export function getConversationMessageExtraFingerprint(message) {
     const extra = message?.extra && typeof message.extra === 'object' ? message.extra : {};
     const media = Array.isArray(extra.media) ? extra.media.map(compactAttachmentFingerprint).join('\u001d') : '';
@@ -48,6 +63,7 @@ export function getConversationMessageExtraFingerprint(message) {
         extra.image_prompt || '',
         extra.media_display || '',
         extra.media_index || '',
+        compactReplyFingerprint(extra.conversation_reply_to),
         extra.conversation_pinned ? 'pin' : '',
         extra.conversation_mode_image ? 'image' : '',
         extra.conversation_mode_ooc ? 'ooc' : '',

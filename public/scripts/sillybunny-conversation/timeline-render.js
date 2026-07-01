@@ -135,6 +135,113 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, setting
     ].join('\u001f'));
 }
 
+function truncateConversationReplyPreview(value, maxLength = 160) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function buildConversationReplyReference(message) {
+    if (!message?.id) {
+        return null;
+    }
+
+    return {
+        messageId: message.id,
+        name: message.name || 'Speaker',
+        role: message.role || 'character',
+        text: truncateConversationReplyPreview(getConversationMessagePreviewText(message)),
+        attachmentSummary: truncateConversationReplyPreview(getConversationAttachmentSummary(message)),
+        createdAt: message.created_at || Date.now(),
+    };
+}
+
+function getConversationReplyReferencePreview(reference) {
+    return truncateConversationReplyPreview(reference?.text || reference?.attachmentSummary || 'Message');
+}
+
+function createConversationReplyReferenceElement(reference, className) {
+    const previewText = getConversationReplyReferencePreview(reference);
+    if (!previewText) {
+        return null;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = className;
+
+    const name = document.createElement('span');
+    name.className = 'sb-conversation-reply-name';
+    name.textContent = reference?.name || 'Speaker';
+
+    const text = document.createElement('span');
+    text.className = 'sb-conversation-reply-text';
+    text.textContent = previewText;
+
+    wrapper.append(name, text);
+    return wrapper;
+}
+
+function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const target = conversationState.conversationReplyTarget;
+    if (!target || target.avatar !== avatar || String(target.groupId || '') !== String(groupId || '')) {
+        return null;
+    }
+
+    return target;
+}
+
+export function renderConversationComposerReplyPreview() {
+    const preview = document.getElementById(CHROME_IDS.replyPreview);
+    if (!(preview instanceof HTMLElement)) {
+        return;
+    }
+
+    const target = getActiveConversationReplyTarget();
+    preview.textContent = '';
+    if (!target) {
+        preview.hidden = true;
+        return;
+    }
+
+    const reference = createConversationReplyReferenceElement(target, 'sb-conversation-composer-reply-card');
+    if (!reference) {
+        preview.hidden = true;
+        return;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'sb-conversation-reply-label';
+    label.textContent = 'Replying to';
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'sb-conversation-reply-cancel fa-solid fa-xmark';
+    cancel.dataset.sbConversationAction = 'clear-reply-target';
+    cancel.title = 'Cancel reply';
+    cancel.setAttribute('aria-label', 'Cancel reply');
+
+    reference.prepend(label);
+    preview.append(reference, cancel);
+    preview.hidden = false;
+}
+
+export function clearConversationReplyTarget() {
+    conversationState.conversationReplyTarget = null;
+    renderConversationComposerReplyPreview();
+}
+
+export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+    const target = getActiveConversationReplyTarget(avatar, { groupId });
+    if (!target) {
+        return null;
+    }
+
+    clearConversationReplyTarget();
+    const reference = { ...target };
+    delete reference.avatar;
+    delete reference.groupId;
+    return reference;
+}
+
 function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint }) {
     const item = document.createElement('article');
     item.className = 'sb-conversation-message';
@@ -262,6 +369,11 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         highlightConversationMentions(text, avatar);
     }
 
+    const replyReference = createConversationReplyReferenceElement(
+        message.extra?.conversation_reply_to,
+        'sb-conversation-message-reply-preview',
+    );
+
     const imageUrl = message.extra?.image_url;
     if (typeof imageUrl === 'string' && imageUrl) {
         const figure = document.createElement('figure');
@@ -290,7 +402,11 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         text.appendChild(reactions);
     }
 
-    bubble.append(meta, text, actionBar, mobileTrigger);
+    if (replyReference) {
+        bubble.append(meta, replyReference, text, actionBar, mobileTrigger);
+    } else {
+        bubble.append(meta, text, actionBar, mobileTrigger);
+    }
     item.append(avatarWrap, bubble);
     return item;
 }
@@ -589,6 +705,8 @@ export function setConversationTimelineChannel(channel) {
 }
 
 export function updateConversationToolsState() {
+    renderConversationComposerReplyPreview();
+
     const tools = document.getElementById(CHROME_IDS.tools);
     if (!(tools instanceof HTMLElement)) {
         return;
@@ -653,30 +771,18 @@ export function replyToConversationMessage(messageId) {
         return;
     }
 
-    const speakerName = context.message.name || 'Character';
-    const messageText = context.message.mes || '';
-
-    let quoteBlock = '';
-    if (messageText) {
-        if (messageText.includes('\n')) {
-            const quoteLines = messageText.split('\n').map(line => `> ${line}`);
-            quoteBlock = `> **${speakerName}**:\n${quoteLines.join('\n')}`;
-        } else {
-            quoteBlock = `> **${speakerName}**: ${messageText}`;
-        }
-    } else {
-        const attachmentSummary = getConversationAttachmentSummary(context.message) || 'Sent an attachment.';
-        quoteBlock = `> **${speakerName}**: *${attachmentSummary}*`;
+    const reference = buildConversationReplyReference(context.message);
+    if (!reference) {
+        return;
     }
 
-    const existingText = input.value.trim();
-    const newText = quoteBlock + '\n\n' + (existingText ? existingText + '\n' : '');
-
-    input.value = newText;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    conversationState.conversationReplyTarget = {
+        ...reference,
+        avatar: context.avatar,
+        groupId: context.groupId || '',
+    };
+    renderConversationComposerReplyPreview();
     input.focus({ preventScroll: true });
-
-    // Position cursor at the very end
     input.setSelectionRange(input.value.length, input.value.length);
 }
 
@@ -1339,6 +1445,7 @@ export function ensureConversationChrome() {
             <div id="${CHROME_IDS.dropHint}" class="sb-conversation-drop-hint" hidden>Drop files to attach</div>
             <form id="${CHROME_IDS.form}" class="sb-conversation-composer">
                 <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
+                <div id="${CHROME_IDS.replyPreview}" class="sb-conversation-reply-preview" hidden></div>
                 <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message..."></textarea>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-actions">

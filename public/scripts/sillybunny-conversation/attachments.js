@@ -23,6 +23,7 @@ import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
 import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState, partnerReplyBusyKeys, sendQueue } from './state.js';
+import { consumeConversationReplyTarget } from './timeline-render.js';
 import {
     appendConversationThreadMessage,
     getConversationAttachmentSummary,
@@ -39,6 +40,13 @@ import { appendConversationMessage } from './message-writer.js';
 import { coalesceConversationQueueItems } from './send-queue-utils.js';
 
 export { appendConversationMessage };
+
+function buildConversationUserMessageExtra(replyTarget = null) {
+    return {
+        conversation_mode_user: true,
+        ...(replyTarget ? { conversation_reply_to: replyTarget } : {}),
+    };
+}
 
 export function getConversationPendingFiles() {
     const fileInput = document.getElementById(CHROME_IDS.fileInput);
@@ -608,9 +616,7 @@ export async function submitConversationInput() {
                 role: 'user',
                 name: userName,
                 mes: text,
-                extra: {
-                    conversation_mode_user: true,
-                },
+                extra: buildConversationUserMessageExtra(),
             };
             await populateConversationUserAttachments(messageInput);
             const attachmentContext = await buildConversationAttachmentPromptContext(messageInput, text);
@@ -622,17 +628,22 @@ export async function submitConversationInput() {
                 return;
             }
 
+            const replyTarget = consumeConversationReplyTarget(avatar, { groupId });
+            if (replyTarget) {
+                messageInput.extra.conversation_reply_to = replyTarget;
+            }
             appendConversationThreadMessage(avatar, messageInput, { groupId });
         } else {
+            const replyTarget = consumeConversationReplyTarget(avatar, { groupId });
+            let includeReplyTarget = true;
             for (const messageText of splitChatroomMessages(text)) {
                 appendConversationThreadMessage(avatar, {
                     role: 'user',
                     name: userName,
                     mes: messageText,
-                    extra: {
-                        conversation_mode_user: true,
-                    },
+                    extra: buildConversationUserMessageExtra(includeReplyTarget ? replyTarget : null),
                 }, { groupId });
+                includeReplyTarget = false;
             }
         }
 

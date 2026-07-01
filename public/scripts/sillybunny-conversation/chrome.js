@@ -65,6 +65,7 @@ import { conversationState, sendQueue } from './state.js';
 import { updateLastUserActivity } from './thread-store.js';
 import {
     branchConversationFromMessage,
+    clearConversationReplyTarget,
     copyConversationMessage,
     deleteConversationMessage,
     ensureConversationChrome,
@@ -352,6 +353,9 @@ export function bindConversationChromeControls(sheld) {
             }
             case 'clear-attachments':
                 clearConversationAttachmentInput();
+                break;
+            case 'clear-reply-target':
+                clearConversationReplyTarget();
                 break;
             case 'create-memory':
                 await forceCreateMemoryFromPanel();

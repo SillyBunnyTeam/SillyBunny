@@ -489,6 +489,19 @@ function formatPromptText(value, maxLength = 1400) {
         .slice(0, maxLength);
 }
 
+function formatConversationReplyReference(reference) {
+    if (!reference || typeof reference !== 'object') {
+        return '';
+    }
+
+    const preview = formatPromptText(reference.text || reference.attachmentSummary, 600);
+    if (!preview) {
+        return '';
+    }
+
+    return `(replying to ${formatPromptText(reference.name || 'Speaker', 80)}: ${preview})`;
+}
+
 function getContentText(content) {
     if (typeof content === 'string') {
         return content;
@@ -512,6 +525,7 @@ function buildConversationPromptMessages(messages, directive, speakerName) {
     const convertedMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT)
         .map((message, index) => {
             const parts = [
+                formatConversationReplyReference(message.extra?.conversation_reply_to),
                 formatPromptText(message.mes, 1800),
                 getConversationAttachmentSummary(message),
             ].filter(Boolean);

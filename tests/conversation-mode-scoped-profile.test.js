@@ -35,13 +35,16 @@ function getFunctionSource(source, name) {
 }
 
 const generationSource = readConversationSource('generation.js');
+const attachmentsSource = readConversationSource('attachments.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const initSource = readConversationSource('init.js');
 const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
+const promptSource = readConversationSource('prompt.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
+const timelineSource = readConversationSource('timeline-render.js');
 
 describe('conversation mode scoped connection profile', () => {
     test('removes the global profile switch wrapper and slash-command helpers', () => {
@@ -105,5 +108,15 @@ describe('conversation mode scoped connection profile', () => {
         expect(settingsStoreSource).toContain('!group.is_conversation_group');
         expect(palsRailSource).toContain('getConversationGroups().forEach');
         expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
+    });
+
+    test('uses reply metadata instead of copying quoted text into the composer', () => {
+        expect(stateSource).toContain('conversationReplyTarget');
+        expect(timelineSource).toContain('renderConversationComposerReplyPreview');
+        expect(timelineSource).toContain('conversationReplyTarget = {');
+        expect(timelineSource).not.toContain('quoteBlock');
+        expect(timelineSource).not.toContain('> **${speakerName}');
+        expect(attachmentsSource).toContain('conversation_reply_to');
+        expect(promptSource).toContain('formatConversationReplyReference');
     });
 });
