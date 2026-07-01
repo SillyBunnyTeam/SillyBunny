@@ -94,6 +94,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
 - PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
 - PR #630 (2026-07-01) `fix(ica): render macros in Companion Agents drawer`
+- PR #631 (2026-07-01) `feat(ica): add a hide/unhide button for every agent in the Companion Agents drawer`
 - PR #633 (2026-07-01) `fix(sampling_profile): automatic sampling profile switch`
 - PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
 - PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
