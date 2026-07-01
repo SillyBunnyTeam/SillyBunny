@@ -6,6 +6,7 @@ import {
     extension_settings,
     getContext,
     getPreviousImpersonateInput,
+    guidedSwipeInjectId,
     setPreviousImpersonateInput,
 } from './shared.js';
 
@@ -122,13 +123,13 @@ async function guidedSwipe() {
 
     try {
         setPreviousImpersonateInput(originalInput);
-        const stscriptCommand = `/inject id=instruct position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
+        const stscriptCommand = `/inject id=${guidedSwipeInjectId} position=chat ephemeral=true scan=true depth=${depth} role=${injectionRole} ${filledPrompt} |`;
         await executeSTScriptCommand(stscriptCommand);
         debugLog('[Swipe] Executed command:', stscriptCommand);
 
         let injectionFound = false;
         for (let i = 0; i < 5; i++) {
-            if (getContext().chatMetadata?.script_injects?.instruct) {
+            if (getContext().chatMetadata?.script_injects?.[guidedSwipeInjectId]) {
                 injectionFound = true;
                 break;
             }
@@ -139,7 +140,7 @@ async function guidedSwipe() {
         if (!injectionFound) {
             alert('Guided Swipe Error: Could not verify instruction injection. Aborting swipe generation.');
             textarea.value = originalInput;
-            await executeSTScriptCommand('/flushinject instruct');
+            await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
             return;
         }
 
@@ -155,7 +156,7 @@ async function guidedSwipe() {
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         try {
-            await executeSTScriptCommand('/flushinject instruct');
+            await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
         } catch (error) {
             console.warn('[GuidedGenerations][Swipe] Could not flush guided swipe injection:', error);
         }

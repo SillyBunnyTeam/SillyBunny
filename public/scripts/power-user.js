@@ -2181,6 +2181,11 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
+
     console.log('theme applied: ' + name);
 }
 
@@ -3391,13 +3396,13 @@ async function importTheme(file) {
         }
     }
 
-    themes.push(parsed);
-    await saveTheme(parsed.name, getNewTheme(parsed));
-    const option = document.createElement('option');
-    option.selected = false;
-    option.value = parsed.name;
-    option.innerText = parsed.name;
-    $('#themes').append(option);
+    const theme = getNewTheme(parsed);
+    await saveTheme(parsed.name, theme);
+    applyTheme(parsed.name);
+    if (typeof theme.custom_css === 'string') {
+        power_user.custom_css = theme.custom_css;
+        applyCustomCSS();
+    }
     saveSettingsDebounced();
     toastr.success(parsed.name, 'Theme imported');
 }
@@ -3484,6 +3489,9 @@ function getNewTheme(parsed) {
         if (Object.hasOwn(theme, key)) {
             theme[key] = parsed[key];
         }
+    }
+    if (typeof parsed.custom_css === 'string') {
+        theme.custom_css = parsed.custom_css;
     }
     return theme;
 }

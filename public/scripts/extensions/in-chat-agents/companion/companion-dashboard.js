@@ -17,6 +17,7 @@ import {
     runCompanionAgentOnMessage,
     runCompanionsOnMessage,
 } from './companion-runner.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 import { openCompanionPanel } from './companion-panel.js';
 import {
     MESSAGE_INBOX_EMPTY_OUTPUTS,
@@ -192,7 +193,7 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
                 continue;
             }
 
-            const content = String(result.content ?? '').replace(/\s+/g, ' ').trim();
+            const content = resolveCompanionContentMacros(String(result.content ?? ''), message).replace(/\s+/g, ' ').trim();
             entries.push({
                 messageIndex,
                 agentId,
