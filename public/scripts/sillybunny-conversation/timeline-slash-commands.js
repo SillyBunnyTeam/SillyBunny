@@ -83,7 +83,7 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
     switch (parsed.command) {
         case 'selfie': {
             const context = parsed.args || 'a casual selfie in the current DM conversation';
-            await generateSelfieFromContext(context, resolvedSettings, avatar, { groupId });
+            await generateSelfieFromContext(context, resolvedSettings, avatar, { groupId, force: true, notify: true });
             return true;
         }
         case 'remind': {

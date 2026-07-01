@@ -411,9 +411,15 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
     return posted;
 }
 
-export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, groupId = undefined, force = false } = {}) {
-    if (!avatar || (!force && (!settings.image_gen_enabled || getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { groupId }) > 0))) {
-        return;
+export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, groupId = undefined, force = false, notify = false } = {}) {
+    const resolvedSettings = settings || {};
+    if (!avatar) {
+        return false;
+    }
+
+    const cooldownRemaining = getImageCooldownRemainingSeconds(avatar, resolvedSettings, Date.now(), { groupId });
+    if (!force && (!resolvedSettings.image_gen_enabled || cooldownRemaining > 0)) {
+        return false;
     }
 
     const character = getCharacterForAvatar(avatar);
@@ -435,18 +441,18 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
             responseLength: 200,
             trimNames: false,
             cacheScope: 'conversation-mode-selfie',
-        }, settings);
+        }, resolvedSettings);
     } catch (error) {
         console.warn('Conversation Mode: selfie prompt generation failed', error);
     }
 
     imagePrompt = buildCharacterImagePrompt(
-        formatPromptText(imagePrompt, 600) || settings.selfie_prompt || 'raw photo, selfie of {{char}}',
+        formatPromptText(imagePrompt, 600) || resolvedSettings.selfie_prompt || 'raw photo, selfie of {{char}}',
         context || 'a casual selfie in the current moment',
         avatar,
     );
 
-    const imageUrl = await generateConversationImage(imagePrompt, settings.image_gen_negative || '');
+    const imageUrl = await generateConversationImage(imagePrompt, resolvedSettings.image_gen_negative || '', { notify });
     if (imageUrl) {
         markImageGenerated(avatar, Date.now(), { groupId });
         await appendConversationMessage('Sending you a selfie.', {
@@ -455,7 +461,10 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
             extra: { ...extra, conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
             groupId,
         }, threadAvatar);
+        return true;
     }
+
+    return false;
 }
 
 export async function postCharacterReply(rawText, settings, { extra = {}, groupId = undefined } = {}, avatar = getCurrentCharAvatar()) {

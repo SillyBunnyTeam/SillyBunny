@@ -997,6 +997,7 @@ export function branchConversationFromMessage(messageId) {
 export async function quickConversationSelfie() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
+        globalThis.toastr?.warning?.('Pick a DM first.');
         return;
     }
 
@@ -1007,7 +1008,7 @@ export async function quickConversationSelfie() {
         return;
     }
 
-    await generateSelfieFromContext(context.trim(), settings, avatar, { groupId });
+    await generateSelfieFromContext(context.trim(), settings, avatar, { groupId, force: true, notify: true });
 }
 
 export async function generateConversationSelfieFromMessageCommand(messageId, selfieIndex = 0) {
@@ -1036,6 +1037,7 @@ export async function generateConversationSelfieFromMessageCommand(messageId, se
         extra,
         groupId: context.groupId,
         force: true,
+        notify: true,
     });
 }
 

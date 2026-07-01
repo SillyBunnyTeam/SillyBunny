@@ -16,8 +16,11 @@ import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationThread } from './thread-store.js';
 
-export async function generateConversationImage(prompt, negative = '') {
+export async function generateConversationImage(prompt, negative = '', { notify = false } = {}) {
     if (conversationState.imageGenerationActive) {
+        if (notify) {
+            globalThis.toastr?.warning?.('Image generation is already running.');
+        }
         return null;
     }
 
@@ -32,9 +35,15 @@ export async function generateConversationImage(prompt, negative = '') {
             return raw ? qig.finalizeGeneratedEntry(raw, prompt, negative, settings, {}) : null;
         });
 
+        if (!entry?.url && notify) {
+            globalThis.toastr?.warning?.('Quick Image Gen did not return an image.');
+        }
         return entry?.url ?? null;
     } catch (error) {
         console.warn('Conversation Mode: QIG not available or generation failed', error);
+        if (notify) {
+            globalThis.toastr?.warning?.(`Quick Image Gen failed: ${error?.message || 'check Image Gen settings'}`);
+        }
         return null;
     } finally {
         conversationState.imageGenerationActive = false;

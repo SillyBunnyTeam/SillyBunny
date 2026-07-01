@@ -48,6 +48,7 @@ const renderUtilsSource = readConversationSource('render-utils.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
 const timelineSource = readConversationSource('timeline-render.js');
+const timelineSlashSource = readConversationSource('timeline-slash-commands.js');
 
 describe('conversation mode scoped connection profile', () => {
     test('removes the global profile switch wrapper and slash-command helpers', () => {
@@ -173,10 +174,14 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).toContain('SELFIE_COMMAND_RE');
         expect(timelineSource).toContain('sb-conversation-selfie-action');
         expect(timelineSource).toContain('force: true');
+        expect(timelineSource).toContain('notify: true');
+        expect(timelineSlashSource).toContain('force: true, notify: true');
         expect(renderUtilsSource).toContain('compactConversationCommandsFingerprint');
         expect(chromeSource).toContain('generate-selfie-command');
         expect(generationSource).toContain('force = false');
-        expect(generationSource).toContain('!force && (!settings.image_gen_enabled');
+        expect(generationSource).toContain('notify = false');
+        expect(generationSource).toContain('!force && (!resolvedSettings.image_gen_enabled');
+        expect(mediaSource).toContain('Quick Image Gen failed');
         expect(mediaSource).toContain('../extensions/quick-image-gen/index.js');
     });
 });
