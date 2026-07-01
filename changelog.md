@@ -97,6 +97,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #633 (2026-07-01) `fix(sampling_profile): automatic sampling profile switch`
 - PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
 - PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
+- PR #637 (2026-07-01) `feat(ica): include the number of tokens used by agents in the UI`
 
 ## v1.6.5
 
