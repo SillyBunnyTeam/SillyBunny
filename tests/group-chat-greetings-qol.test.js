@@ -48,9 +48,9 @@ describe('group chat greetings QoL', () => {
         expect(groupChatSource).toContain('container.on(\'click\', \'#group_add_greeting\', addSelectedGroupGreeting);');
         expect(styleSource).toContain('grid-template-areas: "typing typing typing" "avatars greeting speak";');
         expect(styleSource).toContain('#group_add_greeting span,');
-        expect(styleSource).toContain('#group_add_greeting {\n        grid-area: greeting;\n    }');
+        expect(styleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting;\s*}/);
         expect(mobileStyleSource).toContain('grid-template-areas: "avatars greeting speak" !important;');
         expect(mobileStyleSource).toContain('#group_add_greeting span,');
-        expect(mobileStyleSource).toContain('#group_add_greeting {\n        grid-area: greeting !important;\n    }');
+        expect(mobileStyleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting\s*!important;\s*}/);
     });
 });

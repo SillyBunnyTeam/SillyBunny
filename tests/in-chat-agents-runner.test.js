@@ -1552,6 +1552,7 @@ describe('in-chat agent post-processing runner', () => {
         const companionB = createCompanionAgent({
             id: 'companion-b',
             name: 'Companion B',
+            prompt: 'Write the Companion B note with a little more detail than the first companion.',
             companion: { batch: false, batchAgentIds: [] },
         });
         const companionC = createCompanionAgent({
@@ -1590,6 +1591,13 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
+        const batchInputTokens = Math.ceil(batchPrompt.length / 4);
+        const companionAInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-a'].tokenUsage.inputTokens;
+        const companionBInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-b'].tokenUsage.inputTokens;
+        expect(companionAInputTokens).toBeGreaterThan(0);
+        expect(companionBInputTokens).toBeGreaterThan(companionAInputTokens);
+        expect(companionAInputTokens).toBeLessThan(batchInputTokens);
+        expect(companionBInputTokens).toBeLessThan(batchInputTokens);
     });
 
     test('does not batch companions with different linked context', async () => {
@@ -1985,6 +1993,32 @@ describe('in-chat agent post-processing runner', () => {
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(result?.content).toBe('Single user note');
         expect(chat[0].extra.inChatAgentCompanionResults['single-user-companion'].content).toBe('Single user note');
+    });
+
+    test('stores estimated input and output token usage on companion results', async () => {
+        generateQuietPrompt.mockResolvedValue('Token note');
+
+        const companionAgent = createCompanionAgent({
+            id: 'token-companion',
+            name: 'Token Companion',
+        });
+        enabledAgents = [companionAgent];
+
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'User message', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        const result = await companionRunner.runCompanionAgentOnMessage('token-companion', 0);
+
+        expect(result?.tokenUsage).toEqual(expect.objectContaining({
+            inputTokens: expect.any(Number),
+            outputTokens: expect.any(Number),
+        }));
+        expect(result.tokenUsage.inputTokens).toBeGreaterThan(0);
+        expect(result.tokenUsage.outputTokens).toBeGreaterThan(0);
+        expect(chat[0].extra.inChatAgentCompanionResults['token-companion'].tokenUsage).toEqual(result.tokenUsage);
     });
 
     test('stores generated companion notes raw and resolves them once when reused', async () => {
