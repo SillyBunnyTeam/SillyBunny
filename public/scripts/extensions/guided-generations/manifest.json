@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Samueras (vendored by TLD)",
-    "version": "1.7.1",
+    "version": "1.7.2",
     "homePage": "https://github.com/Samueras/GuidedGenerations-Extension",
     "manifest_version": 3,
     "hooks": {
