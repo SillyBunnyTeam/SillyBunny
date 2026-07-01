@@ -90,4 +90,10 @@ describe('conversation mode scoped connection profile', () => {
         expect(initSource).not.toContain('syncConversationWorkspaceToRoleplaySelection');
         expect(initSource).not.toContain('isAvatarInConversationGroup');
     });
+
+    test('routes explicitly prefixed group replies to the named participant', () => {
+        expect(generationSource).toContain('getSpeakerPrefixMatch');
+        expect(generationSource).toContain('resolveConversationReplySpeaker');
+        expect(generationSource).toContain('resolvedExtra.partner_avatar = speakerAvatar');
+    });
 });

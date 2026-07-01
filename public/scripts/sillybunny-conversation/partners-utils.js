@@ -118,3 +118,24 @@ export function stripSpeakerPrefixText(messageText, speakerName, normalize = val
 
     return normalize(cleanedLines.join('\n').trim());
 }
+
+export function getSpeakerPrefixMatch(messageText, speakers = []) {
+    const text = String(messageText || '');
+    const candidates = (Array.isArray(speakers) ? speakers : [])
+        .map(speaker => ({ speaker, name: String(speaker?.name || '').trim() }))
+        .filter(candidate => candidate.name)
+        .sort((left, right) => right.name.length - left.name.length);
+
+    for (const candidate of candidates) {
+        const speakerRegex = new RegExp(`^\\s*(?:\\*\\*)?${escapeRegExp(candidate.name)}(?:\\*\\*)?\\s*[:：-](?:\\*\\*)?\\s*`, 'i');
+        const match = text.match(speakerRegex);
+        if (match) {
+            return {
+                speaker: candidate.speaker,
+                text: text.slice(match[0].length).trim(),
+            };
+        }
+    }
+
+    return null;
+}
