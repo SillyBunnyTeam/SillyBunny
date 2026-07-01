@@ -1456,13 +1456,13 @@ async function runCompanionAgentsWithDependencyDelay(agents, messageIndex, gener
 
     const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
     if (changedAgentIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited);
+        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited, { contextSourceAgents });
     }
 
     return results;
 }
 
-async function runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited = new Set()) {
+async function runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited = new Set(), { contextSourceAgents = null } = {}) {
     if (!changedAgentIds?.length) {
         return [];
     }
@@ -1473,7 +1473,9 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
     }
 
     const allEnabled = getEnabledAgents();
-    const runnable = getRunnableCompanionAgents(allEnabled, { manual: true, messageIndex });
+    const runnable = Array.isArray(contextSourceAgents)
+        ? contextSourceAgents
+        : getRunnableCompanionAgents(allEnabled, { manual: true, messageIndex });
     const agentByReferenceId = buildCompanionReferenceMap(runnable);
     const dependents = [];
 
@@ -1495,7 +1497,7 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
     const nextChangedIds = results.filter(r => r?.changed).map(r => r.agentId);
 
     if (nextChangedIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, nextChangedIds, generationType, cancelRevision, visited);
+        await runCompanionDependencyCascade(messageIndex, nextChangedIds, generationType, cancelRevision, visited, { contextSourceAgents: runnable });
     }
 
     return results;

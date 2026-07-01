@@ -1915,6 +1915,63 @@ describe('in-chat agent post-processing runner', () => {
         expect(visiblePrompt).not.toContain('Hidden source note that should not be linked.');
     });
 
+    test('excludes hidden companions from automatic cascade linked context', async () => {
+        generateQuietPrompt
+            .mockResolvedValueOnce('Updated parent note')
+            .mockResolvedValueOnce('Dependent note');
+        globalSettings.hiddenCompanionAgentIds = ['hidden-source'];
+
+        const hiddenSource = createCompanionAgent({
+            id: 'hidden-source',
+            name: 'Hidden Source',
+            companion: {
+                trigger: 'manual',
+                sendContextToCompanions: true,
+                contextRecipientAgentIds: ['dependent-companion'],
+            },
+        });
+        const parentCompanion = createCompanionAgent({
+            id: 'parent-companion',
+            name: 'Parent Companion',
+            prompt: 'Write the parent note.',
+            companion: { trigger: 'auto' },
+        });
+        const dependentCompanion = createCompanionAgent({
+            id: 'dependent-companion',
+            name: 'Dependent Companion',
+            prompt: 'Write the dependent note.',
+            companion: {
+                trigger: 'manual',
+                dependencies: ['parent-companion'],
+            },
+        });
+        enabledAgents = [hiddenSource, parentCompanion, dependentCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Previous assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Please continue.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Current assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        companionRunner.setCompanionResult(chat[0], hiddenSource, {
+            status: 'done',
+            content: 'Hidden cascade source note that should not be linked.',
+        });
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 2,
+            message: chat[2],
+            activeAgents: [hiddenSource, parentCompanion, dependentCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        const dependentPrompt = generateQuietPrompt.mock.calls[1][0].quietPrompt;
+        expect(dependentPrompt).toContain('Write the dependent note.');
+        expect(dependentPrompt).toContain('Updated parent note');
+        expect(dependentPrompt).not.toContain('Hidden Source');
+        expect(dependentPrompt).not.toContain('Hidden cascade source note that should not be linked.');
+    });
+
     test('does not cascade to dependents when parent output is unchanged', async () => {
         globalSettings.companionExecutionMode = 'sequential';
         generateQuietPrompt.mockResolvedValue('Same note');
