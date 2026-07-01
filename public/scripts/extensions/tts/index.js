@@ -599,6 +599,9 @@ let currentTtsJob = null; // Null if nothing is currently being processed
 function completeTtsJob() {
     console.info(`Current TTS job for ${currentTtsJob?.name} completed.`);
     currentTtsJob = null;
+    if (ttsJobQueue.length > 0) {
+        setTimeout(() => wrapper.update(), 0);
+    }
 }
 
 async function tts(text, voiceId, char, voiceMapKey = null) {

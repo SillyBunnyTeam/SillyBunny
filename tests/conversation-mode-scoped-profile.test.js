@@ -242,6 +242,29 @@ describe('conversation mode scoped connection profile', () => {
         expect(speechEndpointSource).not.toContain("modalities: ['text', 'audio']");
     });
 
+    test('advances TTS queue immediately after segment generation completes', () => {
+        const extensionTtsLines = extensionTtsSource.split('\n');
+        const completeTtsJobIndex = extensionTtsLines.findIndex(line => line.includes('function completeTtsJob()'));
+        expect(completeTtsJobIndex).toBeGreaterThanOrEqual(0);
+
+        // Find the closing brace of completeTtsJob function
+        let braceCount = 0;
+        let endIndex = completeTtsJobIndex;
+        for (let i = completeTtsJobIndex; i < extensionTtsLines.length; i++) {
+            const line = extensionTtsLines[i];
+            braceCount += (line.match(/{/g) || []).length;
+            braceCount -= (line.match(/}/g) || []).length;
+            if (braceCount === 0 && i > completeTtsJobIndex) {
+                endIndex = i;
+                break;
+            }
+        }
+
+        const completeTtsJobBody = extensionTtsLines.slice(completeTtsJobIndex, endIndex + 1).join('\n');
+        expect(completeTtsJobBody).toContain('ttsJobQueue.length > 0');
+        expect(completeTtsJobBody).toContain('setTimeout(() => wrapper.update(), 0)');
+    });
+
     test('waits around five seconds for rapid follow-up messages before replying', () => {
         expect(constantsSource).toContain('SEND_QUEUE_COALESCE_MS = 5000');
         expect(attachmentsSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
