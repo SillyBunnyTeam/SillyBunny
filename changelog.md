@@ -94,6 +94,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
 - PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
 - PR #630 (2026-07-01) `fix(ica): render macros in Companion Agents drawer`
+- PR #633 (2026-07-01) `fix(sampling_profile): automatic sampling profile switch`
 - PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
 
 ## v1.6.5
