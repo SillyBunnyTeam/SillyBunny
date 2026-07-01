@@ -38,6 +38,7 @@ const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
+const constantsSource = readConversationSource('constants.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
 const mediaSource = readConversationSource('media.js');
@@ -222,5 +223,11 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).toContain("action: 'speak-message'");
         expect(timelineSource).toContain('speakConversationMessage');
         expect(chromeSource).toContain("case 'speak-message':");
+    });
+
+    test('waits around five seconds for rapid follow-up messages before replying', () => {
+        expect(constantsSource).toContain('SEND_QUEUE_COALESCE_MS = 5000');
+        expect(attachmentsSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
+        expect(readConversationSource('send-queue-utils.js')).toContain('windowMs=5000');
     });
 });

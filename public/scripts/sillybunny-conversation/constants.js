@@ -89,9 +89,9 @@ export const DEFAULT_REPLY_DELAY_MULTIPLIER = 100;
 export const DEFAULT_AUTO_CHAT_COOLDOWN = 10;
 export const SEND_QUEUE_BATCH_MS = 900;
 // SillyBunny: idle window (ms) waited after the last same-thread user send before a
-// conversation reply starts generating. Previously 600ms, which was too short for a
-// human to send a follow-up message, so consecutive user messages were never merged.
-export const SEND_QUEUE_COALESCE_MS = 1500;
+// conversation reply starts generating. Five seconds gives users room to send a
+// few quick follow-up messages before the character starts replying.
+export const SEND_QUEUE_COALESCE_MS = 5000;
 export const MIN_CONVERSATION_REPLY_MAX_TOKENS = 64;
 export const DEFAULT_CONVERSATION_REPLY_MAX_TOKENS = 16000;
 export const MAX_CONVERSATION_REPLY_MAX_TOKENS = 64000;
