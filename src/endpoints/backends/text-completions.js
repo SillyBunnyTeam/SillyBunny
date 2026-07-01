@@ -303,7 +303,7 @@ router.post('/props', async function (request, response) {
     }
 });
 
-router.post('/generate', async function (request, response) {
+export async function handleTextCompletionsGenerate(request, response) {
     if (!request.body) return response.sendStatus(400);
 
     try {
@@ -479,7 +479,9 @@ router.post('/generate', async function (request, response) {
             ? response.send(value)
             : response.end();
     }
-});
+}
+
+router.post('/generate', handleTextCompletionsGenerate);
 
 const ollama = express.Router();
 
