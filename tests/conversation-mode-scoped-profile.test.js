@@ -119,6 +119,17 @@ describe('conversation mode scoped connection profile', () => {
         expect(settingsStoreSource).toContain('!group.is_conversation_group');
         expect(palsRailSource).toContain('getConversationGroups().forEach');
         expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
+        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeLessThan(settingsStoreSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
+        expect(palsRailSource.indexOf('getConversationGroups().forEach')).toBeLessThan(palsRailSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
+        expect(contextSource).toContain('group.updatedAt = Date.now();');
+        expect(timelineSource).toContain('group.updatedAt = Date.now();');
+    });
+
+    test('defaults group DM cross-talk settings on without global solo overrides hiding them', () => {
+        const groupSettingsIndex = settingsStoreSource.indexOf('if (groupId) {');
+        expect(groupSettingsIndex).toBeGreaterThanOrEqual(0);
+        expect(settingsStoreSource.indexOf('globalSettings', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex));
+        expect(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('getGroupConversationSettings(groupId)', groupSettingsIndex));
     });
 
     test('scopes Conversation storage by active persona to prevent bleedthrough', () => {

@@ -474,10 +474,10 @@ function getConversationSettings(request, store, avatar, groupId, overrides = {}
     const threadStore = getConversationThreadStore(store, avatar, groupId, { create: false, personaId });
     return normalizeConversationSettings({
         ...DEFAULT_SETTINGS,
+        ...getObject(store.settings),
         ...(groupId ? { multi_char: true, auto_character_chat: true } : {}),
         ...getGroupConversationSettings(request, store, groupId, personaId),
         ...getObject(threadStore?.settings),
-        ...getObject(store.settings),
         ...getObject(overrides),
     });
 }

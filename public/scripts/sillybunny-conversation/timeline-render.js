@@ -919,6 +919,10 @@ export function branchConversationFromMessage(messageId) {
 
     store.branches[branch.id] = branch;
     store.activeBranchId = branch.id;
+    const group = context.groupId ? getConversationGroupById(context.groupId) : null;
+    if (group?.is_conversation_group) {
+        group.updatedAt = Date.now();
+    }
     persistConversationStore();
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
         detail: {

@@ -80,6 +80,24 @@ export function getConversationRailItems() {
 
     getConversationPals().forEach(pal => addItem({ ...pal, groupId: '' }));
 
+    getConversationGroups().forEach((group) => {
+        const character = getGroupDisplayCharacter(group);
+        if (!character?.avatar) {
+            return;
+        }
+
+        const groupId = String(group.id || '');
+        const settings = getConversationSettingsForCharacter(character, { groupId });
+        addItem({
+            character,
+            index: getCharacterIndexForAvatar(character.avatar),
+            settings,
+            groupId,
+            group,
+            threadStore: getConversationStore().characters?.[getConversationThreadKey(character.avatar, groupId)] || null,
+        });
+    });
+
     Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
         if (!isConversationThreadKeyForPersona(storeKey)) {
             return;
@@ -105,24 +123,6 @@ export function getConversationRailItems() {
             groupId: parsed.groupId,
             group,
             threadStore,
-        });
-    });
-
-    getConversationGroups().forEach((group) => {
-        const character = getGroupDisplayCharacter(group);
-        if (!character?.avatar) {
-            return;
-        }
-
-        const groupId = String(group.id || '');
-        const settings = getConversationSettingsForCharacter(character, { groupId });
-        addItem({
-            character,
-            index: getCharacterIndexForAvatar(character.avatar),
-            settings,
-            groupId,
-            group,
-            threadStore: getConversationStore().characters?.[getConversationThreadKey(character.avatar, groupId)] || null,
         });
     });
 

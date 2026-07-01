@@ -177,6 +177,10 @@ describe('SillyBunny Conversation REST API', () => {
             name: 'Nova and Echo',
             members: ['nova.png', 'echo.png'],
             is_conversation_group: true,
+            conversation_settings: {
+                multi_char: true,
+                auto_character_chat: true,
+            },
         });
         expect(fs.readdirSync(userDirectories.groups)).toEqual([]);
 

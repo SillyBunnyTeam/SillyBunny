@@ -255,6 +255,8 @@ export const SETTINGS_FIELDS = Object.freeze([
 ]);
 
 export const GROUP_CONVERSATION_SETTINGS_KEYS = Object.freeze([
+    'multi_char',
+    'auto_character_chat',
     'proactive_messaging',
     'inactivity_threshold',
     'max_followups',

@@ -138,10 +138,10 @@ export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConv
     if (groupId) {
         return mergeConversationSettingsLayers(
             DEFAULT_SETTINGS,
+            globalSettings,
             GROUP_CONVERSATION_FORCED_SETTINGS,
             getGroupConversationSettings(groupId),
             getGroupThreadConversationSettings(threadStore),
-            globalSettings,
         );
     }
 
@@ -235,6 +235,15 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         pushConversationChat(character, getConversationThreadStore(avatar, { create: false, groupId: '' }));
     });
 
+    getConversationGroups().forEach((group) => {
+        const character = getGroupDisplayCharacter(group);
+        if (!character?.avatar) {
+            return;
+        }
+
+        pushConversationChat(character, getConversationThreadStore(character.avatar, { create: false, groupId: String(group.id || '') }), group);
+    });
+
     Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
         if (!isConversationThreadKeyForPersona(storeKey)) {
             return;
@@ -252,15 +261,6 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         }
 
         pushConversationChat(character, threadStore, group);
-    });
-
-    getConversationGroups().forEach((group) => {
-        const character = getGroupDisplayCharacter(group);
-        if (!character?.avatar) {
-            return;
-        }
-
-        pushConversationChat(character, getConversationThreadStore(character.avatar, { create: false, groupId: String(group.id || '') }), group);
     });
 
     return chats

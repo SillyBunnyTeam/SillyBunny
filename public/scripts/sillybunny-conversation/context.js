@@ -648,6 +648,10 @@ export function createConversationBranchForAvatar(avatar, name = 'New chat', { g
     }
     characterStore.branches[branch.id] = branch;
     characterStore.activeBranchId = branch.id;
+    const group = groupId ? getConversationGroupById(groupId) : null;
+    if (group?.is_conversation_group) {
+        group.updatedAt = Date.now();
+    }
     persistConversationStore();
     return branch;
 }
