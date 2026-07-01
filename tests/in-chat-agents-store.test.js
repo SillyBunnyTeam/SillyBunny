@@ -100,6 +100,25 @@ describe('in-chat agent scoped enabled state', () => {
         expect(store.getGlobalSettings().helperPrefillMessages).toBe('');
     });
 
+    test('stores hidden companion IDs in global settings', async () => {
+        const store = await importStore();
+
+        expect([...store.getHiddenAgentIds()]).toEqual([]);
+
+        store.setGlobalSettings({
+            hiddenCompanionAgentIds: ['companion-b', '', ' companion-a ', 'companion-b'],
+        });
+
+        expect(store.getGlobalSettings().hiddenCompanionAgentIds).toEqual(['companion-a', 'companion-b']);
+        expect(store.isAgentHidden('companion-a')).toBe(true);
+        expect(store.isAgentHidden('missing-companion')).toBe(false);
+
+        store.setHiddenAgentIds(new Set(['companion-c', 'companion-a']));
+
+        expect(store.getGlobalSettings().hiddenCompanionAgentIds).toEqual(['companion-a', 'companion-c']);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+    });
+
     test('resolves compact regex snapshots from runtime cache', async () => {
         const store = await importStore();
         const snapshotStore = await import('../public/scripts/extensions/in-chat-agents/regex-snapshot-store.js');

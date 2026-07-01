@@ -7,9 +7,12 @@ import {
     areAgentsGloballyEnabled,
     getAgents,
     getCompanionConfig,
+    getHiddenAgentIds,
     isAgentEnabledForCurrentScope,
+    isAgentHidden,
     isCompanionAgent,
     saveAgent,
+    setHiddenAgentIds,
 } from '../agent-store.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
@@ -465,6 +468,27 @@ function getStateIcon(state) {
     return icon || 'fa-user-astronaut';
 }
 
+function normalizeTokenCount(value) {
+    const tokenCount = Number(value);
+    return Number.isFinite(tokenCount) && tokenCount > 0 ? Math.round(tokenCount) : 0;
+}
+
+function formatTokenCount(value) {
+    return normalizeTokenCount(value).toLocaleString();
+}
+
+function buildCompanionTokenUsagePillsHtml(result = {}) {
+    const inputTokens = normalizeTokenCount(result?.tokenUsage?.inputTokens);
+    const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
+
+    const pills = [
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+    ].filter(Boolean).join('');
+
+    return pills ? `<span class="ica--tpanel-agent-token-pills">${pills}</span>` : '';
+}
+
 function buildPanelEntryBody(agentId, entry) {
     const status = String(entry.result.status ?? 'done');
     if (status === 'pending') {
@@ -546,6 +570,7 @@ function buildPanelAgentSection(state) {
     const latest = state.latest;
     const name = getStateDisplayName(state);
     const icon = getStateIcon(state);
+    const isHidden = isAgentHidden(agentId);
 
     const settingsButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
@@ -553,13 +578,17 @@ function buildPanelAgentSection(state) {
     const runLatestButton = state.agent
         ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run this companion on the latest assistant reply" aria-label="Run companion"><i class="fa-solid fa-play"></i></button>'
         : '';
+    const hiddenTitle = isHidden ? 'Unhide this companion' : 'Hide this companion (skipped on auto-trigger)';
+    const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
+    const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
+    const hiddenButton = `<button type="button" class="ica--cdash-action" data-action="panel-hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>`;
 
     if (!latest) {
         return `
-            <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}">
+            <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-hidden="${isHidden}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
-                    <span class="ica--tpanel-agent-actions">${runLatestButton}${settingsButton}</span>
+                    <span class="ica--tpanel-agent-actions">${hiddenButton}${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
                 ${buildPanelEntryControls(state)}
@@ -575,6 +604,7 @@ function buildPanelAgentSection(state) {
                     <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}">
                         <div class="ica--tpanel-history-head">
                             <span>Message #${entry.messageIndex}</span>
+                            ${buildCompanionTokenUsagePillsHtml(entry.result)}
                             <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
@@ -585,11 +615,13 @@ function buildPanelAgentSection(state) {
         : '';
 
     return `
-        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}">
+        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}">
             <div class="ica--tpanel-agent-head">
                 <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
+                ${buildCompanionTokenUsagePillsHtml(latest.result)}
                 <span class="ica--tpanel-agent-actions">
+                    ${hiddenButton}
                     ${runLatestButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
@@ -726,6 +758,27 @@ async function handlePanelAction(event) {
 
     const section = button.closest('.ica--tpanel-agent');
     const agentId = section.attr('data-agent-id') || '';
+
+    if (action === 'panel-hide') {
+        if (!agentId) {
+            toastr.warning('No companion selected.');
+            return;
+        }
+
+        const hiddenAgentIds = getHiddenAgentIds();
+        if (hiddenAgentIds.has(agentId)) {
+            hiddenAgentIds.delete(agentId);
+        } else {
+            hiddenAgentIds.add(agentId);
+        }
+        setHiddenAgentIds(hiddenAgentIds);
+
+        if (panelOpen) {
+            renderPanel();
+        }
+        return;
+    }
+
     const messageIndex = Number(button.closest('[data-message-index]').attr('data-message-index'));
 
     if (action === 'panel-run-latest') {
