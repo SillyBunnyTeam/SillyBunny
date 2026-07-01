@@ -261,6 +261,7 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
     }
 
     try {
+        await ensureTtsProviderLoaded();
         await initVoiceMap(Boolean(unrestrictedVoiceMap));
     } catch (error) {
         console.warn('TTS voice map initialization failed', error);
@@ -277,6 +278,21 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
     processAndQueueTtsMessage(message, messageId, { manual: isManual });
     await moduleWorker();
     return true;
+}
+
+async function ensureTtsProviderLoaded() {
+    const providerName = String(extension_settings.tts.currentProvider || $('#tts_provider').val() || defaultSettings.currentProvider || '').trim();
+    if (!providerName) {
+        throw new Error('No TTS provider is selected.');
+    }
+
+    if (!ttsProvider || ttsProviderName !== providerName) {
+        await loadTtsProvider(providerName);
+    }
+
+    if (!ttsProvider || typeof ttsProvider.checkReady !== 'function') {
+        throw new Error(`TTS provider ${providerName} did not initialize.`);
+    }
 }
 
 async function moduleWorker() {

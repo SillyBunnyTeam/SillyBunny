@@ -215,6 +215,9 @@ describe('conversation mode scoped connection profile', () => {
 
     test('connects Conversation messages to the existing TTS extension', () => {
         expect(extensionTtsSource).toContain('export async function narrateTtsMessage');
+        expect(extensionTtsSource).toContain('async function ensureTtsProviderLoaded');
+        expect(extensionTtsSource).toContain('await ensureTtsProviderLoaded()');
+        expect(extensionTtsSource.indexOf('await ensureTtsProviderLoaded()')).toBeLessThan(extensionTtsSource.indexOf('await initVoiceMap(Boolean(unrestrictedVoiceMap))'));
         expect(extensionTtsSource).toContain('await initVoiceMap(Boolean(unrestrictedVoiceMap))');
         expect(extensionTtsSource).toContain('processAndQueueTtsMessage(message, messageId, { manual: isManual })');
         expect(conversationTtsSource).toContain('../extensions/tts/index.js');
