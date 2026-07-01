@@ -1112,6 +1112,43 @@
     margin-block-start: 6px;
 }
 
+.sb-conversation-selfie-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-block-start: 8px;
+}
+
+.sb-conversation-selfie-action {
+    min-block-size: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--sb-accent) 12%, var(--SmartThemeBlurTintColor));
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 86%, transparent);
+    cursor: pointer;
+    font-size: var(--sb-type-meta);
+    font-weight: var(--sb-weight-control);
+    line-height: 1;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+
+.sb-conversation-selfie-action:hover,
+.sb-conversation-selfie-action:focus-visible {
+    border-color: color-mix(in srgb, var(--sb-accent) 54%, var(--SmartThemeBodyColor));
+    background: color-mix(in srgb, var(--sb-accent) 18%, var(--SmartThemeBlurTintColor));
+    color: var(--SmartThemeBodyColor);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.sb-conversation-selfie-action i {
+    font-size: 0.92em;
+}
+
 .sb-conversation-message-reaction-chip {
     display: inline-flex;
     align-items: center;

@@ -411,8 +411,8 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
     return posted;
 }
 
-export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, groupId = undefined } = {}) {
-    if (!settings.image_gen_enabled || !avatar || getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { groupId }) > 0) {
+export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, groupId = undefined, force = false } = {}) {
+    if (!avatar || (!force && (!settings.image_gen_enabled || getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { groupId }) > 0))) {
         return;
     }
 

@@ -25,7 +25,7 @@ export async function generateConversationImage(prompt, negative = '') {
     conversationState.imageGenerationAbortController = new AbortController();
     scheduleTimelineRender();
     try {
-        const qig = await import('./extensions/quick-image-gen/index.js');
+        const qig = await import('../extensions/quick-image-gen/index.js');
         const entry = await qig.withTransientGenerationSettings({}, async () => {
             const settings = qig.getGenerationSettingsForRun();
             const raw = await qig.generateForProvider(prompt, negative, settings, conversationState.imageGenerationAbortController.signal, {});

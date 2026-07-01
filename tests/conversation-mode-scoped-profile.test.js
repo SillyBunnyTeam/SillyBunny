@@ -40,9 +40,11 @@ const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
+const mediaSource = readConversationSource('media.js');
 const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
 const promptSource = readConversationSource('prompt.js');
+const renderUtilsSource = readConversationSource('render-utils.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
 const timelineSource = readConversationSource('timeline-render.js');
@@ -163,5 +165,18 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('> **${speakerName}');
         expect(attachmentsSource).toContain('conversation_reply_to');
         expect(promptSource).toContain('formatConversationReplyReference');
+    });
+
+    test('adds Quick Image Gen actions for actual selfie commands', () => {
+        expect(timelineSource).toContain('getConversationSelfieCommandRequests');
+        expect(timelineSource).toContain('conversation_commands?.selfieRequests');
+        expect(timelineSource).toContain('SELFIE_COMMAND_RE');
+        expect(timelineSource).toContain('sb-conversation-selfie-action');
+        expect(timelineSource).toContain('force: true');
+        expect(renderUtilsSource).toContain('compactConversationCommandsFingerprint');
+        expect(chromeSource).toContain('generate-selfie-command');
+        expect(generationSource).toContain('force = false');
+        expect(generationSource).toContain('!force && (!settings.image_gen_enabled');
+        expect(mediaSource).toContain('../extensions/quick-image-gen/index.js');
     });
 });

@@ -68,6 +68,7 @@ import {
     clearConversationReplyTarget,
     copyConversationMessage,
     deleteConversationMessage,
+    generateConversationSelfieFromMessageCommand,
     ensureConversationChrome,
     quickConversationReminder,
     quickConversationSelfie,
@@ -82,7 +83,7 @@ import {
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260618g';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260618h';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
@@ -562,6 +563,9 @@ export function bindConversationChromeControls(sheld) {
             }
             case 'quick-selfie':
                 await quickConversationSelfie();
+                break;
+            case 'generate-selfie-command':
+                await generateConversationSelfieFromMessageCommand(target.dataset.messageId, target.dataset.selfieIndex);
                 break;
             case 'quick-remind':
                 await quickConversationReminder();

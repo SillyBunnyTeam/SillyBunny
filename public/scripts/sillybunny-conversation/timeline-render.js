@@ -13,6 +13,7 @@ import {
     CONVERSATION_REACTION_LABELS,
     CONVERSATION_TIMELINE_CHANNELS,
     DEFAULT_AUTO_CHAT_COOLDOWN,
+    SELFIE_COMMAND_RE,
 } from './constants.js';
 import {
     createConversationBranch,
@@ -133,6 +134,59 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, setting
         speakerStatus,
         index > 8 ? 'lazy' : 'eager',
     ].join('\u001f'));
+}
+
+function getConversationSelfieCommandRequests(message) {
+    if (!message || ['user', 'system'].includes(message.role || '')) {
+        return [];
+    }
+
+    const requests = [];
+    const addRequest = (context) => {
+        const text = String(context || '').trim();
+        if (!requests.some(request => request.context === text)) {
+            requests.push({ context: text });
+        }
+    };
+
+    const storedRequests = message.extra?.conversation_commands?.selfieRequests;
+    if (Array.isArray(storedRequests)) {
+        storedRequests.forEach(addRequest);
+    }
+
+    const text = String(message.mes || '');
+    SELFIE_COMMAND_RE.lastIndex = 0;
+    let match;
+    while ((match = SELFIE_COMMAND_RE.exec(text)) !== null) {
+        addRequest(match[1]);
+    }
+    SELFIE_COMMAND_RE.lastIndex = 0;
+
+    return requests;
+}
+
+function createConversationSelfieCommandActions(message) {
+    const requests = getConversationSelfieCommandRequests(message);
+    if (!requests.length) {
+        return null;
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'sb-conversation-selfie-actions';
+    requests.forEach((request, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sb-conversation-selfie-action';
+        button.dataset.sbConversationAction = 'generate-selfie-command';
+        button.dataset.messageId = message.id;
+        button.dataset.selfieIndex = String(index);
+        button.title = request.context ? `Generate selfie: ${request.context}` : 'Generate selfie with Quick Image Gen';
+        button.setAttribute('aria-label', button.title);
+        button.innerHTML = '<i class="fa-solid fa-camera" aria-hidden="true"></i><span>Generate selfie</span>';
+        actions.appendChild(button);
+    });
+
+    return actions;
 }
 
 function truncateConversationReplyPreview(value, maxLength = 160) {
@@ -391,6 +445,11 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     }
 
     renderConversationAttachments(text, message);
+
+    const selfieActions = createConversationSelfieCommandActions(message);
+    if (selfieActions) {
+        text.appendChild(selfieActions);
+    }
 
     const activeReactions = Object.entries(message.extra?.conversation_reactions || {})
         .filter(([, count]) => Number(count) > 0);
@@ -949,6 +1008,35 @@ export async function quickConversationSelfie() {
     }
 
     await generateSelfieFromContext(context.trim(), settings, avatar, { groupId });
+}
+
+export async function generateConversationSelfieFromMessageCommand(messageId, selfieIndex = 0) {
+    const context = getConversationMessageById(messageId);
+    if (!context || !context.message || ['user', 'system'].includes(context.message.role || '')) {
+        return;
+    }
+
+    const requests = getConversationSelfieCommandRequests(context.message);
+    const request = requests[Number(selfieIndex) || 0];
+    if (!request) {
+        globalThis.toastr?.warning?.('No selfie request found on this message.');
+        return;
+    }
+
+    const speakerAvatar = context.message.role === 'partner'
+        ? context.message.extra?.partner_avatar || context.avatar
+        : context.avatar;
+    const role = context.message.role === 'partner' ? 'partner' : 'character';
+    const settings = getSettings(speakerAvatar, { groupId: context.groupId });
+    const extra = role === 'partner' ? { partner_avatar: speakerAvatar } : {};
+    await generateSelfieFromContext(request.context, settings, speakerAvatar, {
+        threadAvatar: context.avatar,
+        role,
+        name: context.message.name || '',
+        extra,
+        groupId: context.groupId,
+        force: true,
+    });
 }
 
 export async function quickConversationReminder() {
