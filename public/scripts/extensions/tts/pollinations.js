@@ -135,7 +135,7 @@ export class PollinationsTtsProvider {
                 headers: getRequestHeaders(),
                 body: JSON.stringify({
                     model: this.settings.model,
-                    text: 'Say exactly this and nothing else:' + '\n' + chunk,
+                    text: chunk,
                     voice: voiceId,
                 }),
             });

@@ -53,6 +53,8 @@ const timelineSource = readConversationSource('timeline-render.js');
 const timelineSlashSource = readConversationSource('timeline-slash-commands.js');
 const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
+const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
+const speechEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'speech.js'), 'utf8'));
 const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
@@ -229,6 +231,15 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).toContain("action: 'speak-message'");
         expect(timelineSource).toContain('speakConversationMessage');
         expect(chromeSource).toContain("case 'speak-message':");
+    });
+
+    test('sends Pollinations TTS text as literal speech input', () => {
+        expect(pollinationsTtsSource).toContain('text: chunk');
+        expect(pollinationsTtsSource).not.toContain('Say exactly this and nothing else');
+        expect(speechEndpointSource).toContain('https://gen.pollinations.ai/v1/audio/speech');
+        expect(speechEndpointSource).toContain("model === 'openai-audio' ? 'tts-1' : model");
+        expect(speechEndpointSource).toContain('input: text');
+        expect(speechEndpointSource).not.toContain("modalities: ['text', 'audio']");
     });
 
     test('waits around five seconds for rapid follow-up messages before replying', () => {
