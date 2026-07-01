@@ -33,4 +33,14 @@ describe('theme custom CSS import wiring', () => {
         expect(importThemeSource).toContain('saveSettingsDebounced();');
         expect(importThemeSource).not.toContain('themes.push(parsed);');
     });
+
+    test('theme normalization only keeps explicitly bundled custom CSS', () => {
+        const getThemeObjectSource = getSourceSection('export function getThemeObject(name)', '/**\n * Applies imported theme properties');
+        const getNewThemeSource = getSourceSection('function getNewTheme(parsed)', 'async function saveMovingUI');
+
+        expect(getThemeObjectSource).toContain('const theme = { name };');
+        expect(getThemeObjectSource).not.toContain('custom_css: power_user.custom_css');
+        expect(getNewThemeSource).toContain('if (typeof parsed.custom_css === \'string\') {');
+        expect(getNewThemeSource).toContain('theme.custom_css = parsed.custom_css;');
+    });
 });

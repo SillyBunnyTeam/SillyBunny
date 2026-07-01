@@ -3465,7 +3465,7 @@ async function saveTheme(name = undefined, theme = undefined) {
  * @param {string} name Name of the theme
  */
 export function getThemeObject(name) {
-    const theme = { name, custom_css: power_user.custom_css || '' };
+    const theme = { name };
 
     for (const { key } of THEME_COLOR_PROPERTIES) {
         theme[key] = power_user[key];
@@ -3489,6 +3489,9 @@ function getNewTheme(parsed) {
         if (Object.hasOwn(theme, key)) {
             theme[key] = parsed[key];
         }
+    }
+    if (typeof parsed.custom_css === 'string') {
+        theme.custom_css = parsed.custom_css;
     }
     return theme;
 }
