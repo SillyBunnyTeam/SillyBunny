@@ -1509,6 +1509,7 @@ describe('in-chat agent post-processing runner', () => {
         const companionB = createCompanionAgent({
             id: 'companion-b',
             name: 'Companion B',
+            prompt: 'Write the Companion B note with a little more detail than the first companion.',
             companion: { batch: false, batchAgentIds: [] },
         });
         const companionC = createCompanionAgent({
@@ -1547,6 +1548,13 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[1].extra.inChatAgentCompanionResults['companion-a'].content).toBe('A note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-b'].content).toBe('B note');
         expect(chat[1].extra.inChatAgentCompanionResults['companion-c'].content).toBe('C note');
+        const batchInputTokens = Math.ceil(batchPrompt.length / 4);
+        const companionAInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-a'].tokenUsage.inputTokens;
+        const companionBInputTokens = chat[1].extra.inChatAgentCompanionResults['companion-b'].tokenUsage.inputTokens;
+        expect(companionAInputTokens).toBeGreaterThan(0);
+        expect(companionBInputTokens).toBeGreaterThan(companionAInputTokens);
+        expect(companionAInputTokens).toBeLessThan(batchInputTokens);
+        expect(companionBInputTokens).toBeLessThan(batchInputTokens);
     });
 
     test('does not batch companions with different linked context', async () => {

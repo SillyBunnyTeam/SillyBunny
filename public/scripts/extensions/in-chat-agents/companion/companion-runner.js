@@ -1191,24 +1191,49 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
     return { agentId: agent.id, changed, result };
 }
 
-async function buildBatchPromptMessages(agents, messageIndex, generationType, { extraContextSections = [] } = {}) {
-    const contextSections = await buildCompanionContextSections(agents[0], messageIndex, { extraContextSections });
-    const tasks = agents.map(agent => {
-        const companion = getCompanionConfig(agent);
-        const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
-        return [
-            `<<<companion:${agent.id}>>>`,
-            `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
-            COMPANION_GUARD_INSTRUCTION,
-            'Instruction:',
-            expandCompanionPrompt(agent, messageIndex, generationType),
-            ...formatLines,
-            COMPANION_FINAL_BOUNDARY,
-            `<<<end:${agent.id}>>>`,
-        ].join('\n');
-    }).join('\n\n');
-
+function buildBatchAgentTask(agent, messageIndex, generationType) {
+    const companion = getCompanionConfig(agent);
+    const formatLines = companion.rawPrompt ? [] : ['Output format:', getFormatInstruction(companion.format)];
     return [
+        `<<<companion:${agent.id}>>>`,
+        `Agent: ${String(agent.name ?? '').trim() || agent.id}`,
+        COMPANION_GUARD_INSTRUCTION,
+        'Instruction:',
+        expandCompanionPrompt(agent, messageIndex, generationType),
+        ...formatLines,
+        COMPANION_FINAL_BOUNDARY,
+        `<<<end:${agent.id}>>>`,
+    ].join('\n');
+}
+
+async function buildBatchInputTokenUsage(promptMessages, taskPayloads) {
+    const batchInputTokens = await countCompanionTokens(promptMessages);
+    if (!taskPayloads.length) {
+        return new Map();
+    }
+
+    const taskTokenPairs = await Promise.all(taskPayloads.map(async payload => [
+        payload.agentId,
+        await countCompanionTokens(payload.content),
+    ]));
+    const totalTaskTokens = taskTokenPairs.reduce((total, [, tokens]) => total + tokens, 0);
+    const sharedTokens = Math.max(0, batchInputTokens - totalTaskTokens);
+    const sharedTokensPerAgent = sharedTokens / taskTokenPairs.length;
+
+    return new Map(taskTokenPairs.map(([agentId, tokens]) => [
+        agentId,
+        normalizeCompanionTokenCount(tokens + sharedTokensPerAgent),
+    ]));
+}
+
+async function buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections = [] } = {}) {
+    const contextSections = await buildCompanionContextSections(agents[0], messageIndex, { extraContextSections });
+    const taskPayloads = agents.map(agent => ({
+        agentId: agent.id,
+        content: buildBatchAgentTask(agent, messageIndex, generationType),
+    }));
+    const tasks = taskPayloads.map(payload => payload.content).join('\n\n');
+    const promptMessages = [
         {
             role: 'system',
             content: 'Run each side-channel task independently. These are not chat replies or scene continuations. Put every result inside its matching <<<companion:agentId>>> and <<<end:agentId>>> markers. Text outside markers is ignored.',
@@ -1218,6 +1243,8 @@ async function buildBatchPromptMessages(agents, messageIndex, generationType, { 
             content: `${contextSections || '[Recent conversation]\nConversation context is empty.'}\n\n[Tasks]\n${tasks}\n\nPlace every result inside its markers now.\n${COMPANION_BATCH_FINAL_BOUNDARY}`,
         },
     ];
+
+    return { promptMessages, taskPayloads };
 }
 
 async function runBatchCompanionAgents(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
@@ -1230,7 +1257,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
     try {
         const extraContextSections = getUnitExtraContextSections(agents, extraContextSectionsByAgentId);
-        const promptMessages = await buildBatchPromptMessages(agents, messageIndex, generationType, { extraContextSections });
+        const { promptMessages, taskPayloads } = await buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections });
         const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
@@ -1254,7 +1281,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             });
         }
 
-        const batchInputTokens = await countCompanionTokens(promptMessages);
+        const inputTokensByAgentId = await buildBatchInputTokenUsage(promptMessages, taskPayloads);
         const parsed = parseBatchResponse(response.output);
         const missingAgents = [];
         for (const agent of agents) {
@@ -1269,7 +1296,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                 content,
                 error: '',
                 tokenUsage: {
-                    inputTokens: batchInputTokens,
+                    inputTokens: inputTokensByAgentId.get(agent.id) ?? 0,
                     outputTokens: await countCompanionTokens({ role: 'assistant', content }),
                 },
                 profileId: response.profileId,
