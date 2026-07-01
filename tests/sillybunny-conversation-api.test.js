@@ -434,12 +434,15 @@ describe('SillyBunny Conversation REST API', () => {
         expect(json.replyMessage.extra.conversation_commands.selfieRequests).toHaveLength(1);
         expect(json.generation.choices[0].message.content).toBe('[selfie] Hello from Nova.');
         expect(json.prompt.systemPrompt).toContain('You are Nova');
+        expect(json.prompt.systemPrompt).toContain('Current system time context:');
+        expect(json.prompt.systemPrompt).toContain('time of day, dates, timezones, reminders, scheduling');
         expect(json.prompt.messages.at(-1).content).toContain('Nova:');
 
         expect(upstreamRequests).toHaveLength(1);
         expect(upstreamRequests[0].model).toBe('gpt-5.4');
         expect(upstreamRequests[0].max_output_tokens).toBe(64);
         expect(upstreamRequests[0].instructions).toContain('You are Nova');
+        expect(upstreamRequests[0].instructions).toContain('Current system time context:');
         expect(JSON.stringify(upstreamRequests[0].input)).toContain('Can you say hi?');
 
         const settings = readSettings();

@@ -227,6 +227,37 @@ function buildConversationGroupReferenceContext(messages, { groupId = '', speake
     ].filter(Boolean).join('\n');
 }
 
+function getConversationLocalTimeContext(now = new Date()) {
+    const resolvedTimeZone = (() => {
+        try {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        } catch {
+            return '';
+        }
+    })();
+    const dateTimeLabel = (() => {
+        try {
+            return now.toLocaleString([], {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short',
+            });
+        } catch {
+            return now.toString();
+        }
+    })();
+
+    return [
+        `Current device time context: ${dateTimeLabel}.`,
+        resolvedTimeZone ? `Timezone: ${resolvedTimeZone}.` : '',
+        'Use this as the user\'s current computer/phone time for day of week, time of day, dates, timezones, reminders, scheduling, and natural chat timing.',
+    ].filter(Boolean).join(' ');
+}
+
 export function formatConversationTranscript(messages) {
     return messages
         .slice(-TRANSCRIPT_MESSAGE_LIMIT)
@@ -483,6 +514,8 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
         'Formatting: write plain chat text. Do not start with a speaker/name label. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
     ];
+    const now = new Date();
+    fields.push(getConversationLocalTimeContext(now));
 
     let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
     compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
@@ -551,8 +584,7 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
 
     const schedule = getStoredSchedule(avatar);
     if (schedule) {
-        const current = getCurrentActivityFromSchedule(schedule, avatar);
-        const now = new Date();
+        const current = getCurrentActivityFromSchedule(schedule, avatar, now);
         const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         fields.push(`Current life context: It is ${timeLabel} for ${charName}, who is currently ${current.activity} (status: ${current.status}). Let this naturally color your availability, mood, and what you mention. Stay in this moment of your day.`);
     }

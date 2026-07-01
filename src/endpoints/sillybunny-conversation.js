@@ -606,6 +606,37 @@ function buildConversationGroupReferenceContext(messages, { groupId = '', speake
     ].filter(Boolean).join('\n');
 }
 
+function getConversationSystemTimeContext(now = new Date()) {
+    const resolvedTimeZone = (() => {
+        try {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        } catch {
+            return '';
+        }
+    })();
+    const dateTimeLabel = (() => {
+        try {
+            return now.toLocaleString([], {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short',
+            });
+        } catch {
+            return now.toString();
+        }
+    })();
+
+    return [
+        `Current system time context: ${dateTimeLabel}.`,
+        resolvedTimeZone ? `Timezone: ${resolvedTimeZone}.` : '',
+        'Use this as the current server/device time for day of week, time of day, dates, timezones, reminders, scheduling, and natural chat timing.',
+    ].filter(Boolean).join(' ');
+}
+
 function getContentText(content) {
     if (typeof content === 'string') {
         return content;
@@ -697,6 +728,7 @@ function buildConversationSystemPrompt({ settings, character, userName, groupId,
             : `You are ${charName} in a private direct-message conversation with ${userName}.`,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
         'Formatting: write plain chat text. Do not start with a speaker/name label. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
+        getConversationSystemTimeContext(),
         compileGeechanPrompt(settings, charName, userName),
     ];
 

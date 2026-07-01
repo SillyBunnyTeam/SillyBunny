@@ -113,6 +113,15 @@ describe('conversation mode scoped connection profile', () => {
         expect(attachmentsSource).toContain('isBroadGroupAddress');
     });
 
+    test('adds device date time and timezone context to Conversation prompts', () => {
+        expect(promptSource).toContain('getConversationLocalTimeContext');
+        expect(promptSource).toContain('Current device time context');
+        expect(promptSource).toContain('Intl.DateTimeFormat().resolvedOptions().timeZone');
+        expect(promptSource).toContain('weekday: \'long\'');
+        expect(promptSource).toContain('computer/phone time');
+        expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now)');
+    });
+
     test('keeps saved Conversation-owned group DMs visible without messages', () => {
         expect(settingsStoreSource).toContain('const hasConversationGroups');
         expect(settingsStoreSource).toContain('getConversationGroups().forEach');
