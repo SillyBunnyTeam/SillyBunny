@@ -174,21 +174,12 @@ let requiresReload = false;
 let stateChanged = false;
 let saveMetadataTimeout = null;
 
-function getExtensionAssetVersion(name, assetPath) {
-    const versions = [CLIENT_VERSION || 'dev'];
-
-    if (assetPath !== 'manifest.json') {
-        const extensionVersion = manifests[name]?.version;
-        if (extensionVersion) {
-            versions.push(extensionVersion);
-        }
-    }
-
-    return encodeURIComponent(versions.join('-'));
+function getExtensionAssetVersion() {
+    return encodeURIComponent(CLIENT_VERSION || 'dev');
 }
 
 function getExtensionAssetUrl(name, assetPath) {
-    return `/scripts/extensions/${name}/${assetPath}?v=${getExtensionAssetVersion(name, assetPath)}`;
+    return `/scripts/extensions/${name}/${assetPath}?v=${getExtensionAssetVersion()}`;
 }
 
 function scheduleIdleTask(callback, timeout = 4000) {
