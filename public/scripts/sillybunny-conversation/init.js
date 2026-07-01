@@ -11,7 +11,7 @@ import {
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, openConversationWorkspaceForAvatar } from './chrome.js';
 import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getCurrentCharAvatar, migrateConversationLocalStorage } from './context.js';
+import { getConversationGroupById, getCurrentCharAvatar, migrateConversationLocalStorage } from './context.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
@@ -113,6 +113,18 @@ export function init() {
     eventSource.on(event_types.CHAT_LOADED, () => {
         if (conversationState.conversationWorkspaceOpen) {
             handleChatChanged();
+            scheduleInterfaceRefresh({ syncControls: false });
+        }
+    });
+    eventSource.on(event_types.PERSONA_CHANGED, () => {
+        sanitizeConversationUnreadCounts();
+        updateConversationNotificationIndicators();
+        if (conversationState.conversationWorkspaceOpen) {
+            if (conversationState.conversationSelectedGroupId && !getConversationGroupById(conversationState.conversationSelectedGroupId)) {
+                conversationState.conversationSelectedGroupId = null;
+            }
+            handleChatChanged();
+            loadCurrentPanelSettings();
             scheduleInterfaceRefresh({ syncControls: false });
         }
     });

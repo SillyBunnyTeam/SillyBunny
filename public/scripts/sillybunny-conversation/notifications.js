@@ -10,6 +10,7 @@ import {
     getConversationThreadStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
+    isConversationThreadKeyForPersona,
     parseConversationThreadKey,
     parsePositiveInt,
     persistConversationStore,
@@ -84,6 +85,10 @@ function getUnreadThreadIdentity(threadKey) {
 
 export function sanitizeConversationUnreadCounts() {
     const result = sanitizeConversationUnreadStore(getConversationStore(), (threadKey) => {
+        if (!isConversationThreadKeyForPersona(threadKey)) {
+            return true;
+        }
+
         const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
         return isUnreadThreadCountable(avatar, groupId);
     });
@@ -95,7 +100,7 @@ export function sanitizeConversationUnreadCounts() {
 }
 
 export function clearAllConversationUnreadCounts() {
-    const storeResult = clearConversationUnreadStore(getConversationStore());
+    const storeResult = clearConversationUnreadStore(getConversationStore(), threadKey => isConversationThreadKeyForPersona(threadKey));
     const removedLegacy = clearLegacyConversationUnreadStorage();
     const changed = storeResult.changed || removedLegacy > 0;
 
@@ -111,6 +116,10 @@ export function clearAllConversationUnreadCounts() {
 
 export function getTotalUnreadCount() {
     return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
+        if (!isConversationThreadKeyForPersona(threadKey)) {
+            return sum;
+        }
+
         const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
         if (!isUnreadThreadCountable(avatar, groupId)) {
             return sum;

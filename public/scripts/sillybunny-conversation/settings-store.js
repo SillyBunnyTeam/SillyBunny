@@ -14,6 +14,7 @@ import {
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationGroups,
+    isConversationThreadKeyForPersona,
     getConversationStore,
     getConversationThreadKey,
     getConversationThreadStore,
@@ -60,8 +61,9 @@ export function invalidateConversationUsageCache() {
 export function hasAnyConversationModeUsage() {
     const store = getConversationStore();
     const charactersStore = store.characters || {};
-    const hasConversationGroups = Array.isArray(store.groups) && store.groups.length > 0;
-    conversationUsageCache = hasConversationGroups || Object.entries(charactersStore).some(([storeKey, threadStore]) => threadStoreHasConversationUsage(storeKey, threadStore));
+    const hasConversationGroups = getConversationGroups().length > 0;
+    conversationUsageCache = hasConversationGroups || Object.entries(charactersStore)
+        .some(([storeKey, threadStore]) => isConversationThreadKeyForPersona(storeKey) && threadStoreHasConversationUsage(storeKey, threadStore));
     return conversationUsageCache;
 }
 
@@ -92,6 +94,24 @@ function normalizeGlobalConversationSettings(settings = {}) {
             picked[key] = normalized[key];
         }
         return picked;
+    }, {});
+}
+
+function getCurrentPersonaMemoryCharactersStore() {
+    const store = getConversationStore();
+    return Object.entries(store.characters || {}).reduce((result, [storeKey, threadStore]) => {
+        if (!isConversationThreadKeyForPersona(storeKey)) {
+            return result;
+        }
+
+        const parsed = parseConversationThreadKey(storeKey);
+        if (!parsed.avatar) {
+            return result;
+        }
+
+        const baseKey = parsed.groupId ? `group:${parsed.groupId}:${parsed.avatar}` : parsed.avatar;
+        result[baseKey] = threadStore;
+        return result;
     }, {});
 }
 
@@ -216,6 +236,10 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
     });
 
     Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
+        if (!isConversationThreadKeyForPersona(storeKey)) {
+            return;
+        }
+
         const parsed = parseConversationThreadKey(storeKey);
         if (!parsed.groupId || !parsed.avatar) {
             return;
@@ -332,8 +356,7 @@ export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { 
 }
 
 export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4 } = {}) {
-    const store = getConversationStore();
-    return collectGroupConversationMemorySummaries(store.characters, avatar, {
+    return collectGroupConversationMemorySummaries(getCurrentPersonaMemoryCharactersStore(), avatar, {
         excludeGroupId,
         max,
         getGroupName: groupId => getConversationGroupById(groupId)?.name || '',
@@ -341,8 +364,7 @@ export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvata
 }
 
 export function getConversationSoloMemorySummary(avatar = getCurrentCharAvatar()) {
-    const store = getConversationStore();
-    return collectSoloConversationMemorySummary(store.characters, avatar);
+    return collectSoloConversationMemorySummary(getCurrentPersonaMemoryCharactersStore(), avatar);
 }
 
 export function saveConversationMemorySummary(avatar, summary, messageCount, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {

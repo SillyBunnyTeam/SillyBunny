@@ -41,6 +41,8 @@ const GENERATION_BACKENDS = Object.freeze({
     TEXT: 'text',
 });
 
+const PERSONA_CONVERSATION_STORE_PREFIX = 'persona:';
+
 function isObject(value) {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -56,6 +58,33 @@ function parsePositiveInt(value, fallback, min = 1) {
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+}
+
+function getConversationPersonaId(personaId = '') {
+    return String(personaId || '').trim();
+}
+
+function getRequestPersonaId(request) {
+    return getConversationPersonaId(
+        request.body?.personaId
+        || request.body?.persona
+        || request.body?.personaAvatar
+        || request.body?.userAvatar,
+    );
+}
+
+function encodeConversationStoragePart(value) {
+    return encodeURIComponent(String(value || '').trim());
+}
+
+function scopeConversationStorageKey(storageKey, personaId = '') {
+    const key = String(storageKey || '').trim();
+    const persona = getConversationPersonaId(personaId);
+    if (!key || !persona || key.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
+        return key;
+    }
+
+    return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
 }
 
 function readJsonFile(filePath, fallback = {}) {
@@ -129,14 +158,15 @@ function saveConversationStore(request, currentSettings, store, version = undefi
     };
 }
 
-function getConversationThreadKey(avatar, groupId = '') {
+function getConversationThreadKey(avatar, groupId = '', personaId = '') {
     const safeAvatar = String(avatar || '').trim();
     const safeGroupId = String(groupId || '').trim();
     if (!safeAvatar) {
         return '';
     }
 
-    return safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
+    const threadKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
+    return scopeConversationStorageKey(threadKey, personaId);
 }
 
 function normalizeGroupConversationSettings(settings = {}) {
@@ -169,6 +199,7 @@ function getUniqueConversationGroupMembers(memberAvatars) {
 function normalizeConversationGroupRecord(group) {
     const source = getObject(group);
     const id = String(source.id || '').trim();
+    const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
     const members = getUniqueConversationGroupMembers(source.members);
     if (!id || members.length < 2) {
         return null;
@@ -178,6 +209,7 @@ function normalizeConversationGroupRecord(group) {
     return {
         ...source,
         id,
+        personaId,
         name: String(source.name || 'Conversation Group'),
         members,
         disabled_members: getUniqueConversationGroupMembers(source.disabled_members).filter(avatar => members.includes(avatar)),
@@ -188,7 +220,7 @@ function normalizeConversationGroupRecord(group) {
     };
 }
 
-function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null } = {}) {
+function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null, personaId = '' } = {}) {
     const members = getUniqueConversationGroupMembers(memberAvatars);
     if (members.length < 2) {
         return null;
@@ -197,6 +229,7 @@ function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '
     const now = Date.now();
     return normalizeConversationGroupRecord({
         id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
+        personaId: getConversationPersonaId(personaId),
         name: name || 'Conversation Group',
         members,
         avatar_url: avatarUrl || '',
@@ -252,8 +285,8 @@ function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
     return target;
 }
 
-function getConversationThreadStore(store, avatar, groupId = '', { create = true } = {}) {
-    const threadKey = getConversationThreadKey(avatar, groupId);
+function getConversationThreadStore(store, avatar, groupId = '', { create = true, personaId = '' } = {}) {
+    const threadKey = getConversationThreadKey(avatar, groupId, personaId);
     if (!threadKey) {
         return null;
     }
@@ -293,8 +326,8 @@ function getConversationThreadStore(store, avatar, groupId = '', { create = true
     return threadStore;
 }
 
-function getActiveConversationBranch(store, avatar, groupId = '', { create = true } = {}) {
-    const threadStore = getConversationThreadStore(store, avatar, groupId, { create });
+function getActiveConversationBranch(store, avatar, groupId = '', { create = true, personaId = '' } = {}) {
+    const threadStore = getConversationThreadStore(store, avatar, groupId, { create, personaId });
     if (!threadStore) {
         return null;
     }
@@ -335,8 +368,8 @@ function createConversationMessage(input = {}, fallback = {}) {
     };
 }
 
-function appendConversationMessage(store, avatar, messageInput, { groupId = '', fallback = {} } = {}) {
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true });
+function appendConversationMessage(store, avatar, messageInput, { groupId = '', personaId = '', fallback = {} } = {}) {
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true, personaId });
     if (!branch) {
         return null;
     }
@@ -388,22 +421,27 @@ function getIncomingMessage(body, fallbackRole = 'user') {
     };
 }
 
-function getConversationGroupRecord(store, groupId) {
+function getConversationGroups(store, personaId = '') {
+    const persona = getConversationPersonaId(personaId);
+    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
+    return store.groups.filter(group => getConversationPersonaId(group.personaId) === persona);
+}
+
+function getConversationGroupRecord(store, groupId, personaId = '') {
     const safeGroupId = String(groupId || '').trim();
     if (!safeGroupId) {
         return null;
     }
 
-    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
-    return store.groups.find(group => String(group?.id) === safeGroupId) || null;
+    return getConversationGroups(store, personaId).find(group => String(group?.id) === safeGroupId) || null;
 }
 
-function getGroupConversationSettings(request, store, groupId) {
+function getGroupConversationSettings(request, store, groupId, personaId = '') {
     if (!groupId) {
         return {};
     }
 
-    const conversationGroup = getConversationGroupRecord(store, groupId);
+    const conversationGroup = getConversationGroupRecord(store, groupId, personaId);
     if (conversationGroup) {
         return getObject(conversationGroup.conversation_settings);
     }
@@ -432,12 +470,12 @@ function normalizeConversationSettings(settings = {}) {
     return normalized;
 }
 
-function getConversationSettings(request, store, avatar, groupId, overrides = {}) {
-    const threadStore = getConversationThreadStore(store, avatar, groupId, { create: false });
+function getConversationSettings(request, store, avatar, groupId, overrides = {}, { personaId = '' } = {}) {
+    const threadStore = getConversationThreadStore(store, avatar, groupId, { create: false, personaId });
     return normalizeConversationSettings({
         ...DEFAULT_SETTINGS,
         ...(groupId ? { multi_char: true, auto_character_chat: true } : {}),
-        ...getGroupConversationSettings(request, store, groupId),
+        ...getGroupConversationSettings(request, store, groupId, personaId),
         ...getObject(threadStore?.settings),
         ...getObject(store.settings),
         ...getObject(overrides),
@@ -893,15 +931,17 @@ router.post('/store/save', (request, response) => {
 router.post('/group/list', (request, response) => {
     const settings = readUserSettings(request);
     const store = ensureConversationStore(settings);
-    return response.send({ groups: store.groups, version: getSettingsVersion(settings) });
+    return response.send({ groups: getConversationGroups(store, getRequestPersonaId(request)), version: getSettingsVersion(settings) });
 });
 
 router.post('/group/create', (request, response) => {
+    const personaId = getRequestPersonaId(request);
     const members = request.body?.members || request.body?.memberAvatars;
     const group = createConversationGroupRecord(members, {
         name: request.body?.name,
         avatarUrl: request.body?.avatar_url || request.body?.avatarUrl,
         settings: request.body?.conversation_settings || request.body?.settings,
+        personaId,
     });
     if (!group) {
         return response.status(400).send({ error: 'members_required' });
@@ -912,7 +952,7 @@ router.post('/group/create', (request, response) => {
     store.groups.push(group);
 
     const saveResult = saveConversationStore(request, currentSettings, store, request.body?.version);
-    return respondSaveResult(response, saveResult, { group, groups: store.groups });
+    return respondSaveResult(response, saveResult, { group, groups: getConversationGroups(store, personaId) });
 });
 
 router.post('/thread/get', (request, response) => {
@@ -922,12 +962,13 @@ router.post('/thread/get', (request, response) => {
     }
 
     const groupId = getRequestGroupId(request);
+    const personaId = getRequestPersonaId(request);
     const settings = readUserSettings(request);
     const store = ensureConversationStore(settings);
-    const thread = getConversationThreadStore(store, avatar, groupId, { create: Boolean(request.body?.create) });
-    const branch = thread ? getActiveConversationBranch(store, avatar, groupId, { create: false }) : null;
+    const thread = getConversationThreadStore(store, avatar, groupId, { create: Boolean(request.body?.create), personaId });
+    const branch = thread ? getActiveConversationBranch(store, avatar, groupId, { create: false, personaId }) : null;
     return response.send({
-        threadKey: getConversationThreadKey(avatar, groupId),
+        threadKey: getConversationThreadKey(avatar, groupId, personaId),
         thread,
         branch,
         messages: branch?.messages || [],
@@ -945,15 +986,16 @@ router.post('/thread/save', (request, response) => {
     }
 
     const groupId = getRequestGroupId(request);
+    const personaId = getRequestPersonaId(request);
     const currentSettings = readUserSettings(request);
     const store = ensureConversationStore(currentSettings);
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true });
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true, personaId });
     branch.messages = safeParseThread(request.body.messages).slice(-MAX_THREAD_MESSAGES);
     refreshBranchPreview(branch);
 
     const saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
     return respondSaveResult(response, saveResult, {
-        threadKey: getConversationThreadKey(avatar, groupId),
+        threadKey: getConversationThreadKey(avatar, groupId, personaId),
         branch,
         messages: branch.messages,
     });
@@ -966,20 +1008,22 @@ router.post('/message/append', (request, response) => {
     }
 
     const groupId = getRequestGroupId(request);
+    const personaId = getRequestPersonaId(request);
     const currentSettings = readUserSettings(request);
     const store = ensureConversationStore(currentSettings);
     const message = appendConversationMessage(store, avatar, getIncomingMessage(request.body), {
         groupId,
+        personaId,
         fallback: { role: request.body?.role || 'user', name: request.body?.name || request.body?.userName || 'User' },
     });
     if (!message) {
         return response.status(400).send({ error: 'message_required' });
     }
 
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false });
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
     const saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
     return respondSaveResult(response, saveResult, {
-        threadKey: getConversationThreadKey(avatar, groupId),
+        threadKey: getConversationThreadKey(avatar, groupId, personaId),
         message,
         branch,
         messages: branch?.messages || [],
@@ -996,11 +1040,13 @@ router.post('/message/send', async (request, response) => {
     }
 
     const groupId = getRequestGroupId(request);
+    const personaId = getRequestPersonaId(request);
     const userName = String(request.body?.userName || request.body?.user_name || request.body?.name || 'User');
     let currentSettings = readUserSettings(request);
     let store = ensureConversationStore(currentSettings);
     const userMessage = appendConversationMessage(store, avatar, getIncomingMessage(request.body, 'user'), {
         groupId,
+        personaId,
         fallback: { role: 'user', name: userName },
     });
     if (!userMessage) {
@@ -1015,9 +1061,9 @@ router.post('/message/send', async (request, response) => {
     currentSettings = saveResult.settings;
     store = saveResult.store;
 
-    const settings = getConversationSettings(request, store, avatar, groupId, request.body.settings);
+    const settings = getConversationSettings(request, store, avatar, groupId, request.body.settings, { personaId });
     const character = await getCharacterData(request, avatar);
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false });
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
     const directive = getDefaultDirective(request.body);
     const promptMessages = buildConversationPromptMessages(branch?.messages || [], directive, character.name || 'Character', { groupId, userName });
     const systemPrompt = buildConversationSystemPrompt({ settings, character, userName, groupId, branch });
@@ -1065,16 +1111,17 @@ router.post('/message/send', async (request, response) => {
         },
     }, {
         groupId,
+        personaId,
         fallback: { role: 'character', name: character.name || 'Character' },
     });
-    const finalBranch = getActiveConversationBranch(store, avatar, groupId, { create: false });
+    const finalBranch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
     saveResult = saveConversationStore(request, currentSettings, store);
     if (!saveResult.ok) {
         return response.status(saveResult.status).send(saveResult.body);
     }
 
     return response.send({
-        threadKey: getConversationThreadKey(avatar, groupId),
+        threadKey: getConversationThreadKey(avatar, groupId, personaId),
         userMessage,
         replyMessage,
         branch: finalBranch,

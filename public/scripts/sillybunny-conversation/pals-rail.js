@@ -16,6 +16,7 @@ import {
     getConversationStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
+    isConversationThreadKeyForPersona,
     normalizeConversationBranch,
     parseConversationThreadKey,
     parsePositiveInt,
@@ -80,6 +81,10 @@ export function getConversationRailItems() {
     getConversationPals().forEach(pal => addItem({ ...pal, groupId: '' }));
 
     Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
+        if (!isConversationThreadKeyForPersona(storeKey)) {
+            return;
+        }
+
         const parsed = parseConversationThreadKey(storeKey);
         if (!parsed.groupId || !parsed.avatar) {
             return;

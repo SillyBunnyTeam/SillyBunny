@@ -18,6 +18,7 @@ import {
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationStore,
     getCurrentCharacter,
     getCurrentCharAvatar,
@@ -811,9 +812,13 @@ export async function checkConversationReminders(now) {
         return false;
     }
 
+    const personaId = getConversationPersonaId();
     const dueReminders = store.reminders.filter(rem => {
         const retryAfter = parsePositiveInt(rem.retryAfter, 0, 0);
-        return now >= rem.triggerAt && !rem.fired && (!retryAfter || now >= retryAfter);
+        return getConversationPersonaId(rem?.personaId) === personaId
+            && now >= rem.triggerAt
+            && !rem.fired
+            && (!retryAfter || now >= retryAfter);
     });
     if (!dueReminders.length) {
         return false;

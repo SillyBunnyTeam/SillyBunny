@@ -281,6 +281,69 @@ describe('SillyBunny Conversation REST API', () => {
         expect(branch.preview).toBe('hello from curl');
     });
 
+    test('personaId scopes solo and group Conversation storage independently', async () => {
+        const rileyResponse = await postJson('/message/append', {
+            avatar: 'nova.png',
+            personaId: 'riley.png',
+            text: 'hello from Riley',
+            userName: 'Riley',
+            version: 0,
+        });
+
+        expect(rileyResponse.status).toBe(200);
+        const rileyJson = await rileyResponse.json();
+        expect(rileyJson.threadKey).toBe('persona:riley.png:nova.png');
+
+        const morganResponse = await postJson('/message/append', {
+            avatar: 'nova.png',
+            personaId: 'morgan.png',
+            text: 'hello from Morgan',
+            userName: 'Morgan',
+            version: 1,
+        });
+
+        expect(morganResponse.status).toBe(200);
+        const morganJson = await morganResponse.json();
+        expect(morganJson.threadKey).toBe('persona:morgan.png:nova.png');
+
+        const createGroupResponse = await postJson('/group/create', {
+            personaId: 'riley.png',
+            name: 'Riley group',
+            members: ['nova.png', 'echo.png'],
+            version: 2,
+        });
+
+        expect(createGroupResponse.status).toBe(200);
+        const createGroupJson = await createGroupResponse.json();
+        expect(createGroupJson.group.personaId).toBe('riley.png');
+
+        const rileyGroupsResponse = await postJson('/group/list', { personaId: 'riley.png' });
+        const rileyGroupsJson = await rileyGroupsResponse.json();
+        expect(rileyGroupsJson.groups.map(group => group.id)).toEqual([createGroupJson.group.id]);
+
+        const morganGroupsResponse = await postJson('/group/list', { personaId: 'morgan.png' });
+        const morganGroupsJson = await morganGroupsResponse.json();
+        expect(morganGroupsJson.groups).toEqual([]);
+
+        const groupAppendResponse = await postJson('/message/append', {
+            avatar: 'nova.png',
+            groupId: createGroupJson.group.id,
+            personaId: 'riley.png',
+            text: 'persona-scoped group hello',
+            version: 3,
+        });
+
+        expect(groupAppendResponse.status).toBe(200);
+        const groupAppendJson = await groupAppendResponse.json();
+        expect(groupAppendJson.threadKey).toBe(`persona:riley.png:group:${createGroupJson.group.id}:nova.png`);
+
+        const store = readConversationStore();
+        expect(store.characters['persona:riley.png:nova.png'].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('hello from Riley');
+        expect(store.characters['persona:morgan.png:nova.png'].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('hello from Morgan');
+        expect(store.characters[`persona:riley.png:group:${createGroupJson.group.id}:nova.png`].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('persona-scoped group hello');
+        expect(store.characters['nova.png']).toBeUndefined();
+    });
+
     test('message/append rejects stale settings versions', async () => {
         const response = await postJson('/message/append', {
             avatar: 'nova.png',

@@ -38,6 +38,7 @@ const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
+const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
 const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
@@ -118,6 +119,18 @@ describe('conversation mode scoped connection profile', () => {
         expect(settingsStoreSource).toContain('!group.is_conversation_group');
         expect(palsRailSource).toContain('getConversationGroups().forEach');
         expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
+    });
+
+    test('scopes Conversation storage by active persona to prevent bleedthrough', () => {
+        expect(contextSource).toContain('PERSONA_CONVERSATION_STORE_PREFIX');
+        expect(contextSource).toContain('getConversationPersonaId');
+        expect(contextSource).toContain('scopeConversationStorageKey');
+        expect(contextSource).toContain('isConversationThreadKeyForPersona');
+        expect(contextSource).toContain('migrateLegacyConversationStoreToPersona');
+        expect(contextSource).toContain('personaId: getConversationPersonaId(personaId)');
+        expect(settingsStoreSource).toContain('isConversationThreadKeyForPersona(storeKey)');
+        expect(palsRailSource).toContain('isConversationThreadKeyForPersona(storeKey)');
+        expect(initSource).toContain('event_types.PERSONA_CHANGED');
     });
 
     test('uses reply metadata instead of copying quoted text into the composer', () => {

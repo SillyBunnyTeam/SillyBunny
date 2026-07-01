@@ -1,6 +1,7 @@
 import { characters, saveSettingsDebounced, this_chid } from '../../script.js';
 import { extension_settings } from '../extensions.js';
 import { editGroup, groups, selected_group } from '../group-chats.js';
+import { user_avatar } from '../personas.js';
 import {
     CONVERSATION_NOTIFICATION_PRIORITIES,
     CHARACTER_CONVERSATION_SETTINGS_KEYS,
@@ -29,6 +30,8 @@ import { conversationState } from './state.js';
 import { safeParseThread } from './thread-store.js';
 import { stripPreviewText } from './typing.js';
 
+export const PERSONA_CONVERSATION_STORE_PREFIX = 'persona:';
+
 export function getRoleplayCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
         return null;
@@ -56,9 +59,41 @@ export function getCurrentCharName(fallback = 'Character') {
     return getCurrentCharacter()?.name || fallback;
 }
 
+export function getConversationPersonaId(personaId = user_avatar) {
+    return String(personaId || '').trim();
+}
+
+function encodeConversationStoragePart(value) {
+    return encodeURIComponent(String(value || '').trim());
+}
+
+function decodeConversationStoragePart(value) {
+    try {
+        return decodeURIComponent(String(value || ''));
+    } catch {
+        return String(value || '');
+    }
+}
+
+function scopeConversationStorageKey(storageKey, personaId = getConversationPersonaId()) {
+    const key = String(storageKey || '').trim();
+    const persona = getConversationPersonaId(personaId);
+    if (!key || !persona || key.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
+        return key;
+    }
+
+    return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
+}
+
+export function isConversationThreadKeyForPersona(key, personaId = getConversationPersonaId()) {
+    const parsed = parseConversationThreadKey(key);
+    return getConversationPersonaId(parsed.personaId) === getConversationPersonaId(personaId);
+}
+
 export function normalizeConversationGroupRecord(group) {
     const source = group && typeof group === 'object' ? group : {};
     const id = String(source.id || '').trim();
+    const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
     const members = Array.isArray(source.members)
         ? Array.from(new Set(source.members.map(avatar => String(avatar || '').trim()).filter(Boolean)))
         : [];
@@ -73,6 +108,7 @@ export function normalizeConversationGroupRecord(group) {
     return {
         ...source,
         id,
+        personaId,
         name: String(source.name || 'Conversation Group'),
         members,
         disabled_members: disabledMembers,
@@ -83,12 +119,13 @@ export function normalizeConversationGroupRecord(group) {
     };
 }
 
-export function getConversationGroups() {
+export function getConversationGroups({ personaId = getConversationPersonaId() } = {}) {
     const store = getConversationStore();
+    const persona = getConversationPersonaId(personaId);
     store.groups = Array.isArray(store.groups)
         ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean)
         : [];
-    return store.groups;
+    return store.groups.filter(group => getConversationPersonaId(group.personaId) === persona);
 }
 
 export function getConversationGroupById(groupId) {
@@ -112,7 +149,7 @@ export function isConversationOwnedGroup(groupId) {
     return Boolean(groupId && getConversationGroups().some(group => String(group?.id) === String(groupId)));
 }
 
-export function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null } = {}) {
+export function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null, personaId = getConversationPersonaId() } = {}) {
     const members = Array.from(new Set(
         (Array.isArray(memberAvatars) ? memberAvatars : [])
             .map(avatar => String(avatar || '').trim())
@@ -125,6 +162,7 @@ export function createConversationGroupRecord(memberAvatars, { name = '', avatar
     const now = Date.now();
     const group = normalizeConversationGroupRecord({
         id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
+        personaId: getConversationPersonaId(personaId),
         name: name || 'Conversation Group',
         members,
         avatar_url: avatarUrl || '',
@@ -137,7 +175,9 @@ export function createConversationGroupRecord(memberAvatars, { name = '', avatar
         return null;
     }
 
-    getConversationGroups().push(group);
+    const store = getConversationStore();
+    store.groups = Array.isArray(store.groups) ? store.groups : [];
+    store.groups.push(group);
     persistConversationStore();
     return group;
 }
@@ -167,24 +207,38 @@ export function getConversationThreadKey(avatar, groupId = getConversationGroupI
     }
 
     const safeGroupId = groupId && isAvatarInConversationGroup(avatar, groupId) ? String(groupId) : '';
-    return safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${avatar}` : avatar;
+    const threadKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${avatar}` : avatar;
+    return scopeConversationStorageKey(threadKey);
 }
 
 export function parseConversationThreadKey(key) {
-    const value = String(key || '');
+    let value = String(key || '');
+    let personaId = '';
+    if (value.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
+        const withoutPrefix = value.slice(PERSONA_CONVERSATION_STORE_PREFIX.length);
+        const separatorIndex = withoutPrefix.indexOf(':');
+        if (separatorIndex < 0) {
+            return { avatar: '', groupId: '', personaId: '' };
+        }
+
+        personaId = decodeConversationStoragePart(withoutPrefix.slice(0, separatorIndex));
+        value = withoutPrefix.slice(separatorIndex + 1);
+    }
+
     if (!value.startsWith(GROUP_CONVERSATION_STORE_PREFIX)) {
-        return { avatar: value, groupId: '' };
+        return { avatar: value, groupId: '', personaId };
     }
 
     const withoutPrefix = value.slice(GROUP_CONVERSATION_STORE_PREFIX.length);
     const separatorIndex = withoutPrefix.indexOf(':');
     if (separatorIndex < 0) {
-        return { avatar: '', groupId: '' };
+        return { avatar: '', groupId: '', personaId };
     }
 
     return {
         groupId: withoutPrefix.slice(0, separatorIndex),
         avatar: withoutPrefix.slice(separatorIndex + 1),
+        personaId,
     };
 }
 
@@ -344,6 +398,48 @@ export function saveGroupConversationSettings(groupId, settings) {
     void editGroup(String(group.id), false, false);
 }
 
+function migrateLegacyConversationStoreToPersona(store, personaId = getConversationPersonaId()) {
+    const persona = getConversationPersonaId(personaId);
+    if (!persona || !store || typeof store !== 'object') {
+        return false;
+    }
+
+    let changed = false;
+    const charactersStore = store.characters && typeof store.characters === 'object' ? store.characters : {};
+    for (const [storeKey, threadStore] of Object.entries(charactersStore)) {
+        const parsed = parseConversationThreadKey(storeKey);
+        if (parsed.personaId || !parsed.avatar) {
+            continue;
+        }
+
+        const scopedKey = scopeConversationStorageKey(storeKey, persona);
+        if (!charactersStore[scopedKey]) {
+            charactersStore[scopedKey] = threadStore;
+        }
+        delete charactersStore[storeKey];
+        changed = true;
+    }
+
+    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
+    for (const group of store.groups) {
+        if (!getConversationPersonaId(group.personaId)) {
+            group.personaId = persona;
+            group.updatedAt = Date.now();
+            changed = true;
+        }
+    }
+
+    store.reminders = Array.isArray(store.reminders) ? store.reminders : [];
+    for (const reminder of store.reminders) {
+        if (reminder && typeof reminder === 'object' && !getConversationPersonaId(reminder.personaId)) {
+            reminder.personaId = persona;
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
 export function getConversationStore() {
     const store = extension_settings[CONVERSATION_STORE_KEY];
     if (!store || typeof store !== 'object') {
@@ -363,6 +459,9 @@ export function getConversationStore() {
     current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
     current.groups = Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
     current.reminders = Array.isArray(current.reminders) ? current.reminders : [];
+    if (migrateLegacyConversationStoreToPersona(current)) {
+        persistConversationStore();
+    }
     return current;
 }
 
@@ -431,16 +530,17 @@ function migrateGlobalIdleActionSettings(store, settings) {
 }
 
 export function getCharacterConversationStore(avatar, { create = true } = {}) {
-    if (!avatar) {
+    const storeKey = scopeConversationStorageKey(avatar);
+    if (!storeKey) {
         return null;
     }
 
     const store = getConversationStore();
-    if (!store.characters[avatar] && !create) {
+    if (!store.characters[storeKey] && !create) {
         return null;
     }
-    if (!store.characters[avatar]) {
-        store.characters[avatar] = {
+    if (!store.characters[storeKey]) {
+        store.characters[storeKey] = {
             settings: { ...DEFAULT_SETTINGS },
             schedule: null,
             activeBranchId: DEFAULT_BRANCH_ID,
@@ -450,12 +550,12 @@ export function getCharacterConversationStore(avatar, { create = true } = {}) {
         };
     }
 
-    const characterStore = store.characters[avatar];
+    const characterStore = store.characters[storeKey];
     const normalizedSettings = safeParseSettings(characterStore.settings);
     const migratedGlobalIdle = migrateGlobalIdleActionSettings(store, normalizedSettings);
     characterStore.settings = pickConversationSettings(
         normalizedSettings,
-        parseConversationThreadKey(avatar).groupId ? CHARACTER_CONVERSATION_SETTINGS_KEYS : THREAD_CONVERSATION_SETTINGS_KEYS,
+        parseConversationThreadKey(storeKey).groupId ? CHARACTER_CONVERSATION_SETTINGS_KEYS : THREAD_CONVERSATION_SETTINGS_KEYS,
     );
     characterStore.branches = characterStore.branches && typeof characterStore.branches === 'object' ? characterStore.branches : {};
     characterStore.activeBranchId = characterStore.activeBranchId || DEFAULT_BRANCH_ID;

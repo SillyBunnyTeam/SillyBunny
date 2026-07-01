@@ -3,6 +3,7 @@ import { DEFAULT_BRANCH_ID, MAX_THREAD_MESSAGES, SAFE_TOAST_OPTIONS } from './co
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationStore,
     getConversationThreadStore,
     getCurrentCharAvatar,
@@ -109,6 +110,7 @@ export function addConversationReminder(avatar, groupId, delayText, memoText) {
         id: `rem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         avatar,
         groupId: groupId || '',
+        personaId: getConversationPersonaId(),
         branchId,
         triggerAt,
         text: String(memoText || '').trim(),

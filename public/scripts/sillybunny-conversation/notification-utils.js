@@ -13,11 +13,15 @@ function getUnreadBranches(store) {
     });
 }
 
-export function clearConversationUnreadStore(store) {
+export function clearConversationUnreadStore(store, shouldClearThread = () => true) {
     let changed = false;
     let cleared = 0;
 
-    for (const { branch } of getUnreadBranches(store)) {
+    for (const { threadKey, threadStore, branch } of getUnreadBranches(store)) {
+        if (!shouldClearThread(threadKey, threadStore)) {
+            continue;
+        }
+
         const unread = normalizeConversationUnreadCount(branch.unread);
         if (unread > 0) {
             cleared += unread;
