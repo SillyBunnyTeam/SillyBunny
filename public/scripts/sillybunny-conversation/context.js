@@ -56,12 +56,90 @@ export function getCurrentCharName(fallback = 'Character') {
     return getCurrentCharacter()?.name || fallback;
 }
 
+export function normalizeConversationGroupRecord(group) {
+    const source = group && typeof group === 'object' ? group : {};
+    const id = String(source.id || '').trim();
+    const members = Array.isArray(source.members)
+        ? Array.from(new Set(source.members.map(avatar => String(avatar || '').trim()).filter(Boolean)))
+        : [];
+    if (!id || members.length < 2) {
+        return null;
+    }
+
+    const disabledMembers = Array.isArray(source.disabled_members)
+        ? source.disabled_members.map(avatar => String(avatar || '').trim()).filter(avatar => avatar && members.includes(avatar))
+        : [];
+    const now = Date.now();
+    return {
+        ...source,
+        id,
+        name: String(source.name || 'Conversation Group'),
+        members,
+        disabled_members: disabledMembers,
+        conversation_settings: normalizeGroupConversationSettings(source.conversation_settings),
+        is_conversation_group: true,
+        createdAt: parsePositiveInt(source.createdAt, now, 0),
+        updatedAt: parsePositiveInt(source.updatedAt, source.createdAt || now, 0),
+    };
+}
+
+export function getConversationGroups() {
+    const store = getConversationStore();
+    store.groups = Array.isArray(store.groups)
+        ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean)
+        : [];
+    return store.groups;
+}
+
 export function getConversationGroupById(groupId) {
-    if (!groupId || !Array.isArray(groups)) {
+    if (!groupId) {
+        return null;
+    }
+
+    const conversationGroup = getConversationGroups().find(group => String(group?.id) === String(groupId));
+    if (conversationGroup) {
+        return conversationGroup;
+    }
+
+    if (!Array.isArray(groups)) {
         return null;
     }
 
     return groups.find(group => String(group?.id) === String(groupId)) || null;
+}
+
+export function isConversationOwnedGroup(groupId) {
+    return Boolean(groupId && getConversationGroups().some(group => String(group?.id) === String(groupId)));
+}
+
+export function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null } = {}) {
+    const members = Array.from(new Set(
+        (Array.isArray(memberAvatars) ? memberAvatars : [])
+            .map(avatar => String(avatar || '').trim())
+            .filter(Boolean),
+    ));
+    if (members.length < 2) {
+        return null;
+    }
+
+    const now = Date.now();
+    const group = normalizeConversationGroupRecord({
+        id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
+        name: name || 'Conversation Group',
+        members,
+        avatar_url: avatarUrl || '',
+        disabled_members: [],
+        conversation_settings: settings || getDefaultGroupConversationSettings(),
+        createdAt: now,
+        updatedAt: now,
+    });
+    if (!group) {
+        return null;
+    }
+
+    getConversationGroups().push(group);
+    persistConversationStore();
+    return group;
 }
 
 export function isAvatarInConversationGroup(avatar, groupId) {
@@ -257,6 +335,12 @@ export function saveGroupConversationSettings(groupId, settings) {
     }
 
     group.conversation_settings = normalizeGroupConversationSettings(settings);
+    group.updatedAt = Date.now();
+    if (isConversationOwnedGroup(groupId)) {
+        persistConversationStore();
+        return;
+    }
+
     void editGroup(String(group.id), false, false);
 }
 
@@ -268,6 +352,7 @@ export function getConversationStore() {
             localStorageMigrated: false,
             settings: {},
             characters: {},
+            groups: [],
             reminders: [],
         };
     }
@@ -276,6 +361,7 @@ export function getConversationStore() {
     current.version = current.version || 1;
     current.settings = current.settings && typeof current.settings === 'object' ? current.settings : {};
     current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
+    current.groups = Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
     current.reminders = Array.isArray(current.reminders) ? current.reminders : [];
     return current;
 }

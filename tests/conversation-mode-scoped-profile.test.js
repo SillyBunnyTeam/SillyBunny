@@ -37,6 +37,8 @@ function getFunctionSource(source, name) {
 const generationSource = readConversationSource('generation.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
+const initSource = readConversationSource('init.js');
+const pickersSource = readConversationSource('pickers.js');
 const stateSource = readConversationSource('state.js');
 
 describe('conversation mode scoped connection profile', () => {
@@ -79,5 +81,13 @@ describe('conversation mode scoped connection profile', () => {
             expect(source).toContain('generateConversationRaw');
             expect(source).not.toContain('withConversationConnectionProfile');
         }
+    });
+
+    test('keeps Conversation DM selection decoupled from roleplay chats and groups', () => {
+        expect(chromeSource).not.toContain('selectCharacterById');
+        expect(chromeSource).not.toContain('openGroupById');
+        expect(pickersSource).not.toContain('/api/groups/create');
+        expect(initSource).not.toContain('syncConversationWorkspaceToRoleplaySelection');
+        expect(initSource).not.toContain('isAvatarInConversationGroup');
     });
 });

@@ -16,6 +16,7 @@ import {
     DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     DEFAULT_SETTINGS,
     GEECHAN_DEFAULT_PROMPT,
+    GROUP_CONVERSATION_SETTINGS_KEYS,
     GROUP_CONVERSATION_STORE_PREFIX,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
     MAX_THREAD_MESSAGES,
@@ -87,6 +88,7 @@ function ensureConversationStore(settings) {
         localStorageMigrated: Boolean(current.localStorageMigrated),
         settings: getObject(current.settings),
         characters: getObject(current.characters),
+        groups: Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [],
         reminders: Array.isArray(current.reminders) ? current.reminders : [],
     };
 
@@ -135,6 +137,74 @@ function getConversationThreadKey(avatar, groupId = '') {
     }
 
     return safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
+}
+
+function normalizeGroupConversationSettings(settings = {}) {
+    const source = getObject(settings);
+    const normalized = normalizeConversationSettings(source);
+    return GROUP_CONVERSATION_SETTINGS_KEYS.reduce((picked, key) => {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+            picked[key] = normalized[key];
+        }
+        return picked;
+    }, {});
+}
+
+function getDefaultGroupConversationSettings() {
+    return normalizeGroupConversationSettings({
+        ...DEFAULT_SETTINGS,
+        multi_char: true,
+        auto_character_chat: true,
+    });
+}
+
+function getUniqueConversationGroupMembers(memberAvatars) {
+    return Array.from(new Set(
+        (Array.isArray(memberAvatars) ? memberAvatars : [])
+            .map(avatar => String(avatar || '').trim())
+            .filter(Boolean),
+    ));
+}
+
+function normalizeConversationGroupRecord(group) {
+    const source = getObject(group);
+    const id = String(source.id || '').trim();
+    const members = getUniqueConversationGroupMembers(source.members);
+    if (!id || members.length < 2) {
+        return null;
+    }
+
+    const now = Date.now();
+    return {
+        ...source,
+        id,
+        name: String(source.name || 'Conversation Group'),
+        members,
+        disabled_members: getUniqueConversationGroupMembers(source.disabled_members).filter(avatar => members.includes(avatar)),
+        conversation_settings: normalizeGroupConversationSettings(source.conversation_settings),
+        is_conversation_group: true,
+        createdAt: parsePositiveInt(source.createdAt, now, 0),
+        updatedAt: parsePositiveInt(source.updatedAt, source.createdAt || now, 0),
+    };
+}
+
+function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null } = {}) {
+    const members = getUniqueConversationGroupMembers(memberAvatars);
+    if (members.length < 2) {
+        return null;
+    }
+
+    const now = Date.now();
+    return normalizeConversationGroupRecord({
+        id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
+        name: name || 'Conversation Group',
+        members,
+        avatar_url: avatarUrl || '',
+        disabled_members: [],
+        conversation_settings: settings || getDefaultGroupConversationSettings(),
+        createdAt: now,
+        updatedAt: now,
+    });
 }
 
 function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) {
@@ -318,8 +388,27 @@ function getIncomingMessage(body, fallbackRole = 'user') {
     };
 }
 
-function getGroupConversationSettings(request, groupId) {
-    if (!groupId || !request.user.directories.groups) {
+function getConversationGroupRecord(store, groupId) {
+    const safeGroupId = String(groupId || '').trim();
+    if (!safeGroupId) {
+        return null;
+    }
+
+    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
+    return store.groups.find(group => String(group?.id) === safeGroupId) || null;
+}
+
+function getGroupConversationSettings(request, store, groupId) {
+    if (!groupId) {
+        return {};
+    }
+
+    const conversationGroup = getConversationGroupRecord(store, groupId);
+    if (conversationGroup) {
+        return getObject(conversationGroup.conversation_settings);
+    }
+
+    if (!request.user.directories.groups) {
         return {};
     }
 
@@ -348,7 +437,7 @@ function getConversationSettings(request, store, avatar, groupId, overrides = {}
     return normalizeConversationSettings({
         ...DEFAULT_SETTINGS,
         ...(groupId ? { multi_char: true, auto_character_chat: true } : {}),
-        ...getGroupConversationSettings(request, groupId),
+        ...getGroupConversationSettings(request, store, groupId),
         ...getObject(threadStore?.settings),
         ...getObject(store.settings),
         ...getObject(overrides),
@@ -710,6 +799,31 @@ router.post('/store/save', (request, response) => {
     const store = ensureConversationStore(incomingSettings);
     const saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
     return respondSaveResult(response, saveResult, { store: saveResult.store || store });
+});
+
+router.post('/group/list', (request, response) => {
+    const settings = readUserSettings(request);
+    const store = ensureConversationStore(settings);
+    return response.send({ groups: store.groups, version: getSettingsVersion(settings) });
+});
+
+router.post('/group/create', (request, response) => {
+    const members = request.body?.members || request.body?.memberAvatars;
+    const group = createConversationGroupRecord(members, {
+        name: request.body?.name,
+        avatarUrl: request.body?.avatar_url || request.body?.avatarUrl,
+        settings: request.body?.conversation_settings || request.body?.settings,
+    });
+    if (!group) {
+        return response.status(400).send({ error: 'members_required' });
+    }
+
+    const currentSettings = readUserSettings(request);
+    const store = ensureConversationStore(currentSettings);
+    store.groups.push(group);
+
+    const saveResult = saveConversationStore(request, currentSettings, store, request.body?.version);
+    return respondSaveResult(response, saveResult, { group, groups: store.groups });
 });
 
 router.post('/thread/get', (request, response) => {

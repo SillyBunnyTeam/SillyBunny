@@ -157,9 +157,46 @@ describe('SillyBunny Conversation REST API', () => {
             localStorageMigrated: false,
             settings: {},
             characters: {},
+            groups: [],
             reminders: [],
         });
         expect(readSettings().extension_settings[CONVERSATION_STORE_KEY]).toBeUndefined();
+    });
+
+    test('group/create persists Conversation-owned groups without creating roleplay group files', async () => {
+        const createResponse = await postJson('/group/create', {
+            name: 'Nova and Echo',
+            members: ['nova.png', 'echo.png'],
+            version: 0,
+        });
+
+        expect(createResponse.status).toBe(200);
+        const createJson = await createResponse.json();
+        expect(createJson.version).toBe(1);
+        expect(createJson.group).toMatchObject({
+            name: 'Nova and Echo',
+            members: ['nova.png', 'echo.png'],
+            is_conversation_group: true,
+        });
+        expect(fs.readdirSync(userDirectories.groups)).toEqual([]);
+
+        const appendResponse = await postJson('/message/append', {
+            avatar: 'nova.png',
+            groupId: createJson.group.id,
+            text: 'group-only hello',
+            version: 1,
+        });
+
+        expect(appendResponse.status).toBe(200);
+        const appendJson = await appendResponse.json();
+        expect(appendJson.version).toBe(2);
+        expect(appendJson.threadKey).toBe(`group:${createJson.group.id}:nova.png`);
+
+        const store = readConversationStore();
+        expect(store.groups).toHaveLength(1);
+        expect(store.groups[0].id).toBe(createJson.group.id);
+        expect(store.characters[`group:${createJson.group.id}:nova.png`].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('group-only hello');
+        expect(fs.readdirSync(userDirectories.groups)).toEqual([]);
     });
 
     test('message/append persists a user message in the existing settings schema', async () => {

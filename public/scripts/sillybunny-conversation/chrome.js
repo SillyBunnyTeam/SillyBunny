@@ -1,6 +1,5 @@
-import { animation_duration, characters, selectCharacterById } from '../../script.js';
+import { animation_duration, characters } from '../../script.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
-import { openGroupById, selected_group } from '../group-chats.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { getUserAvatar, setUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
@@ -11,7 +10,6 @@ import {
     createConversationBranchForAvatar,
     deleteConversationBranch,
     getConversationBranches,
-    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getCurrentCharacter,
     getCurrentCharAvatar,
@@ -221,14 +219,6 @@ export async function selectConversationThread(avatar, { groupId = null, showToa
     }
 
     const normalizedGroupId = groupId ? String(groupId) : '';
-    const didSyncRoleplaySelection = normalizedGroupId
-        ? await openGroupById(normalizedGroupId, { switchMenu: false })
-        : await selectCharacterById(characters.findIndex(character => character?.avatar === avatar), { switchMenu: false });
-
-    if (!didSyncRoleplaySelection) {
-        return false;
-    }
-
     return openConversationWorkspaceForAvatar(avatar, {
         groupId: normalizedGroupId || null,
         showToast,
@@ -847,22 +837,18 @@ export function bindConversationChromeControls(sheld) {
 }
 
 export function getDefaultConversationAvatar() {
-    const group = getConversationGroupById(selected_group);
-    const groupAvatar = group?.members
-        ?.filter(avatar => avatar && !group.disabled_members?.includes(avatar))
-        ?.find(avatar => getCharacterForAvatar(avatar));
-    if (selected_group && groupAvatar) {
-        return groupAvatar;
-    }
-
-    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
-    if (currentAvatar) {
-        return currentAvatar;
+    if (conversationState.conversationSelectedAvatar && getCharacterForAvatar(conversationState.conversationSelectedAvatar)) {
+        return conversationState.conversationSelectedAvatar;
     }
 
     const pal = getConversationPals().find(item => item.character?.avatar);
     if (pal?.character?.avatar) {
         return pal.character.avatar;
+    }
+
+    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
+    if (currentAvatar) {
+        return currentAvatar;
     }
 
     return (Array.isArray(characters) ? characters : []).find(character => character?.avatar)?.avatar || null;
@@ -920,7 +906,8 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
 
 export function openConversationWorkspaceFromWelcome() {
     const avatar = conversationState.conversationSelectedAvatar || getDefaultConversationAvatar();
-    const groupId = selected_group && avatar && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
+    const selectedGroupId = conversationState.conversationSelectedGroupId || '';
+    const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
     if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
         toastr.warning('Pick or import a character before opening Conversation Mode.');
         return false;
