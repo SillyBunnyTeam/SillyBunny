@@ -363,7 +363,9 @@ describe('in-chat agent post-processing runner', () => {
             getEnabledAgents: jest.fn(() => [...enabledAgents]),
             getEnabledToolAgents: jest.fn(() => []),
             getGlobalSettings: jest.fn(() => globalSettings),
+            getHiddenAgentIds: jest.fn(() => new Set(globalSettings.hiddenCompanionAgentIds ?? [])),
             getPromptTransformMode: jest.fn(agent => agent?.postProcess?.promptTransformMode === 'append' ? 'append' : 'rewrite'),
+            isAgentHidden: jest.fn(agentId => new Set(globalSettings.hiddenCompanionAgentIds ?? []).has(String(agentId ?? '').trim())),
             isTrackerFixAgent: jest.fn(agent => {
                 if (agent?.category !== 'tracker') return false;
                 if (agent.phase === 'post' || agent.phase === 'both') return true;
@@ -1302,6 +1304,36 @@ describe('in-chat agent post-processing runner', () => {
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
     });
 
+    test('skips hidden companions when injecting feedback prompts', async () => {
+        const hiddenCompanion = createCompanionAgent({
+            id: 'hidden-feedback-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        const visibleCompanion = createCompanionAgent({
+            id: 'visible-feedback-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [hiddenCompanion, visibleCompanion];
+        globalSettings.hiddenCompanionAgentIds = ['hidden-feedback-companion'];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, hiddenCompanion, {
+            status: 'done',
+            content: 'Hidden note that should not feed the next message.',
+        });
+        companionRunner.setCompanionResult(reply, visibleCompanion, {
+            status: 'done',
+            content: 'Visible note that should feed back.',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([hiddenCompanion, visibleCompanion]);
+
+        expect(extensionPrompts['inchat_agent_companion_hidden-feedback-companion']).toBeUndefined();
+        expect(extensionPrompts['inchat_agent_companion_visible-feedback-companion'].value).toContain('Visible note that should feed back.');
+    });
+
     test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
         const trackerCompanion = createCompanionAgent({
             id: 'tracker-companion',
@@ -1785,6 +1817,51 @@ describe('in-chat agent post-processing runner', () => {
         expect(statsPrompt).toContain('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
         expect(chat[3].extra.inChatAgentCompanionResults['saved-level-up-companion'].content).toBe('[LEVEL_UP]\nLevel: 2\n[/LEVEL_UP]');
         expect(chat[3].extra.inChatAgentCompanionResults['saved-user-stats-generator'].content).toBe('[USER_STATS]\nLevel: 2\n[/USER_STATS]');
+    });
+
+    test('excludes hidden companions from automatic linked context', async () => {
+        generateQuietPrompt.mockResolvedValue('Visible companion note');
+        globalSettings.hiddenCompanionAgentIds = ['source-companion'];
+
+        const sourceCompanion = createCompanionAgent({
+            id: 'source-companion',
+            name: 'Source Companion',
+            companion: {
+                trigger: 'manual',
+                sendContextToCompanions: true,
+                contextRecipientAgentIds: ['visible-companion'],
+            },
+        });
+        const visibleCompanion = createCompanionAgent({
+            id: 'visible-companion',
+            name: 'Visible Companion',
+            prompt: 'Write the visible companion note.',
+            companion: { trigger: 'auto' },
+        });
+        enabledAgents = [sourceCompanion, visibleCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push(
+            { mes: 'Previous assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Please continue.', name: 'User', is_user: true, is_system: false, extra: {} },
+            { mes: 'Current assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+        );
+        companionRunner.setCompanionResult(chat[0], sourceCompanion, {
+            status: 'done',
+            content: 'Hidden source note that should not be linked.',
+        });
+
+        await companionRunner.runCompanionStage({
+            messageIndex: 2,
+            message: chat[2],
+            activeAgents: [sourceCompanion, visibleCompanion],
+        });
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        const visiblePrompt = generateQuietPrompt.mock.calls[0][0].quietPrompt;
+        expect(visiblePrompt).toContain('Write the visible companion note.');
+        expect(visiblePrompt).not.toContain('Source Companion');
+        expect(visiblePrompt).not.toContain('Hidden source note that should not be linked.');
     });
 
     test('does not cascade to dependents when parent output is unchanged', async () => {

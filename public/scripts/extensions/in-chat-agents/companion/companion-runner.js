@@ -19,6 +19,7 @@ import {
     getEnabledAgents,
     getGlobalSettings,
     MAX_AGENT_MAX_TOKENS,
+    isAgentHidden,
     isCompanionAgent,
     resolveCompanionConnectionProfile,
 } from '../agent-store.js';
@@ -39,7 +40,6 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
-    isAgentHidden,
 } from './companion-shared.js';
 
 export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
@@ -1287,14 +1287,14 @@ export function meetsCompanionContextThreshold(agent, messageIndex = chat.length
     return !minContextTokens || getChatTokenEstimate(messageIndex + 1) >= minContextTokens;
 }
 
-function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1 } = {}) {
+function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1, includeHidden = manual } = {}) {
     return activeAgents.filter(agent => {
         const companion = getCompanionConfig(agent);
         if (!isCompanionAgent(agent) || !String(agent.prompt ?? '').trim()) {
             return false;
         }
 
-        if (!manual && isAgentHidden(agent.id)) {
+        if (!includeHidden && isAgentHidden(agent.id)) {
             return false;
         }
 
@@ -1416,7 +1416,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
     }
 
     const cancelRevision = getAgentGenerationCancelRevision();
-    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex });
+    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex, includeHidden: false });
     await runCompanionAgentsWithDependencyDelay(agents, messageIndex, generationType, cancelRevision, { contextSourceAgents });
 
     saveChatDebounced({ deferBackup: false });
@@ -1431,6 +1431,9 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
 
     for (const agent of activeAgents) {
         if (!isCompanionAgent(agent)) {
+            continue;
+        }
+        if (isAgentHidden(agent.id)) {
             continue;
         }
 

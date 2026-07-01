@@ -7,9 +7,12 @@ import {
     areAgentsGloballyEnabled,
     getAgents,
     getCompanionConfig,
+    getHiddenAgentIds,
     isAgentEnabledForCurrentScope,
+    isAgentHidden,
     isCompanionAgent,
     saveAgent,
+    setHiddenAgentIds,
 } from '../agent-store.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
@@ -31,9 +34,7 @@ import {
     MEMORY_SHARD_TEMPLATE_ID,
     PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
     appendChatOnlyUserMessage,
-    getHiddenAgentIds,
     isAssistantMessage,
-    isAgentHidden,
     isChatOnlyAgent,
     isChatroomAgent,
     isPlotCompassAgent,
@@ -41,7 +42,6 @@ import {
     normalizeChatOnlyInput,
     normalizeChatroomReply,
     normalizePlotCompassObjective,
-    setHiddenAgentIds,
 } from './companion-shared.js';
 
 const PANEL_HISTORY_LIMIT = 5;

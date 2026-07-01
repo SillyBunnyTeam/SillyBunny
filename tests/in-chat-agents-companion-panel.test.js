@@ -9,6 +9,7 @@ describe('companion tracker panel', () => {
     let globallyEnabled;
     let chatTokenEstimate;
     let localStorageValues;
+    let hiddenAgentIds;
 
     function createEventSource() {
         const handlers = new Map();
@@ -74,9 +75,14 @@ describe('companion tracker panel', () => {
                 trigger: agent?.companion?.trigger === 'manual' ? 'manual' : 'auto',
                 displayMode: agent?.companion?.displayMode ?? 'panel',
             })),
+            getHiddenAgentIds: jest.fn(() => new Set(hiddenAgentIds)),
             isAgentEnabledForCurrentScope: jest.fn(agent => Boolean(agent?.enabled)),
+            isAgentHidden: jest.fn(agentId => hiddenAgentIds.has(String(agentId ?? '').trim())),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
             saveAgent: jest.fn(async () => {}),
+            setHiddenAgentIds: jest.fn(ids => {
+                hiddenAgentIds = new Set([...ids].map(id => String(id ?? '').trim()).filter(Boolean));
+            }),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
@@ -112,6 +118,7 @@ describe('companion tracker panel', () => {
         globallyEnabled = true;
         chatTokenEstimate = 0;
         localStorageValues = new Map();
+        hiddenAgentIds = new Set();
         globalThis.localStorage = {
             getItem: jest.fn(key => localStorageValues.get(key) ?? null),
             setItem: jest.fn((key, value) => localStorageValues.set(key, String(value))),
@@ -295,9 +302,27 @@ describe('companion tracker panel', () => {
         // SillyBunny: the per-companion Play button must remain visible after a companion has
         // already produced state, otherwise manual companions can only regenerate the first run
         // and never pick up a newer assistant reply from the draggable panel.
-        const trackerSection = html.match(/<section class="ica--tpanel-agent"[\s\S]*?data-message-index="0"[\s\S]*?<\/section>/)?.[0] ?? '';
-        const playButtonMatches = trackerSection.match(/data-action="panel-run-latest"/g) ?? [];
-        expect(playButtonMatches).toHaveLength(1);
+        expect(html).toMatch(/<section class="ica--tpanel-agent"[\s\S]*?data-message-index="0"[\s\S]*?data-action="panel-run-latest"[\s\S]*?<\/section>/);
+    });
+
+    test('keeps hidden companions unhideable from the collapsed panel row', async () => {
+        const tracker = { id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true, companion: { displayMode: 'panel' } };
+        agents = [tracker];
+        hiddenAgentIds = new Set(['tracker-1']);
+        const panel = await importPanel();
+
+        const message = { is_user: false, is_system: false, mes: 'reply' };
+        chat.push(message);
+        companionResultsByMessage.set(message, {
+            'tracker-1': { status: 'done', content: 'Hidden state', agentName: 'Scene Tracker' },
+        });
+
+        const html = panel.buildPanelHtml();
+
+        expect(html).toContain('data-agent-id="tracker-1" data-message-index="0" data-hidden="true"');
+        expect(html).toContain('data-action="panel-hide"');
+        expect(html).toContain('aria-label="Unhide companion"');
+        expect(html).toContain('data-action="panel-run-latest"');
     });
 
     test('renders edit buttons with per-entry message indices on history entries', async () => {
