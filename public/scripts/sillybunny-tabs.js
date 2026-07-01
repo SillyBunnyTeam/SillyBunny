@@ -2499,11 +2499,7 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
     }
 
     const activeElement = document.activeElement;
-    if (isChatComposerEditableElement(activeElement)) {
-        return false;
-    }
-
-    return isMobileShellPanelEditableElement(activeElement) || hasOpenMobileShellDrawer();
+    return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
 function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
@@ -2534,9 +2530,9 @@ function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
 
-    // SillyBunny: iOS keyboard edits inside shell panels should not resize or
-    // raise the Customize/Workspace windows. Keep shell geometry on the stable
-    // layout viewport while focused-input scrolling still uses visualViewport.
+    // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
+    // should not feed Safari visualViewport jitter back into shell geometry.
+    // Keep layout stable while focused panel scrolling still uses visualViewport.
     if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {
         return layoutViewport;
     }
@@ -2561,9 +2557,8 @@ function syncShellViewportBounds() {
     setRootViewportProperty('--sb-shell-viewport-height', `${viewportSize.height}px`);
     setRootViewportProperty('--sb-shell-measured-top-offset', `${topOffset}px`);
     setRootViewportProperty('--sb-shell-available-height', `${Math.max(0, viewportSize.height - topOffset)}px`);
-    // SillyBunny: iOS Safari shifts the visual viewport (visualViewport.offsetTop > 0)
-    // when the keyboard opens; composer-focused edits use that offset, while
-    // panel-focused edits keep the stable layout top so windows are not raised.
+    // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
+    // keyboard edit paths intentionally keep the stable layout top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
 }
 
@@ -2571,9 +2566,9 @@ function syncShellViewportBounds() {
  * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
  * focused input above the virtual keyboard the way a normal page would. When
  * focus enters an input inside a shell panel or drawer scroller, manually scroll
- * that scroller so the input sits above the keyboard. The chat composer itself
- * stays on visual-viewport shell sizing when it has focus; this covers the
- * remaining settings/drawer inputs (e.g. "Enter a Model ID").
+ * that scroller so the input sits above the keyboard. The chat composer and
+ * stable iOS shell sizing are handled separately; this covers the remaining
+ * settings/drawer inputs (e.g. "Enter a Model ID").
  */
 function scrollMobileFocusedInputIntoView(event) {
     if (!isMobileViewport()) {
