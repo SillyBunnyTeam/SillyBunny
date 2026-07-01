@@ -114,6 +114,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(stateSource).toContain('conversationReplyTarget');
         expect(timelineSource).toContain('renderConversationComposerReplyPreview');
         expect(timelineSource).toContain('conversationReplyTarget = {');
+        expect(timelineSource).toContain("!String(reference.messageId || '').trim()");
+        expect(timelineSource).not.toContain("reference?.text || reference?.attachmentSummary || 'Message'");
         expect(timelineSource).not.toContain('quoteBlock');
         expect(timelineSource).not.toContain('> **${speakerName}');
         expect(attachmentsSource).toContain('conversation_reply_to');

@@ -156,7 +156,11 @@ function buildConversationReplyReference(message) {
 }
 
 function getConversationReplyReferencePreview(reference) {
-    return truncateConversationReplyPreview(reference?.text || reference?.attachmentSummary || 'Message');
+    if (!reference || typeof reference !== 'object' || !String(reference.messageId || '').trim()) {
+        return '';
+    }
+
+    return truncateConversationReplyPreview(reference.text || reference.attachmentSummary);
 }
 
 function createConversationReplyReferenceElement(reference, className) {
