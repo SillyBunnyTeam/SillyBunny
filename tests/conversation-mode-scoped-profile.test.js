@@ -102,6 +102,16 @@ describe('conversation mode scoped connection profile', () => {
         expect(generationSource).toContain('resolvedExtra.partner_avatar = speakerAvatar');
     });
 
+    test('adds context-aware implicit references for group DMs', () => {
+        expect(promptSource).toContain('buildConversationGroupReferenceContext');
+        expect(promptSource).toContain('conversation-group-reference-context');
+        expect(promptSource).toContain('last non-user speaker before it');
+        expect(promptSource).toContain('do not assume every you means');
+        expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId })');
+        expect(attachmentsSource).toContain('getImplicitGroupReplyCandidate');
+        expect(attachmentsSource).toContain('isBroadGroupAddress');
+    });
+
     test('keeps saved Conversation-owned group DMs visible without messages', () => {
         expect(settingsStoreSource).toContain('const hasConversationGroups');
         expect(settingsStoreSource).toContain('getConversationGroups().forEach');

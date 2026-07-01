@@ -257,6 +257,26 @@ function getLastGroupSpeakerIndex(thread, speakerAvatar, threadAvatar) {
     return -1;
 }
 
+function isBroadGroupAddress(text) {
+    return /\b(everyone|everybody|anyone|someone|you\s+all|you\s+guys|y['’]?all|yall|both\s+of\s+you|all\s+of\s+you)\b/i.test(String(text || ''));
+}
+
+function getImplicitGroupReplyCandidate(thread, threadAvatar, candidates, latestUserText) {
+    if (!String(latestUserText || '').trim() || isBroadGroupAddress(latestUserText)) {
+        return null;
+    }
+
+    for (let index = thread.length - 1; index >= 0; index--) {
+        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+        const candidate = candidates.find(item => item.character.avatar === speakerAvatar);
+        if (candidate) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
 function getGroupReplyCandidates(threadAvatar, groupId) {
     const group = getConversationGroupById(groupId);
     if (!group?.members?.length) {
@@ -328,10 +348,14 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
         };
     });
     const selected = [];
-    weightedPool
+    const mentionedCandidates = weightedPool
         .filter(({ character }) => isCharacterMentionedInText(character, latestUserText, candidateCharacters))
-        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS)
-        .forEach(candidate => addUniqueGroupReplyCandidate(selected, candidate));
+        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS);
+    mentionedCandidates.forEach(candidate => addUniqueGroupReplyCandidate(selected, candidate));
+
+    if (!selected.length) {
+        addUniqueGroupReplyCandidate(selected, getImplicitGroupReplyCandidate(thread, threadAvatar, weightedPool, latestUserText));
+    }
 
     const drawRandomCandidate = () => {
         const remaining = weightedPool.filter(candidate => !selected.some(item => item.character.avatar === candidate.character.avatar));

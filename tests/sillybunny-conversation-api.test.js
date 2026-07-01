@@ -199,6 +199,61 @@ describe('SillyBunny Conversation REST API', () => {
         expect(fs.readdirSync(userDirectories.groups)).toEqual([]);
     });
 
+    test('message/send adds group reference context for unnamed replies', async () => {
+        upstreamReplyText = 'I was talking about the keys.';
+
+        const createResponse = await postJson('/group/create', {
+            name: 'Alhaitham and Kaveh',
+            members: ['alhaitham.png', 'kaveh.png'],
+            version: 0,
+        });
+        const createJson = await createResponse.json();
+
+        const saveResponse = await postJson('/thread/save', {
+            avatar: 'alhaitham.png',
+            groupId: createJson.group.id,
+            version: 1,
+            messages: [{
+                role: 'partner',
+                name: 'Kaveh',
+                mes: 'I hid the keys.',
+                extra: { partner_avatar: 'kaveh.png' },
+            }],
+        });
+        expect(saveResponse.status).toBe(200);
+
+        const sendResponse = await postJson('/message/send', {
+            avatar: 'alhaitham.png',
+            groupId: createJson.group.id,
+            text: 'why did you do that?',
+            userName: 'Riley',
+            version: 2,
+            character: { data: { name: 'Alhaitham' } },
+            generation: {
+                backend: 'chat',
+                payload: {
+                    chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES,
+                    reverse_proxy: upstreamUrl,
+                    proxy_password: 'test-key',
+                    model: 'gpt-5.4',
+                    temperature: 1,
+                    top_p: 1,
+                    max_tokens: 64,
+                },
+            },
+            includePrompt: true,
+        });
+
+        expect(sendResponse.status).toBe(200);
+        const sendJson = await sendResponse.json();
+        const contextMessage = sendJson.prompt.messages.find(message => message.identifier === 'conversation-group-reference-context');
+        expect(contextMessage).toBeTruthy();
+        expect(contextMessage.content).toContain('Latest user message: why did you do that?');
+        expect(contextMessage.content).toContain('most likely addresses Kaveh');
+        expect(contextMessage.content).toContain('do not assume every you means Alhaitham');
+        expect(JSON.stringify(upstreamRequests[0])).toContain('Group DM reference context');
+    });
+
     test('message/append persists a user message in the existing settings schema', async () => {
         const response = await postJson('/message/append', {
             avatar: 'nova.png',

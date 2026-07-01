@@ -502,6 +502,72 @@ function formatConversationReplyReference(reference) {
     return `(replying to ${formatPromptText(reference.name || 'Speaker', 80)}: ${preview})`;
 }
 
+function getConversationSpeakerName(message, userName = 'User') {
+    if (message?.role === 'user') {
+        return userName;
+    }
+
+    return String(message?.name || 'Speaker').trim() || 'Speaker';
+}
+
+function getLastUserMessageIndex(messages) {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        if (messages[index]?.role === 'user' && hasConversationMessageContent(messages[index])) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+function getLastNonUserMessageBefore(messages, beforeIndex) {
+    for (let index = beforeIndex - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (message?.role !== 'user' && message?.role !== 'system' && hasConversationMessageContent(message)) {
+            return message;
+        }
+    }
+
+    return null;
+}
+
+function buildConversationGroupReferenceContext(messages, { groupId = '', speakerName = 'Character', userName = 'User' } = {}) {
+    if (!groupId) {
+        return '';
+    }
+
+    const recentMessages = messages
+        .filter(message => hasConversationMessageContent(message) && message?.role !== 'system')
+        .slice(-TRANSCRIPT_MESSAGE_LIMIT);
+    const latestUserIndex = getLastUserMessageIndex(recentMessages);
+    if (latestUserIndex < 0) {
+        return '';
+    }
+
+    const latestUserMessage = recentMessages[latestUserIndex];
+    const replyReference = latestUserMessage.extra?.conversation_reply_to;
+    const lastNonUserMessage = getLastNonUserMessageBefore(recentMessages, latestUserIndex);
+    const rawTargetName = replyReference?.name || (lastNonUserMessage ? getConversationSpeakerName(lastNonUserMessage, userName) : '');
+    const targetName = formatPromptText(rawTargetName, 80);
+    if (!targetName) {
+        return '';
+    }
+
+    const speaker = formatPromptText(speakerName || 'Character', 80);
+    const latestText = formatPromptText(latestUserMessage.mes, 500);
+    const targetReason = replyReference?.name
+        ? `The latest user message is an explicit reply to ${targetName}.`
+        : `The latest user message most likely addresses ${targetName}, the last non-user speaker before it, when it uses implicit references like you, your, that, this, or why.`;
+
+    return [
+        'Group DM reference context:',
+        latestText ? `Latest user message: ${latestText}` : '',
+        targetReason,
+        `${speaker} should silently use this to resolve ambiguous references. If ${speaker} is not ${targetName}, do not assume every you means ${speaker}; the user may be referring to ${targetName}.`,
+        'Do not mention this context or explain the reference resolution; just reply naturally.',
+    ].filter(Boolean).join('\n');
+}
+
 function getContentText(content) {
     if (typeof content === 'string') {
         return content;
@@ -516,7 +582,7 @@ function getContentText(content) {
         .join('\n');
 }
 
-function buildConversationPromptMessages(messages, directive, speakerName) {
+function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User' } = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
@@ -547,6 +613,15 @@ function buildConversationPromptMessages(messages, directive, speakerName) {
             role: 'user',
             content: '(No prior DM messages.)',
             identifier: 'conversation-empty-transcript',
+        });
+    }
+
+    const groupReferenceContext = buildConversationGroupReferenceContext(messages, { groupId, speakerName, userName });
+    if (groupReferenceContext) {
+        promptMessages.push({
+            role: 'system',
+            content: groupReferenceContext,
+            identifier: 'conversation-group-reference-context',
         });
     }
 
@@ -944,7 +1019,7 @@ router.post('/message/send', async (request, response) => {
     const character = await getCharacterData(request, avatar);
     const branch = getActiveConversationBranch(store, avatar, groupId, { create: false });
     const directive = getDefaultDirective(request.body);
-    const promptMessages = buildConversationPromptMessages(branch?.messages || [], directive, character.name || 'Character');
+    const promptMessages = buildConversationPromptMessages(branch?.messages || [], directive, character.name || 'Character', { groupId, userName });
     const systemPrompt = buildConversationSystemPrompt({ settings, character, userName, groupId, branch });
     const { backend, payload } = buildGenerationRequestBody(
         request.body.generation,
