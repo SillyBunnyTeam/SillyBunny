@@ -14,6 +14,7 @@ import {
     saveAgent,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 import {
     COMPANION_RESULTS_UPDATED_EVENT,
     deleteCompanionResult,
@@ -239,17 +240,18 @@ export function formatCompanionContent(agentId, result = {}, message = null, sty
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
+    const resolved = resolveCompanionContentMacros(content, message);
     const sanitizeOptions = { prefix: stylePrefix };
 
     if (result.format === 'html') {
-        return decorateChoiceLines(sanitizeCompanionHtml(content, sanitizeOptions));
+        return decorateChoiceLines(sanitizeCompanionHtml(resolved, sanitizeOptions));
     }
 
     if (result.format === 'text') {
-        return `<pre class="ica--companion-text">${escapeHtml(content)}</pre>`;
+        return `<pre class="ica--companion-text">${escapeHtml(resolved)}</pre>`;
     }
 
-    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(content), sanitizeOptions));
+    return decorateChoiceLines(sanitizeCompanionHtml(getMarkdownConverter().makeHtml(resolved), sanitizeOptions));
 }
 
 function getResultStatus(result = {}) {

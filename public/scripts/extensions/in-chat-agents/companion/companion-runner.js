@@ -39,7 +39,9 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    normalizePlotCompassObjective,
 } from './companion-shared.js';
+import { resolveCompanionContentMacros } from './companion-macros.js';
 
 export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -353,7 +355,7 @@ function getDirectorCommentaryVoicePrompt(voice, settings = {}) {
     return DIRECTOR_COMMENTARY_VOICE_PRESETS[normalizedVoice] || DIRECTOR_COMMENTARY_VOICE_PRESETS['conspiratorial-absurdity'];
 }
 
-function getTemplateSettingsPromptBlock(agent = {}) {
+function getTemplateSettingsPromptBlock(agent = {}, message = null) {
     const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
 
     if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
@@ -384,7 +386,7 @@ function getTemplateSettingsPromptBlock(agent = {}) {
     }
 
     if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
-        const objective = String(agent.settings?.plotCompassObjective ?? '').trim();
+        const objective = normalizePlotCompassObjective(resolveCompanionContentMacros(agent.settings?.plotCompassObjective ?? '', message));
         return `[Plot Compass Objective]\n${objective || 'none set'}`;
     }
 
@@ -598,7 +600,11 @@ function getPreviousNotesSection(agent, messageIndex, companion) {
     return collectRecentCompanionResults(agent.id, {
         beforeMessageIndex: messageIndex,
         depth: companion.historyDepth,
-    }).map(result => `Message ${result.messageIndex}:\n${normalizeText(result.content)}`).join('\n\n');
+    }).map(result => `Message ${result.messageIndex}:\n${getResolvedCompanionResultContent(result, result.messageIndex)}`).join('\n\n');
+}
+
+function getResolvedCompanionResultContent(result = {}, messageIndex = -1) {
+    return normalizeText(resolveCompanionContentMacros(result.content ?? '', chat[messageIndex]));
 }
 
 function getSystemPromptSection(companion) {
@@ -718,7 +724,7 @@ function expandCompanionPrompt(agent, messageIndex, generationType = 'normal') {
         dynamicMacros: buildPromptDynamicMacros(messageText, message, agent, generationType),
     }).trim();
 
-    return [prompt, getTemplateSettingsPromptBlock(agent)].filter(Boolean).join('\n\n').trim();
+    return [prompt, getTemplateSettingsPromptBlock(agent, message)].filter(Boolean).join('\n\n').trim();
 }
 
 const COMPANION_REPAIR_INSTRUCTION = 'Repair mode: produce the requested result again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
@@ -857,12 +863,13 @@ function getCurrentCompanionContextContent(agent, messageIndex) {
     }
 
     const result = getCompanionResults(message)[agent.id];
-    return result?.status === 'done' ? normalizeText(result.content) : '';
+    return result?.status === 'done' ? getResolvedCompanionResultContent(result, messageIndex) : '';
 }
 
 function getLatestCompanionContextContent(agent, messageIndex) {
+    const latest = collectRecentCompanionResults(agent.id, { beforeMessageIndex: messageIndex, depth: 1 })[0];
     return getCurrentCompanionContextContent(agent, messageIndex)
-        || normalizeText(collectRecentCompanionResults(agent.id, { beforeMessageIndex: messageIndex, depth: 1 })[0]?.content);
+        || getResolvedCompanionResultContent(latest, latest?.messageIndex);
 }
 
 function getCompanionLinkedContextSections(agent, messageIndex, contextSourceAgents, agentByReferenceId) {
@@ -1209,7 +1216,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
 
             setCompanionResult(message, agent, {
                 status: 'done',
-                content: parsed.get(agent.id),
+                content: capResultContent(parsed.get(agent.id)),
                 error: '',
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
@@ -1440,7 +1447,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
             continue;
         }
 
-        const body = notes.map(result => normalizeText(result.content)).filter(Boolean).join('\n\n');
+        const body = notes.map(result => getResolvedCompanionResultContent(result, result.messageIndex)).filter(Boolean).join('\n\n');
         if (!body) {
             continue;
         }
