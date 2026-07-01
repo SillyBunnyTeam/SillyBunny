@@ -369,7 +369,9 @@ function getGeneratedReplyReference(speakerAvatar, threadAvatar, { groupId = und
 
         const messageSpeakerId = getConversationGeneratedMessageSpeakerId(message, threadAvatar);
         if (speakerId && messageSpeakerId && speakerId === messageSpeakerId) {
-            continue;
+            // Stop at a previous message from the same speaker. Follow-up messages
+            // should not keep replying to the same older user/partner message.
+            break;
         }
 
         const reference = buildConversationMessageReplyReference(message);

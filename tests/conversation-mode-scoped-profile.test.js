@@ -55,6 +55,7 @@ const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
 const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
 const speechEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'speech.js'), 'utf8'));
+const serverEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'sillybunny-conversation.js'), 'utf8'));
 const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
@@ -173,7 +174,12 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('quoteBlock');
         expect(timelineSource).not.toContain('> **${speakerName}');
         expect(attachmentsSource).toContain('conversation_reply_to');
-        expect(promptSource).toContain('formatConversationReplyReference');
+    });
+
+    test('does not inline reply references in the Conversation prompt transcript', () => {
+        expect(promptSource).not.toContain('formatConversationReplyReference');
+        expect(promptSource).not.toContain('(replying to');
+        expect(serverEndpointSource).not.toContain('formatConversationReplyReference');
     });
 
     test('lets generated character replies use message reply metadata', () => {
@@ -183,6 +189,12 @@ describe('conversation mode scoped connection profile', () => {
         expect(generationSource).toContain('buildConversationMessageReplyReference(message)');
         expect(generationSource).toContain('resolvedExtra.conversation_reply_to = replyReference');
         expect(generationSource).toContain('attachReplyReference = false');
+
+        const replyRefFuncStart = generationSource.indexOf('function getGeneratedReplyReference(');
+        const nextFuncStart = generationSource.indexOf('function getResolvedReplyExtra(', replyRefFuncStart);
+        const replyRefSource = generationSource.slice(replyRefFuncStart, nextFuncStart);
+        expect(replyRefSource).toContain('previous message from the same speaker');
+        expect(replyRefSource).toContain('break;');
     });
 
     test('adds Quick Image Gen actions for actual selfie commands', () => {
