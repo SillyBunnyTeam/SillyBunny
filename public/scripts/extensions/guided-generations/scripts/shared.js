@@ -11,7 +11,16 @@ import {
 } from './presetUtils.js';
 
 const extensionName = 'guided-generations';
-const guidedGenerationInjectIds = ['instruct', 'correction', 'gg-impersonate-voice'];
+const guidedResponseInjectId = 'gg-guided-response';
+const guidedSwipeInjectId = 'gg-guided-swipe';
+const guidedCorrectionInjectId = 'gg-guided-correction';
+const guidedImpersonateInjectId = 'gg-impersonate-voice';
+const guidedGenerationInjectIds = [
+    guidedResponseInjectId,
+    guidedSwipeInjectId,
+    guidedCorrectionInjectId,
+    guidedImpersonateInjectId,
+];
 
 let previousImpersonateInput = '';
 let lastImpersonateResult = '';
@@ -109,6 +118,10 @@ export {
     getContext,
     getCurrentProfile,
     getCurrentProfileId,
+    guidedCorrectionInjectId,
+    guidedImpersonateInjectId,
+    guidedResponseInjectId,
+    guidedSwipeInjectId,
     getLastAiMessage,
     getLastImpersonateResult,
     getPresetsForApiType,
