@@ -21,16 +21,20 @@ function sourceBetween(source, start, end) {
 }
 
 describe('Android avatar resource budget', () => {
-    test('chat message avatar images load thumbnails while preserving originals for zoom', () => {
+    test('chat message avatar images are viewport-aware and preserve originals for zoom', () => {
+        expect(scriptSource).toContain('const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;');
+        expect(scriptSource).toContain('const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;');
+
         const avatarImageAttrs = sourceBetween(
             scriptSource,
             'messageElement.find(\'.avatar img\').attr({',
             'messageElement.find(\'.ch_name .name_text\').text(mes.name);',
         );
 
-        expect(avatarImageAttrs).toContain('src: avatarImg');
-        expect(avatarImageAttrs).toContain('\'data-thumbnail-src\': avatarImg');
+        expect(avatarImageAttrs).toContain('src: viewportAvatarImg');
+        expect(avatarImageAttrs).toContain('\'data-thumbnail-src\': viewportThumbnailSrc');
         expect(avatarImageAttrs).toContain('\'data-original-src\': originalAvatarImg');
+        expect(avatarImageAttrs).not.toContain('src: avatarImg');
         expect(avatarImageAttrs).not.toContain('src: originalAvatarImg');
 
         const zoomClickHandler = sourceBetween(
@@ -43,29 +47,51 @@ describe('Android avatar resource budget', () => {
         expect(zoomClickHandler).toContain('avatarImage.attr(\'data-thumbnail-src\') || avatarImage.attr(\'src\') || fullAvatarURL');
     });
 
-    test('avatar refresh cache busts thumbnail and preserved original sources', () => {
+    test('avatar refresh cache busts both desktop and mobile thumbnail sources', () => {
         const refreshSource = sourceBetween(
             scriptSource,
             'export async function refreshCharacterAvatar(avatarKey) {',
             'export function buildAvatarList(',
         );
 
+        expect(refreshSource).toContain('getMobileThumbnailUrl(\'avatar\', avatarKey)');
         expect(refreshSource).toContain('img.getAttribute(\'data-original-src\')');
         expect(refreshSource).toContain('img.setAttribute(\'data-original-src\', cacheBustedFullAvatarUrl);');
-        expect(refreshSource).toContain('img.setAttribute(\'data-thumbnail-src\', cacheBustedThumbnailUrl);');
+        expect(refreshSource).toContain('thumbnailAvatar?.preset === \'mobile\'');
+        expect(refreshSource).toContain('img.setAttribute(\'src\', cacheBustedMobileThumbnailUrl);');
+        expect(refreshSource).toContain('img.setAttribute(\'src\', cacheBustedThumbnailUrl);');
     });
 
-    test('default and recommended avatar thumbnails stay mobile-sized', () => {
-        expect(defaultConfig.thumbnails.format).toBe('jpg');
-        expect(defaultConfig.thumbnails.quality).toBeLessThanOrEqual(82);
-        expect(defaultConfig.thumbnails.dimensions.avatar).toEqual([320, 480]);
-        expect(defaultConfig.thumbnails.dimensions.persona).toEqual([320, 480]);
+    test('desktop thumbnail defaults remain high quality', () => {
+        expect(defaultConfig.thumbnails.format).toBe('png');
+        expect(defaultConfig.thumbnails.quality).toBe(100);
+        expect(defaultConfig.thumbnails.dimensions.avatar).toEqual([864, 1280]);
+        expect(defaultConfig.thumbnails.dimensions.persona).toEqual([864, 1280]);
+
+        expect(imageMetadataSource).toContain('avatar: Object.freeze([864, 1280])');
+        expect(imageMetadataSource).toContain('persona: Object.freeze([864, 1280])');
+        expect(serverAdminSource).toContain('format: \'png\'');
+        expect(serverAdminSource).toContain('quality: 100');
+    });
+
+    test('mobile thumbnail defaults are kept for Android bandwidth/CPU savings', () => {
+        expect(defaultConfig.thumbnails.mobile.format).toBe('jpg');
+        expect(defaultConfig.thumbnails.mobile.quality).toBeLessThanOrEqual(82);
+        expect(defaultConfig.thumbnails.mobile.dimensions.avatar).toEqual([320, 480]);
+        expect(defaultConfig.thumbnails.mobile.dimensions.persona).toEqual([320, 480]);
 
         expect(imageMetadataSource).toContain('avatar: Object.freeze([320, 480])');
         expect(imageMetadataSource).toContain('persona: Object.freeze([320, 480])');
         expect(serverAdminSource).toContain('format: \'jpg\'');
         expect(serverAdminSource).toContain('quality: 82');
-        expect(tabsSource).toContain('320x480 avatar/persona thumbnails');
+        expect(tabsSource).toContain('Mobile preset');
+        expect(tabsSource).toContain('Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens');
+    });
+
+    test('client exposes a viewport-aware thumbnail URL helper', () => {
+        expect(scriptSource).toContain('export function getMobileThumbnailUrl(type, file, t = false)');
+        expect(scriptSource).toContain('export function getThumbnailUrlForViewport(type, file, t = false)');
+        expect(scriptSource).toContain('return isMobile() ? getMobileThumbnailUrl(type, file, t) : getThumbnailUrl(type, file, t);');
     });
 
     test('cached thumbnails report their encoded image type instead of original filename extension', () => {

@@ -78,6 +78,8 @@ const STORAGE_KEYS = {
  * @property {string} thumbnailsBg - The directory where the background thumbnails are stored
  * @property {string} thumbnailsAvatar - The directory where the avatar thumbnails are stored
  * @property {string} thumbnailsPersona - The directory where the persona thumbnails are stored
+ * @property {string} thumbnailsAvatarMobile - The directory where the mobile avatar thumbnails are stored
+ * @property {string} thumbnailsPersonaMobile - The directory where the mobile persona thumbnails are stored
  * @property {string} worlds - The directory where the WI are stored
  * @property {string} user - The directory where the user's public data is stored
  * @property {string} avatars - The directory where the avatars are stored

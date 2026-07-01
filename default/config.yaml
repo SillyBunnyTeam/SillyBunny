@@ -238,20 +238,36 @@ thumbnails:
   # * "jpg": best compression with adjustable quality, no transparency
   # * "png": preserves transparency but increases filesize by about 100%
   # Changing this only affects new thumbnails. To recreate the old ones, clear out /thumbnails folder in your user data.
-  format: "jpg"
+  format: "png"
   # Thumbnail quality (0-100). Applies to JPG thumbnails; PNG thumbnails are lossless.
-  quality: 82
+  quality: 100
   # Maximum thumbnail dimensions per type [width, height]
   dimensions:
     bg:
       - 240
       - 135
     avatar:
-      - 320
-      - 480
+      - 864
+      - 1280
     persona:
-      - 320
-      - 480
+      - 864
+      - 1280
+  # Lower-resolution preset used by mobile clients to reduce bandwidth and CPU.
+  # The desktop thumbnail format/quality/dimensions are used when this preset is disabled.
+  mobile:
+    enabled: true
+    format: "jpg"
+    quality: 82
+    dimensions:
+      bg:
+        - 240
+        - 135
+      avatar:
+        - 320
+        - 480
+      persona:
+        - 320
+        - 480
 
 # PERFORMANCE-RELATED CONFIGURATION
 performance:

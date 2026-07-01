@@ -1371,7 +1371,7 @@ async function getHiddenBlock(hidden) {
 function getCharacterBlock(item, id) {
     let this_avatar = default_avatar;
     if (item.avatar != 'none') {
-        this_avatar = getThumbnailUrl('avatar', item.avatar);
+        this_avatar = getThumbnailUrlForViewport('avatar', item.avatar);
     }
     // Populate the template
     const template = $('#character_template .character_select').clone();
@@ -4590,21 +4590,26 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
  */
 export function updateMessageElement(mes, { messageId = chat.length - 1, messageElement = messageTemplate.clone(), adjustMediaScroll = SCROLL_BEHAVIOR.NONE } = {}) {
     let avatarImg = getThumbnailUrl('persona', user_avatar);
+    let mobileAvatarImg = getMobileThumbnailUrl('persona', user_avatar);
     let originalAvatarImg = getFullAvatarUrl('persona', user_avatar);
 
     //for non-user messages
     if (!mes.is_user) {
         if (mes.force_avatar) {
             avatarImg = mes.force_avatar;
+            mobileAvatarImg = mes.force_avatar;
             originalAvatarImg = mes.force_avatar;
         } else if (this_chid === undefined) {
             avatarImg = system_avatar;
+            mobileAvatarImg = system_avatar;
             originalAvatarImg = system_avatar;
         } else if (characters[this_chid] && characters[this_chid].avatar !== 'none') {
             avatarImg = getThumbnailUrl('avatar', characters[this_chid].avatar);
+            mobileAvatarImg = getMobileThumbnailUrl('avatar', characters[this_chid].avatar);
             originalAvatarImg = getFullAvatarUrl('avatar', characters[this_chid].avatar);
         } else {
             avatarImg = default_avatar;
+            mobileAvatarImg = default_avatar;
             originalAvatarImg = default_avatar;
         }
         //old processing:
@@ -4614,6 +4619,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     } else if (mes.is_user && mes.force_avatar) {
         // Special case for persona images.
         avatarImg = mes.force_avatar;
+        mobileAvatarImg = mes.force_avatar;
         originalAvatarImg = mes.force_avatar;
     }
     const momentDate = timestampToMoment(mes.send_date);
@@ -4636,8 +4642,11 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         'type': mes.extra?.type ?? '',
     });
 
+    const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;
+    const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;
+
     if (messageElement[0] instanceof HTMLElement) {
-        const avatarCssUrl = `url("${String(avatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const avatarCssUrl = `url("${String(viewportAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         const originalAvatarCssUrl = `url("${String(originalAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         messageElement[0].style.setProperty('--sb-message-avatar', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-url', avatarCssUrl);
@@ -4645,8 +4654,8 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     }
 
     messageElement.find('.avatar img').attr({
-        src: avatarImg,
-        'data-thumbnail-src': avatarImg,
+        src: viewportAvatarImg,
+        'data-thumbnail-src': viewportThumbnailSrc,
         'data-original-src': originalAvatarImg,
         decoding: 'async',
         loading: messageId > 8 ? 'lazy' : 'eager',
@@ -10465,6 +10474,29 @@ export function getThumbnailUrl(type, file, t = false) {
     return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}${t ? `&t=${Date.now()}` : ''}`;
 }
 
+/**
+ * Gets the URL for a mobile thumbnail preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the mobile thumbnail
+ */
+export function getMobileThumbnailUrl(type, file, t = false) {
+    return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}&preset=mobile${t ? `&t=${Date.now()}` : ''}`;
+}
+
+/**
+ * Gets the thumbnail URL appropriate for the current viewport.
+ * Desktop receives full-resolution desktop thumbnails; mobile receives the mobile preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the thumbnail
+ */
+export function getThumbnailUrlForViewport(type, file, t = false) {
+    return isMobile() ? getMobileThumbnailUrl(type, file, t) : getThumbnailUrl(type, file, t);
+}
+
 function getFullAvatarUrl(type, file, t = false) {
     if (!file || file === 'none') {
         return default_avatar;
@@ -10495,8 +10527,9 @@ function parseAvatarSource(rawSrc) {
         if (pathName === '/thumbnail') {
             const type = parsed.searchParams.get('type');
             const file = parsed.searchParams.get('file');
+            const preset = parsed.searchParams.get('preset');
             if ((type === 'avatar' || type === 'persona') && file) {
-                return { type, file, original: getFullAvatarUrl(type, file) };
+                return { type, file, original: getFullAvatarUrl(type, file), preset };
             }
         }
 
@@ -10535,13 +10568,16 @@ export async function refreshCharacterAvatar(avatarKey) {
     }
 
     const thumbnailUrl = getThumbnailUrl('avatar', avatarKey);
+    const mobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey);
     const fullAvatarUrl = getFullAvatarUrl('avatar', avatarKey);
     const cacheBustedThumbnailUrl = getThumbnailUrl('avatar', avatarKey, true);
+    const cacheBustedMobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey, true);
     const cacheBustedFullAvatarUrl = getFullAvatarUrl('avatar', avatarKey, true);
 
     try {
         await Promise.all([
             fetch(thumbnailUrl, { method: 'GET', cache: 'reload' }),
+            fetch(mobileThumbnailUrl, { method: 'GET', cache: 'reload' }),
             fetch(fullAvatarUrl, { method: 'GET', cache: 'reload' }),
         ]);
     } catch (error) {
@@ -10567,7 +10603,8 @@ export async function refreshCharacterAvatar(avatarKey) {
         }
 
         if (thumbnailMatches) {
-            img.setAttribute('data-thumbnail-src', cacheBustedThumbnailUrl);
+            const cacheBustedUrl = thumbnailAvatar?.preset === 'mobile' ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl;
+            img.setAttribute('data-thumbnail-src', cacheBustedUrl);
         }
 
         if (originalMatches) {
@@ -10575,13 +10612,21 @@ export async function refreshCharacterAvatar(avatarKey) {
         }
 
         if (srcMatches) {
-            img.setAttribute('src', isThumbnailAvatarSource(img.getAttribute('src')) ? cacheBustedThumbnailUrl : cacheBustedFullAvatarUrl);
+            const currentSrc = img.getAttribute('src');
+            const parsedSrc = parseAvatarSource(currentSrc);
+            if (parsedSrc?.preset === 'mobile') {
+                img.setAttribute('src', cacheBustedMobileThumbnailUrl);
+            } else if (isThumbnailAvatarSource(currentSrc)) {
+                img.setAttribute('src', cacheBustedThumbnailUrl);
+            } else {
+                img.setAttribute('src', cacheBustedFullAvatarUrl);
+            }
         }
 
         refreshedImages++;
     }
 
-    const avatarCssUrl = `url("${String(cacheBustedThumbnailUrl).replace(/(["\\])/g, '\\$1')}")`;
+    const viewportAvatarCssUrl = `url("${String(isMobile() ? cacheBustedMobileThumbnailUrl : cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
     const originalAvatarCssUrl = `url("${String(cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
 
     for (const messageElement of document.querySelectorAll('.mes')) {
@@ -10598,8 +10643,8 @@ export async function refreshCharacterAvatar(avatarKey) {
             continue;
         }
 
-        messageElement.style.setProperty('--sb-message-avatar', avatarCssUrl);
-        messageElement.style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement.style.setProperty('--sb-message-avatar', viewportAvatarCssUrl);
+        messageElement.style.setProperty('--mes-avatar-url', viewportAvatarCssUrl);
         messageElement.style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
@@ -10619,7 +10664,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
 
         let this_avatar = default_avatar;
         if (entity.item.avatar !== undefined && entity.item.avatar != 'none') {
-            this_avatar = getThumbnailUrl('avatar', entity.item.avatar);
+            this_avatar = getThumbnailUrlForViewport('avatar', entity.item.avatar);
         }
 
         avatarTemplate.attr('data-type', entity.type);
@@ -10648,7 +10693,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
         } else if (entity.type === 'persona') {
             avatarTemplate.attr({ 'data-pid': id, 'data-chid': null });
             avatarTemplate.find('img').attr({
-                src: getThumbnailUrl('persona', entity.item.avatar),
+                src: getThumbnailUrlForViewport('persona', entity.item.avatar),
                 loading: 'lazy',
                 decoding: 'async',
             });

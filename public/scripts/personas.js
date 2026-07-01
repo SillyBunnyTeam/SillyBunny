@@ -12,6 +12,7 @@ import {
     getCurrentChatId,
     getRequestHeaders,
     getThumbnailUrl,
+    getThumbnailUrlForViewport,
     groupToEntity,
     menu_type,
     name1,
@@ -367,7 +368,7 @@ function reloadUserAvatar(force = false) {
         }
 
         if ($(this).attr('is_user') == 'true' && $(this).attr('force_avatar') == 'false') {
-            avatarImg.attr('src', getThumbnailUrl('persona', user_avatar));
+            avatarImg.attr('src', getThumbnailUrlForViewport('persona', user_avatar));
         }
     });
 }
@@ -433,7 +434,7 @@ function getUserAvatarBlock(avatarId) {
     template.attr('data-avatar-id', avatarId);
     template.find('.avatar').attr('data-avatar-id', avatarId).attr('title', avatarId);
     template.toggleClass('default_persona', avatarId === power_user.default_persona);
-    const avatarUrl = getThumbnailUrl('persona', avatarId, isFirefox());
+    const avatarUrl = getThumbnailUrlForViewport('persona', avatarId, isFirefox());
     template.find('img').attr('src', avatarUrl);
 
     // Make sure description block has at least three rows. Otherwise height looks inconsistent. I don't have a better idea for this.

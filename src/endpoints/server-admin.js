@@ -24,8 +24,8 @@ import { getLatestZipReleaseStatus, stageZipReleaseUpdate } from '../server-admi
 import { serverDirectory } from '../server-directory.js';
 import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
-import { getThumbnailDimensions, setThumbnailDimensions } from './image-metadata.js';
-import { getThumbnailRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
+import { getThumbnailDimensions, getThumbnailMobileDimensions, setThumbnailDimensions, setThumbnailMobileDimensions } from './image-metadata.js';
+import { getThumbnailMobileRuntimeSettings, getThumbnailRuntimeSettings, setThumbnailMobileRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
 import { requestGracefulExit } from '../shutdown.js';
 import { getServerBootId } from '../server-boot-marker.js';
 import {
@@ -51,6 +51,26 @@ const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
 });
 const THUMBNAIL_CONFIG_DEFAULTS = Object.freeze({
     enabled: true,
+    format: 'png',
+    quality: 100,
+    dimensions: Object.freeze({
+        bg: Object.freeze([240, 135]),
+        avatar: Object.freeze([864, 1280]),
+        persona: Object.freeze([864, 1280]),
+    }),
+});
+const SILLYBUNNY_RECOMMENDED_THUMBNAILS = Object.freeze({
+    enabled: true,
+    format: 'png',
+    quality: 100,
+    dimensions: Object.freeze({
+        bg: Object.freeze([240, 135]),
+        avatar: Object.freeze([864, 1280]),
+        persona: Object.freeze([864, 1280]),
+    }),
+});
+const THUMBNAIL_MOBILE_CONFIG_DEFAULTS = Object.freeze({
+    enabled: true,
     format: 'jpg',
     quality: 82,
     dimensions: Object.freeze({
@@ -59,7 +79,7 @@ const THUMBNAIL_CONFIG_DEFAULTS = Object.freeze({
         persona: Object.freeze([320, 480]),
     }),
 });
-const SILLYBUNNY_RECOMMENDED_THUMBNAILS = Object.freeze({
+const SILLYBUNNY_RECOMMENDED_THUMBNAILS_MOBILE = Object.freeze({
     enabled: true,
     format: 'jpg',
     quality: 82,
@@ -106,16 +126,17 @@ function normalizeThumbnailDimensionsPair(value, fallback) {
     ];
 }
 
-function normalizeThumbnailSettingsInput(settings = {}) {
-    const format = String(settings?.format ?? THUMBNAIL_CONFIG_DEFAULTS.format).toLowerCase().trim() === 'png' ? 'png' : 'jpg';
+function normalizeThumbnailSettingsInput(settings = {}, { mobile = false } = {}) {
+    const defaults = mobile ? THUMBNAIL_MOBILE_CONFIG_DEFAULTS : THUMBNAIL_CONFIG_DEFAULTS;
+    const format = String(settings?.format ?? defaults.format).toLowerCase().trim() === 'png' ? 'png' : 'jpg';
     return {
-        enabled: Boolean(settings?.enabled ?? THUMBNAIL_CONFIG_DEFAULTS.enabled),
+        enabled: Boolean(settings?.enabled ?? defaults.enabled),
         format,
-        quality: normalizeInteger(settings?.quality, { min: 1, max: 100, fallback: THUMBNAIL_CONFIG_DEFAULTS.quality }),
+        quality: normalizeInteger(settings?.quality, { min: 1, max: 100, fallback: defaults.quality }),
         dimensions: {
-            bg: normalizeThumbnailDimensionsPair(settings?.dimensions?.bg, THUMBNAIL_CONFIG_DEFAULTS.dimensions.bg),
-            avatar: normalizeThumbnailDimensionsPair(settings?.dimensions?.avatar, THUMBNAIL_CONFIG_DEFAULTS.dimensions.avatar),
-            persona: normalizeThumbnailDimensionsPair(settings?.dimensions?.persona, THUMBNAIL_CONFIG_DEFAULTS.dimensions.persona),
+            bg: normalizeThumbnailDimensionsPair(settings?.dimensions?.bg, defaults.dimensions.bg),
+            avatar: normalizeThumbnailDimensionsPair(settings?.dimensions?.avatar, defaults.dimensions.avatar),
+            persona: normalizeThumbnailDimensionsPair(settings?.dimensions?.persona, defaults.dimensions.persona),
         },
     };
 }
@@ -200,18 +221,41 @@ function getThumbnailConfigState(document) {
     });
 }
 
-function applyThumbnailConfigState(document, settings) {
+function getThumbnailMobileConfigState(document) {
+    const getConfig = (pathParts, fallback) => document.getIn(pathParts) ?? fallback;
+    return normalizeThumbnailSettingsInput({
+        enabled: getConfig(['thumbnails', 'mobile', 'enabled'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.enabled),
+        format: getConfig(['thumbnails', 'mobile', 'format'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.format),
+        quality: getConfig(['thumbnails', 'mobile', 'quality'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.quality),
+        dimensions: {
+            bg: getConfig(['thumbnails', 'mobile', 'dimensions', 'bg'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.dimensions.bg),
+            avatar: getConfig(['thumbnails', 'mobile', 'dimensions', 'avatar'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.dimensions.avatar),
+            persona: getConfig(['thumbnails', 'mobile', 'dimensions', 'persona'], THUMBNAIL_MOBILE_CONFIG_DEFAULTS.dimensions.persona),
+        },
+    }, { mobile: true });
+}
+
+function applyThumbnailConfigState(document, settings, mobileSettings) {
     document.setIn(['thumbnails', 'enabled'], settings.enabled);
     document.setIn(['thumbnails', 'format'], settings.format);
     document.setIn(['thumbnails', 'quality'], settings.quality);
     document.setIn(['thumbnails', 'dimensions', 'bg'], settings.dimensions.bg);
     document.setIn(['thumbnails', 'dimensions', 'avatar'], settings.dimensions.avatar);
     document.setIn(['thumbnails', 'dimensions', 'persona'], settings.dimensions.persona);
+
+    document.setIn(['thumbnails', 'mobile', 'enabled'], mobileSettings.enabled);
+    document.setIn(['thumbnails', 'mobile', 'format'], mobileSettings.format);
+    document.setIn(['thumbnails', 'mobile', 'quality'], mobileSettings.quality);
+    document.setIn(['thumbnails', 'mobile', 'dimensions', 'bg'], mobileSettings.dimensions.bg);
+    document.setIn(['thumbnails', 'mobile', 'dimensions', 'avatar'], mobileSettings.dimensions.avatar);
+    document.setIn(['thumbnails', 'mobile', 'dimensions', 'persona'], mobileSettings.dimensions.persona);
 }
 
-function applyThumbnailRuntimeConfig(settings) {
+function applyThumbnailRuntimeConfig(settings, mobileSettings) {
     setThumbnailRuntimeSettings(settings);
     setThumbnailDimensions(settings.dimensions);
+    setThumbnailMobileRuntimeSettings(mobileSettings);
+    setThumbnailMobileDimensions(mobileSettings.dimensions);
 }
 
 function countFilesRecursively(directory) {
@@ -245,7 +289,7 @@ function clearDirectoryContents(directory) {
 function clearThumbnailCacheForUser(directories) {
     const userRoot = path.resolve(directories.root);
     const thumbnailRoot = path.resolve(directories.thumbnails);
-    const thumbnailSubdirectories = [directories.thumbnailsBg, directories.thumbnailsAvatar, directories.thumbnailsPersona]
+    const thumbnailSubdirectories = [directories.thumbnailsBg, directories.thumbnailsAvatar, directories.thumbnailsPersona, directories.thumbnailsAvatarMobile, directories.thumbnailsPersonaMobile]
         .map(directory => path.resolve(directory));
 
     if (thumbnailRoot === userRoot || !isPathUnderParent(userRoot, thumbnailRoot)) {
@@ -681,18 +725,25 @@ router.post('/config/thumbnail-settings/get', requireAdminMiddleware, async (_re
     try {
         const { configPath, stat, document } = readConfigDocument();
         const settings = getThumbnailConfigState(document);
+        const mobileSettings = getThumbnailMobileConfigState(document);
 
-        applyThumbnailRuntimeConfig(settings);
+        applyThumbnailRuntimeConfig(settings, mobileSettings);
 
         response.json({
             path: configPath,
             lastModifiedMs: stat.mtimeMs,
             settings,
+            mobileSettings,
             runtime: {
                 ...getThumbnailRuntimeSettings(),
                 dimensions: getThumbnailDimensions(),
             },
+            mobileRuntime: {
+                ...getThumbnailMobileRuntimeSettings(),
+                dimensions: getThumbnailMobileDimensions(),
+            },
             recommended: SILLYBUNNY_RECOMMENDED_THUMBNAILS,
+            recommendedMobile: SILLYBUNNY_RECOMMENDED_THUMBNAILS_MOBILE,
         });
     } catch (error) {
         console.error('Failed to read thumbnail config settings.', error);
@@ -705,13 +756,14 @@ router.post('/config/thumbnail-settings/save', requireAdminMiddleware, async (re
         const clearCache = Boolean(request.body?.clearCache);
         const expectedLastModifiedMs = Number(request.body?.expectedLastModifiedMs);
         const normalizedSettings = normalizeThumbnailSettingsInput(request.body?.settings);
+        const normalizedMobileSettings = normalizeThumbnailSettingsInput(request.body?.mobileSettings, { mobile: true });
         const { configPath, stat, document } = readConfigDocument();
 
         ensureExpectedConfigMtime(stat, expectedLastModifiedMs);
-        applyThumbnailConfigState(document, normalizedSettings);
+        applyThumbnailConfigState(document, normalizedSettings, normalizedMobileSettings);
 
         const nextStat = writeConfigDocument(configPath, document);
-        applyThumbnailRuntimeConfig(normalizedSettings);
+        applyThumbnailRuntimeConfig(normalizedSettings, normalizedMobileSettings);
 
         let clearResult = null;
         if (clearCache) {
@@ -723,6 +775,7 @@ router.post('/config/thumbnail-settings/save', requireAdminMiddleware, async (re
             path: configPath,
             lastModifiedMs: nextStat.mtimeMs,
             settings: normalizedSettings,
+            mobileSettings: normalizedMobileSettings,
             cleared: clearResult,
             message: clearResult
                 ? `Thumbnail settings saved and ${clearResult.filesDeleted} cached file${clearResult.filesDeleted === 1 ? '' : 's'} cleared.`
