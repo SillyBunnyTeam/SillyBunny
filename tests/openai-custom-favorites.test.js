@@ -74,6 +74,6 @@ describe('OpenAI custom favorites wiring', () => {
 
     test('refreshes Custom model ID favorites when manually changing the endpoint URL', () => {
         expect(openAiSource).toContain('$(\'#custom_api_url_text\').on(\'change\', function () {');
-        expect(openAiSource).toContain('if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {\n            refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);\n        }');
+        expect(openAiSource).toMatch(/\$\('#custom_api_url_text'\)\.on\('change', function \(\) \{[\s\S]*if \(oai_settings\.chat_completion_source === chat_completion_sources\.CUSTOM\) \{[\s\S]*refreshModelIdSearchControlsForSource\(chat_completion_sources\.CUSTOM\);[\s\S]*\}\);/);
     });
 });
