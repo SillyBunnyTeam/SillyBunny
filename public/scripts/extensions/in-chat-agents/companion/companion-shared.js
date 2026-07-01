@@ -1,8 +1,8 @@
 /**
- * Shared companion constants and pure helpers.
+ * Shared companion constants and helpers.
  *
- * This module has ZERO imports and no side effects on purpose: it is the single
- * source of truth for the template IDs, value sets and small normalizers that
+ * This module has ZERO imports and no side effects on import: it is the single
+ * source of truth for the template IDs, value sets and small helpers that
  * the companion runner, UI, panel and dashboard all need. Keeping it dependency
  * free means every consumer (and every test) can import it as the real module
  * without dragging in script.js or other heavy runtime singletons.

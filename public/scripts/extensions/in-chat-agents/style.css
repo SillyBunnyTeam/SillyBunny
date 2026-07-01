@@ -1997,6 +1997,23 @@ button.ica--card-pill--version-update {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 36%, transparent);
 }
 
+.ica--tpanel-agent[data-hidden="true"] {
+    opacity: 0.55;
+}
+
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-agent-name span {
+    text-decoration: line-through;
+}
+
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-agent-body,
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-history,
+.ica--tpanel-agent[data-hidden="true"] .ica--chatonly-composer,
+.ica--tpanel-agent[data-hidden="true"] .ica--plot-objective-composer,
+.ica--tpanel-agent[data-hidden="true"] .ica--tpanel-compact,
+.ica--tpanel-agent[data-hidden="true"] .ica--cdash-empty {
+    display: none;
+}
+
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;

@@ -19,6 +19,7 @@ import {
     getEnabledAgents,
     getGlobalSettings,
     MAX_AGENT_MAX_TOKENS,
+    isAgentHidden,
     isCompanionAgent,
     resolveCompanionConnectionProfile,
 } from '../agent-store.js';
@@ -1381,12 +1382,18 @@ export function meetsCompanionContextThreshold(agent, messageIndex = chat.length
     return !minContextTokens || getChatTokenEstimate(messageIndex + 1) >= minContextTokens;
 }
 
-function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1 } = {}) {
+function getRunnableCompanionAgents(activeAgents = [], { manual = false, messageIndex = chat.length - 1, includeHidden = manual } = {}) {
     return activeAgents.filter(agent => {
         const companion = getCompanionConfig(agent);
-        return isCompanionAgent(agent) &&
-            String(agent.prompt ?? '').trim() &&
-            (manual || (companion.trigger === 'auto' && meetsCompanionContextThreshold(agent, messageIndex)));
+        if (!isCompanionAgent(agent) || !String(agent.prompt ?? '').trim()) {
+            return false;
+        }
+
+        if (!includeHidden && isAgentHidden(agent.id)) {
+            return false;
+        }
+
+        return manual || (companion.trigger === 'auto' && meetsCompanionContextThreshold(agent, messageIndex));
     });
 }
 
@@ -1449,13 +1456,13 @@ async function runCompanionAgentsWithDependencyDelay(agents, messageIndex, gener
 
     const changedAgentIds = results.filter(r => r?.changed).map(r => r.agentId);
     if (changedAgentIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited);
+        await runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited, { contextSourceAgents });
     }
 
     return results;
 }
 
-async function runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited = new Set()) {
+async function runCompanionDependencyCascade(messageIndex, changedAgentIds, generationType, cancelRevision, visited = new Set(), { contextSourceAgents = null } = {}) {
     if (!changedAgentIds?.length) {
         return [];
     }
@@ -1466,14 +1473,16 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
     }
 
     const allEnabled = getEnabledAgents();
-    const runnable = getRunnableCompanionAgents(allEnabled, { manual: true, messageIndex });
+    const runnable = Array.isArray(contextSourceAgents)
+        ? contextSourceAgents
+        : getRunnableCompanionAgents(allEnabled, { manual: true, messageIndex });
     const agentByReferenceId = buildCompanionReferenceMap(runnable);
     const dependents = [];
 
     for (const changedId of changedAgentIds) {
         const changedAgent = agentByReferenceId.get(changedId) ?? { id: changedId };
         for (const dependent of findCompanionDependents(changedAgent, runnable)) {
-            if (!visited.has(dependent.id)) {
+            if (!visited.has(dependent.id) && !isAgentHidden(dependent.id)) {
                 dependents.push(dependent);
                 visited.add(dependent.id);
             }
@@ -1488,7 +1497,7 @@ async function runCompanionDependencyCascade(messageIndex, changedAgentIds, gene
     const nextChangedIds = results.filter(r => r?.changed).map(r => r.agentId);
 
     if (nextChangedIds.length > 0) {
-        await runCompanionDependencyCascade(messageIndex, nextChangedIds, generationType, cancelRevision, visited);
+        await runCompanionDependencyCascade(messageIndex, nextChangedIds, generationType, cancelRevision, visited, { contextSourceAgents: runnable });
     }
 
     return results;
@@ -1505,7 +1514,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
     }
 
     const cancelRevision = getAgentGenerationCancelRevision();
-    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex });
+    const contextSourceAgents = getRunnableCompanionAgents(getEnabledAgents(), { manual: true, messageIndex, includeHidden: false });
     await runCompanionAgentsWithDependencyDelay(agents, messageIndex, generationType, cancelRevision, { contextSourceAgents });
 
     saveChatDebounced({ deferBackup: false });
@@ -1520,6 +1529,9 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
 
     for (const agent of activeAgents) {
         if (!isCompanionAgent(agent)) {
+            continue;
+        }
+        if (isAgentHidden(agent.id)) {
             continue;
         }
 
