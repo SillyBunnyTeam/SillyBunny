@@ -16,6 +16,7 @@ import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
 import { stripPreviewText, updateLastPreviewFromConversation } from './typing.js';
 import { getConversationAttachmentLabels, safeParseThread } from './thread-store-utils.js';
+import { narrateConversationMessage } from './tts.js';
 
 export {
     getConversationAttachmentLabels,
@@ -204,6 +205,7 @@ export function appendConversationThreadMessage(avatar, messageInput, { groupId 
     if (isConversationActiveThread(avatar, groupId)) {
         scheduleTimelineRender();
     }
+    void narrateConversationMessage(message);
     return message;
 }
 

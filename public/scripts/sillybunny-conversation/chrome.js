@@ -77,6 +77,7 @@ import {
     regenerateConversationMessage,
     replyToConversationMessage,
     setConversationTimelineChannel,
+    speakConversationMessage,
     toggleConversationMessagePin,
     updateConversationNotificationSettingsVisibility,
     updateConversationSearchQuery,
@@ -539,6 +540,9 @@ export function bindConversationChromeControls(sheld) {
                 break;
             case 'copy-message':
                 await copyConversationMessage(target.dataset.messageId);
+                break;
+            case 'speak-message':
+                await speakConversationMessage(target.dataset.messageId);
                 break;
             case 'toggle-message-pin':
                 toggleConversationMessagePin(target.dataset.messageId);

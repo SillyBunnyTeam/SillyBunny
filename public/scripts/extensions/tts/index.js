@@ -232,6 +232,53 @@ async function onNarrateText(args, text) {
     return '';
 }
 
+export async function narrateTtsMessage(message, { messageId = null, manual = false, force = false, unrestrictedVoiceMap = false } = {}) {
+    if (!message || typeof message !== 'object') {
+        return false;
+    }
+
+    const isManual = Boolean(manual || force);
+    if (!extension_settings.tts.enabled) {
+        if (isManual) {
+            toastr.warning('TTS is disabled. Please enable it in the extension settings.');
+        }
+        return false;
+    }
+
+    if (!isManual && !extension_settings.tts.auto_generation) {
+        return false;
+    }
+
+    if (!isManual && message.is_user && !extension_settings.tts.narrate_user) {
+        return false;
+    }
+
+    if (!String(message.mes || '').trim() && !message.extra?.display_text) {
+        if (isManual) {
+            toastr.info('No text to narrate.');
+        }
+        return false;
+    }
+
+    try {
+        await initVoiceMap(Boolean(unrestrictedVoiceMap));
+    } catch (error) {
+        console.warn('TTS voice map initialization failed', error);
+        if (isManual) {
+            toastr.warning('Could not load TTS voices. Check the TTS extension settings.');
+        }
+        return false;
+    }
+
+    if (isManual) {
+        resetTtsPlayback();
+    }
+
+    processAndQueueTtsMessage(message, messageId, { manual: isManual });
+    await moduleWorker();
+    return true;
+}
+
 async function moduleWorker() {
     if (!extension_settings.tts.enabled) {
         return;

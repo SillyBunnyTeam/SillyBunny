@@ -47,8 +47,11 @@ const promptSource = readConversationSource('prompt.js');
 const renderUtilsSource = readConversationSource('render-utils.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
+const threadStoreSource = readConversationSource('thread-store.js');
 const timelineSource = readConversationSource('timeline-render.js');
 const timelineSlashSource = readConversationSource('timeline-slash-commands.js');
+const conversationTtsSource = readConversationSource('tts.js');
+const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
 const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
@@ -198,5 +201,17 @@ describe('conversation mode scoped connection profile', () => {
     test('exposes Conversation REST discovery on both supported API base paths', () => {
         expect(serverStartupSource).toContain("app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter)");
         expect(serverStartupSource).toContain("app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter)");
+    });
+
+    test('connects Conversation messages to the existing TTS extension', () => {
+        expect(extensionTtsSource).toContain('export async function narrateTtsMessage');
+        expect(extensionTtsSource).toContain('await initVoiceMap(Boolean(unrestrictedVoiceMap))');
+        expect(extensionTtsSource).toContain('processAndQueueTtsMessage(message, messageId, { manual: isManual })');
+        expect(conversationTtsSource).toContain('../extensions/tts/index.js');
+        expect(conversationTtsSource).toContain('narrateTtsMessage(ttsMessage');
+        expect(threadStoreSource).toContain('void narrateConversationMessage(message)');
+        expect(timelineSource).toContain("action: 'speak-message'");
+        expect(timelineSource).toContain('speakConversationMessage');
+        expect(chromeSource).toContain("case 'speak-message':");
     });
 });

@@ -38,6 +38,7 @@ import { getConversationReplyMaxTokens } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationTimelineMessages } from './timeline-search.js';
+import { narrateConversationMessage } from './tts.js';
 import {
     addConversationReminder,
     getConversationAttachmentSummary,
@@ -390,6 +391,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here' },
     ];
     if (!['user', 'system'].includes(message.role || '')) {
+        messageActions.push({ action: 'speak-message', icon: 'fa-volume-high', label: 'Speak' });
         messageActions.push({ action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message' });
     }
     messageActions.push({ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message' });
@@ -866,6 +868,15 @@ export async function copyConversationMessage(messageId) {
     } catch {
         globalThis.toastr?.warning?.('Could not copy message text.');
     }
+}
+
+export async function speakConversationMessage(messageId) {
+    const context = getConversationMessageById(messageId);
+    if (!context) {
+        return;
+    }
+
+    await narrateConversationMessage(context.message, { manual: true, force: true });
 }
 
 export function toggleConversationMessagePin(messageId) {
