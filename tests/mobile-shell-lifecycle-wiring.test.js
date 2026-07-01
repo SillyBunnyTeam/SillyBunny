@@ -374,6 +374,39 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
+    test('relaxes document pan guards inside open mobile shell menus', () => {
+        const createMenuRoot = rootSelector => createElementStub({
+            matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const workspaceRoot = createMenuRoot('#left-nav-panel');
+        const customizeRoot = createMenuRoot('#user-settings-block');
+        const characterRoot = createMenuRoot('#right-nav-panel');
+        const closedWorkspaceRoot = createElementStub({
+            matches: selector => selectorListIncludes(selector, '#left-nav-panel'),
+            scrollHeight: 1600,
+            clientHeight: 600,
+        });
+        const workspaceButton = createElementStub({ parentElement: workspaceRoot });
+        const customizeSelect = createElementStub({
+            parentElement: customizeRoot,
+            matches: selector => selector.includes('select'),
+        });
+        const characterCard = createElementStub({ parentElement: characterRoot });
+        const closedWorkspaceButton = createElementStub({ parentElement: closedWorkspaceRoot });
+
+        const workspaceAtTopPullDownMove = createTouchMove(workspaceButton, { x: 1, y: 40 });
+        const customizeSelectMove = createTouchMove(customizeSelect, { x: 1, y: -40 });
+        const characterAtTopPullDownMove = createTouchMove(characterCard, { x: 1, y: 40 });
+        const closedWorkspaceAtTopPullDownMove = createTouchMove(closedWorkspaceButton, { x: 1, y: 40 });
+
+        expect(shouldBlockMobileDocumentPan(workspaceAtTopPullDownMove.event, { touchStart: workspaceAtTopPullDownMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(customizeSelectMove.event, { touchStart: customizeSelectMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(characterAtTopPullDownMove.event, { touchStart: characterAtTopPullDownMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(closedWorkspaceAtTopPullDownMove.event, { touchStart: closedWorkspaceAtTopPullDownMove.touchStart })).toBe(true);
+    });
+
     test('imports the mobile shell lifecycle seam into the shell adapter', () => {
         expect(tabsSource).toContain('createMobileShellLifecycle');
         expect(tabsSource).toContain('MOBILE_SHELL_NAV_TOGGLE_ACTION');

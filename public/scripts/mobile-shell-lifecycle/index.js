@@ -804,6 +804,13 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.select2-results__options',
 ].join(', ');
 
+const MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR = [
+    '#left-nav-panel.openDrawer',
+    '#right-nav-panel.openDrawer',
+    '#user-settings-block.openDrawer',
+    '.sb-shell-root.openDrawer',
+].join(', ');
+
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
     'input',
     'textarea',
@@ -979,6 +986,10 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     const gestureDelta = getGestureDelta(event, touchStart);
 
     if (!guardedElement) {
+        return false;
+    }
+
+    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR)) {
         return false;
     }
 
