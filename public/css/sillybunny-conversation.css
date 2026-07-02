@@ -295,6 +295,7 @@
     padding: 8px 14px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .sb-conversation-pal-row {
@@ -642,6 +643,7 @@
     padding: 6px clamp(6px, 1.5vw, 12px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .sb-conversation-thread-empty {
@@ -703,6 +705,7 @@
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     flex: 1 1 auto;
 }
 .sb-conversation-channel-tabs::-webkit-scrollbar {
@@ -718,6 +721,7 @@
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     flex: 0 1 auto;
 }
 .sb-conversation-quick-actions::-webkit-scrollbar {
@@ -1462,6 +1466,7 @@
     padding: 14px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .sb-conversation-settings-body .checkbox_label {
@@ -1794,6 +1799,7 @@
     box-shadow: 0 18px 40px color-mix(in srgb, var(--black50a, rgba(0, 0, 0, 0.5)) 60%, transparent);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .sb-conversation-persona-picker {
@@ -1999,6 +2005,7 @@
     max-block-size: 200px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .sb-conversation-partner-option {
@@ -2146,6 +2153,8 @@
     margin-top: 8px;
     max-block-size: 220px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -2444,6 +2453,7 @@
         padding-block-end: 1px;
         scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
+        touch-action: pan-x;
     }
 
     .sb-conversation-channel-tabs::-webkit-scrollbar,
@@ -2605,6 +2615,7 @@
         min-block-size: 0 !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 
     /* Keep idle action labels on a single line */
