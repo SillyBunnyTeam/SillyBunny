@@ -741,6 +741,13 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
+const MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR = [
+    'html',
+    'body',
+    '#bg1',
+    '#bg_custom',
+].join(', ');
+
 const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#sheld',
     '#chat',
@@ -985,9 +992,10 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     }
 
     const guardedElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR);
+    const backgroundElement = elementMatchesSelector(event.target, MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR);
     const gestureDelta = getGestureDelta(event, touchStart);
 
-    if (!guardedElement) {
+    if (!guardedElement && !backgroundElement) {
         return false;
     }
 
