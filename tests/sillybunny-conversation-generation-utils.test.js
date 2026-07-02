@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+    buildSelfieImagePromptTemplate,
     extractCharacterReplyCommandParts,
     normalizeConversationOutputText,
     parseCommandArgs,
@@ -71,5 +72,27 @@ describe('sillybunny conversation generation utils', () => {
     test('returns empty text when input is empty or whitespace only', () => {
         expect(extractCharacterReplyCommandParts('   \n  ', {}).text).toBe('');
         expect(extractCharacterReplyCommandParts('', {}).text).toBe('');
+    });
+
+    test('preserves selfie command context when falling back to configured image prompt', () => {
+        expect(buildSelfieImagePromptTemplate('', 'raw photo, selfie of {{char}}', 'at a cluttered desk')).toBe(
+            'raw photo, selfie of {{char}}\nPhoto context: {{scene}}',
+        );
+    });
+
+    test('does not duplicate selfie context when template already contains scene token', () => {
+        expect(buildSelfieImagePromptTemplate('', 'raw photo of {{char}} in {{scene}}', 'at a cluttered desk')).toBe(
+            'raw photo of {{char}} in {{scene}}',
+        );
+    });
+
+    test('preserves selfie command context when generated image prompt is generic', () => {
+        expect(buildSelfieImagePromptTemplate('detailed selfie prompt', 'raw photo, selfie of {{char}}', 'at a cluttered desk')).toBe(
+            'detailed selfie prompt\nPhoto context: {{scene}}',
+        );
+    });
+
+    test('does not duplicate selfie context when generated image prompt already contains it', () => {
+        expect(buildSelfieImagePromptTemplate('selfie at a cluttered desk', 'raw photo, selfie of {{char}}', 'at a cluttered desk')).toBe('selfie at a cluttered desk');
     });
 });

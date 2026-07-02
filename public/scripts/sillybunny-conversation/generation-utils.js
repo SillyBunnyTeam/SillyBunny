@@ -76,3 +76,14 @@ export function extractCharacterReplyCommandParts(rawText, settings = {}) {
 
     return { text, selfieRequests, scheduleUpdates, reminders };
 }
+
+export function buildSelfieImagePromptTemplate(generatedPrompt, configuredTemplate, context, fallbackTemplate = 'raw photo, selfie of {{char}}') {
+    const prompt = String(generatedPrompt || '').trim();
+    const scene = String(context || '').trim();
+    const template = prompt || String(configuredTemplate || fallbackTemplate).trim() || fallbackTemplate;
+    if (!scene || template.includes('{{scene}}') || template.toLowerCase().includes(scene.toLowerCase())) {
+        return template;
+    }
+
+    return `${template}\nPhoto context: {{scene}}`;
+}

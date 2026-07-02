@@ -9,6 +9,7 @@ import {
 } from './constants.js';
 import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import {
+    buildSelfieImagePromptTemplate,
     extractCharacterReplyCommandParts,
     normalizeConversationOutputText,
     parseCommandArgs,
@@ -491,15 +492,15 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
             systemPrompt: 'You output only a raw image generation prompt with no preamble.',
             responseLength: 200,
             trimNames: false,
-            cacheScope: 'conversation-mode-selfie',
         }, resolvedSettings);
     } catch (error) {
         console.warn('Conversation Mode: selfie prompt generation failed', error);
     }
 
+    const scene = context || 'a casual selfie in the current moment';
     imagePrompt = buildCharacterImagePrompt(
-        formatPromptText(imagePrompt, 600) || resolvedSettings.selfie_prompt || 'raw photo, selfie of {{char}}',
-        context || 'a casual selfie in the current moment',
+        buildSelfieImagePromptTemplate(formatPromptText(imagePrompt, 600), resolvedSettings.selfie_prompt, scene),
+        scene,
         avatar,
     );
 
