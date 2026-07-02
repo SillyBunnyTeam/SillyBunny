@@ -11286,8 +11286,15 @@ async function saveSettingsInner(loopCounter = 0) {
         background: background_settings,
         proxies: proxies,
         selected_proxy: selected_proxy,
-        custom_endpoint_presets: custom_endpoint_presets,
-        selected_custom_endpoint_preset: selected_custom_endpoint_preset,
+        // Strip plaintext keys from presets before saving
+        custom_endpoint_presets: custom_endpoint_presets.map(p => ({
+            ...p,
+            key: p.secretId ? '' : p.key,
+        })),
+        selected_custom_endpoint_preset: selected_custom_endpoint_preset ? {
+            ...selected_custom_endpoint_preset,
+            key: selected_custom_endpoint_preset.secretId ? '' : selected_custom_endpoint_preset.key,
+        } : selected_custom_endpoint_preset,
     };
 
     try {
