@@ -45,6 +45,7 @@ const mediaSource = readConversationSource('media.js');
 const palsRailSource = readConversationSource('pals-rail.js');
 const pickersSource = readConversationSource('pickers.js');
 const promptSource = readConversationSource('prompt.js');
+const sharedHelpersSource = readConversationSource('shared-helpers.js');
 const renderUtilsSource = readConversationSource('render-utils.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
@@ -118,8 +119,8 @@ describe('conversation mode scoped connection profile', () => {
     test('adds context-aware implicit references for group DMs', () => {
         expect(promptSource).toContain('buildConversationGroupReferenceContext');
         expect(promptSource).toContain('conversation-group-reference-context');
-        expect(promptSource).toContain('last non-user speaker before it');
-        expect(promptSource).toContain('do not assume every you means');
+        expect(sharedHelpersSource).toContain('last non-user speaker before it');
+        expect(sharedHelpersSource).toContain('do not assume every you means');
         expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId })');
         expect(attachmentsSource).toContain('getImplicitGroupReplyCandidate');
         expect(attachmentsSource).toContain('isBroadGroupAddress');
@@ -147,7 +148,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(chromeSource).toContain("case 'edit-grounded-dialogue-rules':");
         expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
-        expect(promptSource).toContain('settings?.grounded_dialogue_rules_enabled');
+        expect(promptSource).toContain("from './shared-helpers.js'");
         expect(promptSource).toContain('fields.push(groundedRules)');
         expect(serverEndpointSource).toContain('getGroundedDialogueRulesPrompt');
         expect(serverEndpointSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');

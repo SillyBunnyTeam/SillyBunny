@@ -36,6 +36,12 @@ import {
     hasConversationMessageContent,
     safeParseThread,
 } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+import {
+    buildConversationGroupReferenceContext,
+    compileGeechanPrompt,
+    formatPromptText,
+    getGroundedDialogueRulesPrompt,
+} from '../../public/scripts/sillybunny-conversation/shared-helpers.js';
 
 export const router = express.Router();
 
@@ -805,80 +811,6 @@ async function getCharacterData(request, avatar) {
     }
 }
 
-function formatPromptText(value, maxLength = 1400) {
-    return String(value || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, maxLength);
-}
-
-function getConversationSpeakerName(message, userName = 'User') {
-    if (message?.role === 'user') {
-        return userName;
-    }
-
-    return String(message?.name || 'Speaker').trim() || 'Speaker';
-}
-
-function getLastUserMessageIndex(messages) {
-    for (let index = messages.length - 1; index >= 0; index--) {
-        if (messages[index]?.role === 'user' && hasConversationMessageContent(messages[index])) {
-            return index;
-        }
-    }
-
-    return -1;
-}
-
-function getLastNonUserMessageBefore(messages, beforeIndex) {
-    for (let index = beforeIndex - 1; index >= 0; index--) {
-        const message = messages[index];
-        if (message?.role !== 'user' && message?.role !== 'system' && hasConversationMessageContent(message)) {
-            return message;
-        }
-    }
-
-    return null;
-}
-
-function buildConversationGroupReferenceContext(messages, { groupId = '', speakerName = 'Character', userName = 'User' } = {}) {
-    if (!groupId) {
-        return '';
-    }
-
-    const recentMessages = messages
-        .filter(message => hasConversationMessageContent(message) && message?.role !== 'system')
-        .slice(-TRANSCRIPT_MESSAGE_LIMIT);
-    const latestUserIndex = getLastUserMessageIndex(recentMessages);
-    if (latestUserIndex < 0) {
-        return '';
-    }
-
-    const latestUserMessage = recentMessages[latestUserIndex];
-    const replyReference = latestUserMessage.extra?.conversation_reply_to;
-    const lastNonUserMessage = getLastNonUserMessageBefore(recentMessages, latestUserIndex);
-    const rawTargetName = replyReference?.name || (lastNonUserMessage ? getConversationSpeakerName(lastNonUserMessage, userName) : '');
-    const targetName = formatPromptText(rawTargetName, 80);
-    if (!targetName) {
-        return '';
-    }
-
-    const speaker = formatPromptText(speakerName || 'Character', 80);
-    const latestText = formatPromptText(latestUserMessage.mes, 500);
-    const targetReason = replyReference?.name
-        ? `The latest user message is an explicit reply to ${targetName}.`
-        : `The latest user message most likely addresses ${targetName}, the last non-user speaker before it, when it uses implicit references like you, your, that, this, or why.`;
-
-    return [
-        'Group DM reference context:',
-        latestText ? `Latest user message: ${latestText}` : '',
-        targetReason,
-        `${speaker} should silently use this to resolve ambiguous references. If ${speaker} is not ${targetName}, do not assume every you means ${speaker}; the user may be referring to ${targetName}.`,
-        'Do not mention this context or explain the reference resolution; just reply naturally.',
-    ].filter(Boolean).join('\n');
-}
-
 function getConversationSystemTimeContext(now = new Date()) {
     const resolvedTimeZone = (() => {
         try {
@@ -1013,32 +945,6 @@ async function buildConversationPromptMessages(messages, directive, speakerName,
     return promptMessages;
 }
 
-function compileGeechanPrompt(settings, charName, userName) {
-    let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
-    compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
-    compiledPrompt = compiledPrompt.replace(/\{\{trim\}\}/g, '');
-    if (settings.custom_instructions && settings.custom_instructions.trim()) {
-        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, (match, block) => {
-            return block.replace(/\{\{getvar::player-instructions\}\}/gi, settings.custom_instructions);
-        });
-    } else {
-        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, '');
-    }
-
-    return compiledPrompt
-        .replace(/\{\{char\}\}/g, charName)
-        .replace(/\{\{user\}\}/g, userName)
-        .trim();
-}
-
-function getGroundedDialogueRulesPrompt(settings) {
-    if (!settings?.grounded_dialogue_rules_enabled) {
-        return '';
-    }
-
-    return String(settings.grounded_dialogue_rules || '').trim().slice(0, 8000);
-}
-
 function buildConversationSystemPrompt({ settings, character, userName, groupId, branch }) {
     const charName = character.name || 'Character';
     const fields = [
@@ -1048,7 +954,7 @@ function buildConversationSystemPrompt({ settings, character, userName, groupId,
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
         'Formatting: write plain chat text. Do not start with a speaker/name label. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
         getConversationSystemTimeContext(),
-        compileGeechanPrompt(settings, charName, userName),
+        compileGeechanPrompt(settings, charName, userName, GEECHAN_DEFAULT_PROMPT),
     ];
 
     const groundedRules = getGroundedDialogueRulesPrompt(settings);

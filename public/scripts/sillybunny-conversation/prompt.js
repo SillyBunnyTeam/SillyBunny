@@ -29,6 +29,12 @@ import {
 } from './personas.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import {
+    buildConversationGroupReferenceContext,
+    compileGeechanPrompt,
+    formatPromptText,
+    getGroundedDialogueRulesPrompt,
+} from './shared-helpers.js';
+import {
     getConversationGroupMemorySummaries,
     getConversationMemorySummary,
     getConversationSoloMemorySummary,
@@ -140,80 +146,6 @@ export function renderConversationAttachments(container, message) {
     container.appendChild(wrapper);
 }
 
-export function formatPromptText(value, maxLength = 1400) {
-    return String(value || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, maxLength);
-}
-
-function getConversationSpeakerName(message) {
-    if (message?.role === 'user') {
-        return name1 || 'User';
-    }
-
-    return String(message?.name || 'Speaker').trim() || 'Speaker';
-}
-
-function getLastUserMessageIndex(messages) {
-    for (let index = messages.length - 1; index >= 0; index--) {
-        if (messages[index]?.role === 'user' && hasConversationMessageContent(messages[index])) {
-            return index;
-        }
-    }
-
-    return -1;
-}
-
-function getLastNonUserMessageBefore(messages, beforeIndex) {
-    for (let index = beforeIndex - 1; index >= 0; index--) {
-        const message = messages[index];
-        if (message?.role !== 'user' && message?.role !== 'system' && hasConversationMessageContent(message)) {
-            return message;
-        }
-    }
-
-    return null;
-}
-
-function buildConversationGroupReferenceContext(messages, { groupId = '', speakerName = getCurrentCharName() } = {}) {
-    if (!groupId) {
-        return '';
-    }
-
-    const recentMessages = messages
-        .filter(message => hasConversationMessageContent(message) && message?.role !== 'system')
-        .slice(-TRANSCRIPT_MESSAGE_LIMIT);
-    const latestUserIndex = getLastUserMessageIndex(recentMessages);
-    if (latestUserIndex < 0) {
-        return '';
-    }
-
-    const latestUserMessage = recentMessages[latestUserIndex];
-    const replyReference = latestUserMessage.extra?.conversation_reply_to;
-    const lastNonUserMessage = getLastNonUserMessageBefore(recentMessages, latestUserIndex);
-    const rawTargetName = replyReference?.name || (lastNonUserMessage ? getConversationSpeakerName(lastNonUserMessage) : '');
-    const targetName = formatPromptText(rawTargetName, 80);
-    if (!targetName) {
-        return '';
-    }
-
-    const speaker = formatPromptText(speakerName || 'Character', 80);
-    const latestText = formatPromptText(latestUserMessage.mes, 500);
-    const targetReason = replyReference?.name
-        ? `The latest user message is an explicit reply to ${targetName}.`
-        : `The latest user message most likely addresses ${targetName}, the last non-user speaker before it, when it uses implicit references like you, your, that, this, or why.`;
-
-    return [
-        'Group DM reference context:',
-        latestText ? `Latest user message: ${latestText}` : '',
-        targetReason,
-        `${speaker} should silently use this to resolve ambiguous references. If ${speaker} is not ${targetName}, do not assume every you means ${speaker}; the user may be referring to ${targetName}.`,
-        'Do not mention this context or explain the reference resolution; just reply naturally.',
-    ].filter(Boolean).join('\n');
-}
-
 function getConversationLocalTimeContext(now = new Date()) {
     const resolvedTimeZone = (() => {
         try {
@@ -243,14 +175,6 @@ function getConversationLocalTimeContext(now = new Date()) {
         resolvedTimeZone ? `Timezone: ${resolvedTimeZone}.` : '',
         'Use this as the user\'s current computer/phone time for day of week, time of day, dates, timezones, reminders, scheduling, and natural chat timing.',
     ].filter(Boolean).join(' ');
-}
-
-function getGroundedDialogueRulesPrompt(settings) {
-    if (!settings?.grounded_dialogue_rules_enabled) {
-        return '';
-    }
-
-    return String(settings.grounded_dialogue_rules || '').trim().slice(0, 8000);
 }
 
 export function formatConversationTranscript(messages) {
@@ -383,7 +307,7 @@ export async function buildConversationPromptMessages(messages, directive, speak
         });
     }
 
-    const groupReferenceContext = buildConversationGroupReferenceContext(messages, { groupId, speakerName });
+    const groupReferenceContext = buildConversationGroupReferenceContext(messages, { groupId, speakerName, userName: name1 || 'User' });
     if (groupReferenceContext) {
         promptMessages.push({
             role: 'system',
@@ -510,21 +434,7 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     ];
     const now = new Date();
     fields.push(getConversationLocalTimeContext(now));
-
-    let compiledPrompt = settings.geechan_chatroom_prompt || GEECHAN_DEFAULT_PROMPT;
-    compiledPrompt = compiledPrompt.replace(/\{\{\/\/[\s\S]*?\}\}/g, '');
-    compiledPrompt = compiledPrompt.replace(/\{\{trim\}\}/g, '');
-    if (settings.custom_instructions && settings.custom_instructions.trim()) {
-        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, (match, p1) => {
-            return p1.replace(/\{\{getvar::player-instructions\}\}/gi, settings.custom_instructions);
-        });
-    } else {
-        compiledPrompt = compiledPrompt.replace(/\{\{#if \.player-instructions\}\}([\s\S]*?)\{\{\/if\}\}/gi, '');
-    }
-    compiledPrompt = compiledPrompt
-        .replace(/\{\{char\}\}/g, charName)
-        .replace(/\{\{user\}\}/g, userName);
-    fields.push(compiledPrompt.trim());
+    fields.push(compileGeechanPrompt(settings, charName, userName, GEECHAN_DEFAULT_PROMPT));
 
     const groundedRules = getGroundedDialogueRulesPrompt(settings);
     if (groundedRules) {
