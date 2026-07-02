@@ -156,6 +156,20 @@
     }
 }
 
+/* Success flash for button feedback */
+@keyframes success-flash {
+    0%, 100% {
+        background-color: transparent;
+    }
+    50% {
+        background-color: rgba(40, 167, 69, 0.3);
+    }
+}
+
+.success-flash {
+    animation: success-flash 1.2s ease-in-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .flash,
     [class*="flash"],

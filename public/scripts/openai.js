@@ -6868,6 +6868,14 @@ function saveSamplingProfileForCurrentModel() {
     }
     saveSettingsDebounced();
     const modelLabel = getChatCompletionModel();
+    
+    // Visual feedback flash
+    const $saveButton = $('#model_sampling_profile_save');
+    $saveButton.addClass('success-flash');
+    setTimeout(() => {
+        $saveButton.removeClass('success-flash');
+    }, 1200);
+    
     toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
 }
 
@@ -9555,16 +9563,28 @@ async function onCustomEndpointPresetChange() {
 
 $('#save_custom_endpoint').on('click', async function () {
     const presetName = $('#custom_endpoint_preset_name').val();
+    const keyInputValue = String($('#api_key_custom').val()).trim();
     const existingPreset = custom_endpoint_presets.find(preset => preset.name === String(presetName));
     const preset = buildCustomEndpointPresetForSave({
         name: presetName,
         url: $('#custom_api_url_text').val(),
-        key: $('#api_key_custom').val(),
+        key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: existingPreset?.secretId,
     });
 
-    await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    // Validate: if no key provided and no existing secret, error
+    if (!keyInputValue && !preset.secretId) {
+        toastr.error(t`API key cannot be empty. Please enter an API key or select an existing secret.`);
+        return;
+    }
+
+    // Only write secret if user provided a new key
+    if (keyInputValue) {
+        await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    }
+    // If no new key but has secretId, keep existing secret (no action needed)
+
     await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
     saveSettingsDebounced();
     toastr.success(t`Custom Endpoint Profile Saved`);
