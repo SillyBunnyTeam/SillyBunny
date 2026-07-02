@@ -439,6 +439,8 @@ describe('SillyBunny Conversation REST API', () => {
             version: 0,
             settings: {
                 selfie_command_enabled: true,
+                grounded_dialogue_rules_enabled: true,
+                grounded_dialogue_rules: '### Grounded Dialogue Rules\n\n- Use concrete observable details instead of vague reactions.',
             },
             character: {
                 data: {
@@ -487,6 +489,8 @@ describe('SillyBunny Conversation REST API', () => {
         expect(json.prompt.systemPrompt).toContain('You are Nova');
         expect(json.prompt.systemPrompt).toContain('Current system time context:');
         expect(json.prompt.systemPrompt).toContain('time of day, dates, timezones, reminders, scheduling');
+        expect(json.prompt.systemPrompt).toContain('### Grounded Dialogue Rules');
+        expect(json.prompt.systemPrompt).toContain('Use concrete observable details instead of vague reactions.');
         expect(json.prompt.messages.at(-1).content).toContain('Nova:');
 
         expect(upstreamRequests).toHaveLength(1);
@@ -494,6 +498,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(upstreamRequests[0].max_output_tokens).toBe(64);
         expect(upstreamRequests[0].instructions).toContain('You are Nova');
         expect(upstreamRequests[0].instructions).toContain('Current system time context:');
+        expect(upstreamRequests[0].instructions).toContain('### Grounded Dialogue Rules');
         expect(JSON.stringify(upstreamRequests[0].input)).toContain('Can you say hi?');
 
         const settings = readSettings();

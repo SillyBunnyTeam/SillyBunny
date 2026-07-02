@@ -552,6 +552,10 @@ function normalizeConversationSettings(settings = {}) {
     }
     normalized.selfie_command_enabled = Boolean(normalized.selfie_command_enabled);
     normalized.schedule_command_enabled = Boolean(normalized.schedule_command_enabled);
+    normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled);
+    normalized.grounded_dialogue_rules = typeof normalized.grounded_dialogue_rules === 'string'
+        ? normalized.grounded_dialogue_rules
+        : DEFAULT_SETTINGS.grounded_dialogue_rules;
     return normalized;
 }
 
@@ -791,6 +795,14 @@ function compileGeechanPrompt(settings, charName, userName) {
         .trim();
 }
 
+function getGroundedDialogueRulesPrompt(settings) {
+    if (!settings?.grounded_dialogue_rules_enabled) {
+        return '';
+    }
+
+    return String(settings.grounded_dialogue_rules || '').trim().slice(0, 8000);
+}
+
 function buildConversationSystemPrompt({ settings, character, userName, groupId, branch }) {
     const charName = character.name || 'Character';
     const fields = [
@@ -802,6 +814,11 @@ function buildConversationSystemPrompt({ settings, character, userName, groupId,
         getConversationSystemTimeContext(),
         compileGeechanPrompt(settings, charName, userName),
     ];
+
+    const groundedRules = getGroundedDialogueRulesPrompt(settings);
+    if (groundedRules) {
+        fields.push(groundedRules);
+    }
 
     if (character.description) {
         fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);

@@ -134,6 +134,25 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now)');
     });
 
+    test('adds compact editable Grounded Dialogue Rules as an optional global prompt block', () => {
+        expect(constantsSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
+        expect(constantsSource).toContain('grounded_dialogue_rules_enabled: false');
+        expect(constantsSource).toContain("{ id: 'sb_conv_grounded_dialogue_rules_enabled', key: 'grounded_dialogue_rules_enabled', prop: 'checked' }");
+        expect(constantsSource).toContain("{ id: 'sb_conv_grounded_dialogue_rules', key: 'grounded_dialogue_rules', prop: 'value' }");
+        expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
+        expect(constantsSource).toContain('grounded_dialogue_rules');
+        expect(timelineSource).toContain('data-sb-conversation-action="edit-grounded-dialogue-rules"');
+        expect(timelineSource).toContain('<textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>');
+        expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
+        expect(chromeSource).toContain("case 'edit-grounded-dialogue-rules':");
+        expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
+        expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
+        expect(promptSource).toContain('settings?.grounded_dialogue_rules_enabled');
+        expect(promptSource).toContain('fields.push(groundedRules)');
+        expect(serverEndpointSource).toContain('getGroundedDialogueRulesPrompt');
+        expect(serverEndpointSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
+    });
+
     test('keeps saved Conversation-owned group DMs visible without messages', () => {
         expect(settingsStoreSource).toContain('const hasConversationGroups');
         expect(settingsStoreSource).toContain('getConversationGroups().forEach');

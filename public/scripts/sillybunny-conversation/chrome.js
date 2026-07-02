@@ -5,7 +5,7 @@ import { getUserAvatar, setUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
     createConversationBranchForAvatar,
     deleteConversationBranch,
@@ -118,6 +118,130 @@ function setConversationToolsVisible(visible) {
     } catch {
         // Ignore storage write failures in Safari Private Browsing.
     }
+}
+
+function closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement) {
+    overlay.remove();
+    if (previouslyFocusedElement instanceof HTMLElement) {
+        previouslyFocusedElement.focus({ preventScroll: true });
+    }
+}
+
+function openGroundedDialogueRulesEditor() {
+    const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
+    if (!(backingInput instanceof HTMLTextAreaElement)) {
+        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules.');
+        return;
+    }
+
+    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    overlay.id = 'sb_conversation_grounded_rules_modal';
+    overlay.className = 'sb-conversation-schedule-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+        background: rgba(0, 0, 0, 0.7);
+        box-sizing: border-box;
+    `;
+
+    const modal = document.createElement('div');
+    modal.className = 'sb-conversation-schedule-modal';
+    modal.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        inline-size: min(720px, calc(100vw - 24px));
+        max-block-size: min(78vh, 760px);
+        padding: 16px;
+        border: 1px solid color-mix(in srgb, var(--sb-shell-border, #666) 70%, transparent);
+        border-radius: var(--sb-radius-lg, 16px);
+        background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor));
+        color: var(--SmartThemeBodyColorContrast);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    `;
+
+    const header = document.createElement('div');
+    header.className = 'sb-conversation-field-row';
+    header.style.cssText = 'align-items: center; justify-content: space-between; gap: 10px;';
+
+    const title = document.createElement('div');
+    title.innerHTML = '<div class="sb-conversation-settings-kicker">Global prompt style</div><div class="sb-conversation-settings-title">Grounded Dialogue Rules</div>';
+    header.appendChild(title);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'menu_button menu_button_icon';
+    closeButton.title = 'Close editor';
+    closeButton.setAttribute('aria-label', 'Close Grounded Dialogue Rules editor');
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    header.appendChild(closeButton);
+
+    const hint = document.createElement('p');
+    hint.className = 'sb-conversation-field-hint';
+    hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
+
+    const editor = document.createElement('textarea');
+    editor.className = 'text_pole textarea_compact wide100p';
+    editor.rows = 18;
+    editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
+    editor.style.cssText = 'min-block-size: 340px; resize: vertical; font-family: var(--monoFontFamily, monospace);';
+
+    const actions = document.createElement('div');
+    actions.className = 'sb-conversation-field-row';
+    actions.style.cssText = 'justify-content: flex-end; gap: 8px;';
+
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.className = 'menu_button';
+    resetButton.textContent = 'Reset';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'menu_button';
+    cancelButton.textContent = 'Cancel';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'menu_button';
+    saveButton.textContent = 'Save Rules';
+
+    actions.append(resetButton, cancelButton, saveButton);
+    modal.append(header, hint, editor, actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const closeEditor = () => closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement);
+    closeButton.addEventListener('click', closeEditor);
+    cancelButton.addEventListener('click', closeEditor);
+    resetButton.addEventListener('click', () => {
+        editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
+        editor.focus({ preventScroll: true });
+    });
+    saveButton.addEventListener('click', () => {
+        backingInput.value = editor.value;
+        backingInput.dispatchEvent(new Event('input', { bubbles: true }));
+        saveCurrentPanelSettings();
+        toastr.success('Grounded Dialogue Rules updated.');
+        closeEditor();
+    });
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            closeEditor();
+        }
+    });
+    overlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeEditor();
+        }
+    });
+
+    requestAnimationFrame(() => editor.focus({ preventScroll: true }));
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -615,6 +739,9 @@ export function bindConversationChromeControls(sheld) {
                 }
                 break;
             }
+            case 'edit-grounded-dialogue-rules':
+                openGroundedDialogueRulesEditor();
+                break;
             case 'weekly-remove': {
                 const row = target.closest('.sb-conversation-weekly-row');
                 if (row instanceof HTMLElement) {

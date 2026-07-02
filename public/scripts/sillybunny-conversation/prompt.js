@@ -245,6 +245,14 @@ function getConversationLocalTimeContext(now = new Date()) {
     ].filter(Boolean).join(' ');
 }
 
+function getGroundedDialogueRulesPrompt(settings) {
+    if (!settings?.grounded_dialogue_rules_enabled) {
+        return '';
+    }
+
+    return String(settings.grounded_dialogue_rules || '').trim().slice(0, 8000);
+}
+
 export function formatConversationTranscript(messages) {
     return messages
         .slice(-TRANSCRIPT_MESSAGE_LIMIT)
@@ -517,6 +525,11 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         .replace(/\{\{char\}\}/g, charName)
         .replace(/\{\{user\}\}/g, userName);
     fields.push(compiledPrompt.trim());
+
+    const groundedRules = getGroundedDialogueRulesPrompt(settings);
+    if (groundedRules) {
+        fields.push(groundedRules);
+    }
 
     if (character?.description) {
         fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);

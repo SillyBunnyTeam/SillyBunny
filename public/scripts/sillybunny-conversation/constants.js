@@ -47,6 +47,66 @@ Only use what is fitting for {{char}}.
 
 Use the information below as a reference point on how {{char}} should act in the chatroom:`;
 
+export const DEFAULT_GROUNDED_DIALOGUE_RULES = `### Grounded Dialogue Rules
+
+- Replace any banned phrase, cliché, vague emotion, generic body reaction, or abstract metaphor with one concrete observable detail.
+
+## Avoid
+
+### Constructions and tropes
+- not X, not X but Y, not quite X, litotes, negative parallelisms
+- doesn't just X but Y, doesn't X; Y, they don't X
+- say that again, are you sure, that does it, that lands, not a question, really looks at
+- like a physical blow, like a stone into still water, predator/prey metaphors
+- a promise and/or a threat, either X, Y, or both
+- rule of threes, word/number counting emphasis
+- A beat, A pause, starts. stops., somewhere, X...
+- deletes it, types it, deletes it again
+- architectural metaphors outside literal architecture
+- flat tone comparisons to weather/groceries
+- overexplained tone fragments like Flat. Factual.
+- Your face is doing a thing
+- no heat behind it, no venom behind it
+- excessive em dashes
+
+### Somatic tics
+- jaw movement/tightening/working
+- mouth open-close cycling
+- breath catching
+- knuckle whitening/pale knuckles
+- burning cheeks
+
+### Scents
+- ozone, sandalwood, cedar, cardamom
+- something distinctly X
+- The room smells like X
+- vague scent phrasing like something X, maybe X
+
+### Nicknames
+- Gremlin
+- Goblin
+
+### Human vocalizations (exception: anthros, furries, animals)
+- purring
+- chirping
+- growling
+
+### Audio formulas
+- between an X and a Y
+- half X, half Y
+- makes a/an X sound
+- strangled sound
+- teakettle boiling
+
+### Environmental tropes
+- dust motes
+- metallic tang of X
+
+### Romantic/possessive shorthand
+- Mine
+- possessive romantic shorthand
+- forehead-touching after kisses`;
+
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 export const CONVERSATION_NOTIFICATION_PRIORITIES = Object.freeze(['normal', 'silent', 'priority']);
@@ -185,6 +245,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     schedule_command_enabled: true,
     geechan_chatroom_prompt: GEECHAN_DEFAULT_PROMPT,
     custom_instructions: '',
+    grounded_dialogue_rules_enabled: false,
+    grounded_dialogue_rules: DEFAULT_GROUNDED_DIALOGUE_RULES,
     multi_char: false,
     multi_char_names: '',
     auto_character_chat: false,
@@ -231,6 +293,8 @@ export const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
     { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
     { id: 'sb_conv_custom_instructions', key: 'custom_instructions', prop: 'value' },
+    { id: 'sb_conv_grounded_dialogue_rules_enabled', key: 'grounded_dialogue_rules_enabled', prop: 'checked' },
+    { id: 'sb_conv_grounded_dialogue_rules', key: 'grounded_dialogue_rules', prop: 'value' },
     { id: 'sb_conv_multi_char', key: 'multi_char', prop: 'checked' },
     { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
     { id: 'sb_conv_auto_character_chat', key: 'auto_character_chat', prop: 'checked' },
@@ -272,6 +336,8 @@ export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
     'idle_followup',
     'idle_spontaneous',
     'custom_instructions',
+    'grounded_dialogue_rules_enabled',
+    'grounded_dialogue_rules',
     'connection_profile',
 ]);
 export const GLOBAL_CONVERSATION_SETTINGS_KEY_SET = new Set(GLOBAL_CONVERSATION_SETTINGS_KEYS);

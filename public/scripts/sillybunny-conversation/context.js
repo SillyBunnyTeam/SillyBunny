@@ -341,6 +341,10 @@ export function safeParseSettings(stored) {
         settings.auto_chat_names = settings.multi_char_names;
         settings.auto_chat_cooldown = parsePositiveInt(settings.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1);
         settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
+        settings.grounded_dialogue_rules_enabled = Boolean(settings.grounded_dialogue_rules_enabled);
+        settings.grounded_dialogue_rules = typeof settings.grounded_dialogue_rules === 'string'
+            ? settings.grounded_dialogue_rules
+            : DEFAULT_SETTINGS.grounded_dialogue_rules;
         settings.notification_priority = CONVERSATION_NOTIFICATION_PRIORITIES.includes(settings.notification_priority)
             ? settings.notification_priority
             : DEFAULT_SETTINGS.notification_priority;

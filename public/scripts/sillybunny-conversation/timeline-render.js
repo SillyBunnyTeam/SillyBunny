@@ -1362,6 +1362,19 @@ export function buildSettingsDrawerHtml() {
                     <textarea id="sb_conv_custom_instructions" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type any custom instructions or guidelines here..."></textarea>
                     <p class="sb-conversation-field-hint">Applies to every solo and group Conversation DM.</p>
                 </div>
+                <div class="sb-conversation-field-stack">
+                    <div class="sb-conversation-field-row" style="align-items: center; gap: 8px;">
+                        <label class="checkbox_label" title="Apply the global Grounded Dialogue Rules block to Conversation Mode prompts." style="flex: 1; min-width: 0;">
+                            <input id="sb_conv_grounded_dialogue_rules_enabled" type="checkbox" />
+                            <span>Grounded Dialogue Rules <span class="sb-conversation-setting-scope">Global</span></span>
+                        </label>
+                        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="edit-grounded-dialogue-rules" title="Edit Grounded Dialogue Rules" aria-label="Edit Grounded Dialogue Rules">
+                            <i class="fa-solid fa-pencil" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>
+                    <p class="sb-conversation-field-hint">Optional anti-cliché style guard. Use the pencil to edit the full rules without expanding this drawer.</p>
+                </div>
                 <label class="checkbox_label" title="Enable additional characters in the chat to chime in">
                     <input id="sb_conv_multi_char" type="checkbox" />
                     <span>Add additional members in the chat</span>
