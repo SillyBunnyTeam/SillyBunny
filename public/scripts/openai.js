@@ -9555,16 +9555,37 @@ async function onCustomEndpointPresetChange() {
 
 $('#save_custom_endpoint').on('click', async function () {
     const presetName = $('#custom_endpoint_preset_name').val();
+    const keyInputValue = String($('#api_key_custom').val()).trim();
     const existingPreset = custom_endpoint_presets.find(preset => preset.name === String(presetName));
     const preset = buildCustomEndpointPresetForSave({
         name: presetName,
         url: $('#custom_api_url_text').val(),
-        key: $('#api_key_custom').val(),
+        key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: existingPreset?.secretId,
     });
 
-    await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    // Check if there's an active secret for CUSTOM key
+    const activeSecret = secret_state[SECRET_KEYS.CUSTOM]?.find(s => s.active);
+    const hasActiveSecret = !!activeSecret;
+
+    // Validate: need at least one of: new key input, existing secretId, or active secret
+    if (!keyInputValue && !preset.secretId && !hasActiveSecret) {
+        toastr.error(t`API key cannot be empty. Please enter an API key or select an existing secret.`);
+        return;
+    }
+
+    // If no new key but has active secret, bind it to the profile
+    if (!keyInputValue && hasActiveSecret && !preset.secretId) {
+        preset.secretId = activeSecret.id;
+    }
+
+    // Only write secret if user provided a new key
+    if (keyInputValue) {
+        await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
+    }
+    // If no new key but has secretId, keep existing secret (no action needed)
+
     await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
     saveSettingsDebounced();
     toastr.success(t`Custom Endpoint Profile Saved`);
