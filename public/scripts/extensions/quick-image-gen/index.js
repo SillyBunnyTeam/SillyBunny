@@ -3803,6 +3803,41 @@ function enrichSceneTextForFilters(sceneText, label = "Contextual filters") {
     return enriched;
 }
 
+let quickImageGenReadyPromise = null;
+
+function ensureQuickImageGenReady(timeoutMs = 10000) {
+    if (extension_settings?.[extensionName]) {
+        return Promise.resolve();
+    }
+
+    if (quickImageGenReadyPromise) {
+        return quickImageGenReadyPromise;
+    }
+
+    quickImageGenReadyPromise = new Promise((resolve, reject) => {
+        const startedAt = Date.now();
+        const poll = () => {
+            if (extension_settings?.[extensionName]) {
+                resolve();
+                return;
+            }
+
+            if (Date.now() - startedAt >= timeoutMs) {
+                reject(new Error("Quick Image Gen did not finish initializing."));
+                return;
+            }
+
+            setTimeout(poll, 50);
+        };
+
+        poll();
+    }).finally(() => {
+        quickImageGenReadyPromise = null;
+    });
+
+    return quickImageGenReadyPromise;
+}
+
 function getSettings() {
     return extension_settings[extensionName];
 }
@@ -16003,6 +16038,7 @@ export { extensionName };
 // one export block. The actual sprite-generation logic lives outside QIG in
 // public/scripts/extensions/expressions/expression-sprite-bridge.js.
 export {
+    ensureQuickImageGenReady,
     getSettings,
     getGenerationSettingsForRun,
     generateForProvider,

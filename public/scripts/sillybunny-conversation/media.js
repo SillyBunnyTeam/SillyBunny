@@ -29,6 +29,10 @@ export async function generateConversationImage(prompt, negative = '', { notify 
     scheduleTimelineRender();
     try {
         const qig = await import('../extensions/quick-image-gen/index.js');
+        if (typeof qig.ensureQuickImageGenReady === 'function') {
+            await qig.ensureQuickImageGenReady();
+        }
+
         const entry = await qig.withTransientGenerationSettings({}, async () => {
             const settings = qig.getGenerationSettingsForRun();
             const raw = await qig.generateForProvider(prompt, negative, settings, conversationState.imageGenerationAbortController.signal, {});
