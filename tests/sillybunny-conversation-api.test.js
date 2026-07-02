@@ -467,7 +467,7 @@ describe('SillyBunny Conversation REST API', () => {
 
         expect(response.status).toBe(200);
         const json = await response.json();
-        expect(json.version).toBe(2);
+        expect(json.version).toBe(1); // Atomic save: only one version increment
         expect(json.userMessage).toMatchObject({
             role: 'user',
             name: 'Riley',
@@ -502,7 +502,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(JSON.stringify(upstreamRequests[0].input)).toContain('Can you say hi?');
 
         const settings = readSettings();
-        expect(settings._version).toBe(2);
+        expect(settings._version).toBe(1); // Atomic save: only one version increment
         const messages = settings.extension_settings[CONVERSATION_STORE_KEY]
             .characters['nova.png']
             .branches[DEFAULT_BRANCH_ID]

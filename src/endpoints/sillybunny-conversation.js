@@ -146,15 +146,96 @@ function scopeConversationStorageKey(storageKey, personaId = '') {
     return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
 }
 
+// Validation constants
+const MAX_AVATAR_LENGTH = 512;
+const MAX_CHARACTER_FIELD_LENGTH = 8 * 1024; // 8KB
+const MAX_ARRAY_LENGTH = 1000;
+
+function validateAvatar(avatar) {
+    if (!avatar || typeof avatar !== 'string') {
+        return { valid: false, error: 'avatar_required' };
+    }
+    const trimmed = avatar.trim();
+    if (!trimmed || trimmed.length > MAX_AVATAR_LENGTH) {
+        return { valid: false, error: 'invalid_avatar' };
+    }
+    return { valid: true, avatar: trimmed };
+}
+
+function validateGenerationPayload(generation) {
+    if (!isObject(generation)) {
+        return { valid: false, error: 'generation_required' };
+    }
+    if (!isObject(generation.payload)) {
+        return { valid: false, error: 'generation_payload_required' };
+    }
+    if (!generation.payload.model || typeof generation.payload.model !== 'string') {
+        return { valid: false, error: 'generation_model_required' };
+    }
+    return { valid: true };
+}
+
+function validateCharacterOverride(character) {
+    if (!character) {
+        return { valid: true };
+    }
+    if (!isObject(character)) {
+        return { valid: false, error: 'invalid_character' };
+    }
+    const fields = ['name', 'description', 'personality', 'scenario', 'mes_example', 'first_mes'];
+    for (const field of fields) {
+        if (character[field] && typeof character[field] === 'string' && character[field].length > MAX_CHARACTER_FIELD_LENGTH) {
+            return { valid: false, error: `character_${field}_too_long` };
+        }
+    }
+    return { valid: true };
+}
+
+function validateStoreStructure(store) {
+    if (!isObject(store)) {
+        return { valid: false, error: 'invalid_store' };
+    }
+
+    // Validate top-level keys
+    const allowedKeys = ['version', 'localStorageMigrated', 'settings', 'characters', 'groups', 'reminders'];
+    const unknownKeys = Object.keys(store).filter(key => !allowedKeys.includes(key));
+    if (unknownKeys.length > 0) {
+        return { valid: false, error: 'unknown_store_keys', keys: unknownKeys };
+    }
+
+    // Validate array lengths
+    if (Array.isArray(store.groups) && store.groups.length > MAX_ARRAY_LENGTH) {
+        return { valid: false, error: 'too_many_groups' };
+    }
+    if (Array.isArray(store.reminders) && store.reminders.length > MAX_ARRAY_LENGTH) {
+        return { valid: false, error: 'too_many_reminders' };
+    }
+
+    return { valid: true };
+}
+
+function isAvatarInGroup(avatar, groupId, store) {
+    const groups = Array.isArray(store.groups) ? store.groups : [];
+    const group = groups.find(g => String(g?.id) === String(groupId));
+    if (!group) {
+        return false;
+    }
+    return Array.isArray(group.members) && group.members.includes(avatar) &&
+           !(Array.isArray(group.disabled_members) && group.disabled_members.includes(avatar));
+}
+
 function readJsonFile(filePath, fallback = {}) {
     try {
         if (!fs.existsSync(filePath)) {
-            return fallback;
+            return { ok: true, data: fallback, missing: true };
         }
 
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch {
-        return fallback;
+        const content = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(content);
+        return { ok: true, data, missing: false };
+    } catch (error) {
+        console.error(`Failed to read or parse JSON file ${filePath}:`, error.message);
+        return { ok: false, error: error.message, data: fallback };
     }
 }
 
@@ -163,6 +244,11 @@ function getSettingsPath(request) {
 }
 
 function readUserSettings(request) {
+    const result = readJsonFile(getSettingsPath(request), {});
+    return result.data;
+}
+
+function readUserSettingsWithStatus(request) {
     return readJsonFile(getSettingsPath(request), {});
 }
 
@@ -868,7 +954,8 @@ function normalizeGenerationBackend(value) {
 
 function getGenerationPayload(generation) {
     const source = getObject(generation?.payload || generation?.body || generation);
-    const payload = { ...source };
+    // Deep clone to avoid mutating caller's data
+    const payload = JSON.parse(JSON.stringify(source));
     delete payload.backend;
     delete payload.body;
     delete payload.payload;
@@ -989,9 +1076,14 @@ async function runBackendGeneration(request, backend, payload) {
         throw error;
     }
 
-    const generationRequest = Object.create(request);
-    generationRequest.body = payload;
-    generationRequest.user = request.user;
+    // Create a safe minimal request clone instead of Object.create(request)
+    // to avoid breaking instanceof checks and own-property enumeration
+    const generationRequest = {
+        user: request.user,
+        headers: request.headers,
+        app: request.app,
+        body: payload,
+    };
     const capture = createCapturingResponse();
     if (backend === GENERATION_BACKENDS.TEXT) {
         await handleTextCompletionsGenerate(generationRequest, capture);
@@ -1035,11 +1127,17 @@ router.post('/store/get', (request, response) => {
 });
 
 router.post('/store/save', (request, response) => {
-    if (!isObject(request.body?.store)) {
-        return response.status(400).send({ error: 'invalid_store' });
+    const validation = validateStoreStructure(request.body?.store);
+    if (!validation.valid) {
+        return response.status(400).send({ error: validation.error, details: validation.keys });
     }
 
-    const currentSettings = readUserSettings(request);
+    const settingsResult = readUserSettingsWithStatus(request);
+    if (!settingsResult.ok) {
+        return response.status(500).send({ error: 'settings_read_failed', detail: settingsResult.error });
+    }
+
+    const currentSettings = settingsResult.data;
     const incomingSettings = { ...currentSettings };
     incomingSettings.extension_settings = {
         ...getObject(currentSettings.extension_settings),
@@ -1124,15 +1222,22 @@ router.post('/thread/save', (request, response) => {
 });
 
 router.post('/message/append', (request, response) => {
-    const avatar = getRequestAvatar(request);
-    if (!avatar) {
-        return response.status(400).send({ error: 'avatar_required' });
+    const avatarValidation = validateAvatar(getRequestAvatar(request));
+    if (!avatarValidation.valid) {
+        return response.status(400).send({ error: avatarValidation.error });
     }
+    const avatar = avatarValidation.avatar;
 
     const groupId = getRequestGroupId(request);
     const personaId = getRequestPersonaId(request);
     const currentSettings = readUserSettings(request);
     const store = ensureConversationStore(currentSettings);
+
+    // Verify group membership if appending to a group thread
+    if (groupId && !isAvatarInGroup(avatar, groupId, store)) {
+        return response.status(400).send({ error: 'avatar_not_in_group' });
+    }
+
     const message = appendConversationMessage(store, avatar, getIncomingMessage(request.body), {
         groupId,
         personaId,
@@ -1153,41 +1258,60 @@ router.post('/message/append', (request, response) => {
 });
 
 router.post('/message/send', async (request, response) => {
-    const avatar = getRequestAvatar(request);
-    if (!avatar) {
-        return response.status(400).send({ error: 'avatar_required' });
+    // Validate required fields
+    const avatarValidation = validateAvatar(getRequestAvatar(request));
+    if (!avatarValidation.valid) {
+        return response.status(400).send({ error: avatarValidation.error });
     }
-    if (!isObject(request.body?.generation)) {
-        return response.status(400).send({ error: 'generation_required' });
+    const avatar = avatarValidation.avatar;
+
+    const generationValidation = validateGenerationPayload(request.body?.generation);
+    if (!generationValidation.valid) {
+        return response.status(400).send({ error: generationValidation.error });
+    }
+
+    const characterValidation = validateCharacterOverride(request.body?.character);
+    if (!characterValidation.valid) {
+        return response.status(400).send({ error: characterValidation.error });
     }
 
     const groupId = getRequestGroupId(request);
     const personaId = getRequestPersonaId(request);
     const userName = String(request.body?.userName || request.body?.user_name || request.body?.name || 'User');
-    let currentSettings = readUserSettings(request);
+
+    // Read settings and check for corruption
+    const settingsResult = readUserSettingsWithStatus(request);
+    if (!settingsResult.ok) {
+        return response.status(500).send({ error: 'settings_read_failed', detail: settingsResult.error });
+    }
+
+    let currentSettings = settingsResult.data;
     let store = ensureConversationStore(currentSettings);
-    const userMessage = appendConversationMessage(store, avatar, getIncomingMessage(request.body, 'user'), {
-        groupId,
-        personaId,
-        fallback: { role: 'user', name: userName },
+
+    // Verify group membership if sending to a group thread
+    if (groupId && !isAvatarInGroup(avatar, groupId, store)) {
+        return response.status(400).send({ error: 'avatar_not_in_group' });
+    }
+
+    // Create user message in memory (don't persist yet)
+    const userMessage = createConversationMessage(getIncomingMessage(request.body, 'user'), {
+        role: 'user',
+        name: userName,
     });
     if (!userMessage) {
         return response.status(400).send({ error: 'message_required' });
     }
 
-    let saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
-    if (!saveResult.ok) {
-        return response.status(saveResult.status).send(saveResult.body);
-    }
-
-    currentSettings = saveResult.settings;
-    store = saveResult.store;
-
+    // Generate the reply
     const settings = getConversationSettings(request, store, avatar, groupId, request.body.settings, { personaId });
     const character = await getCharacterData(request, avatar);
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true, personaId });
+
+    // Temporarily add user message to build prompt
+    branch.messages.push(userMessage);
+
     const directive = getDefaultDirective(request.body);
-    const promptMessages = buildConversationPromptMessages(branch?.messages || [], directive, character.name || 'Character', { groupId, userName });
+    const promptMessages = buildConversationPromptMessages(branch.messages, directive, character.name || 'Character', { groupId, userName });
     const systemPrompt = buildConversationSystemPrompt({ settings, character, userName, groupId, branch });
     const { backend, payload } = buildGenerationRequestBody(
         request.body.generation,
@@ -1200,11 +1324,17 @@ router.post('/message/send', async (request, response) => {
     try {
         generationResponse = await runBackendGeneration(request, backend, payload);
     } catch (error) {
+        // Remove temporary user message since generation failed
+        branch.messages.pop();
+
+        // Sanitize error to avoid leaking API keys or upstream details
+        const sanitizedDetail = typeof error.body === 'object' && error.body
+            ? { error: error.body.error || 'unknown', message: error.body.message }
+            : String(error.message || 'generation failed').slice(0, 500);
+
         return response.status(error.status || 502).send({
             error: 'generation_failed',
-            detail: error.body || error.message,
-            userMessage,
-            version: saveResult.version,
+            detail: sanitizedDetail,
         });
     }
 
@@ -1212,16 +1342,18 @@ router.post('/message/send', async (request, response) => {
     const commandParts = extractCharacterReplyCommandParts(rawReplyText, settings);
     const replyText = normalizeConversationOutputText(commandParts.text);
     if (!replyText) {
+        // Remove temporary user message
+        branch.messages.pop();
+
         return response.status(502).send({
             error: 'empty_generation',
-            generation: generationResponse,
-            userMessage,
-            version: saveResult.version,
+            detail: 'Model returned empty response',
         });
     }
 
+    // Create reply message
     const userReplyReference = buildConversationMessageReplyReference(userMessage);
-    const replyMessage = appendConversationMessage(store, avatar, {
+    const replyMessage = createConversationMessage({
         role: 'character',
         name: character.name || 'Character',
         mes: replyText,
@@ -1234,12 +1366,16 @@ router.post('/message/send', async (request, response) => {
             },
         },
     }, {
-        groupId,
-        personaId,
-        fallback: { role: 'character', name: character.name || 'Character' },
+        role: 'character',
+        name: character.name || 'Character',
     });
-    const finalBranch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
-    saveResult = saveConversationStore(request, currentSettings, store);
+
+    // Add reply message to branch
+    branch.messages.push(replyMessage);
+    refreshBranchPreview(branch);
+
+    // Now atomically save both messages
+    const saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
     if (!saveResult.ok) {
         return response.status(saveResult.status).send(saveResult.body);
     }
@@ -1248,8 +1384,8 @@ router.post('/message/send', async (request, response) => {
         threadKey: getConversationThreadKey(avatar, groupId, personaId),
         userMessage,
         replyMessage,
-        branch: finalBranch,
-        messages: finalBranch?.messages || [],
+        branch: getActiveConversationBranch(saveResult.store, avatar, groupId, { create: false, personaId }),
+        messages: branch.messages,
         generation: request.body.includeGeneration ? generationResponse : undefined,
         prompt: request.body.includePrompt ? { systemPrompt, messages: promptMessages } : undefined,
         version: saveResult.version,
