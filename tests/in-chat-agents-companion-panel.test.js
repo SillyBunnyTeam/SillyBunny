@@ -406,6 +406,41 @@ describe('companion tracker panel', () => {
         expect(panel.shouldShowCompanionPanelHandle()).toBe(false);
     });
 
+    test('hides and blocks the panel while Conversation Mode is active', async () => {
+        agents = [{ id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true }];
+        globalThis.document.getElementById = jest.fn(id => (id === 'sheld'
+            ? {
+                dataset: { sbConversationMode: 'on' },
+                getAttribute: jest.fn(name => (name === 'data-sb-conversation-mode' ? 'on' : null)),
+            }
+            : null));
+        const panel = await importPanel();
+        const panelElement = {
+            html: jest.fn(() => panelElement),
+            attr: jest.fn(() => panelElement),
+            addClass: jest.fn(() => panelElement),
+            removeClass: jest.fn(() => panelElement),
+        };
+        const handleElement = { toggle: jest.fn(() => handleElement) };
+        globalThis.$ = jest.fn(arg => {
+            if (arg === '#ica--tracker-panel') {
+                return panelElement;
+            }
+            if (arg === '#ica--tracker-panel-handle') {
+                return handleElement;
+            }
+            return { toggle: jest.fn() };
+        });
+
+        expect(panel.shouldShowCompanionPanelHandle()).toBe(false);
+        panel.openCompanionPanel();
+
+        expect(panelElement.addClass).not.toHaveBeenCalled();
+        expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
+        expect(panelElement.attr).toHaveBeenCalledWith('aria-hidden', 'true');
+        expect(handleElement.toggle).toHaveBeenCalledWith(false);
+    });
+
     test('injects the panel, handle, and wand item once on init', async () => {
         const panel = await importPanel();
         const bodyAppends = [];

@@ -61,6 +61,34 @@ let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
 
+function isConversationModeActive() {
+    const sheld = globalThis.document?.getElementById?.('sheld');
+
+    return sheld?.dataset?.sbConversationMode === 'on'
+        || sheld?.getAttribute?.('data-sb-conversation-mode') === 'on';
+}
+
+function syncConversationModePanelVisibility() {
+    if (isConversationModeActive()) {
+        closeCompanionPanel();
+    }
+    updateCompanionPanelHandleVisibility();
+}
+
+function observeConversationModeState() {
+    const sheld = globalThis.document?.getElementById?.('sheld');
+    if (!sheld || typeof globalThis.MutationObserver !== 'function') {
+        return;
+    }
+
+    if (typeof globalThis.HTMLElement === 'function' && !(sheld instanceof globalThis.HTMLElement)) {
+        return;
+    }
+
+    new globalThis.MutationObserver(syncConversationModePanelVisibility)
+        .observe(sheld, { attributes: true, attributeFilter: ['data-sb-conversation-mode'] });
+}
+
 function scrollChatMessageIntoView(messageElement) {
     const chatRoot = document.getElementById('chat');
 
@@ -452,7 +480,7 @@ export function collectPanelAgentStates() {
 }
 
 export function shouldShowCompanionPanelHandle() {
-    if (!areAgentsGloballyEnabled()) {
+    if (isConversationModeActive() || !areAgentsGloballyEnabled()) {
         return false;
     }
 
@@ -688,6 +716,12 @@ export function updateCompanionPanelHandleVisibility() {
 }
 
 export function openCompanionPanel() {
+    if (isConversationModeActive()) {
+        closeCompanionPanel();
+        updateCompanionPanelHandleVisibility();
+        return;
+    }
+
     panelOpen = true;
     panelOpenedAt = Date.now();
     renderPanel();
@@ -1053,4 +1087,5 @@ export function initCompanionPanel() {
     }
 
     updateCompanionPanelHandleVisibility();
+    observeConversationModeState();
 }
