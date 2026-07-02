@@ -100,9 +100,40 @@ export function shouldUsePlainTextStreamingPreview({
  * @returns {string} Safe HTML preview
  */
 export function formatPlainTextStreamingPreview(text = '') {
-    return String(text)
-        .replace(STREAMING_PREVIEW_ESCAPE_PATTERN, character => STREAMING_PREVIEW_ESCAPE_MAP[character])
-        .replace(/\r\n|\r|\n/g, '<br>');
+    if (!text) {
+        return '';
+    }
+
+    const str = String(text);
+    let result = '';
+    let lastIndex = 0;
+
+    for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        const replacement = STREAMING_PREVIEW_ESCAPE_MAP[char];
+
+        if (replacement) {
+            result += str.slice(lastIndex, i) + replacement;
+            lastIndex = i + 1;
+        } else if (char === '\r') {
+            result += str.slice(lastIndex, i);
+            lastIndex = i + 1;
+            if (str[i + 1] === '\n') {
+                i++;
+                lastIndex = i + 1;
+            }
+            result += '<br>';
+        } else if (char === '\n') {
+            result += str.slice(lastIndex, i) + '<br>';
+            lastIndex = i + 1;
+        }
+    }
+
+    if (lastIndex < str.length) {
+        result += str.slice(lastIndex);
+    }
+
+    return result;
 }
 
 /**
@@ -114,28 +145,41 @@ export function formatPlainTextStreamingPreview(text = '') {
  * @returns {string} Basic markdown HTML
  */
 export function formatBasicMarkdownStreamingPreview(text = '', { converter = null } = {}) {
+    if (!text) {
+        return '';
+    }
+
     if (!converter || typeof converter.makeHtml !== 'function') {
         return formatPlainTextStreamingPreview(text);
     }
 
     try {
-        // Escape HTML first
-        let mes = String(text)
-            .replace(STREAMING_PREVIEW_ESCAPE_PATTERN, character => STREAMING_PREVIEW_ESCAPE_MAP[character]);
+        const str = String(text);
+        let escaped = '';
+        let lastIndex = 0;
 
-        // Apply basic markdown conversion
-        mes = mes.replaceAll('\\begin{align*}', '$$');
-        mes = mes.replaceAll('\\end{align*}', '$$');
+        for (let i = 0; i < str.length; i++) {
+            const char = str[i];
+            const replacement = STREAMING_PREVIEW_ESCAPE_MAP[char];
+
+            if (replacement) {
+                escaped += str.slice(lastIndex, i) + replacement;
+                lastIndex = i + 1;
+            }
+        }
+
+        if (lastIndex < str.length) {
+            escaped += str.slice(lastIndex);
+        }
+
+        let mes = escaped.replaceAll('\\begin{align*}', '$$').replaceAll('\\end{align*}', '$$');
         mes = converter.makeHtml(mes);
-
-        // Handle code blocks
         mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
             return match.replace(/\n/gm, '\u0000');
         });
         mes = mes.replace(/\u0000/g, '\n');
-        mes = mes.trim();
 
-        return mes;
+        return mes.trim();
     } catch (error) {
         console.warn('[Mobile Streaming] Basic markdown formatting failed:', error);
         return formatPlainTextStreamingPreview(text);
