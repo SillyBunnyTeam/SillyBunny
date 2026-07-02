@@ -506,8 +506,9 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
 
     const imageUrl = await generateConversationImage(imagePrompt, resolvedSettings.image_gen_negative || '', { notify });
     if (imageUrl) {
+        const caption = await generateSelfieCaption(scene, resolvedSettings, avatar, imagePrompt);
         markImageGenerated(avatar, Date.now(), { groupId });
-        await appendConversationMessage('Sending you a selfie.', {
+        await appendConversationMessage(caption, {
             name,
             role,
             extra: { ...extra, conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
@@ -517,6 +518,36 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
     }
 
     return false;
+}
+
+async function generateSelfieCaption(context, settings, avatar, imagePrompt) {
+    const character = getCharacterForAvatar(avatar);
+    const charName = character?.name || getCurrentCharName() || 'Character';
+    const captionPrompt = [
+        `Character name: ${charName}.`,
+        character?.description ? `Description: ${formatPromptText(character.description, 900)}` : '',
+        character?.personality ? `Personality: ${formatPromptText(character.personality, 700)}` : '',
+        context ? `Selfie context: ${formatPromptText(context, 400)}` : 'Selfie context: a casual selfie in the current moment.',
+        imagePrompt ? `Generated image prompt: ${formatPromptText(imagePrompt, 600)}` : '',
+        'Write one short in-character chat message to accompany this selfie. Keep it natural, under 25 words, and output only the message text.',
+    ].filter(Boolean).join('\n');
+
+    try {
+        const rawCaption = await generateConversationRaw({
+            prompt: captionPrompt,
+            systemPrompt: 'You write only a short in-character chat caption. No speaker labels, no stage directions, no preamble.',
+            responseLength: 80,
+            trimNames: false,
+        }, settings || {});
+        const caption = normalizeConversationOutputText(stripSpeakerPrefix(formatPromptText(rawCaption, 240), charName));
+        if (caption) {
+            return caption;
+        }
+    } catch (error) {
+        console.warn('Conversation Mode: selfie caption generation failed', error);
+    }
+
+    return 'Here, I took this for you.';
 }
 
 export async function postCharacterReply(rawText, settings, { extra = {}, groupId = undefined } = {}, avatar = getCurrentCharAvatar()) {
