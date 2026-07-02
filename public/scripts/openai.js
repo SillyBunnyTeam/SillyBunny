@@ -6868,14 +6868,14 @@ function saveSamplingProfileForCurrentModel() {
     }
     saveSettingsDebounced();
     const modelLabel = getChatCompletionModel();
-    
+
     // Visual feedback flash
     const $saveButton = $('#model_sampling_profile_save');
     $saveButton.addClass('success-flash');
     setTimeout(() => {
         $saveButton.removeClass('success-flash');
     }, 1200);
-    
+
     toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
 }
 
@@ -9570,7 +9570,7 @@ $('#save_custom_endpoint').on('click', async function () {
         url: $('#custom_api_url_text').val(),
         key: keyInputValue,
         model: $('#custom_model_id').val(),
-        secretId: existingPreset?.secretId,
+        secretId: keyInputValue ? '' : existingPreset?.secretId,
     });
 
     // Validate: if no key provided and no existing secret, error
