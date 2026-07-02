@@ -1,56 +1,60 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import express from 'express';
-import sanitize from 'sanitize-filename';
 
-import { SETTINGS_FILE } from '../constants.js';
-import { parse as parseCharacterCard } from '../character-card-parser.js';
-import { getSettingsVersion, prepareSettingsSave } from '../settings-version.js';
-import { tryWriteFileSync } from '../util.js';
-import { handleChatCompletionsGenerate } from './backends/chat-completions.js';
-import { handleTextCompletionsGenerate } from './backends/text-completions.js';
+import { getSettingsVersion } from '../settings-version.js';
+import { extractCharacterReplyCommandParts, normalizeConversationOutputText } from '../../public/scripts/sillybunny-conversation/generation-utils.js';
+import { safeParseThread } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+import { CONVERSATION_STORE_KEY, MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+
+// Import from modular files
 import {
-    CONVERSATION_STORE_KEY,
-    DEFAULT_BRANCH_ID,
-    DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
-    DEFAULT_SETTINGS,
-    GEECHAN_DEFAULT_PROMPT,
-    GROUP_CONVERSATION_SETTINGS_KEYS,
-    GROUP_CONVERSATION_STORE_PREFIX,
-    MAX_CONVERSATION_REPLY_MAX_TOKENS,
-    MAX_THREAD_MESSAGES,
-    MIN_CONVERSATION_REPLY_MAX_TOKENS,
-    TRANSCRIPT_MESSAGE_LIMIT,
-} from '../../public/scripts/sillybunny-conversation/constants.js';
+    getObject,
+    getRequestPersonaId,
+    getRequestAvatar,
+    getRequestGroupId,
+    validateAvatar,
+    validateGenerationPayload,
+    validateCharacterOverride,
+    validateStoreStructure,
+    isAvatarInGroup,
+} from './conversation-utils.js';
 import {
-    extractCharacterReplyCommandParts,
-    normalizeConversationOutputText,
-} from '../../public/scripts/sillybunny-conversation/generation-utils.js';
+    readUserSettings,
+    readUserSettingsWithStatus,
+    ensureConversationStore,
+    saveConversationStore,
+    getConversationThreadKey,
+    respondSaveResult,
+} from './conversation-store.js';
 import {
-    getConversationAttachmentLabels,
-    getConversationAttachmentSummary,
-    getConversationMediaDisplay,
-    getConversationMediaIndex,
-    getConversationPromptMediaAttachments,
-    hasConversationMessageContent,
-    safeParseThread,
-} from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+    normalizeConversationGroupRecord,
+    getConversationGroups,
+    createConversationGroupRecord,
+} from './conversation-groups.js';
 import {
-    buildConversationGroupReferenceContext,
-    compileGeechanPrompt,
-    formatPromptText,
-    getGroundedDialogueRulesPrompt,
-} from '../../public/scripts/sillybunny-conversation/shared-helpers.js';
+    getConversationThreadStore,
+    getActiveConversationBranch,
+} from './conversation-threads.js';
+import {
+    createConversationMessage,
+    appendConversationMessage,
+    getIncomingMessage,
+    refreshBranchPreview,
+    buildConversationMessageReplyReference,
+} from './conversation-messages.js';
+import {
+    getCharacterData,
+    getConversationSettings,
+    normalizeConversationSettings,
+    getDefaultDirective,
+    buildConversationPromptMessages,
+    buildConversationSystemPrompt,
+    buildGenerationRequestBody,
+    runBackendGeneration,
+    extractGeneratedText,
+} from './conversation-generation.js';
 
 export const router = express.Router();
 
-const GENERATION_BACKENDS = Object.freeze({
-    CHAT: 'chat',
-    TEXT: 'text',
-});
-
-const PERSONA_CONVERSATION_STORE_PREFIX = 'persona:';
 const CONVERSATION_API_BASE_PATH = '/api/sillybunny-conversation';
 const CONVERSATION_API_ALIAS_BASE_PATHS = ['/api/sillybunny/conversation'];
 const CONVERSATION_API_INFO = {
@@ -99,10 +103,6 @@ const CONVERSATION_API_INFO = {
             { method: 'POST', path: '/message/append', purpose: 'Append one message without generating a reply.' },
             { method: 'POST', path: '/message/send', purpose: 'Append a user message, generate a reply, and persist both.' },
         ],
-        messageSend: {
-            requiredFields: ['avatar', 'message or text', 'generation'],
-            optionalFields: ['groupId', 'personaId', 'settings', 'character', 'userName', 'includePrompt', 'includeGeneration'],
-        },
     },
     caveats: [
         'Browser-only automation is not run by the REST API: idle followups, scheduled messages, proactive messages, partner chimes, group aside DMs, and reminder timers.',
@@ -111,1074 +111,12 @@ const CONVERSATION_API_INFO = {
     ],
 };
 
-function isObject(value) {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function getObject(value) {
-    return isObject(value) ? value : {};
-}
-
-function parsePositiveInt(value, fallback, min = 1) {
-    const parsed = Number.parseInt(String(value), 10);
-    return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
-}
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
-
-function getConversationPersonaId(personaId = '') {
-    return String(personaId || '').trim();
-}
-
-function getRequestPersonaId(request) {
-    return getConversationPersonaId(
-        request.body?.personaId
-        || request.body?.persona
-        || request.body?.personaAvatar
-        || request.body?.userAvatar,
-    );
-}
-
-function encodeConversationStoragePart(value) {
-    return encodeURIComponent(String(value || '').trim());
-}
-
-function scopeConversationStorageKey(storageKey, personaId = '') {
-    const key = String(storageKey || '').trim();
-    const persona = getConversationPersonaId(personaId);
-    if (!key || !persona || key.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
-        return key;
-    }
-
-    return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
-}
-
-// Validation constants
-const MAX_AVATAR_LENGTH = 512;
-const MAX_CHARACTER_FIELD_LENGTH = 8 * 1024; // 8KB
-const MAX_ARRAY_LENGTH = 1000;
-
-function validateAvatar(avatar) {
-    if (!avatar || typeof avatar !== 'string') {
-        return { valid: false, error: 'avatar_required' };
-    }
-    const trimmed = avatar.trim();
-    if (!trimmed || trimmed.length > MAX_AVATAR_LENGTH) {
-        return { valid: false, error: 'invalid_avatar' };
-    }
-    return { valid: true, avatar: trimmed };
-}
-
-function validateGenerationPayload(generation) {
-    if (!isObject(generation)) {
-        return { valid: false, error: 'generation_required' };
-    }
-    if (!isObject(generation.payload)) {
-        return { valid: false, error: 'generation_payload_required' };
-    }
-    if (!generation.payload.model || typeof generation.payload.model !== 'string') {
-        return { valid: false, error: 'generation_model_required' };
-    }
-    return { valid: true };
-}
-
-function validateCharacterOverride(character) {
-    if (!character) {
-        return { valid: true };
-    }
-    if (!isObject(character)) {
-        return { valid: false, error: 'invalid_character' };
-    }
-    const fields = ['name', 'description', 'personality', 'scenario', 'mes_example', 'first_mes'];
-    for (const field of fields) {
-        if (character[field] && typeof character[field] === 'string' && character[field].length > MAX_CHARACTER_FIELD_LENGTH) {
-            return { valid: false, error: `character_${field}_too_long` };
-        }
-    }
-    return { valid: true };
-}
-
-function validateStoreStructure(store) {
-    if (!isObject(store)) {
-        return { valid: false, error: 'invalid_store' };
-    }
-
-    // Validate top-level keys
-    const allowedKeys = ['version', 'localStorageMigrated', 'settings', 'characters', 'groups', 'reminders'];
-    const unknownKeys = Object.keys(store).filter(key => !allowedKeys.includes(key));
-    if (unknownKeys.length > 0) {
-        return { valid: false, error: 'unknown_store_keys', keys: unknownKeys };
-    }
-
-    // Validate array lengths
-    if (Array.isArray(store.groups) && store.groups.length > MAX_ARRAY_LENGTH) {
-        return { valid: false, error: 'too_many_groups' };
-    }
-    if (Array.isArray(store.reminders) && store.reminders.length > MAX_ARRAY_LENGTH) {
-        return { valid: false, error: 'too_many_reminders' };
-    }
-
-    return { valid: true };
-}
-
-function isAvatarInGroup(avatar, groupId, store) {
-    const groups = Array.isArray(store.groups) ? store.groups : [];
-    const group = groups.find(g => String(g?.id) === String(groupId));
-    if (!group) {
-        return false;
-    }
-    return Array.isArray(group.members) && group.members.includes(avatar) &&
-           !(Array.isArray(group.disabled_members) && group.disabled_members.includes(avatar));
-}
-
-// Image fetching with SSRF protection
-const IMAGE_FETCH_TIMEOUT_MS = 10000; // 10 seconds
-const IMAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-
-function isPrivateIP(hostname) {
-    // Block private IP ranges for SSRF protection
-    const privatePatterns = [
-        /^127\./,                    // 127.0.0.0/8
-        /^10\./,                     // 10.0.0.0/8
-        /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
-        /^192\.168\./,               // 192.168.0.0/16
-        /^169\.254\./,               // 169.254.0.0/16 (link-local)
-        /^::1$/,                     // IPv6 loopback
-        /^fe80:/,                    // IPv6 link-local
-        /^fc00:/,                    // IPv6 ULA
-        /^localhost$/i,
-    ];
-
-    return privatePatterns.some(pattern => pattern.test(hostname));
-}
-
-async function fetchImageToBase64(imageUrl) {
-    if (typeof imageUrl !== 'string' || !imageUrl) {
-        return '';
-    }
-
-    // Already base64
-    if (imageUrl.startsWith('data:')) {
-        return imageUrl;
-    }
-
-    try {
-        const url = new URL(imageUrl);
-
-        // SSRF protection: block private IPs in dev mode unless explicitly allowed
-        // In production, always block private IPs
-        const isDevelopment = process.env.NODE_ENV !== 'production';
-        if (!isDevelopment || !['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
-            if (isPrivateIP(url.hostname)) {
-                console.warn(`Blocked image fetch to private IP: ${url.hostname}`);
-                return imageUrl; // Return original URL, don't crash
-            }
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
-
-        const response = await fetch(imageUrl, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-                'User-Agent': 'SillyBunny-Conversation-API/1.0',
-            },
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            console.warn(`Failed to fetch image ${imageUrl}: status ${response.status}`);
-            return imageUrl;
-        }
-
-        const contentLength = response.headers.get('content-length');
-        if (contentLength && parseInt(contentLength, 10) > IMAGE_MAX_SIZE_BYTES) {
-            console.warn(`Image too large: ${contentLength} bytes (max ${IMAGE_MAX_SIZE_BYTES})`);
-            return imageUrl;
-        }
-
-        const buffer = await response.arrayBuffer();
-        if (buffer.byteLength > IMAGE_MAX_SIZE_BYTES) {
-            console.warn(`Image too large: ${buffer.byteLength} bytes (max ${IMAGE_MAX_SIZE_BYTES})`);
-            return imageUrl;
-        }
-
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
-        const base64 = Buffer.from(buffer).toString('base64');
-        return `data:${contentType};base64,${base64}`;
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            console.warn(`Image fetch timeout: ${imageUrl}`);
-        } else {
-            console.warn(`Failed to fetch image ${imageUrl}:`, error.message);
-        }
-        return imageUrl; // Return original URL on error
-    }
-}
-
-async function convertImageUrlsToBase64(imageUrls, concurrency = 3) {
-    const urls = Array.isArray(imageUrls) ? imageUrls : [];
-    if (!urls.length) {
-        return [];
-    }
-
-    const results = new Array(urls.length).fill('');
-    let nextIndex = 0;
-    const workerCount = Math.max(1, Math.min(concurrency, urls.length));
-    const workers = Array.from({ length: workerCount }, async () => {
-        while (nextIndex < urls.length) {
-            const index = nextIndex;
-            nextIndex += 1;
-            results[index] = await fetchImageToBase64(urls[index]);
-        }
-    });
-
-    await Promise.all(workers);
-    return results;
-}
-
-function readJsonFile(filePath, fallback = {}) {
-    try {
-        if (!fs.existsSync(filePath)) {
-            return { ok: true, data: fallback, missing: true };
-        }
-
-        const content = fs.readFileSync(filePath, 'utf8');
-        const data = JSON.parse(content);
-        return { ok: true, data, missing: false };
-    } catch (error) {
-        console.error(`Failed to read or parse JSON file ${filePath}:`, error.message);
-        return { ok: false, error: error.message, data: fallback };
-    }
-}
-
-function getSettingsPath(request) {
-    return path.join(request.user.directories.root, SETTINGS_FILE);
-}
-
-function readUserSettings(request) {
-    const result = readJsonFile(getSettingsPath(request), {});
-    return result.data;
-}
-
-function readUserSettingsWithStatus(request) {
-    return readJsonFile(getSettingsPath(request), {});
-}
-
-function ensureConversationStore(settings) {
-    settings.extension_settings = getObject(settings.extension_settings);
-
-    const current = getObject(settings.extension_settings[CONVERSATION_STORE_KEY]);
-    const store = {
-        ...current,
-        version: parsePositiveInt(current.version, 1, 1),
-        localStorageMigrated: Boolean(current.localStorageMigrated),
-        settings: getObject(current.settings),
-        characters: getObject(current.characters),
-        groups: Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [],
-        reminders: Array.isArray(current.reminders) ? current.reminders : [],
-    };
-
-    settings.extension_settings[CONVERSATION_STORE_KEY] = store;
-    return store;
-}
-
-function saveConversationStore(request, currentSettings, store, version = undefined) {
-    const incomingVersion = version === undefined
-        ? getSettingsVersion(currentSettings)
-        : getSettingsVersion({ _version: version });
-    const incomingSettings = {
-        ...currentSettings,
-        extension_settings: {
-            ...getObject(currentSettings.extension_settings),
-            [CONVERSATION_STORE_KEY]: store,
-        },
-        _version: incomingVersion,
-    };
-    const preparedSave = prepareSettingsSave(incomingSettings, currentSettings);
-    if (!preparedSave.ok) {
-        return {
-            ok: false,
-            status: 409,
-            body: {
-                error: 'settings_conflict',
-                version: preparedSave.currentVersion,
-            },
-        };
-    }
-
-    tryWriteFileSync(getSettingsPath(request), JSON.stringify(preparedSave.settings, null, 4));
-    return {
-        ok: true,
-        version: preparedSave.version,
-        settings: preparedSave.settings,
-        store: preparedSave.settings.extension_settings[CONVERSATION_STORE_KEY],
-    };
-}
-
-function getConversationThreadKey(avatar, groupId = '', personaId = '') {
-    const safeAvatar = String(avatar || '').trim();
-    const safeGroupId = String(groupId || '').trim();
-    if (!safeAvatar) {
-        return '';
-    }
-
-    const threadKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
-    return scopeConversationStorageKey(threadKey, personaId);
-}
-
-function normalizeGroupConversationSettings(settings = {}) {
-    const source = getObject(settings);
-    const normalized = normalizeConversationSettings(source);
-    return GROUP_CONVERSATION_SETTINGS_KEYS.reduce((picked, key) => {
-        if (Object.prototype.hasOwnProperty.call(source, key)) {
-            picked[key] = normalized[key];
-        }
-        return picked;
-    }, {});
-}
-
-function getDefaultGroupConversationSettings() {
-    return normalizeGroupConversationSettings({
-        ...DEFAULT_SETTINGS,
-        multi_char: true,
-        auto_character_chat: true,
-    });
-}
-
-function getUniqueConversationGroupMembers(memberAvatars) {
-    return Array.from(new Set(
-        (Array.isArray(memberAvatars) ? memberAvatars : [])
-            .map(avatar => String(avatar || '').trim())
-            .filter(Boolean),
-    ));
-}
-
-function normalizeConversationGroupRecord(group) {
-    const source = getObject(group);
-    const id = String(source.id || '').trim();
-    const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
-    const members = getUniqueConversationGroupMembers(source.members);
-    if (!id || members.length < 2) {
-        return null;
-    }
-
-    const now = Date.now();
-    return {
-        ...source,
-        id,
-        personaId,
-        name: String(source.name || 'Conversation Group'),
-        members,
-        disabled_members: getUniqueConversationGroupMembers(source.disabled_members).filter(avatar => members.includes(avatar)),
-        conversation_settings: normalizeGroupConversationSettings(source.conversation_settings),
-        is_conversation_group: true,
-        createdAt: parsePositiveInt(source.createdAt, now, 0),
-        updatedAt: parsePositiveInt(source.updatedAt, source.createdAt || now, 0),
-    };
-}
-
-function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null, personaId = '' } = {}) {
-    const members = getUniqueConversationGroupMembers(memberAvatars);
-    if (members.length < 2) {
-        return null;
-    }
-
-    const now = Date.now();
-    return normalizeConversationGroupRecord({
-        id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
-        personaId: getConversationPersonaId(personaId),
-        name: name || 'Conversation Group',
-        members,
-        avatar_url: avatarUrl || '',
-        disabled_members: [],
-        conversation_settings: settings || getDefaultGroupConversationSettings(),
-        createdAt: now,
-        updatedAt: now,
-    });
-}
-
-function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) {
-    const now = Date.now();
-    return {
-        id,
-        name,
-        messages: [],
-        preview: 'Conversation ready',
-        unread: 0,
-        lastActivity: now,
-        followupCount: 0,
-        lastAutoMessageAt: 0,
-        scheduleTriggers: {},
-        sessionMarkers: {},
-        memorySummary: '',
-        memoryMessageCount: 0,
-        memoryUpdatedAt: 0,
-        createdAt: now,
-        updatedAt: now,
-    };
-}
-
-function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
-    const now = Date.now();
-    const target = isObject(branch)
-        ? branch
-        : createConversationBranch(id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', id);
-
-    target.id = target.id || id;
-    target.name = target.name || (id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation');
-    target.messages = safeParseThread(target.messages).slice(-MAX_THREAD_MESSAGES);
-    target.preview = typeof target.preview === 'string' ? target.preview : 'Conversation ready';
-    target.unread = parsePositiveInt(target.unread, 0, 0);
-    target.lastActivity = parsePositiveInt(target.lastActivity, now, 0);
-    target.followupCount = parsePositiveInt(target.followupCount, 0, 0);
-    target.lastAutoMessageAt = parsePositiveInt(target.lastAutoMessageAt, 0, 0);
-    target.scheduleTriggers = getObject(target.scheduleTriggers);
-    target.sessionMarkers = getObject(target.sessionMarkers);
-    target.memorySummary = typeof target.memorySummary === 'string' ? target.memorySummary : '';
-    target.memoryMessageCount = parsePositiveInt(target.memoryMessageCount, 0, 0);
-    target.memoryUpdatedAt = parsePositiveInt(target.memoryUpdatedAt, 0, 0);
-    target.createdAt = parsePositiveInt(target.createdAt, now, 0);
-    target.updatedAt = parsePositiveInt(target.updatedAt, target.createdAt, 0);
-    return target;
-}
-
-function getConversationThreadStore(store, avatar, groupId = '', { create = true, personaId = '' } = {}) {
-    const threadKey = getConversationThreadKey(avatar, groupId, personaId);
-    if (!threadKey) {
-        return null;
-    }
-
-    store.characters = getObject(store.characters);
-    if (!store.characters[threadKey]) {
-        if (!create) {
-            return null;
-        }
-
-        store.characters[threadKey] = {
-            settings: { ...DEFAULT_SETTINGS },
-            schedule: null,
-            activeBranchId: DEFAULT_BRANCH_ID,
-            branches: {
-                [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID),
-            },
-        };
-    }
-
-    const threadStore = store.characters[threadKey];
-    threadStore.settings = getObject(threadStore.settings);
-    threadStore.branches = getObject(threadStore.branches);
-    threadStore.activeBranchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
-    if (!threadStore.branches[threadStore.activeBranchId]) {
-        threadStore.branches[threadStore.activeBranchId] = createConversationBranch(
-            threadStore.activeBranchId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation',
-            threadStore.activeBranchId,
-        );
-    }
-    threadStore.branches[threadStore.activeBranchId] = normalizeConversationBranch(
-        threadStore.branches[threadStore.activeBranchId],
-        threadStore.activeBranchId,
-    );
-    threadStore.threadAvatar = avatar;
-    threadStore.groupId = groupId || '';
-    return threadStore;
-}
-
-function getActiveConversationBranch(store, avatar, groupId = '', { create = true, personaId = '' } = {}) {
-    const threadStore = getConversationThreadStore(store, avatar, groupId, { create, personaId });
-    if (!threadStore) {
-        return null;
-    }
-
-    const branchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
-    threadStore.branches[branchId] = normalizeConversationBranch(threadStore.branches[branchId], branchId);
-    return threadStore.branches[branchId];
-}
-
-function stripPreviewText(value) {
-    return String(value || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function getConversationMessagePreviewText(message) {
-    return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
-}
-
-function truncateConversationReplyPreview(value, maxLength = 160) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
-}
-
-function buildConversationMessageReplyReference(message) {
-    if (!message?.id) {
-        return null;
-    }
-
-    const text = truncateConversationReplyPreview(getConversationMessagePreviewText(message));
-    const attachmentSummary = truncateConversationReplyPreview(getConversationAttachmentSummary(message));
-    if (!text && !attachmentSummary) {
-        return null;
-    }
-
-    return {
-        messageId: message.id,
-        name: message.name || 'Speaker',
-        role: message.role || 'character',
-        text,
-        attachmentSummary,
-        createdAt: message.created_at || Date.now(),
-    };
-}
-
-function refreshBranchPreview(branch) {
-    const lastMessage = branch.messages[branch.messages.length - 1];
-    branch.preview = getConversationMessagePreviewText(lastMessage) || 'Conversation ready';
-    branch.updatedAt = Date.now();
-}
-
-function createConversationMessage(input = {}, fallback = {}) {
-    const source = getObject(input);
-    const createdAt = parsePositiveInt(source.created_at, Date.now(), 0);
-    return {
-        id: source.id || `${createdAt}-${Math.random().toString(36).slice(2)}`,
-        role: source.role || fallback.role || 'user',
-        name: source.name || fallback.name || 'User',
-        mes: String(source.mes ?? source.text ?? fallback.mes ?? ''),
-        send_date: source.send_date || new Date(createdAt).toISOString(),
-        created_at: createdAt,
-        extra: getObject(source.extra),
-    };
-}
-
-function appendConversationMessage(store, avatar, messageInput, { groupId = '', personaId = '', fallback = {} } = {}) {
-    const branch = getActiveConversationBranch(store, avatar, groupId, { create: true, personaId });
-    if (!branch) {
-        return null;
-    }
-
-    const message = createConversationMessage(messageInput, fallback);
-    if (!hasConversationMessageContent(message)) {
-        return null;
-    }
-
-    branch.messages.push(message);
-    if (branch.messages.length > MAX_THREAD_MESSAGES) {
-        branch.messages.splice(0, branch.messages.length - MAX_THREAD_MESSAGES);
-    }
-    if (message.role === 'user') {
-        branch.lastActivity = Date.now();
-        branch.followupCount = 0;
-    }
-    refreshBranchPreview(branch);
-    return message;
-}
-
-function getRequestAvatar(request) {
-    return String(request.body?.avatar || request.body?.threadAvatar || '').trim();
-}
-
-function getRequestGroupId(request) {
-    return String(request.body?.groupId || request.body?.group || '').trim();
-}
-
-function respondSaveResult(response, saveResult, successBody) {
-    if (!saveResult.ok) {
-        return response.status(saveResult.status).send(saveResult.body);
-    }
-
-    return response.send({
-        ...successBody,
-        version: saveResult.version,
-    });
-}
-
-function getIncomingMessage(body, fallbackRole = 'user') {
-    const message = isObject(body.message) ? body.message : {};
-    return {
-        ...message,
-        role: message.role || body.role || fallbackRole,
-        name: message.name || body.name,
-        mes: message.mes ?? message.text ?? body.mes ?? body.text ?? '',
-        extra: getObject(message.extra || body.extra),
-    };
-}
-
-function getConversationGroups(store, personaId = '') {
-    const persona = getConversationPersonaId(personaId);
-    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
-    return store.groups.filter(group => getConversationPersonaId(group.personaId) === persona);
-}
-
-function getConversationGroupRecord(store, groupId, personaId = '') {
-    const safeGroupId = String(groupId || '').trim();
-    if (!safeGroupId) {
-        return null;
-    }
-
-    return getConversationGroups(store, personaId).find(group => String(group?.id) === safeGroupId) || null;
-}
-
-function getGroupConversationSettings(request, store, groupId, personaId = '') {
-    if (!groupId) {
-        return {};
-    }
-
-    const conversationGroup = getConversationGroupRecord(store, groupId, personaId);
-    if (conversationGroup) {
-        return getObject(conversationGroup.conversation_settings);
-    }
-
-    if (!request.user.directories.groups) {
-        return {};
-    }
-
-    const groupPath = path.join(request.user.directories.groups, sanitize(`${groupId}.json`));
-    const group = readJsonFile(groupPath, null);
-    return getObject(group?.conversation_settings);
-}
-
-function normalizeConversationSettings(settings = {}) {
-    const normalized = { ...DEFAULT_SETTINGS, ...getObject(settings) };
-    normalized.reply_max_tokens = clamp(
-        parsePositiveInt(normalized.reply_max_tokens, DEFAULT_CONVERSATION_REPLY_MAX_TOKENS, MIN_CONVERSATION_REPLY_MAX_TOKENS),
-        MIN_CONVERSATION_REPLY_MAX_TOKENS,
-        MAX_CONVERSATION_REPLY_MAX_TOKENS,
-    );
-    if (normalized.reply_max_tokens === 1024) {
-        normalized.reply_max_tokens = DEFAULT_CONVERSATION_REPLY_MAX_TOKENS;
-    }
-    normalized.selfie_command_enabled = Boolean(normalized.selfie_command_enabled);
-    normalized.schedule_command_enabled = Boolean(normalized.schedule_command_enabled);
-    normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled);
-    normalized.grounded_dialogue_rules = typeof normalized.grounded_dialogue_rules === 'string'
-        ? normalized.grounded_dialogue_rules
-        : DEFAULT_SETTINGS.grounded_dialogue_rules;
-    return normalized;
-}
-
-function getConversationSettings(request, store, avatar, groupId, overrides = {}, { personaId = '' } = {}) {
-    const threadStore = getConversationThreadStore(store, avatar, groupId, { create: false, personaId });
-    return normalizeConversationSettings({
-        ...DEFAULT_SETTINGS,
-        ...getObject(store.settings),
-        ...(groupId ? { multi_char: true, auto_character_chat: true } : {}),
-        ...getGroupConversationSettings(request, store, groupId, personaId),
-        ...getObject(threadStore?.settings),
-        ...getObject(overrides),
-    });
-}
-
-function normalizeCharacterData(rawCharacter, avatar = '') {
-    const raw = getObject(rawCharacter);
-    const data = getObject(raw.data);
-    const extensions = getObject(data.extensions || raw.extensions);
-    const fallbackName = path.parse(String(avatar || '')).name || 'Character';
-    return {
-        name: data.name || raw.name || fallbackName,
-        description: data.description || raw.description || '',
-        personality: data.personality || raw.personality || '',
-        scenario: data.scenario || raw.scenario || '',
-        first_mes: data.first_mes || raw.first_mes || '',
-        mes_example: data.mes_example || raw.mes_example || '',
-        creator_notes: data.creator_notes || raw.creator_notes || raw.creatorcomment || '',
-        extensions,
-    };
-}
-
-async function getCharacterData(request, avatar) {
-    if (isObject(request.body?.character)) {
-        return normalizeCharacterData(request.body.character, avatar);
-    }
-
-    try {
-        const avatarFile = sanitize(path.basename(avatar));
-        const avatarPath = path.join(request.user.directories.characters, avatarFile);
-        if (path.extname(avatarFile).toLowerCase() !== '.png' || !fs.existsSync(avatarPath)) {
-            return normalizeCharacterData({}, avatar);
-        }
-
-        const cardText = await parseCharacterCard(avatarPath, 'png');
-        return normalizeCharacterData(JSON.parse(cardText), avatar);
-    } catch (error) {
-        console.warn('Conversation REST API: failed to read character card', error);
-        return normalizeCharacterData({}, avatar);
-    }
-}
-
-function getConversationSystemTimeContext(now = new Date()) {
-    const resolvedTimeZone = (() => {
-        try {
-            return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-        } catch {
-            return '';
-        }
-    })();
-    const dateTimeLabel = (() => {
-        try {
-            return now.toLocaleString([], {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-                timeZoneName: 'short',
-            });
-        } catch {
-            return now.toString();
-        }
-    })();
-
-    return [
-        `Current system time context: ${dateTimeLabel}.`,
-        resolvedTimeZone ? `Timezone: ${resolvedTimeZone}.` : '',
-        'Use this as the current server/device time for day of week, time of day, dates, timezones, reminders, scheduling, and natural chat timing.',
-    ].filter(Boolean).join(' ');
-}
-
-function getContentText(content) {
-    if (typeof content === 'string') {
-        return content;
-    }
-    if (!Array.isArray(content)) {
-        return String(content || '');
-    }
-
-    return content
-        .map(part => typeof part === 'string' ? part : part?.text || '')
-        .filter(Boolean)
-        .join('\n');
-}
-
-async function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User' } = {}) {
-    const promptMessages = [{
-        role: 'user',
-        content: 'Conversation transcript:',
-        identifier: 'conversation-transcript-header',
-    }];
-
-    const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
-    const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
-        const parts = [
-            formatPromptText(message.mes, 1800),
-            getConversationAttachmentSummary(message),
-        ].filter(Boolean);
-        const media = getConversationPromptMediaAttachments(message);
-
-        if (!parts.length && !media.length) {
-            return null;
-        }
-
-        const role = message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant';
-        const textContent = parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : `${message.name || 'Speaker'} sent an attachment.`;
-
-        if (!media.length) {
-            return {
-                role,
-                content: textContent,
-                identifier: `conversation-message-${message.id || index}`,
-            };
-        }
-
-        // Build multimodal content with images
-        const contentParts = [
-            { type: 'text', text: textContent },
-        ];
-
-        const mediaDisplay = getConversationMediaDisplay(message);
-        const mediaIndex = getConversationMediaIndex(message, media);
-        // MEDIA_DISPLAY.GALLERY means show one image; otherwise show all
-        const mediaToInline = mediaDisplay === 'gallery'
-            ? [media[mediaIndex]]
-            : media;
-
-        const base64Urls = await convertImageUrlsToBase64(mediaToInline.map(item => item?.url).filter(Boolean));
-        for (const base64Url of base64Urls) {
-            if (base64Url) {
-                contentParts.push({
-                    type: 'image_url',
-                    image_url: {
-                        url: base64Url,
-                        detail: 'high',
-                    },
-                });
-            }
-        }
-
-        return {
-            role,
-            content: contentParts,
-            identifier: `conversation-message-${message.id || index}`,
-        };
-    }));
-
-    promptMessages.push(...convertedMessages.filter(Boolean));
-
-    if (promptMessages.length === 1) {
-        promptMessages.push({
-            role: 'user',
-            content: '(No prior DM messages.)',
-            identifier: 'conversation-empty-transcript',
-        });
-    }
-
-    const groupReferenceContext = buildConversationGroupReferenceContext(messages, { groupId, speakerName, userName });
-    if (groupReferenceContext) {
-        promptMessages.push({
-            role: 'system',
-            content: groupReferenceContext,
-            identifier: 'conversation-group-reference-context',
-        });
-    }
-
-    promptMessages.push({
-        role: 'user',
-        content: [directive, `${speakerName}:`].filter(Boolean).join('\n\n'),
-        identifier: 'conversation-reply-directive',
-    });
-    return promptMessages;
-}
-
-function buildConversationSystemPrompt({ settings, character, userName, groupId, branch }) {
-    const charName = character.name || 'Character';
-    const fields = [
-        groupId
-            ? `You are ${charName} in a private group direct-message conversation with ${userName}. You are one equal participant in this group DM and should reply only as ${charName}.`
-            : `You are ${charName} in a private direct-message conversation with ${userName}.`,
-        'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
-        'Formatting: write plain chat text. Do not start with a speaker/name label. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
-        getConversationSystemTimeContext(),
-        compileGeechanPrompt(settings, charName, userName, GEECHAN_DEFAULT_PROMPT),
-    ];
-
-    const groundedRules = getGroundedDialogueRulesPrompt(settings);
-    if (groundedRules) {
-        fields.push(groundedRules);
-    }
-
-    if (character.description) {
-        fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);
-    }
-    if (character.personality) {
-        fields.push(`Personality:\n${formatPromptText(character.personality, 1600)}`);
-    }
-    if (character.scenario) {
-        fields.push(`Background context:\n${formatPromptText(character.scenario, 1200)}`);
-    }
-
-    const authorNote = settings.authors_note || character.creator_notes;
-    if (authorNote) {
-        fields.push(`Conversation author's note:\n${String(authorNote).replace('{{char}}', charName).replace('{{user}}', userName)}`);
-    }
-    if (settings.lorebook_override) {
-        fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
-    }
-    if (branch?.memorySummary) {
-        fields.push(`Long-term DM memory summary:\n${branch.memorySummary}`);
-    }
-
-    const commandHints = [];
-    if (settings.selfie_command_enabled) {
-        commandHints.push('To send a selfie or photo, embed [selfie] (optionally [selfie: context="what the photo shows"]) anywhere in your reply. It is stripped from the visible message and turned into a real image.');
-    }
-    if (settings.schedule_command_enabled) {
-        commandHints.push('To change what you are doing right now, embed [schedule_update: status="online|idle|dnd|offline", activity="short description", duration="1h30m"]. Use this when your situation shifts.');
-    }
-    commandHints.push('To schedule a reminder for the user at their request, embed [reminder: delay_or_time | memo] anywhere in your reply. This command is stripped from the visible message.');
-    fields.push(`Available commands (use sparingly and only when natural):\n${commandHints.join('\n')}`);
-
-    return fields.filter(Boolean).join('\n\n');
-}
-
-function getDefaultDirective(body) {
-    return String(body.directive || body.promptDirective || '[System directive: The user sent the latest DM(s). Reply directly to them in the Conversation Mode thread. Output only your message body, without a name prefix.]');
-}
-
-function normalizeGenerationBackend(value) {
-    const backend = String(value || '').toLowerCase().replace(/[_ ]/g, '-');
-    if (['text', 'text-completion', 'text-completions'].includes(backend)) {
-        return GENERATION_BACKENDS.TEXT;
-    }
-    return GENERATION_BACKENDS.CHAT;
-}
-
-function getGenerationPayload(generation) {
-    const source = getObject(generation?.payload || generation?.body || generation);
-    // Deep clone to avoid mutating caller's data
-    const payload = JSON.parse(JSON.stringify(source));
-    delete payload.backend;
-    delete payload.body;
-    delete payload.payload;
-    return payload;
-}
-
-function buildTextPrompt(systemPrompt, promptMessages) {
-    const transcript = promptMessages
-        .map(message => `${message.role.toUpperCase()}: ${getContentText(message.content)}`)
-        .join('\n\n');
-    return `${systemPrompt}\n\n${transcript}`.trim();
-}
-
-function buildGenerationRequestBody(generation, systemPrompt, promptMessages, responseLength) {
-    const backend = normalizeGenerationBackend(generation?.backend || generation?.type);
-    const payload = getGenerationPayload(generation);
-    payload.stream = false;
-
-    if (backend === GENERATION_BACKENDS.TEXT) {
-        payload.prompt = buildTextPrompt(systemPrompt, promptMessages);
-    } else {
-        payload.messages = [
-            { role: 'system', content: systemPrompt, identifier: 'conversation-system-prompt' },
-            ...promptMessages,
-        ];
-    }
-
-    if (payload.max_tokens === undefined && payload.max_completion_tokens === undefined) {
-        payload.max_tokens = responseLength;
-    }
-
-    return { backend, payload };
-}
-
-function createCapturingResponse() {
-    let statusCode = 200;
-    let payload;
-    let headersSent = false;
-    let writableEnded = false;
-    const headers = {};
-    const chunks = [];
-
-    return {
-        get statusCode() {
-            return statusCode;
-        },
-        get body() {
-            return payload;
-        },
-        get headers() {
-            return headers;
-        },
-        get headersSent() {
-            return headersSent;
-        },
-        get writableEnded() {
-            return writableEnded;
-        },
-        get destroyed() {
-            return writableEnded;
-        },
-        status(code) {
-            statusCode = code;
-            return this;
-        },
-        setHeader(name, value) {
-            headers[String(name).toLowerCase()] = value;
-            return this;
-        },
-        getHeader(name) {
-            return headers[String(name).toLowerCase()];
-        },
-        writeHead(code, nextHeaders = {}) {
-            statusCode = code;
-            Object.assign(headers, nextHeaders);
-            headersSent = true;
-            return this;
-        },
-        write(chunk) {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk || ''));
-            headersSent = true;
-            return true;
-        },
-        send(data) {
-            payload = data;
-            headersSent = true;
-            writableEnded = true;
-            return this;
-        },
-        json(data) {
-            return this.send(data);
-        },
-        sendStatus(code) {
-            statusCode = code;
-            payload = { error: true };
-            headersSent = true;
-            writableEnded = true;
-            return this;
-        },
-        end(data = undefined) {
-            if (data !== undefined) {
-                chunks.push(Buffer.isBuffer(data) ? data.toString('utf8') : String(data));
-            }
-            if (payload === undefined && chunks.length) {
-                payload = chunks.join('');
-            }
-            headersSent = true;
-            writableEnded = true;
-            return this;
-        },
-    };
-}
-
-async function runBackendGeneration(request, backend, payload) {
-    if (!Object.keys(payload).length) {
-        const error = new Error('generation payload is required');
-        error.status = 400;
-        throw error;
-    }
-
-    // Create a safe minimal request clone instead of Object.create(request)
-    // to avoid breaking instanceof checks and own-property enumeration
-    const generationRequest = {
-        user: request.user,
-        headers: request.headers,
-        app: request.app,
-        body: payload,
-    };
-    const capture = createCapturingResponse();
-    if (backend === GENERATION_BACKENDS.TEXT) {
-        await handleTextCompletionsGenerate(generationRequest, capture);
-    } else {
-        await handleChatCompletionsGenerate(generationRequest, capture);
-    }
-
-    const body = capture.body;
-    if (capture.statusCode >= 400 || body?.error) {
-        const error = new Error('conversation generation failed');
-        error.status = capture.statusCode >= 400 ? capture.statusCode : 502;
-        error.body = body;
-        throw error;
-    }
-
-    return body;
-}
-
-function extractGeneratedText(generationResponse) {
-    if (typeof generationResponse === 'string') {
-        return generationResponse;
-    }
-
-    const firstChoice = generationResponse?.choices?.[0];
-    return String(
-        firstChoice?.message?.content
-        ?? firstChoice?.text
-        ?? generationResponse?.content
-        ?? generationResponse?.response
-        ?? generationResponse?.text
-        ?? '',
-    );
-}
-
+// Routes
 router.post('/info', (_request, response) => response.send(CONVERSATION_API_INFO));
 
 router.post('/store/get', (request, response) => {
     const settings = readUserSettings(request);
-    const store = ensureConversationStore(settings);
+    const store = ensureConversationStore(settings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
     return response.send({ store, version: getSettingsVersion(settings) });
 });
 
@@ -1199,15 +137,15 @@ router.post('/store/save', (request, response) => {
         ...getObject(currentSettings.extension_settings),
         [CONVERSATION_STORE_KEY]: request.body.store,
     };
-    const store = ensureConversationStore(incomingSettings);
+    const store = ensureConversationStore(incomingSettings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
     const saveResult = saveConversationStore(request, currentSettings, store, request.body.version);
     return respondSaveResult(response, saveResult, { store: saveResult.store || store });
 });
 
 router.post('/group/list', (request, response) => {
     const settings = readUserSettings(request);
-    const store = ensureConversationStore(settings);
-    return response.send({ groups: getConversationGroups(store, getRequestPersonaId(request)), version: getSettingsVersion(settings) });
+    const store = ensureConversationStore(settings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
+    return response.send({ groups: getConversationGroups(store, getRequestPersonaId(request), normalizeConversationSettings), version: getSettingsVersion(settings) });
 });
 
 router.post('/group/create', (request, response) => {
@@ -1218,17 +156,17 @@ router.post('/group/create', (request, response) => {
         avatarUrl: request.body?.avatar_url || request.body?.avatarUrl,
         settings: request.body?.conversation_settings || request.body?.settings,
         personaId,
-    });
+    }, normalizeConversationSettings);
     if (!group) {
         return response.status(400).send({ error: 'members_required' });
     }
 
     const currentSettings = readUserSettings(request);
-    const store = ensureConversationStore(currentSettings);
+    const store = ensureConversationStore(currentSettings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
     store.groups.push(group);
 
     const saveResult = saveConversationStore(request, currentSettings, store, request.body?.version);
-    return respondSaveResult(response, saveResult, { group, groups: getConversationGroups(store, personaId) });
+    return respondSaveResult(response, saveResult, { group, groups: getConversationGroups(store, personaId, normalizeConversationSettings) });
 });
 
 router.post('/thread/get', (request, response) => {
@@ -1240,7 +178,7 @@ router.post('/thread/get', (request, response) => {
     const groupId = getRequestGroupId(request);
     const personaId = getRequestPersonaId(request);
     const settings = readUserSettings(request);
-    const store = ensureConversationStore(settings);
+    const store = ensureConversationStore(settings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
     const thread = getConversationThreadStore(store, avatar, groupId, { create: Boolean(request.body?.create), personaId });
     const branch = thread ? getActiveConversationBranch(store, avatar, groupId, { create: false, personaId }) : null;
     return response.send({
@@ -1264,7 +202,7 @@ router.post('/thread/save', (request, response) => {
     const groupId = getRequestGroupId(request);
     const personaId = getRequestPersonaId(request);
     const currentSettings = readUserSettings(request);
-    const store = ensureConversationStore(currentSettings);
+    const store = ensureConversationStore(currentSettings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
     const branch = getActiveConversationBranch(store, avatar, groupId, { create: true, personaId });
     branch.messages = safeParseThread(request.body.messages).slice(-MAX_THREAD_MESSAGES);
     refreshBranchPreview(branch);
@@ -1287,7 +225,7 @@ router.post('/message/append', (request, response) => {
     const groupId = getRequestGroupId(request);
     const personaId = getRequestPersonaId(request);
     const currentSettings = readUserSettings(request);
-    const store = ensureConversationStore(currentSettings);
+    const store = ensureConversationStore(currentSettings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
 
     // Verify group membership if appending to a group thread
     if (groupId && !isAvatarInGroup(avatar, groupId, store)) {
@@ -1342,7 +280,7 @@ router.post('/message/send', async (request, response) => {
     }
 
     let currentSettings = settingsResult.data;
-    let store = ensureConversationStore(currentSettings);
+    let store = ensureConversationStore(currentSettings, (g) => normalizeConversationGroupRecord(g, normalizeConversationSettings));
 
     // Verify group membership if sending to a group thread
     if (groupId && !isAvatarInGroup(avatar, groupId, store)) {
@@ -1447,3 +385,8 @@ router.post('/message/send', async (request, response) => {
         version: saveResult.version,
     });
 });
+
+// Register alias base paths
+for (const aliasPath of CONVERSATION_API_ALIAS_BASE_PATHS) {
+    router.use(aliasPath, router);
+}

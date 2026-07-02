@@ -57,6 +57,7 @@ const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'pub
 const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
 const speechEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'speech.js'), 'utf8'));
 const serverEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'sillybunny-conversation.js'), 'utf8'));
+const conversationGenerationSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'conversation-generation.js'), 'utf8'));
 const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
@@ -150,8 +151,10 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
         expect(promptSource).toContain("from './shared-helpers.js'");
         expect(promptSource).toContain('fields.push(groundedRules)');
-        expect(serverEndpointSource).toContain('getGroundedDialogueRulesPrompt');
-        expect(serverEndpointSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
+        // Server endpoint now imports from conversation-generation.js which imports from shared-helpers.js
+        expect(serverEndpointSource).toContain("from './conversation-generation.js'");
+        // normalizeConversationSettings is now in conversation-generation.js
+        expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {
