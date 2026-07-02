@@ -1,9 +1,12 @@
 import express from 'express';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
 
 import { getSettingsVersion } from '../settings-version.js';
 import { extractCharacterReplyCommandParts, normalizeConversationOutputText } from '../../public/scripts/sillybunny-conversation/generation-utils.js';
 import { safeParseThread } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
 import { CONVERSATION_STORE_KEY, MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { getIpAddress, retryAfter } from '../express-common.js';
+import { getConfigValue } from '../util.js';
 
 // Import from modular files
 import {
@@ -52,6 +55,15 @@ import {
     runBackendGeneration,
     extractGeneratedText,
 } from './conversation-generation.js';
+
+const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
+const MESSAGE_SEND_RATE_LIMIT = getConfigValue('rateLimiting.conversationMessageSendPoints', 20, 'number');
+const MESSAGE_SEND_RATE_DURATION = getConfigValue('rateLimiting.conversationMessageSendDuration', 60, 'number');
+
+const messageSendLimiter = new RateLimiterMemory({
+    points: MESSAGE_SEND_RATE_LIMIT > 0 ? MESSAGE_SEND_RATE_LIMIT : Number.MAX_SAFE_INTEGER,
+    duration: MESSAGE_SEND_RATE_DURATION,
+});
 
 export const router = express.Router();
 
@@ -252,6 +264,28 @@ router.post('/message/append', (request, response) => {
 });
 
 router.post('/message/send', async (request, response) => {
+    // Rate limiting
+    try {
+        const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
+        const rateLimit = await messageSendLimiter.get(ip);
+
+        if (rateLimit !== null && rateLimit.consumedPoints >= messageSendLimiter.points) {
+            retryAfter(response, rateLimit);
+            return response.status(429).send({
+                error: 'rate_limit_exceeded',
+                message: 'Too many message send requests. Please wait before trying again.',
+            });
+        }
+
+        await messageSendLimiter.consume(ip);
+    } catch (rateLimitError) {
+        retryAfter(response, rateLimitError);
+        return response.status(429).send({
+            error: 'rate_limit_exceeded',
+            message: 'Too many message send requests. Please wait before trying again.',
+        });
+    }
+
     // Validate required fields
     const avatarValidation = validateAvatar(getRequestAvatar(request));
     if (!avatarValidation.valid) {

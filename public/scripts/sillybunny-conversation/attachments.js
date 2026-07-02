@@ -2,6 +2,7 @@ import { is_send_press, name1 } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
+    AUTO_WORKER_WAIT_POLL_MS,
     AUTO_WORKER_WAIT_TIMEOUT_MS,
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -233,7 +234,7 @@ export async function waitForAutoWorker() {
             break;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, AUTO_WORKER_WAIT_POLL_MS));
     }
 }
 
@@ -245,16 +246,6 @@ function getConversationSpeakerAvatar(message, threadAvatar) {
     return message.role === 'partner'
         ? String(message.extra?.partner_avatar || '')
         : String(threadAvatar || '');
-}
-
-function getLastGroupSpeakerIndex(thread, speakerAvatar, threadAvatar) {
-    for (let index = thread.length - 1; index >= 0; index--) {
-        if (getConversationSpeakerAvatar(thread[index], threadAvatar) === speakerAvatar) {
-            return index;
-        }
-    }
-
-    return -1;
 }
 
 function isBroadGroupAddress(text) {
@@ -336,8 +327,18 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
     const candidateCharacters = pool.map(item => item.character).filter(Boolean);
     const latestUserText = [queueItem?.text, queueItem?.attachmentContext].filter(Boolean).join('\n');
     const thread = getConversationThread(threadAvatar, { groupId });
+
+    // Build a cache of lastSpeakerIndex for all avatars in one pass
+    const lastSpeakerIndexCache = new Map();
+    for (let index = thread.length - 1; index >= 0; index--) {
+        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+        if (speakerAvatar && !lastSpeakerIndexCache.has(speakerAvatar)) {
+            lastSpeakerIndexCache.set(speakerAvatar, index);
+        }
+    }
+
     const weightedPool = pool.map((item) => {
-        const lastSpeakerIndex = getLastGroupSpeakerIndex(thread, item.character.avatar, threadAvatar);
+        const lastSpeakerIndex = lastSpeakerIndexCache.get(item.character.avatar) ?? -1;
         const messagesSinceSpeaking = lastSpeakerIndex < 0
             ? thread.length + 1
             : Math.max(1, thread.length - lastSpeakerIndex);

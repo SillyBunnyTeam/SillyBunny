@@ -303,6 +303,6 @@ describe('conversation mode scoped connection profile', () => {
     test('waits around five seconds for rapid follow-up messages before replying', () => {
         expect(constantsSource).toContain('SEND_QUEUE_COALESCE_MS = 5000');
         expect(attachmentsSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
-        expect(readConversationSource('send-queue-utils.js')).toContain('windowMs=5000');
+        expect(readConversationSource('send-queue-utils.js')).toContain('DEFAULT_COALESCE_WINDOW_MS = 5000');
     });
 });

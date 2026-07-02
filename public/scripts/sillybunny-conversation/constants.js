@@ -136,6 +136,7 @@ export const SCHEDULE_PREFIX = 'sb_conv_schedule_';
 export const FOLLOWUP_COUNT_PREFIX = 'sb_conv_followup_count_';
 export const AUTO_WORKER_INTERVAL_MS = 30000;
 export const AUTO_WORKER_WAIT_TIMEOUT_MS = 45000;
+export const AUTO_WORKER_WAIT_POLL_MS = 200;
 export const AUTO_WORKER_INTERVAL_GLOBAL_KEY = '__sbConversationAutoWorkerIntervalId';
 export const MAX_THREAD_MESSAGES = 250;
 export const TRANSCRIPT_MESSAGE_LIMIT = 32;

@@ -7,6 +7,8 @@
  * own self-contained files where possible.
  */
 
+const DEFAULT_COALESCE_WINDOW_MS = 5000;
+
 /**
  * Two queue items belong to the same conversation thread when they target the same
  * avatar + group and neither is a forced (non-coalescable) item.
@@ -77,7 +79,7 @@ export function drainSameThreadItems(firstItem, queue) {
  * @param {object} firstItem - The item already shifted off the front of the queue.
  * @param {Array} queue - The live queue array (mutated as items are drained).
  * @param {object} [options]
- * @param {number} [options.windowMs=5000] - Idle window per round.
+ * @param {number} [options.windowMs=DEFAULT_COALESCE_WINDOW_MS] - Idle window per round.
  * @param {function} [options.timeoutRef=setTimeout] - Injectable timer (for tests).
  * @returns {Promise<object|null>} The (possibly merged) queue item, or null.
  */
@@ -87,7 +89,7 @@ export async function coalesceConversationQueueItems(firstItem, queue, options =
     }
 
     const timeout = typeof options.timeoutRef === 'function' ? options.timeoutRef : setTimeout;
-    const windowMs = typeof options.windowMs === 'number' ? options.windowMs : 5000;
+    const windowMs = typeof options.windowMs === 'number' ? options.windowMs : DEFAULT_COALESCE_WINDOW_MS;
 
     if (windowMs <= 0) {
         return firstItem;
