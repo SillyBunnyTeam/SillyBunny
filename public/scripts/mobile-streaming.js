@@ -81,14 +81,16 @@ export function getStreamingReasoningRenderInterval(navigatorRef = globalThis.na
  * @param {boolean} [options.isFinal] Whether this is the final streamed render
  * @param {boolean} [options.isReducedDomWork] Whether reduced mobile DOM work is active
  * @param {boolean} [options.isImpersonate] Whether the stream writes to the user input box
+ * @param {boolean} [options.useBasicMarkdown] Whether to use basic markdown (middle ground)
  * @returns {boolean}
  */
 export function shouldUsePlainTextStreamingPreview({
     isFinal = false,
     isReducedDomWork = false,
     isImpersonate = false,
+    useBasicMarkdown = false,
 } = {}) {
-    return Boolean(isReducedDomWork) && !isFinal && !isImpersonate;
+    return Boolean(isReducedDomWork) && !isFinal && !isImpersonate && !useBasicMarkdown;
 }
 
 /**
@@ -101,6 +103,43 @@ export function formatPlainTextStreamingPreview(text = '') {
     return String(text)
         .replace(STREAMING_PREVIEW_ESCAPE_PATTERN, character => STREAMING_PREVIEW_ESCAPE_MAP[character])
         .replace(/\r\n|\r|\n/g, '<br>');
+}
+
+/**
+ * Formats streaming preview with basic markdown but skips the full sanitizer pipeline.
+ * This is a middle ground between plain text and full formatting for better mobile performance.
+ * @param {string} text Raw streamed message text
+ * @param {object} context Context object with converter
+ * @param {import('showdown').Converter} context.converter Showdown converter instance
+ * @returns {string} Basic markdown HTML
+ */
+export function formatBasicMarkdownStreamingPreview(text = '', { converter = null } = {}) {
+    if (!converter || typeof converter.makeHtml !== 'function') {
+        return formatPlainTextStreamingPreview(text);
+    }
+
+    try {
+        // Escape HTML first
+        let mes = String(text)
+            .replace(STREAMING_PREVIEW_ESCAPE_PATTERN, character => STREAMING_PREVIEW_ESCAPE_MAP[character]);
+
+        // Apply basic markdown conversion
+        mes = mes.replaceAll('\\begin{align*}', '$$');
+        mes = mes.replaceAll('\\end{align*}', '$$');
+        mes = converter.makeHtml(mes);
+
+        // Handle code blocks
+        mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
+            return match.replace(/\n/gm, '\u0000');
+        });
+        mes = mes.replace(/\u0000/g, '\n');
+        mes = mes.trim();
+
+        return mes;
+    } catch (error) {
+        console.warn('[Mobile Streaming] Basic markdown formatting failed:', error);
+        return formatPlainTextStreamingPreview(text);
+    }
 }
 
 /**

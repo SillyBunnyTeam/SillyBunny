@@ -172,6 +172,7 @@ const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({
     android_reduce_streaming_work: true,
     android_disable_smooth_streaming: true,
     android_disable_stream_fade_in: true,
+    android_streaming_basic_markdown: false,
 });
 const ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY = 'android_streaming_settings_initialized';
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
@@ -2559,6 +2560,7 @@ export async function loadPowerUserSettings(settings, data) {
     $('#ios_webkit_disable_stream_fade_in').prop('checked', power_user.ios_webkit_disable_stream_fade_in);
     $('#android_conservative_streaming').prop('checked', power_user.android_conservative_streaming);
     $('#android_reduce_streaming_work').prop('checked', power_user.android_reduce_streaming_work);
+    $('#android_streaming_basic_markdown').prop('checked', power_user.android_streaming_basic_markdown);
     $('#android_disable_smooth_streaming').prop('checked', power_user.android_disable_smooth_streaming);
     $('#android_disable_stream_fade_in').prop('checked', power_user.android_disable_stream_fade_in);
     $('#aggressive_dom_unload').prop('checked', power_user.aggressive_dom_unload);
@@ -4426,6 +4428,11 @@ jQuery(async () => {
 
     $('#android_reduce_streaming_work').on('input', function () {
         power_user.android_reduce_streaming_work = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
+    $('#android_streaming_basic_markdown').on('input', function () {
+        power_user.android_streaming_basic_markdown = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 

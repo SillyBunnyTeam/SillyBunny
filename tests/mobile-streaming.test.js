@@ -2,6 +2,7 @@ import {
     ANDROID_REASONING_RENDER_INTERVAL_MS,
     ANDROID_STREAMING_UPDATE_INTERVAL_MS,
     formatPlainTextStreamingPreview,
+    formatBasicMarkdownStreamingPreview,
     isReducedStreamingDomWorkPlatform,
     getMobileStreamingBottomPinBehavior,
     getStreamingReasoningRenderInterval,
@@ -136,11 +137,33 @@ describe('mobile streaming helpers', () => {
             isReducedDomWork: true,
             isImpersonate: true,
         })).toBe(false);
+
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: false,
+            isReducedDomWork: true,
+            isImpersonate: false,
+            useBasicMarkdown: true,
+        })).toBe(false);
     });
 
     test('escapes plain text streaming previews and preserves line breaks', () => {
         expect(formatPlainTextStreamingPreview('<tag a="1">A & B</tag>\nnext line'))
             .toBe('&lt;tag a=&quot;1&quot;&gt;A &amp; B&lt;/tag&gt;<br>next line');
+    });
+
+    test('formats basic markdown streaming previews with limited processing', () => {
+        const mockConverter = {
+            makeHtml: (text) => text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
+        };
+
+        expect(formatBasicMarkdownStreamingPreview('**bold** text', { converter: mockConverter }))
+            .toBe('<strong>bold</strong> text');
+
+        expect(formatBasicMarkdownStreamingPreview('<script>alert("xss")</script>', { converter: mockConverter }))
+            .toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+
+        expect(formatBasicMarkdownStreamingPreview('test', { converter: null }))
+            .toBe('test');
     });
 
     test('reports effective Smooth Streaming after platform-specific bypasses', () => {

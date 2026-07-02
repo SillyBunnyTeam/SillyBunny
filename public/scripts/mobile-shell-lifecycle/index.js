@@ -809,6 +809,8 @@ const MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR = [
     '#right-nav-panel.openDrawer',
     '#user-settings-block.openDrawer',
     '.sb-shell-root.openDrawer',
+    '#ica--tracker-panel.is-open',
+    '.ica--tpanel.is-open',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [

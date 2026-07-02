@@ -321,7 +321,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { formatPlainTextStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
+import { formatPlainTextStreamingPreview, formatBasicMarkdownStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -6021,22 +6021,31 @@ class StreamingProcessor {
                 }
             }
 
+            const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPlatform(globalThis.navigator);
             const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({
                 isFinal,
                 isReducedDomWork: shouldReduceIntermediateStreamingWork,
                 isImpersonate,
+                useBasicMarkdown: shouldUseAndroidBasicMarkdown,
             });
+            const shouldUseBasicMarkdown = shouldReduceIntermediateStreamingWork
+                && !isFinal
+                && !isImpersonate
+                && shouldUseAndroidBasicMarkdown;
+
             const formattedText = shouldUsePlainTextPreview
                 ? formatPlainTextStreamingPreview(processedText)
-                : messageFormatting(
-                    processedText,
-                    chat[messageId].name,
-                    chat[messageId].is_system,
-                    chat[messageId].is_user,
-                    messageId,
-                    {},
-                    false,
-                );
+                : shouldUseBasicMarkdown
+                    ? formatBasicMarkdownStreamingPreview(processedText, { converter })
+                    : messageFormatting(
+                        processedText,
+                        chat[messageId].name,
+                        chat[messageId].is_system,
+                        chat[messageId].is_user,
+                        messageId,
+                        {},
+                        false,
+                    );
             const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
