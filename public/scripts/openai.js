@@ -9573,10 +9573,19 @@ $('#save_custom_endpoint').on('click', async function () {
         secretId: keyInputValue ? '' : existingPreset?.secretId,
     });
 
-    // Validate: if no key provided and no existing secret, error
-    if (!keyInputValue && !preset.secretId) {
+    // Check if there's an active secret for CUSTOM key
+    const activeSecret = secret_state[SECRET_KEYS.CUSTOM]?.find(s => s.active);
+    const hasActiveSecret = !!activeSecret;
+
+    // Validate: need at least one of: new key input, existing secretId, or active secret
+    if (!keyInputValue && !preset.secretId && !hasActiveSecret) {
         toastr.error(t`API key cannot be empty. Please enter an API key or select an existing secret.`);
         return;
+    }
+
+    // If no new key but has active secret, bind it to the profile
+    if (!keyInputValue && hasActiveSecret && !preset.secretId) {
+        preset.secretId = activeSecret.id;
     }
 
     // Only write secret if user provided a new key
