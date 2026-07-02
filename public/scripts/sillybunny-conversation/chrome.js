@@ -1,9 +1,11 @@
 import { animation_duration, characters } from '../../script.js';
+import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { getUserAvatar, setUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
+import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
@@ -886,7 +888,8 @@ export function bindConversationChromeControls(sheld) {
     const searchInput = document.getElementById(CHROME_IDS.search);
     if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbConversationBound !== 'true') {
         searchInput.dataset.sbConversationBound = 'true';
-        searchInput.addEventListener('input', () => updateConversationSearchQuery(searchInput.value));
+        const debouncedSearch = debounce(() => updateConversationSearchQuery(searchInput.value), debounce_timeout.short);
+        searchInput.addEventListener('input', debouncedSearch);
     }
 
     const stage = document.getElementById(CHROME_IDS.stage);
@@ -931,7 +934,7 @@ export function bindConversationChromeControls(sheld) {
     const palsSearch = document.getElementById('sb_conversation_pals_search');
     if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
         palsSearch.dataset.sbConversationBound = 'true';
-        palsSearch.addEventListener('input', () => {
+        const debouncedPalsFilter = debounce(() => {
             const query = palsSearch.value.toLowerCase().trim();
             const pals = document.querySelectorAll('.sb-conversation-pal');
             pals.forEach(pal => {
@@ -940,13 +943,14 @@ export function bindConversationChromeControls(sheld) {
                     const row = pal.closest('.sb-conversation-pal-row');
                     const targetElement = row instanceof HTMLElement ? row : pal;
                     if (palName.includes(query)) {
-                        targetElement.style.display = '';
+                        targetElement.classList.remove('sb-conversation-hidden');
                     } else {
-                        targetElement.style.display = 'none';
+                        targetElement.classList.add('sb-conversation-hidden');
                     }
                 }
             });
-        });
+        }, debounce_timeout.short);
+        palsSearch.addEventListener('input', debouncedPalsFilter);
     }
 
     const personaPicker = document.getElementById(CHROME_IDS.personaPicker);

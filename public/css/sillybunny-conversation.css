@@ -2813,3 +2813,8 @@
     pointer-events: none;
     z-index: 99;
 }
+
+/* Utility class for hiding filtered items */
+.sb-conversation-hidden {
+    display: none !important;
+}
