@@ -19,7 +19,8 @@ import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCh
 import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
 import { isCharacterMentionedInText } from './partners.js';
-import { formatConversationFileSize, formatPromptText } from './prompt.js';
+import { formatConversationFileSize } from './prompt.js';
+import { formatPromptText } from './shared-helpers.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
 import { getSettings, saveSettings } from './settings-store.js';

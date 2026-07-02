@@ -23,7 +23,7 @@ import {
 } from './context.js';
 import { getCharacterForAvatar, getCharacterIndexForAvatar, getConversationParticipants } from './media.js';
 import { getActiveConversationThreadKey } from './notifications.js';
-import { formatPromptText } from './prompt.js';
+import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationSeenAt, getConversationThread } from './thread-store.js';

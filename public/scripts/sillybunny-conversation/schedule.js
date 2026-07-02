@@ -13,7 +13,7 @@ import {
     persistConversationStore,
 } from './context.js';
 import { generateConversationRaw } from './generation.js';
-import { formatPromptText } from './prompt.js';
+import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
 import { runtimeStatusOverrides } from './state.js';
 import {

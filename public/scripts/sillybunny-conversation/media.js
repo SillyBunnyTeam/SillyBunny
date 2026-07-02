@@ -9,7 +9,7 @@ import {
     getCurrentCharName,
 } from './context.js';
 import { parseAvatarList } from './partners.js';
-import { formatPromptText } from './prompt.js';
+import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings } from './settings-store.js';
