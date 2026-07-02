@@ -30,6 +30,9 @@ import {
 import {
     getConversationAttachmentLabels,
     getConversationAttachmentSummary,
+    getConversationMediaDisplay,
+    getConversationMediaIndex,
+    getConversationPromptMediaAttachments,
     hasConversationMessageContent,
     safeParseThread,
 } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
@@ -222,6 +225,114 @@ function isAvatarInGroup(avatar, groupId, store) {
     }
     return Array.isArray(group.members) && group.members.includes(avatar) &&
            !(Array.isArray(group.disabled_members) && group.disabled_members.includes(avatar));
+}
+
+// Image fetching with SSRF protection
+const IMAGE_FETCH_TIMEOUT_MS = 10000; // 10 seconds
+const IMAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function isPrivateIP(hostname) {
+    // Block private IP ranges for SSRF protection
+    const privatePatterns = [
+        /^127\./,                    // 127.0.0.0/8
+        /^10\./,                     // 10.0.0.0/8
+        /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
+        /^192\.168\./,               // 192.168.0.0/16
+        /^169\.254\./,               // 169.254.0.0/16 (link-local)
+        /^::1$/,                     // IPv6 loopback
+        /^fe80:/,                    // IPv6 link-local
+        /^fc00:/,                    // IPv6 ULA
+        /^localhost$/i,
+    ];
+
+    return privatePatterns.some(pattern => pattern.test(hostname));
+}
+
+async function fetchImageToBase64(imageUrl) {
+    if (typeof imageUrl !== 'string' || !imageUrl) {
+        return '';
+    }
+
+    // Already base64
+    if (imageUrl.startsWith('data:')) {
+        return imageUrl;
+    }
+
+    try {
+        const url = new URL(imageUrl);
+
+        // SSRF protection: block private IPs in dev mode unless explicitly allowed
+        // In production, always block private IPs
+        const isDevelopment = process.env.NODE_ENV !== 'production';
+        if (!isDevelopment || !['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
+            if (isPrivateIP(url.hostname)) {
+                console.warn(`Blocked image fetch to private IP: ${url.hostname}`);
+                return imageUrl; // Return original URL, don't crash
+            }
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+
+        const response = await fetch(imageUrl, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'SillyBunny-Conversation-API/1.0',
+            },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            console.warn(`Failed to fetch image ${imageUrl}: status ${response.status}`);
+            return imageUrl;
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength, 10) > IMAGE_MAX_SIZE_BYTES) {
+            console.warn(`Image too large: ${contentLength} bytes (max ${IMAGE_MAX_SIZE_BYTES})`);
+            return imageUrl;
+        }
+
+        const buffer = await response.arrayBuffer();
+        if (buffer.byteLength > IMAGE_MAX_SIZE_BYTES) {
+            console.warn(`Image too large: ${buffer.byteLength} bytes (max ${IMAGE_MAX_SIZE_BYTES})`);
+            return imageUrl;
+        }
+
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const base64 = Buffer.from(buffer).toString('base64');
+        return `data:${contentType};base64,${base64}`;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.warn(`Image fetch timeout: ${imageUrl}`);
+        } else {
+            console.warn(`Failed to fetch image ${imageUrl}:`, error.message);
+        }
+        return imageUrl; // Return original URL on error
+    }
+}
+
+async function convertImageUrlsToBase64(imageUrls, concurrency = 3) {
+    const urls = Array.isArray(imageUrls) ? imageUrls : [];
+    if (!urls.length) {
+        return [];
+    }
+
+    const results = new Array(urls.length).fill('');
+    let nextIndex = 0;
+    const workerCount = Math.max(1, Math.min(concurrency, urls.length));
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (nextIndex < urls.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await fetchImageToBase64(urls[index]);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
 }
 
 function readJsonFile(filePath, fallback = {}) {
@@ -813,31 +924,70 @@ function getContentText(content) {
         .join('\n');
 }
 
-function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User' } = {}) {
+async function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User' } = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
         identifier: 'conversation-transcript-header',
     }];
-    const convertedMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT)
-        .map((message, index) => {
-            const parts = [
-                formatPromptText(message.mes, 1800),
-                getConversationAttachmentSummary(message),
-            ].filter(Boolean);
-            if (!parts.length) {
-                return null;
-            }
 
+    const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
+    const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
+        const parts = [
+            formatPromptText(message.mes, 1800),
+            getConversationAttachmentSummary(message),
+        ].filter(Boolean);
+        const media = getConversationPromptMediaAttachments(message);
+
+        if (!parts.length && !media.length) {
+            return null;
+        }
+
+        const role = message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant';
+        const textContent = parts.length ? `${message.name || 'Speaker'}: ${parts.join(' ')}` : `${message.name || 'Speaker'} sent an attachment.`;
+
+        if (!media.length) {
             return {
-                role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
-                content: `${message.name || 'Speaker'}: ${parts.join(' ')}`,
+                role,
+                content: textContent,
                 identifier: `conversation-message-${message.id || index}`,
             };
-        })
-        .filter(Boolean);
+        }
 
-    promptMessages.push(...convertedMessages);
+        // Build multimodal content with images
+        const contentParts = [
+            { type: 'text', text: textContent },
+        ];
+
+        const mediaDisplay = getConversationMediaDisplay(message);
+        const mediaIndex = getConversationMediaIndex(message, media);
+        // MEDIA_DISPLAY.GALLERY means show one image; otherwise show all
+        const mediaToInline = mediaDisplay === 'gallery'
+            ? [media[mediaIndex]]
+            : media;
+
+        const base64Urls = await convertImageUrlsToBase64(mediaToInline.map(item => item?.url).filter(Boolean));
+        for (const base64Url of base64Urls) {
+            if (base64Url) {
+                contentParts.push({
+                    type: 'image_url',
+                    image_url: {
+                        url: base64Url,
+                        detail: 'high',
+                    },
+                });
+            }
+        }
+
+        return {
+            role,
+            content: contentParts,
+            identifier: `conversation-message-${message.id || index}`,
+        };
+    }));
+
+    promptMessages.push(...convertedMessages.filter(Boolean));
+
     if (promptMessages.length === 1) {
         promptMessages.push({
             role: 'user',
@@ -1311,7 +1461,7 @@ router.post('/message/send', async (request, response) => {
     branch.messages.push(userMessage);
 
     const directive = getDefaultDirective(request.body);
-    const promptMessages = buildConversationPromptMessages(branch.messages, directive, character.name || 'Character', { groupId, userName });
+    const promptMessages = await buildConversationPromptMessages(branch.messages, directive, character.name || 'Character', { groupId, userName });
     const systemPrompt = buildConversationSystemPrompt({ settings, character, userName, groupId, branch });
     const { backend, payload } = buildGenerationRequestBody(
         request.body.generation,
