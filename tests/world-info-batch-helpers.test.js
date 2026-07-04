@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks } from '../public/scripts/world-info-batch-helpers.js';
+import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks, isEmbeddedBookLinked } from '../public/scripts/world-info-batch-helpers.js';
 
 describe('detectEmbeddedLorebookCandidates', () => {
     test('returns empty array when no characters have embedded lorebooks', () => {
@@ -83,5 +83,35 @@ describe('getLinkedAuxBooks', () => {
 
     test('returns empty array when extraBooks is undefined', () => {
         expect(getLinkedAuxBooks([{ name: 'alice' }], 'alice')).toEqual([]);
+    });
+});
+
+describe('isEmbeddedBookLinked', () => {
+    test('returns true when primary world is set and exists', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', 'Primary World', [], ['Primary World'])).toBe(true);
+    });
+
+    test('returns false when primary world is set but missing from saved worlds', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', 'Primary World', [], ['Other World'])).toBe(false);
+    });
+
+    test('returns true when book is aux-linked and saved (batch import case)', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', undefined, ['Alice Lore'], ['Alice Lore'])).toBe(true);
+    });
+
+    test('returns false when book is aux-linked but the world file is gone', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', undefined, ['Alice Lore'], [])).toBe(false);
+    });
+
+    test('returns false when aux links exist but not for this book', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', undefined, ['Other Book'], ['Alice Lore', 'Other Book'])).toBe(false);
+    });
+
+    test('returns false with no links at all', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', undefined, [], [])).toBe(false);
+    });
+
+    test('handles non-array auxBooks', () => {
+        expect(isEmbeddedBookLinked('Alice Lore', undefined, /** @type {any} */ (null), ['Alice Lore'])).toBe(false);
     });
 });
