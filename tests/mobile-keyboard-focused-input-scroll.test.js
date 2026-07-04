@@ -19,6 +19,8 @@ describe('mobile keyboard focused-input scroll wiring', () => {
 
     test('adds iOS keyboard bottom inset without locking document scroll', () => {
         expect(tabsSource).toContain('function syncIOSKeyboardBottomInset(');
+        expect(tabsSource).toContain('if (isIOSWebKitPlatform()) {');
+        expect(tabsSource).not.toContain('if (isMobileViewport() && isIOSWebKitPlatform()) {');
         expect(tabsSource).toContain('--sb-ios-keyboard-bottom-inset');
         expect(tabsSource).toMatch(/layoutViewport\.height - visualViewportSize\.top - visualViewportSize\.height/);
         expect(tabsSource).not.toContain('sb-ios-keyboard-locked');

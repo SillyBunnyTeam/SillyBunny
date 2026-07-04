@@ -2494,7 +2494,7 @@ function hasOpenMobileShellDrawer() {
 }
 
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
-    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+    if (!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
         return false;
     }
 
@@ -2511,7 +2511,7 @@ function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
 
-    if (isMobileViewport() && isIOSWebKitPlatform()) {
+    if (isIOSWebKitPlatform()) {
         const layoutViewport = getLayoutViewportSize();
         const visualViewportSize = getVisualViewportSize(layoutViewport);
 
