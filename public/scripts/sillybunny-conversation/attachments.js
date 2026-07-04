@@ -695,3 +695,25 @@ export async function submitConversationInput() {
         }
     }
 }
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('sb:queue-conversation-reply', (event) => {
+        const detail = event?.detail || {};
+        const avatar = String(detail.avatar || '').trim();
+        const text = String(detail.text || '').trim();
+        if (!avatar || !text) {
+            return;
+        }
+
+        const createdAt = Number(detail.createdAt);
+        sendQueue.push({
+            avatar,
+            groupId: detail.groupId || null,
+            text,
+            attachmentContext: String(detail.attachmentContext || '').trim(),
+            createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+            force: Boolean(detail.force),
+        });
+        void processSendQueue();
+    });
+}

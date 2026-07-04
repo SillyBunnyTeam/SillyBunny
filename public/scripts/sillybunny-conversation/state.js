@@ -21,6 +21,7 @@ export const conversationState = {
     imageGenerationActive: false,
     imageGenerationAbortController: null,
     lastRenderedAvatar: null,
+    lastRenderedThreadKey: '',
     lastRenderedMessageCount: 0,
     lastTimelineFingerprint: '',
     lastPalsRailFingerprint: '',

@@ -32,7 +32,7 @@ import { getConversationMessageAvatar, getConversationMessageReceipt } from './p
 import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
-import { registerConversationRenderer, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { registerConversationRenderer, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getConversationReplyMaxTokens } from './schedule.js';
 import { getSettings } from './settings-store.js';
@@ -48,7 +48,7 @@ import {
     getConversationThread,
     saveConversationThread,
 } from './thread-store.js';
-import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation } from './typing.js';
+import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -60,7 +60,16 @@ export {
     quickConversationSummarize,
 } from './timeline-slash-commands.js';
 
-function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages }) {
+function getConversationRenderBranchId(avatar, groupId) {
+    const store = getConversationThreadStore(avatar, { create: false, groupId });
+    return String(store?.activeBranchId || getActiveConversationBranch(avatar, { create: false, groupId })?.id || '');
+}
+
+function buildConversationRenderThreadKey(avatar, groupId, branchId) {
+    return [avatar || '', groupId || '', branchId || ''].join('\u001f');
+}
+
+function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMessages, messages }) {
     const activeTyping = getActiveTypingParticipants(avatar, { groupId });
     const statusAvatars = new Set([avatar]);
     for (const participant of activeTyping) {
@@ -101,6 +110,7 @@ function buildTimelineFingerprint({ avatar, groupId, settings, allMessages, mess
     return hashConversationRenderFingerprint([
         avatar || '',
         groupId || '',
+        branchId || '',
         conversationState.conversationTimelineChannel || '',
         conversationState.conversationTimelineSearchQuery || '',
         allMessages.length,
@@ -505,7 +515,7 @@ export function renderConversationTimeline() {
 
     const previousScrollTop = timeline.scrollTop;
     const previousScrollBottom = timeline.scrollHeight - previousScrollTop - timeline.clientHeight;
-    const previousAvatar = conversationState.lastRenderedAvatar;
+    const previousThreadKey = conversationState.lastRenderedThreadKey || '';
     const previousMessageCount = conversationState.lastRenderedMessageCount;
 
     if (!avatar) {
@@ -532,6 +542,7 @@ export function renderConversationTimeline() {
             </div>
         `;
         conversationState.lastRenderedAvatar = null;
+        conversationState.lastRenderedThreadKey = '';
         conversationState.lastRenderedMessageCount = 0;
         updateConversationToolsState();
         return;
@@ -541,11 +552,13 @@ export function renderConversationTimeline() {
     const settings = getSettings(avatar, { groupId });
     const allMessages = getConversationThread(avatar, { groupId });
     const messages = getConversationTimelineMessages(allMessages);
-    const contextChanged = previousAvatar !== avatar;
+    const branchId = getConversationRenderBranchId(avatar, groupId);
+    const renderThreadKey = buildConversationRenderThreadKey(avatar, groupId, branchId);
+    const contextChanged = previousThreadKey !== renderThreadKey;
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
-    const fingerprint = buildTimelineFingerprint({ avatar, groupId, settings, allMessages, messages });
-    if (fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
+    const fingerprint = buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMessages, messages });
+    if (!contextChanged && fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
         updateConversationToolsState();
         return;
     }
@@ -571,6 +584,7 @@ export function renderConversationTimeline() {
         `;
         timeline.appendChild(empty);
         conversationState.lastRenderedAvatar = avatar;
+        conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
         updateConversationToolsState();
         if (contextChanged || messagesAdded || isNearBottom) {
@@ -594,6 +608,7 @@ export function renderConversationTimeline() {
         `;
         timeline.appendChild(empty);
         conversationState.lastRenderedAvatar = avatar;
+        conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
         updateConversationToolsState();
         return;
@@ -687,6 +702,7 @@ export function renderConversationTimeline() {
     }
 
     conversationState.lastRenderedAvatar = avatar;
+    conversationState.lastRenderedThreadKey = renderThreadKey;
     conversationState.lastRenderedMessageCount = allMessages.length;
     updateConversationToolsState();
     if (contextChanged || messagesAdded || isNearBottom) {
@@ -911,23 +927,33 @@ export async function regenerateConversationMessage(messageId) {
     const speakerAvatar = context.message.extra?.partner_avatar || context.avatar;
     const settings = getSettings(speakerAvatar, { groupId: context.groupId });
     const speakerName = context.message.name || getCharacterForAvatar(speakerAvatar)?.name || getCurrentCharName();
-    const prompt = await buildConversationPromptMessages(
-        context.messages.slice(0, index),
-        '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
-        speakerName,
-    );
+
+    conversationState.conversationReplyBusy = true;
+    conversationState.generationActive = true;
+    scheduleInterfaceRefresh({ syncControls: false });
 
     try {
-        const response = await generateConversationRaw({
-            prompt,
-            systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, {
-                threadAvatar: context.avatar,
-                groupId: context.groupId,
-            }),
-            responseLength: getConversationReplyMaxTokens(settings),
-            trimNames: true,
-            cacheScope: 'conversation-mode',
-        }, settings);
+        const prompt = await buildConversationPromptMessages(
+            context.messages.slice(0, index),
+            '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
+            speakerName,
+            { groupId: context.groupId },
+        );
+        const response = await withTypingParticipant(
+            { avatar: speakerAvatar, name: speakerName },
+            () => generateConversationRaw({
+                prompt,
+                systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, {
+                    threadAvatar: context.avatar,
+                    groupId: context.groupId,
+                }),
+                responseLength: getConversationReplyMaxTokens(settings),
+                trimNames: true,
+                cacheScope: 'conversation-mode',
+            }, settings),
+            context.avatar,
+            { groupId: context.groupId },
+        );
 
         const text = normalizeConversationOutputText(response || '');
         if (!text) {
@@ -941,6 +967,10 @@ export async function regenerateConversationMessage(messageId) {
         globalThis.toastr?.success?.('Message regenerated.');
     } catch (error) {
         reportConversationGenerationError('regenerate', error, { level: 'warning' });
+    } finally {
+        conversationState.conversationReplyBusy = false;
+        conversationState.generationActive = false;
+        scheduleInterfaceRefresh({ syncControls: false });
     }
 }
 
@@ -989,6 +1019,21 @@ export function branchConversationFromMessage(messageId) {
     }));
     scheduleTimelineRender();
     schedulePalsRailRender();
+
+    if (context.message.role === 'user') {
+        const replyText = String(context.message.mes || '').trim() || getConversationAttachmentSummary(context.message);
+        if (replyText) {
+            window.dispatchEvent(new CustomEvent('sb:queue-conversation-reply', {
+                detail: {
+                    avatar: context.avatar,
+                    groupId: context.groupId || null,
+                    text: replyText,
+                    createdAt: Date.now(),
+                    force: true,
+                },
+            }));
+        }
+    }
 }
 
 export async function quickConversationSelfie() {

@@ -1096,6 +1096,7 @@ export function setConversationInterfaceActive(active) {
             timeline.removeAttribute('data-sb-conversation-fingerprint');
             conversationState.lastTimelineFingerprint = '';
             conversationState.lastRenderedAvatar = null;
+            conversationState.lastRenderedThreadKey = '';
             conversationState.lastRenderedMessageCount = 0;
         }
         return;
