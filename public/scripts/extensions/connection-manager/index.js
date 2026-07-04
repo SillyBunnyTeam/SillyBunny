@@ -1002,11 +1002,11 @@ async function applyConnectionProfile(profile) {
                 cancelDebounce(saveSettingsDebounced);
                 try {
                     const result = await commandPromise;
-                    
+
                     if (command === 'secret-id') {
                         syncAppliedCustomEndpointProfileSecret(mode, result || argument);
                     }
-                    
+
                     // Validate critical commands succeeded
                     if (['api', 'model', 'preset'].includes(command)) {
                         if (!result && argument && !allowEmpty) {
@@ -1035,7 +1035,7 @@ async function applyConnectionProfile(profile) {
             maybeApplyModelSamplingProfile();
             cancelDebounce(saveSettingsDebounced);
         }
-        
+
         // Show user-visible errors if any commands failed
         if (failedCommands.length > 0) {
             const commandList = failedCommands

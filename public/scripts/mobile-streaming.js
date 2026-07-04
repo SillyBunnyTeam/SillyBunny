@@ -4,7 +4,6 @@ export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
 export const ANDROID_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const ANDROID_REASONING_RENDER_INTERVAL_MS = 1500;
-const STREAMING_PREVIEW_ESCAPE_PATTERN = /[&<>"']/g;
 const STREAMING_PREVIEW_ESCAPE_MAP = Object.freeze({
     '&': '&amp;',
     '<': '&lt;',
