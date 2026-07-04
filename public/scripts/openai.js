@@ -6868,14 +6868,14 @@ function saveSamplingProfileForCurrentModel() {
     }
     saveSettingsDebounced();
     const modelLabel = getChatCompletionModel();
-    
+
     // Visual feedback flash
     const $saveButton = $('#model_sampling_profile_save');
     $saveButton.addClass('success-flash');
     setTimeout(() => {
         $saveButton.removeClass('success-flash');
     }, 1200);
-    
+
     toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
 }
 
@@ -9412,8 +9412,13 @@ export async function loadCustomEndpointPresets(settings) {
     }
 
     const savedSelectedPreset = settings.selected_custom_endpoint_preset;
-    selected_custom_endpoint_preset = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset) : null;
-    if (selected_custom_endpoint_preset && !custom_endpoint_presets.some(preset => preset.name === selected_custom_endpoint_preset.name)) {
+    // SillyBunny: re-resolve the saved selection against the presets array so both point at the same object.
+    const savedSelectedName = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset).name : null;
+    selected_custom_endpoint_preset = savedSelectedName
+        ? custom_endpoint_presets.find(preset => preset.name === savedSelectedName) ?? null
+        : null;
+    if (savedSelectedName && !selected_custom_endpoint_preset) {
+        selected_custom_endpoint_preset = normalizeCustomEndpointPreset(savedSelectedPreset);
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
@@ -9426,15 +9431,16 @@ export async function loadCustomEndpointPresets(settings) {
     $('#custom_endpoint_preset').val(selected_custom_endpoint_preset?.name || 'None');
 
     if (selected_custom_endpoint_preset) {
+        // SillyBunny: load-time apply must not rotate or write secrets; requests send secret_id explicitly.
         await setCustomEndpointPreset(
             selected_custom_endpoint_preset.name,
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
-            { secretId: selected_custom_endpoint_preset.secretId, reconnect: false },
+            { secretId: selected_custom_endpoint_preset.secretId, writeKey: false, reconnect: false },
         );
     } else {
-        $('#custom_endpoint_preset_name').val('None');
+        $('#custom_endpoint_preset_name').val('');
     }
 }
 
@@ -9531,7 +9537,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
         appendCustomEndpointPresetOption(newPreset);
     }
 
-    $('#custom_endpoint_preset_name').val(normalizedPreset.name);
+    $('#custom_endpoint_preset_name').val(normalizedPreset.name === 'None' ? '' : normalizedPreset.name);
     oai_settings.custom_url = normalizedPreset.url;
     $('#custom_api_url_text').val(oai_settings.custom_url);
     oai_settings.custom_model = normalizedPreset.model;
@@ -9562,9 +9568,15 @@ async function onCustomEndpointPresetChange() {
 }
 
 $('#save_custom_endpoint').on('click', async function () {
-    const presetName = $('#custom_endpoint_preset_name').val();
+    const presetName = String($('#custom_endpoint_preset_name').val()).trim();
     const keyInputValue = String($('#api_key_custom').val()).trim();
-    const existingPreset = custom_endpoint_presets.find(preset => preset.name === String(presetName));
+
+    if (!presetName || presetName === 'None') {
+        toastr.error(t`Please enter a name for the endpoint profile.`);
+        return;
+    }
+
+    const existingPreset = custom_endpoint_presets.find(preset => preset.name === presetName);
     const preset = buildCustomEndpointPresetForSave({
         name: presetName,
         url: $('#custom_api_url_text').val(),
@@ -9573,26 +9585,16 @@ $('#save_custom_endpoint').on('click', async function () {
         secretId: existingPreset?.secretId,
     });
 
-    // Check if there's an active secret for CUSTOM key
+    // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
     const activeSecret = secret_state[SECRET_KEYS.CUSTOM]?.find(s => s.active);
-    const hasActiveSecret = !!activeSecret;
-
-    // Validate: need at least one of: new key input, existing secretId, or active secret
-    if (!keyInputValue && !preset.secretId && !hasActiveSecret) {
-        toastr.error(t`API key cannot be empty. Please enter an API key or select an existing secret.`);
-        return;
-    }
-
-    // If no new key but has active secret, bind it to the profile
-    if (!keyInputValue && hasActiveSecret && !preset.secretId) {
+    if (!keyInputValue && !preset.secretId && activeSecret) {
         preset.secretId = activeSecret.id;
     }
 
-    // Only write secret if user provided a new key
-    if (keyInputValue) {
+    // Write a secret when a key was typed, or mint a stable empty secret for keyless endpoints
+    if (keyInputValue || !preset.secretId) {
         await activateCustomEndpointPresetSecret(preset, { forceWrite: true });
     }
-    // If no new key but has secretId, keep existing secret (no action needed)
 
     await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
     saveSettingsDebounced();
