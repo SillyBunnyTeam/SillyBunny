@@ -164,7 +164,7 @@ function applyBrowserFixes() {
     const isMobileViewport = isMobile();
     const isIOSWebKit = isIOSWebKitPlatform();
 
-    addDocumentViewportAnchorPatch({ suspendWhileEditing: isMobileViewport && isIOSWebKit });
+    addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });
 
     if (isMobileViewport) {
         const viewport = window.visualViewport;
