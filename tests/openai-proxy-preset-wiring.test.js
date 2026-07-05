@@ -153,7 +153,8 @@ describe('OpenAI proxy preset wiring', () => {
     test('saves Custom endpoint profiles with URL, key, and model fields', () => {
         expect(openAiSource).toContain('buildCustomEndpointPresetForSave({');
         expect(openAiSource).toContain('url: $(\'#custom_api_url_text\').val()');
-        expect(openAiSource).toContain('key: $(\'#api_key_custom\').val()');
+        expect(openAiSource).toContain('const keyInputValue = String($(\'#api_key_custom\').val()).trim();');
+        expect(openAiSource).toContain('key: keyInputValue');
         expect(openAiSource).toContain('model: $(\'#custom_model_id\').val()');
         expect(openAiSource).toContain('secretId: existingPreset?.secretId');
         expect(openAiSource).toContain('await activateCustomEndpointPresetSecret(preset, { forceWrite: true });');

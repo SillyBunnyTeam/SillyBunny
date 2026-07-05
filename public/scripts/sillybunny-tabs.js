@@ -2494,7 +2494,7 @@ function hasOpenMobileShellDrawer() {
 }
 
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
-    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+    if (!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
         return false;
     }
 
@@ -2511,7 +2511,7 @@ function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
 
-    if (isMobileViewport() && isIOSWebKitPlatform()) {
+    if (isIOSWebKitPlatform()) {
         const layoutViewport = getLayoutViewportSize();
         const visualViewportSize = getVisualViewportSize(layoutViewport);
 
@@ -2524,6 +2524,11 @@ function syncIOSKeyboardBottomInset() {
     if (root.style.getPropertyValue('--sb-ios-keyboard-bottom-inset') !== value) {
         root.style.setProperty('--sb-ios-keyboard-bottom-inset', value);
     }
+
+    // SillyBunny: the <=768px shell CSS consumes the inset var directly; wide
+    // viewports (iPadOS desktop-mode Safari) gate the padding on this class so
+    // desktop layouts only pick it up while the software keyboard is open.
+    root.classList.toggle('sb-ios-keyboard-inset-active', bottomInset > 0);
 }
 
 function getShellViewportSize() {

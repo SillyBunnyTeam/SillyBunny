@@ -19,8 +19,11 @@ describe('mobile keyboard focused-input scroll wiring', () => {
 
     test('adds iOS keyboard bottom inset without locking document scroll', () => {
         expect(tabsSource).toContain('function syncIOSKeyboardBottomInset(');
+        expect(tabsSource).toContain('if (isIOSWebKitPlatform()) {');
+        expect(tabsSource).not.toContain('if (isMobileViewport() && isIOSWebKitPlatform()) {');
         expect(tabsSource).toContain('--sb-ios-keyboard-bottom-inset');
         expect(tabsSource).toMatch(/layoutViewport\.height - visualViewportSize\.top - visualViewportSize\.height/);
+        expect(tabsSource).toContain('root.classList.toggle(\'sb-ios-keyboard-inset-active\', bottomInset > 0);');
         expect(tabsSource).not.toContain('sb-ios-keyboard-locked');
         expect(tabsSource).not.toContain('window.scrollTo(0, 0)');
         expect(tabsSource).not.toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardBottomInset/);
@@ -30,6 +33,8 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
 
         expect(mobileShellCss).toContain('var(--sb-ios-keyboard-bottom-inset, 0px)');
+        expect(mobileShellCss).toContain('html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner,');
+        expect(mobileShellCss).toContain('html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scroller,');
         expect(mobileShellCss).not.toContain('body.sb-ios-keyboard-locked');
     });
 
