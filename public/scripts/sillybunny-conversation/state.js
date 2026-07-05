@@ -24,6 +24,7 @@ export const conversationState = {
     lastRenderedThreadKey: '',
     lastRenderedMessageCount: 0,
     lastTimelineFingerprint: '',
+    timelineBottomScrollPending: false,
     lastPalsRailFingerprint: '',
     originalDocumentTitle: typeof document !== 'undefined' ? document.title : '',
     originalFaviconHref: '',

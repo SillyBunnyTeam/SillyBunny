@@ -96,6 +96,12 @@ function ensureConversationStylesheet() {
 
     conversationState.conversationCssLoaded = true;
     loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+        .then(() => {
+            if (conversationState.conversationWorkspaceOpen) {
+                conversationState.timelineBottomScrollPending = true;
+                scheduleTimelineRender();
+            }
+        })
         .catch(error => {
             conversationState.conversationCssLoaded = false;
             console.warn('Conversation Mode: stylesheet failed to load', error);
@@ -1009,6 +1015,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
+    const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
     const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
     emitConversationWorkspaceStateChange();
@@ -1019,12 +1026,15 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
     }
+    if (!wasWorkspaceOpen || threadChanged) {
+        conversationState.timelineBottomScrollPending = true;
+    }
     ensureConversationStylesheet();
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
         setTimeout(() => {
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
         }, 100);
         return false;
     }
@@ -1042,7 +1052,7 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
     setTimeout(() => {
-        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
     }, 100);
     return true;
 }
@@ -1098,6 +1108,7 @@ export function setConversationInterfaceActive(active) {
             conversationState.lastRenderedAvatar = null;
             conversationState.lastRenderedThreadKey = '';
             conversationState.lastRenderedMessageCount = 0;
+            conversationState.timelineBottomScrollPending = false;
         }
         return;
     }

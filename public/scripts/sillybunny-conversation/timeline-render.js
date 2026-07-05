@@ -476,6 +476,44 @@ function removeTimelineTransientNodes(timeline) {
     timeline.querySelectorAll('.sb-conversation-thread-empty, .sb-conversation-typing-indicator, .sb-conversation-image-pending').forEach(node => node.remove());
 }
 
+function requestConversationFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(callback);
+        return;
+    }
+
+    setTimeout(callback, 0);
+}
+
+let timelineBottomScrollToken = 0;
+
+function scrollConversationTimelineToBottom(timeline) {
+    timeline.scrollTop = Math.max(0, timeline.scrollHeight - timeline.clientHeight);
+}
+
+function anchorConversationTimelineToBottom(timeline, renderThreadKey) {
+    const token = ++timelineBottomScrollToken;
+    const applyScroll = () => {
+        if (token !== timelineBottomScrollToken || !timeline.isConnected || conversationState.lastRenderedThreadKey !== renderThreadKey) {
+            return false;
+        }
+
+        scrollConversationTimelineToBottom(timeline);
+        return true;
+    };
+
+    applyScroll();
+    requestConversationFrame(() => {
+        if (!applyScroll()) {
+            return;
+        }
+
+        requestConversationFrame(applyScroll);
+    });
+    setTimeout(applyScroll, 75);
+    setTimeout(applyScroll, 250);
+}
+
 function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
@@ -544,6 +582,7 @@ export function renderConversationTimeline() {
         conversationState.lastRenderedAvatar = null;
         conversationState.lastRenderedThreadKey = '';
         conversationState.lastRenderedMessageCount = 0;
+        conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
         return;
     }
@@ -557,9 +596,14 @@ export function renderConversationTimeline() {
     const contextChanged = previousThreadKey !== renderThreadKey;
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
+    const needsBottomScroll = Boolean(conversationState.timelineBottomScrollPending);
     const fingerprint = buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMessages, messages });
     if (!contextChanged && fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
         updateConversationToolsState();
+        if (needsBottomScroll) {
+            conversationState.timelineBottomScrollPending = false;
+            anchorConversationTimelineToBottom(timeline, renderThreadKey);
+        }
         return;
     }
 
@@ -586,9 +630,10 @@ export function renderConversationTimeline() {
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
+        conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
-        if (contextChanged || messagesAdded || isNearBottom) {
-            timeline.scrollTop = timeline.scrollHeight;
+        if (contextChanged || messagesAdded || isNearBottom || needsBottomScroll) {
+            anchorConversationTimelineToBottom(timeline, renderThreadKey);
         } else {
             timeline.scrollTop = previousScrollTop;
         }
@@ -610,6 +655,7 @@ export function renderConversationTimeline() {
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
+        conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
         return;
     }
@@ -704,9 +750,10 @@ export function renderConversationTimeline() {
     conversationState.lastRenderedAvatar = avatar;
     conversationState.lastRenderedThreadKey = renderThreadKey;
     conversationState.lastRenderedMessageCount = allMessages.length;
+    conversationState.timelineBottomScrollPending = false;
     updateConversationToolsState();
-    if (contextChanged || messagesAdded || isNearBottom) {
-        timeline.scrollTop = timeline.scrollHeight;
+    if (contextChanged || messagesAdded || isNearBottom || needsBottomScroll) {
+        anchorConversationTimelineToBottom(timeline, renderThreadKey);
     } else {
         timeline.scrollTop = previousScrollTop;
     }
