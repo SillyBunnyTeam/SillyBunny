@@ -897,6 +897,20 @@
     }
 }
 
+/* SillyBunny: mirror the <=768px drawer keyboard inset on wide iOS viewports
+   (iPadOS desktop-mode Safari reports a desktop UA and exceeds 768px).
+   .sb-ios-keyboard-inset-active is only toggled while the iOS software
+   keyboard is open, so non-iOS and keyboard-closed layouts never match. */
+html.sb-ios-keyboard-inset-active #left-nav-panel.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active #user-settings-block.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.fillLeft.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active .sb-shell-root.fillRight.openDrawer .sb-shell-panel-scroller,
+html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner,
+html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInnerFull {
+    padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px)));
+}
+
 /* =========================================================================
    Mobile fixes for the new character editor (PR #153)
    ========================================================================= */
