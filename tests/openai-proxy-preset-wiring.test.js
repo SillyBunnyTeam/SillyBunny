@@ -161,6 +161,15 @@ describe('OpenAI proxy preset wiring', () => {
         expect(openAiSource).toContain('writeKey: false');
     });
 
+    test('requires a profile name before saving a Custom endpoint profile', () => {
+        expect(openAiSource).toContain('if (!presetName || presetName === \'None\') {');
+    });
+
+    test('allows saving keyless Custom endpoint profiles with a stable empty secret', () => {
+        expect(openAiSource).toContain('if (keyInputValue || !preset.secretId) {');
+        expect(openAiSource).not.toContain('API key cannot be empty');
+    });
+
     test('applies Custom endpoint profile values before reconnecting', () => {
         const setCustomEndpointSource = getFunctionSource('setCustomEndpointPreset');
         const urlUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_url = normalizedPreset.url;');
@@ -247,16 +256,31 @@ describe('OpenAI proxy preset wiring', () => {
 
     test('preserves legacy Custom endpoint settings until a profile is selected', () => {
         const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
-        const selectedAssignmentIndex = loadCustomEndpointSource.indexOf('selected_custom_endpoint_preset = savedSelectedPreset ? normalizeCustomEndpointPreset(savedSelectedPreset) : null;');
+        const selectedAssignmentIndex = loadCustomEndpointSource.indexOf('selected_custom_endpoint_preset = savedSelectedName');
         const applyBranchIndex = loadCustomEndpointSource.indexOf('if (selected_custom_endpoint_preset) {');
         const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(', applyBranchIndex);
-        const fallbackNameIndex = loadCustomEndpointSource.indexOf('$(\'#custom_endpoint_preset_name\').val(\'None\');');
+        const fallbackNameIndex = loadCustomEndpointSource.indexOf('$(\'#custom_endpoint_preset_name\').val(\'\');');
 
         expect(selectedAssignmentIndex).toBeGreaterThanOrEqual(0);
         expect(applyBranchIndex).toBeGreaterThan(selectedAssignmentIndex);
         expect(applyPresetIndex).toBeGreaterThan(applyBranchIndex);
         expect(fallbackNameIndex).toBeGreaterThan(applyPresetIndex);
         expect(loadCustomEndpointSource).not.toContain('savedSelectedPreset ||');
+    });
+
+    test('applies the saved profile on load without rotating or writing secrets', () => {
+        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
+        const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(');
+        const optionsIndex = loadCustomEndpointSource.indexOf('{ secretId: selected_custom_endpoint_preset.secretId, writeKey: false, reconnect: false }', applyPresetIndex);
+
+        expect(applyPresetIndex).toBeGreaterThanOrEqual(0);
+        expect(optionsIndex).toBeGreaterThan(applyPresetIndex);
+    });
+
+    test('resolves the saved selection to the same object as the presets array entry', () => {
+        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
+
+        expect(loadCustomEndpointSource).toContain('custom_endpoint_presets.find(preset => preset.name === savedSelectedName) ?? null');
     });
 
     test('wires Custom endpoint profile selection from initOpenAI', () => {
