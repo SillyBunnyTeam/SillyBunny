@@ -249,7 +249,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
         expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
         expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
-        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isMobileViewport && isIOSWebKit });');
+        expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });');
         expect(browserFixesSource).toContain('const viewportResetSettleMs = 360;');
         expect(browserFixesSource).toContain('const resetTransientViewportPosition = ({ restoreScroll = false } = {}) => {');
         expect(browserFixesSource).toContain('const scheduleViewportReset = ({ restoreScroll = false } = {}) => {');
@@ -321,7 +321,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
-        expect(tabsSource).toContain('!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
+        expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
         expect(tabsSource).toContain('return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();');
         expect(tabsSource).not.toContain('if (isChatComposerEditableElement(activeElement)) {');
         expect(tabsSource).toContain('return layoutViewport;');
