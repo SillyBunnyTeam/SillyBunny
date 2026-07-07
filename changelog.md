@@ -99,6 +99,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
 - PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
 - PR #637 (2026-07-01) `feat(ica): include the number of tokens used by agents in the UI`
+- PR #641 (2026-07-07) `fix: Endpoint Profiles Not Loading Correctly in Clientside UI`
 - PR #642 (2026-07-05) `fix(ipad_webkit_viewport): steady text box input viewport on iPadOS`
 
 ## v1.6.5
