@@ -280,7 +280,7 @@ export function normalizeCustomEndpointPreset(preset) {
     return {
         name,
         url: String(preset?.url ?? ''),
-        key: String(preset?.key ?? ''),
+        key: secretId ? '' : String(preset?.key ?? ''), // Don't persist plaintext key if secretId exists
         model: String(preset?.model ?? ''),
         secretId,
     };

@@ -225,7 +225,22 @@ describe('Chat Completion preset utilities', () => {
         }).secretId).toBe('secret-3');
     });
 
-    test('saves Custom endpoint profiles with URL, key, model, and secret id', () => {
+    test('saves Custom endpoint profiles with URL, key, and model', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: 'sk-story',
+            model: 'gpt-4o',
+        })).toEqual({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: 'sk-story',
+            model: 'gpt-4o',
+            secretId: '',
+        });
+    });
+
+    test('strips Custom endpoint plaintext keys when a secret id is bound', () => {
         expect(buildCustomEndpointPresetForSave({
             name: 'Story proxy',
             url: 'https://proxy.example/v1',
@@ -235,7 +250,7 @@ describe('Chat Completion preset utilities', () => {
         })).toEqual({
             name: 'Story proxy',
             url: 'https://proxy.example/v1',
-            key: 'sk-story',
+            key: '',
             model: 'gpt-4o',
             secretId: 'secret-story',
         });

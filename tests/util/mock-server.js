@@ -182,6 +182,10 @@ export class MockServer {
             });
 
             this.server.listen(this.port, this.host, () => {
+                const address = this.server.address();
+                if (address && typeof address === 'object') {
+                    this.port = address.port;
+                }
                 resolve();
             });
         });
