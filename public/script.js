@@ -9090,6 +9090,15 @@ export function extractJsonFromData(data, { mainApi = null, chatCompletionSource
                 case chat_completion_sources.CLAUDE:
                     result = data?.content?.find(x => x.type === 'tool_use')?.input;
                     break;
+                case chat_completion_sources.LINKAPI:
+                    // Anthropic-leg responses carry raw content blocks; other legs return plain text.
+                    result = Array.isArray(data?.content)
+                        ? data.content.find(x => x.type === 'tool_use')?.input
+                        : tryParse(text);
+                    if (!result && returnInvalidJson) {
+                        return text;
+                    }
+                    break;
                 case chat_completion_sources.PERPLEXITY:
                     result = tryParse(removeReasoningFromString(text));
                     if (!result && returnInvalidJson) {

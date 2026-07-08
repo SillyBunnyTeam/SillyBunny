@@ -342,7 +342,7 @@
                             -->
                             <div id="range_block_novel">
                                 <div class="flex-container gap10h5v justifyCenter">
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Temperature">Temperature</span>
                                         </small>
@@ -591,7 +591,7 @@
                                     </div>
                                 </div>
                                 <div class="flex-container gap10h5v justifyCenter">
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Temperature">Temperature</span>
                                             <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Temperature controls the randomness in token selection" title="Temperature controls the randomness in token selection:&#13;- low temperature (<1.0) leads to more predictable text, favoring higher probability tokens.&#13;- high temperature (>1.0) increases creativity and diversity in the output by giving lower probability tokens a better chance.&#13;Set to 1.0 for the original probabilities."></div>
@@ -599,21 +599,21 @@
                                         <input class="neo-range-slider" type="range" id="temp_openai" name="volume" min="0" max="2.0" step="0.01">
                                         <input class="neo-range-input" type="number" min="0" max="2.0" step="0.01" data-for="temp_openai" id="temp_counter_openai">
                                     </div>
-                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai" data-tg-samplers="freq_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi" data-tg-samplers="freq_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Frequency Penalty">Frequency Penalty</span>
                                         </small>
                                         <input class="neo-range-slider" type="range" id="freq_pen_openai" name="volume" min="-2" max="2" step="0.01">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="freq_pen_openai" id="freq_pen_counter_openai">
                                     </div>
-                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai" data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi" data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Presence Penalty">Presence Penalty</span>
                                         </small>
                                         <input class="neo-range-slider" type="range" id="pres_pen_openai" name="volume" min="-2" max="2" step="0.01">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="pres_pen_openai" id="pres_pen_counter_openai">
                                     </div>
-                                    <div data-source="claude,aimlapi,openrouter,makersuite,vertexai,cohere,perplexity,electronhub,chutes,nanogpt,workers_ai" data-tg-samplers="top_k" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="claude,aimlapi,openrouter,makersuite,vertexai,cohere,perplexity,electronhub,chutes,nanogpt,workers_ai,linkapi" data-tg-samplers="top_k" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Top K">Top K</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top K sets a maximum amount of top tokens that can be chosen from.&#13;E.g Top K is 20, this means only the 20 highest ranking tokens will be kept (regardless of their probabilities being diverse or limited).&#13;Set to 0 (or -1, depending on your backend) to disable." data-i18n="[title]Top_K_desc"></div>
@@ -621,7 +621,7 @@
                                         <input class="neo-range-slider" type="range" id="top_k_openai" name="volume" min="0" max="500" step="1">
                                         <input class="neo-range-input" type="number" min="0" max="500" step="1" data-for="top_k_openai" id="top_k_counter_openai">
                                     </div>
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai" data-tg-samplers="top_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="top_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Top P">Top P</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top P (a.k.a. nucleus sampling) adds up all the top tokens required to add up to the target percentage.&#13;E.g If the Top 2 tokens are both 25%, and Top P is 0.50, only the Top 2 tokens are considered.&#13;Set to 1.0 to disable." data-i18n="[title]Top_P_desc"></div>
@@ -838,7 +838,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="range-block" data-source="openai,openrouter,mistralai,custom,cohere,groq,electronhub,chutes,nanogpt,xai,pollinations,aimlapi,makersuite,vertexai,azure_openai,workers_ai">
+                                <div class="range-block" data-source="openai,openrouter,mistralai,custom,cohere,groq,electronhub,chutes,nanogpt,xai,pollinations,aimlapi,makersuite,vertexai,azure_openai,workers_ai,linkapi">
                                     <div class="range-block-title justifyLeft" data-i18n="Seed">
                                         Seed
                                     </div>
@@ -1851,7 +1851,7 @@
                                             </span>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="claude,makersuite,vertexai">
+                                    <div class="range-block" data-source="claude,makersuite,vertexai,linkapi">
                                         <label for="use_sysprompt" class="checkbox_label widthFreeExpand">
                                             <input id="use_sysprompt" type="checkbox" />
                                             <span>
@@ -1864,7 +1864,7 @@
                                             </span>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="makersuite,vertexai,aimlapi,openrouter,claude,electronhub,chutes,nanogpt">
+                                    <div class="range-block" data-source="makersuite,vertexai,aimlapi,openrouter,claude,electronhub,chutes,nanogpt,linkapi">
                                         <label for="openai_enable_web_search" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_enable_web_search" type="checkbox" />
                                             <span data-i18n="Enable web search">Enable web search</span>
@@ -1878,7 +1878,7 @@
                                             </b>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="openai,cohere,mistralai,custom,claude,aimlapi,openrouter,groq,siliconflow,minimax,deepseek,makersuite,vertexai,ai21,xai,pollinations,moonshot,fireworks,cometapi,electronhub,chutes,azure_openai,zai,nanogpt,workers_ai">
+                                    <div class="range-block" data-source="openai,cohere,mistralai,custom,claude,aimlapi,openrouter,groq,siliconflow,minimax,deepseek,makersuite,vertexai,ai21,xai,pollinations,moonshot,fireworks,cometapi,electronhub,chutes,azure_openai,zai,nanogpt,workers_ai,linkapi">
                                         <label for="openai_function_calling" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_function_calling" type="checkbox" />
                                             <span data-i18n="Enable function calling">Enable function calling</span>
@@ -1931,7 +1931,7 @@
                                             </em>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai">
+                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai,linkapi">
                                         <label for="openai_media_inlining" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_media_inlining" type="checkbox" />
                                             <span data-i18n="Send inline media">Send inline media</span>
@@ -1955,7 +1955,7 @@
                                             <strong data-source="makersuite,vertexai" data-i18n="video_inlining_hint_4">Videos must be less than 20 MB and under 1 minute long.</strong>
                                             <strong data-source="makersuite,vertexai" data-i18n="audio_inlining_hint_2">Audio must be less than 20 MB.</strong>
                                         </div>
-                                        <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,xai,pollinations,cohere,cometapi,nanogpt,moonshot,aimlapi,openrouter,mistralai,electronhub,azure_openai,zai,siliconflow,chutes,makersuite,vertexai,workers_ai">
+                                        <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,xai,pollinations,cohere,cometapi,nanogpt,moonshot,aimlapi,openrouter,mistralai,electronhub,azure_openai,zai,siliconflow,chutes,makersuite,vertexai,workers_ai,linkapi">
                                             <div class="flex-container oneline-dropdown">
                                                 <label for="openai_inline_image_quality" data-i18n="Inline Image Quality">
                                                     Inline Image Quality
@@ -2016,7 +2016,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="deepseek,aimlapi,openrouter,custom,claude,xai,makersuite,vertexai,pollinations,moonshot,mistralai,fireworks,cometapi,electronhub,chutes,azure_openai,nanogpt,zai">
+                                    <div class="range-block" data-source="deepseek,aimlapi,openrouter,custom,claude,xai,makersuite,vertexai,pollinations,moonshot,mistralai,fireworks,cometapi,electronhub,chutes,azure_openai,nanogpt,zai,linkapi">
                                         <label for="openai_show_thoughts" class="checkbox_label widthFreeExpand">
                                             <input id="openai_show_thoughts" type="checkbox" />
                                             <span data-i18n="Request model reasoning">Request model reasoning</span>
@@ -2056,7 +2056,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt">
+                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi">
                                         <div class="flex-container oneline-dropdown" title="Constrains effort on reasoning for reasoning models.&#10;Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response." data-i18n="[title]Constrains effort on reasoning for reasoning models.">
                                             <label for="openai_reasoning_effort">
                                                 <span data-i18n="Reasoning Effort">Reasoning Effort</span>
@@ -2091,7 +2091,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,openrouter,claude">
+                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,openrouter,claude,linkapi">
                                         <div class="flex-container oneline-dropdown sb-setting-inline-help sb-setting-inline-center">
                                             <div class="sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <label for="openai_verbosity">
@@ -2112,7 +2112,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="claude">
+                                    <div class="range-block" data-source="claude,linkapi">
                                         <div class="wide100p">
                                             <div class="flex-container alignItemsCenter">
                                                 <span id="claude_assistant_prefill_text" data-i18n="Assistant Prefill">Assistant Prefill</span>
@@ -2829,6 +2829,7 @@
                                 <option value="groq">Groq</option>
                                 <option value="makersuite">Google AI Studio</option>
                                 <option value="vertexai">Google Vertex AI</option>
+                                <option value="linkapi">LinkAPI</option>
                                 <option value="mistralai">MistralAI</option>
                                 <option value="minimax">MiniMax</option>
                                 <option value="moonshot">Moonshot AI</option>
@@ -2842,7 +2843,7 @@
                                 <option value="zai">Z.AI (GLM)</option>
                             </optgroup>
                         </select>
-                        <div id="oai_max_context_unlocked_block" class="range-block" data-source="openrouter,nanogpt">
+                        <div id="oai_max_context_unlocked_block" class="range-block" data-source="openrouter,nanogpt,linkapi">
                             <label class="checkbox_label" for="oai_max_context_unlocked">
                                 <input id="oai_max_context_unlocked" type="checkbox">
                                 <span data-i18n="Unlocked Context Size">Unlocked Context Size</span>
@@ -4036,6 +4037,38 @@
                                 </optgroup>
                                 <optgroup id="zai_other_models" label="From API"></optgroup>
                             </select>
+                        </div>
+                        <div id="linkapi_form" data-source="linkapi">
+                            <h4>
+                                <a data-i18n="LinkAPI Key" href="https://linkapi.ai/keys" target="_blank" rel="noopener noreferrer">
+                                    LinkAPI Key
+                                </a>
+                            </h4>
+                            <div class="flex-container">
+                                <input id="api_key_linkapi" name="api_key_linkapi" class="text_pole flex1" value="" type="text" autocomplete="off">
+                                <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_linkapi"></div>
+                            </div>
+                            <div data-for="api_key_linkapi" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'.">
+                                For privacy reasons, your API key will be hidden after you click 'Connect'.
+                            </div>
+                            <h4 data-i18n="LinkAPI Region">LinkAPI Region</h4>
+                            <select id="linkapi_endpoint">
+                                <option value="global" data-i18n="Global (linkapi.ai)">Global (linkapi.ai)</option>
+                                <option value="us" data-i18n="US (api.linkapi.ai)">US (api.linkapi.ai)</option>
+                                <option value="hk" data-i18n="Hong Kong (hk.linkapi.ai)">Hong Kong (hk.linkapi.ai)</option>
+                            </select>
+                            <h4 data-i18n="Model ID">Model ID</h4>
+                            <div class="flex-container">
+                                <input id="linkapi_model_id" class="text_pole wide100p" value="" autocomplete="off" data-i18n="[placeholder]Example: claude-sonnet-4-5" placeholder="Example: claude-sonnet-4-5">
+                            </div>
+                            <h4 data-i18n="Available Models">Available Models</h4>
+                            <select id="model_linkapi_select">
+                                <optgroup id="linkapi_other_models" label="From API"></optgroup>
+                            </select>
+                            <small data-i18n="Models route automatically: Claude models use the Anthropic API, Gemini models use the Gemini API, everything else (including bracket-tagged per-request channels like [SP]) uses the OpenAI-compatible API. Keys are group-scoped on LinkAPI; the list shows only models your key's group can access.">
+                                Models route automatically: Claude models use the Anthropic API, Gemini models use the Gemini API, everything else (including bracket-tagged per-request channels like [SP]) uses the OpenAI-compatible API.
+                                Keys are group-scoped on LinkAPI; the list shows only models your key's group can access.
+                            </small>
                         </div>
                         <div id="azure_openai_settings" data-source="azure_openai">
                             <!-- Azure Base URL -->
