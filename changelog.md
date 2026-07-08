@@ -109,6 +109,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #646 (2026-07-08) `fix: click-to-toggle header text now opt-in`
 - PR #647 (2026-07-08) `fix: Gemini thought signatures getting mangled/corrupted`
 - PR #648 (2026-07-08) `fix: agent prompt editor blow-up being shapeless/formless with text spilling off-screen`
+- PR #649 (2026-07-08) `feat: add LinkAPI chat completion provider integration with auto-routing`
 
 ## v1.6.5
 
