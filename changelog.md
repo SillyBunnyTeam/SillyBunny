@@ -104,6 +104,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #641 (2026-07-07) `fix: Endpoint Profiles Not Loading Correctly in Clientside UI`
 - PR #642 (2026-07-05) `fix(ipad_webkit_viewport): steady text box input viewport on iPadOS`
 - PR #643 (2026-07-08) `chore: more SVGs for different models/companies`
+- PR #644 (2026-07-08) `fix(ica): minimum context overrides number of messages in Companion Agents`
 - PR #647 (2026-07-08) `fix: Gemini thought signatures getting mangled/corrupted`
 
 ## v1.6.5
