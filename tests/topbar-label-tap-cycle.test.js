@@ -58,11 +58,30 @@ describe('topbar label tap cycle', () => {
         expect(bindSource).toContain('title.addEventListener(\'keydown\'');
         expect(bindSource).toContain('event.key !== \'Enter\' && event.key !== \' \'');
         expect(bindSource).toContain('event.preventDefault();');
-        expect(bindSource).toContain('cycleTopBarLabel();');
+        expect(bindSource).toContain('handleTopBarTitleActivation();');
 
         expect(tabsSource).toContain('role="button"');
         expect(tabsSource).toContain('tabindex="0"');
         expect(tabsSource).toContain('title.setAttribute(\'aria-label\'');
+    });
+
+    test('title activation respects the click-to-cycle toggle', () => {
+        const activationSource = getFunctionSource('handleTopBarTitleActivation');
+        expect(activationSource).toContain('if (sbState.topbarLabel.clickCycle)');
+        expect(activationSource).toContain('cycleTopBarLabel();');
+        expect(activationSource).toContain('returnToChatSurface();');
+
+        const returnSource = getFunctionSource('returnToChatSurface');
+        expect(returnSource).toContain('closeShell(\'left\');');
+        expect(returnSource).toContain('closeShell(\'right\');');
+        expect(returnSource).toContain('closeCharacterPanel();');
+        expect(returnSource).not.toContain('closeCurrentChat');
+
+        const setterSource = getFunctionSource('setTopbarLabelClickCycle');
+        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));');
+        expect(setterSource).toContain('resetTopBarLabelCycle({ refresh: false });');
+        expect(tabsSource).toContain('topbarLabelClickCycle: \'sb-topbar-label-click-cycle\'');
+        expect(tabsSource).toContain('normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true)');
     });
 
     test('resets preview on chat and context-changing events', () => {
