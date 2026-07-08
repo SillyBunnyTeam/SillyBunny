@@ -989,8 +989,14 @@ async function applyConnectionProfile(profile) {
                 throw new Error(PROFILE_APPLICATION_ABORTED);
             }
 
-            const argument = profile[command];
+            let argument = profile[command];
             const allowEmpty = ALLOW_EMPTY.includes(command);
+            // SillyBunny: a profile without a proxy value means "no proxy". Reset the
+            // proxy preset instead of skipping, otherwise the previous profile's proxy
+            // stays active and leaks into requests made under this profile.
+            if (command === 'proxy' && !argument && !profile.exclude?.includes(command)) {
+                argument = 'None';
+            }
             if (!argument && !(allowEmpty && argument === '')) {
                 continue;
             }
