@@ -29,6 +29,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
+    topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
@@ -748,6 +749,7 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
+        clickCycle: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
@@ -1437,6 +1439,7 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
+    sbState.topbarLabel.clickCycle = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true);
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
@@ -3797,6 +3800,23 @@ function setTopbarCustomText(value) {
     updateTopBarBrand();
 }
 
+function setTopbarLabelClickCycle(enabled) {
+    const nextValue = Boolean(enabled);
+    if (sbState.topbarLabel.clickCycle === nextValue) {
+        return;
+    }
+
+    sbState.topbarLabel.clickCycle = nextValue;
+    if (!nextValue) {
+        resetTopBarLabelCycle({ refresh: false });
+    }
+
+    safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));
+    flushSbStorageWrites();
+    updateThemePickerUi();
+    updateTopBarBrand();
+}
+
 function updateThemeBadge() {
     const badge = document.getElementById('sb-theme-current-label');
     if (!badge) {
@@ -4295,6 +4315,27 @@ function cycleTopBarLabel() {
     updateTopBarBrand();
 }
 
+function returnToChatSurface() {
+    // Close every overlay surface without touching the active chat itself.
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    closeShell('left');
+    closeShell('right');
+    closeCharacterPanel();
+    closeMobileNav();
+    closeMobileChatTools();
+    setConnectionStripOpenState(false);
+    queueLandingPageStateSync();
+}
+
+function handleTopBarTitleActivation() {
+    if (sbState.topbarLabel.clickCycle) {
+        cycleTopBarLabel();
+        return;
+    }
+
+    returnToChatSurface();
+}
+
 function bindTopBarTitleCycle(title) {
     if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleCycleBound === 'true') {
         return;
@@ -4303,7 +4344,7 @@ function bindTopBarTitleCycle(title) {
     title.dataset.sbTopbarTitleCycleBound = 'true';
     title.addEventListener('click', event => {
         event.stopPropagation();
-        cycleTopBarLabel();
+        handleTopBarTitleActivation();
     });
     title.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') {
@@ -4312,7 +4353,7 @@ function bindTopBarTitleCycle(title) {
 
         event.preventDefault();
         event.stopPropagation();
-        cycleTopBarLabel();
+        handleTopBarTitleActivation();
     });
 }
 
@@ -4349,7 +4390,9 @@ function updateTopBarBrand() {
     bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
-    title.setAttribute('aria-label', `${label}. Tap to preview top bar label options.`);
+    title.setAttribute('aria-label', sbState.topbarLabel.clickCycle
+        ? `${label}. Tap to preview top bar label options.`
+        : `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
     title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
@@ -12554,6 +12597,33 @@ function createTopbarLabelSettingsGroup() {
         setTopbarCustomText(input instanceof HTMLInputElement ? input.value : '');
     });
 
+    const clickCycleId = 'sb-topbar-label-click-cycle-input';
+    const clickCycleOption = createElement('label', {
+        className: 'sb-topbar-label-option sb-topbar-label-click-cycle-option',
+        attrs: {
+            for: clickCycleId,
+        },
+    });
+    const clickCycleCheckbox = createElement('input', {
+        id: clickCycleId,
+        className: 'sb-topbar-label-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-topbar-label-click-cycle-input': 'true',
+        },
+    });
+    const clickCycleCopy = createElement('span', { className: 'sb-topbar-label-option-copy' });
+    const clickCycleTitle = createElement('strong', { text: 'Click To Preview Label Options' });
+    const clickCycleDescription = createElement('small', { text: 'When enabled, clicking the label cycles through a preview of each part. When disabled, the label stays on your selection above and clicking it returns to the chat.' });
+
+    clickCycleCheckbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setTopbarLabelClickCycle(input instanceof HTMLInputElement ? input.checked : true);
+    });
+
+    clickCycleCopy.append(clickCycleTitle, clickCycleDescription);
+    clickCycleOption.append(clickCycleCheckbox, clickCycleCopy);
+
     header.append(title, description);
     desktopHeading.append(desktopTitle, desktopDescription);
     mobileHeading.append(mobileTitle, mobileDescription);
@@ -12567,7 +12637,7 @@ function createTopbarLabelSettingsGroup() {
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
     customTextField.append(customTextHeading, customTextInput);
-    group.append(header, desktopSection, mobileSection, customTextField);
+    group.append(header, desktopSection, mobileSection, customTextField, clickCycleOption);
 
     return group;
 }
@@ -12829,6 +12899,15 @@ function updateThemePickerUi() {
 
     if (customTextInput instanceof HTMLInputElement && customTextInput.value !== sbState.topbarLabel.customText) {
         customTextInput.value = sbState.topbarLabel.customText;
+    }
+
+    for (const input of document.querySelectorAll('[data-sb-topbar-label-click-cycle-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = sbState.topbarLabel.clickCycle;
+        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', sbState.topbarLabel.clickCycle);
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
