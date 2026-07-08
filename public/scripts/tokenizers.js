@@ -757,6 +757,11 @@ export function getTokenizerModel() {
         return oai_settings.custom_model;
     }
 
+    if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        // Mixed vendor list; the server-side tokenizer resolver maps the raw id by name.
+        return oai_settings.linkapi_model;
+    }
+
     if (oai_settings.chat_completion_source === chat_completion_sources.PERPLEXITY) {
         if (oai_settings.perplexity_model.includes('sonar-reasoning') || oai_settings.perplexity_model.includes('r1-1776')) {
             return deepseekTokenizer;
