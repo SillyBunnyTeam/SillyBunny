@@ -584,10 +584,15 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
         // Inject stored thought signatures, or fall back to bypass magic for Gemini 3
         if (/gemini-3/.test(model) || /gemini-2\.5/.test(model)) {
             const skipSignatureMagic = 'skip_thought_signature_validator';
-            const textSignature = message.signature;
+            // Signatures are only valid on model turns; stamping one on a user-role part
+            // gets the request rejected with a 400 "Corrupted thought signature".
+            const textSignature = message.role === 'model' ? message.signature : null;
+            // A stored signature covers one generated part. Duplicating it across every
+            // text part of the message also trips the corruption validator.
+            const lastTextPart = parts.findLast((part) => typeof part.text === 'string');
 
             parts.forEach((part) => {
-                if (isThoughtSignaturesEnabled() && textSignature && typeof part.text === 'string') {
+                if (isThoughtSignaturesEnabled() && textSignature && part === lastTextPart) {
                     part.thoughtSignature = textSignature;
                 } else if (/gemini-3/.test(model)) {
                     // Gemini 3: Fall back to bypass magic for function calls (mandatory) and images
@@ -606,17 +611,22 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
 
         // merge consecutive messages with the same role
         if (index > 0 && message.role === contents[contents.length - 1].role) {
+            const previousParts = contents[contents.length - 1].parts;
             parts.forEach((part) => {
-                if (part.text) {
-                    const textPart = contents[contents.length - 1].parts.find(p => typeof p.text === 'string');
+                const isPlainText = typeof part.text === 'string'
+                    && !part.inlineData && !part.functionCall && !part.functionResponse
+                    && !part.thoughtSignature && !part.mediaResolution;
+                if (isPlainText) {
+                    // Signed parts must stay byte-identical to what the model produced,
+                    // so plain text never folds into them and they never fold into text.
+                    const textPart = previousParts.find(p => typeof p.text === 'string' && !p.thoughtSignature);
                     if (textPart) {
                         textPart.text += '\n\n' + part.text;
                     } else {
-                        contents[contents.length - 1].parts.push(part);
+                        previousParts.push(part);
                     }
-                }
-                if (part.inlineData || part.functionCall || part.functionResponse || part.thoughtSignature || part.mediaResolution) {
-                    contents[contents.length - 1].parts.push(part);
+                } else {
+                    previousParts.push(part);
                 }
             });
         } else {
