@@ -1079,16 +1079,30 @@ button.ica--card-pill--version-update {
     overflow: hidden;
 }
 
-.ica--textarea-fullscreen-backdrop {
+dialog.ica--textarea-fullscreen-backdrop {
     position: fixed;
     inset: 0;
     z-index: 10060;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
     background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 42%, transparent);
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
 }
 
-.ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+dialog.ica--textarea-fullscreen-backdrop::backdrop {
+    background: transparent;
+}
+
+/* While fullscreen, the field and toggle are hosted inside the body-level backdrop so
+   transformed/filtered dialog ancestors cannot become their containing block and
+   shrink or misplace the viewport-sized editor. */
+.ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
     --ica-textarea-fullscreen-top: max(10px, env(safe-area-inset-top, 0px));
     --ica-textarea-fullscreen-right: max(10px, env(safe-area-inset-right, 0px));
     --ica-textarea-fullscreen-bottom: max(10px, env(safe-area-inset-bottom, 0px));
@@ -1110,9 +1124,12 @@ button.ica--card-pill--version-update {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 96%, var(--SmartThemeChatTintColor, #222) 4%);
     box-shadow: 0 24px 80px color-mix(in srgb, var(--SmartThemeShadowColor) 42%, transparent);
     line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    overflow-y: auto;
 }
 
-.ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+.ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
     position: fixed;
     top: calc(max(10px, env(safe-area-inset-top, 0px)) + 10px);
     right: calc(max(10px, env(safe-area-inset-right, 0px)) + 10px);
@@ -1121,7 +1138,7 @@ button.ica--card-pill--version-update {
 }
 
 @media (max-width: 600px) {
-    .ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+    .ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
         --ica-textarea-fullscreen-top: max(6px, env(safe-area-inset-top, 0px));
         --ica-textarea-fullscreen-right: max(6px, env(safe-area-inset-right, 0px));
         --ica-textarea-fullscreen-bottom: max(6px, env(safe-area-inset-bottom, 0px));
@@ -1131,7 +1148,7 @@ button.ica--card-pill--version-update {
         font-size: 16px;
     }
 
-    .ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+    .ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
         top: calc(max(6px, env(safe-area-inset-top, 0px)) + 8px);
         right: calc(max(6px, env(safe-area-inset-right, 0px)) + 8px);
     }

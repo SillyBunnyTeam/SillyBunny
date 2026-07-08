@@ -110,10 +110,29 @@ function enhanceTextarea(textarea) {
         textarea.classList.add(FIELD_ACTIVE_CLASS);
         document.body.classList.add(BODY_ACTIVE_CLASS);
 
-        backdrop = document.createElement('div');
+        // Popup dialogs have backdrop-filter, which makes them the containing block for
+        // position: fixed and shrinks/misplaces the fullscreen field, and they are shown
+        // with showModal(), which makes everything outside their top layer inert. Hosting
+        // the field in a modal <dialog> backdrop of its own solves both: it stacks above
+        // the popup in the top layer and stays viewport-sized regardless of ancestors.
+        backdrop = document.createElement('dialog');
         backdrop.className = BACKDROP_CLASS;
-        backdrop.addEventListener('click', close);
+        backdrop.addEventListener('click', event => {
+            if (event.target === backdrop) {
+                close();
+            }
+        });
+        backdrop.addEventListener('cancel', event => {
+            event.preventDefault();
+            close();
+        });
+        backdrop.append(textarea, toggle);
         document.body.append(backdrop);
+        try {
+            backdrop.showModal();
+        } catch {
+            backdrop.setAttribute('open', '');
+        }
         document.addEventListener('keydown', onKeyDown, true);
         updateToggleState(true);
         textarea.focus({ preventScroll: true });
@@ -130,6 +149,12 @@ function enhanceTextarea(textarea) {
         textarea.classList.remove(FIELD_ACTIVE_CLASS);
         document.body.classList.remove(BODY_ACTIVE_CLASS);
         document.removeEventListener('keydown', onKeyDown, true);
+        wrapper.append(textarea, toggle);
+        try {
+            backdrop?.close();
+        } catch {
+            // Already closed or never shown modally.
+        }
         backdrop?.remove();
         backdrop = null;
         updateToggleState(false);
