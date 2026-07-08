@@ -29,7 +29,7 @@ describe('detectEmbeddedLorebookCandidates', () => {
             { chid: 0, character: { name: 'Alice', data: { character_book: { entries: [] } } } },
         ];
         const result = detectEmbeddedLorebookCandidates(charList, []);
-        expect(result[0].bookName).toBe(`Alice's Lorebook`);
+        expect(result[0].bookName).toBe('Alice\'s Lorebook');
     });
 
     test('detects name collisions with existing worlds', () => {

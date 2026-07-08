@@ -9582,7 +9582,7 @@ $('#save_custom_endpoint').on('click', async function () {
         url: $('#custom_api_url_text').val(),
         key: keyInputValue,
         model: $('#custom_model_id').val(),
-        secretId: existingPreset?.secretId,
+        secretId: keyInputValue ? '' : existingPreset?.secretId,
     });
 
     // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
