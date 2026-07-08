@@ -40,6 +40,7 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    isValidCompanionMessage,
     normalizePlotCompassObjective,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
@@ -555,9 +556,34 @@ function getMessageLine(message) {
     return `${label}: ${normalizeText(message?.mes ?? '')}`;
 }
 
+function getMessageTokenEstimate(message) {
+    const counted = Number(message?.extra?.token_count);
+    return Number.isFinite(counted) && counted > 0
+        ? counted
+        : Math.ceil(String(message?.mes ?? '').length / 4);
+}
+
 function getRecentConversationSection(messageIndex, companion) {
-    const start = Math.max(0, messageIndex + 1 - companion.contextMessages);
-    const lines = chat.slice(start, messageIndex + 1)
+    const minMessages = Math.max(1, Number(companion.contextMessages) || 1);
+    const minContextTokens = Math.max(0, Number(companion.minContextTokens) || 0);
+    const selected = [];
+    let tokenTotal = 0;
+
+    for (let index = Math.min(messageIndex, chat.length - 1); index >= 0; index--) {
+        const message = chat[index];
+        if (!isValidCompanionMessage(message)) {
+            continue;
+        }
+
+        selected.push(message);
+        tokenTotal += getMessageTokenEstimate(message);
+
+        if (selected.length >= minMessages && (!minContextTokens || tokenTotal >= minContextTokens)) {
+            break;
+        }
+    }
+
+    const lines = selected.reverse()
         .map(getMessageLine)
         .filter(line => line.trim());
     return lines.length ? lines.join('\n') : '';
@@ -609,6 +635,7 @@ async function getWorldInfoSection(messageIndex, companion) {
 
     try {
         const scanLines = chat.slice(0, messageIndex + 1)
+            .filter(isValidCompanionMessage)
             .map(message => normalizeText(message?.mes ?? ''))
             .filter(Boolean)
             .reverse();
@@ -812,6 +839,7 @@ function getBatchKey(agent, messageIndex) {
         profile: resolveCompanionConnectionProfile(agent.connectionProfile),
         model: String(agent.modelOverride ?? '').trim(),
         contextMessages: companion.contextMessages,
+        minContextTokens: companion.minContextTokens,
         includeCharacterCard: companion.includeCharacterCard,
         includePersona: companion.includePersona,
         includeWorldInfo: companion.includeWorldInfo,
@@ -1367,10 +1395,7 @@ export function getChatTokenEstimate(beforeMessageIndex = chat.length) {
         if (message?.is_system) {
             continue;
         }
-        const counted = Number(message?.extra?.token_count);
-        total += Number.isFinite(counted) && counted > 0
-            ? counted
-            : Math.ceil(String(message?.mes ?? '').length / 4);
+        total += getMessageTokenEstimate(message);
     }
 
     return total;
