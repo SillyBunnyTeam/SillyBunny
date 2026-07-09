@@ -110,6 +110,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #647 (2026-07-08) `fix: Gemini thought signatures getting mangled/corrupted`
 - PR #648 (2026-07-08) `fix: agent prompt editor blow-up being shapeless/formless with text spilling off-screen`
 - PR #649 (2026-07-08) `feat: add LinkAPI chat completion provider integration with auto-routing`
+- PR #650 (2026-07-09) `fix(ica): viewing the in-chat agents injected into the preset should show their actual names`
 
 ## v1.6.5
 
