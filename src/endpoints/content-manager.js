@@ -34,6 +34,19 @@ function isPngBuffer(buffer) {
 }
 
 /**
+ * @param {unknown} error Error object
+ * @returns {string} Error message with cause when available
+ */
+function getErrorMessage(error) {
+    if (error instanceof Error) {
+        const cause = error.cause instanceof Error ? ` (${error.cause.message})` : '';
+        return `${error.message}${cause}`;
+    }
+
+    return String(error);
+}
+
+/**
  * @typedef {Object} ContentItem
  * @property {string} filename
  * @property {string} type
@@ -834,26 +847,14 @@ async function downloadChubLorebook(id) {
     return { buffer, fileName, fileType };
 }
 
-async function downloadChubCharacter(id) {
-    const [creatorName, projectName] = id.split('/');
-    const result = await fetch(`https://api.chub.ai/api/characters/${creatorName}/${projectName}?full=true`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json', 'User-Agent': USER_AGENT },
-    });
-
-    if (!result.ok) {
-        const text = await result.text();
-        console.error('Chub returned error', result.statusText, text);
-        throw new Error('Failed to fetch character metadata');
-    }
-
-    /** @type {any} */
-    const metadata = await result.json();
-    const node = metadata.node;
-    const imageUrl = node?.max_res_url;
-
-    if (imageUrl) {
-        const downloadResult = await fetch(imageUrl, {
+/**
+ * @param {string} url URL of a Chub character card PNG
+ * @param {string} name Base name for the returned file
+ * @returns {Promise<{buffer: Buffer, fileName: string, fileType: string} | null>}
+ */
+async function tryDownloadChubCharacterCard(url, name) {
+    try {
+        const downloadResult = await fetch(url, {
             method: 'GET',
             headers: { 'Accept': 'image/png,image/*;q=0.8,*/*;q=0.5', 'User-Agent': USER_AGENT },
         });
@@ -862,20 +863,66 @@ async function downloadChubCharacter(id) {
             const buffer = Buffer.from(await downloadResult.arrayBuffer());
 
             if (isPngBuffer(buffer)) {
-                const fileName = `${sanitize(node?.name || projectName)}.png`;
+                const fileName = `${sanitize(name)}.png`;
                 const fileType = 'image/png';
 
                 return { buffer, fileName, fileType };
             }
 
-            console.error('Chub returned non-PNG character card', downloadResult.headers.get('content-type'));
+            console.error('Chub returned non-PNG character card', downloadResult.headers.get('content-type'), url);
         } else {
             const text = await downloadResult.text();
-            console.error('Chub returned error', downloadResult.statusText, text);
+            console.error('Chub returned error', downloadResult.status, downloadResult.statusText, text, url);
+        }
+    } catch (error) {
+        console.error('Failed to download Chub character card', url, getErrorMessage(error));
+    }
+
+    return null;
+}
+
+async function downloadChubCharacter(id) {
+    const [creatorName, projectName] = id.split('/');
+
+    const directCardUrl = `https://avatars.charhub.io/avatars/${[creatorName, projectName].map(encodeURIComponent).join('/')}/chara_card_v2.png`;
+    const directCard = await tryDownloadChubCharacterCard(directCardUrl, projectName);
+    if (directCard) {
+        return directCard;
+    }
+
+    const result = await fetch(`https://api.chub.ai/api/characters/${creatorName}/${projectName}?full=true`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'User-Agent': USER_AGENT },
+    });
+
+    if (!result.ok) {
+        const text = await result.text();
+        console.error('Chub returned error', result.status, result.statusText, text);
+        throw new Error(`Failed to fetch Chub character metadata: ${result.status} ${result.statusText}`.trim());
+    }
+
+    /** @type {any} */
+    const metadata = await result.json();
+    const node = metadata.node;
+
+    if (!node || typeof node !== 'object') {
+        throw new Error('Chub returned invalid character metadata');
+    }
+
+    const imageUrl = node?.max_res_url;
+
+    if (imageUrl && imageUrl !== directCardUrl) {
+        const card = await tryDownloadChubCharacterCard(imageUrl, node?.name || projectName);
+        if (card) {
+            return card;
         }
     }
 
     const { definition, topics } = node;
+
+    if (!definition || typeof definition !== 'object') {
+        throw new Error('Chub returned character metadata without definition');
+    }
 
     // Chub does not always include definition.name; fall back to the project/card name.
     const characterName = definition.name || node?.name || projectName;
@@ -1497,7 +1544,7 @@ router.post('/importURL', async (request, response) => {
         return response.send(result.buffer);
     } catch (error) {
         console.error('Importing custom content failed', error);
-        return response.sendStatus(500);
+        return response.status(500).type('text/plain').send(getErrorMessage(error));
     }
 });
 
