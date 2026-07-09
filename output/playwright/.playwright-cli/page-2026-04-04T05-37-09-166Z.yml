@@ -1,0 +1,115 @@
+- generic [ref=e1]:
+  - generic [ref=e543]:
+    - generic [ref=e544]:
+      - text: 
+      - button "Open workspace tools" [active] [ref=e545] [cursor=pointer]:
+        - generic [ref=e546]: 
+        - generic [ref=e547]: Navigate
+    - generic "SillyBunny" [ref=e549]
+    - generic [ref=e550]:
+      - button "Open character management" [ref=e551] [cursor=pointer]:
+        - generic [ref=e552]: 
+        - generic [ref=e553]: Characters
+      - button "Open customization tools" [ref=e554] [cursor=pointer]:
+        - generic [ref=e555]: 
+        - generic [ref=e556]: Customize
+  - generic:
+    - generic:                                               + No items                                  +     No items              ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☐ ☰ ☐ ☰ ☐ ☰                                  + No items      ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  X                                                                                                                                                                                +         
+    - generic:                                                               +               +                                  +   + +  +     +        +        +        +                                                                           +                            
+    - generic:            Back  Favorite  Advanced                                          Group is empty.          No characters available                        
+  - generic:                      +                                                                                +    + +                  
+  - generic:                  
+  - generic [ref=e528]:
+    - text: 
+    - generic [ref=e557]:
+      - generic [ref=e558]:
+        - generic [ref=e559]:
+          - generic [ref=e560]: Home
+          - generic [ref=e561]:
+            - img "SillyBunny badge" [ref=e562]
+            - generic [ref=e563]:
+              - generic [ref=e564]: SillyBunny v1.0.0
+              - paragraph [ref=e565]: A SillyTavern fork with bun instead. Bunny!
+            - generic [ref=e566]:
+              - text: 
+              - button "" [ref=e567] [cursor=pointer]:
+                - generic [ref=e568]: 
+          - generic [ref=e569]:
+            - button " Temporary Chat Open a quick throwaway session when you want to test without committing." [ref=e570] [cursor=pointer]:
+              - generic [ref=e571]: 
+              - generic [ref=e572]:
+                - strong [ref=e573]: Temporary Chat
+                - generic [ref=e574]: Open a quick throwaway session when you want to test without committing.
+            - button " Open Assistant Keep the landing page clean until you actually want help, guidance, or a scratch conversation." [ref=e575] [cursor=pointer]:
+              - generic [ref=e576]: 
+              - generic [ref=e577]:
+                - strong [ref=e578]: Open Assistant
+                - generic [ref=e579]: Keep the landing page clean until you actually want help, guidance, or a scratch conversation.
+          - generic [ref=e580]:
+            - button " Sample characters" [ref=e581] [cursor=pointer]:
+              - generic [ref=e582]: 
+              - generic [ref=e583]: Sample characters
+            - button " Import characters" [ref=e584] [cursor=pointer]:
+              - generic [ref=e585]: 
+              - generic [ref=e586]: Import characters
+            - button " Source" [ref=e587] [cursor=pointer]:
+              - generic [ref=e588]: 
+              - generic [ref=e589]: Source
+            - button " Guides" [ref=e590] [cursor=pointer]:
+              - generic [ref=e591]: 
+              - generic [ref=e592]: Guides
+            - button " Issues" [ref=e593] [cursor=pointer]:
+              - generic [ref=e594]: 
+              - generic [ref=e595]: Issues
+        - img "Animated SillyBunny bunny mascot" [ref=e598]
+      - generic [ref=e599]:
+        - generic [ref=e601]:
+          - generic [ref=e602]: Recent Chats
+          - paragraph [ref=e603]: Jump back into a thread, pin the keepers, or start fresh when inspiration changes direction.
+        - list [ref=e605]:
+          - listitem [ref=e606] [cursor=pointer]:
+            - 'generic "[Character] Seraphina File: default_Seraphina.png" [ref=e607]':
+              - img "Seraphina" [ref=e608]
+            - generic [ref=e609]:
+              - generic [ref=e610]:
+                - generic "Seraphina - 2023-5-12 @21h 32m 29s 224ms.jsonl" [ref=e611]:
+                  - strong [ref=e612]: Seraphina
+                  - text: – Seraphina - 2023-5-12 @21h 32m 29s 224ms
+                - generic "April 4, 2026 12:48 PM" [ref=e613]: 4/4/2026
+                - generic [ref=e614]:
+                  - button "" [ref=e615]:
+                    - generic [ref=e616]: 
+                  - button "" [ref=e617]:
+                    - generic [ref=e618]: 
+                  - button "" [ref=e619]:
+                    - generic [ref=e620]: 
+              - generic [ref=e621]:
+                - generic "*You wake with a start, recalling the events that led you deep into the forest and the beasts that assailed you. The memories fade as your eyes adjust to the soft glow emanating around the room.* \"Ah, you're awake at last. I was so worried, I found you bloodied and unconscious.\" *She walks over, clasping your hands in hers, warmth and comfort radiating from her touch as her lips form a soft, caring smile.* \"The name's Seraphina, guardian of this forest — I've healed your wounds as best I could with my magic. How are you feeling? I hope the tea helps restore your strength.\" *Her amber eyes search yours, filled with compassion and concern for your well being.* \"Please, rest. You're safe here. I'll look after you, but you need to rest. My magic can only do so much to heal you.\"" [ref=e622]
+                - generic [ref=e623]:
+                  - generic [ref=e624]:
+                    - generic [ref=e625]: 
+                    - generic [ref=e626]: "1"
+                    - text: "|"
+                  - generic [ref=e627]: "-0PB"
+    - generic [ref=e531]:
+      - text:  
+      - generic [ref=e532]:
+        - generic [ref=e533]:
+          - generic [ref=e534] [cursor=pointer]: 
+          - generic "Extensions" [ref=e628] [cursor=pointer]: 
+        - textbox "Not connected to API!" [ref=e535]
+        - generic:       
+  - text:                                 1  
+  - generic [ref=e629]: 
+  - status [ref=e630]
+  - status [ref=e631]
+  - status [ref=e632]
+  - status [ref=e633]
+  - status [ref=e634]
+  - status [ref=e635]
+  - status [ref=e636]
+  - status [ref=e637]
+  - status [ref=e638]
+  - status [ref=e639]
+  - status [ref=e640]
+  - status [ref=e641]

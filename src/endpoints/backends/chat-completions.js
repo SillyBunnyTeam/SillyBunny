@@ -3198,6 +3198,13 @@ router.post('/generate', async function (request, response) {
             };
         }
 
+        // Grok rejects 'name' on non-user messages ("Only messages of role 'user' can have a name"),
+        // so fold names into content like the native xAI path when a Grok model is reached through
+        // OpenRouter, custom endpoints, or other OpenAI-compatible providers.
+        if (!isTextCompletion && Array.isArray(request.body.messages) && /grok/i.test(String(request.body.model))) {
+            request.body.messages = convertXAIMessages(request.body.messages, getPromptNames(request));
+        }
+
         const requestBody = {
             'messages': isTextCompletion === false ? request.body.messages : undefined,
             'prompt': isTextCompletion === true ? textPrompt : undefined,

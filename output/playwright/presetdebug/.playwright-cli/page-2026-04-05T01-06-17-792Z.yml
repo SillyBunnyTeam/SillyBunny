@@ -1,0 +1,235 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - text: 
+      - button "Open workspace tools" [ref=e7] [cursor=pointer]:
+        - generic [ref=e8]: 
+        - generic [ref=e9]: Navigate
+      - button "Return to the landing page" [ref=e10] [cursor=pointer]:
+        - generic [ref=e11]: 
+        - generic [ref=e12]: Home
+    - generic "SillyBunny" [ref=e14]
+    - generic [ref=e15]:
+      - button "Open character management" [ref=e16] [cursor=pointer]:
+        - generic [ref=e17]: 
+        - generic [ref=e18]: Characters
+      - button "Open customization tools" [ref=e19] [cursor=pointer]:
+        - generic [ref=e20]: 
+        - generic [ref=e21]: Customize
+  - generic:
+    - generic:                                               + No items                         ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰                                  + No items      ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰                  +     No items                                                                                                                                    +         
+    - generic:
+      - text: 
+      - generic:
+        - generic:
+          - tablist "Customize sections" [ref=e22]:
+            - tab "Settings App behavior, appearance, and quality-of-life controls start here." [selected] [ref=e23] [cursor=pointer]:
+              - generic [ref=e24]: 
+              - generic [ref=e25]:
+                - strong [ref=e26]: Settings
+                - generic [ref=e27]: App behavior, appearance, and quality-of-life controls start here.
+            - tab "Extensions Manage installed tools, optional features, and extension-specific settings." [ref=e28] [cursor=pointer]:
+              - generic [ref=e29]: 
+              - generic [ref=e30]:
+                - strong [ref=e31]: Extensions
+                - generic [ref=e32]: Manage installed tools, optional features, and extension-specific settings.
+            - tab "Persona Edit personas, switch identities faster, and manage persona connections." [ref=e33] [cursor=pointer]:
+              - generic [ref=e34]: 
+              - generic [ref=e35]:
+                - strong [ref=e36]: Persona
+                - generic [ref=e37]: Edit personas, switch identities faster, and manage persona connections.
+            - tab "Background Set the mood with backgrounds, fitting modes, and quick filtering." [ref=e38] [cursor=pointer]:
+              - generic [ref=e39]: 
+              - generic [ref=e40]:
+                - strong [ref=e41]: Background
+                - generic [ref=e42]: Set the mood with backgrounds, fitting modes, and quick filtering.
+          - generic:
+            - generic [ref=e43]:
+              - text: 
+              - generic: Customize
+              - heading "Settings" [level=2]
+              - paragraph: App behavior, appearance, and quality-of-life controls start here.
+              - paragraph: Personalize the workspace, extensions, persona flow, and atmosphere.
+              - generic [ref=e44]:
+                - generic [ref=e45]: 
+                - searchbox "Quick find themes, personas, backgrounds, extensions..."
+            - generic:
+              - tabpanel:
+                - generic [ref=e46]:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - heading "User Settings " [level=3] [ref=e49]:
+                          - text: User Settings
+                          - link "" [ref=e50] [cursor=pointer]:
+                            - /url: https://docs.sillytavern.app/usage/user-settings/
+                            - generic [ref=e51]: 
+                        - generic [ref=e52]:
+                          - generic [ref=e53]: "Language:"
+                          - combobox [ref=e54]:
+                            - option "Default" [selected]
+                            - option "English"
+                      - generic [ref=e56]:
+                        - generic [ref=e57] [cursor=pointer]:
+                          - generic [ref=e58]: 
+                          - generic [ref=e59]: Account
+                        - generic [ref=e60] [cursor=pointer]:
+                          - generic [ref=e61]: 
+                          - generic [ref=e62]: Admin Panel
+                        - generic [ref=e63] [cursor=pointer]:
+                          - generic [ref=e64]: 
+                          - generic [ref=e65]: Logout
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic [ref=e66] [cursor=pointer]:
+                            - generic [ref=e67]:
+                              - generic [ref=e68]: 
+                              - text: Appearance
+                            - generic [ref=e69]: 
+                          - generic [ref=e70]:
+                            - generic [ref=e71]:
+                              - generic [ref=e72]:
+                                - generic:
+                                  - strong: Shell Style
+                                  - paragraph: Switch the navigation shell between three built-in visual directions.
+                                - generic:
+                                  - button "Modern Glass Premium glass panels, layered depth, and a more cinematic desktop feel." [pressed] [ref=e73] [cursor=pointer]:
+                                    - generic [ref=e74]: Modern Glass
+                                    - generic [ref=e75]: Premium glass panels, layered depth, and a more cinematic desktop feel.
+                                  - button "Clean Minimal Softer surfaces, calmer contrast, and lower visual noise for long sessions." [ref=e76] [cursor=pointer]:
+                                    - generic [ref=e77]: Clean Minimal
+                                    - generic [ref=e78]: Softer surfaces, calmer contrast, and lower visual noise for long sessions.
+                                  - button "Bold Stylized Sharper accents, stronger contrast, and more expressive active states." [ref=e79] [cursor=pointer]:
+                                    - generic [ref=e80]: Bold Stylized
+                                    - generic [ref=e81]: Sharper accents, stronger contrast, and more expressive active states.
+                                - generic [ref=e82]:
+                                  - generic:
+                                    - strong [ref=e83]: Background Visibility
+                                    - generic [ref=e84]: 0%
+                                  - slider "Background visibility": "0"
+                                  - paragraph: Higher values make the home and chat surfaces more transparent so your selected background picture shows through.
+                              - heading "UI Theme   " [level=4] [ref=e85]:
+                                - generic [ref=e86]: UI Theme
+                                - generic:
+                                  - generic "Import a theme file" [ref=e87] [cursor=pointer]:
+                                    - generic [ref=e88]: 
+                                  - generic "Export a theme file" [ref=e89] [cursor=pointer]:
+                                    - generic [ref=e90]: 
+                                  - generic "Delete a theme" [ref=e91] [cursor=pointer]:
+                                    - generic [ref=e92]: 
+                              - generic:
+                                - combobox [ref=e93]
+                                - generic "Update a theme file" [ref=e94] [cursor=pointer]:
+                                  - generic [ref=e95]: 
+                                - generic "Save as a new theme" [ref=e96] [cursor=pointer]:
+                                  - generic [ref=e97]: 
+                              - generic:
+                                - generic: SillyBunny palettes
+                                - generic:
+                                  - button " Forest Dusk" [ref=e98] [cursor=pointer]:
+                                    - generic [ref=e99]: 
+                                    - generic [ref=e100]: Forest Dusk
+                                  - button " Forest Dawn" [ref=e101] [cursor=pointer]:
+                                    - generic [ref=e102]: 
+                                    - generic [ref=e103]: Forest Dawn
+                                  - button " Rose Glow" [ref=e104] [cursor=pointer]:
+                                    - generic [ref=e105]: 
+                                    - generic [ref=e106]: Rose Glow
+                            - generic:
+                              - generic:
+                                - generic "This style applies to all avatars globaly, including your Persona, Character Management, Account selection, etc.":
+                                  - generic [ref=e107]: "Avatars:"
+                                  - combobox [ref=e108]:
+                                    - option "Circle" [selected]
+                                    - option "Square"
+                                    - option "Rounded"
+                                    - option "Rectangle"
+                                - generic:
+                                  - generic [ref=e109]: "Chat Style:"
+                                  - combobox [ref=e110]:
+                                    - option "Flat" [selected]
+                                    - option "Bubbles"
+                                    - option "Document"
+                                - generic "Default display style for media attachments in chat messages. Extensions can override this setting.":
+                                  - generic [ref=e111]: "Media Style:"
+                                  - combobox [ref=e112]:
+                                    - option "List" [selected]
+                                    - option "Gallery"
+                                - generic:
+                                  - generic [ref=e113]: "Notifications:"
+                                  - combobox [ref=e114]:
+                                    - option "Top Left" [selected]
+                                    - option "Top Center"
+                                    - option "Top Right"
+                                    - option "Bottom Left"
+                                    - option "Bottom Center"
+                                    - option "Bottom Right"
+                              - generic "Specify colors for your theme." [ref=e115] [cursor=pointer]:
+                                - generic [ref=e116]: Theme Colors
+                                - generic [ref=e117]: 
+                              - separator
+                              - generic:
+                                - generic "Tune layout width, typography scale, blur strength, and text shadow." [ref=e118] [cursor=pointer]:
+                                  - generic [ref=e119]: Layout & Clarity
+                                  - generic [ref=e120]: 
+                                - text:     
+                              - separator
+                              - generic:
+                                - generic "Toggle motion, blur, timestamps, and other interface extras." [ref=e121] [cursor=pointer]:
+                                  - generic [ref=e122]: Visual Toggles
+                                  - generic [ref=e123]: 
+                                - text:   
+                      - generic:
+                        - generic:
+                          - generic [ref=e124] [cursor=pointer]:
+                            - generic [ref=e125]:
+                              - generic [ref=e126]: 
+                              - text: Chat & Characters
+                            - generic [ref=e127]: 
+                          - text:       
+                          - generic [ref=e128]:
+                            - generic [ref=e129]:
+                              - generic [ref=e130] [cursor=pointer]:
+                                - generic [ref=e132]: Chat/Message Handling
+                                - generic [ref=e133]: 
+                              - text:        
+                            - generic "Options for the various autocomplete input boxes." [ref=e135] [cursor=pointer]:
+                              - generic [ref=e136]: AutoComplete Settings
+                              - generic [ref=e137]: 
+                            - generic [ref=e138]:
+                              - heading "STscript Settings" [level=4] [ref=e139]
+                              - generic "Sets default flags for the STscript parser." [ref=e140]:
+                                - generic [ref=e142]: Parser Flags
+                                - generic "Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well." [ref=e143]:
+                                  - checkbox "STRICT_ESCAPING " [ref=e144] [cursor=pointer]
+                                  - generic [ref=e145]: STRICT_ESCAPING
+                                  - link "" [ref=e146] [cursor=pointer]:
+                                    - /url: https://docs.sillytavern.app/usage/st-script/#strict-escaping
+                                    - generic [ref=e147]: 
+                                - 'generic "Prevents {{getvar::}} {{getglobalvar::}} macros from having literal macro-like values auto-evaluated. e.g. \"{{newline}}\" remains as literal string \"{{newline}}\" (This is done by internally replacing {{getvar::}} {{getglobalvar::}} macros with scoped variables.)" [ref=e148]':
+                                  - checkbox "REPLACE_GETVAR " [ref=e149] [cursor=pointer]
+                                  - generic [ref=e150]: REPLACE_GETVAR
+                                  - link "" [ref=e151] [cursor=pointer]:
+                                    - /url: https://docs.sillytavern.app/usage/st-script/#replace-variable-macros
+                                    - generic [ref=e152]: 
+              - text:                            +    
+    - generic:           Back  Favorite  Advanced                                  Group is empty.  No characters available         
+  - generic:                      +                                                                                +    + +                  
+  - generic:                  
+  - generic [ref=e153]:
+    - text: 
+    - generic [ref=e156]:
+      - text:  
+      - generic [ref=e157]:
+        - generic [ref=e159] [cursor=pointer]: 
+        - textbox "Not connected to API!" [ref=e160]
+        - generic:       
+  - text:               
+  - dialog [active] [ref=e161]:
+    - generic [ref=e164]:
+      - img "SillyBunny Badge" [ref=e165]
+      - generic [ref=e166]: 
+      - heading "Initializing…" [level=2] [ref=e167]
+    - text: 
+  - text:     

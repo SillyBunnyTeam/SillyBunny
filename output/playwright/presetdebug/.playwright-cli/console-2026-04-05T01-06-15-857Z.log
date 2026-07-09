@@ -1,0 +1,122 @@
+[    1530ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8000/:0
+[    1951ms] [WARNING] No input elements found for key: api_key_comfy_runpod @ http://127.0.0.1:8000/scripts/secrets.js:570
+[    1957ms] [WARNING] Unsupported language: en-us @ http://127.0.0.1:8000/scripts/i18n.js:142
+[    2674ms] [WARNING] Settings not ready, scheduling another save @ http://127.0.0.1:8000/script.js:7970
+[    3567ms] [LOG] OpenAI model changed to gpt-5.4 @ http://127.0.0.1:8000/scripts/openai.js:5581
+[    4532ms] [INFO] Using default TTS Provider settings @ http://127.0.0.1:8000/scripts/extensions/tts/system.js:119
+[    4982ms] [WARNING] Failed to process stylesheet on initial load: SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:111:29)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:193
+[    4995ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: color-mix(in srgb, var(--color-background, #130f0d) 70%, transparent); }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[    4995ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:focus-visible { background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-color: ; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[    5001ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: transparent; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[    5001ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:vertical:focus-visible { opacity: 0.8; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[    5001ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:horizontal:focus-visible { opacity: 0.8; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[    8313ms] [LOG] [QR2] sets:  [QuickReplySet] @ http://127.0.0.1:8000/scripts/extensions/quick-reply/index.js:18
+[    8314ms] [LOG] [QR2] settings:  QuickReplySettings @ http://127.0.0.1:8000/scripts/extensions/quick-reply/index.js:18
+[    9339ms] [LOG] OpenAI model changed to gpt-5.4 @ http://127.0.0.1:8000/scripts/openai.js:5581
+[  386620ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8000/:0
+[  387003ms] [WARNING] No input elements found for key: api_key_comfy_runpod @ http://127.0.0.1:8000/scripts/secrets.js:570
+[  387006ms] [WARNING] Unsupported language: en-us @ http://127.0.0.1:8000/scripts/i18n.js:142
+[  387940ms] [WARNING] Settings not ready, scheduling another save @ http://127.0.0.1:8000/script.js:7970
+[  388696ms] [LOG] OpenAI model changed to gpt-5.4 @ http://127.0.0.1:8000/scripts/openai.js:5581
+[  389656ms] [INFO] Using default TTS Provider settings @ http://127.0.0.1:8000/scripts/extensions/tts/system.js:119
+[  390112ms] [WARNING] Failed to process stylesheet on initial load: SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:111:29)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:193
+[  390126ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: color-mix(in srgb, var(--color-background, #130f0d) 70%, transparent); }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[  390126ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:focus-visible { background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-color: ; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[  390132ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: transparent; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[  390132ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:vertical:focus-visible { opacity: 0.8; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[  390132ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:horizontal:focus-visible { opacity: 0.8; }'.
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8000/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8000/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8000/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8000/script.js:12499:5) @ http://127.0.0.1:8000/scripts/dynamic-styles.js:145
+[  393599ms] [LOG] [QR2] sets:  [QuickReplySet] @ http://127.0.0.1:8000/scripts/extensions/quick-reply/index.js:18
+[  393600ms] [LOG] [QR2] settings:  QuickReplySettings @ http://127.0.0.1:8000/scripts/extensions/quick-reply/index.js:18
+[  394711ms] [LOG] OpenAI model changed to gpt-5.4 @ http://127.0.0.1:8000/scripts/openai.js:5581
