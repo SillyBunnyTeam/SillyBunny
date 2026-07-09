@@ -1618,6 +1618,59 @@ export async function saveAgent(agent) {
 }
 
 /**
+ * Applies a new visual order to a subset of agents. Subset members are dealt back into the
+ * order-sorted slots the subset already occupies (agents outside the subset keep their relative
+ * position), then every slot is renumbered to `index * 10` so drag-and-drop always produces
+ * clean, collision-free order values.
+ * @param {string[]} orderedSubsetIds Agent ids in their new visual order.
+ * @returns {Promise<boolean>} Whether any agent's order value changed.
+ */
+export async function reorderAgentsIntoOrderSlots(orderedSubsetIds) {
+    const subsetIds = Array.from(new Set(
+        (Array.isArray(orderedSubsetIds) ? orderedSubsetIds : [])
+            .map(id => String(id ?? '').trim())
+            .filter(id => id && getAgentById(id)),
+    ));
+
+    if (subsetIds.length === 0) {
+        return false;
+    }
+
+    const subsetIdSet = new Set(subsetIds);
+    let subsetIndex = 0;
+    const finalOrderIds = getAgents()
+        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0))
+        .map(agent => {
+            if (!subsetIdSet.has(agent.id)) {
+                return agent.id;
+            }
+
+            const nextId = subsetIds[subsetIndex];
+            subsetIndex += 1;
+            return nextId;
+        });
+
+    let changed = false;
+    for (let i = 0; i < finalOrderIds.length; i++) {
+        const agent = getAgentById(finalOrderIds[i]);
+        if (!agent) {
+            continue;
+        }
+
+        const desiredOrder = i * 10;
+        if (Number(agent?.injection?.order ?? 0) === desiredOrder) {
+            continue;
+        }
+
+        agent.injection.order = desiredOrder;
+        await saveAgent(agent);
+        changed = true;
+    }
+
+    return changed;
+}
+
+/**
  * Deletes an agent from the server and local array.
  * @param {string} id
  */

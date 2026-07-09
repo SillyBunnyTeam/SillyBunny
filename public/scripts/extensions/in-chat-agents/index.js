@@ -54,6 +54,7 @@ import {
     saveGroup,
     deleteGroup,
     createDefaultGroup,
+    reorderAgentsIntoOrderSlots,
 } from './agent-store.js';
 import {
     cancelAgentGeneration,
@@ -92,7 +93,7 @@ import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompani
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
-import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
+import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
 
 const MODULE_NAME = 'in-chat-agents';
@@ -1775,62 +1776,28 @@ async function reorderAgentsInGroup(orderedIds) {
             .filter(Boolean),
     ));
 
-    if (normalizedOrderedIds.length === 0) {
-        renderAgentList();
-        return;
-    }
-
-    const firstAgent = getAgentById(normalizedOrderedIds[0]);
+    const firstAgent = normalizedOrderedIds.length > 0 ? getAgentById(normalizedOrderedIds[0]) : null;
     if (!firstAgent) {
         renderAgentList();
         return;
     }
 
     const targetCategory = String(firstAgent.category ?? '').trim();
-    const sortedAgents = getAgents()
-        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0));
-    const categoryIds = sortedAgents
+    const categoryIds = getAgents()
+        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0))
         .filter(agent => String(agent?.category ?? '').trim() === targetCategory)
         .map(agent => agent.id);
 
-    if (categoryIds.length === 0) {
-        renderAgentList();
-        return;
-    }
-
+    // Filtered-out category members are not draggable; they keep their relative order below the visible set.
     const visibleIdSet = new Set(normalizedOrderedIds);
     const reorderedCategoryIds = [
         ...normalizedOrderedIds.filter(id => categoryIds.includes(id)),
         ...categoryIds.filter(id => !visibleIdSet.has(id)),
     ];
 
-    let categoryIndex = 0;
-    const finalOrderIds = sortedAgents.map(agent => {
-        if (String(agent?.category ?? '').trim() !== targetCategory) {
-            return agent.id;
-        }
-
-        const nextId = reorderedCategoryIds[categoryIndex];
-        categoryIndex += 1;
-        return nextId ?? agent.id;
-    });
-
-    for (let i = 0; i < finalOrderIds.length; i++) {
-        const agent = getAgentById(finalOrderIds[i]);
-        if (!agent) {
-            continue;
-        }
-
-        const desiredOrder = i * 10;
-        if (Number(agent?.injection?.order ?? 0) === desiredOrder) {
-            continue;
-        }
-
-        agent.injection.order = desiredOrder;
-        await saveAgent(agent);
-    }
-
+    await reorderAgentsIntoOrderSlots(reorderedCategoryIds);
     renderAgentList();
+    refreshCompanionPanel();
 }
 
 function isTouchSortableDevice() {
@@ -2367,7 +2334,7 @@ function renderAgentList() {
                                 <i class="fa-solid fa-star"></i>
                             </button>
                             <span class="ica--card-phase">${escapeHtml(getAgentCardPhaseLabel(agent))}</span>
-                            <button type="button" class="ica--card-drag-handle" title="Hold and drag to reorder">
+                            <button type="button" class="ica--card-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder agent">
                                 <i class="fa-solid fa-grip-vertical"></i>
                             </button>
                         </div>
@@ -2427,6 +2394,33 @@ function renderAgentList() {
             });
 
             card.find('.ica--card-drag-handle').on('click', stopEvent);
+
+            card.find('.ica--card-drag-handle').on('keydown', async event => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                    return;
+                }
+
+                stopEvent(event);
+                const cardEl = card[0];
+                const sibling = event.key === 'ArrowUp' ? cardEl.previousElementSibling : cardEl.nextElementSibling;
+                if (!sibling?.classList?.contains('ica--agent-card')) {
+                    return;
+                }
+
+                if (event.key === 'ArrowUp') {
+                    sibling.before(cardEl);
+                } else {
+                    sibling.after(cardEl);
+                }
+
+                const orderedIds = items.children('.ica--agent-card').map((_, el) => el.dataset.agentId).get();
+                await reorderAgentsInGroup(orderedIds);
+                // reorderAgentsInGroup re-renders the list; put focus back so nudges can be chained.
+                $('#ica--agentList .ica--agent-card')
+                    .filter((_, el) => el.dataset.agentId === agent.id)
+                    .find('.ica--card-drag-handle')
+                    .trigger('focus');
+            });
 
             // Prevent touch-punch (jQuery UI mouse widget polyfill) from
             // capturing touchstart on these buttons. Inside a .sortable()
@@ -5469,6 +5463,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     initCompanionWandMenuItem();
     configureCompanionPanel({
         openEditor: agentId => openEditor(agentId),
+        refreshAgentList: () => renderAgentList(),
     });
     initCompanionPanel();
     schedulePathfinderExtensionsMount();
