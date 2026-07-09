@@ -99,6 +99,21 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #635 (2026-07-01) `fix(custom_css): allow importing of custom CSS when uploading themes that have it`
 - PR #636 (2026-07-01) `fix(mobile_webkit_safari): steady the input textbox viewport`
 - PR #637 (2026-07-01) `feat(ica): include the number of tokens used by agents in the UI`
+- PR #639 (2026-07-07) `fix(profiles): resolve custom endpoint secret persistence, connection profile consistency, and sampling profile UX`
+- PR #640 (2026-07-07) `fix: Batch Importing Embedded Lorebooks Correctly in One Shot`
+- PR #641 (2026-07-07) `fix: Endpoint Profiles Not Loading Correctly in Clientside UI`
+- PR #642 (2026-07-05) `fix(ipad_webkit_viewport): steady text box input viewport on iPadOS`
+- PR #643 (2026-07-08) `chore: more SVGs for different models/companies`
+- PR #644 (2026-07-08) `fix(ica): minimum context overrides number of messages in Companion Agents`
+- PR #645 (2026-07-08) `fix: requests made under a connection profile no longer inherit the currently active proxy`
+- PR #646 (2026-07-08) `fix: click-to-toggle header text now opt-in`
+- PR #647 (2026-07-08) `fix: Gemini thought signatures getting mangled/corrupted`
+- PR #648 (2026-07-08) `fix: agent prompt editor blow-up being shapeless/formless with text spilling off-screen`
+- PR #649 (2026-07-08) `feat: add LinkAPI chat completion provider integration with auto-routing`
+- PR #650 (2026-07-09) `fix(ica): viewing the in-chat agents injected into the preset should show their actual names`
+- PR #651 (2026-07-09) `fix(card_imports): fixes chub AI import API + botbooru support`
+- PR #652 (2026-07-09) `fix(mobile): restore viewport pan hardening and keep popup inputs above the keyboard`
+- PR #653 (2026-07-09) `fix(tests): cover secret-bound profiles dropping plaintext keys (split from #627)`
 
 ## v1.6.5
 

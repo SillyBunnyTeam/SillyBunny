@@ -29,6 +29,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
+    topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
@@ -748,6 +749,7 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
+        clickCycle: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
@@ -1437,6 +1439,7 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
+    sbState.topbarLabel.clickCycle = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true);
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
@@ -2494,7 +2497,7 @@ function hasOpenMobileShellDrawer() {
 }
 
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
-    if (!isMobileViewport() || !isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+    if (!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
         return false;
     }
 
@@ -2511,7 +2514,7 @@ function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
 
-    if (isMobileViewport() && isIOSWebKitPlatform()) {
+    if (isIOSWebKitPlatform()) {
         const layoutViewport = getLayoutViewportSize();
         const visualViewportSize = getVisualViewportSize(layoutViewport);
 
@@ -2524,6 +2527,11 @@ function syncIOSKeyboardBottomInset() {
     if (root.style.getPropertyValue('--sb-ios-keyboard-bottom-inset') !== value) {
         root.style.setProperty('--sb-ios-keyboard-bottom-inset', value);
     }
+
+    // SillyBunny: the <=768px shell CSS consumes the inset var directly; wide
+    // viewports (iPadOS desktop-mode Safari) gate the padding on this class so
+    // desktop layouts only pick it up while the software keyboard is open.
+    root.classList.toggle('sb-ios-keyboard-inset-active', bottomInset > 0);
 }
 
 function getShellViewportSize() {
@@ -2612,6 +2620,104 @@ function scrollMobileFocusedInputIntoView(event) {
     // keyboard animation / visualViewport resize has settled.
     window.requestAnimationFrame(tryScroll);
     window.setTimeout(tryScroll, 200);
+}
+
+const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 16;
+
+function getMobilePopupDialogForKeyboard(element) {
+    if (!(element instanceof HTMLElement)) {
+        return null;
+    }
+
+    const dialog = element.closest('dialog.popup');
+    return dialog instanceof HTMLElement && dialog.open ? dialog : null;
+}
+
+function clearMobilePopupKeyboardShift(dialog) {
+    if (!(dialog instanceof HTMLElement) || !dialog.dataset.sbKeyboardShift) {
+        return;
+    }
+
+    delete dialog.dataset.sbKeyboardShift;
+    dialog.style.removeProperty('transform');
+}
+
+function clearAllMobilePopupKeyboardShifts(except = null) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-shift]')) {
+        if (dialog !== except) {
+            clearMobilePopupKeyboardShift(dialog);
+        }
+    }
+}
+
+/**
+ * SillyBunny: popup dialogs are centered against the layout viewport, which
+ * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
+ * When a focused popup input sits behind the keyboard, the browser pans the
+ * visual viewport to reveal it, pushing the top bar off screen (e.g. the
+ * connection profile name popup). Scroll the popup body first, then shift the
+ * dialog up so the input clears the keyboard and the browser never needs to pan.
+ */
+function syncMobilePopupKeyboardShift() {
+    const activeElement = document.activeElement;
+    const dialog = isMobileViewport() && isEditableElement(activeElement)
+        ? getMobilePopupDialogForKeyboard(activeElement)
+        : null;
+
+    clearAllMobilePopupKeyboardShifts(dialog);
+
+    if (!dialog) {
+        return;
+    }
+
+    const layoutViewport = getLayoutViewportSize();
+    const viewportSize = getVisualViewportSize(layoutViewport);
+
+    if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+        clearMobilePopupKeyboardShift(dialog);
+        return;
+    }
+
+    // Measure without the current shift so a shrinking keyboard relaxes it.
+    clearMobilePopupKeyboardShift(dialog);
+
+    // visualViewport tracks the keyboard: top grows and height shrinks as the
+    // keyboard rises, so (top + height) is the bottom of the visible area.
+    const viewportBottom = viewportSize.top + viewportSize.height;
+    const scroller = activeElement.closest('.popup-content');
+
+    if (scroller instanceof HTMLElement) {
+        const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+        if (scrollOverflow > 0) {
+            scroller.scrollTop += scrollOverflow;
+        }
+    }
+
+    const overflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+
+    if (overflow <= 0) {
+        return;
+    }
+
+    const dialogTop = dialog.getBoundingClientRect().top;
+    const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);
+    const shift = Math.round(Math.min(overflow, maxShift));
+
+    if (shift <= 0) {
+        return;
+    }
+
+    dialog.dataset.sbKeyboardShift = String(shift);
+    dialog.style.transform = `translateY(-${shift}px)`;
+}
+
+let sbMobilePopupKeyboardSyncTimer = 0;
+
+function scheduleMobilePopupKeyboardSync() {
+    window.requestAnimationFrame(syncMobilePopupKeyboardShift);
+    window.clearTimeout(sbMobilePopupKeyboardSyncTimer);
+    // Run again after the keyboard animation / visualViewport resize settles.
+    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 200);
 }
 
 function getMobileShellBoundDrawers() {
@@ -3792,6 +3898,23 @@ function setTopbarCustomText(value) {
     updateTopBarBrand();
 }
 
+function setTopbarLabelClickCycle(enabled) {
+    const nextValue = Boolean(enabled);
+    if (sbState.topbarLabel.clickCycle === nextValue) {
+        return;
+    }
+
+    sbState.topbarLabel.clickCycle = nextValue;
+    if (!nextValue) {
+        resetTopBarLabelCycle({ refresh: false });
+    }
+
+    safeSetItem(SB_STORAGE_KEYS.topbarLabelClickCycle, String(nextValue));
+    flushSbStorageWrites();
+    updateThemePickerUi();
+    updateTopBarBrand();
+}
+
 function updateThemeBadge() {
     const badge = document.getElementById('sb-theme-current-label');
     if (!badge) {
@@ -4290,6 +4413,27 @@ function cycleTopBarLabel() {
     updateTopBarBrand();
 }
 
+function returnToChatSurface() {
+    // Close every overlay surface without touching the active chat itself.
+    window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    closeShell('left');
+    closeShell('right');
+    closeCharacterPanel();
+    closeMobileNav();
+    closeMobileChatTools();
+    setConnectionStripOpenState(false);
+    queueLandingPageStateSync();
+}
+
+function handleTopBarTitleActivation() {
+    if (sbState.topbarLabel.clickCycle) {
+        cycleTopBarLabel();
+        return;
+    }
+
+    returnToChatSurface();
+}
+
 function bindTopBarTitleCycle(title) {
     if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleCycleBound === 'true') {
         return;
@@ -4298,7 +4442,7 @@ function bindTopBarTitleCycle(title) {
     title.dataset.sbTopbarTitleCycleBound = 'true';
     title.addEventListener('click', event => {
         event.stopPropagation();
-        cycleTopBarLabel();
+        handleTopBarTitleActivation();
     });
     title.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') {
@@ -4307,7 +4451,7 @@ function bindTopBarTitleCycle(title) {
 
         event.preventDefault();
         event.stopPropagation();
-        cycleTopBarLabel();
+        handleTopBarTitleActivation();
     });
 }
 
@@ -4344,7 +4488,9 @@ function updateTopBarBrand() {
     bindTopBarTitleCycle(title);
     title.textContent = label;
     title.title = label;
-    title.setAttribute('aria-label', `${label}. Tap to preview top bar label options.`);
+    title.setAttribute('aria-label', sbState.topbarLabel.clickCycle
+        ? `${label}. Tap to preview top bar label options.`
+        : `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
     title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
@@ -12549,6 +12695,33 @@ function createTopbarLabelSettingsGroup() {
         setTopbarCustomText(input instanceof HTMLInputElement ? input.value : '');
     });
 
+    const clickCycleId = 'sb-topbar-label-click-cycle-input';
+    const clickCycleOption = createElement('label', {
+        className: 'sb-topbar-label-option sb-topbar-label-click-cycle-option',
+        attrs: {
+            for: clickCycleId,
+        },
+    });
+    const clickCycleCheckbox = createElement('input', {
+        id: clickCycleId,
+        className: 'sb-topbar-label-checkbox',
+        attrs: {
+            type: 'checkbox',
+            'data-sb-topbar-label-click-cycle-input': 'true',
+        },
+    });
+    const clickCycleCopy = createElement('span', { className: 'sb-topbar-label-option-copy' });
+    const clickCycleTitle = createElement('strong', { text: 'Click To Preview Label Options' });
+    const clickCycleDescription = createElement('small', { text: 'When enabled, clicking the label cycles through a preview of each part. When disabled, the label stays on your selection above and clicking it returns to the chat.' });
+
+    clickCycleCheckbox.addEventListener('change', event => {
+        const input = event.currentTarget;
+        setTopbarLabelClickCycle(input instanceof HTMLInputElement ? input.checked : true);
+    });
+
+    clickCycleCopy.append(clickCycleTitle, clickCycleDescription);
+    clickCycleOption.append(clickCycleCheckbox, clickCycleCopy);
+
     header.append(title, description);
     desktopHeading.append(desktopTitle, desktopDescription);
     mobileHeading.append(mobileTitle, mobileDescription);
@@ -12562,7 +12735,7 @@ function createTopbarLabelSettingsGroup() {
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
     customTextField.append(customTextHeading, customTextInput);
-    group.append(header, desktopSection, mobileSection, customTextField);
+    group.append(header, desktopSection, mobileSection, customTextField, clickCycleOption);
 
     return group;
 }
@@ -12824,6 +12997,15 @@ function updateThemePickerUi() {
 
     if (customTextInput instanceof HTMLInputElement && customTextInput.value !== sbState.topbarLabel.customText) {
         customTextInput.value = sbState.topbarLabel.customText;
+    }
+
+    for (const input of document.querySelectorAll('[data-sb-topbar-label-click-cycle-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = sbState.topbarLabel.clickCycle;
+        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', sbState.topbarLabel.clickCycle);
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
@@ -16277,6 +16459,13 @@ function initAll() {
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
     // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
     document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
+
+    // SillyBunny: popup dialogs sit outside the shell scrollers; shift them
+    // above the virtual keyboard instead so the browser never pans the visual
+    // viewport away from the top bar (see syncMobilePopupKeyboardShift).
+    document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
+    document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
+    window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
 
     // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
     // this provides scroll range for bottom inputs without fixing the document.

@@ -230,6 +230,18 @@ export function extractReasoningFromData(data, {
                         ?? data?.choices?.[0]?.message?.reasoning
                         ?? '';
                 }
+                case chat_completion_sources.LINKAPI: {
+                    // Response shape depends on the model's routing leg (Anthropic/Gemini/OpenAI).
+                    if (Array.isArray(data?.content)) {
+                        return data.content.filter(part => part.type === 'thinking').map(part => part.thinking).join('\n\n') ?? '';
+                    }
+                    if (Array.isArray(data?.responseContent?.parts)) {
+                        return data.responseContent.parts.filter(part => part.thought).map(part => part.text).join('\n\n') ?? '';
+                    }
+                    return data?.choices?.[0]?.message?.reasoning_content
+                        ?? data?.choices?.[0]?.message?.reasoning
+                        ?? '';
+                }
             }
             break;
     }
@@ -256,7 +268,8 @@ export function extractReasoningSignatureFromData(data, {
     }
 
     const source = chatCompletionSource ?? oai_settings.chat_completion_source;
-    const isGemini = source === chat_completion_sources.MAKERSUITE || source === chat_completion_sources.VERTEXAI;
+    const isGemini = source === chat_completion_sources.MAKERSUITE || source === chat_completion_sources.VERTEXAI
+        || (source === chat_completion_sources.LINKAPI && Boolean(data?.responseContent || data?.candidates));
     const isOpenRouter = source === chat_completion_sources.OPENROUTER;
 
     if (!isGemini && !isOpenRouter) {

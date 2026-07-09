@@ -11,6 +11,7 @@ import {
     isAgentEnabledForCurrentScope,
     isAgentHidden,
     isCompanionAgent,
+    reorderAgentsIntoOrderSlots,
     saveAgent,
     setHiddenAgentIds,
 } from '../agent-store.js';
@@ -610,13 +611,17 @@ function buildPanelAgentSection(state) {
     const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
     const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
     const hiddenButton = `<button type="button" class="ica--cdash-action" data-action="panel-hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>`;
+    // Orphaned results have no agent to persist an order onto, so they get no drag handle.
+    const dragHandleButton = state.agent
+        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder companion"><i class="fa-solid fa-grip-vertical"></i></button>'
+        : '';
 
     if (!latest) {
         return `
             <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-hidden="${isHidden}">
                 <div class="ica--tpanel-agent-head">
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
-                    <span class="ica--tpanel-agent-actions">${hiddenButton}${runLatestButton}${settingsButton}</span>
+                    <span class="ica--tpanel-agent-actions">${dragHandleButton}${hiddenButton}${runLatestButton}${settingsButton}</span>
                 </div>
                 <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
                 ${buildPanelEntryControls(state)}
@@ -649,6 +654,7 @@ function buildPanelAgentSection(state) {
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
                 ${buildCompanionTokenUsagePillsHtml(latest.result)}
                 <span class="ica--tpanel-agent-actions">
+                    ${dragHandleButton}
                     ${hiddenButton}
                     ${runLatestButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
@@ -704,6 +710,57 @@ export function buildPanelHtml() {
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     panelElement.html(buildPanelHtml());
+    setupPanelSortable();
+}
+
+/** Persists the panel's visual order onto injection.order so the agents page stays in step. */
+async function applyPanelReorder(orderedIds) {
+    const changed = await reorderAgentsIntoOrderSlots(orderedIds);
+    if (panelOpen) {
+        renderPanel();
+    }
+    if (changed && typeof panelHooks?.refreshAgentList === 'function') {
+        panelHooks.refreshAgentList();
+    }
+}
+
+function setupPanelSortable() {
+    const body = $('#ica--tracker-panel .ica--tpanel-body');
+    if (!body.length || typeof body.sortable !== 'function') {
+        return;
+    }
+
+    if (body.sortable('instance') !== undefined) {
+        body.sortable('destroy');
+    }
+
+    body.sortable({
+        items: '.ica--tpanel-agent',
+        handle: '.ica--tpanel-drag-handle',
+        // jQuery UI's mouse widget matches event.target against `cancel` before the `handle`
+        // gate runs; its default (`input, textarea, button, select, option`) would swallow every
+        // drag that starts on the grip because the grip is a <button>. Cancel the section's other
+        // controls but leave the drag handle draggable.
+        cancel: 'input, textarea, .menu_button, .ica--cdash-action:not(.ica--tpanel-drag-handle)',
+        tolerance: 'pointer',
+        distance: 5,
+        placeholder: 'ica--tpanel-agent-placeholder',
+        forcePlaceholderSize: true,
+        start: function (_event, ui) {
+            ui.placeholder.height(ui.item.outerHeight());
+        },
+        stop: async function () {
+            const orderedIds = body.children('.ica--tpanel-agent').map((_, el) => el.dataset.agentId).get().filter(Boolean);
+            await applyPanelReorder(orderedIds);
+        },
+    });
+}
+
+/** Re-renders the open panel; lets other surfaces (the agents page) push order changes in. */
+export function refreshCompanionPanel() {
+    if (panelOpen) {
+        renderPanel();
+    }
 }
 
 export function updateCompanionPanelHandleVisibility() {
@@ -1030,6 +1087,39 @@ export function initCompanionPanel() {
     `);
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
+    $('#ica--tracker-panel').on('keydown', '.ica--tpanel-drag-handle', async function (event) {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const section = this.closest('.ica--tpanel-agent');
+        const sibling = event.key === 'ArrowUp' ? section?.previousElementSibling : section?.nextElementSibling;
+        if (!section || !sibling?.classList?.contains('ica--tpanel-agent')) {
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            sibling.before(section);
+        } else {
+            sibling.after(section);
+        }
+
+        const agentId = section.dataset.agentId || '';
+        const orderedIds = $('#ica--tracker-panel .ica--tpanel-body')
+            .children('.ica--tpanel-agent')
+            .map((_, el) => el.dataset.agentId)
+            .get()
+            .filter(Boolean);
+        await applyPanelReorder(orderedIds);
+        // applyPanelReorder re-renders the panel; put focus back so nudges can be chained.
+        $('#ica--tracker-panel .ica--tpanel-agent')
+            .filter((_, el) => el.dataset.agentId === agentId)
+            .find('.ica--tpanel-drag-handle')
+            .trigger('focus');
+    });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();

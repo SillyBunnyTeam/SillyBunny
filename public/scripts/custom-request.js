@@ -661,6 +661,7 @@ export class ChatCompletionService {
             [chat_completion_sources.ZAI]: 'zai_endpoint',
             [chat_completion_sources.SILICONFLOW]: 'siliconflow_endpoint',
             [chat_completion_sources.MINIMAX]: 'minimax_endpoint',
+            [chat_completion_sources.LINKAPI]: 'linkapi_endpoint',
         };
 
         if (overridePayload.chat_completion_source) {
@@ -672,7 +673,7 @@ export class ChatCompletionService {
             }
         } else {
             // Fallback: apply URL fields for all sources (legacy behavior)
-            ['custom_url', 'vertexai_region', 'zai_endpoint', 'siliconflow_endpoint'].forEach(field => {
+            ['custom_url', 'vertexai_region', 'zai_endpoint', 'siliconflow_endpoint', 'linkapi_endpoint'].forEach(field => {
                 overridePayload[field] = overridePayload[field] || settings[field] || oai_settings[field];
             });
         }
@@ -707,6 +708,9 @@ export class ChatCompletionService {
         }
         if (overridePayload.minimax_endpoint !== undefined) {
             settings.minimax_endpoint = overridePayload.minimax_endpoint;
+        }
+        if (overridePayload.linkapi_endpoint !== undefined) {
+            settings.linkapi_endpoint = overridePayload.linkapi_endpoint;
         }
         if (overridePayload.custom_include_body !== undefined) {
             settings.custom_include_body = overridePayload.custom_include_body;

@@ -981,14 +981,22 @@ async function applyConnectionProfile(profile) {
     const spinner = new ConnectionManagerSpinner();
     spinner.start();
 
+    const failedCommands = [];
+
     try {
         for (const command of commands) {
             if (spinner.isAborted()) {
                 throw new Error(PROFILE_APPLICATION_ABORTED);
             }
 
-            const argument = profile[command];
+            let argument = profile[command];
             const allowEmpty = ALLOW_EMPTY.includes(command);
+            // SillyBunny: a profile without a proxy value means "no proxy". Reset the
+            // proxy preset instead of skipping, otherwise the previous profile's proxy
+            // stays active and leaks into requests made under this profile.
+            if (command === 'proxy' && !argument && !profile.exclude?.includes(command)) {
+                argument = 'None';
+            }
             if (!argument && !(allowEmpty && argument === '')) {
                 continue;
             }
@@ -1000,8 +1008,17 @@ async function applyConnectionProfile(profile) {
                 cancelDebounce(saveSettingsDebounced);
                 try {
                     const result = await commandPromise;
+
                     if (command === 'secret-id') {
                         syncAppliedCustomEndpointProfileSecret(mode, result || argument);
+                    }
+
+                    // Validate critical commands succeeded
+                    if (['api', 'model', 'preset'].includes(command)) {
+                        if (!result && argument && !allowEmpty) {
+                            console.warn(`Profile application: ${command} returned empty result for argument "${argument}"`);
+                            failedCommands.push({ command, argument, reason: 'empty result' });
+                        }
                     }
                 } finally {
                     cancelDebounce(saveSettingsDebounced);
@@ -1012,6 +1029,7 @@ async function applyConnectionProfile(profile) {
                 }
 
                 console.error(`Failed to execute command: ${command} ${argument}`, error);
+                failedCommands.push({ command, argument, reason: error.message });
             }
 
             if (spinner.isAborted()) {
@@ -1022,6 +1040,18 @@ async function applyConnectionProfile(profile) {
         if (mode === 'cc') {
             maybeApplyModelSamplingProfile();
             cancelDebounce(saveSettingsDebounced);
+        }
+
+        // Show user-visible errors if any commands failed
+        if (failedCommands.length > 0) {
+            const commandList = failedCommands
+                .map(f => `${FANCY_NAMES[f.command] || f.command}: ${f.reason}`)
+                .join(', ');
+            toastr.warning(
+                t`Some profile settings could not be applied: ${commandList}`,
+                t`Profile application incomplete`,
+                { timeOut: 8000 },
+            );
         }
     } finally {
         spinner.stop();

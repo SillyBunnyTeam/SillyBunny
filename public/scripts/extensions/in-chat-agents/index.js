@@ -54,6 +54,7 @@ import {
     saveGroup,
     deleteGroup,
     createDefaultGroup,
+    reorderAgentsIntoOrderSlots,
 } from './agent-store.js';
 import {
     cancelAgentGeneration,
@@ -92,7 +93,7 @@ import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompani
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
-import { configureCompanionPanel, initCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
+import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
 
 const MODULE_NAME = 'in-chat-agents';
@@ -335,6 +336,11 @@ function normalizeCompanionBatchAgentIds(value = []) {
     return ids;
 }
 
+function getCompanionAgentOptionLabel(agent) {
+    const name = String(agent?.name ?? '').trim() || agent?.id || 'Companion';
+    return `${name} (Order ${getAgentOrderValue(agent)})`;
+}
+
 function getCompanionBatchOptionsForAgent(agent) {
     if (!isCompanionAgent(agent)) return [];
 
@@ -345,7 +351,7 @@ function getCompanionBatchOptionsForAgent(agent) {
         .map(candidate => ({
             id: candidate.id,
             referenceIds: getCompanionReferenceIds(candidate),
-            label: String(candidate.name ?? '').trim() || candidate.id,
+            label: getCompanionAgentOptionLabel(candidate),
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
 }
@@ -359,7 +365,7 @@ function getCompanionDependencyOptionsForAgent(agent) {
         .map(candidate => ({
             id: candidate.id,
             referenceIds: getCompanionReferenceIds(candidate),
-            label: String(candidate.name ?? '').trim() || candidate.id,
+            label: getCompanionAgentOptionLabel(candidate),
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
 }
@@ -1775,62 +1781,28 @@ async function reorderAgentsInGroup(orderedIds) {
             .filter(Boolean),
     ));
 
-    if (normalizedOrderedIds.length === 0) {
-        renderAgentList();
-        return;
-    }
-
-    const firstAgent = getAgentById(normalizedOrderedIds[0]);
+    const firstAgent = normalizedOrderedIds.length > 0 ? getAgentById(normalizedOrderedIds[0]) : null;
     if (!firstAgent) {
         renderAgentList();
         return;
     }
 
     const targetCategory = String(firstAgent.category ?? '').trim();
-    const sortedAgents = getAgents()
-        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0));
-    const categoryIds = sortedAgents
+    const categoryIds = getAgents()
+        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0))
         .filter(agent => String(agent?.category ?? '').trim() === targetCategory)
         .map(agent => agent.id);
 
-    if (categoryIds.length === 0) {
-        renderAgentList();
-        return;
-    }
-
+    // Filtered-out category members are not draggable; they keep their relative order below the visible set.
     const visibleIdSet = new Set(normalizedOrderedIds);
     const reorderedCategoryIds = [
         ...normalizedOrderedIds.filter(id => categoryIds.includes(id)),
         ...categoryIds.filter(id => !visibleIdSet.has(id)),
     ];
 
-    let categoryIndex = 0;
-    const finalOrderIds = sortedAgents.map(agent => {
-        if (String(agent?.category ?? '').trim() !== targetCategory) {
-            return agent.id;
-        }
-
-        const nextId = reorderedCategoryIds[categoryIndex];
-        categoryIndex += 1;
-        return nextId ?? agent.id;
-    });
-
-    for (let i = 0; i < finalOrderIds.length; i++) {
-        const agent = getAgentById(finalOrderIds[i]);
-        if (!agent) {
-            continue;
-        }
-
-        const desiredOrder = i * 10;
-        if (Number(agent?.injection?.order ?? 0) === desiredOrder) {
-            continue;
-        }
-
-        agent.injection.order = desiredOrder;
-        await saveAgent(agent);
-    }
-
+    await reorderAgentsIntoOrderSlots(reorderedCategoryIds);
     renderAgentList();
+    refreshCompanionPanel();
 }
 
 function isTouchSortableDevice() {
@@ -2367,7 +2339,7 @@ function renderAgentList() {
                                 <i class="fa-solid fa-star"></i>
                             </button>
                             <span class="ica--card-phase">${escapeHtml(getAgentCardPhaseLabel(agent))}</span>
-                            <button type="button" class="ica--card-drag-handle" title="Hold and drag to reorder">
+                            <button type="button" class="ica--card-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder agent">
                                 <i class="fa-solid fa-grip-vertical"></i>
                             </button>
                         </div>
@@ -2427,6 +2399,33 @@ function renderAgentList() {
             });
 
             card.find('.ica--card-drag-handle').on('click', stopEvent);
+
+            card.find('.ica--card-drag-handle').on('keydown', async event => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                    return;
+                }
+
+                stopEvent(event);
+                const cardEl = card[0];
+                const sibling = event.key === 'ArrowUp' ? cardEl.previousElementSibling : cardEl.nextElementSibling;
+                if (!sibling?.classList?.contains('ica--agent-card')) {
+                    return;
+                }
+
+                if (event.key === 'ArrowUp') {
+                    sibling.before(cardEl);
+                } else {
+                    sibling.after(cardEl);
+                }
+
+                const orderedIds = items.children('.ica--agent-card').map((_, el) => el.dataset.agentId).get();
+                await reorderAgentsInGroup(orderedIds);
+                // reorderAgentsInGroup re-renders the list; put focus back so nudges can be chained.
+                $('#ica--agentList .ica--agent-card')
+                    .filter((_, el) => el.dataset.agentId === agent.id)
+                    .find('.ica--card-drag-handle')
+                    .trigger('focus');
+            });
 
             // Prevent touch-punch (jQuery UI mouse widget polyfill) from
             // capturing touchstart on these buttons. Inside a .sortable()
@@ -2724,12 +2723,14 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     };
     fullscreenButton.on('click', () => updateEditorFullscreenState(!editorFullscreen));
     attachTextareaFullscreen(editorEl);
+    const editorOrderInput = editorEl.find('#ica--editor-order');
+    const companionOrderInput = editorEl.find('#ica--editor-companion-order');
 
     // Injection
     editorEl.find('#ica--editor-position').val(agent.injection.position);
     editorEl.find('#ica--editor-depth').val(agent.injection.depth);
     editorEl.find('#ica--editor-role').val(agent.injection.role);
-    editorEl.find('#ica--editor-order').val(agent.injection.order);
+    editorOrderInput.val(agent.injection.order);
     editorEl.find('#ica--editor-scan').prop('checked', agent.injection.scan);
     const preProcess = getAgentPreProcess(agent);
     editorEl.find('#ica--editor-pre-mode').val(preProcess.mode);
@@ -2992,6 +2993,14 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
+    function syncCompanionOrderInput() {
+        companionOrderInput.val(editorOrderInput.val());
+    }
+
+    function syncPrimaryOrderInputFromCompanion() {
+        editorOrderInput.val(companionOrderInput.val());
+    }
+
     function readCompanionConfigFromEditor(root, baseAgent = agent) {
         const current = getCompanionConfig(baseAgent);
         return {
@@ -3072,6 +3081,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     });
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
+    editorOrderInput.on('input change', syncCompanionOrderInput);
+    companionOrderInput.on('input change', syncPrimaryOrderInputFromCompanion);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
     updateChatroomExtraCharacterOptions();
@@ -3080,6 +3091,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateCompanionContextRecipientOptions();
     updateCompanionDependencyOptions();
     updateCompanionEditorVisibility();
+    syncCompanionOrderInput();
 
     // Show/hide sections based on phase
     function updatePhaseVisibility() {
@@ -5469,6 +5481,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     initCompanionWandMenuItem();
     configureCompanionPanel({
         openEditor: agentId => openEditor(agentId),
+        refreshAgentList: () => renderAgentList(),
     });
     initCompanionPanel();
     schedulePathfinderExtensionsMount();

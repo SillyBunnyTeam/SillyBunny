@@ -5,6 +5,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
+import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
 
 import {
     AIMLAPI_HEADERS,
@@ -2203,6 +2204,10 @@ router.post('/status', async function (request, statusResponse) {
                 console.error('Error fetching Cloudflare Workers AI models:', error);
                 return statusResponse.status(500).send({ error: true });
             }
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            apiUrl = `${getLinkApiBaseUrl(request.body.linkapi_endpoint)}/v1`;
+            apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+            headers = {};
         } else {
             console.warn('This chat completion source is not supported yet.');
             return statusResponse.status(400).send({ error: true });
@@ -2814,6 +2819,26 @@ export async function handleChatCompletionsGenerate(request, response) {
             case CHAT_COMPLETION_SOURCES.ELECTRONHUB: return await sendElectronHubRequest(request, response);
             case CHAT_COMPLETION_SOURCES.AZURE_OPENAI: return await sendAzureOpenAIRequest(request, response);
             case CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES: return await sendOpenAIResponsesRequest(request, response);
+            case CHAT_COMPLETION_SOURCES.LINKAPI: {
+                const format = getLinkApiRequestFormat(request.body.model);
+                if (format === 'openai') {
+                    break; // OpenAI-compatible models use the shared chat/completions path below
+                }
+                const baseUrl = getLinkApiBaseUrl(request.body.linkapi_endpoint);
+                const apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+                if (!apiKey) {
+                    console.warn('LinkAPI key is missing.');
+                    return response.status(400).send({ error: true });
+                }
+                // Delegate to the native handlers through their reverse-proxy override path.
+                request.body.proxy_password = apiKey;
+                if (format === 'anthropic') {
+                    request.body.reverse_proxy = `${baseUrl}/v1`; // handler appends '/messages'
+                    return await sendClaudeRequest(request, response);
+                }
+                request.body.reverse_proxy = baseUrl; // getGoogleApiBaseUrl appends '/v1beta'
+                return await sendMakerSuiteRequest(request, response);
+            }
         }
 
         let apiUrl;
@@ -3105,6 +3130,16 @@ export async function handleChatCompletionsGenerate(request, response) {
                     type: 'json_schema',
                     json_schema: request.body.json_schema.value,
                 };
+            }
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
+            apiUrl = `${getLinkApiBaseUrl(request.body.linkapi_endpoint)}/v1`;
+            apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
+            headers = {};
+            bodyParams = {};
+            if (request.body.reasoning_effort && request.body.reasoning_effort !== 'none') {
+                // Client-side aliases min/max are not valid OpenAI-style effort values.
+                const effortMap = { min: 'low', max: 'high' };
+                bodyParams['reasoning_effort'] = effortMap[request.body.reasoning_effort] ?? request.body.reasoning_effort;
             }
         } else {
             console.warn('This chat completion source is not supported yet.');

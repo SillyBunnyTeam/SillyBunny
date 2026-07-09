@@ -24,7 +24,7 @@ import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
 import { normalizeCharacterBookPosition, normalizeWorldInfoPosition } from './world-info-character-book.js';
-import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks } from './world-info-batch-helpers.js';
+import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -5911,7 +5911,10 @@ export function checkEmbeddedWorld(chid) {
         // Only show the alert once per character
         const checkKey = `AlertWI_${characters[chid].avatar}`;
         const worldName = characters[chid]?.data?.extensions?.world;
-        if (!accountStorage.getItem(checkKey) && (!worldName || !world_names.includes(worldName))) {
+        const bookName = characters[chid]?.data?.character_book?.name || `${characters[chid]?.name}'s Lorebook`;
+        const fileName = getCharaFilename(null, { manualAvatarKey: characters[chid].avatar });
+        const auxBooks = getLinkedAuxBooks(world_info.charLore, fileName);
+        if (!accountStorage.getItem(checkKey) && !isEmbeddedBookLinked(bookName, worldName, auxBooks, world_names)) {
             accountStorage.setItem(checkKey, 'true');
 
             if (power_user.world_import_dialog) {
@@ -6020,21 +6023,91 @@ export async function importEmbeddedWorldInfoBatch() {
 
     const collisionCount = candidates.filter(c => c.collision).length;
 
-    let collisionNote = '';
+    // Build a selectable checkbox list via DOM construction (avoids HTML injection)
+    const contentEl = document.createElement('div');
+    const heading = document.createElement('h3');
+    heading.textContent = t`Import embedded lorebooks for ${candidates.length} visible character(s)?`;
+    contentEl.appendChild(heading);
+
     if (collisionCount > 0) {
-        const collisionNames = candidates.filter(c => c.collision).map(c => escapeHtml(c.bookName));
-        collisionNote = `<div class="m-b-1">${t`Warning:`} <b>${collisionCount}</b> ${t`will overwrite existing lorebook(s):`} ${collisionNames.join(', ')}</div>`;
+        const note = document.createElement('div');
+        note.className = 'm-b-1';
+        note.textContent = t`Checked entries marked with a warning will overwrite the existing lorebook with the same name.`;
+        contentEl.appendChild(note);
     }
 
-    const html = `<h3>${t`Import embedded lorebooks for ${candidates.length} visible character(s)?`}</h3>${collisionNote}`;
-    const confirm = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { okButton: t`Import` });
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'checkbox_label flexGap5 m-b-1';
+    const toggleAll = document.createElement('input');
+    toggleAll.type = 'checkbox';
+    toggleAll.checked = true;
+    const toggleSpan = document.createElement('span');
+    toggleSpan.textContent = t`Select all`;
+    toggleLabel.appendChild(toggleAll);
+    toggleLabel.appendChild(toggleSpan);
+    contentEl.appendChild(toggleLabel);
+
+    const listEl = document.createElement('div');
+    listEl.style.maxHeight = '50vh';
+    listEl.style.overflowY = 'auto';
+    listEl.style.textAlign = 'left';
+    contentEl.appendChild(listEl);
+
+    for (const candidate of candidates) {
+        const label = document.createElement('label');
+        label.className = 'checkbox_label flexGap5';
+        label.style.margin = '4px 0';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.dataset.chid = String(candidate.chid);
+        checkbox.classList.add('batch_wi_import_candidate');
+
+        const span = document.createElement('span');
+        span.textContent = `${candidate.characterName} → ${candidate.bookName}`;
+
+        label.appendChild(checkbox);
+        label.appendChild(span);
+
+        if (candidate.collision) {
+            const warn = document.createElement('small');
+            warn.textContent = t`(overwrites existing)`;
+            label.appendChild(warn);
+        }
+
+        listEl.appendChild(label);
+    }
+
+    toggleAll.addEventListener('change', () => {
+        listEl.querySelectorAll('input.batch_wi_import_candidate').forEach(input => {
+            if (input instanceof HTMLInputElement) {
+                input.checked = toggleAll.checked;
+            }
+        });
+    });
+
+    const content = $(contentEl);
+    const confirm = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', { okButton: t`Import`, wide: true });
 
     if (!confirm) {
         return;
     }
 
+    const selectedChids = new Set();
+    content.find('input.batch_wi_import_candidate:checked').each(function () {
+        selectedChids.add(String($(this).data('chid')));
+    });
+
+    const selected = candidates.filter(c => selectedChids.has(String(c.chid)));
+
+    if (selected.length === 0) {
+        toastr.info(t`No characters selected.`, t`Batch Import`);
+        return;
+    }
+
     const results = [];
-    for (const candidate of candidates) {
+    for (const candidate of selected) {
         try {
             const result = await importEmbeddedWorldInfoForCharacter(candidate.chid);
 
@@ -6046,6 +6119,8 @@ export async function importEmbeddedWorldInfoBatch() {
                     if (!linkedBooks.includes(result.bookName)) {
                         await charUpdateAddAuxWorld(characterKey, result.bookName);
                     }
+                    // Mark the one-time embedded lorebook alert as handled for this character
+                    accountStorage.setItem(`AlertWI_${characterKey}`, 'true');
                 }
             }
 
@@ -6092,7 +6167,7 @@ export async function importEmbeddedWorldInfoBatch() {
     }
 
     await callGenericPopup(summary, POPUP_TYPE.TEXT, '', { okButton: t`Close` });
-    toastr.success(t`Imported ${imported.length} lorebook(s) from ${candidates.length} character(s).`, t`Batch Import Complete`);
+    toastr.success(t`Imported ${imported.length} lorebook(s) from ${selected.length} character(s).`, t`Batch Import Complete`);
 }
 
 export function onWorldInfoChange(args, text) {

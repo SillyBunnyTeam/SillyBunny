@@ -95,6 +95,7 @@ beforeAll(async () => {
             maxTokens: 2048,
         })),
         loadAgents: jest.fn(),
+        reorderAgentsIntoOrderSlots: jest.fn(async () => false),
         saveAgent: jest.fn(async () => {}),
         deleteAgent: jest.fn(async () => {}),
         createDefaultAgent: jest.fn(() => ({
@@ -215,6 +216,7 @@ beforeAll(async () => {
         configureCompanionPanel: jest.fn(),
         initCompanionPanel: jest.fn(),
         openCompanionPanel: jest.fn(),
+        refreshCompanionPanel: jest.fn(),
         updateCompanionPanelHandleVisibility: jest.fn(),
     }));
 

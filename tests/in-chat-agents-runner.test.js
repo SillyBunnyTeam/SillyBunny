@@ -54,6 +54,7 @@ describe('in-chat agent post-processing runner', () => {
     let contextCharacterId;
     let contextGroups;
     let contextGroupId;
+    let getWorldInfoPrompt;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -138,6 +139,7 @@ describe('in-chat agent post-processing runner', () => {
         contextCharacterId = undefined;
         contextGroups = [];
         contextGroupId = null;
+        getWorldInfoPrompt = jest.fn(async () => ({ worldInfoString: '' }));
 
         const addListener = (listeners, event, handler) => {
             const eventListeners = listeners.get(event) ?? [];
@@ -201,8 +203,9 @@ describe('in-chat agent post-processing runner', () => {
             extension_prompts: extensionPrompts,
             eventSource,
             event_types: eventTypes,
-            setExtensionPrompt: jest.fn((key, value) => {
-                extensionPrompts[key] = { value };
+            setExtensionPrompt: jest.fn((key, value, _position, _depth, _scan, _role, _filter = null, name = null) => {
+                const promptName = typeof name === 'string' ? name.trim() : '';
+                extensionPrompts[key] = { value, ...(promptName && { name: promptName }) };
             }),
             substituteParams: jest.fn((value, options = {}) => String(value ?? '')
                 .replaceAll('{{user}}', 'Traveler')
@@ -280,7 +283,7 @@ describe('in-chat agent post-processing runner', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({
-            getWorldInfoPrompt: jest.fn(async () => ({ worldInfoString: '' })),
+            getWorldInfoPrompt,
         }));
 
         await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
@@ -815,7 +818,7 @@ describe('in-chat agent post-processing runner', () => {
         await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, true);
 
         expect(extensionPrompts.inchat_agent_stale).toBeUndefined();
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('delegates companion feedback prompt injection through registered runtime', async () => {
@@ -1315,6 +1318,7 @@ describe('in-chat agent post-processing runner', () => {
         // Assistant tail = swipe/regenerate of that message: its own state must not feed back.
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_feedback-companion'];
+        expect(injected.name).toBe('Companion');
         expect(injected.value).toContain('State one');
         expect(injected.value).not.toContain('Stale swipe state');
 
@@ -1499,6 +1503,54 @@ describe('in-chat agent post-processing runner', () => {
         // so the threshold is unmet again until fresh context accrues.
         expect(companionRunner.getChatTokenEstimate()).toBe(15000);
         expect(companionRunner.meetsCompanionContextThreshold(shard, 2)).toBe(false);
+    });
+
+    test('expands companion context to the minimum token window and skips hidden messages', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const shard = createCompanionAgent({
+            id: 'memory-shard',
+            companion: { contextMessages: 2, minContextTokens: 30 },
+        });
+
+        chat.push(
+            { mes: 'Visible beginning context.', name: 'Assistant', is_user: false, is_system: false, extra: { token_count: 10 } },
+            { mes: 'Hidden absorbed context.', name: 'System', is_user: false, is_system: true, extra: { token_count: 1000 } },
+            { mes: 'Visible recent setup.', name: 'User', is_user: true, is_system: false, extra: { token_count: 10 } },
+            { mes: 'Visible latest reply.', name: 'Assistant', is_user: false, is_system: false, extra: { token_count: 10 } },
+        );
+
+        const messages = await companionRunner.buildCompanionPromptMessages(shard, 3);
+        const prompt = messages[1].content;
+
+        expect(prompt).toContain('[Recent conversation]');
+        expect(prompt).toContain('Assistant: Visible beginning context.');
+        expect(prompt).toContain('User: Visible recent setup.');
+        expect(prompt).toContain('Assistant: Visible latest reply.');
+        expect(prompt).not.toContain('Hidden absorbed context.');
+        expect(prompt.indexOf('Assistant: Visible beginning context.')).toBeLessThan(prompt.indexOf('User: Visible recent setup.'));
+        expect(prompt.indexOf('User: Visible recent setup.')).toBeLessThan(prompt.indexOf('Assistant: Visible latest reply.'));
+    });
+
+    test('excludes hidden messages from companion world info scans', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const worldInfoCompanion = createCompanionAgent({
+            id: 'world-info-companion',
+            companion: { includeWorldInfo: true },
+        });
+
+        chat.push(
+            { mes: 'Visible lore trigger.', name: 'Assistant', is_user: false, is_system: false, extra: {} },
+            { mes: 'Hidden lore trigger.', name: 'System', is_user: false, is_system: true, extra: {} },
+            { mes: 'Visible current turn.', name: 'User', is_user: true, is_system: false, extra: {} },
+        );
+
+        await companionRunner.buildCompanionPromptMessages(worldInfoCompanion, 2);
+
+        expect(getWorldInfoPrompt).toHaveBeenCalledTimes(1);
+        expect(getWorldInfoPrompt.mock.calls[0][0]).toEqual([
+            'Visible current turn.',
+            'Visible lore trigger.',
+        ]);
     });
 
     test('appends the repair instruction on fix runs', async () => {
@@ -2180,7 +2232,9 @@ describe('in-chat agent post-processing runner', () => {
 
         chat.push({ mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([companionAgent]);
-        const injected = extensionPrompts['inchat_agent_companion_plot-compass'].value;
+        const injectedPrompt = extensionPrompts['inchat_agent_companion_plot-compass'];
+        const injected = injectedPrompt.value;
+        expect(injectedPrompt.name).toBe('Plot Compass');
         expect(injected).toContain('Objective: Traveler ends up living with Mira after Mira sees literal {{char}} text.');
         expect(injected).not.toContain('{{user}}');
     });
@@ -2315,7 +2369,7 @@ describe('in-chat agent post-processing runner', () => {
         await generationPromise;
 
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('reuses cached Pathfinder retrieval when swiping the same assistant message', async () => {
@@ -2385,7 +2439,7 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(runSidecarRetrieval).toHaveBeenCalledTimes(1);
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('shows a processing toast while Pathfinder pipeline retrieval is running', async () => {

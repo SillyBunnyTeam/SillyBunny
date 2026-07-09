@@ -8,7 +8,7 @@ import {
 } from '../../../../script.js';
 import { power_user } from '../../../power-user.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { eventSource } from '../../../events.js';
+import { eventSource, event_types } from '../../../events.js';
 import { getWorldInfoPrompt } from '../../../world-info.js';
 import { getConnectionProfileDisplayName } from '../profile-utils.js';
 import {
@@ -40,6 +40,7 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    isValidCompanionMessage,
     normalizePlotCompassObjective,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
@@ -555,9 +556,34 @@ function getMessageLine(message) {
     return `${label}: ${normalizeText(message?.mes ?? '')}`;
 }
 
+function getMessageTokenEstimate(message) {
+    const counted = Number(message?.extra?.token_count);
+    return Number.isFinite(counted) && counted > 0
+        ? counted
+        : Math.ceil(String(message?.mes ?? '').length / 4);
+}
+
 function getRecentConversationSection(messageIndex, companion) {
-    const start = Math.max(0, messageIndex + 1 - companion.contextMessages);
-    const lines = chat.slice(start, messageIndex + 1)
+    const minMessages = Math.max(1, Number(companion.contextMessages) || 1);
+    const minContextTokens = Math.max(0, Number(companion.minContextTokens) || 0);
+    const selected = [];
+    let tokenTotal = 0;
+
+    for (let index = Math.min(messageIndex, chat.length - 1); index >= 0; index--) {
+        const message = chat[index];
+        if (!isValidCompanionMessage(message)) {
+            continue;
+        }
+
+        selected.push(message);
+        tokenTotal += getMessageTokenEstimate(message);
+
+        if (selected.length >= minMessages && (!minContextTokens || tokenTotal >= minContextTokens)) {
+            break;
+        }
+    }
+
+    const lines = selected.reverse()
         .map(getMessageLine)
         .filter(line => line.trim());
     return lines.length ? lines.join('\n') : '';
@@ -609,6 +635,7 @@ async function getWorldInfoSection(messageIndex, companion) {
 
     try {
         const scanLines = chat.slice(0, messageIndex + 1)
+            .filter(isValidCompanionMessage)
             .map(message => normalizeText(message?.mes ?? ''))
             .filter(Boolean)
             .reverse();
@@ -812,6 +839,7 @@ function getBatchKey(agent, messageIndex) {
         profile: resolveCompanionConnectionProfile(agent.connectionProfile),
         model: String(agent.modelOverride ?? '').trim(),
         contextMessages: companion.contextMessages,
+        minContextTokens: companion.minContextTokens,
         includeCharacterCard: companion.includeCharacterCard,
         includePersona: companion.includePersona,
         includeWorldInfo: companion.includeWorldInfo,
@@ -1367,10 +1395,7 @@ export function getChatTokenEstimate(beforeMessageIndex = chat.length) {
         if (message?.is_system) {
             continue;
         }
-        const counted = Number(message?.extra?.token_count);
-        total += Number.isFinite(counted) && counted > 0
-            ? counted
-            : Math.ceil(String(message?.mes ?? '').length / 4);
+        total += getMessageTokenEstimate(message);
     }
 
     return total;
@@ -1569,6 +1594,8 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
             agent.injection.depth,
             agent.injection.scan,
             agent.injection.role,
+            null,
+            agent.name,
         );
     }
 }
@@ -1670,6 +1697,33 @@ export function getLatestValidCompanionMessageIndex() {
     return -1;
 }
 
+/**
+ * A swipe into a brand-new slot has no swipe_info entry yet, so companion reads fall back
+ * to message.extra — which still holds the previous swipe's results. Clear them so the
+ * message cards and panel go blank while the new swipe generates instead of showing the
+ * old swipe's state. The old swipe keeps its own copy: script.js runs syncMesToSwipe
+ * before moving off it. Navigating existing swipes is untouched (syncSwipeToMes already
+ * restores that swipe's own results).
+ */
+function onCompanionMessageSwiped(messageIndex) {
+    const index = Number(messageIndex);
+    const message = chat[index];
+    if (!isAssistantMessage(message)) {
+        return;
+    }
+
+    const isNewSwipeSlot = typeof message.swipe_id === 'number'
+        && Array.isArray(message.swipe_info)
+        && !message.swipe_info[message.swipe_id];
+    if (!isNewSwipeSlot || Object.keys(getCompanionResults(message)).length === 0) {
+        return;
+    }
+
+    deleteAgentExtraValue(message, COMPANION_RESULTS_EXTRA_KEY);
+    saveChatDebounced({ deferBackup: false });
+    void emitCompanionResultsUpdated(index);
+}
+
 export function initCompanionRunner() {
     if (companionRunnerInitialized) {
         return;
@@ -1681,4 +1735,8 @@ export function initCompanionRunner() {
         injectCompanionFeedbackPrompts,
         runCompanionAgentOnMessage,
     });
+
+    if (event_types.MESSAGE_SWIPED) {
+        eventSource.on(event_types.MESSAGE_SWIPED, onCompanionMessageSwiped);
+    }
 }

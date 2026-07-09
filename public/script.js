@@ -3875,6 +3875,14 @@ const CUSTOM_MODEL_ICON_PATTERNS = Object.freeze([
     { icon: 'perplexity', pattern: /\bsonar\b|perplexity[/:_-]|r1-1776/i },
     { icon: 'moonshot', pattern: /\b(?:kimi|moonshot)\b/i },
     { icon: 'zai', pattern: /\b(?:glm|autoglm)\b|zai-org[/:_-]/i },
+    { icon: 'qwen', pattern: /\bqwen[\w.-]*\b|\b(?:qwq|qvq)(?:[\w.-]*)?\b/i },
+    { icon: 'xiaomi', pattern: /\bmimo(?:[-_.][\w.-]+)*\b|\bxiaomi\b|xiaomi[/:_-]/i },
+    { icon: 'longcat', pattern: /\blong[-_ ]?cat(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'doubao', pattern: /\bdoubao[\w.-]*\b|\bbyte[-_ ]?dance\b|bytedance[/:_-]/i },
+    { icon: 'crofai', pattern: /\bcrofai\b|crofai[/:_-]|\bgreg(?:[-_.][\w.-]+)?\b/i },
+    { icon: 'nvidia', pattern: /\bnemotron[\w.-]*\b|\bnvidia\b|nvidia[/:_-]/i },
+    { icon: 'stepfun', pattern: /\bstepfun\b|\bstep[-_ ]?(?:fun|\d)[\w.-]*\b/i },
+    { icon: 'hunyuan', pattern: /\bhunyuan[\w.-]*\b|\btencent\b|tencent[/:_-]/i },
     { icon: 'openrouter', pattern: /\bopenrouter\b/i },
     { icon: 'fireworks', pattern: /\bfireworks\b/i },
     { icon: 'groq', pattern: /\bgroq\b/i },
@@ -9082,6 +9090,15 @@ export function extractJsonFromData(data, { mainApi = null, chatCompletionSource
                 case chat_completion_sources.CLAUDE:
                     result = data?.content?.find(x => x.type === 'tool_use')?.input;
                     break;
+                case chat_completion_sources.LINKAPI:
+                    // Anthropic-leg responses carry raw content blocks; other legs return plain text.
+                    result = Array.isArray(data?.content)
+                        ? data.content.find(x => x.type === 'tool_use')?.input
+                        : tryParse(text);
+                    if (!result && returnInvalidJson) {
+                        return text;
+                    }
+                    break;
                 case chat_completion_sources.PERPLEXITY:
                     result = tryParse(removeReasoningFromString(text));
                     if (!result && returnInvalidJson) {
@@ -11212,8 +11229,15 @@ async function saveSettingsInner(loopCounter = 0) {
         background: background_settings,
         proxies: proxies,
         selected_proxy: selected_proxy,
-        custom_endpoint_presets: custom_endpoint_presets,
-        selected_custom_endpoint_preset: selected_custom_endpoint_preset,
+        // Strip plaintext keys from presets before saving
+        custom_endpoint_presets: custom_endpoint_presets.map(p => ({
+            ...p,
+            key: p.secretId ? '' : p.key,
+        })),
+        selected_custom_endpoint_preset: selected_custom_endpoint_preset ? {
+            ...selected_custom_endpoint_preset,
+            key: selected_custom_endpoint_preset.secretId ? '' : selected_custom_endpoint_preset.key,
+        } : selected_custom_endpoint_preset,
     };
 
     try {
@@ -13692,11 +13716,14 @@ function select_rm_characters() {
  * @param {string} value Prompt injection value.
  * @param {number} position Insertion position. 0 is after story string, 1 is in-chat with custom depth.
  * @param {number} depth Insertion depth. 0 represets the last message in context. Expected values up to MAX_INJECTION_DEPTH.
- * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {boolean} scan Should the prompt be included in the world info scan.
+ * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {(function(): Promise<boolean>|boolean)} filter Filter function to determine if the prompt should be injected.
+ * @param {string|null} name Display name shown in Prompt Manager.
  */
-export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null) {
+export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null, name = null) {
+    const promptName = typeof name === 'string' ? name.trim() : '';
+
     extension_prompts[key] = {
         value: String(value),
         position: Number(position),
@@ -13704,6 +13731,7 @@ export function setExtensionPrompt(key, value, position, depth, scan = false, ro
         scan: !!scan,
         role: Number(role ?? extension_prompt_roles.SYSTEM),
         filter: filter,
+        ...(promptName && { name: promptName }),
     };
 }
 

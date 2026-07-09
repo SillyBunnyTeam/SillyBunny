@@ -79,6 +79,7 @@ describe('companion tracker panel', () => {
             isAgentEnabledForCurrentScope: jest.fn(agent => Boolean(agent?.enabled)),
             isAgentHidden: jest.fn(agentId => hiddenAgentIds.has(String(agentId ?? '').trim())),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
+            reorderAgentsIntoOrderSlots: jest.fn(async () => false),
             saveAgent: jest.fn(async () => {}),
             setHiddenAgentIds: jest.fn(ids => {
                 hiddenAgentIds = new Set([...ids].map(id => String(id ?? '').trim()).filter(Boolean));

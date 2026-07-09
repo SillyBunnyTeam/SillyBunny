@@ -456,7 +456,7 @@
 }
 
 .ica--card-drag-handle {
-    display: none;
+    display: inline-flex;
     width: 28px;
     height: 28px;
     align-items: center;
@@ -470,6 +470,7 @@
     opacity: 0.45;
     cursor: grab;
     flex-shrink: 0;
+    touch-action: none;
 }
 
 .ica--card-drag-handle:hover {
@@ -980,9 +981,13 @@ button.ica--card-pill--version-update {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-height: 0;
     max-height: min(82vh, 960px);
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .ica--editor-section {
@@ -1079,16 +1084,30 @@ button.ica--card-pill--version-update {
     overflow: hidden;
 }
 
-.ica--textarea-fullscreen-backdrop {
+dialog.ica--textarea-fullscreen-backdrop {
     position: fixed;
     inset: 0;
     z-index: 10060;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
     background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 42%, transparent);
     -webkit-backdrop-filter: blur(6px);
     backdrop-filter: blur(6px);
 }
 
-.ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+dialog.ica--textarea-fullscreen-backdrop::backdrop {
+    background: transparent;
+}
+
+/* While fullscreen, the field and toggle are hosted inside the body-level backdrop so
+   transformed/filtered dialog ancestors cannot become their containing block and
+   shrink or misplace the viewport-sized editor. */
+.ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
     --ica-textarea-fullscreen-top: max(10px, env(safe-area-inset-top, 0px));
     --ica-textarea-fullscreen-right: max(10px, env(safe-area-inset-right, 0px));
     --ica-textarea-fullscreen-bottom: max(10px, env(safe-area-inset-bottom, 0px));
@@ -1110,9 +1129,12 @@ button.ica--card-pill--version-update {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 96%, var(--SmartThemeChatTintColor, #222) 4%);
     box-shadow: 0 24px 80px color-mix(in srgb, var(--SmartThemeShadowColor) 42%, transparent);
     line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    overflow-y: auto;
 }
 
-.ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+.ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
     position: fixed;
     top: calc(max(10px, env(safe-area-inset-top, 0px)) + 10px);
     right: calc(max(10px, env(safe-area-inset-right, 0px)) + 10px);
@@ -1121,7 +1143,7 @@ button.ica--card-pill--version-update {
 }
 
 @media (max-width: 600px) {
-    .ica--textarea-fullscreen-wrapper textarea.ica--textarea-fullscreen-field {
+    .ica--textarea-fullscreen-backdrop textarea.ica--textarea-fullscreen-field {
         --ica-textarea-fullscreen-top: max(6px, env(safe-area-inset-top, 0px));
         --ica-textarea-fullscreen-right: max(6px, env(safe-area-inset-right, 0px));
         --ica-textarea-fullscreen-bottom: max(6px, env(safe-area-inset-bottom, 0px));
@@ -1131,7 +1153,7 @@ button.ica--card-pill--version-update {
         font-size: 16px;
     }
 
-    .ica--textarea-fullscreen-wrapper.is-fullscreen .ica--textarea-fullscreen-toggle {
+    .ica--textarea-fullscreen-backdrop .ica--textarea-fullscreen-toggle {
         top: calc(max(6px, env(safe-area-inset-top, 0px)) + 8px);
         right: calc(max(6px, env(safe-area-inset-right, 0px)) + 8px);
     }
@@ -2014,6 +2036,26 @@ button.ica--card-pill--version-update {
     display: none;
 }
 
+.ica--tpanel-drag-handle {
+    cursor: grab;
+    touch-action: none;
+}
+
+.ica--tpanel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.ica--tpanel-agent-placeholder {
+    min-height: 64px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 58%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 10%, transparent);
+}
+
+.ui-sortable-helper.ica--tpanel-agent {
+    box-shadow: 0 18px 36px color-mix(in srgb, #000 24%, transparent);
+}
+
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;
@@ -2734,11 +2776,6 @@ button.ica--card-pill--version-update {
 @media (pointer: coarse), (any-pointer: coarse) {
     .ica--category-items.ui-sortable .ica--agent-card {
         touch-action: pan-y;
-    }
-
-    .ica--card-drag-handle {
-        display: inline-flex;
-        touch-action: none;
     }
 
     .ica--card-toggle::before {

@@ -741,16 +741,64 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
+const MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR = [
+    'html',
+    'body',
+    '#bg1',
+    '#bg_custom',
+].join(', ');
+
 const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
+    '#sheld',
+    '#chat',
+    '#form_sheld',
+    '#top-bar',
+    '#top-settings-holder',
+    '#send_form',
     '#nonQRFormItems',
     '#leftSendForm',
     '#qr--bar',
     '#rightSendForm',
+    '#sb-mobile-nav',
+    '#sb-mobile-chat-tools',
+    '#sb-mobile-chat-tools-panel',
+    '#sb-bottom-chat-bar',
+    '#sb-persona-picker',
+    '#select2-sb-bottom-chat-select-container',
+    '[aria-labelledby="select2-sb-bottom-chat-select-container"]',
+    '.select2-selection',
+    '#shadow_popup',
+    '#dialogue_popup',
+    '#left-nav-panel',
+    '#right-nav-panel',
+    '#user-settings-block',
+    '#ica--tracker-panel',
+    '#ica--tracker-panel-handle',
+    'dialog.popup',
+    '.popup',
+    '.sb-shell-root',
+    '.sb-shell-header',
+    '.ica--tpanel',
+    '.ica--tpanel-handle',
 ].join(', ');
 
-const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
+const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '#leftSendForm',
     '#qr--bar',
+    '#sb-bottom-chat-secondary-row',
+    '.sb-bottom-chat-secondary-row',
+    '#sb-persona-picker',
+    '.sb-shell-nav',
+    '.select2-results__options',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR = [
+    '#left-nav-panel.openDrawer',
+    '#right-nav-panel.openDrawer',
+    '#user-settings-block.openDrawer',
+    '.sb-shell-root.openDrawer',
+    '#ica--tracker-panel.is-open',
+    '.ica--tpanel.is-open',
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
@@ -760,13 +808,47 @@ const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
     '[contenteditable="true"]',
 ].join(', ');
 
-const MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR = '#ica--tracker-panel-handle';
+const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
+    '#dialogue_popup_controls',
+    '.popup-controls',
+    '.popup-button-close',
+    '.select2-selection',
+    '#ica--tracker-panel-handle',
+    '.ica--tpanel-handle',
+].join(', ');
+
+const MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX = 3;
+const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
+
+function elementMatchesSelector(element, selector) {
+    return Boolean(element && typeof element.matches === 'function' && element.matches(selector));
+}
+
+function getParentElementLike(element) {
+    if (!element || typeof element !== 'object') {
+        return null;
+    }
+
+    if (element.parentElement && typeof element.parentElement === 'object') {
+        return element.parentElement;
+    }
+
+    if (element.parentNode && typeof element.parentNode === 'object' && element.parentNode !== element) {
+        return element.parentNode;
+    }
+
+    if (element.host && typeof element.host === 'object' && element.host !== element) {
+        return element.host;
+    }
+
+    return null;
+}
 
 function closestMatchingElement(target, selector) {
     let element = target;
 
     while (element && typeof element === 'object') {
-        if (typeof element.matches === 'function' && element.matches(selector)) {
+        if (elementMatchesSelector(element, selector)) {
             return element;
         }
 
@@ -777,7 +859,7 @@ function closestMatchingElement(target, selector) {
             }
         }
 
-        element = element.parentElement ?? null;
+        element = getParentElementLike(element);
     }
 
     return null;
@@ -785,6 +867,17 @@ function closestMatchingElement(target, selector) {
 
 function findTouchByIdentifier(touches, identifier) {
     return Array.from(touches ?? []).find(touch => touch?.identifier === identifier) ?? null;
+}
+
+function isHorizontalGesture(delta) {
+    if (!delta) {
+        return false;
+    }
+
+    const absX = Math.abs(delta.x);
+    const absY = Math.abs(delta.y);
+
+    return absX > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && absX > absY;
 }
 
 function getGestureDelta(event, touchStart) {
@@ -803,7 +896,22 @@ function getGestureDelta(event, touchStart) {
     };
 }
 
-function canElementScrollForGesture(element, delta) {
+function canElementScrollOnAxis(element, axis) {
+    if (typeof Element === 'undefined' || !(element instanceof Element) || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+        return true;
+    }
+
+    if (typeof document !== 'undefined' && element === document.scrollingElement) {
+        return true;
+    }
+
+    const style = window.getComputedStyle(element);
+    const overflow = axis === 'x' ? style.overflowX : style.overflowY;
+
+    return SCROLLABLE_OVERFLOW_VALUES.has(overflow);
+}
+
+function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
     if (!element || !delta) {
         return false;
     }
@@ -811,15 +919,49 @@ function canElementScrollForGesture(element, delta) {
     const absX = Math.abs(delta.x);
     const absY = Math.abs(delta.y);
     const wantsHorizontalScroll = absX > absY;
-    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > 1;
-    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > 1;
+    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > 1 && canElementScrollOnAxis(element, 'x');
+    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > 1 && canElementScrollOnAxis(element, 'y');
 
-    return wantsHorizontalScroll ? canScrollX : canScrollY;
+    if (!requireAvailableScrollInDirection) {
+        return wantsHorizontalScroll ? canScrollX : canScrollY;
+    }
+
+    if (wantsHorizontalScroll) {
+        if (!canScrollX) {
+            return false;
+        }
+
+        const scrollLeft = normalizeNumber(element.scrollLeft);
+        const maxScrollLeft = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth);
+        return delta.x > 0 ? scrollLeft > 0 : scrollLeft < maxScrollLeft - 1;
+    }
+
+    if (!canScrollY) {
+        return false;
+    }
+
+    const scrollTop = normalizeNumber(element.scrollTop);
+    const maxScrollTop = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight);
+    return delta.y > 0 ? scrollTop > 0 : scrollTop < maxScrollTop - 1;
+}
+
+function closestScrollableElementForGesture(target, delta, { requireAvailableScrollInDirection = false } = {}) {
+    let element = target;
+
+    while (element && typeof element === 'object') {
+        if (canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection })) {
+            return element;
+        }
+
+        element = getParentElementLike(element);
+    }
+
+    return null;
 }
 
 /**
- * Decides whether a mobile touchmove started on non-scrollable composer chrome
- * should be cancelled before the browser pans the visual viewport.
+ * Decides whether a mobile touchmove started on fixed mobile chrome should be
+ * cancelled before the browser pans the visual viewport.
  * @param {TouchEvent|object} event Touchmove-like event.
  * @param {object} [options] Options.
  * @param {{identifier: number, clientX: number, clientY: number}|null} [options.touchStart=null] Starting touch point.
@@ -830,17 +972,41 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
         return false;
     }
 
-    if (closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_OWNED_GESTURE_SELECTOR)
-        || closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR)) {
+    const target = event.target;
+    const backgroundElement = elementMatchesSelector(target, MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR);
+    const guardedElement = backgroundElement ? null : closestMatchingElement(target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR);
+
+    if (!guardedElement && !backgroundElement) {
         return false;
     }
 
-    if (!closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR)) {
+    if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR)) {
         return false;
     }
 
-    const scrollElement = closestMatchingElement(event.target, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR);
-    if (canElementScrollForGesture(scrollElement, getGestureDelta(event, touchStart))) {
+    const editableElement = closestMatchingElement(target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
+    if (editableElement) {
+        const isScrollableEditable = elementMatchesSelector(editableElement, 'textarea, [contenteditable="true"]');
+        if (isScrollableEditable) {
+            const gestureDelta = getGestureDelta(event, touchStart);
+            if (gestureDelta && canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR)) {
+        return true;
+    }
+
+    const gestureDelta = getGestureDelta(event, touchStart);
+    const scrollElement = closestScrollableElementForGesture(target, gestureDelta, { requireAvailableScrollInDirection: true });
+    if (scrollElement) {
+        if (isHorizontalGesture(gestureDelta)) {
+            return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
+        }
+
         return false;
     }
 
