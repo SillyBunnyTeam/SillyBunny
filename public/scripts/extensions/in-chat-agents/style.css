@@ -456,7 +456,7 @@
 }
 
 .ica--card-drag-handle {
-    display: none;
+    display: inline-flex;
     width: 28px;
     height: 28px;
     align-items: center;
@@ -470,6 +470,7 @@
     opacity: 0.45;
     cursor: grab;
     flex-shrink: 0;
+    touch-action: none;
 }
 
 .ica--card-drag-handle:hover {
@@ -2035,6 +2036,26 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     display: none;
 }
 
+.ica--tpanel-drag-handle {
+    cursor: grab;
+    touch-action: none;
+}
+
+.ica--tpanel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.ica--tpanel-agent-placeholder {
+    min-height: 64px;
+    border-radius: var(--sb-radius-lg, 14px);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 58%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 10%, transparent);
+}
+
+.ui-sortable-helper.ica--tpanel-agent {
+    box-shadow: 0 18px 36px color-mix(in srgb, #000 24%, transparent);
+}
+
 .ica--tpanel-agent-head {
     display: flex;
     align-items: center;
@@ -2755,11 +2776,6 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 @media (pointer: coarse), (any-pointer: coarse) {
     .ica--category-items.ui-sortable .ica--agent-card {
         touch-action: pan-y;
-    }
-
-    .ica--card-drag-handle {
-        display: inline-flex;
-        touch-action: none;
     }
 
     .ica--card-toggle::before {

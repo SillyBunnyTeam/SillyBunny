@@ -782,25 +782,6 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '.ica--tpanel-handle',
 ].join(', ');
 
-const MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR = [
-    '#chat',
-    '#leftSendForm',
-    '#qr--bar',
-    '#sb-bottom-chat-secondary-row',
-    '.sb-bottom-chat-secondary-row',
-    '#sb-persona-picker',
-    '#dialogue_popup_text',
-    '.sb-shell-nav',
-    '.sb-shell-panel-scroller',
-    '.scrollableInner',
-    '.scrollableInnerFull',
-    '#ica--tracker-panel',
-    '.ica--tpanel',
-    '.popup-body',
-    '.popup-content',
-    '.select2-results__options',
-].join(', ');
-
 const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '#leftSendForm',
     '#qr--bar',
@@ -1026,9 +1007,7 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
             return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
         }
 
-        if (elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_SCROLL_SELECTOR)) {
-            return false;
-        }
+        return false;
     }
 
     return true;
