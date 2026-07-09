@@ -2622,6 +2622,104 @@ function scrollMobileFocusedInputIntoView(event) {
     window.setTimeout(tryScroll, 200);
 }
 
+const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 16;
+
+function getMobilePopupDialogForKeyboard(element) {
+    if (!(element instanceof HTMLElement)) {
+        return null;
+    }
+
+    const dialog = element.closest('dialog.popup');
+    return dialog instanceof HTMLElement && dialog.open ? dialog : null;
+}
+
+function clearMobilePopupKeyboardShift(dialog) {
+    if (!(dialog instanceof HTMLElement) || !dialog.dataset.sbKeyboardShift) {
+        return;
+    }
+
+    delete dialog.dataset.sbKeyboardShift;
+    dialog.style.removeProperty('transform');
+}
+
+function clearAllMobilePopupKeyboardShifts(except = null) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-shift]')) {
+        if (dialog !== except) {
+            clearMobilePopupKeyboardShift(dialog);
+        }
+    }
+}
+
+/**
+ * SillyBunny: popup dialogs are centered against the layout viewport, which
+ * does not shrink with the virtual keyboard (interactive-widget=resizes-visual).
+ * When a focused popup input sits behind the keyboard, the browser pans the
+ * visual viewport to reveal it, pushing the top bar off screen (e.g. the
+ * connection profile name popup). Scroll the popup body first, then shift the
+ * dialog up so the input clears the keyboard and the browser never needs to pan.
+ */
+function syncMobilePopupKeyboardShift() {
+    const activeElement = document.activeElement;
+    const dialog = isMobileViewport() && isEditableElement(activeElement)
+        ? getMobilePopupDialogForKeyboard(activeElement)
+        : null;
+
+    clearAllMobilePopupKeyboardShifts(dialog);
+
+    if (!dialog) {
+        return;
+    }
+
+    const layoutViewport = getLayoutViewportSize();
+    const viewportSize = getVisualViewportSize(layoutViewport);
+
+    if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+        clearMobilePopupKeyboardShift(dialog);
+        return;
+    }
+
+    // Measure without the current shift so a shrinking keyboard relaxes it.
+    clearMobilePopupKeyboardShift(dialog);
+
+    // visualViewport tracks the keyboard: top grows and height shrinks as the
+    // keyboard rises, so (top + height) is the bottom of the visible area.
+    const viewportBottom = viewportSize.top + viewportSize.height;
+    const scroller = activeElement.closest('.popup-content');
+
+    if (scroller instanceof HTMLElement) {
+        const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+        if (scrollOverflow > 0) {
+            scroller.scrollTop += scrollOverflow;
+        }
+    }
+
+    const overflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
+
+    if (overflow <= 0) {
+        return;
+    }
+
+    const dialogTop = dialog.getBoundingClientRect().top;
+    const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);
+    const shift = Math.round(Math.min(overflow, maxShift));
+
+    if (shift <= 0) {
+        return;
+    }
+
+    dialog.dataset.sbKeyboardShift = String(shift);
+    dialog.style.transform = `translateY(-${shift}px)`;
+}
+
+let sbMobilePopupKeyboardSyncTimer = 0;
+
+function scheduleMobilePopupKeyboardSync() {
+    window.requestAnimationFrame(syncMobilePopupKeyboardShift);
+    window.clearTimeout(sbMobilePopupKeyboardSyncTimer);
+    // Run again after the keyboard animation / visualViewport resize settles.
+    sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 200);
+}
+
 function getMobileShellBoundDrawers() {
     return Array.from(new Set([
         ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
@@ -16361,6 +16459,13 @@ function initAll() {
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
     // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
     document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
+
+    // SillyBunny: popup dialogs sit outside the shell scrollers; shift them
+    // above the virtual keyboard instead so the browser never pans the visual
+    // viewport away from the top bar (see syncMobilePopupKeyboardShift).
+    document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
+    document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
+    window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
 
     // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
     // this provides scroll range for bottom inputs without fixing the document.

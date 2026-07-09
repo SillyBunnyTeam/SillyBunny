@@ -65,3 +65,47 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', scrollMobileFocusedInputIntoView)');
     });
 });
+
+describe('mobile popup keyboard shift wiring', () => {
+    test('defines the popup keyboard shift helper', () => {
+        expect(tabsSource).toContain('function syncMobilePopupKeyboardShift(');
+        expect(tabsSource).toContain('function scheduleMobilePopupKeyboardSync(');
+    });
+
+    test('only targets editable focus inside open popup dialogs on mobile', () => {
+        expect(tabsSource).toContain('function getMobilePopupDialogForKeyboard(');
+        expect(tabsSource).toMatch(/\.closest\('dialog\.popup'\)/);
+        expect(tabsSource).toMatch(/isMobileViewport\(\) && isEditableElement\(activeElement\)/);
+        expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
+    });
+
+    test('shifts against the visual-viewport bottom so the input clears the keyboard', () => {
+        const helperSource = tabsSource.slice(
+            tabsSource.indexOf('function syncMobilePopupKeyboardShift('),
+            tabsSource.indexOf('function scheduleMobilePopupKeyboardSync('),
+        );
+
+        expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
+        expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
+        expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
+        expect(helperSource).toContain('dialog.style.transform = `translateY(-${shift}px)`;');
+    });
+
+    test('clamps the shift so the dialog top stays inside the visible viewport', () => {
+        expect(tabsSource).toContain('const maxShift = Math.max(0, dialogTop - viewportSize.top - MOBILE_POPUP_KEYBOARD_CLEARANCE_PX);');
+        expect(tabsSource).toContain('const shift = Math.round(Math.min(overflow, maxShift));');
+    });
+
+    test('clears the shift when focus leaves or the keyboard closes', () => {
+        expect(tabsSource).toContain('function clearMobilePopupKeyboardShift(');
+        expect(tabsSource).toContain('function clearAllMobilePopupKeyboardShifts(');
+        expect(tabsSource).toMatch(/dialog\.style\.removeProperty\('transform'\)/);
+        expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardShift;');
+    });
+
+    test('wires the sync on focus changes and visualViewport resize inside initAll', () => {
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobilePopupKeyboardSync)');
+        expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobilePopupKeyboardSync)');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobilePopupKeyboardSync, { passive: true })');
+    });
+});

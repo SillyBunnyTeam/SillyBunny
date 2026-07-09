@@ -15,6 +15,7 @@ import {
     resolveMobileNavToggleIntent,
     resolveMobileShellNavDragEnd,
     resolveMobileShellNavDragMove,
+    shouldBlockMobileDocumentPan,
     shouldAutoCloseMobileNav,
     shouldSuppressMobileShellNavClick,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
@@ -306,6 +307,25 @@ describe('mobile shell lifecycle helper', () => {
             shouldInertShell: true,
             shouldInertTopBar: true,
         });
+    });
+
+    test('blocks mobile document pan from body background gaps', () => {
+        const matchesBackgroundSelector = selector => selector.split(',').map(value => value.trim()).includes('#bg1');
+        const closestBackgroundSelector = selector => [null, target][Number(matchesBackgroundSelector(selector))];
+        const target = {
+            matches: matchesBackgroundSelector,
+            closest: closestBackgroundSelector,
+        };
+        const event = {
+            cancelable: true,
+            defaultPrevented: false,
+            target,
+            touches: [{ identifier: 1, clientX: 120, clientY: 790 }],
+        };
+
+        expect(shouldBlockMobileDocumentPan(event, {
+            touchStart: { identifier: 1, clientX: 120, clientY: 800 },
+        })).toBe(true);
     });
 
     test('creates a stable lifecycle seam for future runtime wiring', () => {
