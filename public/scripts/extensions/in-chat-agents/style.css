@@ -980,9 +980,13 @@ button.ica--card-pill--version-update {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-height: 0;
     max-height: min(82vh, 960px);
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .ica--editor-section {
