@@ -250,10 +250,20 @@ describe('Chat Completion preset utilities', () => {
         })).toEqual({
             name: 'Story proxy',
             url: 'https://proxy.example/v1',
+            // Plaintext key is not persisted when the profile is bound to a saved secret
             key: '',
             model: 'gpt-4o',
             secretId: 'secret-story',
         });
+    });
+
+    test('keeps the plaintext key only while no secret id is bound', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'Unbound proxy',
+            url: 'https://proxy.example/v1',
+            key: 'sk-unbound',
+            model: 'gpt-4o',
+        }).key).toBe('sk-unbound');
     });
 
     test('clears Custom endpoint profile fields for None', () => {
