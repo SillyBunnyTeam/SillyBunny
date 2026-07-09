@@ -800,19 +800,21 @@ export function convertXAIMessages(messages, names) {
             return;
         }
 
-        const needsCharNamePrefix = [
-            { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
-        ];
+        if (typeof msg.content === 'string') {
+            const needsCharNamePrefix = [
+                { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
+            ];
 
-        const matchingRule = needsCharNamePrefix.find(rule =>
-            msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
-        );
+            const matchingRule = needsCharNamePrefix.find(rule =>
+                msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
+            );
 
-        if (matchingRule) {
-            const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
-            msg.content = `${prefix}: ${msg.content}`;
+            if (matchingRule) {
+                const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
+                msg.content = `${prefix}: ${msg.content}`;
+            }
         }
 
         delete msg.name;
