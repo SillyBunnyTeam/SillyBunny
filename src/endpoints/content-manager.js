@@ -23,6 +23,15 @@ const DEFAULT_PRESET_DELETIONS_FILE = 'default-preset-deletions.json';
 
 const WHITELIST_GENERIC_URL_DOWNLOAD_SOURCES = getConfigValue('whitelistImportDomains', []);
 const USER_AGENT = 'SillyTavern';
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+/**
+ * @param {Buffer} buffer Image buffer
+ * @returns {boolean} True if the buffer starts with a PNG signature
+ */
+function isPngBuffer(buffer) {
+    return buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+}
 
 /**
  * @typedef {Object} ContentItem
@@ -851,14 +860,19 @@ async function downloadChubCharacter(id) {
 
         if (downloadResult.ok) {
             const buffer = Buffer.from(await downloadResult.arrayBuffer());
-            const fileName = `${sanitize(node?.name || projectName)}.png`;
-            const fileType = downloadResult.headers.get('content-type') || 'image/png';
 
-            return { buffer, fileName, fileType };
+            if (isPngBuffer(buffer)) {
+                const fileName = `${sanitize(node?.name || projectName)}.png`;
+                const fileType = 'image/png';
+
+                return { buffer, fileName, fileType };
+            }
+
+            console.error('Chub returned non-PNG character card', downloadResult.headers.get('content-type'));
+        } else {
+            const text = await downloadResult.text();
+            console.error('Chub returned error', downloadResult.statusText, text);
         }
-
-        const text = await downloadResult.text();
-        console.error('Chub returned error', downloadResult.statusText, text);
     }
 
     const { definition, topics } = node;
@@ -899,7 +913,12 @@ async function downloadChubCharacter(id) {
             headers: { 'Accept': 'image/png,image/*;q=0.8,*/*;q=0.5', 'User-Agent': USER_AGENT },
         });
         if (downloadResult.ok) {
-            imageBuffer = Buffer.from(await downloadResult.arrayBuffer());
+            const avatarBuffer = Buffer.from(await downloadResult.arrayBuffer());
+            if (isPngBuffer(avatarBuffer)) {
+                imageBuffer = avatarBuffer;
+            } else {
+                console.warn('Chub avatar is not a PNG, using default avatar for fallback card', downloadResult.headers.get('content-type'));
+            }
         }
     }
 
