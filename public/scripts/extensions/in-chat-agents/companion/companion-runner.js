@@ -8,7 +8,7 @@ import {
 } from '../../../../script.js';
 import { power_user } from '../../../power-user.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { eventSource } from '../../../events.js';
+import { eventSource, event_types } from '../../../events.js';
 import { getWorldInfoPrompt } from '../../../world-info.js';
 import { getConnectionProfileDisplayName } from '../profile-utils.js';
 import {
@@ -1697,6 +1697,33 @@ export function getLatestValidCompanionMessageIndex() {
     return -1;
 }
 
+/**
+ * A swipe into a brand-new slot has no swipe_info entry yet, so companion reads fall back
+ * to message.extra — which still holds the previous swipe's results. Clear them so the
+ * message cards and panel go blank while the new swipe generates instead of showing the
+ * old swipe's state. The old swipe keeps its own copy: script.js runs syncMesToSwipe
+ * before moving off it. Navigating existing swipes is untouched (syncSwipeToMes already
+ * restores that swipe's own results).
+ */
+function onCompanionMessageSwiped(messageIndex) {
+    const index = Number(messageIndex);
+    const message = chat[index];
+    if (!isAssistantMessage(message)) {
+        return;
+    }
+
+    const isNewSwipeSlot = typeof message.swipe_id === 'number'
+        && Array.isArray(message.swipe_info)
+        && !message.swipe_info[message.swipe_id];
+    if (!isNewSwipeSlot || Object.keys(getCompanionResults(message)).length === 0) {
+        return;
+    }
+
+    deleteAgentExtraValue(message, COMPANION_RESULTS_EXTRA_KEY);
+    saveChatDebounced({ deferBackup: false });
+    void emitCompanionResultsUpdated(index);
+}
+
 export function initCompanionRunner() {
     if (companionRunnerInitialized) {
         return;
@@ -1708,4 +1735,8 @@ export function initCompanionRunner() {
         injectCompanionFeedbackPrompts,
         runCompanionAgentOnMessage,
     });
+
+    if (event_types.MESSAGE_SWIPED) {
+        eventSource.on(event_types.MESSAGE_SWIPED, onCompanionMessageSwiped);
+    }
 }
