@@ -203,8 +203,9 @@ describe('in-chat agent post-processing runner', () => {
             extension_prompts: extensionPrompts,
             eventSource,
             event_types: eventTypes,
-            setExtensionPrompt: jest.fn((key, value) => {
-                extensionPrompts[key] = { value };
+            setExtensionPrompt: jest.fn((key, value, _position, _depth, _scan, _role, _filter = null, name = null) => {
+                const promptName = typeof name === 'string' ? name.trim() : '';
+                extensionPrompts[key] = { value, ...(promptName && { name: promptName }) };
             }),
             substituteParams: jest.fn((value, options = {}) => String(value ?? '')
                 .replaceAll('{{user}}', 'Traveler')
@@ -817,7 +818,7 @@ describe('in-chat agent post-processing runner', () => {
         await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, true);
 
         expect(extensionPrompts.inchat_agent_stale).toBeUndefined();
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('delegates companion feedback prompt injection through registered runtime', async () => {
@@ -1317,6 +1318,7 @@ describe('in-chat agent post-processing runner', () => {
         // Assistant tail = swipe/regenerate of that message: its own state must not feed back.
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_feedback-companion'];
+        expect(injected.name).toBe('Companion');
         expect(injected.value).toContain('State one');
         expect(injected.value).not.toContain('Stale swipe state');
 
@@ -2230,7 +2232,9 @@ describe('in-chat agent post-processing runner', () => {
 
         chat.push({ mes: 'Continue.', name: 'Traveler', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([companionAgent]);
-        const injected = extensionPrompts['inchat_agent_companion_plot-compass'].value;
+        const injectedPrompt = extensionPrompts['inchat_agent_companion_plot-compass'];
+        const injected = injectedPrompt.value;
+        expect(injectedPrompt.name).toBe('Plot Compass');
         expect(injected).toContain('Objective: Traveler ends up living with Mira after Mira sees literal {{char}} text.');
         expect(injected).not.toContain('{{user}}');
     });
@@ -2365,7 +2369,7 @@ describe('in-chat agent post-processing runner', () => {
         await generationPromise;
 
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('reuses cached Pathfinder retrieval when swiping the same assistant message', async () => {
@@ -2435,7 +2439,7 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(runSidecarRetrieval).toHaveBeenCalledTimes(1);
         expect(extensionPrompts.pathfinder_pipeline_retrieval).toEqual({ value: 'retrieved lore' });
-        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.' });
+        expect(extensionPrompts['inchat_agent_agent-pre-prompt']).toEqual({ value: 'Use the current scene style.', name: 'Pre Prompt' });
     });
 
     test('shows a processing toast while Pathfinder pipeline retrieval is running', async () => {

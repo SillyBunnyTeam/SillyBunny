@@ -1594,6 +1594,8 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
             agent.injection.depth,
             agent.injection.scan,
             agent.injection.role,
+            null,
+            agent.name,
         );
     }
 }

@@ -1845,7 +1845,7 @@ class PromptManager {
 
         const createInlineDrawer = (message) => {
             const truncatedTitle = message.content.length > 32 ? message.content.slice(0, 32) + '...' : message.content;
-            const title = message.identifier || truncatedTitle;
+            const title = message.displayName || message.identifier || truncatedTitle;
             const role = message.role;
             const content = message.content || 'No Content';
             const tokens = message.getTokens();

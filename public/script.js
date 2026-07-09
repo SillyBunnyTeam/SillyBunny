@@ -13716,11 +13716,14 @@ function select_rm_characters() {
  * @param {string} value Prompt injection value.
  * @param {number} position Insertion position. 0 is after story string, 1 is in-chat with custom depth.
  * @param {number} depth Insertion depth. 0 represets the last message in context. Expected values up to MAX_INJECTION_DEPTH.
- * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {boolean} scan Should the prompt be included in the world info scan.
+ * @param {number} role Extension prompt role. Defaults to SYSTEM.
  * @param {(function(): Promise<boolean>|boolean)} filter Filter function to determine if the prompt should be injected.
+ * @param {string|null} name Display name shown in Prompt Manager.
  */
-export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null) {
+export function setExtensionPrompt(key, value, position, depth, scan = false, role = extension_prompt_roles.SYSTEM, filter = null, name = null) {
+    const promptName = typeof name === 'string' ? name.trim() : '';
+
     extension_prompts[key] = {
         value: String(value),
         position: Number(position),
@@ -13728,6 +13731,7 @@ export function setExtensionPrompt(key, value, position, depth, scan = false, ro
         scan: !!scan,
         role: Number(role ?? extension_prompt_roles.SYSTEM),
         filter: filter,
+        ...(promptName && { name: promptName }),
     };
 }
 
