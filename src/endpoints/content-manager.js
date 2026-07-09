@@ -877,10 +877,13 @@ async function downloadChubCharacter(id) {
 
     const { definition, topics } = node;
 
+    // Chub does not always include definition.name; fall back to the project/card name.
+    const characterName = definition.name || node?.name || projectName;
+
     /** @type {TavernCardV2} */
     const characterCard = {
         data: {
-            name: definition.name,
+            name: characterName,
             description: definition.personality,
             personality: definition.tavern_personality,
             scenario: definition.scenario,
