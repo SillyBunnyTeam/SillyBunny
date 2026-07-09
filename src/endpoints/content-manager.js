@@ -840,7 +840,28 @@ async function downloadChubCharacter(id) {
 
     /** @type {any} */
     const metadata = await result.json();
-    const { definition, topics } = metadata.node;
+    const node = metadata.node;
+    const imageUrl = node?.max_res_url;
+
+    if (imageUrl) {
+        const downloadResult = await fetch(imageUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'image/png,image/*;q=0.8,*/*;q=0.5', 'User-Agent': USER_AGENT },
+        });
+
+        if (downloadResult.ok) {
+            const buffer = Buffer.from(await downloadResult.arrayBuffer());
+            const fileName = `${sanitize(node?.name || projectName)}.png`;
+            const fileType = downloadResult.headers.get('content-type') || 'image/png';
+
+            return { buffer, fileName, fileType };
+        }
+
+        const text = await downloadResult.text();
+        console.error('Chub returned error', downloadResult.statusText, text);
+    }
+
+    const { definition, topics } = node;
 
     /** @type {TavernCardV2} */
     const characterCard = {
@@ -870,10 +891,13 @@ async function downloadChubCharacter(id) {
 
     let imageBuffer = defaultAvatarBuffer;
 
-    const imageUrl = metadata.node?.max_res_url;
+    const avatarUrl = node?.avatar_url;
 
-    if (imageUrl) {
-        const downloadResult = await fetch(imageUrl);
+    if (avatarUrl) {
+        const downloadResult = await fetch(avatarUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'image/png,image/*;q=0.8,*/*;q=0.5', 'User-Agent': USER_AGENT },
+        });
         if (downloadResult.ok) {
             imageBuffer = Buffer.from(await downloadResult.arrayBuffer());
         }
@@ -944,12 +968,6 @@ async function downloadPygmalionCharacter(id) {
  */
 function parseChubUrl(str) {
     const splitStr = str.split('/');
-    const length = splitStr.length;
-
-    if (length < 2) {
-        return null;
-    }
-
     let domainIndex = -1;
 
     splitStr.forEach((part, index) => {
@@ -959,6 +977,11 @@ function parseChubUrl(str) {
     });
 
     const lastTwo = domainIndex !== -1 ? splitStr.slice(domainIndex + 1) : splitStr;
+    const length = lastTwo.length;
+
+    if (length < 2) {
+        return null;
+    }
 
     const firstPart = lastTwo[0].toLowerCase();
 
