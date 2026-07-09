@@ -3028,14 +3028,25 @@ export async function importFromExternalUrl(url, { preserveFileName = null } = {
     }
 
     if (!request.ok) {
-        toastr.info(request.statusText, 'Custom content import failed');
-        console.error('Custom content import failed', request.status, request.statusText);
+        const responseText = await request.text().catch(() => '');
+        const errorMessage = responseText || request.statusText || `HTTP ${request.status}`;
+        toastr.info(errorMessage, 'Custom content import failed');
+        console.error('Custom content import failed', request.status, request.statusText, responseText);
         return;
     }
 
     const data = await request.blob();
     const customContentType = request.headers.get('X-Custom-Content-Type');
-    let fileName = request.headers.get('Content-Disposition').split('filename=')[1].replace(/"/g, '');
+    const contentDisposition = request.headers.get('Content-Disposition') || '';
+    const fileNameMatch = contentDisposition.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+    let fileName = fileNameMatch?.[1] || fileNameMatch?.[2] || url.split('/').filter(Boolean).pop() || 'file';
+
+    try {
+        fileName = decodeURIComponent(fileName.replace(/^"|"$/g, ''));
+    } catch {
+        fileName = fileName.replace(/^"|"$/g, '');
+    }
+
     const file = new File([data], fileName, { type: data.type });
 
     const extraData = new Map();
