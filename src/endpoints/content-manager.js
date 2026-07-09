@@ -47,6 +47,37 @@ function getErrorMessage(error) {
 }
 
 /**
+ * @param {string | null} contentDisposition Content-Disposition header
+ * @returns {string | null} Decoded filename from the header
+ */
+function getFileNameFromContentDisposition(contentDisposition) {
+    const fileNameMatch = contentDisposition?.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+    const fileName = fileNameMatch?.[1] || fileNameMatch?.[2];
+
+    if (!fileName) {
+        return null;
+    }
+
+    try {
+        return decodeURIComponent(fileName.replace(/^"|"$/g, ''));
+    } catch {
+        return fileName.replace(/^"|"$/g, '');
+    }
+}
+
+/**
+ * @param {unknown} name Desired file name
+ * @param {string} fallbackName Fallback file name
+ * @returns {string} Sanitized PNG file name
+ */
+function getPngFileName(name, fallbackName = 'character') {
+    const safeFallback = sanitize(String(fallbackName || 'character')) || 'character';
+    const safeName = sanitize(String(name || safeFallback)) || safeFallback;
+
+    return safeName.toLowerCase().endsWith('.png') ? safeName : `${safeName}.png`;
+}
+
+/**
  * @typedef {Object} ContentItem
  * @property {string} filename
  * @property {string} type
@@ -979,6 +1010,137 @@ async function downloadChubCharacter(id) {
     return { buffer, fileName, fileType };
 }
 
+// SillyBunny divergence: support Botbooru's SillyTavern import URLs as external character imports.
+
+/**
+ * @typedef {Object} BotbooruParsedUrl
+ * @property {string} [downloadPath] Path to the PNG download endpoint
+ * @property {string} [slug] Botbooru short-link slug
+ * @property {string} fallbackName Fallback file name
+ * @property {string} [search] Query string to preserve for download URLs
+ */
+
+/**
+ * @param {string} url Botbooru URL
+ * @returns {BotbooruParsedUrl | null} Parsed Botbooru import target
+ */
+function parseBotbooruUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        const parts = urlObj.pathname.split('/').filter(Boolean);
+        const idPattern = /^\d+(?:-\d+)?$/;
+
+        if (parts.length === 3 && parts[0] === 'download' && parts[1] === 'png' && idPattern.test(parts[2])) {
+            return {
+                downloadPath: `/download/png/${parts[2]}`,
+                fallbackName: `botbooru-${parts[2]}`,
+                search: urlObj.search,
+            };
+        }
+
+        if (parts.length === 2 && parts[0] === 'character' && /^\d+$/.test(parts[1])) {
+            return {
+                downloadPath: `/download/png/${parts[1]}`,
+                fallbackName: `botbooru-${parts[1]}`,
+            };
+        }
+
+        if (parts.length === 3 && parts[0] === 'mini-gallery' && /^\d+$/.test(parts[1]) && parts[2] === 'download.png') {
+            return {
+                downloadPath: `/mini-gallery/${parts[1]}/download.png`,
+                fallbackName: `botbooru-${parts[1]}`,
+                search: urlObj.search,
+            };
+        }
+
+        if (parts.length === 2 && parts[0] === 'q' && parts[1]) {
+            return {
+                slug: decodeURIComponent(parts[1]),
+                fallbackName: `botbooru-${parts[1]}`,
+            };
+        }
+    } catch (error) {
+        console.error('Error parsing Botbooru URL:', error);
+    }
+
+    return null;
+}
+
+/**
+ * @param {string} slug Botbooru short-link slug
+ * @returns {Promise<BotbooruParsedUrl>} Resolved Botbooru import target
+ */
+async function resolveBotbooruShortLink(slug) {
+    const result = await fetch(`https://botbooru.com/api/q/${encodeURIComponent(slug)}/resolve`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'User-Agent': USER_AGENT },
+    });
+
+    if (!result.ok) {
+        const text = await result.text();
+        console.error('Botbooru returned error', result.status, result.statusText, text);
+        throw new Error(`Failed to resolve Botbooru short link: ${result.status} ${result.statusText}`.trim());
+    }
+
+    /** @type {any} */
+    const resolved = await result.json();
+
+    if (resolved.kind === 'lorebook') {
+        throw new Error('Botbooru lorebook imports are not supported');
+    }
+
+    const postId = resolved.post_id || resolved.post?.id;
+
+    if (!postId) {
+        throw new Error('Botbooru short link did not resolve to a character');
+    }
+
+    return {
+        downloadPath: `/download/png/${encodeURIComponent(String(postId))}`,
+        fallbackName: resolved.character_name || resolved.name || `botbooru-${postId}`,
+    };
+}
+
+/**
+ * @param {BotbooruParsedUrl} parsed Parsed Botbooru import target
+ * @returns {Promise<{buffer: Buffer, fileName: string, fileType: string}>}
+ */
+async function downloadBotbooruCharacter(parsed) {
+    const target = parsed.slug ? await resolveBotbooruShortLink(parsed.slug) : parsed;
+
+    if (!target.downloadPath) {
+        throw new Error('Botbooru URL did not include a character download path');
+    }
+
+    const downloadUrl = new URL(target.downloadPath, 'https://botbooru.com');
+    if (target.search) {
+        downloadUrl.search = target.search;
+    }
+
+    const result = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'image/png,image/*;q=0.8,*/*;q=0.5', 'User-Agent': USER_AGENT },
+    });
+
+    if (!result.ok) {
+        const text = await result.text();
+        console.error('Botbooru returned error', result.status, result.statusText, text, downloadUrl.toString());
+        throw new Error(`Failed to download Botbooru character: ${result.status} ${result.statusText}`.trim());
+    }
+
+    const buffer = Buffer.from(await result.arrayBuffer());
+
+    if (!isPngBuffer(buffer)) {
+        console.error('Botbooru returned non-PNG character card', result.headers.get('content-type'), downloadUrl.toString());
+        throw new Error('Botbooru returned a non-PNG character card');
+    }
+
+    const fileName = getPngFileName(getFileNameFromContentDisposition(result.headers.get('content-disposition')), target.fallbackName);
+    const fileType = 'image/png';
+
+    return { buffer, fileName, fileType };
+}
+
 /**
  * Downloads a character card from the Pygsite.
  * @param {string} id UUID of the character
@@ -1467,6 +1629,7 @@ router.post('/importURL', async (request, response) => {
         let type;
 
         const isChub = host.includes('chub.ai') || host.includes('characterhub.org');
+        const isBotbooru = host === 'botbooru.com' || host === 'www.botbooru.com';
         const isJannnyContent = host.includes('janitorai');
         const isPygmalionContent = host.includes('pygmalion.chat');
         const isAICharacterCardsContent = host.includes('aicharactercards.com');
@@ -1497,6 +1660,15 @@ router.post('/importURL', async (request, response) => {
             }
             type = 'character';
             result = await downloadAICCCharacter(AICCParsed);
+        } else if (isBotbooru) {
+            const botbooruParsed = parseBotbooruUrl(url);
+            if (!botbooruParsed) {
+                return response.sendStatus(404);
+            }
+
+            type = 'character';
+            console.info('Downloading Botbooru character:', botbooruParsed.slug || botbooruParsed.downloadPath);
+            result = await downloadBotbooruCharacter(botbooruParsed);
         } else if (isChub) {
             const chubParsed = parseChubUrl(url);
             type = chubParsed?.type;
