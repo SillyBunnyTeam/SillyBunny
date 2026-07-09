@@ -99,6 +99,7 @@ import {
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
+import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
 
 export {
     openai_messages_count,
@@ -252,6 +253,7 @@ export const chat_completion_sources = {
     SILICONFLOW: 'siliconflow',
     MINIMAX: 'minimax',
     WORKERS_AI: 'workers_ai',
+    LINKAPI: 'linkapi',
 };
 
 export const REVERSE_PROXY_SUPPORTED_SOURCES = [
@@ -289,6 +291,7 @@ const MODEL_ID_SEARCH_CONTROLS = [
     { source: chat_completion_sources.VERTEXAI, setting: 'vertexai_model', input: '#vertexai_model_id', select: '#model_vertexai_select', dynamicGroupId: 'vertexai_other_models' },
     { source: chat_completion_sources.CUSTOM, setting: 'custom_model', input: '#custom_model_id', select: '#model_custom_select', datalist: '#model_custom_select_fill', dynamicOnly: true },
     { source: chat_completion_sources.ZAI, setting: 'zai_model', input: '#zai_model_id', select: '#model_zai_select', dynamicGroupId: 'zai_other_models' },
+    { source: chat_completion_sources.LINKAPI, setting: 'linkapi_model', input: '#linkapi_model_id', select: '#model_linkapi_select', dynamicGroupId: 'linkapi_other_models', dynamicOnly: true },
 ];
 
 const INLINE_SELECT_PICKER_CONTROLS = [
@@ -480,6 +483,8 @@ export const settingsToUpdate = {
     vertexai_model: ['#model_vertexai_select', 'vertexai_model', false, true],
     zai_model: ['#model_zai_select', 'zai_model', false, true],
     zai_endpoint: ['#zai_endpoint', 'zai_endpoint', false, true],
+    linkapi_model: ['#model_linkapi_select', 'linkapi_model', false, true],
+    linkapi_endpoint: ['#linkapi_endpoint', 'linkapi_endpoint', false, true],
     workers_ai_model: ['#model_workers_ai_select', 'workers_ai_model', false, true],
     workers_ai_account_id: ['#workers_ai_account_id', 'workers_ai_account_id', false, true],
     openai_max_context: ['#openai_max_context', 'openai_max_context', false, false],
@@ -592,6 +597,8 @@ const default_settings = {
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
     zai_model: 'glm-5.2',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
+    linkapi_model: 'claude-sonnet-4-5',
+    linkapi_endpoint: LINKAPI_ENDPOINT.GLOBAL,
     workers_ai_model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     workers_ai_account_id: '',
     azure_base_url: '',
@@ -1677,12 +1684,14 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
 
             const hasFilter = typeof prompt.filter === 'function';
             if (hasFilter && !await prompt.filter()) continue;
+            const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
 
             systemPrompts.push({
                 identifier: key.replace(/\W/g, '_'),
                 position: getPromptPosition(prompt.position),
                 role: getPromptRole(prompt.role),
                 content: prompt.value,
+                ...(promptName && { name: promptName }),
                 extension: true,
             });
         }
@@ -2000,6 +2009,8 @@ export function getChatCompletionModel(settings = null) {
             return settings.zai_model;
         case chat_completion_sources.WORKERS_AI:
             return settings.workers_ai_model;
+        case chat_completion_sources.LINKAPI:
+            return settings.linkapi_model;
         default:
             console.error(`Unknown chat completion source: ${source}`);
             return '';
@@ -4728,6 +4739,23 @@ function saveModelList(data) {
         }
     }
 
+    // LinkAPI - dynamic list only (models are scoped to the active key's group)
+    if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        $('#linkapi_other_models').empty();
+        model_list.forEach((model) => {
+            $('#linkapi_other_models').append(
+                $('<option>', { value: model.id, text: model.id }),
+            );
+        });
+        if (model_list.length > 0) {
+            const selectedModel = model_list.map(m => m.id).includes(oai_settings.linkapi_model)
+                ? oai_settings.linkapi_model
+                : model_list[0]?.id || oai_settings.linkapi_model;
+            $('#model_linkapi_select').val(selectedModel).trigger('change');
+            $('#linkapi_model_id').val(selectedModel);
+        }
+    }
+
     // VertexAI - hybrid approach: keep static optgroups, add dynamic to "From API" optgroup
     if (oai_settings.chat_completion_source === chat_completion_sources.VERTEXAI) {
         // Clear only dynamic models from "From API" optgroup
@@ -5075,6 +5103,7 @@ export async function createGenerationParameters(settings, model, type, messages
         chat_completion_sources.VERTEXAI,
         chat_completion_sources.MAKERSUITE,
         chat_completion_sources.CHUTES,
+        chat_completion_sources.LINKAPI,
     ];
 
     // Sources that support logprobs
@@ -5372,6 +5401,29 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
+    if (settings.chat_completion_source === chat_completion_sources.LINKAPI) {
+        generate_data.linkapi_endpoint = settings.linkapi_endpoint || LINKAPI_ENDPOINT.GLOBAL;
+        const linkApiFormat = getLinkApiRequestFormat(model);
+        if (linkApiFormat === 'anthropic') {
+            generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
+            generate_data.use_sysprompt = settings.use_sysprompt;
+            generate_data.claude_disable_temperature = Boolean(settings.claude_disable_temperature);
+            generate_data.claude_disable_top_p = Boolean(settings.claude_disable_top_p);
+            generate_data.stop = getCustomStoppingStrings(); // Claude shouldn't have limits on stop strings.
+            // Don't add a prefill on quiet gens (summarization) and when using continue prefill.
+            if (type !== 'quiet' && !(type === 'continue' && settings.continue_prefill)) {
+                generate_data.assistant_prefill = type === 'impersonate'
+                    ? getEffectiveAssistantImpersonationPrefill(settings)
+                    : substituteParams(settings.assistant_prefill);
+            }
+        } else if (linkApiFormat === 'google') {
+            const stopStringsLimit = 5;
+            generate_data.top_k = settings.top_k_openai > 0 ? Number(settings.top_k_openai) : undefined;
+            generate_data.use_sysprompt = settings.use_sysprompt;
+            generate_data.stop = getCustomStoppingStrings(stopStringsLimit).slice(0, stopStringsLimit).filter(x => x.length >= 1 && x.length <= 16);
+        }
+    }
+
     if (seedSupportedSources.includes(settings.chat_completion_source) && settings.seed >= 0) {
         generate_data.seed = settings.seed;
     }
@@ -5433,7 +5485,8 @@ export async function createGenerationParameters(settings, model, type, messages
         delete generate_data.presence_penalty;
         // Keep reasoning_effort for the native Claude source (the backend maps it to adaptive thinking);
         // strip it for proxies, which may translate it into a thinking budget that fable rejects.
-        if (settings.chat_completion_source !== chat_completion_sources.CLAUDE) {
+        // LinkAPI routes claude models through the native Claude handler, so it keeps effort too.
+        if (![chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)) {
             delete generate_data.reasoning_effort;
             delete generate_data.custom_reasoning_param_name;
         }
@@ -5559,7 +5612,42 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
     const chat_completion_source = chatCompletionSource ?? oai_settings.chat_completion_source;
     const show_thoughts = overrideShowThoughts ?? shouldRequestReasoning(oai_settings);
 
-    if (chat_completion_source === chat_completion_sources.CLAUDE) {
+    if (chat_completion_source === chat_completion_sources.LINKAPI) {
+        // LinkAPI relays Anthropic, Gemini, or OpenAI SSE depending on the model's routing leg,
+        // so detect the payload shape instead of assuming a single format.
+        if (Array.isArray(data?.candidates)) {
+            // Gemini leg
+            const inlineData = data?.candidates?.[0]?.content?.parts?.filter(x => x.inlineData && !x.thought)?.map(x => x.inlineData) || [];
+            if (Array.isArray(inlineData) && inlineData.length > 0) {
+                state.images.push(...inlineData.map(x => `data:${x.mimeType};base64,${x.data}`).filter(isDataURL));
+            }
+            if (show_thoughts) {
+                state.reasoning += (data?.candidates?.[0]?.content?.parts?.filter(x => x.thought)?.map(x => x.text)?.[0] || '');
+            }
+            const parts = data?.candidates?.[0]?.content?.parts || [];
+            parts.forEach((part) => {
+                if (part.thoughtSignature && typeof part.text === 'string') {
+                    state.signature = part.thoughtSignature;
+                }
+            });
+            return data?.candidates?.[0]?.content?.parts?.filter(x => !x.thought)?.map(x => x.text)?.[0] || '';
+        }
+        if (Array.isArray(data?.choices)) {
+            // OpenAI-compatible leg
+            if (show_thoughts) {
+                state.reasoning +=
+                    data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content ??
+                    data.choices?.filter(x => x?.delta?.reasoning)?.[0]?.delta?.reasoning ??
+                    '';
+            }
+            return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
+        }
+        // Anthropic leg (content_block_delta events); other event types yield an empty string.
+        if (show_thoughts) {
+            state.reasoning += data?.delta?.thinking || '';
+        }
+        return data?.delta?.text || '';
+    } else if (chat_completion_source === chat_completion_sources.CLAUDE) {
         if (show_thoughts) {
             state.reasoning += data?.delta?.thinking || '';
         }
@@ -5861,6 +5949,8 @@ class Message {
     content;
     /** @type {string} */
     name;
+    /** @type {string} */
+    displayName;
     /** @type {object} */
     tool_call = null;
     /** @type {string?} */
@@ -6129,8 +6219,13 @@ class Message {
      * @param {Object} prompt - The prompt object.
      * @returns {Promise<Message>} A new instance of Message.
      */
-    static fromPromptAsync(prompt) {
-        return Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+    static async fromPromptAsync(prompt) {
+        const message = await Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+        const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
+        if (prompt.extension && promptName) {
+            message.displayName = promptName;
+        }
+        return message;
     }
 
     /**
@@ -7047,6 +7142,10 @@ async function getStatusOpen() {
 
     if (oai_settings.chat_completion_source === chat_completion_sources.MINIMAX) {
         data.minimax_endpoint = oai_settings.minimax_endpoint;
+    }
+
+    if (oai_settings.chat_completion_source === chat_completion_sources.LINKAPI) {
+        data.linkapi_endpoint = oai_settings.linkapi_endpoint;
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.VERTEXAI) {
@@ -8094,6 +8193,12 @@ async function onModelChange() {
             $('#model_zai_select').val(value);
         }
     }
+    if ($(this).is('#linkapi_model_id')) {
+        if (value) {
+            oai_settings.linkapi_model = value;
+            $('#model_linkapi_select').val(value);
+        }
+    }
     if ($(this).is('#vertexai_model_id')) {
         if (value) {
             oai_settings.vertexai_model = value;
@@ -8322,6 +8427,12 @@ async function onModelChange() {
         console.log('ZAI model changed to', value);
         oai_settings.zai_model = value;
         $('#zai_model_id').val(value);
+    }
+
+    if (value && $(this).is('#model_linkapi_select')) {
+        console.log('LinkAPI model changed to', value);
+        oai_settings.linkapi_model = value;
+        $('#linkapi_model_id').val(value);
     }
 
     if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(oai_settings.chat_completion_source)) {
@@ -8650,6 +8761,27 @@ async function onModelChange() {
         $('#temp_openai').attr('max', claude_max_temp).val(oai_settings.temp_openai).trigger('input');
     }
 
+    if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        const linkApiFormat = getLinkApiRequestFormat(oai_settings.linkapi_model);
+        // Context size follows the underlying model family, not the wire format:
+        // bracket-tagged per-request channels route via the OpenAI leg but keep native context.
+        const linkApiModelId = String(oai_settings.linkapi_model || '').toLowerCase();
+        const maxContext = maxContextUnlocked ? unlocked_max
+            : linkApiModelId.includes('gemini') ? max_1mil
+                : linkApiModelId.includes('claude') ? max_200k
+                    : max_128k;
+        $('#openai_max_context').attr('max', maxContext);
+        oai_settings.openai_max_context = Math.min(Number($('#openai_max_context').attr('max')), oai_settings.openai_max_context);
+        $('#openai_max_context').val(oai_settings.openai_max_context).trigger('input');
+        // Anthropic and Gemini relays reject temperatures above 1.0.
+        if (linkApiFormat !== 'openai') {
+            oai_settings.temp_openai = Math.min(claude_max_temp, oai_settings.temp_openai);
+            $('#temp_openai').attr('max', claude_max_temp).val(oai_settings.temp_openai).trigger('input');
+        } else {
+            $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+        }
+    }
+
     $('#openai_max_context_counter').attr('max', Number($('#openai_max_context').attr('max')));
 
     saveSettingsDebounced();
@@ -8721,6 +8853,7 @@ async function onConnectButtonClick(e) {
         [chat_completion_sources.POLLINATIONS]: { key: SECRET_KEYS.POLLINATIONS, selector: '#api_key_pollinations', proxy: false },
         [chat_completion_sources.WORKERS_AI]: { key: SECRET_KEYS.WORKERS_AI, selector: '#api_key_workers_ai', proxy: false },
         [chat_completion_sources.MINIMAX]: { key: SECRET_KEYS.MINIMAX, selector: '#api_key_minimax', proxy: false },
+        [chat_completion_sources.LINKAPI]: { key: SECRET_KEYS.LINKAPI, selector: '#api_key_linkapi', proxy: false },
     };
 
     // Vertex AI Express version - use API key
@@ -8824,6 +8957,9 @@ function toggleChatCompletionForms() {
         $('#model_zai_select').trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.WORKERS_AI) {
         $('#model_workers_ai_select').trigger('change');
+    } else if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
+        $('#linkapi_model_id').val(oai_settings.linkapi_model);
+        $('#model_linkapi_select').val(oai_settings.linkapi_model).trigger('change');
     }
 
     $('[data-source]').each(function () {
@@ -9061,6 +9197,8 @@ export function isImageInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.nanogpt_model)?.capabilities?.vision);
         case chat_completion_sources.ZAI:
             return visionSupportedModels.some(model => oai_settings.zai_model.includes(model));
+        case chat_completion_sources.LINKAPI:
+            return visionSupportedModels.some(model => oai_settings.linkapi_model.includes(model));
         case chat_completion_sources.SILICONFLOW:
             return visionSupportedModels.some(model => oai_settings.siliconflow_model.includes(model));
         case chat_completion_sources.WORKERS_AI: {
@@ -9106,6 +9244,8 @@ export function isVideoInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.openrouter_model)?.architecture?.input_modalities?.includes('video'));
         case chat_completion_sources.ZAI:
             return videoSupportedModels.some(model => oai_settings.zai_model.includes(model));
+        case chat_completion_sources.LINKAPI:
+            return videoSupportedModels.some(model => oai_settings.linkapi_model.includes(model));
         default:
             return false;
     }
@@ -10456,6 +10596,10 @@ export function initOpenAI() {
         oai_settings.zai_model = String($(this).val());
         saveSettingsDebounced();
     });
+    $('#linkapi_model_id').on('input', function () {
+        oai_settings.linkapi_model = String($(this).val());
+        saveSettingsDebounced();
+    });
     $('#vertexai_model_id').on('input', function () {
         oai_settings.vertexai_model = String($(this).val());
         saveSettingsDebounced();
@@ -10759,6 +10903,10 @@ export function initOpenAI() {
         oai_settings.zai_endpoint = String($(this).val());
         saveSettingsDebounced();
     });
+    $('#linkapi_endpoint').on('input', function () {
+        oai_settings.linkapi_endpoint = String($(this).val());
+        saveSettingsDebounced();
+    });
     $('#siliconflow_endpoint').on('input', function () {
         oai_settings.siliconflow_endpoint = String($(this).val());
         saveSettingsDebounced();
@@ -10801,6 +10949,7 @@ export function initOpenAI() {
     $('#azure_openai_model').on('change', onModelChange);
     $('#model_zai_select').on('change', onModelChange);
     $('#model_workers_ai_select').on('change', onModelChange);
+    $('#model_linkapi_select').on('change', onModelChange);
     $('#settings_preset_openai').on('change', onSettingsPresetChange);
     $('#new_oai_preset').on('click', onNewPresetClick);
     $('#delete_oai_preset').on('click', onDeletePresetClick);

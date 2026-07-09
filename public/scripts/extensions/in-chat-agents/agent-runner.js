@@ -3411,6 +3411,8 @@ function injectPreGenerationAgentPrompts(activeAgents, generationType) {
             agent.injection.depth,
             agent.injection.scan,
             agent.injection.role,
+            null,
+            agent.name,
         );
     }
 }

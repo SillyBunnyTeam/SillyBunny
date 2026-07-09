@@ -216,6 +216,7 @@ export const CHAT_COMPLETION_SOURCES = {
     SILICONFLOW: 'siliconflow',
     MINIMAX: 'minimax',
     WORKERS_AI: 'workers_ai',
+    LINKAPI: 'linkapi',
 };
 
 /**
