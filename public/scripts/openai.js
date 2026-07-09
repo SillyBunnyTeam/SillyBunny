@@ -1684,12 +1684,14 @@ async function preparePromptsForChatCompletion({ scenario, charPersonality, name
 
             const hasFilter = typeof prompt.filter === 'function';
             if (hasFilter && !await prompt.filter()) continue;
+            const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
 
             systemPrompts.push({
                 identifier: key.replace(/\W/g, '_'),
                 position: getPromptPosition(prompt.position),
                 role: getPromptRole(prompt.role),
                 content: prompt.value,
+                ...(promptName && { name: promptName }),
                 extension: true,
             });
         }
@@ -5947,6 +5949,8 @@ class Message {
     content;
     /** @type {string} */
     name;
+    /** @type {string} */
+    displayName;
     /** @type {object} */
     tool_call = null;
     /** @type {string?} */
@@ -6215,8 +6219,13 @@ class Message {
      * @param {Object} prompt - The prompt object.
      * @returns {Promise<Message>} A new instance of Message.
      */
-    static fromPromptAsync(prompt) {
-        return Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+    static async fromPromptAsync(prompt) {
+        const message = await Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+        const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
+        if (prompt.extension && promptName) {
+            message.displayName = promptName;
+        }
+        return message;
     }
 
     /**
