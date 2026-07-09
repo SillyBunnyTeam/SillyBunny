@@ -113,6 +113,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #650 (2026-07-09) `fix(ica): viewing the in-chat agents injected into the preset should show their actual names`
 - PR #651 (2026-07-09) `fix(card_imports): fixes chub AI import API + botbooru support`
 - PR #652 (2026-07-09) `fix(mobile): restore viewport pan hardening and keep popup inputs above the keyboard`
+- PR #653 (2026-07-09) `fix(tests): cover secret-bound profiles dropping plaintext keys (split from #627)`
 
 ## v1.6.5
 
