@@ -3035,7 +3035,16 @@ export async function importFromExternalUrl(url, { preserveFileName = null } = {
 
     const data = await request.blob();
     const customContentType = request.headers.get('X-Custom-Content-Type');
-    let fileName = request.headers.get('Content-Disposition').split('filename=')[1].replace(/"/g, '');
+    const contentDisposition = request.headers.get('Content-Disposition') || '';
+    const fileNameMatch = contentDisposition.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+    let fileName = fileNameMatch?.[1] || fileNameMatch?.[2] || url.split('/').filter(Boolean).pop() || 'file';
+
+    try {
+        fileName = decodeURIComponent(fileName.replace(/^"|"$/g, ''));
+    } catch {
+        fileName = fileName.replace(/^"|"$/g, '');
+    }
+
     const file = new File([data], fileName, { type: data.type });
 
     const extraData = new Map();
