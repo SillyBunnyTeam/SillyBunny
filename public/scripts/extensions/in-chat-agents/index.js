@@ -2723,12 +2723,14 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     };
     fullscreenButton.on('click', () => updateEditorFullscreenState(!editorFullscreen));
     attachTextareaFullscreen(editorEl);
+    const editorOrderInput = editorEl.find('#ica--editor-order');
+    const companionOrderInput = editorEl.find('#ica--editor-companion-order');
 
     // Injection
     editorEl.find('#ica--editor-position').val(agent.injection.position);
     editorEl.find('#ica--editor-depth').val(agent.injection.depth);
     editorEl.find('#ica--editor-role').val(agent.injection.role);
-    editorEl.find('#ica--editor-order').val(agent.injection.order);
+    editorOrderInput.val(agent.injection.order);
     editorEl.find('#ica--editor-scan').prop('checked', agent.injection.scan);
     const preProcess = getAgentPreProcess(agent);
     editorEl.find('#ica--editor-pre-mode').val(preProcess.mode);
@@ -2991,10 +2993,12 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
-    function updateCompanionOrderReadout() {
-        editorEl.find('#ica--editor-companion-order-value').text(String(getAgentOrderValue({
-            injection: { order: editorEl.find('#ica--editor-order').val() },
-        })));
+    function syncCompanionOrderInput() {
+        companionOrderInput.val(editorOrderInput.val());
+    }
+
+    function syncPrimaryOrderInputFromCompanion() {
+        editorOrderInput.val(companionOrderInput.val());
     }
 
     function readCompanionConfigFromEditor(root, baseAgent = agent) {
@@ -3077,7 +3081,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     });
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
-    editorEl.find('#ica--editor-order').on('input change', updateCompanionOrderReadout);
+    editorOrderInput.on('input change', syncCompanionOrderInput);
+    companionOrderInput.on('input change', syncPrimaryOrderInputFromCompanion);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
     updateChatroomExtraCharacterOptions();
@@ -3086,7 +3091,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateCompanionContextRecipientOptions();
     updateCompanionDependencyOptions();
     updateCompanionEditorVisibility();
-    updateCompanionOrderReadout();
+    syncCompanionOrderInput();
 
     // Show/hide sections based on phase
     function updatePhaseVisibility() {

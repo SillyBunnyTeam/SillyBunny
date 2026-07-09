@@ -90,11 +90,6 @@
             </div>
         </div>
         <div class="ica--regex-note">Companions run after the main reply and render below it. Use Hidden when the note should only feed future prompts through feedback.</div>
-        <div class="ica--card-pill ica--card-pill--order ica--companion-order-readout" title="Lower numbers run earlier when Append Agents Execution is set to Sequential.">
-            <i class="fa-solid fa-sort-numeric-down fa-xs"></i>
-            <span>Order</span>
-            <strong id="ica--editor-companion-order-value">100</strong>
-        </div>
         <div class="ica--editor-row" id="ica--chatroom-style-row" style="display:none">
             <label>Chatroom Style
                 <select id="ica--editor-chatroom-style" class="text_pole">
@@ -165,6 +160,9 @@
             <div class="ica--regex-note">Injected into Plot Compass runs and editable any time from this agent's settings.</div>
         </div>
         <div class="ica--companion-core-grid">
+            <label title="Lower numbers run earlier when Append Agents Execution is set to Sequential.">Order
+                <input type="number" id="ica--editor-companion-order" class="text_pole" min="0" max="999" value="100" />
+            </label>
             <label>Trigger
                 <select id="ica--editor-companion-trigger" class="text_pole">
                     <option value="auto">Auto after matching replies</option>
