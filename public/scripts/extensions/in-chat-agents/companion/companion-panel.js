@@ -709,6 +709,11 @@ function setupPanelSortable() {
     body.sortable({
         items: '.ica--tpanel-agent',
         handle: '.ica--tpanel-drag-handle',
+        // jQuery UI's mouse widget matches event.target against `cancel` before the `handle`
+        // gate runs; its default (`input, textarea, button, select, option`) would swallow every
+        // drag that starts on the grip because the grip is a <button>. Cancel the section's other
+        // controls but leave the drag handle draggable.
+        cancel: 'input, textarea, .menu_button, .ica--cdash-action:not(.ica--tpanel-drag-handle)',
         tolerance: 'pointer',
         distance: 5,
         placeholder: 'ica--tpanel-agent-placeholder',
