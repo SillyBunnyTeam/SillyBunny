@@ -601,6 +601,15 @@ button.ica--card-pill {
     background: color-mix(in srgb, var(--SmartThemeBorderColor) 34%, transparent);
 }
 
+.ica--companion-order-readout {
+    align-self: flex-start;
+    opacity: 0.82;
+}
+
+.ica--companion-order-readout strong {
+    font-weight: 700;
+}
+
 .ica--card-pill--version {
     font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--SmartThemeBorderColor) 28%, transparent);

@@ -336,6 +336,11 @@ function normalizeCompanionBatchAgentIds(value = []) {
     return ids;
 }
 
+function getCompanionAgentOptionLabel(agent) {
+    const name = String(agent?.name ?? '').trim() || agent?.id || 'Companion';
+    return `${name} (Order ${getAgentOrderValue(agent)})`;
+}
+
 function getCompanionBatchOptionsForAgent(agent) {
     if (!isCompanionAgent(agent)) return [];
 
@@ -346,7 +351,7 @@ function getCompanionBatchOptionsForAgent(agent) {
         .map(candidate => ({
             id: candidate.id,
             referenceIds: getCompanionReferenceIds(candidate),
-            label: String(candidate.name ?? '').trim() || candidate.id,
+            label: getCompanionAgentOptionLabel(candidate),
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
 }
@@ -360,7 +365,7 @@ function getCompanionDependencyOptionsForAgent(agent) {
         .map(candidate => ({
             id: candidate.id,
             referenceIds: getCompanionReferenceIds(candidate),
-            label: String(candidate.name ?? '').trim() || candidate.id,
+            label: getCompanionAgentOptionLabel(candidate),
         }))
         .sort((left, right) => left.label.localeCompare(right.label));
 }
@@ -2986,6 +2991,12 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
     }
 
+    function updateCompanionOrderReadout() {
+        editorEl.find('#ica--editor-companion-order-value').text(String(getAgentOrderValue({
+            injection: { order: editorEl.find('#ica--editor-order').val() },
+        })));
+    }
+
     function readCompanionConfigFromEditor(root, baseAgent = agent) {
         const current = getCompanionConfig(baseAgent);
         return {
@@ -3066,6 +3077,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     });
     editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
     editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
+    editorEl.find('#ica--editor-order').on('input change', updateCompanionOrderReadout);
     updateTrackerBuilderVisibility();
     updateChatroomCustomStyleOptions();
     updateChatroomExtraCharacterOptions();
@@ -3074,6 +3086,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateCompanionContextRecipientOptions();
     updateCompanionDependencyOptions();
     updateCompanionEditorVisibility();
+    updateCompanionOrderReadout();
 
     // Show/hide sections based on phase
     function updatePhaseVisibility() {
