@@ -1,0 +1,88 @@
+[     637ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8001/:0
+[     996ms] [WARNING] No input elements found for key: api_key_comfy_runpod @ http://127.0.0.1:8001/scripts/secrets.js:570
+[     999ms] [WARNING] Unsupported language: en-us @ http://127.0.0.1:8001/scripts/i18n.js:142
+[    1216ms] [LOG] OpenAI model changed to gpt-4-turbo @ http://127.0.0.1:8001/scripts/openai.js:5587
+[    1871ms] [INFO] Using default TTS Provider settings @ http://127.0.0.1:8001/scripts/extensions/tts/system.js:119
+[    1916ms] [LOG] [QR2] sets:  [QuickReplySet] @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[    1916ms] [LOG] [QR2] settings:  QuickReplySettings @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[    1956ms] [WARNING] Failed to process stylesheet on initial load: SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:111:29)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:193
+[    1967ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: color-mix(in srgb, var(--color-background, #130f0d) 70%, transparent); }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[    1968ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:focus-visible { background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-color: ; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[  418410ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8001/:0
+[  418746ms] [WARNING] No input elements found for key: api_key_comfy_runpod @ http://127.0.0.1:8001/scripts/secrets.js:570
+[  418747ms] [WARNING] Unsupported language: en-us @ http://127.0.0.1:8001/scripts/i18n.js:142
+[  418931ms] [LOG] OpenAI model changed to gpt-4-turbo @ http://127.0.0.1:8001/scripts/openai.js:5587
+[  419601ms] [INFO] Using default TTS Provider settings @ http://127.0.0.1:8001/scripts/extensions/tts/system.js:119
+[  419634ms] [LOG] [QR2] sets:  [QuickReplySet] @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  419634ms] [LOG] [QR2] settings:  QuickReplySettings @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  419652ms] [WARNING] Failed to process stylesheet on initial load: SecurityError: Failed to read the 'cssRules' property from 'CSSStyleSheet': Cannot access rules
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:111:29)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:193
+[  419662ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-track:focus-visible { background-color: color-mix(in srgb, var(--color-background, #130f0d) 70%, transparent); }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[  419663ms] [WARNING] Failed to insert focus rule: SyntaxError: Failed to execute 'insertRule' on 'CSSStyleSheet': Failed to parse the rule '::-webkit-scrollbar-thumb:focus-visible { background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-color: ; border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }'.
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:144:34
+    at Array.forEach (<anonymous>)
+    at applyDynamicFocusStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:117:16)
+    at http://127.0.0.1:8001/scripts/dynamic-styles.js:192:13
+    at Array.forEach (<anonymous>)
+    at initDynamicStyles (http://127.0.0.1:8001/scripts/dynamic-styles.js:190:38)
+    at firstLoadInit (http://127.0.0.1:8001/script.js:747:9)
+    at async HTMLDocument.<anonymous> (http://127.0.0.1:8001/script.js:12492:5) @ http://127.0.0.1:8001/scripts/dynamic-styles.js:145
+[  476621ms] [INFO] Rendered 1 messages in 0.015 seconds. @ http://127.0.0.1:8001/script.js:1533
+[  476670ms] [LOG] [QR2] calling {functionToCall: , args: Array(1)} @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  476670ms] [LOG] [QR2] CHAT_CHANGED Seraphina - 2023-5-12 @21h 32m 29s 224ms @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  476705ms] [LOG] [QR2] calling {functionToCall: , args: Array(2)} @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  477808ms] [LOG] Generate entered @ http://127.0.0.1:8001/script.js:4214
+[  477808ms] [LOG] [QR2] calling {functionToCall: , args: Array(3)} @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  477809ms] [LOG] [QR2] Before-generation hook skipped due to dryRun. @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  477811ms] [LOG] Core/all messages: 1/1 @ http://127.0.0.1:8001/script.js:4523
+[  477823ms] [LOG] [WI] Hypothetically adding 0 entries to prompt [] @ http://127.0.0.1:8001/scripts/world-info.js:5154
+[  477823ms] [LOG] skipWIAN not active, adding WIAN @ http://127.0.0.1:8001/script.js:4582
+[  478844ms] [LOG] Generate entered @ http://127.0.0.1:8001/script.js:4214
+[  478845ms] [LOG] [QR2] calling {functionToCall: , args: Array(3)} @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  478845ms] [LOG] [QR2] Before-generation hook skipped due to dryRun. @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  478846ms] [LOG] Core/all messages: 1/1 @ http://127.0.0.1:8001/script.js:4523
+[  478849ms] [LOG] [WI] Hypothetically adding 0 entries to prompt [] @ http://127.0.0.1:8001/scripts/world-info.js:5154
+[  478849ms] [LOG] skipWIAN not active, adding WIAN @ http://127.0.0.1:8001/script.js:4582
+[  710970ms] [LOG] No new name provided, aborting @ http://127.0.0.1:8001/scripts/welcome-screen.js:426
+[  729817ms] [LOG] Generate entered @ http://127.0.0.1:8001/script.js:4214
+[  729817ms] [LOG] [QR2] calling {functionToCall: , args: Array(3)} @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  729817ms] [LOG] [QR2] Before-generation hook skipped due to dryRun. @ http://127.0.0.1:8001/scripts/extensions/quick-reply/index.js:18
+[  729820ms] [LOG] Core/all messages: 1/1 @ http://127.0.0.1:8001/script.js:4523
+[  729883ms] [LOG] [WI] Hypothetically adding 4 entries to prompt [Object, Object, Object, Object] @ http://127.0.0.1:8001/scripts/world-info.js:5154
+[  729883ms] [LOG] skipWIAN not active, adding WIAN @ http://127.0.0.1:8001/script.js:4582
+[  729893ms] [LOG] Message role not set, defaulting to 'system' for identifier 'personaDescription' @ http://127.0.0.1:8001/scripts/openai.js:3735

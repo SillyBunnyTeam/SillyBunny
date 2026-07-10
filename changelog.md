@@ -114,6 +114,9 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #651 (2026-07-09) `fix(card_imports): fixes chub AI import API + botbooru support`
 - PR #652 (2026-07-09) `fix(mobile): restore viewport pan hardening and keep popup inputs above the keyboard`
 - PR #653 (2026-07-09) `fix(tests): cover secret-bound profiles dropping plaintext keys (split from #627)`
+- PR #654 (2026-07-09) `feat: New ordering mechanism for agents and companion sidebar`
+- PR #655 (2026-07-09) `fix: that funkily-sized button (guided generations flush/sweep)`
+- PR #656 (2026-07-09) `fix: Grok example dialogue glitch`
 
 ## v1.6.5
 

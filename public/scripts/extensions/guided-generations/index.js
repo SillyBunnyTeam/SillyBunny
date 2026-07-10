@@ -24,6 +24,7 @@ const oldExtensionName = 'third-party/GuidedGenerations-Extension';
 const legacySystemPromptPresetNames = new Set(['GGSystemPrompt', 'GGSytemPrompt']);
 
 const defaultSettings = {
+    showFlushGuidesButton: true,
     showGuidedResponse: true,
     showGuidedSwipe: true,
     showGuidedCorrection: true,
@@ -334,11 +335,6 @@ function updateFlushGuideButton() {
 
     const activeCount = getActiveGuides().length;
     const label = getFlushGuideButtonLabel(activeCount);
-    const countElement = button.querySelector('.gg-flush-guides-count');
-
-    if (countElement) {
-        countElement.textContent = String(activeCount);
-    }
 
     button.title = label;
     button.setAttribute('aria-label', label);
@@ -363,24 +359,12 @@ async function flushGuides() {
 }
 
 function createFlushGuidesButton() {
-    const button = document.createElement('button');
-    button.id = 'gg_flush_guides_button';
-    button.type = 'button';
-    button.className = 'gg-action-button gg-flush-guides-button menu_button menu_button_icon';
-
-    const icon = document.createElement('span');
-    icon.className = 'fa-solid fa-broom gg-flush-guides-icon';
-    icon.setAttribute('aria-hidden', 'true');
-
-    const count = document.createElement('span');
-    count.className = 'gg-flush-guides-count';
-
-    button.append(icon, count);
-    button.addEventListener('click', async event => {
-        event.preventDefault();
-        await flushGuides();
-    });
-    updateFlushGuideButton();
+    // Keep the flush button an empty FA-icon button like its siblings so
+    // theme icon-button sizing rules (which exclude buttons with child
+    // elements) apply to it too. The active-guide count badge is rendered
+    // in CSS from data-active-count via ::after.
+    const button = createActionButton('gg_flush_guides_button', getFlushGuideButtonLabel(0), 'fa-solid fa-broom gg-flush-guides-button', flushGuides);
+    button.dataset.activeCount = '0';
     return button;
 }
 
@@ -434,7 +418,7 @@ function updateExtensionButtons() {
     container.append(qrContainer, actionsContainer);
 
     const buttons = [
-        createFlushGuidesButton(),
+        settings.showFlushGuidesButton && createFlushGuidesButton(),
         settings.showSimpleSendButton && createActionButton('gg_simple_send_button', 'Simple Send', 'fa-solid fa-paper-plane', simpleSend),
         settings.showImpersonate1stPerson && createActionButton('gg_impersonate_button', 'Guided Impersonate', 'fa-solid fa-user-pen', guidedImpersonate),
         settings.showGuidedSwipe && createActionButton('gg_swipe_button', 'Guided Swipe', 'fa-solid fa-forward', guidedSwipe),

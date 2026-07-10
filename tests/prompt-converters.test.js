@@ -598,6 +598,25 @@ describe('convertXAIMessages', () => {
         // Starts with group name, so charName prefix should not be added
         expect(result[0].content).toBe('Alice: speaking as Alice');
     });
+
+    test('strips name from example dialogue system messages', () => {
+        const messages = [
+            { role: 'system', name: 'example_user', content: 'Question?' },
+            { role: 'system', name: 'example_assistant', content: 'Answer.' },
+        ];
+        const result = mod.convertXAIMessages(messages, names);
+        expect(result[0]).toEqual({ role: 'system', content: 'Player: Question?' });
+        expect(result[1]).toEqual({ role: 'system', content: 'Char: Answer.' });
+    });
+
+    test('deletes name without prefixing when content is not a string', () => {
+        const messages = [
+            { role: 'assistant', name: 'Char', content: [{ type: 'text', text: 'Hello' }] },
+        ];
+        const result = mod.convertXAIMessages(messages, names);
+        expect(result[0].name).toBeUndefined();
+        expect(result[0].content).toEqual([{ type: 'text', text: 'Hello' }]);
+    });
 });
 
 
