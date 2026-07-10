@@ -7,6 +7,7 @@ import {
     extension_prompts,
     setExtensionPrompt,
     substituteParams,
+    substituteParamsExtended,
     generateQuietPrompt,
     getCurrentChatId,
     normalizeContentText,
@@ -58,6 +59,8 @@ import { getContextualLorebooks } from './pathfinder/pathfinder-tool-bridge.js';
 import { PATHFINDER_RETRIEVAL_PROMPT_KEYS, runSidecarRetrieval } from './pathfinder/sidecar-retrieval.js';
 import { shouldAutoSummarize } from './pathfinder/auto-summary.js';
 import { buildRegexScriptRefsForAgent, cacheAgentRegexScripts, migrateLegacyRegexSnapshotsInMessages } from './regex-snapshot-store.js';
+import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './regex-scripts.js';
+import { getCompanionReferenceIds } from './companion/companion-shared.js';
 
 const PROMPT_KEY_PREFIX = 'inchat_agent_';
 const PATHFINDER_AUTO_SUMMARY_PROMPT_KEY = 'pathfinder_zz_auto_summary';
@@ -75,6 +78,7 @@ const pendingRegexSnapshotSaves = new WeakSet();
 const migratedLegacyRegexSnapshotChatIds = new Set();
 const GREETING_GENERATION_TYPE = 'first_message';
 const IMPERSONATE_GENERATION_TYPE = 'impersonate';
+export const COMPANION_OUTPUT_GENERATION_TYPE = 'companion_output';
 const PREPEND_PROMPT_TRANSFORM_TEMPLATE_IDS = new Set([
     'tpl-scene-tracker',
     'tpl-time-tracker',
@@ -412,7 +416,7 @@ async function processManualAgentRunQueue() {
             notifyAgentGenerationStateChanged();
 
             try {
-                const result = await executeManualAgentRun(queuedRun.agentId, queuedRun.messageIndex, queuedRun.cancelRevision);
+                const result = await executeManualAgentRun(queuedRun.agentId, queuedRun.target, queuedRun.cancelRevision);
                 queuedRun.resolve(result);
             } catch (error) {
                 queuedRun.reject(error);
@@ -430,7 +434,30 @@ async function processManualAgentRunQueue() {
     }
 }
 
-function enqueueManualAgentRun(agentId, messageIndex) {
+/**
+ * Normalizes a manual-run target. Plain numbers/strings keep the historical
+ * "run on this chat message" meaning; objects can address the composer text box
+ * or a companion result on a message.
+ * @param {number|string|{ kind?: string, messageIndex?: number, companionAgentId?: string }} target
+ * @returns {{ kind: 'message'|'composer'|'companion', messageIndex: number, companionAgentId: string }}
+ */
+function normalizeManualRunTarget(target) {
+    if (typeof target === 'number' || typeof target === 'string') {
+        return { kind: 'message', messageIndex: Number(target), companionAgentId: '' };
+    }
+
+    const kind = ['message', 'composer', 'companion'].includes(String(target?.kind ?? '').trim())
+        ? String(target.kind).trim()
+        : 'message';
+
+    return {
+        kind,
+        messageIndex: Number(target?.messageIndex ?? -1),
+        companionAgentId: String(target?.companionAgentId ?? '').trim(),
+    };
+}
+
+function enqueueManualAgentRun(agentId, target) {
     const wasAlreadyActive = isAgentGenerationActive();
     manualAgentRunCancelRequested = false;
     if (!isGenerationInProgress) {
@@ -450,7 +477,7 @@ function enqueueManualAgentRun(agentId, messageIndex) {
 
         return (async () => {
             try {
-                return await executeManualAgentRun(agentId, messageIndex, cancelRevision);
+                return await executeManualAgentRun(agentId, target, cancelRevision);
             } finally {
                 parallelManualRunCount = Math.max(0, parallelManualRunCount - 1);
                 notifyAgentGenerationStateChanged();
@@ -461,7 +488,7 @@ function enqueueManualAgentRun(agentId, messageIndex) {
     return new Promise((resolve, reject) => {
         manualAgentRunQueue.push({
             agentId,
-            messageIndex,
+            target,
             cancelRevision,
             resolve,
             reject,
@@ -677,6 +704,7 @@ function normalizeGenerationType(generationType) {
         case GREETING_GENERATION_TYPE:
         case 'impersonate':
         case 'quiet':
+        case COMPANION_OUTPUT_GENERATION_TYPE:
             return String(generationType).trim().toLowerCase();
         default:
             return 'normal';
@@ -2105,15 +2133,90 @@ function getPromptTransformAgentsForMessage(activeAgents, generationType) {
     return getPromptTransformAgents(activeAgents);
 }
 
+function agentOptedIntoImpersonatePasses(agent) {
+    if (agent?.conditions?.runOnImpersonate) {
+        return true;
+    }
+
+    const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
+    return IMPERSONATE_PROMPT_TRANSFORM_TEMPLATE_IDS.has(sourceTemplateId);
+}
+
 function getPromptTransformAgentsForImpersonate(activeAgents) {
-    return getPromptTransformAgents(activeAgents).filter(agent => {
-        if (agent?.conditions?.runOnImpersonate) {
-            return true;
+    return getPromptTransformAgents(activeAgents).filter(agentOptedIntoImpersonatePasses);
+}
+
+function getRegexAgentsForImpersonate(activeAgents) {
+    return activeAgents.filter(agent =>
+        !isCompanionAgent(agent) &&
+        !isToolAgent(agent) &&
+        agentOptedIntoImpersonatePasses(agent) &&
+        getAgentRegexScripts(agent).length > 0,
+    );
+}
+
+/**
+ * Applies the given agents' ST-style regex scripts directly to a plain text value
+ * (impersonation composer text or a companion result), outside the message
+ * regex-snapshot display pipeline. Runs the display-mode pass first so the common
+ * markdownOnly scripts apply, then the raw-text pass for scripts with both mode
+ * flags off.
+ * @param {object[]} agents
+ * @param {string} text
+ * @param {{ characterOverride?: string }} [options]
+ * @returns {string}
+ */
+function applyAgentRegexScriptsToText(agents, text, { characterOverride = '' } = {}) {
+    let output = String(text ?? '');
+    if (!output) {
+        return output;
+    }
+
+    const baseOptions = {
+        characterOverride,
+        substituteParamsFn: substituteParams,
+        substituteParamsExtendedFn: substituteParamsExtended,
+    };
+
+    for (const agent of agents) {
+        const scripts = getAgentRegexScripts(agent);
+        if (scripts.length === 0) {
+            continue;
         }
 
-        const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-        return IMPERSONATE_PROMPT_TRANSFORM_TEMPLATE_IDS.has(sourceTemplateId);
-    });
+        output = applyRegexScriptList(output, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, { ...baseOptions, isMarkdown: true });
+        output = applyRegexScriptList(output, scripts, AGENT_REGEX_PLACEMENT.AI_OUTPUT, baseOptions);
+    }
+
+    return output;
+}
+
+function companionOutputPassTargetsCompanion(agent, companionReferenceIdSet) {
+    const targetIds = Array.isArray(agent?.conditions?.companionOutputTargetAgentIds)
+        ? agent.conditions.companionOutputTargetAgentIds.map(id => String(id ?? '').trim().toLowerCase()).filter(Boolean)
+        : [];
+
+    if (targetIds.length === 0) {
+        return true;
+    }
+
+    return targetIds.some(id => companionReferenceIdSet.has(id));
+}
+
+function getCompanionOutputPostPassAgents(companionAgent) {
+    if (!areAgentsGloballyEnabled()) {
+        return [];
+    }
+
+    const companionReferenceIdSet = new Set(getCompanionReferenceIds(companionAgent).map(id => id.toLowerCase()));
+
+    return getEnabledAgents().filter(agent =>
+        agent.id !== companionAgent?.id &&
+        !isCompanionAgent(agent) &&
+        !isToolAgent(agent) &&
+        agent?.conditions?.runOnCompanionOutputs &&
+        companionOutputPassTargetsCompanion(agent, companionReferenceIdSet),
+    );
 }
 
 function getPreGenerationInterceptAgents(activeAgents) {
@@ -2611,14 +2714,27 @@ function applyContextInterceptText(originalText, interceptText, preProcess = {})
 
 function buildPromptTransformMessages(agentPrompt, messageText, assistantName, generationType, mode) {
     const isImpersonate = isImpersonateGenerationType(generationType);
-    const targetLabel = isImpersonate ? 'generated impersonation text' : 'assistant response';
-    const originalLabel = isImpersonate ? 'original text' : 'original response';
-    const contentLabel = isImpersonate ? 'text' : 'response';
+    const isCompanionOutput = normalizeGenerationType(generationType) === COMPANION_OUTPUT_GENERATION_TYPE;
+    const targetLabel = isImpersonate
+        ? 'generated impersonation text'
+        : isCompanionOutput
+            ? 'companion agent note'
+            : 'assistant response';
+    const originalLabel = isImpersonate
+        ? 'original text'
+        : isCompanionOutput
+            ? 'original note'
+            : 'original response';
+    const contentLabel = isImpersonate ? 'text' : isCompanionOutput ? 'note' : 'response';
     const actionInstruction = mode === 'append'
         ? `Generate only the new content that should be appended after the ${targetLabel} according to the instructions above. Do not repeat, rewrite, summarize, or quote the original ${targetLabel}. Return only the appended content, with no labels or commentary unless the appended content itself requires them.`
         : `Rewrite the ${targetLabel} according to the instructions above. Return only the final rewritten ${targetLabel}. If no changes are needed, return the ${originalLabel} verbatim. Do not add commentary, labels, or code fences unless the ${contentLabel} itself requires them.`;
     const currentAssistantResponse = unwrapAssistantResponseWrapper(messageText);
-    const responseLabel = isImpersonate ? 'Current generated impersonation text' : 'Current assistant response';
+    const responseLabel = isImpersonate
+        ? 'Current generated impersonation text'
+        : isCompanionOutput
+            ? 'Current companion agent note'
+            : 'Current assistant response';
 
     return [
         {
@@ -3960,13 +4076,14 @@ function onMessageEdited(messageIndex) {
     saveChatDebouncedForAgent();
 }
 
-async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType) {
+async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {} } = {}) {
     const message = {
         mes: initialText,
         name: getUserMessageName(),
         is_user: true,
         is_system: false,
         extra: {},
+        ...messageContext,
     };
     const promptRuns = [];
     let currentPromptTransformText = unwrapAssistantResponseWrapper(initialText);
@@ -4026,6 +4143,56 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
         text: currentPromptTransformText,
         changed: currentPromptTransformText !== unwrapAssistantResponseWrapper(initialText),
     };
+}
+
+/**
+ * Runs the post passes of every enabled inline agent that opted into companion-output
+ * targeting (prompt pass first, agent regex second) against a completed companion result.
+ * The caller stores the returned text back into the companion result so downstream
+ * consumers (panel display, feedback injection, dependent companions) all see it.
+ * @param {object} companionAgent The companion whose output is being transformed
+ * @param {string} initialText The companion result content
+ * @param {{ messageIndex?: number }} [options]
+ * @returns {Promise<{ text: string, changed: boolean }>}
+ */
+export async function runCompanionOutputPostPasses(companionAgent, initialText, { messageIndex = -1 } = {}) {
+    const baseText = String(initialText ?? '');
+    if (!baseText.trim()) {
+        return { text: baseText, changed: false };
+    }
+
+    const transformers = getCompanionOutputPostPassAgents(companionAgent);
+    if (transformers.length === 0) {
+        return { text: baseText, changed: false };
+    }
+
+    const sourceMessage = chat[Number(messageIndex)] ?? null;
+    const characterName = String(sourceMessage?.name ?? '').trim();
+    let currentText = baseText;
+    let changed = false;
+
+    const promptAgents = getPromptTransformAgents(transformers);
+    if (promptAgents.length > 0) {
+        const promptResult = await runPromptTransformAgentsForText(
+            promptAgents,
+            currentText,
+            COMPANION_OUTPUT_GENERATION_TYPE,
+            { messageContext: characterName ? { name: characterName } : {} },
+        );
+        currentText = promptResult.text;
+        changed = changed || promptResult.changed;
+    }
+
+    const regexAgents = transformers.filter(agent => getAgentRegexScripts(agent).length > 0);
+    if (regexAgents.length > 0) {
+        const regexText = applyAgentRegexScriptsToText(regexAgents, currentText, { characterOverride: characterName });
+        if (regexText !== currentText) {
+            currentText = regexText;
+            changed = true;
+        }
+    }
+
+    return { text: currentText, changed };
 }
 
 async function runContextInterceptAgent(agent, currentContextText, generationType, contextFormat, options = {}) {
@@ -4567,22 +4734,39 @@ async function onImpersonateReady(text = '') {
         : buildActivationSnapshot(IMPERSONATE_GENERATION_TYPE);
     const activeAgents = getSnapshotAgents(activationSnapshot);
     const promptTransformAgents = getPromptTransformAgentsForImpersonate(activeAgents);
-    if (promptTransformAgents.length === 0) {
+    const regexAgents = getRegexAgentsForImpersonate(activeAgents);
+    if (promptTransformAgents.length === 0 && regexAgents.length === 0) {
         return;
     }
 
     // Impersonate produces user-side text; rewrite only the composer value, never the last assistant swipe.
-    const result = await runPromptTransformAgentsForText(promptTransformAgents, initialText, IMPERSONATE_GENERATION_TYPE);
-    if (!result.changed) {
+    let transformedText = initialText;
+    let changed = false;
+
+    if (promptTransformAgents.length > 0) {
+        const result = await runPromptTransformAgentsForText(promptTransformAgents, transformedText, IMPERSONATE_GENERATION_TYPE);
+        transformedText = result.text;
+        changed = changed || result.changed;
+    }
+
+    if (regexAgents.length > 0) {
+        const regexText = applyAgentRegexScriptsToText(regexAgents, transformedText, { characterOverride: getUserMessageName() });
+        if (regexText !== transformedText) {
+            transformedText = regexText;
+            changed = true;
+        }
+    }
+
+    if (!changed) {
         return;
     }
 
     if (normalizeContentText(textarea.value) !== textareaTextAtStart) {
-        toastr.warning('Skipped applying the impersonation prompt pass because the input changed while it was running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running.', 'In-Chat Agents');
         return;
     }
 
-    textarea.value = result.text;
+    textarea.value = transformedText;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -4815,14 +4999,105 @@ export function initAgentRunner() {
     migrateLegacyRegexSnapshotsForCurrentChat();
 }
 
-async function executeManualAgentRun(agentId, messageIndex, cancelRevision = agentGenerationCancelRevision) {
-    await commitOpenEditorForMessage(messageIndex);
+/**
+ * Runs a single inline agent's post passes (forced prompt pass, then agent regex)
+ * on a plain text value that is not a chat message.
+ * @param {object} agent
+ * @param {string} text
+ * @param {string} generationType Labeling context for the prompt pass
+ * @param {{ characterOverride?: string, messageContext?: object }} [options]
+ * @returns {Promise<{ text: string, changed: boolean }>}
+ */
+export async function runSingleAgentPostPassesOnText(agent, text, generationType, { characterOverride = '', messageContext = {} } = {}) {
+    let currentText = String(text ?? '');
+    let changed = false;
 
+    if (String(agent?.prompt ?? '').trim()) {
+        const promptResult = await runPromptTransformAgentsForText([agent], currentText, generationType, { messageContext });
+        currentText = promptResult.text;
+        changed = changed || promptResult.changed;
+    }
+
+    if (getAgentRegexScripts(agent).length > 0) {
+        const regexText = applyAgentRegexScriptsToText([agent], currentText, { characterOverride });
+        if (regexText !== currentText) {
+            currentText = regexText;
+            changed = true;
+        }
+    }
+
+    return { text: currentText, changed };
+}
+
+async function executeManualComposerAgentRun(agent, cancelRevision) {
+    if (isCompanionAgent(agent)) {
+        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text.');
+        return null;
+    }
+
+    const textarea = document.querySelector('#send_textarea');
+    if (!textarea) {
+        toastr.error('Composer text box not found.');
+        return null;
+    }
+
+    const initialText = normalizeContentText(textarea.value);
+    if (!initialText.trim()) {
+        toastr.warning('The composer text box is empty.');
+        return null;
+    }
+
+    const result = await runSingleAgentPostPassesOnText(agent, initialText, IMPERSONATE_GENERATION_TYPE, {
+        characterOverride: getUserMessageName(),
+    });
+
+    if (agentGenerationCancelRevision !== cancelRevision) {
+        return null;
+    }
+
+    if (!result.changed) {
+        toastr.info(`"${agent.name}" made no changes to the composer text.`, 'In-Chat Agents');
+        return result;
+    }
+
+    if (normalizeContentText(textarea.value) !== initialText) {
+        toastr.warning('Skipped applying the agent because the composer text changed while it was running.', 'In-Chat Agents');
+        return null;
+    }
+
+    textarea.value = result.text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    return result;
+}
+
+async function executeManualAgentRun(agentId, target, cancelRevision = agentGenerationCancelRevision) {
+    const runTarget = normalizeManualRunTarget(target);
     const agent = getAgentById(agentId);
     if (!agent) {
         toastr.error('Agent not found.');
         return null;
     }
+
+    if (runTarget.kind === 'composer') {
+        return await executeManualComposerAgentRun(agent, cancelRevision);
+    }
+
+    if (runTarget.kind === 'companion') {
+        if (isCompanionAgent(agent)) {
+            toastr.warning('Companion agents cannot post-process other companion notes.');
+            return null;
+        }
+
+        if (!companionRuntime?.applyAgentPostPassesToCompanionResult) {
+            toastr.error('Companion runtime is unavailable.');
+            return null;
+        }
+
+        return await companionRuntime.applyAgentPostPassesToCompanionResult(agent.id, runTarget.messageIndex, runTarget.companionAgentId, { cancelRevision });
+    }
+
+    const messageIndex = runTarget.messageIndex;
+    await commitOpenEditorForMessage(messageIndex);
 
     const message = chat[messageIndex];
     if (!message || message.is_user || message.is_system) {
@@ -4884,12 +5159,22 @@ async function executeManualAgentRun(agentId, messageIndex, cancelRevision = age
  * @returns {Promise<import('./agent-store.js').InChatAgent | null>}
  */
 export async function runAgentOnMessage(agentId, messageIndex) {
+    return await runAgentOnTarget(agentId, { kind: 'message', messageIndex: Number(messageIndex) });
+}
+
+/**
+ * Manually runs a single agent on a chosen target: a chat message, the composer
+ * text box, or a companion result on a message. Queued like other manual runs.
+ * @param {string} agentId
+ * @param {number|{ kind: 'message'|'composer'|'companion', messageIndex?: number, companionAgentId?: string }} target
+ */
+export async function runAgentOnTarget(agentId, target) {
     if (!areAgentsGloballyEnabled()) {
         toastr.warning('In-Chat Agents are disabled.');
         return null;
     }
 
-    return await enqueueManualAgentRun(agentId, messageIndex);
+    return await enqueueManualAgentRun(agentId, target);
 }
 
 export async function runTrackerFixOnMessage(messageIndex) {
