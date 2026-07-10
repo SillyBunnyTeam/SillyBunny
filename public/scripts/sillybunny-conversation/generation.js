@@ -7,7 +7,7 @@ import {
     SAFE_TOAST_OPTIONS,
     SCHEDULE_STATUSES,
 } from './constants.js';
-import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
+import { getConversationGroupById, getConversationGroupIdForAvatar, getConversationPersonaId, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import {
     buildSelfieImagePromptTemplate,
     extractCharacterReplyCommandParts,
@@ -106,16 +106,16 @@ export async function generateConversationRaw(options, settings) {
     return generateRaw(options);
 }
 
-export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar, groupId = getConversationGroupIdForAvatar(threadAvatar) } = {}) {
-    const messages = getConversationThread(threadAvatar, { groupId });
+export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), threadAvatar = avatar, speakerAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId() } = {}) {
+    const messages = getConversationThread(threadAvatar, { branchId, create: false, groupId, personaId });
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
         : getConversationReplyMaxTokens(settings);
-    const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId });
+    const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId });
 
     return generateConversationRaw({
         prompt,
-        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar, groupId }),
+        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar, branchId, groupId, personaId }),
         responseLength: resolvedResponseLength,
         trimNames,
         cacheScope: 'conversation-mode',
@@ -208,7 +208,7 @@ export function applyScheduleUpdateCommand(avatar, rawArgs) {
     });
 }
 
-export function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar), reminderAvatar = avatar } = {}) {
+export function extractCharacterReplyCommands(rawText, settings, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), reminderAvatar = avatar } = {}) {
     const commandParts = extractCharacterReplyCommandParts(rawText, settings);
     for (const rawArgs of commandParts.scheduleUpdates) {
         applyScheduleUpdateCommand(avatar, rawArgs);
@@ -216,7 +216,7 @@ export function extractCharacterReplyCommands(rawText, settings, avatar = getCur
 
     // Always enable parsing of the reminder command from character DMs!
     for (const reminder of commandParts.reminders) {
-        addConversationReminder(reminderAvatar, groupId, reminder.delay, reminder.memo);
+        addConversationReminder(reminderAvatar, groupId, reminder.delay, reminder.memo, { branchId, personaId });
     }
 
     return { text: commandParts.text, selfieRequests: commandParts.selfieRequests };
@@ -284,14 +284,14 @@ function addConversationReplySpeaker(speakers, speaker) {
     speakers.push({ avatar, name });
 }
 
-function getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId) {
+function getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId, personaId) {
     const speakers = [];
     addConversationReplySpeaker(speakers, fallbackSpeaker);
 
     const threadCharacter = getCharacterForAvatar(threadAvatar);
     addConversationReplySpeaker(speakers, threadCharacter || { avatar: threadAvatar, name: getCurrentCharName() });
 
-    const group = groupId ? getConversationGroupById(groupId) : null;
+    const group = groupId ? getConversationGroupById(groupId, { personaId }) : null;
     if (group?.members?.length) {
         for (const memberAvatar of group.members) {
             if (group.disabled_members?.includes(memberAvatar)) {
@@ -305,9 +305,9 @@ function getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId) {
     return speakers;
 }
 
-function resolveConversationReplySpeaker(messageText, fallbackSpeaker, { threadAvatar, groupId = '' } = {}) {
+function resolveConversationReplySpeaker(messageText, fallbackSpeaker, { threadAvatar, groupId = '', personaId = getConversationPersonaId() } = {}) {
     const speakerMatch = groupId
-        ? getSpeakerPrefixMatch(messageText, getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId))
+        ? getSpeakerPrefixMatch(messageText, getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId, personaId))
         : null;
     const speaker = speakerMatch?.speaker || fallbackSpeaker;
     const text = speakerMatch
@@ -320,13 +320,13 @@ function resolveConversationReplySpeaker(messageText, fallbackSpeaker, { threadA
     };
 }
 
-function splitConversationGeneratedReplyMessages(rawText, fallbackSpeaker, { threadAvatar, groupId = '', splitEveryLine = false } = {}) {
+function splitConversationGeneratedReplyMessages(rawText, fallbackSpeaker, { threadAvatar, groupId = '', personaId = getConversationPersonaId(), splitEveryLine = false } = {}) {
     const text = String(rawText || '').trim();
     if (!text) {
         return [];
     }
 
-    const speakers = groupId ? getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId) : [];
+    const speakers = groupId ? getConversationReplySpeakers(threadAvatar, fallbackSpeaker, groupId, personaId) : [];
     const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (groupId && lines.length > 1 && lines.some(line => getSpeakerPrefixMatch(line, speakers))) {
         return lines.reduce((messages, line) => {
@@ -360,9 +360,9 @@ function getConversationGeneratedMessageSpeakerId(message, threadAvatar) {
     return '';
 }
 
-function getGeneratedReplyReference(speakerAvatar, threadAvatar, { groupId = undefined } = {}) {
+function getGeneratedReplyReference(speakerAvatar, threadAvatar, { branchId = '', groupId = undefined, personaId = getConversationPersonaId() } = {}) {
     const speakerId = String(speakerAvatar || '').trim();
-    const messages = getConversationThread(threadAvatar, { groupId });
+    const messages = getConversationThread(threadAvatar, { branchId, create: false, groupId, personaId });
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
         if (!message || message.role === 'system' || !hasConversationMessageContent(message)) {
@@ -385,7 +385,7 @@ function getGeneratedReplyReference(speakerAvatar, threadAvatar, { groupId = und
     return null;
 }
 
-function getResolvedReplyExtra(extra, speakerAvatar, threadAvatar, { groupId = undefined, attachReplyReference = true } = {}) {
+function getResolvedReplyExtra(extra, speakerAvatar, threadAvatar, { branchId = '', groupId = undefined, personaId = getConversationPersonaId(), attachReplyReference = true } = {}) {
     const resolvedExtra = { ...extra };
     if (speakerAvatar && speakerAvatar !== threadAvatar) {
         resolvedExtra.partner_avatar = speakerAvatar;
@@ -394,7 +394,7 @@ function getResolvedReplyExtra(extra, speakerAvatar, threadAvatar, { groupId = u
     }
 
     if (attachReplyReference && !resolvedExtra.conversation_reply_to) {
-        const replyReference = getGeneratedReplyReference(speakerAvatar, threadAvatar, { groupId });
+        const replyReference = getGeneratedReplyReference(speakerAvatar, threadAvatar, { branchId, groupId, personaId });
         if (replyReference) {
             resolvedExtra.conversation_reply_to = replyReference;
         }
@@ -403,24 +403,33 @@ function getResolvedReplyExtra(extra, speakerAvatar, threadAvatar, { groupId = u
     return resolvedExtra;
 }
 
-async function appendResolvedConversationReply(messageText, speaker, settings, { avatar, extra = {}, groupId = undefined, attachReplyReference = true } = {}) {
+async function appendResolvedConversationReply(messageText, speaker, settings, { avatar, extra = {}, branchId = '', groupId = undefined, personaId = getConversationPersonaId(), attachReplyReference = true, validateTarget = null } = {}) {
     const speakerAvatar = speaker?.avatar || avatar;
     const speakerName = speaker?.name || 'Character';
     const role = getResolvedReplyRole(speakerAvatar, avatar);
-    const resolvedExtra = getResolvedReplyExtra(extra, speakerAvatar, avatar, { groupId, attachReplyReference });
+    const resolvedInputExtra = { ...extra };
+    if (!attachReplyReference) {
+        delete resolvedInputExtra.conversation_reply_to;
+    }
+    const resolvedExtra = getResolvedReplyExtra(resolvedInputExtra, speakerAvatar, avatar, { branchId, groupId, personaId, attachReplyReference });
 
-    await withTypingParticipant({ avatar: speakerAvatar, name: speakerName }, async () => {
-        await waitForReplyDelay(messageText, settings, speakerAvatar, { groupId });
-        await appendConversationMessage(messageText, {
+    return withTypingParticipant({ avatar: speakerAvatar, name: speakerName }, async () => {
+        await waitForReplyDelay(messageText, settings, speakerAvatar, { branchId, groupId, personaId });
+        if (typeof validateTarget === 'function' && !validateTarget()) {
+            return null;
+        }
+        return appendConversationMessage(messageText, {
             name: speakerName,
             role,
             extra: resolvedExtra,
+            branchId,
             groupId,
+            personaId,
         }, avatar);
-    }, avatar, { groupId });
+    }, avatar, { branchId, groupId, personaId });
 }
 
-export async function postPartnerConversationReply(rawText, partner, partnerSettings, { avatar = getCurrentCharAvatar(), extra = {}, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function postPartnerConversationReply(rawText, partner, partnerSettings, { avatar = getCurrentCharAvatar(), extra = {}, branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), validateTarget = null } = {}) {
     if (!avatar || !partner) {
         return false;
     }
@@ -430,18 +439,25 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
     const rawMessages = splitConversationGeneratedReplyMessages(rawText, fallbackSpeaker, {
         threadAvatar: avatar,
         groupId,
+        personaId,
         splitEveryLine: true,
     });
     let posted = false;
 
     for (const rawMessage of rawMessages) {
-        const resolved = resolveConversationReplySpeaker(rawMessage, fallbackSpeaker, { threadAvatar: avatar, groupId });
-        const { text, selfieRequests } = extractCharacterReplyCommands(resolved.text, partnerSettings, resolved.speaker.avatar, { groupId, reminderAvatar: avatar });
+        if (typeof validateTarget === 'function' && !validateTarget()) {
+            return posted;
+        }
+        const resolved = resolveConversationReplySpeaker(rawMessage, fallbackSpeaker, { threadAvatar: avatar, groupId, personaId });
+        const { text, selfieRequests } = extractCharacterReplyCommands(resolved.text, partnerSettings, resolved.speaker.avatar, { branchId, groupId, personaId, reminderAvatar: avatar });
         const messages = splitChatroomMessages(text).map(part => normalizeConversationOutputText(part)).filter(Boolean);
 
         let attachReplyReference = true;
         for (const messageText of messages) {
-            await appendResolvedConversationReply(messageText, resolved.speaker, partnerSettings, { avatar, extra, groupId, attachReplyReference });
+            const appended = await appendResolvedConversationReply(messageText, resolved.speaker, partnerSettings, { avatar, extra, branchId, groupId, personaId, attachReplyReference, validateTarget });
+            if (!appended) {
+                return posted;
+            }
             attachReplyReference = false;
             posted = true;
         }
@@ -449,27 +465,33 @@ export async function postPartnerConversationReply(rawText, partner, partnerSett
         for (const context of selfieRequests) {
             const speakerAvatar = resolved.speaker.avatar || partner.avatar;
             const speakerName = resolved.speaker.name || partnerName;
-            await withTypingParticipant({ avatar: speakerAvatar, name: speakerName }, () => generateSelfieFromContext(context, partnerSettings, speakerAvatar, {
+            const generated = await withTypingParticipant({ avatar: speakerAvatar, name: speakerName }, () => generateSelfieFromContext(context, partnerSettings, speakerAvatar, {
                 threadAvatar: avatar,
                 role: getResolvedReplyRole(speakerAvatar, avatar),
                 name: speakerName,
-                extra: getResolvedReplyExtra(extra, speakerAvatar, avatar, { groupId }),
+                extra: getResolvedReplyExtra(extra, speakerAvatar, avatar, { branchId, groupId, personaId }),
+                branchId,
                 groupId,
-            }), avatar, { groupId });
-            posted = true;
+                personaId,
+                validateTarget,
+            }), avatar, { branchId, groupId, personaId });
+            posted = posted || generated;
         }
     }
 
     return posted;
 }
 
-export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, groupId = undefined, force = false, notify = false } = {}) {
+export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, role = 'character', name = '', extra = {}, branchId = '', groupId = undefined, personaId = getConversationPersonaId(), force = false, notify = false, validateTarget = null } = {}) {
     const resolvedSettings = settings || {};
     if (!avatar) {
         return false;
     }
+    if (typeof validateTarget === 'function' && !validateTarget()) {
+        return false;
+    }
 
-    const cooldownRemaining = getImageCooldownRemainingSeconds(avatar, resolvedSettings, Date.now(), { groupId });
+    const cooldownRemaining = getImageCooldownRemainingSeconds(avatar, resolvedSettings, Date.now(), { branchId, groupId, personaId });
     if (!force && (!resolvedSettings.image_gen_enabled || cooldownRemaining > 0)) {
         return false;
     }
@@ -505,14 +527,19 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
     );
 
     const imageUrl = await generateConversationImage(imagePrompt, resolvedSettings.image_gen_negative || '', { notify });
-    if (imageUrl) {
+    if (imageUrl && (typeof validateTarget !== 'function' || validateTarget())) {
         const caption = await generateSelfieCaption(scene, resolvedSettings, avatar, imagePrompt);
-        markImageGenerated(avatar, Date.now(), { groupId });
+        if (typeof validateTarget === 'function' && !validateTarget()) {
+            return false;
+        }
+        markImageGenerated(avatar, Date.now(), { branchId, groupId, personaId });
         await appendConversationMessage(caption, {
             name,
             role,
             extra: { ...extra, conversation_mode_image: true, image_url: imageUrl, image_prompt: imagePrompt },
+            branchId,
             groupId,
+            personaId,
         }, threadAvatar);
         return true;
     }
@@ -550,7 +577,7 @@ async function generateSelfieCaption(context, settings, avatar, imagePrompt) {
     return 'Here, I took this for you.';
 }
 
-export async function postCharacterReply(rawText, settings, { extra = {}, groupId = undefined } = {}, avatar = getCurrentCharAvatar()) {
+export async function postCharacterReply(rawText, settings, { extra = {}, branchId = '', groupId = undefined, personaId = getConversationPersonaId(), validateTarget = null } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return '';
     }
@@ -560,12 +587,16 @@ export async function postCharacterReply(rawText, settings, { extra = {}, groupI
     const rawMessages = splitConversationGeneratedReplyMessages(rawText, fallbackSpeaker, {
         threadAvatar: avatar,
         groupId,
+        personaId,
     });
     const postedText = [];
 
     for (const rawMessage of rawMessages) {
-        const resolved = resolveConversationReplySpeaker(rawMessage, fallbackSpeaker, { threadAvatar: avatar, groupId });
-        const { text, selfieRequests } = extractCharacterReplyCommands(resolved.text, settings, resolved.speaker.avatar, { groupId });
+        if (typeof validateTarget === 'function' && !validateTarget()) {
+            return postedText.join('\n');
+        }
+        const resolved = resolveConversationReplySpeaker(rawMessage, fallbackSpeaker, { threadAvatar: avatar, groupId, personaId });
+        const { text, selfieRequests } = extractCharacterReplyCommands(resolved.text, settings, resolved.speaker.avatar, { branchId, groupId, personaId });
 
         if (text) {
             let attachReplyReference = true;
@@ -575,7 +606,10 @@ export async function postCharacterReply(rawText, settings, { extra = {}, groupI
                     continue;
                 }
 
-                await appendResolvedConversationReply(cleanMessageText, resolved.speaker, settings, { avatar, extra, groupId, attachReplyReference });
+                const appended = await appendResolvedConversationReply(cleanMessageText, resolved.speaker, settings, { avatar, extra, branchId, groupId, personaId, attachReplyReference, validateTarget });
+                if (!appended) {
+                    return postedText.join('\n');
+                }
                 attachReplyReference = false;
                 postedText.push(cleanMessageText);
             }
@@ -587,8 +621,11 @@ export async function postCharacterReply(rawText, settings, { extra = {}, groupI
                 threadAvatar: avatar,
                 role: getResolvedReplyRole(speakerAvatar, avatar),
                 name: resolved.speaker.name || '',
-                extra: getResolvedReplyExtra(extra, speakerAvatar, avatar, { groupId }),
+                extra: getResolvedReplyExtra(extra, speakerAvatar, avatar, { branchId, groupId, personaId }),
+                branchId,
                 groupId,
+                personaId,
+                validateTarget,
             });
         }
     }

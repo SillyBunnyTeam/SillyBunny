@@ -4,7 +4,7 @@
  * @module sillybunny-conversation/shared-helpers
  */
 
-const TRANSCRIPT_MESSAGE_LIMIT = 20;
+import { TRANSCRIPT_MESSAGE_LIMIT } from './constants.js';
 
 /**
  * Check if a message has content (text or attachments).
@@ -19,8 +19,26 @@ export function hasConversationMessageContent(message) {
         return true;
     }
 
-    const attachments = message.extra?.attachments;
-    return Array.isArray(attachments) && attachments.length > 0;
+    const extra = message.extra;
+    return Boolean(
+        (Array.isArray(extra?.attachments) && extra.attachments.length)
+        || (Array.isArray(extra?.media) && extra.media.length)
+        || (Array.isArray(extra?.files) && extra.files.length)
+        || String(extra?.image_url || '').trim(),
+    );
+}
+
+export function buildConversationRoleplayContext(messages, endIndex = null) {
+    const source = Array.isArray(messages) ? messages : [];
+    const parsedEndIndex = Number(endIndex);
+    const end = Number.isInteger(parsedEndIndex) && parsedEndIndex >= 0
+        ? Math.min(source.length, parsedEndIndex + 1)
+        : source.length;
+    return source
+        .slice(Math.max(0, end - 6), end)
+        .filter(message => message?.mes)
+        .map(message => `${message.name || (message.is_user ? 'User' : 'Character')}: ${message.mes}`)
+        .join('\n');
 }
 
 /**
@@ -76,10 +94,6 @@ export function getLastNonUserMessageBefore(messages, beforeIndex) {
  * Build group reference context to help resolve ambiguous pronouns in group DMs.
  */
 export function buildConversationGroupReferenceContext(messages, { groupId = '', speakerName = 'Character', userName = 'User' } = {}) {
-    if (!groupId) {
-        return '';
-    }
-
     const recentMessages = messages
         .filter(message => hasConversationMessageContent(message) && message?.role !== 'system')
         .slice(-TRANSCRIPT_MESSAGE_LIMIT);
@@ -90,6 +104,10 @@ export function buildConversationGroupReferenceContext(messages, { groupId = '',
 
     const latestUserMessage = recentMessages[latestUserIndex];
     const replyReference = latestUserMessage.extra?.conversation_reply_to;
+    if (!replyReference && !groupId) {
+        return '';
+    }
+
     const lastNonUserMessage = getLastNonUserMessageBefore(recentMessages, latestUserIndex);
     const rawTargetName = replyReference?.name || (lastNonUserMessage ? getConversationSpeakerName(lastNonUserMessage, userName) : '');
     const targetName = formatPromptText(rawTargetName, 80);
@@ -99,14 +117,19 @@ export function buildConversationGroupReferenceContext(messages, { groupId = '',
 
     const speaker = formatPromptText(speakerName || 'Character', 80);
     const latestText = formatPromptText(latestUserMessage.mes, 500);
+    const referencedContent = formatPromptText([
+        replyReference?.text,
+        replyReference?.attachmentSummary,
+    ].filter(Boolean).join(' '), 700);
     const targetReason = replyReference?.name
         ? `The latest user message is an explicit reply to ${targetName}.`
         : `The latest user message most likely addresses ${targetName}, the last non-user speaker before it, when it uses implicit references like you, your, that, this, or why.`;
 
     return [
-        'Group DM reference context:',
+        groupId ? 'Group DM reference context:' : 'DM reply reference context:',
         latestText ? `Latest user message: ${latestText}` : '',
         targetReason,
+        referencedContent ? `Referenced message or attachment: ${referencedContent}` : '',
         `${speaker} should silently use this to resolve ambiguous references. If ${speaker} is not ${targetName}, do not assume every you means ${speaker}; the user may be referring to ${targetName}.`,
         'Do not mention this context or explain the reference resolution; just reply naturally.',
     ].filter(Boolean).join('\n');

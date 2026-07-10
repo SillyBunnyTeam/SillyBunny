@@ -21,12 +21,14 @@ import {
     getConversationGroupById,
     getConversationBranches,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationThreadStore,
     getCurrentCharAvatar,
     getCurrentCharName,
     persistConversationStore,
 } from './context.js';
-import { generateConversationRaw, generateSelfieFromContext, normalizeConversationOutputText, reportConversationGenerationError } from './generation.js';
+import { extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, reportConversationGenerationError } from './generation.js';
+import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
 import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
@@ -36,7 +38,12 @@ import { registerConversationRenderer, scheduleInterfaceRefresh, schedulePalsRai
 import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getConversationReplyMaxTokens } from './schedule.js';
 import { getSettings } from './settings-store.js';
-import { conversationState } from './state.js';
+import {
+    beginConversationGenerationOperation,
+    conversationState,
+    endConversationGenerationOperation,
+    regenerationBusyKeys,
+} from './state.js';
 import { getConversationTimelineMessages } from './timeline-search.js';
 import { narrateConversationMessage } from './tts.js';
 import {
@@ -235,9 +242,20 @@ function createConversationReplyReferenceElement(reference, className) {
     return wrapper;
 }
 
-function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const target = conversationState.conversationReplyTarget;
-    if (!target || target.avatar !== avatar || String(target.groupId || '') !== String(groupId || '')) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const resolvedBranchId = branchId || threadStore?.activeBranchId || '';
+    if (!target) {
+        return null;
+    }
+    if (
+        target.avatar !== avatar
+        || String(target.groupId || '') !== String(groupId || '')
+        || String(target.personaId || '') !== String(personaId || '')
+        || String(target.branchId || '') !== String(resolvedBranchId)
+    ) {
+        conversationState.conversationReplyTarget = null;
         return null;
     }
 
@@ -284,8 +302,8 @@ export function clearConversationReplyTarget() {
     renderConversationComposerReplyPreview();
 }
 
-export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const target = getActiveConversationReplyTarget(avatar, { groupId });
+export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const target = getActiveConversationReplyTarget(avatar, { branchId, groupId, personaId });
     if (!target) {
         return null;
     }
@@ -293,7 +311,9 @@ export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), 
     clearConversationReplyTarget();
     const reference = { ...target };
     delete reference.avatar;
+    delete reference.branchId;
     delete reference.groupId;
+    delete reference.personaId;
     return reference;
 }
 
@@ -845,15 +865,16 @@ export function updateConversationSearchQuery(value) {
     scheduleTimelineRender();
 }
 
-export function getConversationMessageById(messageId, { groupId = getConversationGroupIdForAvatar(getCurrentCharAvatar()) } = {}) {
-    const avatar = getCurrentCharAvatar();
+export function getConversationMessageById(messageId, { avatar = getCurrentCharAvatar(), branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar || !messageId) {
         return null;
     }
 
-    const messages = getConversationThread(avatar, { groupId });
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const resolvedBranchId = branchId || threadStore?.activeBranchId || '';
+    const messages = getConversationThread(avatar, { branchId: resolvedBranchId, create: false, groupId, personaId });
     const message = messages.find(item => item.id === messageId);
-    return message ? { avatar, groupId, messages, message } : null;
+    return message ? { avatar, branchId: resolvedBranchId, groupId, messages, message, personaId } : null;
 }
 
 export function saveConversationMessageThread(context) {
@@ -861,11 +882,25 @@ export function saveConversationMessageThread(context) {
         return;
     }
 
-    saveConversationThread(context.avatar, context.messages, { groupId: context.groupId });
+    saveConversationThread(context.avatar, context.messages, {
+        branchId: context.branchId,
+        create: false,
+        groupId: context.groupId,
+        personaId: context.personaId,
+    });
     if (context.messages.length) {
-        updateLastPreviewFromConversation(context.avatar, { groupId: context.groupId });
+        updateLastPreviewFromConversation(context.avatar, {
+            branchId: context.branchId,
+            groupId: context.groupId,
+            personaId: context.personaId,
+        });
     } else {
-        const branch = getActiveConversationBranch(context.avatar, { groupId: context.groupId });
+        const branch = getActiveConversationBranch(context.avatar, {
+            branchId: context.branchId,
+            create: false,
+            groupId: context.groupId,
+            personaId: context.personaId,
+        });
         if (branch) {
             branch.preview = 'Conversation ready';
             persistConversationStore();
@@ -893,7 +928,9 @@ export function replyToConversationMessage(messageId) {
     conversationState.conversationReplyTarget = {
         ...reference,
         avatar: context.avatar,
+        branchId: context.branchId,
         groupId: context.groupId || '',
+        personaId: context.personaId,
     };
     renderConversationComposerReplyPreview();
     input.focus({ preventScroll: true });
@@ -972,19 +1009,25 @@ export async function regenerateConversationMessage(messageId) {
     }
 
     const speakerAvatar = context.message.extra?.partner_avatar || context.avatar;
-    const settings = getSettings(speakerAvatar, { groupId: context.groupId });
+    const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
     const speakerName = context.message.name || getCharacterForAvatar(speakerAvatar)?.name || getCurrentCharName();
+    const operationKey = [context.personaId, context.avatar, context.groupId, context.branchId, messageId].join('\u001f');
+    if (regenerationBusyKeys.has(operationKey)) {
+        return;
+    }
 
-    conversationState.conversationReplyBusy = true;
-    conversationState.generationActive = true;
+    const sourceMessages = context.messages.slice(0, index + 1);
+    const sourceRevision = getConversationMessagesRevision(sourceMessages);
+    regenerationBusyKeys.add(operationKey);
+    const operation = beginConversationGenerationOperation();
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
         const prompt = await buildConversationPromptMessages(
-            context.messages.slice(0, index),
+            sourceMessages.slice(0, -1),
             '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
             speakerName,
-            { groupId: context.groupId },
+            { groupId: context.groupId, personaId: context.personaId },
         );
         const response = await withTypingParticipant(
             { avatar: speakerAvatar, name: speakerName },
@@ -992,31 +1035,58 @@ export async function regenerateConversationMessage(messageId) {
                 prompt,
                 systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, {
                     threadAvatar: context.avatar,
+                    branchId: context.branchId,
                     groupId: context.groupId,
+                    personaId: context.personaId,
                 }),
                 responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
                 cacheScope: 'conversation-mode',
             }, settings),
             context.avatar,
-            { groupId: context.groupId },
+            { branchId: context.branchId, groupId: context.groupId, personaId: context.personaId },
         );
 
-        const text = normalizeConversationOutputText(response || '');
-        if (!text) {
+        if (!String(response || '').trim()) {
             globalThis.toastr?.warning?.('Regenerate returned no message.');
             return;
         }
 
-        context.message.mes = text;
-        context.message.extra = { ...context.message.extra, regenerated_at: Date.now() };
-        saveConversationMessageThread(context);
+        const targetContext = getConversationMessageById(messageId, {
+            avatar: context.avatar,
+            branchId: context.branchId,
+            groupId: context.groupId,
+            personaId: context.personaId,
+        });
+        const targetIndex = targetContext?.messages.findIndex(message => message.id === messageId) ?? -1;
+        if (!targetContext || targetIndex < 0 || getConversationMessagesRevision(targetContext.messages.slice(0, targetIndex + 1)) !== sourceRevision) {
+            return;
+        }
+
+        const { text, selfieRequests } = extractCharacterReplyCommands(response, settings, speakerAvatar, {
+            branchId: context.branchId,
+            groupId: context.groupId,
+            personaId: context.personaId,
+            reminderAvatar: context.avatar,
+        });
+        if (!text) {
+            globalThis.toastr?.warning?.('Regenerate returned no message.');
+            return;
+        }
+        const extra = { ...targetContext.message.extra };
+        delete extra.conversation_commands;
+        if (selfieRequests.length) {
+            extra.conversation_commands = { selfieRequests };
+        }
+        targetContext.message.mes = text;
+        targetContext.message.extra = { ...extra, regenerated_at: Date.now() };
+        saveConversationMessageThread(targetContext);
         globalThis.toastr?.success?.('Message regenerated.');
     } catch (error) {
         reportConversationGenerationError('regenerate', error, { level: 'warning' });
     } finally {
-        conversationState.conversationReplyBusy = false;
-        conversationState.generationActive = false;
+        regenerationBusyKeys.delete(operationKey);
+        endConversationGenerationOperation(operation);
         scheduleInterfaceRefresh({ syncControls: false });
     }
 }
@@ -1032,7 +1102,12 @@ export function branchConversationFromMessage(messageId) {
         return;
     }
 
-    const sourceBranch = getActiveConversationBranch(context.avatar, { groupId: context.groupId });
+    const sourceBranch = getActiveConversationBranch(context.avatar, {
+        branchId: context.branchId,
+        create: false,
+        groupId: context.groupId,
+        personaId: context.personaId,
+    });
     if (!sourceBranch) {
         return;
     }
@@ -1045,14 +1120,14 @@ export function branchConversationFromMessage(messageId) {
         branch.memorySummary = sourceBranch.memorySummary;
         branch.memoryMessageCount = sourceBranch.memoryMessageCount;
     }
-    const store = getConversationThreadStore(context.avatar, { groupId: context.groupId });
+    const store = getConversationThreadStore(context.avatar, { groupId: context.groupId, personaId: context.personaId });
     if (!store) {
         return;
     }
 
     store.branches[branch.id] = branch;
     store.activeBranchId = branch.id;
-    const group = context.groupId ? getConversationGroupById(context.groupId) : null;
+    const group = context.groupId ? getConversationGroupById(context.groupId, { personaId: context.personaId }) : null;
     if (group?.is_conversation_group) {
         group.updatedAt = Date.now();
     }
@@ -1060,7 +1135,9 @@ export function branchConversationFromMessage(messageId) {
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
         detail: {
             avatar: context.avatar,
+            branchId: branch.id,
             groupId: context.groupId || null,
+            personaId: context.personaId,
             showToast: false,
         },
     }));
@@ -1073,7 +1150,10 @@ export function branchConversationFromMessage(messageId) {
             window.dispatchEvent(new CustomEvent('sb:queue-conversation-reply', {
                 detail: {
                     avatar: context.avatar,
+                    branchId: branch.id,
                     groupId: context.groupId || null,
+                    messageIds: [context.message.id],
+                    personaId: context.personaId,
                     text: replyText,
                     createdAt: Date.now(),
                     force: true,
@@ -1091,13 +1171,15 @@ export async function quickConversationSelfie() {
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const personaId = getConversationPersonaId();
+    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const settings = getSettings(avatar, { groupId, personaId });
     const context = globalThis.prompt?.('Describe the selfie context', 'a casual selfie in the current DM conversation');
     if (typeof context !== 'string') {
         return;
     }
 
-    await generateSelfieFromContext(context.trim(), settings, avatar, { groupId, force: true, notify: true });
+    await generateSelfieFromContext(context.trim(), settings, avatar, { branchId, groupId, personaId, force: true, notify: true });
 }
 
 export async function generateConversationSelfieFromMessageCommand(messageId, selfieIndex = 0) {
@@ -1117,14 +1199,16 @@ export async function generateConversationSelfieFromMessageCommand(messageId, se
         ? context.message.extra?.partner_avatar || context.avatar
         : context.avatar;
     const role = context.message.role === 'partner' ? 'partner' : 'character';
-    const settings = getSettings(speakerAvatar, { groupId: context.groupId });
+    const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
     const extra = role === 'partner' ? { partner_avatar: speakerAvatar } : {};
     await generateSelfieFromContext(request.context, settings, speakerAvatar, {
         threadAvatar: context.avatar,
+        branchId: context.branchId,
         role,
         name: context.message.name || '',
         extra,
         groupId: context.groupId,
+        personaId: context.personaId,
         force: true,
         notify: true,
     });
@@ -1137,6 +1221,8 @@ export async function quickConversationReminder() {
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
+    const personaId = getConversationPersonaId();
+    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
     const delay = globalThis.prompt?.('When should the reminder fire?', '1h');
     if (typeof delay !== 'string' || !delay.trim()) {
         return;
@@ -1147,7 +1233,7 @@ export async function quickConversationReminder() {
         return;
     }
 
-    addConversationReminder(avatar, groupId, delay, memo);
+    addConversationReminder(avatar, groupId, delay, memo, { branchId, personaId });
 }
 
 export function updateConversationNotificationSettingsVisibility() {

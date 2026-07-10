@@ -1,4 +1,4 @@
-import { saveSettingsDebounced } from '../../script.js';
+import { name1, saveSettingsDebounced } from '../../script.js';
 import { event_types, eventSource } from '../events.js';
 import { extension_settings } from '../extensions.js';
 import { user_avatar } from '../personas.js';
@@ -11,7 +11,14 @@ import {
     USER_STATUS_OPTIONS,
     USER_STATUS_STORAGE_KEY,
 } from './constants.js';
-import { getConversationStore, getConversationThreadKey, getCurrentCharAvatar, persistConversationStore } from './context.js';
+import {
+    getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationStore,
+    getConversationThreadKey,
+    getCurrentCharAvatar,
+    persistConversationStore,
+} from './context.js';
 import { updateUserFooter } from './pickers.js';
 
 export function getAvailabilityCopy(status) {
@@ -77,9 +84,21 @@ export function getPersonaOptions() {
     return Object.entries(personas).map(([avatarId, personaName]) => ({ avatarId, personaName: String(personaName) }));
 }
 
-export function getConversationPersonaAppendixScopeKey() {
-    const avatar = getCurrentCharAvatar();
-    return String(getConversationThreadKey(avatar) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+export function getConversationPersonaName(personaId, fallback = 'User') {
+    const targetPersonaId = String(personaId || '').trim();
+    const fallbackName = String(fallback || 'User').trim() || 'User';
+    const storedName = String(power_user?.personas?.[targetPersonaId] || '').trim();
+    if (storedName) {
+        return storedName;
+    }
+    if (targetPersonaId && targetPersonaId === getConversationPersonaId()) {
+        return String(name1 || fallbackName).trim() || fallbackName;
+    }
+    return fallbackName;
+}
+
+export function getConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return String(getConversationThreadKey(avatar, groupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
 }
 
 export function getConversationPersonaAppendices(avatarId) {
@@ -99,12 +118,12 @@ export function getConversationPersonaAppendices(avatarId) {
     }).filter(appendix => appendix.id);
 }
 
-export function getActiveConversationPersonaAppendixIds(avatarId) {
+export function getActiveConversationPersonaAppendixIds(avatarId, options = {}) {
     const descriptor = power_user?.persona_descriptions?.[avatarId];
     const appendices = getConversationPersonaAppendices(avatarId);
     const appendixIds = new Set(appendices.map(appendix => appendix.id));
     const selections = descriptor?.[PERSONA_APPENDICES_SELECTIONS_KEY];
-    const scopeKey = getConversationPersonaAppendixScopeKey();
+    const scopeKey = getConversationPersonaAppendixScopeKey(options);
     const activeIds = selections && typeof selections === 'object' && !Array.isArray(selections)
         ? selections[scopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY] ?? []
         : [];
@@ -113,7 +132,7 @@ export function getActiveConversationPersonaAppendixIds(avatarId) {
         : [];
 }
 
-export function composeConversationPersonaDescription(avatarId) {
+export function composeConversationPersonaDescription(avatarId, options = {}) {
     const descriptor = power_user?.persona_descriptions?.[avatarId];
     const chunks = [];
     const baseDescription = String(descriptor?.description ?? '').trim();
@@ -122,7 +141,7 @@ export function composeConversationPersonaDescription(avatarId) {
         chunks.push(baseDescription);
     }
 
-    const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
+    const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId, options));
     for (const appendix of getConversationPersonaAppendices(avatarId)) {
         if (activeIds.has(appendix.id) && appendix.description.trim()) {
             // SillyBunny: wrap the appendix label in parentheses instead of square brackets.
@@ -136,7 +155,7 @@ export function composeConversationPersonaDescription(avatarId) {
     return chunks.join('\n\n');
 }
 
-export function setActiveConversationPersonaAppendixIds(avatarId, ids) {
+export function setActiveConversationPersonaAppendixIds(avatarId, ids, options = {}) {
     const descriptor = power_user?.persona_descriptions?.[avatarId];
     if (!descriptor) {
         return;
@@ -149,11 +168,11 @@ export function setActiveConversationPersonaAppendixIds(avatarId, ids) {
         && !Array.isArray(descriptor[PERSONA_APPENDICES_SELECTIONS_KEY])
         ? descriptor[PERSONA_APPENDICES_SELECTIONS_KEY]
         : {};
-    selections[getConversationPersonaAppendixScopeKey()] = cleanIds;
+    selections[getConversationPersonaAppendixScopeKey(options)] = cleanIds;
     descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = selections;
 
     if (avatarId === user_avatar) {
-        power_user.persona_description = composeConversationPersonaDescription(avatarId);
+        power_user.persona_description = composeConversationPersonaDescription(avatarId, options);
     }
 
     saveSettingsDebounced();

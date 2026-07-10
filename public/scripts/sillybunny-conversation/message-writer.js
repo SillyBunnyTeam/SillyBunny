@@ -1,11 +1,11 @@
-import { getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
+import { getConversationGroupIdForAvatar, getConversationPersonaId, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import { incrementUnreadCount, isConversationActiveThread, notifyNewConversationMessage } from './notifications.js';
 import { scheduleConversationMemorySummary } from './prompt.js';
 import { scheduleInterfaceRefresh, schedulePalsRailRender } from './render-scheduler.js';
 import { conversationState } from './state.js';
 import { appendConversationThreadMessage, markConversationSeen } from './thread-store.js';
 
-export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, groupId = undefined } = {}, avatar = getCurrentCharAvatar()) {
+export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, branchId = '', groupId = undefined, personaId = getConversationPersonaId() } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return null;
     }
@@ -16,27 +16,32 @@ export async function appendConversationMessage(messageText, { name = getCurrent
         name,
         mes: messageText,
         extra,
-    }, { groupId: resolvedGroupId });
+    }, { branchId, create: !branchId, groupId: resolvedGroupId, personaId });
     if (!message) {
         return null;
     }
 
-    const shouldNotify = !['user', 'system'].includes(role) && !isConversationActiveThread(avatar, resolvedGroupId);
-    if (shouldNotify) {
-        incrementUnreadCount(avatar, { groupId: resolvedGroupId });
+    const isCurrentPersona = personaId === getConversationPersonaId();
+    const isIncoming = !['user', 'system'].includes(role);
+    const shouldIncrementUnread = isIncoming && !isConversationActiveThread(avatar, resolvedGroupId, { branchId, personaId });
+    const shouldNotify = isCurrentPersona && shouldIncrementUnread;
+    if (shouldIncrementUnread) {
+        incrementUnreadCount(avatar, { branchId, groupId: resolvedGroupId, personaId });
     }
-    if (!['user', 'system'].includes(role)) {
-        markConversationSeen(avatar, Date.now(), { groupId: resolvedGroupId });
+    if (isIncoming) {
+        markConversationSeen(avatar, Date.now(), { branchId, groupId: resolvedGroupId, personaId });
     }
 
-    if (isConversationActiveThread(avatar, resolvedGroupId)) {
+    if (isConversationActiveThread(avatar, resolvedGroupId, { branchId, personaId })) {
         scheduleInterfaceRefresh({ syncControls: false });
     } else if (conversationState.conversationWorkspaceOpen) {
         schedulePalsRailRender();
     }
 
-    notifyNewConversationMessage(avatar, message, shouldNotify, { groupId: resolvedGroupId });
-    scheduleConversationMemorySummary(avatar, { groupId: resolvedGroupId });
+    if (isCurrentPersona) {
+        notifyNewConversationMessage(avatar, message, shouldNotify, { branchId, groupId: resolvedGroupId, personaId });
+    }
+    scheduleConversationMemorySummary(avatar, { branchId, groupId: resolvedGroupId, personaId });
 
     return message;
 }

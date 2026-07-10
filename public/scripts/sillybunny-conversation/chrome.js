@@ -13,6 +13,9 @@ import {
     deleteConversationBranch,
     getConversationBranches,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationThreadKey,
+    getConversationThreadStore,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getRoleplayCurrentCharacter,
@@ -64,7 +67,8 @@ import {
 } from './settings-panel.js';
 import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
-import { updateLastUserActivity } from './thread-store.js';
+import { createForcedConversationQueueItem } from './send-queue-utils.js';
+import { getConversationThread, updateLastUserActivity } from './thread-store.js';
 import {
     branchConversationFromMessage,
     clearConversationReplyTarget,
@@ -348,13 +352,21 @@ function showConversationZoomedAvatar(target) {
     }
 }
 
-export async function selectConversationThread(avatar, { groupId = null, showToast = false } = {}) {
+export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
     }
 
+    if (personaId && personaId !== getConversationPersonaId()) {
+        await setUserAvatar(personaId, { toastPersonaNameChange: false });
+        if (personaId !== getConversationPersonaId()) {
+            return false;
+        }
+    }
+
     const normalizedGroupId = groupId ? String(groupId) : '';
     return openConversationWorkspaceForAvatar(avatar, {
+        branchId,
         groupId: normalizedGroupId || null,
         showToast,
     });
@@ -713,14 +725,18 @@ export function bindConversationChromeControls(sheld) {
                 const avatar = getCurrentCharAvatar();
                 if (avatar) {
                     const groupId = conversationState.conversationSelectedGroupId || '';
-                    sendQueue.push({
+                    const personaId = getConversationPersonaId();
+                    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+                    const branchId = threadStore?.activeBranchId || '';
+                    const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                    sendQueue.push(createForcedConversationQueueItem({
                         avatar,
+                        branchId,
                         groupId,
-                        text: '',
-                        attachmentContext: '',
+                        personaId,
+                        threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
                         createdAt: Date.now(),
-                        force: true,
-                    });
+                    }, messages));
                     void processSendQueue();
                 }
                 break;
@@ -1011,7 +1027,7 @@ function emitConversationWorkspaceStateChange() {
     }));
 }
 
-export function openConversationWorkspaceForAvatar(avatar, { groupId = null, showToast = true, enable = false } = {}) {
+export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
@@ -1037,6 +1053,10 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
         }, 100);
         return false;
+    }
+
+    if (branchId) {
+        setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
     }
 
     const settings = getSettings(targetAvatar, { groupId: targetGroupId });

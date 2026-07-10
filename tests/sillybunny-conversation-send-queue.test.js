@@ -2,15 +2,22 @@ import { describe, expect, test, jest, beforeEach, afterEach } from '@jest/globa
 
 import {
     coalesceConversationQueueItems,
+    createConversationMessageRevisionEntries,
+    createForcedConversationQueueItem,
     drainSameThreadItems,
+    getLastConversationQueueUserMessage,
     isSameConversationQueueThread,
     mergeConversationQueueItems,
+    resolveConversationQueueTriggerMessages,
 } from '../public/scripts/sillybunny-conversation/send-queue-utils.js';
 
 function makeItem(text, overrides = {}) {
     return {
         avatar: 'charA.png',
+        branchId: 'main',
         groupId: '',
+        personaId: 'persona-a.png',
+        threadKey: 'persona:persona-a.png:charA.png',
         text,
         attachmentContext: '',
         createdAt: Date.now(),
@@ -19,6 +26,54 @@ function makeItem(text, overrides = {}) {
 }
 
 describe('sillybunny conversation send-queue utils', () => {
+    test('builds Force Response items with complete captured identity and the latest user trigger', () => {
+        const item = createForcedConversationQueueItem({
+            avatar: 'charA.png',
+            branchId: 'branch-a',
+            groupId: 'group-a',
+            personaId: 'persona-a.png',
+            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+        }, [
+            { id: 'user-1', role: 'user' },
+            { id: 'character-1', role: 'character' },
+            { id: 'user-2', role: 'user' },
+        ]);
+
+        expect(item).toMatchObject({
+            avatar: 'charA.png',
+            branchId: 'branch-a',
+            force: true,
+            groupId: 'group-a',
+            messageIds: ['user-2'],
+            personaId: 'persona-a.png',
+            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+        });
+    });
+
+    test('invalidates missing triggers and resolves the captured user instead of a newer message', () => {
+        const capturedUser = { id: 'captured-user', role: 'user', mes: 'captured' };
+        const newerUser = { id: 'newer-user', role: 'user', mes: 'newer' };
+        const queueItem = makeItem('', {
+            messageIds: ['captured-user'],
+            messageRevisions: createConversationMessageRevisionEntries([capturedUser]),
+        });
+
+        expect(resolveConversationQueueTriggerMessages(queueItem, [capturedUser, newerUser])).toEqual([capturedUser]);
+        expect(getLastConversationQueueUserMessage(queueItem, [capturedUser, newerUser])).toBe(capturedUser);
+        expect(resolveConversationQueueTriggerMessages(queueItem, [newerUser])).toBeNull();
+
+        capturedUser.mes = 'edited';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [capturedUser, newerUser])).toBeNull();
+
+        const attachedUser = { id: 'attached-user', role: 'user', mes: '', extra: { files: [{ url: 'one.txt' }] } };
+        const attachmentItem = makeItem('', {
+            messageIds: ['attached-user'],
+            messageRevisions: createConversationMessageRevisionEntries([attachedUser]),
+        });
+        attachedUser.extra.files[0].url = 'edited.txt';
+        expect(resolveConversationQueueTriggerMessages(attachmentItem, [attachedUser])).toBeNull();
+    });
+
     describe('isSameConversationQueueThread', () => {
         test('matches same avatar and group', () => {
             const a = makeItem('hi');
@@ -32,6 +87,17 @@ describe('sillybunny conversation send-queue utils', () => {
 
         test('differs on groupId', () => {
             expect(isSameConversationQueueThread(makeItem('a', { groupId: 'g1' }), makeItem('b', { groupId: 'g2' }))).toBe(false);
+        });
+
+        test('separates messages across persona changes', () => {
+            expect(isSameConversationQueueThread(
+                makeItem('a'),
+                makeItem('b', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
+            )).toBe(false);
+        });
+
+        test('separates messages across branch changes', () => {
+            expect(isSameConversationQueueThread(makeItem('a'), makeItem('b', { branchId: 'branch-b' }))).toBe(false);
         });
 
         test('differs when either is forced', () => {
@@ -64,6 +130,14 @@ describe('sillybunny conversation send-queue utils', () => {
             expect(merged.text).toBe('one\n\ntwo\n\nthree');
             expect(merged.attachmentContext).toBe('att1\n\natt2');
             expect(merged.messageCount).toBe(3);
+        });
+
+        test('retains message identities from every coalesced send', () => {
+            const merged = mergeConversationQueueItems([
+                makeItem('one', { messageIds: ['message-1'] }),
+                makeItem('two', { messageIds: ['message-2'] }),
+            ]);
+            expect(merged.messageIds).toEqual(['message-1', 'message-2']);
         });
 
         test('preserves earliest createdAt and records latest as latestQueuedAt', () => {
@@ -139,6 +213,17 @@ describe('sillybunny conversation send-queue utils', () => {
             const result = await coalesceConversationQueueItems(makeItem('first'), queue, { timeoutRef });
             expect(result.text).toBe('first');
             expect(queue).toHaveLength(1);
+        });
+
+        test('does not coalesce queued sends after a persona or branch change', async () => {
+            const timeoutRef = resolve => { setTimeout(resolve, 0); return 0; };
+            const queue = [
+                makeItem('other persona', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
+                makeItem('other branch', { branchId: 'branch-b' }),
+            ];
+            const result = await coalesceConversationQueueItems(makeItem('first'), queue, { timeoutRef });
+            expect(result.text).toBe('first');
+            expect(queue.map(item => item.text)).toEqual(['other persona', 'other branch']);
         });
 
         test('extends the window when a new message arrives mid-wait', async () => {

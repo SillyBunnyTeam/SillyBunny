@@ -122,7 +122,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('conversation-group-reference-context');
         expect(sharedHelpersSource).toContain('last non-user speaker before it');
         expect(sharedHelpersSource).toContain('do not assume every you means');
-        expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId })');
+        expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId })');
         expect(attachmentsSource).toContain('getImplicitGroupReplyCandidate');
         expect(attachmentsSource).toContain('isBroadGroupAddress');
     });

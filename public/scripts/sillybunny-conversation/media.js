@@ -4,6 +4,7 @@ import {
     getActiveConversationBranch,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
@@ -76,12 +77,12 @@ export function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
     avatars.push(avatar);
 }
 
-export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
+export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { branchId = '', includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const partnerAvatars = [];
     parseAvatarList(resolvedSettings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
 
-    const group = getConversationGroupById(groupId);
+    const group = getConversationGroupById(groupId, { personaId });
     if (group?.members?.length) {
         group.members
             .filter(memberAvatar => !group.disabled_members?.includes(memberAvatar))
@@ -89,7 +90,7 @@ export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), s
     }
 
     if (includeThreadPartners) {
-        getConversationThread(avatar, { groupId }).forEach((message) => {
+        getConversationThread(avatar, { branchId, create: false, groupId, personaId }).forEach((message) => {
             if (message?.role !== 'partner') {
                 return;
             }
@@ -102,8 +103,8 @@ export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), s
 }
 
 export function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = null, options = {}) {
-    const { groupId = getConversationGroupIdForAvatar(avatar) } = options;
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
+    const { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = options;
+    const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const participants = [];
     const primary = getCharacterForAvatar(avatar);
     if (primary?.avatar) {

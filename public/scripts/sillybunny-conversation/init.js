@@ -11,13 +11,14 @@ import {
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, openConversationWorkspaceForAvatar } from './chrome.js';
 import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getConversationGroupById, getCurrentCharAvatar, migrateConversationLocalStorage } from './context.js';
+import { getConversationGroupById, getConversationPersonaId, getCurrentCharAvatar, migrateConversationLocalStorage } from './context.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
-import { conversationState } from './state.js';
+import { buildConversationRoleplayContext } from './shared-helpers.js';
+import { conversationState, setExternalConversationGenerationActive } from './state.js';
 import { setConversationTimeout } from './timers.js';
 
 function hasConversationRuntimeUsage() {
@@ -77,10 +78,15 @@ export function init() {
                     : members[Math.floor(Math.random() * members.length)];
                 if (chosenMember?.character) {
                     const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
-                    setConversationTimeout(() => void triggerGroupAsideDM(chosenMember.character, { reason, sourceMessageId: messageId }), 2000);
+                    const personaId = getConversationPersonaId();
+                    const sourceGroupId = String(selected_group || '');
+                    setConversationTimeout(() => void triggerGroupAsideDM(chosenMember.character, { personaId, reason, sourceGroupId, sourceMessageId: messageId }), 2000);
                 }
             } else if (getSettings(getCurrentCharAvatar(), { groupId: '' }).roleplay_reactions) {
-                setConversationTimeout(() => void triggerRoleplayDM(), 2000);
+                const avatar = getCurrentCharAvatar();
+                const personaId = getConversationPersonaId();
+                const roleplayContext = buildConversationRoleplayContext(chat, messageId);
+                setConversationTimeout(() => void triggerRoleplayDM({ avatar, personaId, roleplayContext }), 2000);
             }
         }
     });
@@ -89,7 +95,7 @@ export function init() {
             return;
         }
 
-        conversationState.generationActive = true;
+        setExternalConversationGenerationActive(true);
         if (!hasConversationRuntimeUsage()) {
             return;
         }
@@ -97,11 +103,11 @@ export function init() {
         scheduleInterfaceRefreshIfOpen();
     });
     eventSource.on(event_types.GENERATION_ENDED, () => {
-        conversationState.generationActive = false;
+        setExternalConversationGenerationActive(false);
         scheduleInterfaceRefreshIfOpen();
     });
     eventSource.on(event_types.GENERATION_STOPPED, () => {
-        conversationState.generationActive = false;
+        setExternalConversationGenerationActive(false);
         scheduleInterfaceRefreshIfOpen();
     });
     eventSource.on(event_types.CHAT_CHANGED, () => {
@@ -117,8 +123,10 @@ export function init() {
         }
     });
     eventSource.on(event_types.PERSONA_CHANGED, () => {
+        conversationState.conversationReplyTarget = null;
         sanitizeConversationUnreadCounts();
         updateConversationNotificationIndicators();
+        ensureConversationRuntimeStarted();
         if (conversationState.conversationWorkspaceOpen) {
             if (conversationState.conversationSelectedGroupId && !getConversationGroupById(conversationState.conversationSelectedGroupId)) {
                 conversationState.conversationSelectedGroupId = null;
@@ -132,8 +140,9 @@ export function init() {
     window.addEventListener('sb:open-conversation-workspace', (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
         const avatar = detail?.avatar || getDefaultConversationAvatar();
+        const branchId = detail?.branchId || '';
         const groupId = detail?.groupId || null;
-        openConversationWorkspaceForAvatar(avatar, { groupId, showToast: detail?.showToast !== false });
+        openConversationWorkspaceForAvatar(avatar, { branchId, groupId, showToast: detail?.showToast !== false });
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);

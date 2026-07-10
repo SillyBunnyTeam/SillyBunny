@@ -2,6 +2,8 @@ import { DEFAULT_REPLY_DELAY_MULTIPLIER, DEFAULT_SETTINGS, DEFAULT_TALKATIVENESS
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationThreadStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
     parsePositiveInt,
@@ -43,25 +45,27 @@ export function getReplyDelayMs(messageText, settings, avatar) {
     return Math.min(9000, Math.max(350, Math.round(delay)));
 }
 
-export async function waitForReplyDelay(messageText, settings, avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function waitForReplyDelay(messageText, settings, avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const delay = getReplyDelayMs(messageText, settings, avatar);
     if (delay <= 0) {
         return;
     }
 
-    if (isConversationActiveThread(avatar, groupId)) {
+    if (isConversationActiveThread(avatar, groupId, { branchId, personaId })) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
     await new Promise(resolve => setTimeout(resolve, delay));
 }
 
-export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { create = false, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { branchId = '', create = false, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const threadAvatar = avatar || getCurrentCharAvatar();
     if (!threadAvatar) {
         return null;
     }
 
-    const threadKey = getConversationThreadKey(threadAvatar, groupId || '');
+    const storageKey = getConversationThreadKey(threadAvatar, groupId || '', { personaId });
+    const resolvedBranchId = branchId || getConversationThreadStore(threadAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const threadKey = resolvedBranchId ? `${storageKey}:${resolvedBranchId}` : storageKey;
     if (!threadKey) {
         return null;
     }
@@ -85,16 +89,16 @@ export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { g
     return participants.length ? participants[participants.length - 1] : null;
 }
 
-export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const threadAvatar = avatar || getCurrentCharAvatar();
     const participantAvatar = participant?.avatar || threadAvatar;
-    const participantMap = getTypingParticipantMap(threadAvatar, { create: true, groupId });
+    const participantMap = getTypingParticipantMap(threadAvatar, { branchId, create: true, groupId, personaId });
     const previousTypingParticipant = participantMap?.get(participantAvatar) || null;
     if (participantMap && participantAvatar) {
         participantMap.set(participantAvatar, participant || { avatar: participantAvatar, name: 'Character' });
     }
 
-    const isThreadActive = isConversationActiveThread(threadAvatar, groupId);
+    const isThreadActive = isConversationActiveThread(threadAvatar, groupId, { branchId, personaId });
     if (isThreadActive) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
@@ -107,7 +111,9 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
             } else {
                 participantMap.delete(participantAvatar);
             }
-            const threadKey = getConversationThreadKey(threadAvatar, groupId || '');
+            const storageKey = getConversationThreadKey(threadAvatar, groupId || '', { personaId });
+            const resolvedBranchId = branchId || getConversationThreadStore(threadAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+            const threadKey = resolvedBranchId ? `${storageKey}:${resolvedBranchId}` : storageKey;
             if (!participantMap.size && threadKey) {
                 activeTypingParticipants.delete(threadKey);
             }
@@ -118,7 +124,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
     }
 }
 
-export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar), statusAvatar = avatar } = {}) {
+export function maybePostDelayedReplyNotice(avatar, settings, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), statusAvatar = avatar } = {}) {
     const current = getConversationActivityContext(settings, statusAvatar);
     if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
         return;
@@ -127,9 +133,9 @@ export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getCon
         return;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, Date.now(), { groupId });
+    const lastUserActivity = getLastUserActivity(avatar, Date.now(), { branchId, groupId, personaId });
     const markerKey = 'sb_conv_busy_reply_notice';
-    const markerValue = getConversationSessionMarker(avatar, markerKey, { groupId });
+    const markerValue = getConversationSessionMarker(avatar, markerKey, { branchId, groupId, personaId });
     const markerTime = parsePositiveInt(markerValue.split(':')[1], 0, 0);
     if (markerTime > 0 && Date.now() - markerTime < STATUS_NOTICE_COOLDOWN_MS) {
         return;
@@ -142,8 +148,8 @@ export function maybePostDelayedReplyNotice(avatar, settings, { groupId = getCon
         name: 'Status',
         mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
         extra: { conversation_mode_notice: true, availability: current.status, partner_avatar: statusAvatar },
-    }, { groupId });
-    setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { groupId });
+    }, { branchId, create: !branchId, groupId, personaId });
+    setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { branchId, groupId, personaId });
 }
 
 export function stripPreviewText(messageText) {
@@ -162,13 +168,13 @@ export function splitChatroomMessages(text) {
     return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
 }
 
-export function setLastConversationPreview(avatar, messageText, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function setLastConversationPreview(avatar, messageText, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const preview = stripPreviewText(messageText);
     if (!avatar || !preview) {
         return;
     }
 
-    const branch = getActiveConversationBranch(avatar, { groupId });
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (branch) {
         branch.preview = preview;
         branch.updatedAt = Date.now();
@@ -180,15 +186,15 @@ export function getLastConversationPreview(avatar, { groupId = getConversationGr
     return getActiveConversationBranch(avatar, { create: false, groupId })?.preview || 'Conversation ready';
 }
 
-export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const messages = getConversationThread(avatar, { groupId });
+    const messages = getConversationThread(avatar, { branchId, create: !branchId, groupId, personaId });
     const message = [...messages].reverse().find(hasConversationMessageContent);
     if (message) {
-        setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { groupId });
+        setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { branchId, groupId, personaId });
     }
 
     updateConversationNotificationIndicators();

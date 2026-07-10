@@ -14,6 +14,7 @@ import {
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationGroups,
+    getConversationPersonaId,
     isConversationThreadKeyForPersona,
     getConversationStore,
     getConversationThreadKey,
@@ -82,8 +83,8 @@ function getGroupThreadConversationSettings(threadStore) {
         : {};
 }
 
-function getSoloThreadConversationSettings(avatar, threadStore) {
-    return threadStore?.settings || getCharacterConversationStore(avatar, { create: false })?.settings || {};
+function getSoloThreadConversationSettings(avatar, threadStore, personaId) {
+    return threadStore?.settings || getCharacterConversationStore(avatar, { create: false, personaId })?.settings || {};
 }
 
 function normalizeGlobalConversationSettings(settings = {}) {
@@ -97,10 +98,10 @@ function normalizeGlobalConversationSettings(settings = {}) {
     }, {});
 }
 
-function getCurrentPersonaMemoryCharactersStore() {
+function getCurrentPersonaMemoryCharactersStore(personaId = getConversationPersonaId()) {
     const store = getConversationStore();
     return Object.entries(store.characters || {}).reduce((result, [storeKey, threadStore]) => {
-        if (!isConversationThreadKeyForPersona(storeKey)) {
+        if (!isConversationThreadKeyForPersona(storeKey, personaId)) {
             return result;
         }
 
@@ -128,26 +129,28 @@ export function saveGlobalConversationSettings(settings) {
     persistConversationStore();
 }
 
-export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const globalSettings = getGlobalConversationSettings();
     if (!avatar) {
         return mergeConversationSettingsLayers(DEFAULT_SETTINGS, globalSettings);
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
     if (groupId) {
         return mergeConversationSettingsLayers(
             DEFAULT_SETTINGS,
             globalSettings,
             GROUP_CONVERSATION_FORCED_SETTINGS,
-            getGroupConversationSettings(groupId),
+            personaId === getConversationPersonaId()
+                ? getGroupConversationSettings(groupId)
+                : getGroupConversationSettings(groupId, { personaId }),
             getGroupThreadConversationSettings(threadStore),
         );
     }
 
     return mergeConversationSettingsLayers(
         DEFAULT_SETTINGS,
-        getSoloThreadConversationSettings(avatar, threadStore),
+        getSoloThreadConversationSettings(avatar, threadStore, personaId),
         globalSettings,
     );
 }
@@ -268,12 +271,12 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         .slice(0, Number.isFinite(max) ? max : undefined);
 }
 
-export function saveSettings(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function saveSettings(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: true, groupId });
+    const threadStore = getConversationThreadStore(avatar, { create: true, groupId, personaId });
     const normalizedSettings = safeParseSettings(settings);
     getConversationStore().settings = normalizeGlobalConversationSettings(normalizedSettings);
     if (threadStore) {
@@ -285,12 +288,12 @@ export function saveSettings(avatar, settings, { groupId = getConversationGroupI
     persistConversationStore();
 }
 
-export function getLastUserActivity(avatar, fallback = Date.now(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return parsePositiveInt(getActiveConversationBranch(avatar, { create: false, groupId })?.lastActivity, fallback, 1);
+export function getLastUserActivity(avatar, fallback = Date.now(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.lastActivity, fallback, 1);
 }
 
-export function setLastUserActivity(avatar, timestamp = Date.now(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { groupId });
+export function setLastUserActivity(avatar, timestamp = Date.now(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (branch) {
         branch.lastActivity = timestamp;
         branch.updatedAt = Date.now();
@@ -298,32 +301,32 @@ export function setLastUserActivity(avatar, timestamp = Date.now(), { groupId = 
     }
 }
 
-export function getFollowupCount(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return parsePositiveInt(getActiveConversationBranch(avatar, { create: false, groupId })?.followupCount, 0, 0);
+export function getFollowupCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.followupCount, 0, 0);
 }
 
-export function setFollowupCount(avatar, count, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { groupId });
+export function setFollowupCount(avatar, count, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (branch) {
         branch.followupCount = Math.max(0, count);
         persistConversationStore();
     }
 }
 
-export function resetFollowupCount(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function resetFollowupCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    setFollowupCount(avatar, 0, { groupId });
+    setFollowupCount(avatar, 0, { branchId, groupId, personaId });
 }
 
-export function getConversationSessionMarker(avatar, markerKey, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return String(getActiveConversationBranch(avatar, { create: false, groupId })?.sessionMarkers?.[markerKey] ?? '');
+export function getConversationSessionMarker(avatar, markerKey, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return String(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.sessionMarkers?.[markerKey] ?? '');
 }
 
-export function setConversationSessionMarker(avatar, markerKey, value, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { groupId });
+export function setConversationSessionMarker(avatar, markerKey, value, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (!branch) {
         return;
     }
@@ -333,55 +336,58 @@ export function setConversationSessionMarker(avatar, markerKey, value, { groupId
     persistConversationStore();
 }
 
-export function getConversationBranchActivityTime(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
+export function getConversationBranchActivityTime(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
     return parsePositiveInt(branch?.updatedAt || branch?.createdAt, Date.now(), 1);
 }
 
-export function getLastAutoCharacterChatTime(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return parsePositiveInt(getConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, { groupId }), 0, 0);
+export function getLastAutoCharacterChatTime(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return parsePositiveInt(getConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, { branchId, groupId, personaId }), 0, 0);
 }
 
-export function setLastAutoCharacterChatTime(avatar, timestamp = Date.now(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    setConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, timestamp, { groupId });
+export function setLastAutoCharacterChatTime(avatar, timestamp = Date.now(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    setConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, timestamp, { branchId, groupId, personaId });
 }
 
 export function getAutoCharacterChatCooldownMs(settings) {
     return parsePositiveInt(settings?.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1) * 60 * 1000;
 }
 
-export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
-    return String(threadStore?.memorySummary || getActiveConversationBranch(avatar, { create: false, groupId })?.memorySummary || '').trim();
+export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
+    return String((branchId ? branch?.memorySummary : threadStore?.memorySummary) || branch?.memorySummary || '').trim();
 }
 
-export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4 } = {}) {
-    return collectGroupConversationMemorySummaries(getCurrentPersonaMemoryCharactersStore(), avatar, {
+export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4, personaId = getConversationPersonaId() } = {}) {
+    return collectGroupConversationMemorySummaries(getCurrentPersonaMemoryCharactersStore(personaId), avatar, {
         excludeGroupId,
         max,
-        getGroupName: groupId => getConversationGroupById(groupId)?.name || '',
+        getGroupName: groupId => getConversationGroupById(groupId, { personaId })?.name || '',
     });
 }
 
-export function getConversationSoloMemorySummary(avatar = getCurrentCharAvatar()) {
-    return collectSoloConversationMemorySummary(getCurrentPersonaMemoryCharactersStore(), avatar);
+export function getConversationSoloMemorySummary(avatar = getCurrentCharAvatar(), { personaId = getConversationPersonaId() } = {}) {
+    return collectSoloConversationMemorySummary(getCurrentPersonaMemoryCharactersStore(personaId), avatar);
 }
 
-export function saveConversationMemorySummary(avatar, summary, messageCount, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const threadStore = getConversationThreadStore(avatar, { groupId });
-    const branch = getActiveConversationBranch(avatar, { groupId });
+export function saveConversationMemorySummary(avatar, summary, messageCount, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
     if (!threadStore || !branch) {
         return;
     }
 
     const memorySummary = String(summary || '').trim();
     const memoryMessageCount = Math.max(0, messageCount || 0);
-    threadStore.memorySummary = memorySummary;
-    threadStore.memoryMessageCount = memoryMessageCount;
-    threadStore.memoryUpdatedAt = Date.now();
     branch.memorySummary = memorySummary;
     branch.memoryMessageCount = memoryMessageCount;
-    branch.memoryUpdatedAt = threadStore.memoryUpdatedAt;
+    branch.memoryUpdatedAt = Date.now();
+    if (!branchId || threadStore.activeBranchId === branch.id) {
+        threadStore.memorySummary = memorySummary;
+        threadStore.memoryMessageCount = memoryMessageCount;
+        threadStore.memoryUpdatedAt = branch.memoryUpdatedAt;
+    }
     persistConversationStore();
     renderConversationMemoryPanel();
 }

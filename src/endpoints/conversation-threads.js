@@ -10,16 +10,22 @@ import {
     MAX_THREAD_MESSAGES,
 } from '../../public/scripts/sillybunny-conversation/constants.js';
 import { safeParseThread } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
-import { getObject, parsePositiveInt, isObject } from './conversation-utils.js';
+import { getObject, getOwnRecord, getSafeRecord, hasOwn, parsePositiveInt, isObject, isSafeConversationPropertyKey } from './conversation-utils.js';
 import { getConversationThreadKey } from './conversation-store.js';
+
+function getSafeBranchId(value, fallback = DEFAULT_BRANCH_ID) {
+    const branchId = String(value || '').trim();
+    return branchId && branchId.length <= 256 && isSafeConversationPropertyKey(branchId) ? branchId : fallback;
+}
 
 /**
  * Create a new conversation branch
  */
 export function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) {
     const now = Date.now();
+    const safeId = getSafeBranchId(id);
     return {
-        id,
+        id: safeId,
         name,
         messages: [],
         preview: 'Conversation ready',
@@ -42,20 +48,21 @@ export function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) 
  */
 export function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
     const now = Date.now();
+    const safeId = getSafeBranchId(id);
     const target = isObject(branch)
-        ? branch
-        : createConversationBranch(id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', id);
+        ? getOwnRecord(branch)
+        : createConversationBranch(safeId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', safeId);
 
-    target.id = target.id || id;
-    target.name = target.name || (id === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation');
+    target.id = safeId;
+    target.name = target.name || (safeId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation');
     target.messages = safeParseThread(target.messages).slice(-MAX_THREAD_MESSAGES);
     target.preview = typeof target.preview === 'string' ? target.preview : 'Conversation ready';
     target.unread = parsePositiveInt(target.unread, 0, 0);
     target.lastActivity = parsePositiveInt(target.lastActivity, now, 0);
     target.followupCount = parsePositiveInt(target.followupCount, 0, 0);
     target.lastAutoMessageAt = parsePositiveInt(target.lastAutoMessageAt, 0, 0);
-    target.scheduleTriggers = getObject(target.scheduleTriggers);
-    target.sessionMarkers = getObject(target.sessionMarkers);
+    target.scheduleTriggers = getSafeRecord(target.scheduleTriggers);
+    target.sessionMarkers = getSafeRecord(target.sessionMarkers);
     target.memorySummary = typeof target.memorySummary === 'string' ? target.memorySummary : '';
     target.memoryMessageCount = parsePositiveInt(target.memoryMessageCount, 0, 0);
     target.memoryUpdatedAt = parsePositiveInt(target.memoryUpdatedAt, 0, 0);
@@ -73,8 +80,8 @@ export function getConversationThreadStore(store, avatar, groupId = '', { create
         return null;
     }
 
-    store.characters = getObject(store.characters);
-    if (!store.characters[threadKey]) {
+    store.characters = getSafeRecord(store.characters);
+    if (!hasOwn(store.characters, threadKey) || !isObject(store.characters[threadKey])) {
         if (!create) {
             return null;
         }
@@ -89,11 +96,23 @@ export function getConversationThreadStore(store, avatar, groupId = '', { create
         };
     }
 
-    const threadStore = store.characters[threadKey];
+    const threadStore = getOwnRecord(store.characters[threadKey]);
+    store.characters[threadKey] = threadStore;
     threadStore.settings = getObject(threadStore.settings);
-    threadStore.branches = getObject(threadStore.branches);
-    threadStore.activeBranchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
-    if (!threadStore.branches[threadStore.activeBranchId]) {
+    threadStore.branches = getSafeRecord(threadStore.branches);
+    for (const [branchId, branch] of Object.entries(threadStore.branches)) {
+        const safeBranchId = getSafeBranchId(branchId);
+        if (safeBranchId !== branchId) {
+            if (!hasOwn(threadStore.branches, safeBranchId)) {
+                threadStore.branches[safeBranchId] = normalizeConversationBranch(branch, safeBranchId);
+            }
+            delete threadStore.branches[branchId];
+            continue;
+        }
+        threadStore.branches[branchId] = normalizeConversationBranch(branch, branchId);
+    }
+    threadStore.activeBranchId = getSafeBranchId(threadStore.activeBranchId);
+    if (!hasOwn(threadStore.branches, threadStore.activeBranchId)) {
         threadStore.branches[threadStore.activeBranchId] = createConversationBranch(
             threadStore.activeBranchId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation',
             threadStore.activeBranchId,
@@ -117,7 +136,7 @@ export function getActiveConversationBranch(store, avatar, groupId = '', { creat
         return null;
     }
 
-    const branchId = threadStore.activeBranchId || DEFAULT_BRANCH_ID;
+    const branchId = getSafeBranchId(threadStore.activeBranchId);
     threadStore.branches[branchId] = normalizeConversationBranch(threadStore.branches[branchId], branchId);
     return threadStore.branches[branchId];
 }

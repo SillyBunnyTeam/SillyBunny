@@ -2,8 +2,10 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     clearConversationUnreadStore,
+    getConversationThreadUnreadCount,
     normalizeConversationUnreadCount,
     sanitizeConversationUnreadStore,
+    setConversationThreadUnreadCount,
 } from '../public/scripts/sillybunny-conversation/notification-utils.js';
 
 describe('sillybunny conversation notification utils', () => {
@@ -81,5 +83,24 @@ describe('sillybunny conversation notification utils', () => {
 
         expect(clearConversationUnreadStore(store)).toEqual({ changed: false, cleared: 0 });
         expect(sanitizeConversationUnreadStore(store, () => true)).toEqual({ changed: false, cleared: 0 });
+    });
+
+    test('counts all branches and clears only a selected branch when requested', () => {
+        const threadStore = {
+            activeBranchId: 'branch-a',
+            branches: {
+                'branch-a': { unread: 2 },
+                'branch-b': { unread: 3 },
+            },
+        };
+
+        expect(getConversationThreadUnreadCount(threadStore)).toBe(5);
+        expect(setConversationThreadUnreadCount(threadStore, 0, { branchId: 'branch-a' })).toBe(true);
+        expect(threadStore.branches['branch-a'].unread).toBe(0);
+        expect(threadStore.branches['branch-b'].unread).toBe(3);
+        expect(getConversationThreadUnreadCount(threadStore)).toBe(3);
+
+        setConversationThreadUnreadCount(threadStore, 0);
+        expect(getConversationThreadUnreadCount(threadStore)).toBe(0);
     });
 });

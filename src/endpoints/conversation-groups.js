@@ -11,7 +11,13 @@ import {
     DEFAULT_SETTINGS,
     GROUP_CONVERSATION_SETTINGS_KEYS,
 } from '../../public/scripts/sillybunny-conversation/constants.js';
-import { getObject, parsePositiveInt, getConversationPersonaId } from './conversation-utils.js';
+import {
+    getConversationPersonaId,
+    getObject,
+    getOwnRecord,
+    parsePositiveInt,
+    validateConversationStoragePart,
+} from './conversation-utils.js';
 import { readJsonFile } from './conversation-store.js';
 
 /**
@@ -45,8 +51,9 @@ export function getDefaultGroupConversationSettings(normalizeConversationSetting
 export function getUniqueConversationGroupMembers(memberAvatars) {
     return Array.from(new Set(
         (Array.isArray(memberAvatars) ? memberAvatars : [])
-            .map(avatar => String(avatar || '').trim())
-            .filter(Boolean),
+            .filter(avatar => typeof avatar === 'string')
+            .map(avatar => avatar.trim())
+            .filter(avatar => validateConversationStoragePart(avatar, { required: true }).valid),
     ));
 }
 
@@ -55,7 +62,8 @@ export function getUniqueConversationGroupMembers(memberAvatars) {
  */
 export function normalizeConversationGroupRecord(group, normalizeConversationSettings) {
     const source = getObject(group);
-    const id = String(source.id || '').trim();
+    const idValidation = validateConversationStoragePart(source.id, { required: true });
+    const id = idValidation.valid ? idValidation.value : '';
     const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
     const members = getUniqueConversationGroupMembers(source.members);
     if (!id || members.length < 2) {
@@ -64,10 +72,10 @@ export function normalizeConversationGroupRecord(group, normalizeConversationSet
 
     const now = Date.now();
     return {
-        ...source,
+        ...getOwnRecord(source),
         id,
         personaId,
-        name: String(source.name || 'Conversation Group'),
+        name: typeof source.name === 'string' && source.name ? source.name : 'Conversation Group',
         members,
         disabled_members: getUniqueConversationGroupMembers(source.disabled_members).filter(avatar => members.includes(avatar)),
         conversation_settings: normalizeGroupConversationSettings(source.conversation_settings, normalizeConversationSettings),
@@ -141,4 +149,43 @@ export function getGroupConversationSettings(request, store, groupId, personaId 
     const groupPath = path.join(request.user.directories.groups, sanitize(`${groupId}.json`));
     const group = readJsonFile(groupPath, null);
     return getObject(group?.data?.conversation_settings);
+}
+
+/**
+ * Authorize a persona-scoped Conversation group or a legacy roleplay group.
+ */
+export function authorizeConversationGroup(request, store, avatar, groupId, personaId = '', normalizeConversationSettings) {
+    if (!groupId) {
+        return { authorized: true, group: null };
+    }
+
+    const rawMatchingConversationGroup = (Array.isArray(store.groups) ? store.groups : [])
+        .find(group => typeof group?.id === 'string' && group.id === groupId);
+    if (rawMatchingConversationGroup) {
+        const matchingConversationGroup = normalizeConversationGroupRecord(rawMatchingConversationGroup, normalizeConversationSettings);
+        if (!matchingConversationGroup) {
+            return { authorized: false, group: null };
+        }
+        const authorized = getConversationPersonaId(matchingConversationGroup.personaId) === getConversationPersonaId(personaId)
+            && matchingConversationGroup.members.includes(avatar)
+            && !matchingConversationGroup.disabled_members.includes(avatar);
+        return { authorized, group: matchingConversationGroup };
+    }
+
+    if (!request.user.directories.groups) {
+        return { authorized: false, group: null };
+    }
+    const groupPath = path.join(request.user.directories.groups, sanitize(`${groupId}.json`));
+    const groupResult = readJsonFile(groupPath, null);
+    if (!groupResult.ok) {
+        return { authorized: false, error: 'group_read_failed', status: 500 };
+    }
+    const group = getObject(groupResult.data);
+    const groupPersonaId = getConversationPersonaId(group.personaId || group.persona || group.personaAvatar || group.userAvatar);
+    const authorized = String(group.id || '') === String(groupId)
+        && (!groupPersonaId || groupPersonaId === getConversationPersonaId(personaId))
+        && Array.isArray(group.members)
+        && group.members.includes(avatar)
+        && !(Array.isArray(group.disabled_members) && group.disabled_members.includes(avatar));
+    return { authorized, group: authorized ? group : null };
 }

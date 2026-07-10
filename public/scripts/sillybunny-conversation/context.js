@@ -63,6 +63,10 @@ export function getConversationPersonaId(personaId = user_avatar) {
     return String(personaId || '').trim();
 }
 
+function getExplicitConversationPersonaId(personaId) {
+    return String(personaId || '').trim();
+}
+
 function encodeConversationStoragePart(value) {
     return encodeURIComponent(String(value || '').trim());
 }
@@ -85,6 +89,17 @@ function scopeConversationStorageKey(storageKey, personaId = getConversationPers
     return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
 }
 
+export function getRawConversationThreadKey(avatar, groupId = '', personaId = getConversationPersonaId()) {
+    const safeAvatar = String(avatar || '').trim();
+    const safeGroupId = String(groupId || '').trim();
+    if (!safeAvatar) {
+        return '';
+    }
+
+    const threadKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
+    return scopeConversationStorageKey(threadKey, personaId);
+}
+
 export function isConversationThreadKeyForPersona(key, personaId = getConversationPersonaId()) {
     const parsed = parseConversationThreadKey(key);
     return getConversationPersonaId(parsed.personaId) === getConversationPersonaId(personaId);
@@ -93,7 +108,7 @@ export function isConversationThreadKeyForPersona(key, personaId = getConversati
 export function normalizeConversationGroupRecord(group) {
     const source = group && typeof group === 'object' ? group : {};
     const id = String(source.id || '').trim();
-    const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
+    const personaId = getExplicitConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
     const members = Array.isArray(source.members)
         ? Array.from(new Set(source.members.map(avatar => String(avatar || '').trim()).filter(Boolean)))
         : [];
@@ -128,12 +143,12 @@ export function getConversationGroups({ personaId = getConversationPersonaId() }
     return store.groups.filter(group => getConversationPersonaId(group.personaId) === persona);
 }
 
-export function getConversationGroupById(groupId) {
+export function getConversationGroupById(groupId, { personaId = getConversationPersonaId() } = {}) {
     if (!groupId) {
         return null;
     }
 
-    const conversationGroup = getConversationGroups().find(group => String(group?.id) === String(groupId));
+    const conversationGroup = getConversationGroups({ personaId }).find(group => String(group?.id) === String(groupId));
     if (conversationGroup) {
         return conversationGroup;
     }
@@ -145,8 +160,8 @@ export function getConversationGroupById(groupId) {
     return groups.find(group => String(group?.id) === String(groupId)) || null;
 }
 
-export function isConversationOwnedGroup(groupId) {
-    return Boolean(groupId && getConversationGroups().some(group => String(group?.id) === String(groupId)));
+export function isConversationOwnedGroup(groupId, { personaId = getConversationPersonaId() } = {}) {
+    return Boolean(groupId && getConversationGroups({ personaId }).some(group => String(group?.id) === String(groupId)));
 }
 
 export function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null, personaId = getConversationPersonaId() } = {}) {
@@ -182,8 +197,8 @@ export function createConversationGroupRecord(memberAvatars, { name = '', avatar
     return group;
 }
 
-export function isAvatarInConversationGroup(avatar, groupId) {
-    const group = getConversationGroupById(groupId);
+export function isAvatarInConversationGroup(avatar, groupId, { personaId = getConversationPersonaId() } = {}) {
+    const group = getConversationGroupById(groupId, { personaId });
     return Boolean(avatar && group?.members?.includes(avatar) && !group.disabled_members?.includes(avatar));
 }
 
@@ -201,14 +216,13 @@ export function getConversationGroupIdForAvatar(avatar) {
     return selected_group && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
 }
 
-export function getConversationThreadKey(avatar, groupId = getConversationGroupIdForAvatar(avatar)) {
+export function getConversationThreadKey(avatar, groupId = getConversationGroupIdForAvatar(avatar), { personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return '';
     }
 
-    const safeGroupId = groupId && isAvatarInConversationGroup(avatar, groupId) ? String(groupId) : '';
-    const threadKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${avatar}` : avatar;
-    return scopeConversationStorageKey(threadKey);
+    const safeGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? String(groupId) : '';
+    return getRawConversationThreadKey(avatar, safeGroupId, personaId);
 }
 
 export function parseConversationThreadKey(key) {
@@ -381,20 +395,20 @@ export function getDefaultGroupConversationSettings() {
     });
 }
 
-export function getGroupConversationSettings(groupId) {
-    const group = getConversationGroupById(groupId);
+export function getGroupConversationSettings(groupId, { personaId = getConversationPersonaId() } = {}) {
+    const group = getConversationGroupById(groupId, { personaId });
     return normalizeGroupConversationSettings(group?.conversation_settings);
 }
 
-export function saveGroupConversationSettings(groupId, settings) {
-    const group = getConversationGroupById(groupId);
+export function saveGroupConversationSettings(groupId, settings, { personaId = getConversationPersonaId() } = {}) {
+    const group = getConversationGroupById(groupId, { personaId });
     if (!group) {
         return;
     }
 
     group.conversation_settings = normalizeGroupConversationSettings(settings);
     group.updatedAt = Date.now();
-    if (isConversationOwnedGroup(groupId)) {
+    if (isConversationOwnedGroup(groupId, { personaId })) {
         persistConversationStore();
         return;
     }
@@ -402,7 +416,132 @@ export function saveGroupConversationSettings(groupId, settings) {
     void editGroup(String(group.id), false, false);
 }
 
-function migrateLegacyConversationStoreToPersona(store, personaId = getConversationPersonaId()) {
+function getLegacyConversationMessageFingerprint(message) {
+    const normalizeValue = (value) => {
+        if (Array.isArray(value)) {
+            return value.map(normalizeValue);
+        }
+        if (value && typeof value === 'object') {
+            return Object.keys(value).sort().reduce((result, key) => {
+                result[key] = normalizeValue(value[key]);
+                return result;
+            }, {});
+        }
+        return value;
+    };
+    return JSON.stringify(normalizeValue(message));
+}
+
+function mergeLegacyConversationMessages(destinationMessages, sourceMessages) {
+    const destination = Array.isArray(destinationMessages) ? destinationMessages : [];
+    const source = Array.isArray(sourceMessages) ? sourceMessages : [];
+    const byId = new Map(destination.map(message => [String(message?.id || ''), message]));
+    const fingerprintCounts = destination.reduce((counts, message) => {
+        if (!message?.id) {
+            const fingerprint = getLegacyConversationMessageFingerprint(message);
+            counts.set(fingerprint, (counts.get(fingerprint) || 0) + 1);
+        }
+        return counts;
+    }, new Map());
+    const sourceFingerprintCounts = new Map();
+    let complete = true;
+    let changed = false;
+
+    for (const message of source) {
+        const messageId = String(message?.id || '');
+        if (!messageId) {
+            const fingerprint = getLegacyConversationMessageFingerprint(message);
+            const occurrence = (sourceFingerprintCounts.get(fingerprint) || 0) + 1;
+            sourceFingerprintCounts.set(fingerprint, occurrence);
+            if ((fingerprintCounts.get(fingerprint) || 0) >= occurrence) {
+                continue;
+            }
+
+            destination.push(message);
+            fingerprintCounts.set(fingerprint, occurrence);
+            changed = true;
+            continue;
+        }
+
+        const existing = messageId ? byId.get(messageId) : null;
+        if (!existing) {
+            destination.push(message);
+            if (messageId) {
+                byId.set(messageId, message);
+            }
+            changed = true;
+            continue;
+        }
+
+        if (JSON.stringify(existing) !== JSON.stringify(message)) {
+            complete = false;
+        }
+    }
+
+    destination.sort((left, right) => Number(left?.created_at || 0) - Number(right?.created_at || 0));
+    return { messages: destination, complete, changed };
+}
+
+function mergeLegacyConversationThreadStore(destination, source) {
+    if (!destination || typeof destination !== 'object' || !source || typeof source !== 'object') {
+        return { complete: false, changed: false };
+    }
+
+    let changed = false;
+    let complete = true;
+    for (const [key, value] of Object.entries(source)) {
+        if (key === 'branches' || key === 'settings') {
+            continue;
+        }
+        if (typeof destination[key] === 'undefined' || destination[key] === null || destination[key] === '') {
+            destination[key] = value;
+            changed = true;
+        } else if (JSON.stringify(destination[key]) !== JSON.stringify(value)) {
+            complete = false;
+        }
+    }
+
+    const sourceSettings = source.settings && typeof source.settings === 'object' ? source.settings : {};
+    const destinationSettings = destination.settings && typeof destination.settings === 'object' ? destination.settings : {};
+    const mergedSettings = { ...sourceSettings, ...destinationSettings };
+    for (const [key, value] of Object.entries(sourceSettings)) {
+        if (Object.prototype.hasOwnProperty.call(destinationSettings, key) && JSON.stringify(destinationSettings[key]) !== JSON.stringify(value)) {
+            complete = false;
+        }
+    }
+    if (JSON.stringify(mergedSettings) !== JSON.stringify(destinationSettings)) {
+        destination.settings = mergedSettings;
+        changed = true;
+    }
+
+    const sourceBranches = source.branches && typeof source.branches === 'object' ? source.branches : {};
+    destination.branches = destination.branches && typeof destination.branches === 'object' ? destination.branches : {};
+    for (const [branchId, sourceBranch] of Object.entries(sourceBranches)) {
+        const destinationBranch = destination.branches[branchId];
+        if (!destinationBranch) {
+            destination.branches[branchId] = sourceBranch;
+            changed = true;
+            continue;
+        }
+
+        for (const [key, value] of Object.entries(sourceBranch || {})) {
+            if (key !== 'messages' && (typeof destinationBranch[key] === 'undefined' || destinationBranch[key] === null || destinationBranch[key] === '')) {
+                destinationBranch[key] = value;
+                changed = true;
+            } else if (key !== 'messages' && JSON.stringify(destinationBranch[key]) !== JSON.stringify(value)) {
+                complete = false;
+            }
+        }
+        const mergedMessages = mergeLegacyConversationMessages(destinationBranch.messages, sourceBranch?.messages);
+        destinationBranch.messages = mergedMessages.messages;
+        complete = complete && mergedMessages.complete;
+        changed = changed || mergedMessages.changed;
+    }
+
+    return { complete, changed };
+}
+
+export function migrateLegacyConversationStoreToPersona(store, personaId = getConversationPersonaId()) {
     const persona = getConversationPersonaId(personaId);
     if (!persona || !store || typeof store !== 'object') {
         return false;
@@ -410,23 +549,40 @@ function migrateLegacyConversationStoreToPersona(store, personaId = getConversat
 
     let changed = false;
     const charactersStore = store.characters && typeof store.characters === 'object' ? store.characters : {};
+    const legacyAssignments = store.legacyThreadPersonaAssignments && typeof store.legacyThreadPersonaAssignments === 'object'
+        ? store.legacyThreadPersonaAssignments
+        : {};
+    store.legacyThreadPersonaAssignments = legacyAssignments;
     for (const [storeKey, threadStore] of Object.entries(charactersStore)) {
         const parsed = parseConversationThreadKey(storeKey);
-        if (parsed.personaId || !parsed.avatar) {
+        if (parsed.personaId || !parsed.avatar || (legacyAssignments[storeKey] && legacyAssignments[storeKey] !== persona)) {
             continue;
         }
 
         const scopedKey = scopeConversationStorageKey(storeKey, persona);
         if (!charactersStore[scopedKey]) {
             charactersStore[scopedKey] = threadStore;
+            delete charactersStore[storeKey];
+            delete legacyAssignments[storeKey];
+            changed = true;
+            continue;
         }
-        delete charactersStore[storeKey];
-        changed = true;
+
+        const merged = mergeLegacyConversationThreadStore(charactersStore[scopedKey], threadStore);
+        changed = changed || merged.changed;
+        if (merged.complete) {
+            delete charactersStore[storeKey];
+            delete legacyAssignments[storeKey];
+            changed = true;
+        } else if (legacyAssignments[storeKey] !== persona) {
+            legacyAssignments[storeKey] = persona;
+            changed = true;
+        }
     }
 
     store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
     for (const group of store.groups) {
-        if (!getConversationPersonaId(group.personaId)) {
+        if (!getExplicitConversationPersonaId(group.personaId)) {
             group.personaId = persona;
             group.updatedAt = Date.now();
             changed = true;
@@ -435,7 +591,7 @@ function migrateLegacyConversationStoreToPersona(store, personaId = getConversat
 
     store.reminders = Array.isArray(store.reminders) ? store.reminders : [];
     for (const reminder of store.reminders) {
-        if (reminder && typeof reminder === 'object' && !getConversationPersonaId(reminder.personaId)) {
+        if (reminder && typeof reminder === 'object' && !getExplicitConversationPersonaId(reminder.personaId)) {
             reminder.personaId = persona;
             changed = true;
         }
@@ -453,6 +609,7 @@ export function getConversationStore() {
             settings: {},
             characters: {},
             groups: [],
+            legacyThreadPersonaAssignments: {},
             reminders: [],
         };
     }
@@ -462,6 +619,9 @@ export function getConversationStore() {
     current.settings = current.settings && typeof current.settings === 'object' ? current.settings : {};
     current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
     current.groups = Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
+    current.legacyThreadPersonaAssignments = current.legacyThreadPersonaAssignments && typeof current.legacyThreadPersonaAssignments === 'object'
+        ? current.legacyThreadPersonaAssignments
+        : {};
     current.reminders = Array.isArray(current.reminders) ? current.reminders : [];
     if (migrateLegacyConversationStoreToPersona(current)) {
         persistConversationStore();
@@ -533,8 +693,8 @@ function migrateGlobalIdleActionSettings(store, settings) {
     return true;
 }
 
-export function getCharacterConversationStore(avatar, { create = true } = {}) {
-    const storeKey = scopeConversationStorageKey(avatar);
+export function getCharacterConversationStore(avatar, { create = true, personaId = getConversationPersonaId() } = {}) {
+    const storeKey = scopeConversationStorageKey(avatar, personaId);
     if (!storeKey) {
         return null;
     }
@@ -582,13 +742,13 @@ export function getCharacterConversationStore(avatar, { create = true } = {}) {
     return characterStore;
 }
 
-export function getConversationThreadStore(avatar, { create = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const threadKey = getConversationThreadKey(avatar, groupId);
+export function getConversationThreadStore(avatar, { create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const threadKey = getConversationThreadKey(avatar, groupId, { personaId });
     if (!threadKey) {
         return null;
     }
 
-    const threadStore = getCharacterConversationStore(threadKey, { create });
+    const threadStore = getCharacterConversationStore(threadKey, { create, personaId });
     if (!threadStore) {
         return null;
     }
@@ -598,13 +758,16 @@ export function getConversationThreadStore(avatar, { create = true, groupId = ge
     return threadStore;
 }
 
-export function getActiveConversationBranch(avatar, { create = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationThreadStore(avatar, { create, groupId });
+export function getActiveConversationBranch(avatar, { branchId = '', create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const characterStore = getConversationThreadStore(avatar, { create, groupId, personaId });
     if (!characterStore) {
         return null;
     }
 
-    const id = characterStore.activeBranchId || DEFAULT_BRANCH_ID;
+    const id = branchId || characterStore.activeBranchId || DEFAULT_BRANCH_ID;
+    if (!characterStore.branches[id] && !create) {
+        return null;
+    }
     characterStore.branches[id] = normalizeConversationBranch(characterStore.branches[id], id);
     return characterStore.branches[id];
 }

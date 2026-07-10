@@ -1,4 +1,3 @@
-import { name1 } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { user_avatar } from '../personas.js';
 import { power_user } from '../power-user.js';
@@ -13,6 +12,7 @@ import {
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationThreadStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
@@ -20,10 +20,12 @@ import {
     parsePositiveInt,
 } from './context.js';
 import { generateConversationRaw } from './generation.js';
+import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterAuthorNote, getCharacterForAvatar, getConversationParticipants, getParticipantNamesForDisplay } from './media.js';
 import {
     composeConversationPersonaDescription,
     getAvailabilityCopy,
+    getConversationPersonaName,
     getUserPersonaStatus,
     getUserStatus,
 } from './personas.js';
@@ -238,7 +240,7 @@ export async function convertImageUrlsToBase64(imageUrls, concurrency = 3) {
     return results;
 }
 
-export async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName(), { groupId = '' } = {}) {
+export async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName(), { groupId = '', personaId = getConversationPersonaId() } = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
@@ -307,7 +309,11 @@ export async function buildConversationPromptMessages(messages, directive, speak
         });
     }
 
-    const groupReferenceContext = buildConversationGroupReferenceContext(messages, { groupId, speakerName, userName: name1 || 'User' });
+    const groupReferenceContext = buildConversationGroupReferenceContext(messages, {
+        groupId,
+        speakerName,
+        userName: getConversationPersonaName(personaId, 'User'),
+    });
     if (groupReferenceContext) {
         promptMessages.push({
             role: 'system',
@@ -325,11 +331,11 @@ export async function buildConversationPromptMessages(messages, directive, speak
     return promptMessages;
 }
 
-export function buildConversationMemoryPrompt(avatar, messages, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function buildConversationMemoryPrompt(avatar, messages, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const character = getCharacterForAvatar(avatar);
-    const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar, { groupId }), { groupId }));
+    const participants = getParticipantNamesForDisplay(getConversationParticipants(avatar, getSettings(avatar, { groupId, personaId }), { groupId, personaId }));
     return [
-        `Main DM: ${character?.name || 'Character'} with ${name1 || 'User'}.`,
+        `Main DM: ${character?.name || 'Character'} with ${getConversationPersonaName(personaId, 'User')}.`,
         participants.length > 1 ? `Other possible participants: ${participants.slice(1).join(', ')}.` : '',
         'Summarize durable DM memory only: relationship tone, promises, unresolved topics, preferences, private jokes, boundaries, and emotionally important beats.',
         'Ignore filler small talk unless it changes the relationship. Keep it compact and useful for future replies.',
@@ -338,13 +344,13 @@ export function buildConversationMemoryPrompt(avatar, messages, { groupId = getC
     ].filter(Boolean).join('\n');
 }
 
-export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false } = {}) {
-    const memoryKey = getConversationThreadKey(avatar, groupId);
+export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false, personaId = getConversationPersonaId() } = {}) {
+    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${branchId}`;
     if (!avatar || !memoryKey || memorySummaryBusyAvatars.has(memoryKey)) {
         return false;
     }
 
-    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
+    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
     const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
     if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
         if (notify) {
@@ -353,21 +359,22 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         return false;
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId });
-    const lastSummarizedCount = parsePositiveInt(threadStore?.memoryMessageCount ?? branch?.memoryMessageCount, 0, 0);
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount ?? threadStore?.memoryMessageCount, 0, 0);
     if (!force && messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
         return false;
     }
+    const sourceRevision = getConversationMessagesRevision(messages);
 
     memorySummaryBusyAvatars.add(memoryKey);
     try {
-        const previousSummary = getConversationMemorySummary(avatar, { groupId });
+        const previousSummary = getConversationMemorySummary(avatar, { branchId, groupId, personaId });
         const prompt = [
             previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
-            buildConversationMemoryPrompt(avatar, messages, { groupId }),
+            buildConversationMemoryPrompt(avatar, messages, { groupId, personaId }),
             'Return the updated memory summary in concise bullets. No preamble.',
         ].filter(Boolean).join('\n\n');
-        const settings = getSettings(avatar, { groupId });
+        const settings = getSettings(avatar, { groupId, personaId });
         const response = await generateConversationRaw({
             prompt,
             systemPrompt: 'You maintain a concise private DM memory summary for realistic ongoing chat continuity.',
@@ -377,7 +384,14 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         }, settings);
 
         if (response?.trim()) {
-            saveConversationMemorySummary(avatar, response.trim(), messages.length, { groupId });
+            const currentBranch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
+            const currentMessages = Array.isArray(currentBranch?.messages)
+                ? currentBranch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system')
+                : [];
+            if (getConversationMessagesRevision(currentMessages) !== sourceRevision) {
+                return false;
+            }
+            saveConversationMemorySummary(avatar, response.trim(), messages.length, { branchId, groupId, personaId });
             if (notify) {
                 toastr.success('Conversation memory refreshed.');
             }
@@ -395,12 +409,13 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
     return false;
 }
 
-export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const memoryKey = getConversationThreadKey(avatar, groupId);
+    const capturedBranchId = branchId || getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${capturedBranchId}`;
     const existingTimer = memorySummaryTimers.get(memoryKey);
     if (existingTimer) {
         window.clearTimeout(existingTimer);
@@ -408,18 +423,18 @@ export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(
 
     const timer = window.setTimeout(() => {
         memorySummaryTimers.delete(memoryKey);
-        void updateConversationMemorySummary(avatar, { groupId });
+        void updateConversationMemorySummary(avatar, { branchId: capturedBranchId, groupId, personaId });
     }, 2500);
     memorySummaryTimers.set(memoryKey, timer);
 }
 
-export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, groupId = getConversationGroupIdForAvatar(threadAvatar) } = {}) {
+export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId() } = {}) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
-    const userName = name1 || 'User';
-    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId });
+    const userName = getConversationPersonaName(personaId, 'User');
+    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId, personaId });
     const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
-    const partners = getConversationParticipants(threadAvatar, threadSettings, { groupId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
+    const partners = getConversationParticipants(threadAvatar, threadSettings, { branchId, groupId, personaId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
     const partnerNames = getParticipantNamesForDisplay(partners);
     let conversationOpening = `You are ${charName} in a private direct-message conversation with ${userName}.`;
     if (groupId) {
@@ -463,7 +478,11 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     fields.push(userPersonaStatus
         ? `User presence: ${userName} is ${userAvailability.label.toLowerCase()}. Their Conversation status: ${userPersonaStatus}.`
         : `User presence: ${userName} is ${userAvailability.label.toLowerCase()}.`);
-    const personaContext = composeConversationPersonaDescription(user_avatar).trim() || String(power_user?.persona_description ?? '').trim();
+    const personaContext = composeConversationPersonaDescription(personaId || user_avatar, {
+        avatar: threadAvatar,
+        groupId,
+        personaId,
+    }).trim() || (personaId === getConversationPersonaId() ? String(power_user?.persona_description ?? '').trim() : '');
     if (personaContext) {
         fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
     }
@@ -472,17 +491,17 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${partnerNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
     }
 
-    const memorySummary = getConversationMemorySummary(threadAvatar, { groupId });
+    const memorySummary = getConversationMemorySummary(threadAvatar, { branchId, groupId, personaId });
     if (memorySummary) {
         fields.push(`Long-term DM memory summary:\n${memorySummary}`);
     }
     if (settings.include_related_memory && groupId) {
-        const soloMemory = getConversationSoloMemorySummary(avatar);
+        const soloMemory = getConversationSoloMemorySummary(avatar, { personaId });
         if (soloMemory?.summary) {
             fields.push(`Relevant solo DM memory for ${charName}:\n${formatPromptText(soloMemory.summary, 1200)}\nUse this as remembered private context for ${charName}, but do not reveal private solo DM details unless they naturally belong in this group Conversation.`);
         }
     } else if (settings.include_related_memory) {
-        const groupMemories = getConversationGroupMemorySummaries(avatar, { max: 4 });
+        const groupMemories = getConversationGroupMemorySummaries(avatar, { max: 4, personaId });
         if (groupMemories.length) {
             const formattedMemories = groupMemories
                 .map(item => `- ${item.groupName || `Group ${item.groupId}`}: ${formatPromptText(item.summary, 900)}`)

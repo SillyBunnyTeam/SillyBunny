@@ -1,5 +1,5 @@
 import { SAFE_TOAST_OPTIONS } from './constants.js';
-import { getConversationGroupIdForAvatar, getCurrentCharAvatar } from './context.js';
+import { getConversationGroupIdForAvatar, getConversationPersonaId, getConversationThreadStore, getCurrentCharAvatar } from './context.js';
 import { generateSelfieFromContext } from './generation.js';
 import { updateConversationMemorySummary } from './prompt.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
@@ -43,7 +43,7 @@ export function parseConversationReminderArgs(args) {
     return delay && memo ? { delay, memo } : null;
 }
 
-export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(), branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const text = String(note || '').trim();
     if (!avatar || !text) {
         return false;
@@ -56,25 +56,25 @@ export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(
         extra: {
             conversation_mode_ooc: true,
         },
-    }, { groupId });
-    updateLastPreviewFromConversation(avatar, { groupId });
+    }, { branchId, create: !branchId, groupId, personaId });
+    updateLastPreviewFromConversation(avatar, { branchId, groupId, personaId });
     scheduleTimelineRender();
     return true;
 }
 
-export async function quickConversationSummarize() {
-    const avatar = getCurrentCharAvatar();
+export async function quickConversationSummarize({ avatar = getCurrentCharAvatar(), branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    await updateConversationMemorySummary(avatar, { force: true, groupId, notify: true });
+    const capturedBranchId = branchId || getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    await updateConversationMemorySummary(avatar, { branchId: capturedBranchId, force: true, groupId, notify: true, personaId });
     renderConversationMemoryPanel();
 }
 
-export async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), settings = null, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
+export async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), branchId = '', settings = null, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const capturedBranchId = branchId || getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const parsed = parseConversationSlashCommand(text);
     if (!parsed || !avatar) {
         return false;
@@ -83,7 +83,7 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
     switch (parsed.command) {
         case 'selfie': {
             const context = parsed.args || 'a casual selfie in the current DM conversation';
-            await generateSelfieFromContext(context, resolvedSettings, avatar, { groupId, force: true, notify: true });
+            await generateSelfieFromContext(context, resolvedSettings, avatar, { branchId: capturedBranchId, groupId, personaId, force: true, notify: true });
             return true;
         }
         case 'remind': {
@@ -93,21 +93,21 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
                 return true;
             }
 
-            addConversationReminder(avatar, groupId, reminder.delay, reminder.memo);
+            addConversationReminder(avatar, groupId, reminder.delay, reminder.memo, { branchId: capturedBranchId, personaId });
             return true;
         }
         case 'schedule':
             openScheduleEditorModal(avatar);
             return true;
         case 'summarize':
-            await quickConversationSummarize();
+            await quickConversationSummarize({ avatar, branchId: capturedBranchId, groupId, personaId });
             return true;
         case 'ooc':
             if (!parsed.args) {
                 globalThis.toastr?.warning?.('Use /ooc followed by a note for the OOC channel.', '', SAFE_TOAST_OPTIONS);
                 return true;
             }
-            appendConversationOocNote(parsed.args, { avatar, groupId });
+            appendConversationOocNote(parsed.args, { avatar, branchId: capturedBranchId, groupId, personaId });
             return true;
         default:
             return false;

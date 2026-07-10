@@ -10,8 +10,58 @@ import {
     getConversationAttachmentSummary,
     hasConversationMessageContent,
 } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
-import { getObject, parsePositiveInt, isObject } from './conversation-utils.js';
+import { getObject, isObject, validateConversationAttachments } from './conversation-utils.js';
 import { getActiveConversationBranch } from './conversation-threads.js';
+
+const MAX_MESSAGE_TEXT_LENGTH = 256 * 1024;
+const MAX_MESSAGE_FIELD_LENGTH = 512;
+const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
+const ALLOWED_MESSAGE_ROLES = new Set(['user', 'character', 'assistant', 'partner', 'system']);
+
+function parseConversationTimestamp(value, fallback = Date.now()) {
+    if (value === undefined || value === null || value === '') {
+        return fallback;
+    }
+    const timestamp = Number(value);
+    return Number.isSafeInteger(timestamp) && timestamp >= 0 && timestamp <= MAX_DATE_TIMESTAMP ? timestamp : fallback;
+}
+
+/**
+ * Validate an API-supplied message before normalizing it.
+ */
+export function validateConversationMessageInput(input, { requiredRole = '' } = {}) {
+    if (!isObject(input)) {
+        return { valid: false, error: 'message_required' };
+    }
+    const role = input.role === undefined || input.role === '' ? (requiredRole || 'user') : input.role;
+    if (typeof role !== 'string' || !ALLOWED_MESSAGE_ROLES.has(role) || (requiredRole && role !== requiredRole)) {
+        return { valid: false, error: 'invalid_message_role' };
+    }
+    for (const field of ['id', 'name']) {
+        if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > MAX_MESSAGE_FIELD_LENGTH)) {
+            return { valid: false, error: `invalid_message_${field}` };
+        }
+    }
+    const content = input.mes ?? input.text;
+    if (content !== undefined && (typeof content !== 'string' || content.length > MAX_MESSAGE_TEXT_LENGTH)) {
+        return { valid: false, error: 'invalid_message_content' };
+    }
+    if (input.created_at !== undefined) {
+        const timestamp = Number(input.created_at);
+        if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > MAX_DATE_TIMESTAMP) {
+            return { valid: false, error: 'invalid_created_at' };
+        }
+    }
+    const attachmentValidation = validateConversationAttachments(input.extra);
+    if (!attachmentValidation.valid) {
+        return attachmentValidation;
+    }
+
+    const message = createConversationMessage({ ...input, role });
+    return hasConversationMessageContent(message)
+        ? { valid: true, message }
+        : { valid: false, error: 'message_required' };
+}
 
 /**
  * Strip HTML and normalize whitespace for preview text
@@ -76,13 +126,14 @@ export function refreshBranchPreview(branch) {
  */
 export function createConversationMessage(input = {}, fallback = {}) {
     const source = getObject(input);
-    const createdAt = parsePositiveInt(source.created_at, Date.now(), 0);
+    const createdAt = parseConversationTimestamp(source.created_at);
+    const role = ALLOWED_MESSAGE_ROLES.has(source.role) ? source.role : (ALLOWED_MESSAGE_ROLES.has(fallback.role) ? fallback.role : 'user');
     return {
-        id: source.id || `${createdAt}-${Math.random().toString(36).slice(2)}`,
-        role: source.role || fallback.role || 'user',
+        id: typeof source.id === 'string' && source.id ? source.id : `${createdAt}-${Math.random().toString(36).slice(2)}`,
+        role,
         name: source.name || fallback.name || 'User',
         mes: String(source.mes ?? source.text ?? fallback.mes ?? ''),
-        send_date: source.send_date || new Date(createdAt).toISOString(),
+        send_date: typeof source.send_date === 'string' && source.send_date ? source.send_date : new Date(createdAt).toISOString(),
         created_at: createdAt,
         extra: getObject(source.extra),
     };
@@ -121,9 +172,12 @@ export function getIncomingMessage(body, fallbackRole = 'user') {
     const message = isObject(body.message) ? body.message : {};
     return {
         ...message,
+        id: message.id ?? body.id,
         role: message.role || body.role || fallbackRole,
         name: message.name || body.name,
         mes: message.mes ?? message.text ?? body.mes ?? body.text ?? '',
-        extra: getObject(message.extra || body.extra),
+        send_date: message.send_date ?? body.send_date,
+        created_at: message.created_at ?? body.created_at,
+        extra: message.extra !== undefined ? message.extra : (body.extra !== undefined ? body.extra : {}),
     };
 }

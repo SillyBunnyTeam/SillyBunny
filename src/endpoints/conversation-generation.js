@@ -6,6 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import sanitize from 'sanitize-filename';
 
 import { parse as parseCharacterCard } from '../character-card-parser.js';
@@ -138,7 +139,7 @@ export function getContentText(content) {
 /**
  * Build conversation prompt messages (async for image conversion)
  */
-export async function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User' } = {}) {
+export async function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User', signal } = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
@@ -146,7 +147,8 @@ export async function buildConversationPromptMessages(messages, directive, speak
     }];
 
     const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
-    const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
+    const imageUrls = [];
+    const messageParts = sliceMessages.map((message, index) => {
         const parts = [
             formatPromptText(message.mes, 1800),
             getConversationAttachmentSummary(message),
@@ -179,11 +181,27 @@ export async function buildConversationPromptMessages(messages, directive, speak
         const mediaToInline = mediaDisplay === 'gallery'
             ? [media[mediaIndex]]
             : media;
+        const selectedImageUrls = mediaToInline.map(item => item?.url).filter(Boolean);
+        const imageStartIndex = imageUrls.length;
+        imageUrls.push(...selectedImageUrls);
 
-        const base64Urls = await convertImageUrlsToBase64(mediaToInline.map(item => item?.url).filter(Boolean));
+        return {
+            role,
+            contentParts,
+            identifier: `conversation-message-${message.id || index}`,
+            imageStartIndex,
+            imageCount: selectedImageUrls.length,
+        };
+    });
+    const convertedImageUrls = await convertImageUrlsToBase64(imageUrls, 3, { signal });
+    const convertedMessages = messageParts.map(message => {
+        if (!message || !message.contentParts) {
+            return message;
+        }
+        const base64Urls = convertedImageUrls.slice(message.imageStartIndex, message.imageStartIndex + message.imageCount);
         for (const base64Url of base64Urls) {
             if (base64Url) {
-                contentParts.push({
+                message.contentParts.push({
                     type: 'image_url',
                     image_url: {
                         url: base64Url,
@@ -194,11 +212,11 @@ export async function buildConversationPromptMessages(messages, directive, speak
         }
 
         return {
-            role,
-            content: contentParts,
-            identifier: `conversation-message-${message.id || index}`,
+            role: message.role,
+            content: message.contentParts,
+            identifier: message.identifier,
         };
-    }));
+    });
 
     promptMessages.push(...convertedMessages.filter(Boolean));
 
@@ -393,6 +411,7 @@ export function createCapturingResponse() {
     let writableEnded = false;
     const headers = {};
     const chunks = [];
+    const events = new EventEmitter();
 
     return {
         get statusCode() {
@@ -412,6 +431,22 @@ export function createCapturingResponse() {
         },
         get destroyed() {
             return writableEnded;
+        },
+        on(event, listener) {
+            events.on(event, listener);
+            return this;
+        },
+        once(event, listener) {
+            events.once(event, listener);
+            return this;
+        },
+        off(event, listener) {
+            events.off(event, listener);
+            return this;
+        },
+        removeListener(event, listener) {
+            events.removeListener(event, listener);
+            return this;
         },
         status(code) {
             statusCode = code;
@@ -439,6 +474,7 @@ export function createCapturingResponse() {
             payload = data;
             headersSent = true;
             writableEnded = true;
+            events.emit('finish');
             return this;
         },
         json(data) {
@@ -449,6 +485,7 @@ export function createCapturingResponse() {
             payload = { error: true };
             headersSent = true;
             writableEnded = true;
+            events.emit('finish');
             return this;
         },
         end(data = undefined) {
@@ -460,6 +497,7 @@ export function createCapturingResponse() {
             }
             headersSent = true;
             writableEnded = true;
+            events.emit('finish');
             return this;
         },
     };
@@ -468,19 +506,43 @@ export function createCapturingResponse() {
 /**
  * Run backend generation with error handling
  */
-export async function runBackendGeneration(request, backend, payload) {
+export async function runBackendGeneration(request, backend, payload, { signal } = {}) {
     if (!Object.keys(payload).length) {
         const error = new Error('generation payload is required');
         error.status = 400;
         throw error;
     }
 
-    // Create a safe minimal request clone instead of Object.create(request)
-    // to avoid breaking instanceof checks and own-property enumeration
+    if (signal?.aborted) {
+        const error = new Error('client disconnected');
+        error.status = 499;
+        throw error;
+    }
+
+    const inertSocket = new EventEmitter();
+    inertSocket.destroyed = false;
     const generationRequest = {
         user: request.user,
         headers: request.headers,
         app: request.app,
+        socket: request.socket || inertSocket,
+        get: typeof request.get === 'function' ? request.get.bind(request) : undefined,
+        on: typeof request.on === 'function' ? request.on.bind(request) : undefined,
+        once: typeof request.once === 'function' ? request.once.bind(request) : undefined,
+        off: typeof request.off === 'function' ? request.off.bind(request) : undefined,
+        removeListener: typeof request.removeListener === 'function' ? request.removeListener.bind(request) : undefined,
+        get aborted() {
+            return Boolean(request.aborted || signal?.aborted);
+        },
+        get readableAborted() {
+            return Boolean(request.readableAborted || signal?.aborted);
+        },
+        get destroyed() {
+            return Boolean(request.destroyed || signal?.aborted);
+        },
+        get complete() {
+            return request.complete;
+        },
         body: payload,
     };
     const capture = createCapturingResponse();
@@ -488,6 +550,12 @@ export async function runBackendGeneration(request, backend, payload) {
         await handleTextCompletionsGenerate(generationRequest, capture);
     } else {
         await handleChatCompletionsGenerate(generationRequest, capture);
+    }
+
+    if (signal?.aborted) {
+        const error = new Error('client disconnected');
+        error.status = 499;
+        throw error;
     }
 
     const body = capture.body;

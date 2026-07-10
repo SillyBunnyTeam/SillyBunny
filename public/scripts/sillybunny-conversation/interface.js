@@ -386,7 +386,8 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     if (active) {
         if (avatar) {
-            clearUnreadCount(avatar, { groupId });
+            const branchId = getConversationThreadStore(avatar, { create: false, groupId })?.activeBranchId || '';
+            clearUnreadCount(avatar, { branchId, groupId });
             updateLastPreviewFromConversation(avatar, { groupId });
         }
         renderConversationTimeline();
