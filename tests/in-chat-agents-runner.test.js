@@ -211,6 +211,7 @@ describe('in-chat agent post-processing runner', () => {
                 .replaceAll('{{user}}', 'Traveler')
                 .replaceAll('{{char}}', options.name2Override || 'Assistant')
                 .replaceAll('{{original}}', options.original ?? '')),
+            substituteParamsExtended: jest.fn(value => String(value ?? '')),
             generateQuietPrompt,
             getCurrentChatId: jest.fn(() => currentChatId),
             normalizeContentText: jest.fn(value => String(value ?? '')),
@@ -331,6 +332,7 @@ describe('in-chat agent post-processing runner', () => {
                 const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
             }),
+            uuidv4: jest.fn(() => 'test-uuid'),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
