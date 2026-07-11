@@ -2524,9 +2524,11 @@ let sbComposerKeyboardSettleTimer = 0;
  * which pushes the fixed shell off screen (the composer-at-top escape).
  * Instead of chasing that pan, give up the keyboard's height while the chat
  * composer is focused: the shell keeps its stable layout top but shrinks so
- * the composer sits above the keyboard and Safari has nothing to reveal. The
- * A measured or estimated keyboard height pre-shrinks the shell right after
- * focus, before the keyboard finishes animating, so the reveal never triggers.
+ * the composer clears the keyboard and Safari has nothing to reveal. A small
+ * focus margin keeps the textbox away from the viewport edge that triggers
+ * Safari's caret-reveal pan. A measured or estimated keyboard height
+ * pre-shrinks the shell right after focus, before the keyboard finishes
+ * animating, so the reveal never triggers.
  */
 function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
     if (!isIOSWebKitPlatform() || !isMobileViewport()) {

@@ -17,7 +17,7 @@ describe('iOS composer keyboard inset', () => {
             preShiftActive: true,
         });
 
-        expect(decision.inset).toBe(338);
+        expect(decision.inset).toBe(354);
         expect(decision.rememberedKeyboardHeight).toBe(0);
     });
 
@@ -36,8 +36,8 @@ describe('iOS composer keyboard inset', () => {
             preShiftActive: false,
         });
 
-        expect(measuredPan.inset).toBe(344);
-        expect(panBeforeResize.inset).toBe(338);
+        expect(measuredPan.inset).toBe(360);
+        expect(panBeforeResize.inset).toBe(354);
     });
 
     test('reuses the measured keyboard height on refocus', () => {
@@ -56,7 +56,8 @@ describe('iOS composer keyboard inset', () => {
         });
 
         expect(measured.rememberedKeyboardHeight).toBe(344);
-        expect(refocused.inset).toBe(344);
+        expect(refocused.inset).toBe(360);
+        expect(refocused.rememberedKeyboardHeight).toBe(344);
     });
 
     test('discards the remembered portrait height after orientation changes', () => {
@@ -71,7 +72,7 @@ describe('iOS composer keyboard inset', () => {
             rememberedLayoutWidth: 390,
         });
 
-        expect(landscape.inset).toBe(160);
+        expect(landscape.inset).toBe(176);
         expect(landscape.rememberedKeyboardHeight).toBe(0);
         expect(landscape.rememberedLayoutWidth).toBe(844);
     });

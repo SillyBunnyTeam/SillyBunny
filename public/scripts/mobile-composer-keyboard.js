@@ -4,6 +4,7 @@ const IOS_KEYBOARD_LAYOUT_WIDTH_EPSILON_PX = 8;
 const IOS_KEYBOARD_ESTIMATED_HEIGHT_RATIO = 0.4;
 const IOS_KEYBOARD_ESTIMATED_MIN_HEIGHT_PX = 160;
 const IOS_KEYBOARD_ESTIMATED_MAX_HEIGHT_PX = 360;
+const IOS_COMPOSER_FOCUS_CLEARANCE_PX = 16;
 
 function readViewportNumber(value, fallback = 0) {
     const number = Number(value);
@@ -60,8 +61,10 @@ export function resolveIOSComposerKeyboardInset({
         inset = openingInset;
     }
 
+    const focusSafeInset = inset > 0 ? Math.min(height, inset + IOS_COMPOSER_FOCUS_CLEARANCE_PX) : 0;
+
     return {
-        inset: Math.round(inset),
+        inset: Math.round(focusSafeInset),
         rememberedKeyboardHeight: Math.round(nextRememberedHeight),
         rememberedLayoutWidth: Math.round(width),
     };
