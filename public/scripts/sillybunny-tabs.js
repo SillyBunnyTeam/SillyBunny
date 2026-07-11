@@ -3,6 +3,7 @@ import {
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
+import { resolveIOSComposerKeyboardInset } from './mobile-composer-keyboard.js';
 import { isIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -2510,11 +2511,10 @@ function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), 
     return keyboardHeight > 80 || visualViewportSize.top > 2;
 }
 
-const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
 const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
-const MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
 
 let sbLastIOSKeyboardHeight = 0;
+let sbLastIOSKeyboardLayoutWidth = 0;
 let sbComposerKeyboardPreShiftDeadline = 0;
 let sbComposerKeyboardSettleTimer = 0;
 
@@ -2525,43 +2525,28 @@ let sbComposerKeyboardSettleTimer = 0;
  * Instead of chasing that pan, give up the keyboard's height while the chat
  * composer is focused: the shell keeps its stable layout top but shrinks so
  * the composer sits above the keyboard and Safari has nothing to reveal. The
- * last measured keyboard height pre-shrinks the shell right after focus,
- * before the keyboard finishes animating, so the reveal never triggers.
+ * A measured or estimated keyboard height pre-shrinks the shell right after
+ * focus, before the keyboard finishes animating, so the reveal never triggers.
  */
 function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
     if (!isIOSWebKitPlatform() || !isMobileViewport()) {
         return 0;
     }
 
-    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
-    if (keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX) {
-        sbLastIOSKeyboardHeight = keyboardHeight;
-    }
+    const decision = resolveIOSComposerKeyboardInset({
+        layoutWidth: layoutViewport.width,
+        layoutHeight: layoutViewport.height,
+        visualHeight: visualViewportSize.height,
+        visualTop: visualViewportSize.top,
+        composerFocused: isChatComposerEditableElement(document.activeElement),
+        preShiftActive: Date.now() < sbComposerKeyboardPreShiftDeadline,
+        rememberedKeyboardHeight: sbLastIOSKeyboardHeight,
+        rememberedLayoutWidth: sbLastIOSKeyboardLayoutWidth,
+    });
 
-    if (!isChatComposerEditableElement(document.activeElement)) {
-        return 0;
-    }
-
-    const withinPreShiftWindow = Date.now() < sbComposerKeyboardPreShiftDeadline;
-
-    if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
-        // Safari already panned the visual viewport (e.g. the first focus of a
-        // session, before any keyboard height is known). Shrinking now would
-        // push the composer to the top of the panned slice with a void below;
-        // keep the stable layout and let the clamped pan frame the composer.
-        if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {
-            return 0;
-        }
-
-        // Hold the pre-shift height through the opening animation so interim
-        // resize events cannot bounce the shell; settle on the measured height.
-        return withinPreShiftWindow ? Math.max(keyboardHeight, sbLastIOSKeyboardHeight) : keyboardHeight;
-    }
-
-    // Keyboard not open yet: pre-shrink with the remembered height in the
-    // window right after composer focus so the shell is already short when
-    // the keyboard arrives and the caret never sits behind it.
-    return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;
+    sbLastIOSKeyboardHeight = decision.rememberedKeyboardHeight;
+    sbLastIOSKeyboardLayoutWidth = decision.rememberedLayoutWidth;
+    return decision.inset;
 }
 
 function handleComposerKeyboardFocusIn(event) {
@@ -2572,6 +2557,9 @@ function handleComposerKeyboardFocusIn(event) {
     if (isChatComposerEditableElement(event.target)) {
         sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
         window.clearTimeout(sbComposerKeyboardSettleTimer);
+        // Apply the first-focus estimate before Safari's focus default action
+        // can pan the visual viewport to reveal the composer caret.
+        syncShellViewportBounds();
         // Re-sync after the pre-shift window closes so the shell settles on
         // the measured keyboard height even if no viewport events fire.
         sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);

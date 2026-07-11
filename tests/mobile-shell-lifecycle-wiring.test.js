@@ -613,22 +613,18 @@ describe('mobile shell lifecycle wiring', () => {
         // keeping the stable layout top, so the caret never sits behind the
         // keyboard and Safari has no reason to pan or force-scroll the document.
         expect(getComposerKeyboardInsetSource).toContain('if (!isIOSWebKitPlatform() || !isMobileViewport()) {');
-        expect(getComposerKeyboardInsetSource).toContain('const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);');
-        expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = keyboardHeight;');
-        expect(getComposerKeyboardInsetSource).toContain('if (!isChatComposerEditableElement(document.activeElement)) {');
+        expect(tabsSource).toContain('import { resolveIOSComposerKeyboardInset } from \'./mobile-composer-keyboard.js\';');
+        expect(getComposerKeyboardInsetSource).toContain('const decision = resolveIOSComposerKeyboardInset({');
+        expect(getComposerKeyboardInsetSource).toContain('composerFocused: isChatComposerEditableElement(document.activeElement),');
+        expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = decision.rememberedKeyboardHeight;');
         expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
         expect(getShellViewportSizeSource).toContain('const height = Math.max(0, layoutViewport.height - composerKeyboardInset);');
         expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
 
-        // If Safari already panned the visual viewport, shrinking would push the
-        // composer to the top of the panned slice with a void below it (the
-        // escape this fix removes) - keep the stable layout in that case.
-        expect(getComposerKeyboardInsetSource).toContain('if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {');
-
-        // The remembered keyboard height pre-shrinks the shell on focus, before
-        // the keyboard finishes opening, so the reveal never triggers at all.
-        expect(getComposerKeyboardInsetSource).toContain('return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;');
+        // Apply the estimated or remembered height synchronously on focus,
+        // before Safari performs its default caret-reveal pan.
         expect(handleComposerKeyboardFocusInSource).toContain('sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;');
+        expect(handleComposerKeyboardFocusInSource).toContain('syncShellViewportBounds();');
         expect(handleComposerKeyboardFocusInSource).toContain('queueMobileViewportStateSync();');
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
