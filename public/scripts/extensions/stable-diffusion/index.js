@@ -2096,6 +2096,7 @@ async function loadStabilityModels() {
 async function loadBflModels() {
     $('#sd_bfl_key').toggleClass('success', !!secret_state[SECRET_KEYS.BFL]);
 
+    // SillyBunny: omit BFL's retired unversioned flux-pro alias.
     return [
         { value: 'flux-pro-1.1-ultra', text: 'flux-pro-1.1-ultra' },
         { value: 'flux-pro-1.1', text: 'flux-pro-1.1' },
@@ -2380,6 +2381,7 @@ async function loadDrawthingsModels() {
 }
 
 async function loadOpenAiModels() {
+    // SillyBunny: omit DALL-E 2 and 3 after their OpenAI API retirement.
     return [
         { value: 'gpt-image-2', text: 'gpt-image-2' },
         { value: 'gpt-image-2-2026-04-21', text: 'gpt-image-2-2026-04-21' },
@@ -2452,6 +2454,7 @@ async function loadVladModels() {
 }
 
 async function loadNovelModels() {
+    // SillyBunny: omit NovelAI Diffusion V2 after its provider retirement.
     return [
         {
             value: 'nai-diffusion-4-5-full',
@@ -2481,6 +2484,7 @@ async function loadNovelModels() {
 }
 
 async function loadGoogleModels() {
+    // SillyBunny: keep the Google image catalog to current Imagen and Veo IDs.
     return [
         'imagen-4.0-generate-001',
         'imagen-4.0-ultra-generate-001',

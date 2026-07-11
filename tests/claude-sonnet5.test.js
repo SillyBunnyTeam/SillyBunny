@@ -8,8 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { setConfigFilePath } from '../src/util.js';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 
-setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
-
 const actualNodeFetch = (await import('node-fetch')).default;
 const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
 await jest.unstable_mockModule('node-fetch', () => ({
@@ -46,6 +44,13 @@ describe('Claude Sonnet 5 backend request handling', () => {
     const tempDirs = [];
 
     beforeAll(async () => {
+        const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-claude-config-'));
+        const configPath = path.join(configRoot, 'config.yaml');
+        const defaultConfig = fs.readFileSync(fileURLToPath(new URL('../default/config.yaml', import.meta.url)), 'utf8');
+        fs.writeFileSync(configPath, defaultConfig.replace('enableAdaptiveThinking: false', 'enableAdaptiveThinking: true'));
+        tempDirs.push(configRoot);
+        setConfigFilePath(configPath);
+
         const { router: chatCompletionsRouter } = await import('../src/endpoints/backends/chat-completions.js');
 
         const userRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-claude-sonnet5-'));
@@ -118,6 +123,16 @@ describe('Claude Sonnet 5 backend request handling', () => {
 
         expect(body.thinking).toEqual({ type: 'adaptive' });
         expect(body.output_config?.effort).toBe('xhigh');
+    });
+
+    test('Sonnet 4.6 maps unsupported xhigh effort to max', async () => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({ model: 'claude-sonnet-4-6', reasoning_effort: 'xhigh' });
+        expect(res.status).toBe(200);
+        const body = getBody();
+
+        expect(body.thinking).toEqual({ type: 'adaptive' });
+        expect(body.output_config?.effort).toBe('max');
     });
 
     test('Sonnet 5 with effort=none sends thinking.type disabled and omits sampling params', async () => {

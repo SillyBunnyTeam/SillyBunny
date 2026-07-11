@@ -5015,8 +5015,14 @@ function getReasoningEffort(settings = null, model = null) {
                     ? reasoning_effort_types.min
                     : reasoning_effort_types.low;
             case reasoning_effort_types.max: {
+                const nativeOpenAISource = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source);
+                // SillyBunny: GPT-5.6 exposes max separately from xhigh.
+                if (nativeOpenAISource && /^gpt-5\.6(?:-|$)/.test(model)) {
+                    return reasoning_effort_types.max;
+                }
+
                 // xhigh is supported on OpenAI models after gpt-5.1-codex-max and on xAI grok-4.20-multi-agent
-                const xhighOpenAI = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source)
+                const xhighOpenAI = nativeOpenAISource
                     && /^gpt-5\.([2-9]|\d{2,})/.test(model);
                 const xhighXAI = settings.chat_completion_source === chat_completion_sources.XAI
                     && model.includes('grok-4.20-multi-agent');
@@ -7803,6 +7809,7 @@ function getMaxContextOpenAI(value) {
     if (isMaxContextUnlockedForSource()) {
         return unlocked_max;
     } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.6')) {
+        // SillyBunny: GPT-5.6 has the same one-million-token context tier as GPT-5.4.
         return max_1mil;
     } else if (value.startsWith('gpt-5')) {
         return max_400k;

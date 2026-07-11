@@ -352,6 +352,8 @@ async function sendClaudeRequest(request, response) {
         const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnet5;
         // Sonnet 5 is always adaptive regardless of enableAdaptiveThinking; other adaptive models require the flag.
         const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnet5;
+        // SillyBunny: older adaptive Claude models reject xhigh and must receive max instead.
+        const supportsXhigh = /^claude-(sonnet-5|opus-4-(?:7|8))/.test(request.body.model) || isFableModel;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -451,7 +453,7 @@ async function sendClaudeRequest(request, response) {
         }
 
         const reasoningEffort = request.body.reasoning_effort;
-        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel);
+        const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel, supportsXhigh);
 
         // Adaptive thinking: returns a string effort level (like Gemini 3)
         if (useThinking && typeof budgetTokens === 'string') {

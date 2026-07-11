@@ -1139,9 +1139,10 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @param {string} reasoningEffort Reasoning effort
  * @param {boolean} stream If streaming is enabled
  * @param {boolean} isAdaptiveModel If the model supports adaptive thinking (Opus 4.6+)
+ * @param {boolean} supportsXhigh If the adaptive model accepts the xhigh effort value
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
-export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
+export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel, supportsXhigh = false) {
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
         switch (reasoningEffort) {
@@ -1157,7 +1158,8 @@ export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, 
             case REASONING_EFFORT.high:
                 return 'high';
             case REASONING_EFFORT.xhigh:
-                return 'xhigh'; // SillyBunny: Sonnet 5 treats xhigh as a distinct effort level, not an alias for max
+                // SillyBunny: fall back for adaptive Claude models whose API rejects xhigh.
+                return supportsXhigh ? 'xhigh' : 'max';
             case REASONING_EFFORT.max:
                 return 'max';
         }

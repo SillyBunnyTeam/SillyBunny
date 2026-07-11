@@ -273,6 +273,7 @@ router.post('/caption-image', async (request, response) => {
     try {
         const mimeType = request.body.image.split(';')[0].split(':')[1];
         const base64Data = request.body.image.split(',')[1];
+        // SillyBunny: use a current Gemini captioning default after Gemini 2.0 retirement.
         const model = request.body.model || 'gemini-2.5-flash';
         const { url, headers, apiName, safetySettings } = await getGoogleApiConfig(request, model);
 
@@ -469,6 +470,7 @@ router.post('/generate-native-tts', async (request, response) => {
 
 router.post('/generate-image', async (request, response) => {
     try {
+        // SillyBunny: use Imagen 4 after Imagen 3 retirement.
         const model = request.body.model || 'imagen-4.0-generate-001';
         const { url, headers, apiName } = await getGoogleApiConfig(request, model, 'predict');
 

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
+const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const retiredMainModels = [
     'chatgpt-4o-latest',
     'gpt-4.5-preview',
@@ -39,35 +40,6 @@ const retiredClaudeModels = [
     'claude-3-haiku-20240307',
 ];
 
-// Provider IDs retired from the main picker
-const retiredMainPickerOtherModels = [
-    'jamba-1.7-mini',
-    'jamba-1.7-large',
-    'deepseek-r1-distill-llama-70b',
-    'gemma2-9b-it',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-    'llama-guard-3-8b',
-    'llama3-70b-8192',
-    'llama3-8b-8192',
-    'mistral-saba-24b',
-    'MiniMax-M1',
-    'deepseek-v4',
-    'deepseek-coder',
-    'sonar-reasoning',
-    'r1-1776',
-    'c4ai-aya-23-8b',
-    'c4ai-aya-23',
-    'c4ai-aya-expanse-8b',
-    'c4ai-aya-vision-8b',
-    'command-light',
-    'command-r',
-    'command-r-plus',
-    'kimi-k2-0711-preview',
-    'moonshot-v1-auto',
-    'kimi-latest',
-    'kimi-thinking-preview',
-];
-
 // IDs removed from Google AI Studio (main google select / data-type="google" caption options).
 // Note: some of these (e.g. gemini-3.1-flash-lite-preview, gemini-3-pro-preview) are legitimately
 // retained in the Vertex sections, so tests must scope checks to the AI Studio selects only.
@@ -101,8 +73,6 @@ const retiredGoogleStudioModels = [
     'gemini-2.0-flash-preview-image-generation',
     'gemini-robotics-er-1.5-preview',
     'learnlm-2.0-flash-experimental',
-    'gemma-4-31b-it',
-    'gemma-4-26b-a4b-it',
     'gemma-3-27b-it',
     'gemma-3-12b-it',
     'gemma-3-4b-it',
@@ -143,13 +113,13 @@ test('OpenAI pickers include GPT-5.6 and omit retired native OpenAI models', () 
 
 test('OpenAI image picker omits retired DALL-E models', () => {
     const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
-    const modelList = source.match(/async function loadOpenAiModels\(\) \{([\s\S]*?)\n}\n/)[1];
+    const modelList = source.match(/async function loadOpenAiModels\(\) \{([\s\S]*?)\r?\n}\r?\n/)[1];
     const imageModels = [...modelList.matchAll(/\{ value: '([^']+)'/g)].map((match) => match[1]);
 
     expect(imageModels).toEqual(expect.not.arrayContaining(['dall-e-2', 'dall-e-3']));
 });
 
-test('GPT-5.6 supports reasoning effort and one-million-token context', () => {
+test('GPT-5.6 supports distinct max reasoning effort and one-million-token context', () => {
     const constants = readSource('../src/constants.js');
     const openAiScript = readSource('../public/scripts/openai.js');
 
@@ -157,6 +127,7 @@ test('GPT-5.6 supports reasoning effort and one-million-token context', () => {
         expect(constants).toContain(`'${model}'`);
     }
     expect(openAiScript).toContain('value.startsWith(\'gpt-5.4\') || value.startsWith(\'gpt-5.6\')');
+    expect(openAiScript).toMatch(/case reasoning_effort_types\.max:[\s\S]*?\^gpt-5\\\.6[\s\S]*?return reasoning_effort_types\.max/);
 });
 
 test('Claude pickers include claude-sonnet-5 and omit all retired Claude IDs', () => {
@@ -173,7 +144,6 @@ test('Claude pickers include claude-sonnet-5 and omit all retired Claude IDs', (
 
 test('Other provider pickers omit confirmed-retired model IDs', () => {
     const mainSource = readSource('../public/index.html');
-    const mainPicker = getSelectOptionIds(mainSource, 'model_openai_select');
     const mainHtml = mainSource; // full source for providers not in model_openai_select
 
     // AI21, Groq, MiniMax, DeepSeek, Perplexity, Cohere, Moonshot are separate selects;
@@ -215,6 +185,8 @@ test('Google AI Studio pickers omit all retired Gemini/Gemma models', () => {
 
     expect(mainAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
     expect(captionAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
+    expect(mainAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
+    expect(captionAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
 });
 
 test('Vertex AI pickers omit retired Gemini 2.0 entries', () => {
@@ -239,7 +211,7 @@ test('Stable Diffusion image catalog omits retired models and retains current on
     const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
 
     // NovelAI: V2 retired
-    const novelSection = source.match(/async function loadNovelModels\(\)([\s\S]*?)\n}\n/)[1];
+    const novelSection = source.match(/async function loadNovelModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
     expect(novelSection).toEqual(expect.not.stringContaining('nai-diffusion-2'));
     expect(novelSection).toContain('nai-diffusion-4-5-full');
     expect(novelSection).toContain('nai-diffusion-4-5-curated');
@@ -247,14 +219,14 @@ test('Stable Diffusion image catalog omits retired models and retains current on
     expect(novelSection).toContain('nai-diffusion-furry-3');
 
     // BFL: flux-pro (unversioned) retired
-    const bflSection = source.match(/async function loadBflModels\(\)([\s\S]*?)\n}\n/)[1];
-    expect(bflSection).toEqual(expect.not.stringContaining("'flux-pro'"));
+    const bflSection = source.match(/async function loadBflModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
+    expect(bflSection).toEqual(expect.not.stringContaining('\'flux-pro\''));
     expect(bflSection).toContain('flux-pro-1.1');
     expect(bflSection).toContain('flux-pro-1.1-ultra');
     expect(bflSection).toContain('flux-dev');
 
     // Google: only current Imagen 4 and Veo 3.1 entries
-    const googleSection = source.match(/async function loadGoogleModels\(\)([\s\S]*?)\n}\n/)[1];
+    const googleSection = source.match(/async function loadGoogleModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
     expect(googleSection).toContain('imagen-4.0-generate-001');
     expect(googleSection).toContain('imagen-4.0-ultra-generate-001');
     expect(googleSection).toContain('imagen-4.0-fast-generate-001');

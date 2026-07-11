@@ -51,6 +51,7 @@
                     </label>
                     <select id="caption_multimodal_model" class="flex1 text_pole">
                         <!-- AI/ML API, OpenRouter, Pollinations, NanoGPT, Mistral, xAI, Moonshot are added externally by JavaScript -->
+                        <!-- SillyBunny: keep the static caption catalog to current provider IDs; externally loaded models are unaffected. -->
                         <option data-type="cohere" value="c4ai-aya-vision-32b">c4ai-aya-vision-32b</option>
                         <option data-type="cohere" value="command-a-vision-07-2025">command-a-vision-07-2025</option>
                         <option data-type="openai" value="gpt-5.6-sol">gpt-5.6-sol</option>
@@ -114,6 +115,9 @@
                         <option data-type="google" value="gemini-2.5-flash">gemini-2.5-flash</option>
                         <option data-type="google" value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
                         <option data-type="google" value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                        <!-- SillyBunny: Gemma 4 remains available after the older Gemini API Gemma catalog retired. -->
+                        <option data-type="google" value="gemma-4-31b-it">gemma-4-31b-it</option>
+                        <option data-type="google" value="gemma-4-26b-a4b-it">gemma-4-26b-a4b-it</option>
                         <option data-type="vertexai" value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                         <option data-type="vertexai" value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview</option>
                         <option data-type="vertexai" value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview</option>
