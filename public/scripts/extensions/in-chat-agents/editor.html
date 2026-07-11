@@ -403,11 +403,23 @@
                 <input type="checkbox" id="ica--editor-pp-promptShowNotifications" />
                 <span>Show toast notifications while this prompt pass runs</span>
             </label>
-            <label class="checkbox_label">
-                <input type="checkbox" id="ica--editor-pp-runOnImpersonate" />
-                <span>Allow this prompt pass to rewrite generated impersonation text</span>
-            </label>
             <div class="ica--regex-note">The prompt pass runs after the main reply using this agent's prompt and connection profile. In <b>rewrite</b> mode it replaces the message. In <b>append</b> mode it only adds newly generated text after the original reply. Useful macros inside the prompt include <code>&#123;&#123;currentMessage&#125;&#125;</code>, <code>&#123;&#123;response&#125;&#125;</code>, and <code>&#123;&#123;original&#125;&#125;</code>.</div>
+        </div>
+        <label class="checkbox_label">
+            <input type="checkbox" id="ica--editor-pp-runOnImpersonate" />
+            <span>Run this agent's post passes (prompt pass + Agent Regex) on generated impersonation text</span>
+        </label>
+        <label class="checkbox_label">
+            <input type="checkbox" id="ica--editor-pp-runOnCompanionOutputs" />
+            <span>Run this agent's post passes (prompt pass + Agent Regex) on companion agent outputs</span>
+        </label>
+        <div id="ica--pp-companion-target-options" style="display:none">
+            <div class="ica--editor-row">
+                <label class="flex1">Companion targets <small>(none selected = all companions)</small>
+                    <select id="ica--editor-pp-companionTargets" class="text_pole" multiple size="5"></select>
+                </label>
+            </div>
+            <div class="ica--regex-note">When a targeted companion finishes a note, this agent's post-generation prompt pass and Agent Regex scripts run on that note before it is stored, so the panel, message cards, feedback injection, and dependent companions all see the transformed version. Avoid targeting structured tracker companions with prose rewrites.</div>
         </div>
         <label class="checkbox_label">
             <input type="checkbox" id="ica--editor-pp-enabled" />

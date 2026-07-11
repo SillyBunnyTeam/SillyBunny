@@ -9,6 +9,7 @@ const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html
 const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
 const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
+const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -202,5 +203,50 @@ describe('in-chat agents generation UI wiring', () => {
         expect(labelSource).toContain('isCompanionAgent(agent)');
         expect(labelSource).toContain("return 'side';");
         expect(indexSource).toContain('getAgentCardPhaseLabel(agent)');
+    });
+
+    test('enables selected post-generation agents on companion outputs', () => {
+        const handlerStart = indexSource.indexOf("$('#ica--bulkEnableOnCompanions').on('click'");
+        const handlerEnd = indexSource.indexOf("$('#ica--bulkDisable').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(settingsSource).toContain('ica--bulkEnableOnCompanions');
+        expect(settingsSource).toContain('On Companions');
+        expect(handlerSource).toContain('for (const id of selectedAgentIds)');
+        expect(handlerSource).toContain('isCompanionAgent(agent)');
+        expect(handlerSource).toContain('isToolAgent(agent)');
+        expect(handlerSource).toContain("['post', 'both'].includes(agent.phase)");
+        expect(handlerSource).toContain('agent.conditions.runOnCompanionOutputs = true;');
+        expect(handlerSource).toContain('lockBundledAgentCustomization(agent);');
+        expect(handlerSource).toContain('await saveAgent(agent);');
+        expect(handlerSource).toContain('exitSelectMode();');
+    });
+
+    test('allows manual agent application to multiple selected targets', () => {
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+        const handlerStart = indexSource.indexOf("card.find('.ica--btn-run-target').on('click'");
+        const handlerEnd = indexSource.indexOf("card.find('.ica--btn-preview-prompt').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(pickerSource).toContain('type="checkbox" name="ica--run-target"');
+        expect(pickerSource).not.toContain('type="radio" name="ica--run-target"');
+        expect(pickerSource).toContain("picker.find('input[name=\"ica--run-target\"]:checked').map((_, input) => String(input.value)).get()");
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
+        expect(handlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
+        expect(handlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
+
+    test('allows the manual reply target to expand to an assistant message range', () => {
+        const parserSource = getFunctionSource('getManualAgentRunMessageIndices');
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+
+        expect(parserSource).toContain("range.split(',')");
+        expect(parserSource).toContain('!message.is_user && !message.is_system');
+        expect(parserSource).toContain('return [...indexes].sort((a, b) => a - b);');
+        expect(pickerSource).toContain('ica--run-target-message-range');
+        expect(pickerSource).toContain('Last assistant reply #${lastAssistantIndex}');
+        expect(pickerSource).toContain('getManualAgentRunMessageIndices(');
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
+        expect(extensionStyleSource).toContain('.ica--run-target-range');
     });
 });

@@ -154,6 +154,7 @@ beforeAll(async () => {
         getPromptTransformHistoryForMessage: jest.fn(() => []),
         refreshRegexSnapshotsForAgent: jest.fn(() => 0),
         runAgentOnMessage: jest.fn(),
+        runAgentOnTarget: jest.fn(),
         runTrackerFixOnMessage: jest.fn(),
         syncToolAgentRegistrations: jest.fn(),
         undoPromptTransform: jest.fn(async () => false),
@@ -194,6 +195,7 @@ beforeAll(async () => {
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
         agentHasConnectedCompanionDependencies: jest.fn(() => false),
         collectRecentCompanionResults: jest.fn(() => []),
+        getCompanionResults: jest.fn(() => ({})),
         getLatestValidCompanionMessageIndex: jest.fn(() => -1),
         hasConnectedCompanionAgentCandidates: jest.fn(() => false),
         hasConnectedCompanionAgents: jest.fn(() => false),

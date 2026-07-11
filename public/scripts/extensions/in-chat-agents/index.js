@@ -67,6 +67,7 @@ import {
     getPromptTransformHistoryForMessage,
     refreshRegexSnapshotsForAgent,
     runAgentOnMessage,
+    runAgentOnTarget,
     runTrackerFixOnMessage,
     syncToolAgentRegistrations,
     undoPromptTransform,
@@ -89,7 +90,7 @@ import {
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
-import { collectRecentCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
+import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
@@ -374,6 +375,18 @@ function getCompanionContextRecipientOptionsForAgent(agent) {
     return getCompanionDependencyOptionsForAgent(agent);
 }
 
+function getCompanionOutputTargetOptionsForAgent(agent) {
+    return getAgents()
+        .filter(candidate => candidate.id !== agent?.id)
+        .filter(candidate => isCompanionAgent(candidate))
+        .map(candidate => ({
+            id: candidate.id,
+            referenceIds: getCompanionReferenceIds(candidate),
+            label: getCompanionAgentOptionLabel(candidate),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label));
+}
+
 function normalizeDirectorCommentaryVoice(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
     return DIRECTOR_COMMENTARY_VOICE_VALUES.includes(normalized) ? normalized : 'active';
@@ -475,6 +488,138 @@ function stopEvent(event) {
 
 function getLastAssistantMessageIndex() {
     return chat.findLastIndex(message => message && !message.is_user && !message.is_system);
+}
+
+function getManualAgentRunMessageIndices(rangeText, lastAssistantIndex) {
+    const range = String(rangeText ?? '').trim();
+    if (!range) {
+        return lastAssistantIndex >= 0 ? [lastAssistantIndex] : [];
+    }
+
+    const indexes = new Set();
+    for (const section of range.split(',')) {
+        const match = section.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (!match) {
+            return null;
+        }
+
+        const start = Number(match[1]);
+        const end = Number(match[2] ?? match[1]);
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) {
+            return null;
+        }
+
+        for (let index = Math.max(0, start); index <= Math.min(chat.length - 1, end); index++) {
+            const message = chat[index];
+            if (message && !message.is_user && !message.is_system) {
+                indexes.add(index);
+            }
+        }
+    }
+
+    return [...indexes].sort((a, b) => a - b);
+}
+
+/**
+ * Shows a picker for the manual "Apply to…" action listing what exists right now:
+ * the last assistant reply, the composer text box, and the finished companion notes
+ * on that reply. Returns runAgentOnTarget-compatible targets, or null on cancel.
+ */
+async function pickManualAgentRunTargets(agent) {
+    const lastAssistantIndex = getLastAssistantMessageIndex();
+    const composerText = String(document.getElementById('send_textarea')?.value ?? '').trim();
+    const options = [];
+
+    if (lastAssistantIndex >= 0) {
+        const replyName = String(chat[lastAssistantIndex]?.name ?? '').trim();
+        options.push({
+            value: 'message',
+            label: `Last assistant reply #${lastAssistantIndex}${replyName ? ` (${replyName})` : ''}`,
+        });
+
+        for (const [companionAgentId, result] of Object.entries(getCompanionResults(chat[lastAssistantIndex]))) {
+            if (result?.status !== 'done' || !String(result?.content ?? '').trim()) continue;
+
+            const companionLabel = String(result?.agentName ?? '').trim()
+                || getAgentById(companionAgentId)?.name
+                || companionAgentId;
+            options.push({
+                value: `companion:${companionAgentId}`,
+                label: `Companion note: ${companionLabel}`,
+            });
+        }
+    }
+
+    if (composerText) {
+        options.push({ value: 'composer', label: 'Composer text box (current input)' });
+    }
+
+    if (options.length === 0) {
+        toastr.warning('No targets available: no assistant reply yet and the composer is empty.');
+        return null;
+    }
+
+    const picker = $(`
+        <div class="ica--run-target-picker">
+            <h4>Apply "${escapeHtml(agent.name)}" to…</h4>
+        </div>
+    `);
+
+    options.forEach((option, index) => {
+        picker.append($(`
+            <label class="checkbox_label">
+                <input type="checkbox" name="ica--run-target" value="${escapeHtml(option.value)}" ${index === 0 ? 'checked' : ''} />
+                <span>${escapeHtml(option.label)}</span>
+            </label>
+        `));
+        if (option.value === 'message') {
+            picker.append($(`
+                <label class="ica--run-target-range">
+                    <span>Messages</span>
+                    <input type="text" id="ica--run-target-message-range" class="text_pole" placeholder="0-5, 8" inputmode="text" />
+                </label>
+            `));
+        }
+    });
+
+    const popupResult = await new Popup(picker, POPUP_TYPE.CONFIRM, '', { okButton: 'Apply', cancelButton: 'Cancel' }).show();
+    if (popupResult !== POPUP_RESULT.AFFIRMATIVE) {
+        return null;
+    }
+
+    const selected = picker.find('input[name="ica--run-target"]:checked').map((_, input) => String(input.value)).get();
+    if (selected.length === 0) {
+        toastr.warning('Select at least one target.');
+        return null;
+    }
+
+    const messageIndices = selected.includes('message')
+        ? getManualAgentRunMessageIndices(picker.find('#ica--run-target-message-range').val(), lastAssistantIndex)
+        : [];
+    if (messageIndices === null || (selected.includes('message') && messageIndices.length === 0)) {
+        toastr.warning('Select at least one target.');
+        return null;
+    }
+
+    return selected.flatMap(value => {
+        if (value === 'composer') {
+            return [{ kind: 'composer' }];
+        }
+
+        if (value.startsWith('companion:')) {
+            return [{
+                kind: 'companion',
+                messageIndex: lastAssistantIndex,
+                companionAgentId: value.slice('companion:'.length),
+            }];
+        }
+
+        if (value === 'message') {
+            return messageIndices.map(messageIndex => ({ kind: 'message', messageIndex }));
+        }
+
+        return [];
+    });
 }
 
 function hasTrackerFixAgents() {
@@ -2361,6 +2506,7 @@ function renderAgentList() {
                         ${previewCompanionButton}
                         ${previewPromptButton}
                         ${isPathfinderAgent(agent) ? '' : `<button type="button" class="ica--card-btn ica--btn-run" title="${escapeHtml(applyTitle)}" aria-label="${escapeHtml(applyAria)}"><i class="fa-solid ${applyIcon}"></i></button>`}
+                        ${(isPathfinderAgent(agent) || companionExecution) ? '' : '<button type="button" class="ica--card-btn ica--btn-run-target" title="Apply this agent to a chosen target: the last reply, the composer text, or a companion note" aria-label="Apply to Target"><i class="fa-solid fa-crosshairs"></i></button>'}
                         ${convertExecutionButton}
                         <button type="button" class="ica--card-btn ica--btn-edit" title="Edit agent" aria-label="Edit agent"><i class="fa-solid fa-pen-to-square"></i></button>
                         ${isPathfinderAgent(agent) ? '' : '<button type="button" class="ica--card-btn ica--btn-export" title="Export agent" aria-label="Export agent"><i class="fa-solid fa-download"></i></button>'}
@@ -2470,6 +2616,15 @@ function renderAgentList() {
                     return;
                 }
                 await runAgentOnMessage(agent.id, lastCharMessageIndex);
+            });
+
+            card.find('.ica--btn-run-target').on('click', async event => {
+                stopEvent(event);
+                const targets = await pickManualAgentRunTargets(agent);
+                if (!targets) {
+                    return;
+                }
+                await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
             });
 
             card.find('.ica--btn-preview-prompt').on('click', async event => {
@@ -2696,6 +2851,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
     const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
     const savedCompanionContextRecipientAgentIds = normalizeCompanionBatchAgentIds(companion.contextRecipientAgentIds);
+    const savedCompanionOutputTargetAgentIds = normalizeCompanionBatchAgentIds(agent.conditions.companionOutputTargetAgentIds);
     const savedCompanionDependencies = normalizeCompanionBatchAgentIds(companion.dependencies);
     editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', companion.sendContextToCompanions);
     editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', companion.waitForDependencies);
@@ -2750,6 +2906,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-pp-promptMaxTokens').val(agent.postProcess.promptTransformMaxTokens ?? DEFAULT_AGENT_MAX_TOKENS);
     editorEl.find('#ica--editor-pp-promptShowNotifications').prop('checked', Boolean(agent.postProcess.promptTransformShowNotifications));
     editorEl.find('#ica--editor-pp-runOnImpersonate').prop('checked', Boolean(agent.conditions.runOnImpersonate));
+    editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked', Boolean(agent.conditions.runOnCompanionOutputs));
     editorEl.find('#ica--editor-pp-enabled').prop('checked', agent.postProcess.enabled && agent.postProcess.type !== 'regex');
     editorEl.find('#ica--editor-pp-type').val(postProcessType);
     editorEl.find('#ica--editor-pp-extractPattern').val(agent.postProcess.extractPattern);
@@ -2902,6 +3059,41 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         select.empty();
         if (!options.length && !selectedIds.length) {
             select.append($('<option>').val('').text('No other companion agents').prop('disabled', true));
+            return;
+        }
+
+        for (const option of options) {
+            select.append(
+                $('<option>')
+                    .val(option.id)
+                    .text(option.label)
+                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
+            );
+        }
+
+        for (const id of selectedIds) {
+            if (availableKeys.has(id.toLowerCase())) continue;
+
+            select.append(
+                $('<option>')
+                    .val(id)
+                    .text(`Unavailable: ${id}`)
+                    .prop('selected', true),
+            );
+        }
+    }
+
+    function updateCompanionOutputTargetOptions() {
+        const select = editorEl.find('#ica--editor-pp-companionTargets');
+        const currentIds = normalizeCompanionBatchAgentIds(select.val());
+        const selectedIds = currentIds.length ? currentIds : savedCompanionOutputTargetAgentIds;
+        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
+        const options = getCompanionOutputTargetOptionsForAgent(agent);
+        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
+
+        select.empty();
+        if (!options.length && !selectedIds.length) {
+            select.append($('<option>').val('').text('No companion agents').prop('disabled', true));
             return;
         }
 
@@ -3090,6 +3282,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     updateCompanionBatchAgentOptions();
     updateCompanionContextRecipientOptions();
     updateCompanionDependencyOptions();
+    updateCompanionOutputTargetOptions();
     updateCompanionEditorVisibility();
     syncCompanionOrderInput();
 
@@ -3123,6 +3316,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         const promptEnabled = editorEl.find('#ica--editor-pp-promptEnabled').prop('checked');
         editorEl.find('#ica--pp-prompt-options').toggle(promptEnabled);
 
+        const runOnCompanionOutputs = editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked');
+        editorEl.find('#ica--pp-companion-target-options').toggle(runOnCompanionOutputs);
+
         const enabled = editorEl.find('#ica--editor-pp-enabled').prop('checked');
         editorEl.find('#ica--pp-options').toggle(enabled);
 
@@ -3130,7 +3326,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--pp-extract').toggle(type === 'extract');
         editorEl.find('#ica--pp-append').toggle(type === 'append');
     }
-    editorEl.find('#ica--editor-pp-promptEnabled, #ica--editor-pp-enabled, #ica--editor-pp-type').on('change', updatePPVisibility);
+    editorEl.find('#ica--editor-pp-promptEnabled, #ica--editor-pp-runOnCompanionOutputs, #ica--editor-pp-enabled, #ica--editor-pp-type').on('change', updatePPVisibility);
     updatePPVisibility();
 
     editorEl.find('#ica--tracker-builder-generate').on('click', async () => {
@@ -3558,6 +3754,8 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     agent.postProcess.promptTransformMaxTokens = Number(editorEl.find('#ica--editor-pp-promptMaxTokens').val()) || DEFAULT_AGENT_MAX_TOKENS;
     agent.regexScripts = regexScripts.map(script => normalizeRegexScript(script));
     agent.conditions.runOnImpersonate = editorEl.find('#ica--editor-pp-runOnImpersonate').prop('checked');
+    agent.conditions.runOnCompanionOutputs = editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked');
+    agent.conditions.companionOutputTargetAgentIds = normalizeCompanionBatchAgentIds(editorEl.find('#ica--editor-pp-companionTargets').val());
 
     agent.conditions.triggerProbability = Number(editorEl.find('#ica--editor-probability').val());
     const kwText = editorEl.find('#ica--editor-keywords').val().toString();
@@ -5588,6 +5786,33 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         if (changed) {
             persistExtensionState();
             syncToolAgentRegistrations();
+        }
+        exitSelectMode();
+    });
+    $('#ica--bulkEnableOnCompanions').on('click', async () => {
+        let changed = 0;
+        let eligible = 0;
+        for (const id of selectedAgentIds) {
+            const agent = getAgentById(id);
+            if (!agent || isCompanionAgent(agent) || isToolAgent(agent) || !['post', 'both'].includes(agent.phase)) {
+                continue;
+            }
+            eligible++;
+            agent.conditions ??= {};
+            if (agent.conditions.runOnCompanionOutputs) {
+                continue;
+            }
+            agent.conditions.runOnCompanionOutputs = true;
+            lockBundledAgentCustomization(agent);
+            await saveAgent(agent);
+            changed++;
+        }
+        if (changed > 0) {
+            toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs.`);
+        } else if (eligible > 0) {
+            toastr.info('Selected post-generation agents are already enabled on companion outputs.');
+        } else {
+            toastr.warning('No selected post-generation agents can run on companion outputs.');
         }
         exitSelectMode();
     });

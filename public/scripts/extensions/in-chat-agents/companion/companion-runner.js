@@ -25,11 +25,14 @@ import {
 } from '../agent-store.js';
 import {
     buildPromptDynamicMacros,
+    COMPANION_OUTPUT_GENERATION_TYPE,
     deleteAgentExtraValue,
     getAgentExtraValue,
     getAgentGenerationCancelRevision,
     registerCompanionRuntime,
     requestPromptTransform,
+    runCompanionOutputPostPasses,
+    runSingleAgentPostPassesOnText,
     setAgentExtraValue,
 } from '../agent-runner.js';
 import {
@@ -1167,6 +1170,29 @@ function getCompanionResultContent(message, agentId) {
     return normalizeText(getCompanionResults(message)[agentId]?.content);
 }
 
+/**
+ * Runs opted-in inline agents' post passes on a finished companion result. Failures and
+ * mid-pass cancellations fall back to the untouched companion output so the note itself
+ * is never lost to a post-pass problem.
+ */
+async function applyCompanionOutputPostPassesToContent(agent, content, messageIndex, cancelRevision) {
+    if (!normalizeText(content)) {
+        return content;
+    }
+
+    try {
+        const result = await runCompanionOutputPostPasses(agent, content, { messageIndex, cancelRevision });
+        if (result?.cancelled || getAgentGenerationCancelRevision() !== cancelRevision) {
+            return content;
+        }
+
+        return result?.changed ? capResultContent(result.text) : content;
+    } catch (error) {
+        console.warn('[InChatAgents] Companion output post passes failed:', error);
+        return content;
+    }
+}
+
 async function runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, { repair = false, extraContextSections = [], allowUserMessage = false, previousContent = null } = {}) {
     const message = chat[messageIndex];
     if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
@@ -1200,8 +1226,13 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             return { agentId: agent.id, changed, result };
         }
 
-        const content = capResultContent(response.output);
-        const tokenUsage = await buildCompanionTokenUsage(promptMessages, content);
+        const rawContent = capResultContent(response.output);
+        // Token usage reflects the companion's own generation; post passes run after counting.
+        const tokenUsage = await buildCompanionTokenUsage(promptMessages, rawContent);
+        const content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            throw new DOMException('Companion run cancelled.', 'AbortError');
+        }
         setCompanionResult(message, agent, {
             status: 'done',
             content,
@@ -1283,6 +1314,21 @@ async function buildBatchPromptPayload(agents, messageIndex, generationType, { e
     return { promptMessages, taskPayloads };
 }
 
+async function cancelCompanionAgentResults(message, agents, messageIndex, profileId = '') {
+    for (const agent of agents) {
+        setCompanionResult(message, agent, {
+            status: 'cancelled',
+            content: '',
+            error: 'Cancelled.',
+            tokenUsage: null,
+            profileId,
+            profileLabel: getProfileLabel(agent, profileId),
+            modelLabel: getModelLabel(agent),
+        });
+        await emitCompanionResultsUpdated(messageIndex, agent.id);
+    }
+}
+
 async function runBatchCompanionAgents(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
     const message = chat[messageIndex];
     if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
@@ -1290,31 +1336,26 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
     }
 
     const previousMap = previousContents ?? new Map(agents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
+    const getResults = () => agents.map(agent => {
+        const result = getCompanionResults(message)[agent.id];
+        const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
+        return { agentId: agent.id, changed, result };
+    });
 
     try {
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            await cancelCompanionAgentResults(message, agents, messageIndex);
+            return getResults();
+        }
+
         const extraContextSections = getUnitExtraContextSections(agents, extraContextSectionsByAgentId);
         const { promptMessages, taskPayloads } = await buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections });
         const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
-            for (const agent of agents) {
-                setCompanionResult(message, agent, {
-                    status: 'cancelled',
-                    content: '',
-                    error: 'Cancelled.',
-                    tokenUsage: null,
-                    profileId: response.profileId,
-                    profileLabel: getProfileLabel(agent, response.profileId),
-                    modelLabel: getModelLabel(agent),
-                });
-                await emitCompanionResultsUpdated(messageIndex, agent.id);
-            }
-            return agents.map(agent => {
-                const result = getCompanionResults(message)[agent.id];
-                const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
-                return { agentId: agent.id, changed, result };
-            });
+            await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+            return getResults();
         }
 
         const inputTokensByAgentId = await buildBatchInputTokenUsage(promptMessages, taskPayloads);
@@ -1326,14 +1367,20 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
                 continue;
             }
 
-            const content = capResultContent(parsed.get(agent.id));
+            const rawContent = capResultContent(parsed.get(agent.id));
+            const outputTokens = await countCompanionTokens({ role: 'assistant', content: rawContent });
+            const content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+                return getResults();
+            }
             setCompanionResult(message, agent, {
                 status: 'done',
                 content,
                 error: '',
                 tokenUsage: {
                     inputTokens: inputTokensByAgentId.get(agent.id) ?? 0,
-                    outputTokens: await countCompanionTokens({ role: 'assistant', content }),
+                    outputTokens,
                 },
                 profileId: response.profileId,
                 profileLabel: getProfileLabel(agent, response.profileId),
@@ -1343,6 +1390,11 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         }
 
         for (const agent of missingAgents) {
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+                return getResults();
+            }
+
             await runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, {
                 allowUserMessage,
                 previousContent: previousMap.get(agent.id),
@@ -1350,8 +1402,18 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             });
         }
     } catch (error) {
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            await cancelCompanionAgentResults(message, agents, messageIndex);
+            return getResults();
+        }
+
         console.warn('[InChatAgents] Companion batch failed, falling back to individual runs:', error);
         for (const agent of agents) {
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex);
+                return getResults();
+            }
+
             await runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, {
                 allowUserMessage,
                 previousContent: previousMap.get(agent.id),
@@ -1360,11 +1422,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         }
     }
 
-    return agents.map(agent => {
-        const result = getCompanionResults(message)[agent.id];
-        const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
-        return { agentId: agent.id, changed, result };
-    });
+    return getResults();
 }
 
 async function runCompanionUnit(unit, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
@@ -1633,6 +1691,51 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
     return result;
 }
 
+/**
+ * Manually runs one inline agent's post passes on a stored companion result and
+ * writes the transformed note back, so the panel, message cards, feedback
+ * injection, and dependent companions all see the new text.
+ * @param {string} transformerAgentId Inline agent whose post passes should run
+ * @param {number} messageIndex Message hosting the companion result
+ * @param {string} companionAgentId Companion whose note is the target
+ * @param {{ cancelRevision?: number }} [options]
+ * @returns {Promise<{ text: string, changed: boolean } | null>}
+ */
+export async function applyAgentPostPassesToCompanionResult(transformerAgentId, messageIndex, companionAgentId, { cancelRevision = getAgentGenerationCancelRevision() } = {}) {
+    const transformer = getAgentById(transformerAgentId);
+    const message = chat[messageIndex];
+    if (!transformer || isCompanionAgent(transformer) || !message || message.is_system) {
+        toastr.warning('This agent cannot be applied to that companion note.');
+        return null;
+    }
+
+    const result = getCompanionResults(message)[companionAgentId];
+    if (result?.status !== 'done' || !normalizeText(result?.content)) {
+        toastr.info('No finished companion note to apply this agent to.');
+        return null;
+    }
+
+    const characterName = String(message?.name ?? '').trim();
+    const passResult = await runSingleAgentPostPassesOnText(transformer, result.content, COMPANION_OUTPUT_GENERATION_TYPE, {
+        characterOverride: characterName,
+        messageContext: characterName ? { name: characterName } : {},
+    });
+
+    if (getAgentGenerationCancelRevision() !== cancelRevision) {
+        return null;
+    }
+
+    if (!passResult.changed) {
+        toastr.info(`"${transformer.name}" made no changes to the companion note.`, 'In-Chat Agents');
+        return passResult;
+    }
+
+    updateCompanionResult(message, companionAgentId, { content: capResultContent(passResult.text) });
+    await emitCompanionResultsUpdated(messageIndex, companionAgentId);
+    saveChatDebounced({ deferBackup: false });
+    return passResult;
+}
+
 export async function runCompanionsOnMessage(messageIndex, { allowUserMessage = true } = {}) {
     const message = chat[messageIndex];
     if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
@@ -1734,6 +1837,7 @@ export function initCompanionRunner() {
         runCompanionStage,
         injectCompanionFeedbackPrompts,
         runCompanionAgentOnMessage,
+        applyAgentPostPassesToCompanionResult,
     });
 
     if (event_types.MESSAGE_SWIPED) {
