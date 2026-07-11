@@ -520,26 +520,8 @@
     }
 
     #right-nav-panel.openDrawer .sb-character-favorites-label {
-        font-size: calc(var(--mainFontSize) * 0.66) !important;
-        letter-spacing: 0.12em !important;
-    }
-
-    /* mobile-styles.css flattens the strip to overflow: hidden on mobile,
-       which stops it from being a scroll container — touch panning then has
-       nothing to scroll. Restore the horizontal-rail treatment the other
-       mobile rails use (see .sb-character-create-bar above). */
-    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
-        max-height: 28px !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        overscroll-behavior-x: contain !important;
-        touch-action: pan-x !important;
-        -webkit-overflow-scrolling: touch !important;
-        scrollbar-width: none !important;
-    }
-
-    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap::-webkit-scrollbar {
-        display: none !important;
+        font-size: calc(var(--mainFontSize) * 0.66);
+        letter-spacing: 0.12em;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
@@ -2041,14 +2023,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         justify-content: flex-start;
     }
 
+    /* Horizontal-rail treatment like .sb-character-create-bar: the strip must
+       stay a real scroll container or touch panning has nothing to scroll
+       (mobile-styles.css and an earlier revision of this rule flattened it to
+       overflow: hidden). */
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
         min-width: 0;
         max-width: 100%;
-        max-height: 34px;
+        max-height: 28px;
         margin: 0;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
         white-space: nowrap;
-        text-overflow: ellipsis;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > .avatar {
