@@ -57,6 +57,7 @@ import {
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
 } from './scripts/world-info.js';
+import { buildWorldInfoScanChat } from './scripts/world-info-scan-chat.js';
 
 import {
     groups,
@@ -6996,8 +6997,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         coreChat.pop();
     }
 
+    const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
-        let message = chatItem.mes;
+        const originalMessage = chatItem.mes;
+        let message = originalMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
@@ -7014,7 +7017,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         let regexedMessage = getRegexedString(message, regexType, options);
-        regexedMessage = await appendFileContent(chatItem, regexedMessage);
+        let worldInfoRegexedMessage = message === originalMessage ? undefined : getRegexedString(originalMessage, regexType, options);
+        const fileContent = await appendFileContent(chatItem, '');
+        regexedMessage = fileContent + regexedMessage;
+        if (worldInfoRegexedMessage !== undefined) {
+            worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
+        }
 
         const titles = [];
         if (chatItem?.extra?.append_title && chatItem?.extra?.title) {
@@ -7028,14 +7036,28 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
         }
         if (titles.length > 0) {
-            regexedMessage = `${regexedMessage}\n\n${titles.join('\n\n')}`;
+            const appendedTitles = `\n\n${titles.join('\n\n')}`;
+            regexedMessage += appendedTitles;
+            if (worldInfoRegexedMessage !== undefined) {
+                worldInfoRegexedMessage += appendedTitles;
+            }
         }
 
         const contextDepth = Math.max(0, coreChat.length - index - 1);
+        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
         const contextMessage = stripHtmlTagsFromContext(
-            stripOocBlocksFromContext(regexedMessage, shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth)),
-            shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth),
+            stripOocBlocksFromContext(regexedMessage, retainOoc),
+            retainHtml,
         );
+
+        if (worldInfoRegexedMessage !== undefined) {
+            const worldInfoContextMessage = stripHtmlTagsFromContext(
+                stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
+                retainHtml,
+            );
+            worldInfoMessageVariants.set(index, { prompt: contextMessage, worldInfo: worldInfoContextMessage });
+        }
 
         return {
             ...chatItem,
@@ -7043,6 +7065,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             index,
         };
     }));
+    // SillyBunny: ICA prompt-only regexes must not remove stored chat text from World Info scans.
+    const worldInfoOnlyChat = coreChat.filter(chatItem => {
+        const variant = worldInfoMessageVariants.get(chatItem.index);
+        return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
+    });
     coreChat = coreChat.filter(hasPromptPayload);
 
     const promptReasoning = new PromptReasoning();
@@ -7053,21 +7080,31 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         // In group chats, only include reasoning from the currently generating character
         const isOtherGroupMember = selected_group && coreChat[i].name !== name2;
 
+        const promptMessage = coreChat[i].mes;
+        const messageWithReasoning = isOtherGroupMember
+            ? promptMessage
+            : promptReasoning.addToMessage(
+                promptMessage,
+                getRegexedString(
+                    String(coreChat[i].extra?.reasoning ?? ''),
+                    regex_placement.REASONING,
+                    { isPrompt: true, depth: depth },
+                ),
+                isPrefix,
+                coreChat[i].extra?.reasoning_duration,
+            );
+
         coreChat[i] = {
             ...coreChat[i],
-            mes: isOtherGroupMember
-                ? coreChat[i].mes
-                : promptReasoning.addToMessage(
-                    coreChat[i].mes,
-                    getRegexedString(
-                        String(coreChat[i].extra?.reasoning ?? ''),
-                        regex_placement.REASONING,
-                        { isPrompt: true, depth: depth },
-                    ),
-                    isPrefix,
-                    coreChat[i].extra?.reasoning_duration,
-                ),
+            mes: messageWithReasoning,
         };
+
+        const worldInfoVariant = worldInfoMessageVariants.get(coreChat[i].index);
+        if (worldInfoVariant?.prompt === promptMessage && messageWithReasoning.endsWith(promptMessage)) {
+            const reasoningPrefix = messageWithReasoning.slice(0, messageWithReasoning.length - promptMessage.length);
+            worldInfoVariant.prompt = messageWithReasoning;
+            worldInfoVariant.worldInfo = reasoningPrefix + worldInfoVariant.worldInfo;
+        }
         if (promptReasoning.isLimitReached()) {
             break;
         }
@@ -7138,7 +7175,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Add WI to prompt (and also inject WI to AN value via hijack)
     // Make quiet prompt available for WIAN
     setExtensionPrompt(inject_ids.QUIET_PROMPT, quiet_prompt || '', extension_prompt_types.IN_PROMPT, 0, true);
-    const chatForWI = coreChat.map(x => world_info_include_names ? `${x.name}: ${x.mes}` : x.mes).reverse();
+    const chatForWI = buildWorldInfoScanChat(coreChat, worldInfoOnlyChat, worldInfoMessageVariants, world_info_include_names);
     /** @type {import('./scripts/world-info.js').WIGlobalScanData} */
     const globalScanData = {
         personaDescription: persona,
