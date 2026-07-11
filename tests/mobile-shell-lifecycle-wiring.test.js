@@ -488,8 +488,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
         expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => document.documentElement.classList.contains(\'sb-ios-composer-keyboard-inset-active\');');
+        expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
         expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
         expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
+        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
         expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');

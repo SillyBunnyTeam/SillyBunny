@@ -110,6 +110,12 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
+function isMobileShellPanelEditable(element) {
+    return isEditableFocusTarget(element)
+        && element instanceof HTMLElement
+        && Boolean(element.closest('.sb-shell-panel-scroller'));
+}
+
 function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     let resetScheduled = false;
 
@@ -122,6 +128,7 @@ function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
 
     const shouldSuspendDocumentScrollReset = () => suspendWhileEditing
         && isEditableFocusTarget(document.activeElement)
+        && !isMobileShellPanelEditable(document.activeElement)
         && !isComposerHeldAboveKeyboard();
 
     const resetDocumentScroll = () => {
