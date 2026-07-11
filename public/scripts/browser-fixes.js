@@ -150,16 +150,6 @@ function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
             return;
         }
 
-        // SillyBunny: when the composer is held above the keyboard, Safari can
-        // scroll the document as part of its caret-reveal pan. A rAF-deferred
-        // reset would leave one frame where #sheld (position:absolute) sits
-        // above the visual viewport. Reset synchronously in that case so the
-        // scroll is zeroed in the same task as the pan.
-        if (isComposerHeldAboveKeyboard()) {
-            resetDocumentScroll();
-            return;
-        }
-
         resetScheduled = true;
         requestAnimationFrame(() => {
             resetDocumentScroll();

@@ -44,12 +44,10 @@ describe('SillyBunny CSS comment hygiene', () => {
 
     test('iOS shell keeps the visual-viewport top offset the keyboard fix depends on', () => {
         const mobileShellCss = readFileSync(path.join(cssDir, 'sillybunny-mobile-shell.css'), 'utf8');
-        const tabsCss = readFileSync(path.join(cssDir, 'sillybunny-tabs.css'), 'utf8');
 
         // The iOS #sheld rule must shift down by the visual-viewport top so the shell
         // tracks Safari when the keyboard opens. If a comment ever swallows this again,
         // the composer hides behind the keyboard (the bug this sheet's fix addresses).
         expect(mobileShellCss).toMatch(/#sheld\s*\{[^}]*top:\s*calc\([^}]*--sb-shell-viewport-top[^}]*\}/);
-        expect(tabsCss).toMatch(/#top-bar\s*\{[^}]*top:\s*var\(--sb-ios-composer-viewport-top/);
     });
 });
