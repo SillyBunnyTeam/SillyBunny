@@ -110,10 +110,26 @@ function isEditableFocusTarget(element) {
         || (element instanceof HTMLElement && element.isContentEditable);
 }
 
+function isMobileShellPanelEditable(element) {
+    return isEditableFocusTarget(element)
+        && element instanceof HTMLElement
+        && Boolean(element.closest('.sb-shell-panel-scroller'));
+}
+
 function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     let resetScheduled = false;
 
-    const shouldSuspendDocumentScrollReset = () => suspendWhileEditing && isEditableFocusTarget(document.activeElement);
+    // SillyBunny: while the chat composer is held above the iOS keyboard
+    // (sb-ios-composer-keyboard-inset-active, see getComposerKeyboardInset in
+    // sillybunny-tabs.js), resetting the document scroll cannot hide the
+    // focused caret, so Safari's force-scroll to reveal it must be snapped
+    // back even mid-edit instead of sticking until blur.
+    const isComposerHeldAboveKeyboard = () => document.documentElement.classList.contains('sb-ios-composer-keyboard-inset-active');
+
+    const shouldSuspendDocumentScrollReset = () => suspendWhileEditing
+        && isEditableFocusTarget(document.activeElement)
+        && !isMobileShellPanelEditable(document.activeElement)
+        && !isComposerHeldAboveKeyboard();
 
     const resetDocumentScroll = () => {
         if (shouldSuspendDocumentScrollReset()) {

@@ -2510,6 +2510,84 @@ function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), 
     return keyboardHeight > 80 || visualViewportSize.top > 2;
 }
 
+const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
+const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
+const MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
+
+let sbLastIOSKeyboardHeight = 0;
+let sbComposerKeyboardPreShiftDeadline = 0;
+let sbComposerKeyboardSettleTimer = 0;
+
+/**
+ * SillyBunny: iOS Safari reveals a focused caret hidden behind the software
+ * keyboard by panning the visual viewport and force-scrolling the document,
+ * which pushes the fixed shell off screen (the composer-at-top escape).
+ * Instead of chasing that pan, give up the keyboard's height while the chat
+ * composer is focused: the shell keeps its stable layout top but shrinks so
+ * the composer sits above the keyboard and Safari has nothing to reveal. The
+ * last measured keyboard height pre-shrinks the shell right after focus,
+ * before the keyboard finishes animating, so the reveal never triggers.
+ */
+function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
+    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
+        return 0;
+    }
+
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    if (keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX) {
+        sbLastIOSKeyboardHeight = keyboardHeight;
+    }
+
+    if (!isChatComposerEditableElement(document.activeElement)) {
+        return 0;
+    }
+
+    const withinPreShiftWindow = Date.now() < sbComposerKeyboardPreShiftDeadline;
+
+    if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+        // Safari already panned the visual viewport (e.g. the first focus of a
+        // session, before any keyboard height is known). Shrinking now would
+        // push the composer to the top of the panned slice with a void below;
+        // keep the stable layout and let the clamped pan frame the composer.
+        if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {
+            return 0;
+        }
+
+        // Hold the pre-shift height through the opening animation so interim
+        // resize events cannot bounce the shell; settle on the measured height.
+        return withinPreShiftWindow ? Math.max(keyboardHeight, sbLastIOSKeyboardHeight) : keyboardHeight;
+    }
+
+    // Keyboard not open yet: pre-shrink with the remembered height in the
+    // window right after composer focus so the shell is already short when
+    // the keyboard arrives and the caret never sits behind it.
+    return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;
+}
+
+function handleComposerKeyboardFocusIn(event) {
+    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    if (isChatComposerEditableElement(event.target)) {
+        sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
+        window.clearTimeout(sbComposerKeyboardSettleTimer);
+        // Re-sync after the pre-shift window closes so the shell settles on
+        // the measured keyboard height even if no viewport events fire.
+        sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
+    }
+
+    queueMobileViewportStateSync();
+}
+
+function handleMobileKeyboardFocusOut() {
+    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    queueMobileViewportStateSync();
+}
+
 function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
@@ -2537,6 +2615,15 @@ function syncIOSKeyboardBottomInset() {
 function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+    // SillyBunny: composer edits keep the stable layout top but give up the
+    // keyboard's height so the focused composer sits above the keyboard and
+    // Safari never pans or force-scrolls the document to reveal the caret.
+    const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
+    if (composerKeyboardInset > 0) {
+        const height = Math.max(0, layoutViewport.height - composerKeyboardInset);
+        return { ...layoutViewport, height, bottom: height };
+    }
 
     // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
     // should not feed Safari visualViewport jitter back into shell geometry.
@@ -2568,58 +2655,84 @@ function syncShellViewportBounds() {
     // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
     // keyboard edit paths intentionally keep the stable layout top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+
+    // SillyBunny: while the composer is held above the iOS keyboard the
+    // document scroll anchor may run mid-edit (see browser-fixes.js), because
+    // resetting the document scroll can no longer hide the focused caret.
+    const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
+    root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
 }
 
-/**
- * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
- * focused input above the virtual keyboard the way a normal page would. When
- * focus enters an input inside a shell panel or drawer scroller, manually scroll
- * that scroller so the input sits above the keyboard. The chat composer and
- * stable iOS shell sizing are handled separately; this covers the remaining
- * settings/drawer inputs (e.g. "Enter a Model ID").
- */
-function scrollMobileFocusedInputIntoView(event) {
-    if (!isMobileViewport()) {
+function getMobileFocusedInputScroller(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+
+    // Shell construction retains compatibility wrappers inside the real panel
+    // scroller. Prefer the outer scroll owner, otherwise scroll legacy drawers.
+    const shellScroller = target.closest('.sb-shell-panel-scroller');
+    if (shellScroller instanceof HTMLElement) {
+        return shellScroller;
+    }
+
+    const legacyScroller = target.closest('.scrollableInner, .scrollableInnerFull');
+    return legacyScroller instanceof HTMLElement ? legacyScroller : null;
+}
+
+function syncMobileFocusedInputScroll(target = document.activeElement) {
+    if (!isMobileViewport() || !(target instanceof HTMLElement) || target !== document.activeElement || !isEditableElement(target)) {
         return;
     }
 
-    const target = event.target;
+    const scroller = getMobileFocusedInputScroller(target);
+    if (!scroller) {
+        return;
+    }
+
+    // visualViewport tracks the keyboard: top grows and height shrinks as the
+    // keyboard rises, so (top + height) is the bottom of the visible area.
+    const layoutViewport = getLayoutViewportSize();
+    const viewportSize = getVisualViewportSize(layoutViewport);
+
+    if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
+        return;
+    }
+
+    const viewportBottom = viewportSize.top + viewportSize.height;
+    const rect = target.getBoundingClientRect();
+    const overflow = rect.bottom - viewportBottom + 16;
+
+    if (overflow > 0) {
+        scroller.scrollTop += overflow;
+    }
+}
+
+let sbMobileFocusedInputScrollTimer = null;
+
+/**
+ * SillyBunny: on mobile the body is fixed/clip, so the browser cannot scroll a
+ * focused input above the virtual keyboard the way a normal page would. Follow
+ * the keyboard's visual viewport updates until Safari finishes its animation.
+ */
+function scheduleMobileFocusedInputScroll(event) {
+    const target = event?.target instanceof HTMLElement && isEditableElement(event.target)
+        ? event.target
+        : document.activeElement;
+
     if (!(target instanceof HTMLElement)) {
         return;
     }
 
-    if (!isEditableElement(target)) {
-        return;
+    window.requestAnimationFrame(() => syncMobileFocusedInputScroll(target));
+
+    if (sbMobileFocusedInputScrollTimer !== null) {
+        window.clearTimeout(sbMobileFocusedInputScrollTimer);
     }
 
-    const scroller = target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull');
-    if (!(scroller instanceof HTMLElement)) {
-        return;
-    }
-
-    function tryScroll() {
-        // visualViewport tracks the keyboard: top grows and height shrinks as the
-        // keyboard rises, so (top + height) is the bottom of the visible area.
-        const layoutViewport = getLayoutViewportSize();
-        const viewportSize = getVisualViewportSize(layoutViewport);
-
-        if (!isVisualViewportKeyboardOpen(layoutViewport, viewportSize)) {
-            return;
-        }
-
-        const viewportBottom = viewportSize.top + viewportSize.height;
-        const rect = target.getBoundingClientRect();
-        const overflow = rect.bottom - viewportBottom + 16;
-
-        if (overflow > 0) {
-            scroller.scrollTop += overflow;
-        }
-    }
-
-    // Run once immediately (keyboard may already be open) and again after the
-    // keyboard animation / visualViewport resize has settled.
-    window.requestAnimationFrame(tryScroll);
-    window.setTimeout(tryScroll, 200);
+    sbMobileFocusedInputScrollTimer = window.setTimeout(() => {
+        sbMobileFocusedInputScrollTimer = null;
+        syncMobileFocusedInputScroll(target);
+    }, 360);
 }
 
 const MOBILE_POPUP_KEYBOARD_CLEARANCE_PX = 16;
@@ -16457,8 +16570,11 @@ function initAll() {
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
-    // scroller is nudged manually (see scrollMobileFocusedInputIntoView).
-    document.addEventListener('focusin', scrollMobileFocusedInputIntoView);
+    // real panel scroller is nudged manually after viewport changes.
+    document.addEventListener('focusin', scheduleMobileFocusedInputScroll);
+    document.addEventListener('focusout', scheduleMobileFocusedInputScroll);
+    window.visualViewport?.addEventListener('resize', scheduleMobileFocusedInputScroll, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleMobileFocusedInputScroll, { passive: true });
 
     // SillyBunny: popup dialogs sit outside the shell scrollers; shift them
     // above the virtual keyboard instead so the browser never pans the visual
@@ -16472,6 +16588,13 @@ function initAll() {
     if (isIOSWebKitPlatform()) {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+
+        // SillyBunny: pre-shrink the shell before the iOS keyboard finishes
+        // opening on composer focus, and re-sync shell bounds whenever keyboard
+        // focus moves so stable-viewport decisions never linger on stale focus
+        // state (see getComposerKeyboardInset).
+        document.addEventListener('focusin', handleComposerKeyboardFocusIn);
+        document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
