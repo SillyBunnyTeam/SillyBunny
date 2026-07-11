@@ -7802,7 +7802,7 @@ function onSettingsPresetChange() {
 function getMaxContextOpenAI(value) {
     if (isMaxContextUnlockedForSource()) {
         return unlocked_max;
-    } else if (value.startsWith('gpt-5.4')) {
+    } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.6')) {
         return max_1mil;
     } else if (value.startsWith('gpt-5')) {
         return max_400k;

@@ -2388,8 +2388,6 @@ async function loadOpenAiModels() {
         { value: 'gpt-image-1-mini', text: 'gpt-image-1-mini' },
         { value: 'gpt-image-1', text: 'gpt-image-1' },
         { value: 'chatgpt-image-latest', text: 'chatgpt-image-latest' },
-        { value: 'dall-e-3', text: 'dall-e-3' },
-        { value: 'dall-e-2', text: 'dall-e-2' },
         { value: 'sora-2', text: 'sora-2' },
         { value: 'sora-2-pro', text: 'sora-2-pro' },
     ];

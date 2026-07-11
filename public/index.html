@@ -2990,11 +2990,16 @@
                             <div>
                                 <h4 data-i18n="Model ID">Model ID</h4>
                                 <div class="flex-container">
-                                    <input id="openai_model_id" class="text_pole wide100p" value="" autocomplete="off" data-i18n="[placeholder]Example: gpt-5.5" placeholder="Example: gpt-5.5">
+                                    <input id="openai_model_id" class="text_pole wide100p" value="" autocomplete="off" data-i18n="[placeholder]Example: gpt-5.6-sol" placeholder="Example: gpt-5.6-sol">
                                 </div>
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <div id="openai_model_picker">
                                     <select id="model_openai_select">
+                                        <optgroup label="GPT-5.6">
+                                            <option value="gpt-5.6-sol">gpt-5.6-sol</option>
+                                            <option value="gpt-5.6-terra">gpt-5.6-terra</option>
+                                            <option value="gpt-5.6-luna">gpt-5.6-luna</option>
+                                        </optgroup>
                                         <optgroup label="GPT-5.5">
                                             <option value="gpt-5.5">gpt-5.5</option>
                                             <option value="gpt-5.5-2026-04-23">gpt-5.5-2026-04-23</option>
@@ -3035,7 +3040,6 @@
                                             <option value="gpt-4o-2024-11-20">gpt-4o-2024-11-20</option>
                                             <option value="gpt-4o-2024-08-06">gpt-4o-2024-08-06</option>
                                             <option value="gpt-4o-2024-05-13">gpt-4o-2024-05-13</option>
-                                            <option value="chatgpt-4o-latest">chatgpt-4o-latest</option>
                                         </optgroup>
                                         <optgroup label="GPT-4o mini">
                                             <option value="gpt-4o-mini">gpt-4o-mini</option>
@@ -3052,10 +3056,6 @@
                                         <optgroup label="o1">
                                             <option value="o1">o1</option>
                                             <option value="o1-2024-12-17">o1-2024-12-17</option>
-                                            <option value="o1-mini">o1-mini</option>
-                                            <option value="o1-mini-2024-09-12">o1-mini-2024-09-12</option>
-                                            <option value="o1-preview">o1-preview</option>
-                                            <option value="o1-preview-2024-09-12">o1-preview-2024-09-12</option>
                                         </optgroup>
                                         <optgroup label="o3">
                                             <option value="o3">o3</option>
@@ -3067,19 +3067,12 @@
                                             <option value="o4-mini">o4-mini</option>
                                             <option value="o4-mini-2025-04-16">o4-mini-2025-04-16</option>
                                         </optgroup>
-                                        <optgroup label="GPT-4.5">
-                                            <option value="gpt-4.5-preview">gpt-4.5-preview</option>
-                                            <option value="gpt-4.5-preview-2025-02-27">gpt-4.5-preview-2025-02-27</option>
-                                        </optgroup>
                                         <optgroup label="GPT-4 Turbo and GPT-4">
                                             <option value="gpt-4-turbo">gpt-4-turbo</option>
                                             <option value="gpt-4-turbo-2024-04-09">gpt-4-turbo-2024-04-09</option>
-                                            <option value="gpt-4-turbo-preview">gpt-4-turbo-preview</option>
-                                            <option value="gpt-4-0125-preview">gpt-4-0125-preview (2024)</option>
                                             <option value="gpt-4-1106-preview">gpt-4-1106-preview (2023)</option>
                                             <option value="gpt-4">gpt-4</option>
                                             <option value="gpt-4-0613">gpt-4-0613 (2023)</option>
-                                            <option value="gpt-4-0314">gpt-4-0314 (2023)</option>
                                         </optgroup>
                                         <optgroup label="GPT-3.5 Turbo">
                                             <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
