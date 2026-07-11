@@ -366,9 +366,9 @@ export async function favsToHotswap() {
     const entities = getEntitiesList({ doFilter: false });
     const container = $('#right-nav-panel .hotswap');
 
-    // Hard limit is required because even if all hotswaps don't fit the screen, their images would still be loaded
-    // 25 is roughly calculated as the maximum number of favs that can fit an ultrawide monitor with the default theme
-    const FAVS_LIMIT = 25;
+    // The bar scrolls sideways and avatars are lazy-loaded thumbnails, so the old
+    // fits-on-one-screen cap of 25 no longer applies; this is just a sanity bound.
+    const FAVS_LIMIT = 250;
     const favs = entities.filter(x => x.item.fav || x.item.fav == 'true').slice(0, FAVS_LIMIT);
 
     //helpful instruction message if no characters are favorited
@@ -791,6 +791,20 @@ export function initRossMods() {
     });
 
     $('#api_button').on('click', () => checkStatusDebounced());
+
+    // Mouse wheel scrolls the favorites hotswap bar sideways.
+    // Native listener because jQuery cannot register non-passive wheel handlers.
+    const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
+    hotswapBar?.addEventListener('wheel', (event) => {
+        if (hotswapBar.scrollWidth <= hotswapBar.clientWidth) return;
+        // Leave trackpad horizontal swipes to native handling
+        if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+        event.preventDefault();
+        // deltaMode 1 = lines (Firefox); convert to roughly one avatar per line
+        const step = event.deltaMode === 1 ? event.deltaY * 34 : event.deltaY;
+        // 'instant' so rapid wheel ticks accumulate instead of restarting a smooth animation
+        hotswapBar.scrollTo({ left: hotswapBar.scrollLeft + step, behavior: 'instant' });
+    }, { passive: false });
 
     //toggle pin class when lock toggle clicked
     $(RPanelPin).on('click', function () {
