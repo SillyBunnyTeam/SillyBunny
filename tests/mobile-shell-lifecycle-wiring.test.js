@@ -494,6 +494,11 @@ describe('mobile shell lifecycle wiring', () => {
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
+        // SillyBunny: when the composer is held above the keyboard, the scroll
+        // reset fires synchronously (not via rAF) to prevent the one-frame gap.
+        expect(browserFixesSource).toContain('if (isComposerHeldAboveKeyboard()) {');
+        expect(browserFixesSource).toContain('resetDocumentScroll();');
+        expect(browserFixesSource).toContain('return;');
         expect(browserFixesSource).toContain('const isMobileViewport = isMobile();');
         expect(browserFixesSource).toContain('const isIOSWebKit = isIOSWebKitPlatform();');
         expect(browserFixesSource).toContain('addDocumentViewportAnchorPatch({ suspendWhileEditing: isIOSWebKit });');
@@ -595,6 +600,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeShellSource).toContain('queueMobileShellDrawerBoundsSync();');
         expect(syncMobileViewportStateSource).toContain('syncMobileShellDrawerBounds();');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncShellViewportTopImmediate, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.addEventListener(\'resize\', queueMobileViewportStateSync, { passive: true });');
         expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', syncDesktopShellSizing, { passive: true });');
@@ -630,9 +636,12 @@ describe('mobile shell lifecycle wiring', () => {
 
         // Apply the estimated or remembered height synchronously before focus,
         // then force layout before Safari performs its caret-reveal decision.
+        // Document scroll is zeroed synchronously to prevent #sheld from
+        // appearing above the visual viewport during the pre-shift frame.
         expect(handleComposerKeyboardPointerDownSource).toContain('preShiftComposerForKeyboard(true);');
         expect(handleComposerKeyboardPointerDownSource).toContain('event.target.getBoundingClientRect();');
         expect(preShiftComposerForKeyboardSource).toContain('sbComposerKeyboardFocusPending = focusPending;');
+        expect(preShiftComposerForKeyboardSource).toContain('window.scrollTo(0, 0);');
         expect(preShiftComposerForKeyboardSource).toContain('syncShellViewportBounds();');
         expect(preShiftComposerForKeyboardSource).toContain('sbComposerKeyboardFocusPending = false;');
         expect(handleComposerKeyboardFocusInSource).toContain('preShiftComposerForKeyboard(false);');
@@ -640,6 +649,15 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('document.addEventListener(\'pointerdown\', handleComposerKeyboardPointerDown, { passive: true, capture: true });');
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
+
+        // syncShellViewportTopImmediate eliminates the one-frame CSS var lag
+        // when Safari pans the visual viewport: it updates --sb-shell-viewport-top
+        // and --sb-ios-composer-viewport-top in the same task as the pan event,
+        // and resets document scroll synchronously when the composer is held.
+        expect(tabsSource).toContain('function syncShellViewportTopImmediate(');
+        expect(tabsSource).toContain('readFiniteViewportNumber(window.visualViewport?.offsetTop, 0)');
+        expect(tabsSource).toContain('root.classList.contains(\'sb-ios-composer-keyboard-inset-active\')');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', syncShellViewportTopImmediate, { passive: true });');
 
         // browser-fixes.js reads this class to re-arm the document scroll
         // anchor mid-edit while the composer is held clear of the keyboard.

@@ -2557,6 +2557,10 @@ function preShiftComposerForKeyboard(focusPending) {
     sbComposerKeyboardFocusPending = focusPending;
     sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
     window.clearTimeout(sbComposerKeyboardSettleTimer);
+    // SillyBunny: reset document scroll to 0 synchronously before the shell
+    // bounds sync so that #sheld (position:absolute) is already at layout top
+    // when Safari commits the caret-reveal decision on the subsequent focus.
+    window.scrollTo(0, 0);
     syncShellViewportBounds();
     sbComposerKeyboardSettleTimer = window.setTimeout(() => {
         sbComposerKeyboardFocusPending = false;
@@ -2675,6 +2679,52 @@ function syncShellViewportBounds() {
     const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
     setRootViewportProperty('--sb-ios-composer-viewport-top', `${composerKeyboardInset > 0 ? viewportSize.top : 0}px`);
     root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
+}
+
+/**
+ * SillyBunny: synchronous (no rAF) fast-path for visual-viewport pan tracking
+ * during composer keyboard interaction. Called directly on the visualViewport
+ * 'scroll' event so that --sb-shell-viewport-top and --sb-ios-composer-viewport-top
+ * are updated in the same task as Safari's pan — eliminating the one-frame
+ * visual gap where #sheld and #top-bar appear above the visible area.
+ *
+ * The full syncShellViewportBounds() (height, topbar offset, etc.) is still
+ * queued through the normal rAF coalescer; this function only corrects the top
+ * offset to prevent the off-screen flash.
+ */
+function syncShellViewportTopImmediate() {
+    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    const root = document.documentElement;
+    const visualTop = Math.max(0, Math.round(readFiniteViewportNumber(window.visualViewport?.offsetTop, 0)));
+    const composerActive = root.classList.contains('sb-ios-composer-keyboard-inset-active');
+
+    const topValue = `${visualTop}px`;
+    if (root.style.getPropertyValue('--sb-shell-viewport-top') !== topValue) {
+        root.style.setProperty('--sb-shell-viewport-top', topValue);
+    }
+
+    const composerTopValue = `${composerActive ? visualTop : 0}px`;
+    if (root.style.getPropertyValue('--sb-ios-composer-viewport-top') !== composerTopValue) {
+        root.style.setProperty('--sb-ios-composer-viewport-top', composerTopValue);
+    }
+
+    // SillyBunny: reset document scroll immediately when the composer is held
+    // above the keyboard. If Safari also scrolled the document as part of the
+    // pan, the rAF-deferred reset in browser-fixes.js would leave one visible
+    // frame with #sheld above the viewport.
+    if (composerActive) {
+        const scrollingElement = document.scrollingElement;
+        if ((window.scrollY || 0) > 0 || (scrollingElement?.scrollTop || 0) > 0) {
+            if (scrollingElement instanceof Element) {
+                scrollingElement.scrollLeft = 0;
+                scrollingElement.scrollTop = 0;
+            }
+            window.scrollTo(0, 0);
+        }
+    }
 }
 
 /**
@@ -16560,7 +16610,11 @@ function initAll() {
     window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     window.addEventListener('orientationchange', queueMobileViewportStateSync);
     window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
-    // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
+    // SillyBunny: iOS can move visualViewport.offsetTop without resizing while
+    // the keyboard is open. The immediate handler updates the top CSS vars in
+    // the same task as the pan so #sheld and #top-bar never escape the viewport
+    // for a frame; the rAF coalescer follows to settle height and other state.
+    window.visualViewport?.addEventListener('scroll', syncShellViewportTopImmediate, { passive: true });
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
     window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
 

@@ -25,7 +25,13 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         expect(tabsSource).toMatch(/layoutViewport\.height - visualViewportSize\.top - visualViewportSize\.height/);
         expect(tabsSource).toContain('root.classList.toggle(\'sb-ios-keyboard-inset-active\', bottomInset > 0);');
         expect(tabsSource).not.toContain('sb-ios-keyboard-locked');
-        expect(tabsSource).not.toContain('window.scrollTo(0, 0)');
+        // SillyBunny: window.scrollTo(0, 0) is intentional in pre-shift and
+        // immediate-sync helpers; only prevent it inside the inset-tracking
+        // function, which must not lock the document scroll.
+        const iosInsetFnStart = tabsSource.indexOf('function syncIOSKeyboardBottomInset(');
+        const iosInsetFnEnd = tabsSource.indexOf('\nfunction ', iosInsetFnStart + 1);
+        const iosInsetFnSource = tabsSource.slice(iosInsetFnStart, iosInsetFnEnd);
+        expect(iosInsetFnSource).not.toContain('window.scrollTo(0, 0)');
         expect(tabsSource).not.toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardBottomInset/);
     });
 
