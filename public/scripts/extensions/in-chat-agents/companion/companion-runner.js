@@ -1181,8 +1181,8 @@ async function applyCompanionOutputPostPassesToContent(agent, content, messageIn
     }
 
     try {
-        const result = await runCompanionOutputPostPasses(agent, content, { messageIndex });
-        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+        const result = await runCompanionOutputPostPasses(agent, content, { messageIndex, cancelRevision });
+        if (result?.cancelled || getAgentGenerationCancelRevision() !== cancelRevision) {
             return content;
         }
 
@@ -1230,6 +1230,9 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
         // Token usage reflects the companion's own generation; post passes run after counting.
         const tokenUsage = await buildCompanionTokenUsage(promptMessages, rawContent);
         const content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            throw new DOMException('Companion run cancelled.', 'AbortError');
+        }
         setCompanionResult(message, agent, {
             status: 'done',
             content,
@@ -1311,6 +1314,21 @@ async function buildBatchPromptPayload(agents, messageIndex, generationType, { e
     return { promptMessages, taskPayloads };
 }
 
+async function cancelCompanionAgentResults(message, agents, messageIndex, profileId = '') {
+    for (const agent of agents) {
+        setCompanionResult(message, agent, {
+            status: 'cancelled',
+            content: '',
+            error: 'Cancelled.',
+            tokenUsage: null,
+            profileId,
+            profileLabel: getProfileLabel(agent, profileId),
+            modelLabel: getModelLabel(agent),
+        });
+        await emitCompanionResultsUpdated(messageIndex, agent.id);
+    }
+}
+
 async function runBatchCompanionAgents(agents, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {
     const message = chat[messageIndex];
     if (!isValidCompanionTargetMessage(message, { allowUserMessage })) {
@@ -1318,31 +1336,26 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
     }
 
     const previousMap = previousContents ?? new Map(agents.map(agent => [agent.id, getCompanionResultContent(message, agent.id)]));
+    const getResults = () => agents.map(agent => {
+        const result = getCompanionResults(message)[agent.id];
+        const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
+        return { agentId: agent.id, changed, result };
+    });
 
     try {
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            await cancelCompanionAgentResults(message, agents, messageIndex);
+            return getResults();
+        }
+
         const extraContextSections = getUnitExtraContextSections(agents, extraContextSectionsByAgentId);
         const { promptMessages, taskPayloads } = await buildBatchPromptPayload(agents, messageIndex, generationType, { extraContextSections });
         const maxTokens = Math.min(MAX_AGENT_MAX_TOKENS, agents.reduce((sum, agent) => sum + getCompanionConfig(agent).maxTokens, 0));
         const response = await requestPromptTransform(agents[0], promptMessages, maxTokens);
 
         if (getAgentGenerationCancelRevision() !== cancelRevision) {
-            for (const agent of agents) {
-                setCompanionResult(message, agent, {
-                    status: 'cancelled',
-                    content: '',
-                    error: 'Cancelled.',
-                    tokenUsage: null,
-                    profileId: response.profileId,
-                    profileLabel: getProfileLabel(agent, response.profileId),
-                    modelLabel: getModelLabel(agent),
-                });
-                await emitCompanionResultsUpdated(messageIndex, agent.id);
-            }
-            return agents.map(agent => {
-                const result = getCompanionResults(message)[agent.id];
-                const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
-                return { agentId: agent.id, changed, result };
-            });
+            await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+            return getResults();
         }
 
         const inputTokensByAgentId = await buildBatchInputTokenUsage(promptMessages, taskPayloads);
@@ -1357,6 +1370,10 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             const rawContent = capResultContent(parsed.get(agent.id));
             const outputTokens = await countCompanionTokens({ role: 'assistant', content: rawContent });
             const content = await applyCompanionOutputPostPassesToContent(agent, rawContent, messageIndex, cancelRevision);
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+                return getResults();
+            }
             setCompanionResult(message, agent, {
                 status: 'done',
                 content,
@@ -1373,6 +1390,11 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         }
 
         for (const agent of missingAgents) {
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex, response.profileId);
+                return getResults();
+            }
+
             await runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, {
                 allowUserMessage,
                 previousContent: previousMap.get(agent.id),
@@ -1380,8 +1402,18 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
             });
         }
     } catch (error) {
+        if (getAgentGenerationCancelRevision() !== cancelRevision) {
+            await cancelCompanionAgentResults(message, agents, messageIndex);
+            return getResults();
+        }
+
         console.warn('[InChatAgents] Companion batch failed, falling back to individual runs:', error);
         for (const agent of agents) {
+            if (getAgentGenerationCancelRevision() !== cancelRevision) {
+                await cancelCompanionAgentResults(message, agents, messageIndex);
+                return getResults();
+            }
+
             await runSingleCompanionAgent(agent, messageIndex, generationType, cancelRevision, {
                 allowUserMessage,
                 previousContent: previousMap.get(agent.id),
@@ -1390,11 +1422,7 @@ async function runBatchCompanionAgents(agents, messageIndex, generationType, can
         }
     }
 
-    return agents.map(agent => {
-        const result = getCompanionResults(message)[agent.id];
-        const changed = result?.status === 'done' && previousMap.get(agent.id) !== getCompanionResultContent(message, agent.id);
-        return { agentId: agent.id, changed, result };
-    });
+    return getResults();
 }
 
 async function runCompanionUnit(unit, messageIndex, generationType, cancelRevision, { allowUserMessage = false, previousContents = null, extraContextSectionsByAgentId = null } = {}) {

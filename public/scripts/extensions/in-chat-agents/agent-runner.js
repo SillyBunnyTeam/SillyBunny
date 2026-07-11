@@ -3332,22 +3332,40 @@ async function runPromptTransformAgent(agent, message, generationType, messageTe
     }
 }
 
-async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null) {
+async function runPromptTransformAppendBatch(agents, message, generationType, messageTextOverride = null, messageIndex = null, { cancelRevision = null } = {}) {
     const currentMessageText = unwrapAssistantResponseWrapper(
         messageTextOverride !== null ? messageTextOverride : message?.mes,
     );
+    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
     const globalSettings = getGlobalSettings();
     const executionMode = globalSettings.appendAgentsExecutionMode === 'sequential' ? 'sequential' : 'parallel';
 
     let results = [];
 
+    if (isCancelled()) {
+        return {
+            results,
+            changed: false,
+            nextMessageText: currentMessageText,
+            beforeText: currentMessageText,
+            cancelled: true,
+        };
+    }
+
     if (executionMode === 'sequential') {
         for (const agent of agents) {
+            if (isCancelled()) {
+                break;
+            }
+
             try {
                 const result = await runPromptTransformAgent(agent, message, generationType, currentMessageText, messageIndex, {
                     applyToMessage: false,
                 });
                 results.push(result);
+                if (isCancelled() || result.status === 'cancelled') {
+                    break;
+                }
             } catch (error) {
                 results.push({
                     agentId: agent.id,
@@ -3388,6 +3406,16 @@ async function runPromptTransformAppendBatch(agents, message, generationType, me
                 }
             }),
         );
+    }
+
+    if (isCancelled() || results.some(result => result?.status === 'cancelled')) {
+        return {
+            results,
+            changed: false,
+            nextMessageText: currentMessageText,
+            beforeText: currentMessageText,
+            cancelled: true,
+        };
     }
 
     const consolidated = consolidateAppendPromptTransformOutputs(currentMessageText, agents, results);
@@ -4076,7 +4104,7 @@ function onMessageEdited(messageIndex) {
     saveChatDebouncedForAgent();
 }
 
-async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {} } = {}) {
+async function runPromptTransformAgentsForText(promptTransformAgents, initialText, generationType, { messageContext = {}, cancelRevision = null, stopOnFailure = false } = {}) {
     const message = {
         mes: initialText,
         name: getUserMessageName(),
@@ -4086,12 +4114,30 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
         ...messageContext,
     };
     const promptRuns = [];
-    let currentPromptTransformText = unwrapAssistantResponseWrapper(initialText);
+    const initialPromptTransformText = unwrapAssistantResponseWrapper(initialText);
+    const isCancelled = () => cancelRevision !== null && agentGenerationCancelRevision !== cancelRevision;
+    const cancelledResult = () => ({
+        promptRuns,
+        text: initialPromptTransformText,
+        changed: false,
+        cancelled: true,
+    });
+    const failedResult = () => ({
+        promptRuns,
+        text: initialPromptTransformText,
+        changed: false,
+        failed: true,
+    });
+    let currentPromptTransformText = initialPromptTransformText;
     let appendBatch = [];
 
     const flushAppendBatch = async () => {
         if (appendBatch.length === 0) {
-            return;
+            return null;
+        }
+
+        if (isCancelled()) {
+            return { cancelled: true };
         }
 
         const batchAgents = appendBatch;
@@ -4103,26 +4149,59 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
             generationType,
             currentPromptTransformText,
             null,
+            { cancelRevision },
         );
         promptRuns.push(...batchResult.results);
+
+        if (batchResult.cancelled || isCancelled() || batchResult.results.some(result => result?.status === 'cancelled')) {
+            return { cancelled: true };
+        }
+
+        if (stopOnFailure && batchResult.results.some(result => result?.status === 'error')) {
+            return { failed: true };
+        }
+
         currentPromptTransformText = batchResult.nextMessageText;
+        return null;
     };
 
     for (const agent of promptTransformAgents) {
+        if (isCancelled()) {
+            return cancelledResult();
+        }
+
         if (getPromptTransformMode(agent) === 'append') {
             appendBatch.push(agent);
             continue;
         }
 
-        await flushAppendBatch();
+        const appendResult = await flushAppendBatch();
+        if (appendResult?.cancelled) {
+            return cancelledResult();
+        }
+        if (appendResult?.failed) {
+            return failedResult();
+        }
 
         try {
             const result = await runPromptTransformAgent(agent, message, generationType, currentPromptTransformText, null, {
                 applyToMessage: false,
             });
             promptRuns.push(result);
+
+            if (isCancelled() || result.status === 'cancelled') {
+                return cancelledResult();
+            }
+            if (stopOnFailure && result.status === 'error') {
+                return failedResult();
+            }
+
             currentPromptTransformText = result.nextMessageText;
         } catch (error) {
+            if (isCancelled()) {
+                return cancelledResult();
+            }
+
             promptRuns.push({
                 agentId: agent.id,
                 agentName: agent.name,
@@ -4133,10 +4212,20 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
                 runner: 'error',
                 timestamp: new Date().toISOString(),
             });
+
+            if (stopOnFailure) {
+                return failedResult();
+            }
         }
     }
 
-    await flushAppendBatch();
+    const appendResult = await flushAppendBatch();
+    if (appendResult?.cancelled) {
+        return cancelledResult();
+    }
+    if (appendResult?.failed) {
+        return failedResult();
+    }
 
     return {
         promptRuns,
@@ -4152,13 +4241,18 @@ async function runPromptTransformAgentsForText(promptTransformAgents, initialTex
  * consumers (panel display, feedback injection, dependent companions) all see it.
  * @param {object} companionAgent The companion whose output is being transformed
  * @param {string} initialText The companion result content
- * @param {{ messageIndex?: number }} [options]
- * @returns {Promise<{ text: string, changed: boolean }>}
+ * @param {{ messageIndex?: number, cancelRevision?: number }} [options]
+ * @returns {Promise<{ text: string, changed: boolean, cancelled?: boolean }>}
  */
-export async function runCompanionOutputPostPasses(companionAgent, initialText, { messageIndex = -1 } = {}) {
+export async function runCompanionOutputPostPasses(companionAgent, initialText, { messageIndex = -1, cancelRevision = getAgentGenerationCancelRevision() } = {}) {
     const baseText = String(initialText ?? '');
     if (!baseText.trim()) {
         return { text: baseText, changed: false };
+    }
+
+    const isCancelled = () => agentGenerationCancelRevision !== cancelRevision;
+    if (isCancelled()) {
+        return { text: baseText, changed: false, cancelled: true };
     }
 
     const transformers = getCompanionOutputPostPassAgents(companionAgent);
@@ -4177,10 +4271,26 @@ export async function runCompanionOutputPostPasses(companionAgent, initialText, 
             promptAgents,
             currentText,
             COMPANION_OUTPUT_GENERATION_TYPE,
-            { messageContext: characterName ? { name: characterName } : {} },
+            {
+                messageContext: characterName ? { name: characterName } : {},
+                cancelRevision,
+                stopOnFailure: true,
+            },
         );
+        if (promptResult.cancelled || isCancelled()) {
+            return { text: baseText, changed: false, cancelled: true };
+        }
+        if (promptResult.failed) {
+            const failure = promptResult.promptRuns.find(run => run?.status === 'error');
+            throw new Error(failure?.error || 'Companion output prompt transform failed.');
+        }
+
         currentText = promptResult.text;
         changed = changed || promptResult.changed;
+    }
+
+    if (isCancelled()) {
+        return { text: baseText, changed: false, cancelled: true };
     }
 
     const regexAgents = transformers.filter(agent => getAgentRegexScripts(agent).length > 0);
