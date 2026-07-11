@@ -2190,7 +2190,16 @@ body.sb-shell-resizing * {
     margin: 0;
     align-items: center;
     flex-wrap: nowrap;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Wheel-driven sideways scroll; a visible scrollbar would eat the 36px row,
+       and smooth behavior makes rapid wheel ticks overwrite each other */
+    scrollbar-width: none;
+    scroll-behavior: auto;
+}
+
+#right-nav-panel #HotSwapWrapper .hotswap::-webkit-scrollbar {
+    display: none;
 }
 
 #right-nav-panel #HotSwapWrapper .hotswap > small {
@@ -5786,10 +5795,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: themes (e.g. MoonlitEchoes) pin .menu_button colors with !important,
+   which otherwise flattens the lit state to the idle button color */
 #right-nav-panel .sb-character-editor-side-actions #favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel .sb-character-editor-side-actions #favorite_button:hover {
@@ -6335,10 +6346,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: same theme-override guard as the character editor favorite button */
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-side-actions #group_favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-name-row label {
