@@ -5348,7 +5348,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 #right-nav-panel .sb-character-editor-controls-row {
-    --sb-character-editor-avatar-size: clamp(96px, 12vw, 132px);
+    --sb-character-editor-avatar-size: clamp(112px, 13vw, 152px);
     width: 100%;
     display: grid;
     grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr);
@@ -5835,18 +5835,25 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     width: var(--sb-character-editor-avatar-size) !important;
     min-width: var(--sb-character-editor-avatar-size) !important;
     max-width: var(--sb-character-editor-avatar-size) !important;
-    height: var(--sb-character-editor-avatar-size) !important;
-    min-height: var(--sb-character-editor-avatar-size) !important;
-    max-height: var(--sb-character-editor-avatar-size) !important;
+    /* Portrait box instead of the old square: card art is mostly portrait and
+       the square crop hid most of the image */
+    aspect-ratio: 3 / 4;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
     border-width: 3px;
     border-radius: var(--sb-radius-lg, 22px);
     overflow: hidden;
+    /* Letterbox surface for art that isn't 3:4, so `contain` reads as a frame */
+    background: color-mix(in srgb, var(--sb-shell-surface) 62%, transparent);
 }
 
 #right-nav-panel .sb-character-editor-controls-row > #avatar_div_div img {
     width: 100% !important;
     height: 100% !important;
+    /* The whole image stays visible regardless of its aspect ratio */
+    object-fit: contain !important;
 }
 
 #right-nav-panel #avatar_div > #tagList {
