@@ -117,6 +117,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #654 (2026-07-09) `feat: New ordering mechanism for agents and companion sidebar`
 - PR #655 (2026-07-09) `fix: that funkily-sized button (guided generations flush/sweep)`
 - PR #656 (2026-07-09) `fix: Grok example dialogue glitch`
+- PR #657 (2026-07-11) `feat(agents): let post-generation passes target companion outputs, impersonation text, and picked targets`
 - PR #658 (2026-07-11) `fix(mobile): hold the chat composer above the iOS keyboard to stop the viewport escape`
 
 ## v1.6.5
