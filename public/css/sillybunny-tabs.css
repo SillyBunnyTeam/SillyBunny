@@ -2158,16 +2158,21 @@ body.sb-shell-resizing * {
 }
 
 #right-nav-panel #CharListButtonAndHotSwaps {
+    /* Natural height: the favorites label sits above the avatar strip, and the
+       old 52px clamp clipped the strip's bottom edge */
     min-height: 52px;
-    max-height: 52px;
+    max-height: none;
     padding: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline);
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
     overflow: hidden;
 }
 
 #right-nav-panel #HotSwapWrapper {
-    align-items: center;
-    gap: 10px;
+    /* Deliberate two-row layout (label divider, then avatar strip); previously
+       the strip only ended up below the label as a flex-wrap accident */
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
     margin: 0 !important;
     min-height: 0;
     overflow: hidden;
@@ -2175,6 +2180,9 @@ body.sb-shell-resizing * {
 
 #right-nav-panel .sb-character-favorites-label {
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
     letter-spacing: var(--sb-tracking-kicker);
@@ -2183,11 +2191,25 @@ body.sb-shell-resizing * {
     opacity: 0.72;
 }
 
+#right-nav-panel .sb-character-favorites-label::before,
+#right-nav-panel .sb-character-favorites-label::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
+}
+
 #right-nav-panel #HotSwapWrapper .hotswap {
     min-width: 0;
-    flex: 1 1 auto;
+    /* Shrink-to-fit so a short row centers under the label; overflowing rows
+       clamp to full width and scroll */
+    flex: 0 0 auto;
+    align-self: center;
+    max-width: 100%;
+    column-gap: 5px;
     max-height: 36px;
     margin: 0;
+    padding: 1px 2px;
     align-items: center;
     flex-wrap: nowrap;
     overflow-x: auto;
