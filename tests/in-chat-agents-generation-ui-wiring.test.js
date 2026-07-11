@@ -9,6 +9,7 @@ const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html
 const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
 const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
+const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -202,5 +203,22 @@ describe('in-chat agents generation UI wiring', () => {
         expect(labelSource).toContain('isCompanionAgent(agent)');
         expect(labelSource).toContain("return 'side';");
         expect(indexSource).toContain('getAgentCardPhaseLabel(agent)');
+    });
+
+    test('enables selected post-generation agents on companion outputs', () => {
+        const handlerStart = indexSource.indexOf("$('#ica--bulkEnableOnCompanions').on('click'");
+        const handlerEnd = indexSource.indexOf("$('#ica--bulkDisable').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(settingsSource).toContain('ica--bulkEnableOnCompanions');
+        expect(settingsSource).toContain('On Companions');
+        expect(handlerSource).toContain('for (const id of selectedAgentIds)');
+        expect(handlerSource).toContain('isCompanionAgent(agent)');
+        expect(handlerSource).toContain('isToolAgent(agent)');
+        expect(handlerSource).toContain("['post', 'both'].includes(agent.phase)");
+        expect(handlerSource).toContain('agent.conditions.runOnCompanionOutputs = true;');
+        expect(handlerSource).toContain('lockBundledAgentCustomization(agent);');
+        expect(handlerSource).toContain('await saveAgent(agent);');
+        expect(handlerSource).toContain('exitSelectMode();');
     });
 });

@@ -5732,6 +5732,33 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         }
         exitSelectMode();
     });
+    $('#ica--bulkEnableOnCompanions').on('click', async () => {
+        let changed = 0;
+        let eligible = 0;
+        for (const id of selectedAgentIds) {
+            const agent = getAgentById(id);
+            if (!agent || isCompanionAgent(agent) || isToolAgent(agent) || !['post', 'both'].includes(agent.phase)) {
+                continue;
+            }
+            eligible++;
+            agent.conditions ??= {};
+            if (agent.conditions.runOnCompanionOutputs) {
+                continue;
+            }
+            agent.conditions.runOnCompanionOutputs = true;
+            lockBundledAgentCustomization(agent);
+            await saveAgent(agent);
+            changed++;
+        }
+        if (changed > 0) {
+            toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs.`);
+        } else if (eligible > 0) {
+            toastr.info('Selected post-generation agents are already enabled on companion outputs.');
+        } else {
+            toastr.warning('No selected post-generation agents can run on companion outputs.');
+        }
+        exitSelectMode();
+    });
     $('#ica--bulkDisable').on('click', async () => {
         let changed = false;
         for (const id of selectedAgentIds) {
