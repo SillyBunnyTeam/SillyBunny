@@ -5475,9 +5475,9 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    // SillyBunny: Claude Fable models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
+    // SillyBunny: Claude Fable and Sonnet 5 models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
     // Substring match to also catch router ids like 'anthropic/claude-fable-5'.
-    if (/claude-fable/.test(model)) {
+    if (/claude-fable/.test(model) || model === 'claude-sonnet-5') {
         delete generate_data.temperature;
         delete generate_data.top_p;
         delete generate_data.top_k;
@@ -8477,7 +8477,7 @@ async function onModelChange() {
     if (oai_settings.chat_completion_source == chat_completion_sources.CLAUDE) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', unlocked_max);
-        } else if (/^claude-(sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5 has a 1M context window
+        } else if (/^claude-(sonnet-5|sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5; |sonnet-5 — 1M context window
             $('#openai_max_context').attr('max', max_1mil);
         } else if (/^claude-(3|opus|haiku|sonnet)/.test(value)) {
             $('#openai_max_context').attr('max', max_200k);
@@ -9109,6 +9109,7 @@ export function isImageInliningSupported() {
         // Claude
         'claude-3',
         'claude-fable', // SillyBunny: claude-fable-5 vision support
+        'claude-sonnet-5', // SillyBunny: claude-sonnet-5 vision support
         'claude-opus-4',
         'claude-sonnet-4',
         'claude-haiku-4',

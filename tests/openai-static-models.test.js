@@ -22,6 +22,102 @@ const retiredCaptionModels = [
     'gpt-4-vision-preview',
 ];
 
+// Claude retired IDs removed from both pickers
+const retiredClaudeModels = [
+    'claude-opus-4-0',
+    'claude-opus-4-20250514',
+    'claude-sonnet-4-0',
+    'claude-sonnet-4-20250514',
+    'claude-3-7-sonnet-latest',
+    'claude-3-7-sonnet-20250219',
+    'claude-3-5-sonnet-latest',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-sonnet-20240620',
+    'claude-3-5-haiku-latest',
+    'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229',
+    'claude-3-haiku-20240307',
+];
+
+// Provider IDs retired from the main picker
+const retiredMainPickerOtherModels = [
+    'jamba-1.7-mini',
+    'jamba-1.7-large',
+    'deepseek-r1-distill-llama-70b',
+    'gemma2-9b-it',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+    'llama-guard-3-8b',
+    'llama3-70b-8192',
+    'llama3-8b-8192',
+    'mistral-saba-24b',
+    'MiniMax-M1',
+    'deepseek-v4',
+    'deepseek-coder',
+    'sonar-reasoning',
+    'r1-1776',
+    'c4ai-aya-23-8b',
+    'c4ai-aya-23',
+    'c4ai-aya-expanse-8b',
+    'c4ai-aya-vision-8b',
+    'command-light',
+    'command-r',
+    'command-r-plus',
+    'kimi-k2-0711-preview',
+    'moonshot-v1-auto',
+    'kimi-latest',
+    'kimi-thinking-preview',
+];
+
+// IDs removed from Google AI Studio (main google select / data-type="google" caption options).
+// Note: some of these (e.g. gemini-3.1-flash-lite-preview, gemini-3-pro-preview) are legitimately
+// retained in the Vertex sections, so tests must scope checks to the AI Studio selects only.
+const retiredGoogleStudioModels = [
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3.1-flash-image-preview',
+    'gemini-3-pro-preview',
+    'gemini-3-pro-image-preview',
+    'gemini-2.5-pro-preview-03-25',
+    'gemini-2.5-pro-preview-05-06',
+    'gemini-2.5-pro-preview-06-05',
+    'gemini-2.5-flash-preview-05-20',
+    'gemini-2.5-flash-preview-09-2025',
+    'gemini-2.5-flash-lite-preview-06-17',
+    'gemini-2.5-flash-lite-preview-09-2025',
+    'gemini-2.5-flash-image-preview',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-001',
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash-lite-001',
+    'gemini-2.0-flash-lite-preview',
+    'gemini-2.0-flash-lite-preview-02-05',
+    'gemini-2.0-pro-exp',
+    'gemini-2.0-pro-exp-02-05',
+    'gemini-exp-1206',
+    'gemini-2.0-flash-exp',
+    'gemini-2.0-flash-thinking-exp',
+    'gemini-2.0-flash-thinking-exp-01-21',
+    'gemini-2.0-flash-thinking-exp-1219',
+    'gemini-2.0-flash-exp-image-generation',
+    'gemini-2.0-flash-preview-image-generation',
+    'gemini-robotics-er-1.5-preview',
+    'learnlm-2.0-flash-experimental',
+    'gemma-4-31b-it',
+    'gemma-4-26b-a4b-it',
+    'gemma-3-27b-it',
+    'gemma-3-12b-it',
+    'gemma-3-4b-it',
+    'gemma-3-1b-it',
+];
+
+// IDs removed from Vertex AI selects (the Gemini 2.0 batch; 3.x previews are Vertex-only retained)
+const retiredVertexModels = [
+    'gemini-2.0-flash-exp',
+    'gemini-2.0-flash-preview-image-generation',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-001',
+    'gemini-2.0-flash-lite-001',
+];
+
 function readSource(relativePath) {
     return fs.readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
 }
@@ -29,6 +125,10 @@ function readSource(relativePath) {
 function getSelectOptionIds(source, selectId) {
     const select = source.match(new RegExp(`<select id="${selectId}"[^>]*>([\\s\\S]*?)</select>`));
     return [...select[1].matchAll(/<option[^>]*value="([^"]+)"/g)].map((match) => match[1]);
+}
+
+function getDataTypeOptionIds(source, dataType) {
+    return [...source.matchAll(new RegExp(`<option[^>]*data-type="${dataType}"[^>]*value="([^"]+)"`, 'g'))].map(m => m[1]);
 }
 
 test('OpenAI pickers include GPT-5.6 and omit retired native OpenAI models', () => {
@@ -57,4 +157,113 @@ test('GPT-5.6 supports reasoning effort and one-million-token context', () => {
         expect(constants).toContain(`'${model}'`);
     }
     expect(openAiScript).toContain('value.startsWith(\'gpt-5.4\') || value.startsWith(\'gpt-5.6\')');
+});
+
+test('Claude pickers include claude-sonnet-5 and omit all retired Claude IDs', () => {
+    const mainSource = readSource('../public/index.html');
+    const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
+    const mainPicker = getSelectOptionIds(mainSource, 'model_claude_select');
+    const captionPicker = getDataTypeOptionIds(captionSource, 'anthropic');
+
+    expect(mainPicker).toContain('claude-sonnet-5');
+    expect(captionPicker).toContain('claude-sonnet-5');
+    expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
+    expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
+});
+
+test('Other provider pickers omit confirmed-retired model IDs', () => {
+    const mainSource = readSource('../public/index.html');
+    const mainPicker = getSelectOptionIds(mainSource, 'model_openai_select');
+    const mainHtml = mainSource; // full source for providers not in model_openai_select
+
+    // AI21, Groq, MiniMax, DeepSeek, Perplexity, Cohere, Moonshot are separate selects;
+    // check raw source since select IDs vary.
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="jamba-1.7-mini"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="jamba-1.7-large"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="deepseek-r1-distill-llama-70b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="gemma2-9b-it"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="meta-llama/llama-4-maverick-17b-128e-instruct"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="llama-guard-3-8b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="llama3-70b-8192"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="llama3-8b-8192"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="mistral-saba-24b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="MiniMax-M1"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="deepseek-v4"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="deepseek-coder"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="sonar-reasoning"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="r1-1776"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="c4ai-aya-23-8b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="c4ai-aya-23"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="c4ai-aya-expanse-8b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="c4ai-aya-vision-8b"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="command-light"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="command-r"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="command-r-plus"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-k2-0711-preview"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="moonshot-v1-auto"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-latest"'));
+    expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-thinking-preview"'));
+});
+
+test('Google AI Studio pickers omit all retired Gemini/Gemma models', () => {
+    const mainSource = readSource('../public/index.html');
+    const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
+
+    // Scope to only the AI Studio selects — Vertex legitimately retains some preview IDs.
+    const mainAiStudio = getSelectOptionIds(mainSource, 'model_google_select');
+    const captionAiStudio = getDataTypeOptionIds(captionSource, 'google');
+
+    expect(mainAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
+    expect(captionAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
+});
+
+test('Vertex AI pickers omit retired Gemini 2.0 entries', () => {
+    const mainSource = readSource('../public/index.html');
+    const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
+
+    const mainVertex = getSelectOptionIds(mainSource, 'model_vertexai_select');
+    const captionVertex = getDataTypeOptionIds(captionSource, 'vertexai');
+
+    expect(mainVertex).toEqual(expect.not.arrayContaining(retiredVertexModels));
+    expect(captionVertex).toEqual(expect.not.arrayContaining(retiredVertexModels));
+});
+
+test('Caption picker omits retired Cohere and Groq vision models', () => {
+    const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
+
+    expect(captionSource).toEqual(expect.not.stringContaining('value="c4ai-aya-vision-8b"'));
+    expect(captionSource).toEqual(expect.not.stringContaining('value="meta-llama/llama-4-maverick-17b-128e-instruct"'));
+});
+
+test('Stable Diffusion image catalog omits retired models and retains current ones', () => {
+    const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
+
+    // NovelAI: V2 retired
+    const novelSection = source.match(/async function loadNovelModels\(\)([\s\S]*?)\n}\n/)[1];
+    expect(novelSection).toEqual(expect.not.stringContaining('nai-diffusion-2'));
+    expect(novelSection).toContain('nai-diffusion-4-5-full');
+    expect(novelSection).toContain('nai-diffusion-4-5-curated');
+    expect(novelSection).toContain('nai-diffusion-3');
+    expect(novelSection).toContain('nai-diffusion-furry-3');
+
+    // BFL: flux-pro (unversioned) retired
+    const bflSection = source.match(/async function loadBflModels\(\)([\s\S]*?)\n}\n/)[1];
+    expect(bflSection).toEqual(expect.not.stringContaining("'flux-pro'"));
+    expect(bflSection).toContain('flux-pro-1.1');
+    expect(bflSection).toContain('flux-pro-1.1-ultra');
+    expect(bflSection).toContain('flux-dev');
+
+    // Google: only current Imagen 4 and Veo 3.1 entries
+    const googleSection = source.match(/async function loadGoogleModels\(\)([\s\S]*?)\n}\n/)[1];
+    expect(googleSection).toContain('imagen-4.0-generate-001');
+    expect(googleSection).toContain('imagen-4.0-ultra-generate-001');
+    expect(googleSection).toContain('imagen-4.0-fast-generate-001');
+    expect(googleSection).toContain('veo-3.1-generate-preview');
+    expect(googleSection).toContain('veo-3.1-fast-generate-preview');
+    // Retired entries
+    expect(googleSection).toEqual(expect.not.stringContaining('imagen-3.0'));
+    expect(googleSection).toEqual(expect.not.stringContaining('imagegeneration@'));
+    expect(googleSection).toEqual(expect.not.stringContaining('imagen-4.0-generate-preview'));
+    expect(googleSection).toEqual(expect.not.stringContaining('veo-2.0'));
+    expect(googleSection).toEqual(expect.not.stringContaining('veo-3.0'));
 });

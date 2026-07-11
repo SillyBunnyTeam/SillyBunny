@@ -1156,8 +1156,9 @@ export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, 
                 return 'medium';
             case REASONING_EFFORT.high:
                 return 'high';
-            case REASONING_EFFORT.max:
             case REASONING_EFFORT.xhigh:
+                return 'xhigh'; // SillyBunny: Sonnet 5 treats xhigh as a distinct effort level, not an alias for max
+            case REASONING_EFFORT.max:
                 return 'max';
         }
         return null;
