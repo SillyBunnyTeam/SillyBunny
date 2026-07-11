@@ -507,6 +507,18 @@
         padding: 3px 10px !important;
     }
 
+    /* The collapsed shell header parks the mode toggle + close button over the
+       right end of this band, and the characters button floats on its left;
+       inset the favorites block so the divider and strip sit cleanly between
+       the flanking controls instead of running underneath them.
+       Left 48px clears the 44px characters button; right 134px clears the
+       82px mode toggle + 36px close button and their edge offsets. */
+    #right-nav-panel.openDrawer #HotSwapWrapper {
+        margin: 0 134px 0 48px !important;
+        min-height: 44px;
+        justify-content: center;
+    }
+
     #right-nav-panel.openDrawer .sb-character-favorites-label {
         font-size: calc(var(--mainFontSize) * 0.66) !important;
         letter-spacing: 0.12em !important;

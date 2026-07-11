@@ -2029,6 +2029,7 @@ body.sb-shell-resizing * {
     line-height: 1;
     min-height: 32px;
     padding: 8px 13px;
+    cursor: pointer;
     transition: background var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast), opacity var(--sb-transition-fast);
     opacity: 0.72;
 }
