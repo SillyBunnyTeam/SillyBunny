@@ -2624,13 +2624,18 @@ function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
 
-    // SillyBunny: composer edits keep the stable layout top but give up the
-    // keyboard's height so the focused composer sits above the keyboard and
-    // Safari never pans or force-scrolls the document to reveal the caret.
+    // SillyBunny: composer edits give up the keyboard's height. If Safari
+    // still pans the visual viewport, preserve that top offset so the shell
+    // tracks the visible viewport instead of escaping above it.
     const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
     if (composerKeyboardInset > 0) {
         const height = Math.max(0, layoutViewport.height - composerKeyboardInset);
-        return { ...layoutViewport, height, bottom: height };
+        return {
+            ...layoutViewport,
+            height,
+            top: visualViewportSize.top,
+            bottom: visualViewportSize.top + height,
+        };
     }
 
     // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
@@ -2668,6 +2673,7 @@ function syncShellViewportBounds() {
     // document scroll anchor may run mid-edit (see browser-fixes.js), because
     // resetting the document scroll can no longer hide the focused caret.
     const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
+    setRootViewportProperty('--sb-ios-composer-viewport-top', `${composerKeyboardInset > 0 ? viewportSize.top : 0}px`);
     root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
 }
 
@@ -3034,15 +3040,17 @@ function getResolvedShellTopbarOffset() {
         return Number.isFinite(topbarOffset) ? topbarOffset : 0;
     })();
 
-    if (!isMobileViewportLike) {
-        const chatShell = document.getElementById('sheld');
-        if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
-            const chatRect = chatShell.getBoundingClientRect();
-            if (Number.isFinite(chatRect.top)) {
-                const offset = chatRect.top - docTop;
-                if (offset > 0) {
-                    return offset;
-                }
+    if (isMobileViewportLike) {
+        return fallbackTopOffset;
+    }
+
+    const chatShell = document.getElementById('sheld');
+    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
+        const chatRect = chatShell.getBoundingClientRect();
+        if (Number.isFinite(chatRect.top)) {
+            const offset = chatRect.top - docTop;
+            if (offset > 0) {
+                return offset;
             }
         }
     }

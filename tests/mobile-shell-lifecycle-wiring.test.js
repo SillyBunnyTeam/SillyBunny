@@ -582,6 +582,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function getShellViewportTop(');
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'sheld\')');
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'top-bar\')');
+        expect(getResolvedShellTopbarOffsetSource).toContain('if (isMobileViewportLike) {');
+        expect(getResolvedShellTopbarOffsetSource).toContain('return fallbackTopOffset;');
         expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportSize()');
         expect(getDesktopShellResizeBoundsSource).toContain('getShellViewportTop(root, viewportSize)');
         expect(getDesktopShellResizeBoundsSource).toContain('viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap');
@@ -611,9 +613,8 @@ describe('mobile shell lifecycle wiring', () => {
         const handleComposerKeyboardFocusInSource = getFunctionSource('handleComposerKeyboardFocusIn');
         const syncShellViewportBoundsSource = getFunctionSource('syncShellViewportBounds');
 
-        // The shell gives up the keyboard's height during composer edits while
-        // keeping the stable layout top, so the caret never sits behind the
-        // keyboard and Safari has no reason to pan or force-scroll the document.
+        // The shell gives up the keyboard's height during composer edits. If
+        // Safari still pans, the shell and top bar counter the visual offset.
         expect(getComposerKeyboardInsetSource).toContain('if (!isIOSWebKitPlatform() || !isMobileViewport()) {');
         expect(tabsSource).toContain('import { resolveIOSComposerKeyboardInset } from \'./mobile-composer-keyboard.js\';');
         expect(getComposerKeyboardInsetSource).toContain('const decision = resolveIOSComposerKeyboardInset({');
@@ -622,7 +623,10 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = decision.rememberedKeyboardHeight;');
         expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
         expect(getShellViewportSizeSource).toContain('const height = Math.max(0, layoutViewport.height - composerKeyboardInset);');
-        expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
+        expect(getShellViewportSizeSource).toContain('top: visualViewportSize.top,');
+        expect(getShellViewportSizeSource).toContain('bottom: visualViewportSize.top + height,');
+        expect(syncShellViewportBoundsSource).toContain('setRootViewportProperty(\'--sb-ios-composer-viewport-top\', `${composerKeyboardInset > 0 ? viewportSize.top : 0}px`);');
+        expect(tabsCssSource).toMatch(/#top-bar\s*\{[^}]*top:\s*var\(--sb-ios-composer-viewport-top, 0px\) !important;/);
 
         // Apply the estimated or remembered height synchronously before focus,
         // then force layout before Safari performs its caret-reveal decision.
