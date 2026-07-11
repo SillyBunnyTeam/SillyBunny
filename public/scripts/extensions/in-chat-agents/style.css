@@ -2834,3 +2834,18 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     align-items: center;
     gap: 8px;
 }
+
+.ica--run-target-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.ica--run-target-range span {
+    flex: 0 0 auto;
+}
+
+.ica--run-target-range input {
+    min-width: 0;
+}

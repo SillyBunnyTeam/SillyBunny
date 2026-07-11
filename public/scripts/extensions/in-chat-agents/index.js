@@ -490,6 +490,36 @@ function getLastAssistantMessageIndex() {
     return chat.findLastIndex(message => message && !message.is_user && !message.is_system);
 }
 
+function getManualAgentRunMessageIndices(rangeText, lastAssistantIndex) {
+    const range = String(rangeText ?? '').trim();
+    if (!range) {
+        return lastAssistantIndex >= 0 ? [lastAssistantIndex] : [];
+    }
+
+    const indexes = new Set();
+    for (const section of range.split(',')) {
+        const match = section.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (!match) {
+            return null;
+        }
+
+        const start = Number(match[1]);
+        const end = Number(match[2] ?? match[1]);
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) {
+            return null;
+        }
+
+        for (let index = Math.max(0, start); index <= Math.min(chat.length - 1, end); index++) {
+            const message = chat[index];
+            if (message && !message.is_user && !message.is_system) {
+                indexes.add(index);
+            }
+        }
+    }
+
+    return [...indexes].sort((a, b) => a - b);
+}
+
 /**
  * Shows a picker for the manual "Apply to…" action listing what exists right now:
  * the last assistant reply, the composer text box, and the finished companion notes
@@ -504,7 +534,7 @@ async function pickManualAgentRunTargets(agent) {
         const replyName = String(chat[lastAssistantIndex]?.name ?? '').trim();
         options.push({
             value: 'message',
-            label: `Last assistant reply${replyName ? ` (${replyName})` : ''}`,
+            label: `Last assistant reply #${lastAssistantIndex}${replyName ? ` (${replyName})` : ''}`,
         });
 
         for (const [companionAgentId, result] of Object.entries(getCompanionResults(chat[lastAssistantIndex]))) {
@@ -542,6 +572,14 @@ async function pickManualAgentRunTargets(agent) {
                 <span>${escapeHtml(option.label)}</span>
             </label>
         `));
+        if (option.value === 'message') {
+            picker.append($(`
+                <label class="ica--run-target-range">
+                    <span>Messages</span>
+                    <input type="text" id="ica--run-target-message-range" class="text_pole" placeholder="0-5, 8" inputmode="text" />
+                </label>
+            `));
+        }
     });
 
     const popupResult = await new Popup(picker, POPUP_TYPE.CONFIRM, '', { okButton: 'Apply', cancelButton: 'Cancel' }).show();
@@ -555,20 +593,32 @@ async function pickManualAgentRunTargets(agent) {
         return null;
     }
 
-    return selected.map(value => {
+    const messageIndices = selected.includes('message')
+        ? getManualAgentRunMessageIndices(picker.find('#ica--run-target-message-range').val(), lastAssistantIndex)
+        : [];
+    if (messageIndices === null || (selected.includes('message') && messageIndices.length === 0)) {
+        toastr.warning('Select at least one target.');
+        return null;
+    }
+
+    return selected.flatMap(value => {
         if (value === 'composer') {
-            return { kind: 'composer' };
+            return [{ kind: 'composer' }];
         }
 
         if (value.startsWith('companion:')) {
-            return {
+            return [{
                 kind: 'companion',
                 messageIndex: lastAssistantIndex,
                 companionAgentId: value.slice('companion:'.length),
-            };
+            }];
         }
 
-        return { kind: 'message', messageIndex: lastAssistantIndex };
+        if (value === 'message') {
+            return messageIndices.map(messageIndex => ({ kind: 'message', messageIndex }));
+        }
+
+        return [];
     });
 }
 

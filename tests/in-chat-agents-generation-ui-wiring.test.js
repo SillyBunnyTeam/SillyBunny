@@ -231,8 +231,22 @@ describe('in-chat agents generation UI wiring', () => {
         expect(pickerSource).toContain('type="checkbox" name="ica--run-target"');
         expect(pickerSource).not.toContain('type="radio" name="ica--run-target"');
         expect(pickerSource).toContain("picker.find('input[name=\"ica--run-target\"]:checked').map((_, input) => String(input.value)).get()");
-        expect(pickerSource).toContain('return selected.map(value => {');
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
         expect(handlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
         expect(handlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
+
+    test('allows the manual reply target to expand to an assistant message range', () => {
+        const parserSource = getFunctionSource('getManualAgentRunMessageIndices');
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+
+        expect(parserSource).toContain("range.split(',')");
+        expect(parserSource).toContain('!message.is_user && !message.is_system');
+        expect(parserSource).toContain('return [...indexes].sort((a, b) => a - b);');
+        expect(pickerSource).toContain('ica--run-target-message-range');
+        expect(pickerSource).toContain('Last assistant reply #${lastAssistantIndex}');
+        expect(pickerSource).toContain('getManualAgentRunMessageIndices(');
+        expect(pickerSource).toContain('return selected.flatMap(value => {');
+        expect(extensionStyleSource).toContain('.ica--run-target-range');
     });
 });
