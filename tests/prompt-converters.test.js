@@ -120,7 +120,7 @@ describe('calculateClaudeBudgetTokens', () => {
 
         test('max returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'max', true, true)).toBe('max'));
 
-        test('xhigh returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+        test('xhigh returns "xhigh"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('xhigh'));
     });
 
     describe('traditional model', () => {
