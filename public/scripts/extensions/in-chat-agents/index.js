@@ -493,9 +493,9 @@ function getLastAssistantMessageIndex() {
 /**
  * Shows a picker for the manual "Apply to…" action listing what exists right now:
  * the last assistant reply, the composer text box, and the finished companion notes
- * on that reply. Returns a runAgentOnTarget-compatible target, or null on cancel.
+ * on that reply. Returns runAgentOnTarget-compatible targets, or null on cancel.
  */
-async function pickManualAgentRunTarget(agent) {
+async function pickManualAgentRunTargets(agent) {
     const lastAssistantIndex = getLastAssistantMessageIndex();
     const composerText = String(document.getElementById('send_textarea')?.value ?? '').trim();
     const options = [];
@@ -538,7 +538,7 @@ async function pickManualAgentRunTarget(agent) {
     options.forEach((option, index) => {
         picker.append($(`
             <label class="checkbox_label">
-                <input type="radio" name="ica--run-target" value="${escapeHtml(option.value)}" ${index === 0 ? 'checked' : ''} />
+                <input type="checkbox" name="ica--run-target" value="${escapeHtml(option.value)}" ${index === 0 ? 'checked' : ''} />
                 <span>${escapeHtml(option.label)}</span>
             </label>
         `));
@@ -549,20 +549,27 @@ async function pickManualAgentRunTarget(agent) {
         return null;
     }
 
-    const selected = String(picker.find('input[name="ica--run-target"]:checked').val() ?? '');
-    if (selected === 'composer') {
-        return { kind: 'composer' };
+    const selected = picker.find('input[name="ica--run-target"]:checked').map((_, input) => String(input.value)).get();
+    if (selected.length === 0) {
+        toastr.warning('Select at least one target.');
+        return null;
     }
 
-    if (selected.startsWith('companion:')) {
-        return {
-            kind: 'companion',
-            messageIndex: lastAssistantIndex,
-            companionAgentId: selected.slice('companion:'.length),
-        };
-    }
+    return selected.map(value => {
+        if (value === 'composer') {
+            return { kind: 'composer' };
+        }
 
-    return { kind: 'message', messageIndex: lastAssistantIndex };
+        if (value.startsWith('companion:')) {
+            return {
+                kind: 'companion',
+                messageIndex: lastAssistantIndex,
+                companionAgentId: value.slice('companion:'.length),
+            };
+        }
+
+        return { kind: 'message', messageIndex: lastAssistantIndex };
+    });
 }
 
 function hasTrackerFixAgents() {
@@ -2563,11 +2570,11 @@ function renderAgentList() {
 
             card.find('.ica--btn-run-target').on('click', async event => {
                 stopEvent(event);
-                const target = await pickManualAgentRunTarget(agent);
-                if (!target) {
+                const targets = await pickManualAgentRunTargets(agent);
+                if (!targets) {
                     return;
                 }
-                await runAgentOnTarget(agent.id, target);
+                await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
             });
 
             card.find('.ica--btn-preview-prompt').on('click', async event => {

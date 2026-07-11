@@ -221,4 +221,18 @@ describe('in-chat agents generation UI wiring', () => {
         expect(handlerSource).toContain('await saveAgent(agent);');
         expect(handlerSource).toContain('exitSelectMode();');
     });
+
+    test('allows manual agent application to multiple selected targets', () => {
+        const pickerSource = getFunctionSource('pickManualAgentRunTargets');
+        const handlerStart = indexSource.indexOf("card.find('.ica--btn-run-target').on('click'");
+        const handlerEnd = indexSource.indexOf("card.find('.ica--btn-preview-prompt').on('click'", handlerStart);
+        const handlerSource = indexSource.slice(handlerStart, handlerEnd);
+
+        expect(pickerSource).toContain('type="checkbox" name="ica--run-target"');
+        expect(pickerSource).not.toContain('type="radio" name="ica--run-target"');
+        expect(pickerSource).toContain("picker.find('input[name=\"ica--run-target\"]:checked').map((_, input) => String(input.value)).get()");
+        expect(pickerSource).toContain('return selected.map(value => {');
+        expect(handlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
+        expect(handlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
 });
