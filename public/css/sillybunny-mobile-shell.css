@@ -524,8 +524,22 @@
         letter-spacing: 0.12em !important;
     }
 
+    /* mobile-styles.css flattens the strip to overflow: hidden on mobile,
+       which stops it from being a scroll container — touch panning then has
+       nothing to scroll. Restore the horizontal-rail treatment the other
+       mobile rails use (see .sb-character-create-bar above). */
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
         max-height: 28px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        overscroll-behavior-x: contain !important;
+        touch-action: pan-x !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+
+    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap::-webkit-scrollbar {
+        display: none !important;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
