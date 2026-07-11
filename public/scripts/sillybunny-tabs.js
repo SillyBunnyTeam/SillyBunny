@@ -2516,6 +2516,7 @@ const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
 let sbLastIOSKeyboardHeight = 0;
 let sbLastIOSKeyboardLayoutWidth = 0;
 let sbComposerKeyboardPreShiftDeadline = 0;
+let sbComposerKeyboardFocusPending = false;
 let sbComposerKeyboardSettleTimer = 0;
 
 /**
@@ -2527,8 +2528,8 @@ let sbComposerKeyboardSettleTimer = 0;
  * the composer clears the keyboard and Safari has nothing to reveal. A small
  * focus margin keeps the textbox away from the viewport edge that triggers
  * Safari's caret-reveal pan. A measured or estimated keyboard height
- * pre-shrinks the shell right after focus, before the keyboard finishes
- * animating, so the reveal never triggers.
+ * pre-shrinks the shell before pointer focus, before the keyboard or Safari's
+ * caret reveal starts animating, so the reveal never triggers.
  */
 function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
     if (!isIOSWebKitPlatform() || !isMobileViewport()) {
@@ -2541,6 +2542,7 @@ function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
         visualHeight: visualViewportSize.height,
         visualTop: visualViewportSize.top,
         composerFocused: isChatComposerEditableElement(document.activeElement),
+        composerFocusPending: sbComposerKeyboardFocusPending,
         preShiftActive: Date.now() < sbComposerKeyboardPreShiftDeadline,
         rememberedKeyboardHeight: sbLastIOSKeyboardHeight,
         rememberedLayoutWidth: sbLastIOSKeyboardLayoutWidth,
@@ -2551,20 +2553,35 @@ function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
     return decision.inset;
 }
 
+function preShiftComposerForKeyboard(focusPending) {
+    sbComposerKeyboardFocusPending = focusPending;
+    sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
+    window.clearTimeout(sbComposerKeyboardSettleTimer);
+    syncShellViewportBounds();
+    sbComposerKeyboardSettleTimer = window.setTimeout(() => {
+        sbComposerKeyboardFocusPending = false;
+        queueMobileViewportStateSync();
+    }, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
+}
+
+function handleComposerKeyboardPointerDown(event) {
+    if (!isIOSWebKitPlatform() || !isMobileViewport() || !isChatComposerEditableElement(event.target)) {
+        return;
+    }
+
+    // Move and lay out the composer before Safari's subsequent focus default
+    // action decides whether the caret requires a whole-viewport reveal pan.
+    preShiftComposerForKeyboard(true);
+    event.target.getBoundingClientRect();
+}
+
 function handleComposerKeyboardFocusIn(event) {
     if (!isIOSWebKitPlatform() || !isMobileViewport()) {
         return;
     }
 
     if (isChatComposerEditableElement(event.target)) {
-        sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
-        window.clearTimeout(sbComposerKeyboardSettleTimer);
-        // Apply the first-focus estimate before Safari's focus default action
-        // can pan the visual viewport to reveal the composer caret.
-        syncShellViewportBounds();
-        // Re-sync after the pre-shift window closes so the shell settles on
-        // the measured keyboard height even if no viewport events fire.
-        sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
+        preShiftComposerForKeyboard(false);
     }
 
     queueMobileViewportStateSync();
@@ -2575,6 +2592,7 @@ function handleMobileKeyboardFocusOut() {
         return;
     }
 
+    sbComposerKeyboardFocusPending = false;
     queueMobileViewportStateSync();
 }
 
@@ -16556,10 +16574,10 @@ function initAll() {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
 
-        // SillyBunny: pre-shrink the shell before the iOS keyboard finishes
-        // opening on composer focus, and re-sync shell bounds whenever keyboard
-        // focus moves so stable-viewport decisions never linger on stale focus
-        // state (see getComposerKeyboardInset).
+        // SillyBunny: pre-shrink the shell on pointerdown, before iOS commits
+        // its focus reveal pan. Keep focus listeners for keyboard/accessibility
+        // focus and to prevent stable-viewport decisions from lingering.
+        document.addEventListener('pointerdown', handleComposerKeyboardPointerDown, { passive: true, capture: true });
         document.addEventListener('focusin', handleComposerKeyboardFocusIn);
         document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }

@@ -606,6 +606,8 @@ describe('mobile shell lifecycle wiring', () => {
     test('holds the focused composer above the iOS keyboard instead of letting Safari reveal the caret', () => {
         const getComposerKeyboardInsetSource = getFunctionSource('getComposerKeyboardInset');
         const getShellViewportSizeSource = getFunctionSource('getShellViewportSize');
+        const preShiftComposerForKeyboardSource = getFunctionSource('preShiftComposerForKeyboard');
+        const handleComposerKeyboardPointerDownSource = getFunctionSource('handleComposerKeyboardPointerDown');
         const handleComposerKeyboardFocusInSource = getFunctionSource('handleComposerKeyboardFocusIn');
         const syncShellViewportBoundsSource = getFunctionSource('syncShellViewportBounds');
 
@@ -616,16 +618,22 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('import { resolveIOSComposerKeyboardInset } from \'./mobile-composer-keyboard.js\';');
         expect(getComposerKeyboardInsetSource).toContain('const decision = resolveIOSComposerKeyboardInset({');
         expect(getComposerKeyboardInsetSource).toContain('composerFocused: isChatComposerEditableElement(document.activeElement),');
+        expect(getComposerKeyboardInsetSource).toContain('composerFocusPending: sbComposerKeyboardFocusPending,');
         expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = decision.rememberedKeyboardHeight;');
         expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
         expect(getShellViewportSizeSource).toContain('const height = Math.max(0, layoutViewport.height - composerKeyboardInset);');
         expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
 
-        // Apply the estimated or remembered height synchronously on focus,
-        // before Safari performs its default caret-reveal pan.
-        expect(handleComposerKeyboardFocusInSource).toContain('sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;');
-        expect(handleComposerKeyboardFocusInSource).toContain('syncShellViewportBounds();');
+        // Apply the estimated or remembered height synchronously before focus,
+        // then force layout before Safari performs its caret-reveal decision.
+        expect(handleComposerKeyboardPointerDownSource).toContain('preShiftComposerForKeyboard(true);');
+        expect(handleComposerKeyboardPointerDownSource).toContain('event.target.getBoundingClientRect();');
+        expect(preShiftComposerForKeyboardSource).toContain('sbComposerKeyboardFocusPending = focusPending;');
+        expect(preShiftComposerForKeyboardSource).toContain('syncShellViewportBounds();');
+        expect(preShiftComposerForKeyboardSource).toContain('sbComposerKeyboardFocusPending = false;');
+        expect(handleComposerKeyboardFocusInSource).toContain('preShiftComposerForKeyboard(false);');
         expect(handleComposerKeyboardFocusInSource).toContain('queueMobileViewportStateSync();');
+        expect(tabsSource).toContain('document.addEventListener(\'pointerdown\', handleComposerKeyboardPointerDown, { passive: true, capture: true });');
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
 

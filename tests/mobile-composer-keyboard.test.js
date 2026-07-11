@@ -10,15 +10,27 @@ const portraitViewport = {
 };
 
 describe('iOS composer keyboard inset', () => {
-    test('pre-shrinks the shell on first focus without a measured keyboard height', () => {
+    test('pre-shrinks the shell before first pointer focus without a measured keyboard height', () => {
         const decision = resolveIOSComposerKeyboardInset({
             ...portraitViewport,
-            composerFocused: true,
+            composerFocused: false,
+            composerFocusPending: true,
             preShiftActive: true,
         });
 
-        expect(decision.inset).toBe(354);
+        expect(decision.inset).toBe(455);
         expect(decision.rememberedKeyboardHeight).toBe(0);
+    });
+
+    test('drops a cancelled pre-focus inset when the pending state clears', () => {
+        const decision = resolveIOSComposerKeyboardInset({
+            ...portraitViewport,
+            composerFocused: false,
+            composerFocusPending: false,
+            preShiftActive: true,
+        });
+
+        expect(decision.inset).toBe(0);
     });
 
     test('keeps the composer inset active when Safari pans the visual viewport', () => {
@@ -37,7 +49,7 @@ describe('iOS composer keyboard inset', () => {
         });
 
         expect(measuredPan.inset).toBe(360);
-        expect(panBeforeResize.inset).toBe(354);
+        expect(panBeforeResize.inset).toBe(455);
     });
 
     test('reuses the measured keyboard height on refocus', () => {
@@ -72,7 +84,7 @@ describe('iOS composer keyboard inset', () => {
             rememberedLayoutWidth: 390,
         });
 
-        expect(landscape.inset).toBe(176);
+        expect(landscape.inset).toBe(219);
         expect(landscape.rememberedKeyboardHeight).toBe(0);
         expect(landscape.rememberedLayoutWidth).toBe(844);
     });

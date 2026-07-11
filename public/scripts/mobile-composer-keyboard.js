@@ -1,9 +1,9 @@
 const IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
 const IOS_KEYBOARD_PAN_THRESHOLD_PX = 2;
 const IOS_KEYBOARD_LAYOUT_WIDTH_EPSILON_PX = 8;
-const IOS_KEYBOARD_ESTIMATED_HEIGHT_RATIO = 0.4;
+const IOS_KEYBOARD_ESTIMATED_HEIGHT_RATIO = 0.52;
 const IOS_KEYBOARD_ESTIMATED_MIN_HEIGHT_PX = 160;
-const IOS_KEYBOARD_ESTIMATED_MAX_HEIGHT_PX = 360;
+const IOS_KEYBOARD_ESTIMATED_MAX_HEIGHT_PX = 480;
 const IOS_COMPOSER_FOCUS_CLEARANCE_PX = 16;
 
 function readViewportNumber(value, fallback = 0) {
@@ -27,6 +27,7 @@ export function resolveIOSComposerKeyboardInset({
     visualHeight,
     visualTop,
     composerFocused,
+    composerFocusPending = false,
     preShiftActive,
     rememberedKeyboardHeight = 0,
     rememberedLayoutWidth = 0,
@@ -41,23 +42,24 @@ export function resolveIOSComposerKeyboardInset({
     const measuredKeyboardHeight = Math.max(0, height - visibleHeight);
     const hasMeasuredKeyboard = measuredKeyboardHeight > IOS_KEYBOARD_MIN_HEIGHT_PX;
     const keyboardOpen = hasMeasuredKeyboard || viewportTop > IOS_KEYBOARD_PAN_THRESHOLD_PX;
+    const composerActive = composerFocused || composerFocusPending;
     const openingInset = usableRememberedHeight > IOS_KEYBOARD_MIN_HEIGHT_PX
         ? usableRememberedHeight
         : estimateIOSKeyboardHeight(height);
     let nextRememberedHeight = usableRememberedHeight;
 
     if (hasMeasuredKeyboard) {
-        nextRememberedHeight = composerFocused && preShiftActive
+        nextRememberedHeight = composerActive && preShiftActive
             ? Math.max(measuredKeyboardHeight, openingInset)
             : measuredKeyboardHeight;
     }
 
     let inset = 0;
-    if (composerFocused && keyboardOpen) {
+    if (composerActive && keyboardOpen) {
         inset = hasMeasuredKeyboard
             ? (preShiftActive ? Math.max(measuredKeyboardHeight, openingInset) : measuredKeyboardHeight)
             : openingInset;
-    } else if (composerFocused && preShiftActive) {
+    } else if (composerActive && preShiftActive) {
         inset = openingInset;
     }
 
