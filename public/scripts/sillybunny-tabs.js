@@ -2510,84 +2510,6 @@ function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), 
     return keyboardHeight > 80 || visualViewportSize.top > 2;
 }
 
-const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
-const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
-const MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
-
-let sbLastIOSKeyboardHeight = 0;
-let sbComposerKeyboardPreShiftDeadline = 0;
-let sbComposerKeyboardSettleTimer = 0;
-
-/**
- * SillyBunny: iOS Safari reveals a focused caret hidden behind the software
- * keyboard by panning the visual viewport and force-scrolling the document,
- * which pushes the fixed shell off screen (the composer-at-top escape).
- * Instead of chasing that pan, give up the keyboard's height while the chat
- * composer is focused: the shell keeps its stable layout top but shrinks so
- * the composer sits above the keyboard and Safari has nothing to reveal. The
- * last measured keyboard height pre-shrinks the shell right after focus,
- * before the keyboard finishes animating, so the reveal never triggers.
- */
-function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
-    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
-        return 0;
-    }
-
-    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
-    if (keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX) {
-        sbLastIOSKeyboardHeight = keyboardHeight;
-    }
-
-    if (!isChatComposerEditableElement(document.activeElement)) {
-        return 0;
-    }
-
-    const withinPreShiftWindow = Date.now() < sbComposerKeyboardPreShiftDeadline;
-
-    if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
-        // Safari already panned the visual viewport (e.g. the first focus of a
-        // session, before any keyboard height is known). Shrinking now would
-        // push the composer to the top of the panned slice with a void below;
-        // keep the stable layout and let the clamped pan frame the composer.
-        if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {
-            return 0;
-        }
-
-        // Hold the pre-shift height through the opening animation so interim
-        // resize events cannot bounce the shell; settle on the measured height.
-        return withinPreShiftWindow ? Math.max(keyboardHeight, sbLastIOSKeyboardHeight) : keyboardHeight;
-    }
-
-    // Keyboard not open yet: pre-shrink with the remembered height in the
-    // window right after composer focus so the shell is already short when
-    // the keyboard arrives and the caret never sits behind it.
-    return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;
-}
-
-function handleComposerKeyboardFocusIn(event) {
-    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
-        return;
-    }
-
-    if (isChatComposerEditableElement(event.target)) {
-        sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
-        window.clearTimeout(sbComposerKeyboardSettleTimer);
-        // Re-sync after the pre-shift window closes so the shell settles on
-        // the measured keyboard height even if no viewport events fire.
-        sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
-    }
-
-    queueMobileViewportStateSync();
-}
-
-function handleMobileKeyboardFocusOut() {
-    if (!isIOSWebKitPlatform() || !isMobileViewport()) {
-        return;
-    }
-
-    queueMobileViewportStateSync();
-}
-
 function syncIOSKeyboardBottomInset() {
     const root = document.documentElement;
     let bottomInset = 0;
@@ -2615,15 +2537,6 @@ function syncIOSKeyboardBottomInset() {
 function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
-
-    // SillyBunny: composer edits keep the stable layout top but give up the
-    // keyboard's height so the focused composer sits above the keyboard and
-    // Safari never pans or force-scrolls the document to reveal the caret.
-    const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
-    if (composerKeyboardInset > 0) {
-        const height = Math.max(0, layoutViewport.height - composerKeyboardInset);
-        return { ...layoutViewport, height, bottom: height };
-    }
 
     // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
     // should not feed Safari visualViewport jitter back into shell geometry.
@@ -2655,12 +2568,6 @@ function syncShellViewportBounds() {
     // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
     // keyboard edit paths intentionally keep the stable layout top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
-
-    // SillyBunny: while the composer is held above the iOS keyboard the
-    // document scroll anchor may run mid-edit (see browser-fixes.js), because
-    // resetting the document scroll can no longer hide the focused caret.
-    const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
-    root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
 }
 
 function getMobileFocusedInputScroller(target) {
@@ -16592,13 +16499,6 @@ function initAll() {
     if (isIOSWebKitPlatform()) {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
-
-        // SillyBunny: pre-shrink the shell before the iOS keyboard finishes
-        // opening on composer focus, and re-sync shell bounds whenever keyboard
-        // focus moves so stable-viewport decisions never linger on stale focus
-        // state (see getComposerKeyboardInset).
-        document.addEventListener('focusin', handleComposerKeyboardFocusIn);
-        document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
