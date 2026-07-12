@@ -796,6 +796,7 @@ export function initRossMods() {
     // Native listener because jQuery cannot register non-passive wheel handlers.
     const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
     hotswapBar?.addEventListener('wheel', (event) => {
+        if (event.ctrlKey || event.metaKey) return;
         if (hotswapBar.scrollWidth <= hotswapBar.clientWidth) return;
         // Leave trackpad horizontal swipes to native handling
         if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
