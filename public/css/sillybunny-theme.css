@@ -2139,6 +2139,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     margin: 0;
 }
 
+@media screen and (max-width: 1000px) {
+    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+        grid-row: 1 / -1 !important;
+    }
+}
+
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
     grid-column: 2 / -1;
     grid-row: 1 / span 2;
