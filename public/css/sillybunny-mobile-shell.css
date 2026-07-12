@@ -2376,8 +2376,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         grid-column: 1;
         grid-row: 1 / -1;
-        align-self: center;
-        justify-self: center;
+        align-self: center !important;
+        justify-self: center !important;
         width: var(--sb-character-list-avatar-size) !important;
         min-width: var(--sb-character-list-avatar-size) !important;
         max-width: var(--sb-character-list-avatar-size) !important;
