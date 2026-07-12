@@ -2029,6 +2029,7 @@ body.sb-shell-resizing * {
     line-height: 1;
     min-height: 32px;
     padding: 8px 13px;
+    cursor: pointer;
     transition: background var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast), opacity var(--sb-transition-fast);
     opacity: 0.72;
 }
@@ -2158,16 +2159,21 @@ body.sb-shell-resizing * {
 }
 
 #right-nav-panel #CharListButtonAndHotSwaps {
+    /* Natural height: the favorites label sits above the avatar strip, and the
+       old 52px clamp clipped the strip's bottom edge */
     min-height: 52px;
-    max-height: 52px;
+    max-height: none;
     padding: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline);
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
     overflow: hidden;
 }
 
 #right-nav-panel #HotSwapWrapper {
-    align-items: center;
-    gap: 10px;
+    /* Deliberate two-row layout (label divider, then avatar strip); previously
+       the strip only ended up below the label as a flex-wrap accident */
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
     margin: 0 !important;
     min-height: 0;
     overflow: hidden;
@@ -2175,6 +2181,9 @@ body.sb-shell-resizing * {
 
 #right-nav-panel .sb-character-favorites-label {
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
     letter-spacing: var(--sb-tracking-kicker);
@@ -2183,14 +2192,37 @@ body.sb-shell-resizing * {
     opacity: 0.72;
 }
 
+#right-nav-panel .sb-character-favorites-label::before,
+#right-nav-panel .sb-character-favorites-label::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
+}
+
 #right-nav-panel #HotSwapWrapper .hotswap {
     min-width: 0;
-    flex: 1 1 auto;
+    /* Shrink-to-fit so a short row centers under the label; overflowing rows
+       clamp to full width and scroll */
+    flex: 0 0 auto;
+    align-self: center;
+    max-width: 100%;
+    column-gap: 5px;
     max-height: 36px;
     margin: 0;
+    padding: 1px 2px;
     align-items: center;
     flex-wrap: nowrap;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Wheel-driven sideways scroll; a visible scrollbar would eat the 36px row,
+       and smooth behavior makes rapid wheel ticks overwrite each other */
+    scrollbar-width: none;
+    scroll-behavior: auto;
+}
+
+#right-nav-panel #HotSwapWrapper .hotswap::-webkit-scrollbar {
+    display: none;
 }
 
 #right-nav-panel #HotSwapWrapper .hotswap > small {
@@ -5317,7 +5349,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 #right-nav-panel .sb-character-editor-controls-row {
-    --sb-character-editor-avatar-size: clamp(96px, 12vw, 132px);
+    --sb-character-editor-avatar-size: clamp(112px, 13vw, 152px);
     width: 100%;
     display: grid;
     grid-template-columns: var(--sb-character-editor-avatar-size) minmax(0, 1fr);
@@ -5786,10 +5818,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: themes (e.g. MoonlitEchoes) pin .menu_button colors with !important,
+   which otherwise flattens the lit state to the idle button color */
 #right-nav-panel .sb-character-editor-side-actions #favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel .sb-character-editor-side-actions #favorite_button:hover {
@@ -5802,18 +5836,25 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     width: var(--sb-character-editor-avatar-size) !important;
     min-width: var(--sb-character-editor-avatar-size) !important;
     max-width: var(--sb-character-editor-avatar-size) !important;
-    height: var(--sb-character-editor-avatar-size) !important;
-    min-height: var(--sb-character-editor-avatar-size) !important;
-    max-height: var(--sb-character-editor-avatar-size) !important;
+    /* Portrait box instead of the old square: card art is mostly portrait and
+       the square crop hid most of the image */
+    aspect-ratio: 3 / 4;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     margin: 0 !important;
     border-width: 3px;
     border-radius: var(--sb-radius-lg, 22px);
     overflow: hidden;
+    /* Letterbox surface for art that isn't 3:4, so `contain` reads as a frame */
+    background: color-mix(in srgb, var(--sb-shell-surface) 62%, transparent);
 }
 
 #right-nav-panel .sb-character-editor-controls-row > #avatar_div_div img {
     width: 100% !important;
     height: 100% !important;
+    /* The whole image stays visible regardless of its aspect ratio */
+    object-fit: contain !important;
 }
 
 #right-nav-panel #avatar_div > #tagList {
@@ -6335,10 +6376,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     white-space: nowrap;
 }
 
+/* !important: same theme-override guard as the character editor favorite button */
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-side-actions #group_favorite_button.fav_on {
-    color: var(--active);
-    border-color: color-mix(in srgb, var(--active) 46%, transparent);
-    background: color-mix(in srgb, var(--active) 14%, transparent);
+    color: var(--active) !important;
+    border-color: color-mix(in srgb, var(--active) 46%, transparent) !important;
+    background: color-mix(in srgb, var(--active) 14%, transparent) !important;
 }
 
 #right-nav-panel:is([data-menu-type="group_create"], [data-menu-type="group_edit"]) .sb-group-editor-name-row label {

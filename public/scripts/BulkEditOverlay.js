@@ -89,6 +89,7 @@ class CharacterContextMenu {
 
         if (!mergeResponse.ok) {
             mergeResponse.json().then(json => toastr.error(`Character not saved. Error: ${json.message}. Field: ${json.error}`));
+            return;
         }
 
         const element = document.getElementById(`CharID${characterId}`);

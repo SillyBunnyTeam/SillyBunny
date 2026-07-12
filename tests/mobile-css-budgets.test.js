@@ -38,12 +38,14 @@ function getMediaQueryPxValues(cssSource) {
 // border rules without affecting desktop.
 // sillybunny-paper-theme.css starts at 55: the phone-only paper texture and
 // chrome adjustment sheet is budgeted from introduction.
+// sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
+// override upstream !important avatar alignment rules for missing avatars.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 677,
     'sillybunny-paper-theme.css': 55,
     'sillybunny-tabs.css': 386,
     'sillybunny-chat-styles.css': 225,
-    'sillybunny-theme.css': 158,
+    'sillybunny-theme.css': 161,
 });
 
 const FORK_DISTINCT_BREAKPOINT_BUDGET = 18;
