@@ -271,6 +271,39 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
     });
 
+    test('refreshes exact recovery snapshots for deferred saves and restores missing active files', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const { createCharacterChatTarget, getChatRecoveryPaths, loadActiveChatWithRecovery } = await import('../src/chat-recovery.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-recovery-save-'));
+        const chatsDirectory = path.join(tempDir, 'chats');
+        const backupDirectory = path.join(tempDir, 'backups');
+        const owner = 'Test Card';
+        const fileName = 'Session.jsonl';
+        const chatDirectory = path.join(chatsDirectory, owner);
+        const chatFile = path.join(chatDirectory, fileName);
+        await fs.mkdir(chatDirectory, { recursive: true });
+        await fs.mkdir(backupDirectory);
+
+        const recoveryTarget = createCharacterChatTarget({ chatsDirectory, backupDirectory, owner, filename: fileName });
+        await trySaveChat(
+            chatWithIntegrity('initial-integrity', 'deferred recovery data'),
+            chatFile,
+            true,
+            'recovery-user',
+            owner,
+            backupDirectory,
+            { deferBackup: true, recoveryTarget },
+        );
+
+        const { latestPath } = getChatRecoveryPaths(recoveryTarget);
+        await expect(fs.readFile(latestPath, 'utf8')).resolves.toContain('deferred recovery data');
+        await fs.unlink(chatFile);
+
+        const restored = loadActiveChatWithRecovery(recoveryTarget);
+        expect(restored).toMatchObject({ status: 'ok', recovered: true });
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toContain('deferred recovery data');
+    });
+
     test('exposes default-off backup diagnostic logging for chat and settings backups', async () => {
         const configSource = await fs.readFile(fileURLToPath(new URL('../default/config.yaml', import.meta.url)), 'utf8');
         const chatsSource = await fs.readFile(fileURLToPath(new URL('../src/endpoints/chats.js', import.meta.url)), 'utf8');
@@ -467,7 +500,7 @@ describe('chat integrity rotation', () => {
     test('retries group chat load requests after stale CSRF before integrity metadata is initialized', async () => {
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
         const loadGroupChatBody = groupChatSource.slice(
-            groupChatSource.indexOf('async function loadGroupChat(chatId)'),
+            groupChatSource.indexOf('async function loadGroupChat(chatId, allowCreate = false)'),
             groupChatSource.indexOf('/**\n * Checks whether a group chat file currently exists on the server.'),
         );
         const groupChatExistsBody = groupChatSource.slice(

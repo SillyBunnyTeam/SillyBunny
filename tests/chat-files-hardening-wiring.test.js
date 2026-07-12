@@ -1,0 +1,52 @@
+import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, test } from '@jest/globals';
+
+async function readSource(relativePath) {
+    return await fs.readFile(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
+}
+
+function getFunctionBody(source, start, end) {
+    return source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+}
+
+describe('chat file hardening wiring', () => {
+    test('uses pointer-only character rename persistence with rollback and exact reload checks', async () => {
+        const source = await readSource('../public/script.js');
+        const renameBody = getFunctionBody(
+            source,
+            'export async function renameGroupOrCharacterChat',
+            'export async function renameChat',
+        );
+
+        expect(renameBody).toContain('await updateRemoteChatName(characterId, actualNewFileName);');
+        expect(renameBody).not.toContain('createOrEditCharacter');
+        expect(renameBody).toContain('await sendRenameRequest(rollbackBody);');
+        expect(renameBody).toContain('wasActiveTarget && isStillActiveTarget');
+        expect(renameBody).toContain('newFileName: `${actualNewFileName}.jsonl`');
+    });
+
+    test('does not turn strict character load failures into fresh greetings', async () => {
+        const source = await readSource('../public/script.js');
+        const getChatBody = getFunctionBody(
+            source,
+            'export async function getChat',
+            'async function getChatResult',
+        );
+
+        expect(getChatBody).toContain('allow_create: resolvedChat.created');
+        expect(getChatBody).toContain('return false;');
+        expect(getChatBody.match(/getChatResult/g)).toHaveLength(1);
+    });
+
+    test('connects exact recovery to save, load, rename, and intentional deletion routes', async () => {
+        const source = await readSource('../src/endpoints/chats.js');
+
+        expect(source).toContain('writeLatestChatSnapshot(recoveryTarget, jsonlData);');
+        expect(source).toContain('loadActiveChatWithRecovery(target)');
+        expect(source).toContain('rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget);');
+        expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, false, sanitizedChatFileName));');
+        expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, true, chatFileName));');
+    });
+});

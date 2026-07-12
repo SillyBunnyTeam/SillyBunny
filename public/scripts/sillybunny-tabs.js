@@ -5337,7 +5337,11 @@ async function handleRenameChat() {
         return;
     }
 
-    await chatContext.context.renameChat(currentChatId, String(newChatName).trim());
+    try {
+        await chatContext.context.renameChat(currentChatId, String(newChatName).trim());
+    } catch {
+        return;
+    }
     scheduleChatbarRefresh(120);
 }
 

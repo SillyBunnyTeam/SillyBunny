@@ -1,12 +1,27 @@
 import { t } from './i18n.js';
 import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
 import { clamp, escapeHtml, getFileExtension, sortMoments, timestampToMoment } from './utils.js';
-import { displayPastChats, getRequestHeaders, importCharacterChat } from '/script.js';
+import { displayPastChats, getRequestHeaders, importCharacterChat, refreshCsrfToken } from '/script.js';
+import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { importGroupChat } from './group-chats.js';
 
 const DEFAULT_BACKUP_CLEANUP_AGE = 30;
 const DEFAULT_BACKUP_CLEANUP_KEEP = 25;
 const BACKUP_CLEANUP_UNITS = ['days', 'weeks', 'months'];
+const BACKUPS_LIST_ID = 'chat_backups_list';
+
+/**
+ * Sends a backup API request and retries once after a stale CSRF response.
+ * @param {string} resource API resource
+ * @param {RequestInit} init Request options
+ * @returns {Promise<Response>} Fetch response
+ */
+function fetchBackupApi(resource, init = {}) {
+    return fetchWithCsrfRetry(resource, () => ({
+        ...init,
+        headers: getRequestHeaders(),
+    }), { refreshCsrfToken });
+}
 
 class BackupsBrowser {
     /** @type {HTMLElement} */
@@ -32,11 +47,20 @@ class BackupsBrowser {
      * @returns {Promise<void>}
      */
     async viewBackup(name) {
-        const response = await fetch('/api/backups/chat/download', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
-        });
+        let response;
+        try {
+            response = await fetchBackupApi('/api/backups/chat/download', {
+                method: 'POST',
+                body: JSON.stringify({ name: name }),
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
+            toastr.error(t`Failed to download backup, try again later.`);
+            console.error('Failed to download chat backup:', error);
+            return;
+        }
 
         if (!response.ok) {
             toastr.error(t`Failed to download backup, try again later.`);
@@ -77,11 +101,20 @@ class BackupsBrowser {
      * @returns {Promise<void>}
      */
     async restoreBackup(name) {
-        const response = await fetch('/api/backups/chat/download', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
-        });
+        let response;
+        try {
+            response = await fetchBackupApi('/api/backups/chat/download', {
+                method: 'POST',
+                body: JSON.stringify({ name: name }),
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
+            toastr.error(t`Failed to download backup, try again later.`);
+            console.error('Failed to download chat backup:', error);
+            return;
+        }
 
         if (!response.ok) {
             toastr.error(t`Failed to download backup, try again later.`);
@@ -136,11 +169,20 @@ class BackupsBrowser {
             }
         }
 
-        const response = await fetch('/api/backups/chat/delete', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
-        });
+        let response;
+        try {
+            response = await fetchBackupApi('/api/backups/chat/delete', {
+                method: 'POST',
+                body: JSON.stringify({ name: name }),
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                return false;
+            }
+            toastr.error(t`Failed to delete backup, try again later.`);
+            console.error('Failed to delete chat backup:', error);
+            return false;
+        }
 
         if (!response.ok) {
             toastr.error(t`Failed to delete backup, try again later.`);
@@ -393,6 +435,19 @@ class BackupsBrowser {
     }
 
     /**
+     * Creates a visible status message for the backups list.
+     * @param {string} message Status message
+     * @returns {HTMLElement} Status element
+     */
+    renderListMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('chatBackupsEmptyMessage');
+        messageElement.setAttribute('role', 'status');
+        messageElement.textContent = message;
+        return messageElement;
+    }
+
+    /**
      * Load backups and populate the list element.
      * @param {AbortSignal} signal Signal to abort loading.
      * @returns {Promise<void>}
@@ -402,83 +457,102 @@ class BackupsBrowser {
             return;
         }
 
-        this.#backupsListElement.innerHTML = '';
+        this.#backupsListElement.replaceChildren(this.renderListMessage(t`Loading chat…`));
+        this.#backupsListElement.setAttribute('aria-busy', 'true');
         this.#loadedBackups = [];
 
-        const response = await fetch('/api/backups/chat/get', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            signal,
-        });
-
-        if (!response.ok) {
-            console.error('Failed to load chat backups list:', response.statusText);
-            return;
-        }
-
-        /** @type {import('../../src/endpoints/chats.js').ChatInfo[]} */
-        const backupsList = await response.json();
-        this.#loadedBackups = backupsList;
-
-        this.#backupsListElement.appendChild(this.renderCleanupControls());
-
-        if (!backupsList.length) {
-            const emptyMessage = document.createElement('div');
-            emptyMessage.classList.add('chatBackupsEmptyMessage');
-            emptyMessage.textContent = t`No chat backups found.`;
-            this.#backupsListElement.appendChild(emptyMessage);
-            return;
-        }
-
-        for (const backup of backupsList.sort((a, b) => sortMoments(timestampToMoment(this.getBackupTimestamp(a)), timestampToMoment(this.getBackupTimestamp(b))))) {
-            const listItem = document.createElement('div');
-            listItem.classList.add('chatBackupsListItem');
-
-            const backupName = document.createElement('div');
-            backupName.textContent = backup.file_name;
-            backupName.classList.add('chatBackupsListItemName');
-
-            const backupInfo = document.createElement('div');
-            backupInfo.classList.add('chatBackupsListItemInfo');
-            backupInfo.textContent = `${timestampToMoment(this.getBackupTimestamp(backup)).format('lll')} (${backup.file_size}, ${backup.chat_items} 💬)`;
-
-            const actionsList = document.createElement('div');
-            actionsList.classList.add('chatBackupsListItemActions');
-
-            const viewButton = document.createElement('div');
-            viewButton.classList.add('right_menu_button', 'fa-solid', 'fa-eye');
-            viewButton.title = t`View backup`;
-            viewButton.addEventListener('click', async () => {
-                await this.viewBackup(backup.file_name);
+        try {
+            const response = await fetchBackupApi('/api/backups/chat/get', {
+                method: 'POST',
+                signal,
             });
 
-            const restoreButton = document.createElement('div');
-            restoreButton.classList.add('right_menu_button', 'fa-solid', 'fa-rotate-left');
-            restoreButton.title = t`Restore backup`;
-            restoreButton.addEventListener('click', async () => {
-                await this.restoreBackup(backup.file_name);
-            });
+            if (!response.ok) {
+                throw new Error(`Failed to load chat backups list: ${response.status} ${response.statusText}`);
+            }
 
-            const deleteButton = document.createElement('div');
-            deleteButton.classList.add('right_menu_button', 'fa-solid', 'fa-trash');
-            deleteButton.title = t`Delete backup`;
-            deleteButton.addEventListener('click', async () => {
-                const isDeleted = await this.deleteBackup(backup.file_name);
-                if (isDeleted) {
-                    listItem.remove();
-                    this.#loadedBackups = this.#loadedBackups.filter(item => item.file_name !== backup.file_name);
+            /** @type {import('../../src/endpoints/chats.js').ChatInfo[]} */
+            const backupsList = await response.json();
+            if (!Array.isArray(backupsList)) {
+                throw new TypeError('Invalid chat backups list response');
+            }
+            if (signal.aborted) {
+                return;
+            }
+            this.#loadedBackups = backupsList;
+            this.#backupsListElement.innerHTML = '';
+
+            this.#backupsListElement.appendChild(this.renderCleanupControls());
+
+            if (!backupsList.length) {
+                this.#backupsListElement.appendChild(this.renderListMessage(t`No chat backups found.`));
+                return;
+            }
+
+            for (const backup of backupsList.sort((a, b) => sortMoments(timestampToMoment(this.getBackupTimestamp(a)), timestampToMoment(this.getBackupTimestamp(b))))) {
+                const listItem = document.createElement('div');
+                listItem.classList.add('chatBackupsListItem');
+
+                const backupName = document.createElement('div');
+                backupName.textContent = backup.file_name;
+                backupName.classList.add('chatBackupsListItemName');
+
+                const backupInfo = document.createElement('div');
+                backupInfo.classList.add('chatBackupsListItemInfo');
+                const backupDetails = [backup.file_size];
+                if (backup.chat_items !== undefined && backup.chat_items !== null) {
+                    backupDetails.push(`${backup.chat_items} 💬`);
                 }
-            });
+                backupInfo.textContent = `${timestampToMoment(this.getBackupTimestamp(backup)).format('lll')} (${backupDetails.join(', ')})`;
 
-            actionsList.appendChild(viewButton);
-            actionsList.appendChild(restoreButton);
-            actionsList.appendChild(deleteButton);
+                const actionsList = document.createElement('div');
+                actionsList.classList.add('chatBackupsListItemActions');
 
-            listItem.appendChild(backupName);
-            listItem.appendChild(backupInfo);
-            listItem.appendChild(actionsList);
+                const viewButton = document.createElement('div');
+                viewButton.classList.add('right_menu_button', 'fa-solid', 'fa-eye');
+                viewButton.title = t`View backup`;
+                viewButton.addEventListener('click', async () => {
+                    await this.viewBackup(backup.file_name);
+                });
 
-            this.#backupsListElement.appendChild(listItem);
+                const restoreButton = document.createElement('div');
+                restoreButton.classList.add('right_menu_button', 'fa-solid', 'fa-rotate-left');
+                restoreButton.title = t`Restore backup`;
+                restoreButton.addEventListener('click', async () => {
+                    await this.restoreBackup(backup.file_name);
+                });
+
+                const deleteButton = document.createElement('div');
+                deleteButton.classList.add('right_menu_button', 'fa-solid', 'fa-trash');
+                deleteButton.title = t`Delete backup`;
+                deleteButton.addEventListener('click', async () => {
+                    const isDeleted = await this.deleteBackup(backup.file_name);
+                    if (isDeleted) {
+                        listItem.remove();
+                        this.#loadedBackups = this.#loadedBackups.filter(item => item.file_name !== backup.file_name);
+                    }
+                });
+
+                actionsList.appendChild(viewButton);
+                actionsList.appendChild(restoreButton);
+                actionsList.appendChild(deleteButton);
+
+                listItem.appendChild(backupName);
+                listItem.appendChild(backupInfo);
+                listItem.appendChild(actionsList);
+
+                this.#backupsListElement.appendChild(listItem);
+            }
+        } catch (error) {
+            if (error?.name === 'AbortError' || signal.aborted) {
+                return;
+            }
+            console.error('Failed to load chat backups list:', error);
+            this.#backupsListElement.replaceChildren(this.renderListMessage(t`Could not load chat data. Try reloading the page.`));
+        } finally {
+            if (!signal.aborted) {
+                this.#backupsListElement.setAttribute('aria-busy', 'false');
+            }
         }
     }
 
@@ -488,6 +562,9 @@ class BackupsBrowser {
         }
 
         this.#isOpen = false;
+        if (this.#buttonElement) {
+            this.#buttonElement.setAttribute('aria-expanded', 'false');
+        }
         if (this.#buttonChevronIcon) {
             this.#buttonChevronIcon.classList.remove('fa-chevron-up');
             this.#buttonChevronIcon.classList.add('fa-chevron-down');
@@ -508,6 +585,9 @@ class BackupsBrowser {
         }
 
         this.#isOpen = true;
+        if (this.#buttonElement) {
+            this.#buttonElement.setAttribute('aria-expanded', 'true');
+        }
         if (this.#buttonChevronIcon) {
             this.#buttonChevronIcon.classList.remove('fa-chevron-down');
             this.#buttonChevronIcon.classList.add('fa-chevron-up');
@@ -536,7 +616,10 @@ class BackupsBrowser {
         }
 
         const button = document.createElement('button');
+        button.type = 'button';
         button.classList.add('menu_button', 'menu_button_icon');
+        button.setAttribute('aria-expanded', 'false');
+        button.setAttribute('aria-controls', BACKUPS_LIST_ID);
 
         const buttonIcon = document.createElement('i');
         buttonIcon.classList.add('fa-solid', 'fa-box-open');
@@ -578,6 +661,7 @@ class BackupsBrowser {
         }
 
         const list = document.createElement('div');
+        list.id = BACKUPS_LIST_ID;
         list.classList.add('chatBackupsList');
 
         sibling.parentNode.insertBefore(list, sibling);

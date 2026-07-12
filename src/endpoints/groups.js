@@ -6,10 +6,12 @@ import express from 'express';
 import sanitize from 'sanitize-filename';
 import { default as writeFileAtomic } from 'write-file-atomic';
 
-import { color, tryParse, tryWriteFileSync } from '../util.js';
+import { color, getConfigValue, tryParse, tryWriteFileSync } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
+import { createGroupChatTarget, markChatDeleted } from '../chat-recovery.js';
 
 export const router = express.Router();
+const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 
 /**
  * Warns if group data contains deprecated metadata keys and removes them.
@@ -241,9 +243,20 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
         const group = JSON.parse(fs.readFileSync(pathToGroup, 'utf8'));
 
         if (group && Array.isArray(group.chats)) {
-            for (const chat of group.chats) {
-                console.info('Deleting group chat', chat);
-                const pathToFile = path.join(request.user.directories.groupChats, sanitize(`${chat}.jsonl`));
+            const chatFiles = group.chats.map(chat => sanitize(`${chat}.jsonl`));
+            if (isChatBackupEnabled) {
+                // SillyBunny: tombstones keep intentional group deletion from looking like recoverable loss.
+                for (const chatFile of chatFiles) {
+                    markChatDeleted(createGroupChatTarget({
+                        groupChatsDirectory: request.user.directories.groupChats,
+                        backupDirectory: request.user.directories.backups,
+                        filename: chatFile,
+                    }));
+                }
+            }
+            for (const chatFile of chatFiles) {
+                console.info('Deleting group chat', chatFile);
+                const pathToFile = path.join(request.user.directories.groupChats, chatFile);
 
                 if (fs.existsSync(pathToFile)) {
                     fs.unlinkSync(pathToFile);
@@ -252,6 +265,7 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
         }
     } catch (error) {
         console.error('Could not delete group chats. Clean them up manually.', error);
+        return response.sendStatus(500);
     }
 
     if (fs.existsSync(pathToGroup)) {

@@ -11,6 +11,16 @@ import _ from 'lodash';
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
 import {
+    createCharacterChatTarget,
+    createGroupChatTarget,
+    loadActiveChatWithRecovery,
+    markChatDeleted,
+    readChatJsonlStrict,
+    rekeyChatRecoveryState,
+    seedLatestChatSnapshot,
+    writeLatestChatSnapshot,
+} from '../chat-recovery.js';
+import {
     getConfigValue,
     humanizedDateTime,
     tryParse,
@@ -717,6 +727,44 @@ function isValidChatSavePayload(chatData) {
         && chatData.every(isPlainObject);
 }
 
+function createChatRecoveryTarget(request, isGroup, fileName) {
+    if (isGroup) {
+        return createGroupChatTarget({
+            groupChatsDirectory: request.user.directories.groupChats,
+            backupDirectory: request.user.directories.backups,
+            filename: fileName,
+        });
+    }
+
+    return createCharacterChatTarget({
+        chatsDirectory: request.user.directories.chats,
+        backupDirectory: request.user.directories.backups,
+        owner: String(request.body.avatar_url).replace('.png', ''),
+        filename: fileName,
+    });
+}
+
+function sendChatLoadResponse(response, target, { allowCreate = false } = {}) {
+    // SillyBunny: never let malformed JSONL fall through to the fresh-chat save path.
+    const result = isBackupEnabled
+        ? loadActiveChatWithRecovery(target)
+        : readChatJsonlStrict(target.activePath);
+
+    if (result.status === 'ok') {
+        if (result.recovered) {
+            console.warn(`Recovered chat file from its latest valid snapshot: ${target.activePath}`);
+        }
+        return response.send(result.records);
+    }
+
+    if (result.status === 'missing' && allowCreate) {
+        return response.send([]);
+    }
+
+    const status = result.status === 'missing' ? 404 : 422;
+    return response.status(status).send({ error: result.status });
+}
+
 /**
  * Tries to save the chat data to a file, performing an integrity check if required.
  * @param {Array} chatData The chat array to save.
@@ -727,8 +775,9 @@ function isValidChatSavePayload(chatData) {
  * @param {string} backupDirectory Passed to backupChat.
  * @param {object} [options] Additional save options.
  * @param {boolean} [options.deferBackup] Skip the regular chat backup for this save.
+ * @param {object} [options.recoveryTarget] Exact chat recovery target.
  */
-export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false } = {}) {
+export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null } = {}) {
     if (!isValidChatSavePayload(chatData)) {
         throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
     }
@@ -772,6 +821,10 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
         }
     }
 
+    if (isBackupEnabled && recoveryTarget) {
+        // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
+        writeLatestChatSnapshot(recoveryTarget, jsonlData);
+    }
     tryWriteFileSync(filePath, jsonlData);
     if (!deferBackup) {
         getBackupFunction(handle)(backupDirectory, cardName, jsonlData, CHAT_BACKUPS_PREFIX, handle);
@@ -787,13 +840,18 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         const cardName = String(request.body.avatar_url).replace('.png', '');
         const chatData = request.body.chat;
         const chatFileName = `${String(request.body.file_name)}.jsonl`;
-        const chatFilePath = path.join(request.user.directories.chats, cardName, sanitize(chatFileName));
+        const sanitizedChatFileName = sanitize(chatFileName);
+        const chatFilePath = path.join(request.user.directories.chats, cardName, sanitizedChatFileName);
         if (!isPathUnderParent(request.user.directories.chats, chatFilePath)) {
             return response.sendStatus(400);
         }
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
+            const recoveryTarget = createChatRecoveryTarget(request, false, sanitizedChatFileName);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, {
+                deferBackup: request.body.deferBackup === true,
+                recoveryTarget,
+            });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
@@ -839,25 +897,16 @@ router.post('/get', validateAvatarUrlMiddleware, function (request, response) {
         if (!isPathUnderParent(request.user.directories.chats, directoryPath)) {
             return response.sendStatus(400);
         }
-        const chatDirExists = fs.existsSync(directoryPath);
-
-        //if no chat dir for the character is found, make one with the character name
-        if (!chatDirExists) {
-            fs.mkdirSync(directoryPath);
-            return response.send({});
-        }
-
         if (!request.body.file_name) {
-            return response.send({});
+            return response.send([]);
         }
 
         const chatFileName = `${String(request.body.file_name)}.jsonl`;
-        const chatFilePath = path.join(directoryPath, sanitize(chatFileName));
-
-        return response.send(getChatData(chatFilePath));
+        const recoveryTarget = createChatRecoveryTarget(request, false, sanitize(chatFileName));
+        return sendChatLoadResponse(response, recoveryTarget, { allowCreate: request.body.allow_create === true });
     } catch (error) {
         console.error(error);
-        return response.send({});
+        return response.sendStatus(500);
     }
 });
 
@@ -873,8 +922,10 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         if (!request.body.is_group && !isPathUnderParent(request.user.directories.chats, pathToFolder)) {
             return response.sendStatus(400);
         }
-        const pathToOriginalFile = path.join(pathToFolder, sanitize(request.body.original_file));
-        const pathToRenamedFile = path.join(pathToFolder, sanitize(request.body.renamed_file));
+        const originalFileName = sanitize(request.body.original_file);
+        const renamedFileName = sanitize(request.body.renamed_file);
+        const pathToOriginalFile = path.join(pathToFolder, originalFileName);
+        const pathToRenamedFile = path.join(pathToFolder, renamedFileName);
         const sanitizedFileName = path.parse(pathToRenamedFile).name;
         console.debug('Old chat name', pathToOriginalFile);
         console.debug('New chat name', pathToRenamedFile);
@@ -884,8 +935,22 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
             return response.status(400).send({ error: true });
         }
 
+        const sourceRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, originalFileName);
+        const destinationRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, renamedFileName);
+        if (isBackupEnabled) {
+            seedLatestChatSnapshot(sourceRecoveryTarget);
+        }
+
         // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
         const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
+        try {
+            if (isBackupEnabled) {
+                rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget);
+            }
+        } catch (error) {
+            renameChatFile(pathToRenamedFile, pathToOriginalFile);
+            throw error;
+        }
         console.info(`Successfully renamed chat file (${renameResult.method}).`);
         return response.send({ ok: true, sanitizedFileName });
     } catch (error) {
@@ -902,10 +967,15 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
 
         const dirName = String(request.body.avatar_url).replace('.png', '');
         const chatFileName = String(request.body.chatfile);
-        const chatFilePath = path.join(request.user.directories.chats, dirName, sanitize(chatFileName));
+        const sanitizedChatFileName = sanitize(chatFileName);
+        const chatFilePath = path.join(request.user.directories.chats, dirName, sanitizedChatFileName);
         if (!isPathUnderParent(request.user.directories.chats, chatFilePath)) {
             return response.sendStatus(400);
         }
+        if (isBackupEnabled) {
+            markChatDeleted(createChatRecoveryTarget(request, false, sanitizedChatFileName));
+        }
+
         //Return success if the file was deleted.
         if (tryDeleteFile(chatFilePath)) {
             return response.send({ ok: true });
@@ -1117,10 +1187,14 @@ router.post('/group/get', (request, response) => {
         return response.sendStatus(400);
     }
 
-    const id = request.body.id;
-    const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${id}.jsonl`));
-
-    return response.send(getChatData(chatFilePath));
+    try {
+        const id = request.body.id;
+        const recoveryTarget = createChatRecoveryTarget(request, true, sanitize(`${id}.jsonl`));
+        return sendChatLoadResponse(response, recoveryTarget, { allowCreate: request.body.allow_create === true });
+    } catch (error) {
+        console.error(error);
+        return response.sendStatus(500);
+    }
 });
 
 router.post('/group/info', async (request, response) => {
@@ -1131,9 +1205,16 @@ router.post('/group/info', async (request, response) => {
 
         const id = request.body.id;
         const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${id}.jsonl`));
+        const recoveryTarget = createChatRecoveryTarget(request, true, sanitize(`${id}.jsonl`));
+        const loadResult = isBackupEnabled
+            ? loadActiveChatWithRecovery(recoveryTarget)
+            : readChatJsonlStrict(chatFilePath);
 
-        if (!fs.existsSync(chatFilePath)) {
+        if (loadResult.status === 'missing') {
             return response.status(404).send({ error: 'not_found' });
+        }
+        if (loadResult.status === 'corrupt' && loadResult.data === null) {
+            return response.status(422).send({ error: 'unsafe_chat_file' });
         }
 
         const chatInfo = await getListableGroupChatInfo(chatFilePath, id);
@@ -1151,7 +1232,12 @@ router.post('/group/delete', (request, response) => {
         }
 
         const id = request.body.id;
-        const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${id}.jsonl`));
+        const chatFileName = sanitize(`${id}.jsonl`);
+        const chatFilePath = path.join(request.user.directories.groupChats, chatFileName);
+
+        if (isBackupEnabled) {
+            markChatDeleted(createChatRecoveryTarget(request, true, chatFileName));
+        }
 
         //Return success if the file was deleted.
         if (tryDeleteFile(chatFilePath)) {
@@ -1174,11 +1260,16 @@ router.post('/group/save', async function (request, response) {
 
         const id = request.body.id;
         const handle = request.user.profile.handle;
-        const chatFilePath = path.join(request.user.directories.groupChats, sanitize(`${id}.jsonl`));
+        const chatFileName = sanitize(`${id}.jsonl`);
+        const chatFilePath = path.join(request.user.directories.groupChats, chatFileName);
         const chatData = request.body.chat;
 
         if (Array.isArray(chatData)) {
-            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, { deferBackup: request.body.deferBackup === true });
+            const recoveryTarget = createChatRecoveryTarget(request, true, chatFileName);
+            const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, {
+                deferBackup: request.body.deferBackup === true,
+                recoveryTarget,
+            });
             return response.send({ ok: true, integrity: saveResult.integrity });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });

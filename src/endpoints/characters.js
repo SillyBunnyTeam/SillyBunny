@@ -25,6 +25,12 @@ import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+import {
+    createCharacterChatTarget,
+    isChatRecoverable,
+    markChatDeleted,
+    readChatJsonlStrict,
+} from '../chat-recovery.js';
 
 // With 100 MB limit it would take roughly 3000 characters to reach this limit
 const memoryCacheCapacity = getConfigValue('performance.memoryCacheCapacity', '100mb');
@@ -34,6 +40,7 @@ const isAndroid = process.platform === 'android';
 // Use shallow character data for the character list
 const useShallowCharacters = !!getConfigValue('performance.lazyLoadCharacters', false, 'boolean');
 const useDiskCache = !!getConfigValue('performance.useDiskCache', true, 'boolean');
+const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const BULK_MERGE_CONCURRENCY = 8;
 const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
@@ -1410,8 +1417,6 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(400);
     }
 
-    fs.unlinkSync(avatarPath);
-    invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
     let dir_name = (request.body.avatar_url.replace('.png', ''));
 
     if (!dir_name.length) {
@@ -1421,12 +1426,28 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
 
     if (request.body.delete_chats == true) {
         try {
-            await fs.promises.rm(path.join(request.user.directories.chats, sanitize(dir_name)), { recursive: true, force: true });
+            const owner = sanitize(dir_name);
+            const chatsDirectory = path.join(request.user.directories.chats, owner);
+            if (isChatBackupEnabled && fs.existsSync(chatsDirectory)) {
+                const chatFiles = await fs.promises.readdir(chatsDirectory, { withFileTypes: true });
+                for (const chatFile of chatFiles.filter(entry => entry.isFile() && path.extname(entry.name) === '.jsonl')) {
+                    markChatDeleted(createCharacterChatTarget({
+                        chatsDirectory: request.user.directories.chats,
+                        backupDirectory: request.user.directories.backups,
+                        owner,
+                        filename: chatFile.name,
+                    }));
+                }
+            }
+            await fs.promises.rm(chatsDirectory, { recursive: true, force: true });
         } catch (err) {
             console.error(err);
             return response.sendStatus(500);
         }
     }
+
+    fs.unlinkSync(avatarPath);
+    invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
 
     return response.sendStatus(200);
 });
@@ -1521,8 +1542,22 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
 
         const characterDirectory = (request.body.avatar_url).replace('.png', '');
         const chatsDirectory = path.join(request.user.directories.chats, characterDirectory);
+        const requestedFileName = request.body.file_name
+            ? sanitize(`${String(request.body.file_name).replace(/\.jsonl$/i, '')}.jsonl`)
+            : '';
+        const recoveryTarget = requestedFileName
+            ? createCharacterChatTarget({
+                chatsDirectory: request.user.directories.chats,
+                backupDirectory: request.user.directories.backups,
+                owner: characterDirectory,
+                filename: requestedFileName,
+            })
+            : null;
 
         if (!fs.existsSync(chatsDirectory)) {
+            if (isChatBackupEnabled && recoveryTarget && isChatRecoverable(recoveryTarget)) {
+                return response.send([{ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 }]);
+            }
             return response.send({ error: true });
         }
 
@@ -1530,6 +1565,9 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         const jsonFiles = files.filter(file => file.isFile() && path.extname(file.name) === '.jsonl').map(file => file.name);
 
         if (jsonFiles.length === 0) {
+            if (isChatBackupEnabled && recoveryTarget && isChatRecoverable(recoveryTarget)) {
+                return response.send([{ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 }]);
+            }
             return response.send([]);
         }
 
@@ -1545,6 +1583,15 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
 
         const chatData = (await Promise.allSettled(jsonFilesPromise)).filter(x => x.status === 'fulfilled').map(x => x.value);
         const validFiles = chatData.filter(i => i.file_name);
+
+        if (recoveryTarget && !validFiles.some(file => file.file_name === requestedFileName)) {
+            // SillyBunny: retain the persisted target so the strict load endpoint can recover or reject it.
+            const requestedChat = readChatJsonlStrict(recoveryTarget.activePath);
+            const hasRecoverableSnapshot = isChatBackupEnabled && isChatRecoverable(recoveryTarget);
+            if ((requestedChat.status === 'corrupt' && requestedChat.data !== null) || hasRecoverableSnapshot) {
+                validFiles.push({ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 });
+            }
+        }
 
         return response.send(validFiles);
     } catch (error) {
