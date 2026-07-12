@@ -75,6 +75,26 @@ function getComposerViewportFit(page) {
     });
 }
 
+function getComposerControlGaps(page) {
+    return page.evaluate(() => {
+        const textareaRect = document.getElementById('send_textarea')?.getBoundingClientRect();
+        const visibleControlRects = id => Array.from(document.getElementById(id)?.children ?? [])
+            .map(element => element.getBoundingClientRect())
+            .filter(rect => rect.width > 0 && rect.height > 0);
+        const leftControlRects = visibleControlRects('leftSendForm');
+        const rightControlRects = visibleControlRects('rightSendForm');
+
+        if (!textareaRect || leftControlRects.length === 0 || rightControlRects.length === 0) {
+            return null;
+        }
+
+        return {
+            left: textareaRect.left - Math.max(...leftControlRects.map(rect => rect.right)),
+            right: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
+        };
+    });
+}
+
 function getHorizontalOverflow(page) {
     return page.evaluate(() => {
         const root = document.documentElement;
@@ -365,17 +385,32 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
         userAgent: IPHONE_USER_AGENT,
     });
 
-    test('composer fits and the send target keeps its current floor', async ({ page }) => {
+    test('composer controls clear the textarea and keep the current send target floor', async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
 
         // Compact mode and connection state come from the linked user profile;
         // normalize both so this measures the stylesheet contract, not the
         // profile. The displayNone class on #send_but is only a connection
-        // visibility gate (RossAscends-mods.js), not a sizing rule.
+        // visibility gate (RossAscends-mods.js), not a sizing rule. The optional
+        // tracker panel is fixed off-canvas, outside the composer contract.
         await page.evaluate(() => {
-            document.documentElement.setAttribute('data-sb-compact-mode', 'false');
+            document.documentElement.style.setProperty('--sb-bottom-bar-scale', '1.5');
             document.getElementById('send_but')?.classList.remove('displayNone');
+            document.getElementById('ica--tracker-panel')?.remove();
         });
+
+        for (const compactMode of ['true', 'false']) {
+            await page.evaluate(mode => document.documentElement.setAttribute('data-sb-compact-mode', mode), compactMode);
+            await waitForAnimationFrames(page, 2);
+
+            const controlGaps = await getComposerControlGaps(page);
+
+            expect(controlGaps).not.toBeNull();
+            expect(controlGaps.left).toBeGreaterThanOrEqual(6);
+            expect(controlGaps.right).toBeGreaterThanOrEqual(6);
+        }
+
+        await page.evaluate(() => document.documentElement.style.setProperty('--sb-bottom-bar-scale', '1'));
         await waitForAnimationFrames(page, 2);
 
         const sendButtonBox = await page.locator('#send_but').boundingBox();

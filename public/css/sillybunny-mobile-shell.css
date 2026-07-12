@@ -82,7 +82,7 @@
         grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto) !important;
         grid-template-areas: 'tools input action' !important;
         align-items: center !important;
-        gap: 0 4px !important;
+        gap: 0 clamp(10px, 3vw, 14px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 4px) !important;
         padding: 2px 4px !important;
         box-sizing: border-box !important;
@@ -96,7 +96,7 @@
         --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 3px !important;
+        gap: 0 clamp(10px, 3vw, 14px) !important;
     }
 
     #leftSendForm {
