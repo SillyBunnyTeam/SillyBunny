@@ -119,6 +119,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #656 (2026-07-09) `fix: Grok example dialogue glitch`
 - PR #657 (2026-07-11) `feat(agents): let post-generation passes target companion outputs, impersonation text, and picked targets`
 - PR #658 (2026-07-11) `fix(mobile): hold the chat composer above the iOS keyboard to stop the viewport escape`
+- PR #661 (2026-07-12) `fix: Favs not lighting up, scrolling favorites on desktop, validator behavior changes, etc`
 
 ## v1.6.5
 
