@@ -23,6 +23,45 @@ function fetchBackupApi(resource, init = {}) {
     }), { refreshCsrfToken });
 }
 
+/**
+ * Creates a read-only backup preview without using a native text editor.
+ * @param {string} fileText JSONL backup content
+ * @returns {HTMLElement} Preview element
+ */
+function createBackupPreview(fileText) {
+    const previewLines = [];
+    let lineStart = 0;
+
+    while (lineStart <= fileText.length) {
+        const newlineIndex = fileText.indexOf('\n', lineStart);
+        const lineEnd = newlineIndex === -1 ? fileText.length : newlineIndex;
+        const line = fileText.slice(lineStart, lineEnd);
+
+        if (line.trim()) {
+            try {
+                /** @type {ChatMessage} */
+                const lineData = JSON.parse(line);
+                if (lineData?.mes) {
+                    previewLines.push(`${lineData.name} [${timestampToMoment(lineData.send_date).format('lll')}]\n${lineData.mes}`);
+                }
+            } catch (error) {
+                console.error('Failed to parse chat backup line:', error);
+            }
+        }
+
+        if (newlineIndex === -1) {
+            break;
+        }
+        lineStart = newlineIndex + 1;
+    }
+
+    // SillyBunny: iOS WebKit can terminate the page when a large value is laid out in a modal textarea.
+    const preview = document.createElement('pre');
+    preview.classList.add('chatBackupPreview', 'monospace', 'margin0');
+    preview.textContent = previewLines.join('\n\n\n');
+    return preview;
+}
+
 class BackupsBrowser {
     /** @type {HTMLElement} */
     #buttonElement;
@@ -69,25 +108,8 @@ class BackupsBrowser {
         }
 
         try {
-            /** @type {ChatMessage[]} */
-            const parsedLines = [];
-            const fileText = await response.text();
-            fileText.split('\n').forEach(line => {
-                try {
-                    /** @type {ChatMessage} */
-                    const lineData = JSON.parse(line);
-                    if (lineData?.mes) {
-                        parsedLines.push(lineData);
-                    }
-                } catch (error) {
-                    console.error('Failed to parse chat backup line:', error);
-                }
-            });
-            const textArea = document.createElement('textarea');
-            textArea.classList.add('text_pole', 'monospace', 'textarea_compact', 'margin0', 'height100p');
-            textArea.readOnly = true;
-            textArea.value = parsedLines.map(l => `${l.name} [${timestampToMoment(l.send_date).format('lll')}]\n${l.mes}`).join('\n\n\n');
-            await callGenericPopup(textArea, POPUP_TYPE.TEXT, '', { allowVerticalScrolling: true, large: true, wide: true });
+            const preview = createBackupPreview(await response.text());
+            await callGenericPopup(preview, POPUP_TYPE.TEXT, '', { allowVerticalScrolling: true, large: true, wide: true });
         } catch (error) {
             console.error('Failed to parse chat backup content:', error);
             toastr.error(t`Failed to parse backup content.`);

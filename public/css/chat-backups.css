@@ -114,6 +114,25 @@ body.safari #select_chat_popup.chatBackupsOpen {
     overflow-wrap: anywhere;
 }
 
+.chatBackupPreview {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-button);
+    background: var(--sb-input-bg);
+    color: var(--SmartThemeBodyColor);
+    font-size: calc(var(--mainFontSize) * 0.95);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-align: start;
+    white-space: pre-wrap;
+}
+
 .chatBackupsListItemName {
     opacity: 0.75;
     flex-grow: 1;

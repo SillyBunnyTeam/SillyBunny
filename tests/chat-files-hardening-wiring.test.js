@@ -62,4 +62,18 @@ describe('chat file hardening wiring', () => {
         expect(styles).toContain('max-height: none;');
         expect(styles).toContain('#select_chat_div)');
     });
+
+    test('renders backup content without a native textarea on WebKit', async () => {
+        const [source, styles] = await Promise.all([
+            readSource('../public/scripts/chat-backups.js'),
+            readSource('../public/css/chat-backups.css'),
+        ]);
+        const previewBody = getFunctionBody(source, 'function createBackupPreview', 'class BackupsBrowser');
+
+        expect(previewBody).toContain("document.createElement('pre')");
+        expect(previewBody).not.toContain("document.createElement('textarea')");
+        expect(previewBody).toContain("preview.classList.add('chatBackupPreview'");
+        expect(styles).toContain('.chatBackupPreview');
+        expect(styles).toContain('-webkit-overflow-scrolling: touch;');
+    });
 });
