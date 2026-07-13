@@ -482,10 +482,9 @@ class BackupsBrowser {
             this.#loadedBackups = backupsList;
             this.#backupsListElement.innerHTML = '';
 
-            this.#backupsListElement.appendChild(this.renderCleanupControls());
-
             if (!backupsList.length) {
                 this.#backupsListElement.appendChild(this.renderListMessage(t`No chat backups found.`));
+                this.#backupsListElement.appendChild(this.renderCleanupControls());
                 return;
             }
 
@@ -543,6 +542,8 @@ class BackupsBrowser {
 
                 this.#backupsListElement.appendChild(listItem);
             }
+
+            this.#backupsListElement.appendChild(this.renderCleanupControls());
         } catch (error) {
             if (error?.name === 'AbortError' || signal.aborted) {
                 return;
@@ -571,6 +572,7 @@ class BackupsBrowser {
         }
         if (this.#backupsListElement) {
             this.#backupsListElement.classList.remove('open');
+            this.#backupsListElement.parentElement?.classList.remove('chatBackupsOpen');
             this.#backupsListElement.innerHTML = '';
         }
         if (this.#loadingAbortController) {
@@ -594,6 +596,7 @@ class BackupsBrowser {
         }
         if (this.#backupsListElement) {
             this.#backupsListElement.classList.add('open');
+            this.#backupsListElement.parentElement?.classList.add('chatBackupsOpen');
         }
         if (this.#loadingAbortController) {
             this.#loadingAbortController.abort();

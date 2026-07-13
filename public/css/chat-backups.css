@@ -16,6 +16,25 @@
     display: none;
 }
 
+/* SillyBunny: Backups replace the chat list so cleanup controls cannot consume a short nested tray. */
+#select_chat_popup.chatBackupsOpen {
+    height: 100%;
+}
+
+#select_chat_popup.chatBackupsOpen :is(#select_chat_search, #chat_management_tools, #chat_cleanup_status, #select_chat_div) {
+    display: none;
+}
+
+#select_chat_popup.chatBackupsOpen .chatBackupsList {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+}
+
+body.safari #select_chat_popup.chatBackupsOpen {
+    height: 100%;
+}
+
 .chatBackupsListItem {
     display: flex;
     flex-wrap: wrap;

@@ -49,4 +49,17 @@ describe('chat file hardening wiring', () => {
         expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, false, sanitizedChatFileName));');
         expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, true, chatFileName));');
     });
+
+    test('uses the full chat list area while browsing backups', async () => {
+        const [source, styles] = await Promise.all([
+            readSource('../public/scripts/chat-backups.js'),
+            readSource('../public/css/chat-backups.css'),
+        ]);
+
+        expect(source).toContain('classList.add(\'chatBackupsOpen\')');
+        expect(source).toContain('classList.remove(\'chatBackupsOpen\')');
+        expect(styles).toContain('#select_chat_popup.chatBackupsOpen .chatBackupsList');
+        expect(styles).toContain('max-height: none;');
+        expect(styles).toContain('#select_chat_div)');
+    });
 });
