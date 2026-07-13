@@ -63,17 +63,20 @@ describe('chat file hardening wiring', () => {
         expect(styles).toContain('#select_chat_div)');
     });
 
-    test('renders backup content without a native textarea on WebKit', async () => {
+    test('renders backup content inline without opening a nested WebKit modal', async () => {
         const [source, styles] = await Promise.all([
             readSource('../public/scripts/chat-backups.js'),
             readSource('../public/css/chat-backups.css'),
         ]);
         const previewBody = getFunctionBody(source, 'function createBackupPreview', 'class BackupsBrowser');
 
+        expect(previewBody).toContain("document.createElement('section')");
         expect(previewBody).toContain("document.createElement('pre')");
         expect(previewBody).not.toContain("document.createElement('textarea')");
         expect(previewBody).toContain("preview.classList.add('chatBackupPreview'");
+        expect(source).toContain('this.#backupsListElement.replaceChildren(preview);');
+        expect(source).not.toContain('callGenericPopup(preview');
         expect(styles).toContain('.chatBackupPreview');
-        expect(styles).toContain('-webkit-overflow-scrolling: touch;');
+        expect(styles).toContain('position: -webkit-sticky;');
     });
 });

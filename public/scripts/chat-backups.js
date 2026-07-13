@@ -26,10 +26,21 @@ function fetchBackupApi(resource, init = {}) {
 /**
  * Creates a read-only backup preview without using a native text editor.
  * @param {string} fileText JSONL backup content
+ * @param {string} fileName Backup file name
  * @returns {HTMLElement} Preview element
  */
-function createBackupPreview(fileText) {
-    const previewLines = [];
+function createBackupPreview(fileText, fileName) {
+    // SillyBunny: iOS WebKit can terminate when the full backup is opened in a nested modal.
+    const preview = document.createElement('section');
+    preview.classList.add('chatBackupPreview');
+    preview.setAttribute('aria-label', fileName);
+
+    const previewName = document.createElement('div');
+    previewName.classList.add('chatBackupPreviewName');
+    previewName.textContent = fileName;
+
+    const previewMessages = document.createElement('div');
+    previewMessages.classList.add('chatBackupPreviewMessages');
     let lineStart = 0;
 
     while (lineStart <= fileText.length) {
@@ -42,7 +53,10 @@ function createBackupPreview(fileText) {
                 /** @type {ChatMessage} */
                 const lineData = JSON.parse(line);
                 if (lineData?.mes) {
-                    previewLines.push(`${lineData.name} [${timestampToMoment(lineData.send_date).format('lll')}]\n${lineData.mes}`);
+                    const message = document.createElement('pre');
+                    message.classList.add('chatBackupPreviewMessage', 'monospace', 'margin0');
+                    message.textContent = `${lineData.name} [${timestampToMoment(lineData.send_date).format('lll')}]\n${lineData.mes}`;
+                    previewMessages.appendChild(message);
                 }
             } catch (error) {
                 console.error('Failed to parse chat backup line:', error);
@@ -55,10 +69,8 @@ function createBackupPreview(fileText) {
         lineStart = newlineIndex + 1;
     }
 
-    // SillyBunny: iOS WebKit can terminate the page when a large value is laid out in a modal textarea.
-    const preview = document.createElement('pre');
-    preview.classList.add('chatBackupPreview', 'monospace', 'margin0');
-    preview.textContent = previewLines.join('\n\n\n');
+    preview.appendChild(previewName);
+    preview.appendChild(previewMessages);
     return preview;
 }
 
@@ -75,6 +87,8 @@ class BackupsBrowser {
     #loadingAbortController;
     /** @type {boolean} */
     #isOpen = false;
+    /** @type {boolean} */
+    #isPreviewOpen = false;
 
     get isOpen() {
         return this.#isOpen;
@@ -87,10 +101,12 @@ class BackupsBrowser {
      */
     async viewBackup(name) {
         let response;
+        const signal = this.#loadingAbortController?.signal;
         try {
             response = await fetchBackupApi('/api/backups/chat/download', {
                 method: 'POST',
                 body: JSON.stringify({ name: name }),
+                signal,
             });
         } catch (error) {
             if (error?.name === 'AbortError') {
@@ -108,9 +124,20 @@ class BackupsBrowser {
         }
 
         try {
-            const preview = createBackupPreview(await response.text());
-            await callGenericPopup(preview, POPUP_TYPE.TEXT, '', { allowVerticalScrolling: true, large: true, wide: true });
+            const preview = createBackupPreview(await response.text(), name);
+            if (signal?.aborted || !this.#isOpen || !this.#backupsListElement) {
+                return;
+            }
+
+            this.#isPreviewOpen = true;
+            this.#buttonChevronIcon?.classList.remove('fa-chevron-up');
+            this.#buttonChevronIcon?.classList.add('fa-chevron-left');
+            this.#backupsListElement.classList.add('previewing');
+            this.#backupsListElement.replaceChildren(preview);
         } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
             console.error('Failed to parse chat backup content:', error);
             toastr.error(t`Failed to parse backup content.`);
             return;
@@ -479,6 +506,8 @@ class BackupsBrowser {
             return;
         }
 
+        this.#isPreviewOpen = false;
+        this.#backupsListElement.classList.remove('previewing');
         this.#backupsListElement.replaceChildren(this.renderListMessage(t`Loading chat…`));
         this.#backupsListElement.setAttribute('aria-busy', 'true');
         this.#loadedBackups = [];
@@ -585,15 +614,16 @@ class BackupsBrowser {
         }
 
         this.#isOpen = false;
+        this.#isPreviewOpen = false;
         if (this.#buttonElement) {
             this.#buttonElement.setAttribute('aria-expanded', 'false');
         }
         if (this.#buttonChevronIcon) {
-            this.#buttonChevronIcon.classList.remove('fa-chevron-up');
+            this.#buttonChevronIcon.classList.remove('fa-chevron-up', 'fa-chevron-left');
             this.#buttonChevronIcon.classList.add('fa-chevron-down');
         }
         if (this.#backupsListElement) {
-            this.#backupsListElement.classList.remove('open');
+            this.#backupsListElement.classList.remove('open', 'previewing');
             this.#backupsListElement.parentElement?.classList.remove('chatBackupsOpen');
             this.#backupsListElement.innerHTML = '';
         }
@@ -613,7 +643,7 @@ class BackupsBrowser {
             this.#buttonElement.setAttribute('aria-expanded', 'true');
         }
         if (this.#buttonChevronIcon) {
-            this.#buttonChevronIcon.classList.remove('fa-chevron-down');
+            this.#buttonChevronIcon.classList.remove('fa-chevron-down', 'fa-chevron-left');
             this.#buttonChevronIcon.classList.add('fa-chevron-up');
         }
         if (this.#backupsListElement) {
@@ -625,6 +655,20 @@ class BackupsBrowser {
             this.#loadingAbortController = null;
         }
 
+        this.#loadingAbortController = new AbortController();
+        this.loadBackupsIntoList(this.#loadingAbortController.signal);
+    }
+
+    closePreview() {
+        if (!this.#isPreviewOpen || !this.#isOpen) {
+            return;
+        }
+
+        this.#isPreviewOpen = false;
+        this.#buttonChevronIcon?.classList.remove('fa-chevron-left');
+        this.#buttonChevronIcon?.classList.add('fa-chevron-up');
+        this.#backupsListElement?.classList.remove('previewing');
+        this.#loadingAbortController?.abort();
         this.#loadingAbortController = new AbortController();
         this.loadBackupsIntoList(this.#loadingAbortController.signal);
     }
@@ -661,7 +705,9 @@ class BackupsBrowser {
         button.appendChild(chevronIcon);
 
         button.addEventListener('click', () => {
-            if (this.#isOpen) {
+            if (this.#isPreviewOpen) {
+                this.closePreview();
+            } else if (this.#isOpen) {
                 this.closeBackups();
             } else {
                 this.openBackups();
