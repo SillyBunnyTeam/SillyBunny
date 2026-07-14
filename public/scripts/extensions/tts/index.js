@@ -713,6 +713,13 @@ async function processTtsQueue() {
         text = text.replace(/~~~.*?~~~/gs, '').trim();
     }
 
+    // SillyBunny: Strip tag markup before quote extraction so wrappers preserve dialogue without narrating attributes.
+    if (extension_settings.tts.narrate_quoted_only) {
+        const partJoiner = (ttsProvider?.separator || ' ... ');
+        text = text.replace(/<.*?>/g, '').trim();
+        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
+    }
+
     if (extension_settings.tts.skip_tags) {
         text = text.replace(/<.*?>[\s\S]*?<\/.*?>/g, '').trim();
     }
@@ -731,11 +738,6 @@ async function processTtsQueue() {
         } else {
             console.warn('Invalid regex pattern:', extension_settings.tts.regex_pattern);
         }
-    }
-
-    if (extension_settings.tts.narrate_quoted_only) {
-        const partJoiner = (ttsProvider?.separator || ' ... ');
-        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
 
     // Remove embedded images
