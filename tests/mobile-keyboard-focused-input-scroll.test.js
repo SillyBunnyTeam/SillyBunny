@@ -101,6 +101,8 @@ describe('mobile popup keyboard shift wiring', () => {
 
         expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
+        expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
+        expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
         expect(helperSource).toContain('dialog.style.transform = `translateY(-${shift}px)`;');
     });
@@ -114,6 +116,7 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(tabsSource).toContain('function clearMobilePopupKeyboardShift(');
         expect(tabsSource).toContain('function clearAllMobilePopupKeyboardShifts(');
         expect(tabsSource).toMatch(/dialog\.style\.removeProperty\('transform'\)/);
+        expect(tabsSource).toContain('scroller.style.removeProperty(\'max-height\');');
         expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardShift;');
     });
 

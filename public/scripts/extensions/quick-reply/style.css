@@ -181,6 +181,12 @@
 .ctx-menu .ctx-item .qr--hidden {
   display: none;
 }
+/* Allow long Quick Reply labels to wrap inside the
+   viewport-constrained menu instead of widening the document. */
+.ctx-menu .qr--button-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .list-group .list-group-item.ctx-header {
   font-weight: bold;
   cursor: default;

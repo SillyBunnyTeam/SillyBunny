@@ -77,6 +77,7 @@ import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashComma
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
+import { resolveMovingUIViewportState } from './moving-ui-viewport.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -2656,58 +2657,10 @@ function applyMovingUIStateStyles(element, state) {
     }
 }
 
-function parseMovingUIStatePixel(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-    }
-
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmedValue = value.trim();
-    if (!/^-?\d+(?:\.\d+)?(?:px)?$/.test(trimmedValue)) {
-        return null;
-    }
-
-    return Number.parseFloat(trimmedValue);
-}
-
 function getMovingUIViewportSize() {
     return {
         width: window.innerWidth || document.documentElement.clientWidth || 0,
         height: window.innerHeight || document.documentElement.clientHeight || 0,
-    };
-}
-
-function getMovingUIStateBounds(state) {
-    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
-    const width = parseMovingUIStatePixel(state?.width);
-    const height = parseMovingUIStatePixel(state?.height);
-    const right = parseMovingUIStatePixel(state?.right);
-    const bottom = parseMovingUIStatePixel(state?.bottom);
-    let left = parseMovingUIStatePixel(state?.left);
-    let top = parseMovingUIStatePixel(state?.top);
-
-    if (left === null && right !== null && width !== null) {
-        left = viewportWidth - right - width;
-    }
-
-    if (top === null && bottom !== null && height !== null) {
-        top = viewportHeight - bottom - height;
-    }
-
-    if (left === null || top === null || width === null || height === null) {
-        return null;
-    }
-
-    return {
-        left,
-        top,
-        right: left + width,
-        bottom: top + height,
-        width,
-        height,
     };
 }
 
@@ -2746,7 +2699,30 @@ function isMovingUIStateOutOfViewport(element, state) {
         return isMovingUIBoundsOutOfViewport(elementBounds);
     }
 
-    return isMovingUIBoundsOutOfViewport(getMovingUIStateBounds(state));
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, { viewportWidth, viewportHeight });
+    return resolution.canContain && resolution.changed;
+}
+
+function containMovingUIElement(element, state) {
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, {
+        viewportWidth,
+        viewportHeight,
+        elementBounds: getMovingUIElementBounds(element),
+    });
+
+    if (resolution.changed) {
+        Object.assign(state, resolution.state);
+        for (const property of movingUIPixelStyles) {
+            applyMovingUIStateStyle(element, property, resolution.state[property]);
+        }
+    }
+
+    return {
+        changed: resolution.changed,
+        remainsOutOfViewport: isMovingUIStateOutOfViewport(element, state),
+    };
 }
 
 function syncMovingUIOffscreenWarning(showWarning) {
@@ -2762,6 +2738,7 @@ export function loadMovingUIState() {
         && power_user.movingUI === true) {
         console.debug('loading movingUI state');
         let hasOffscreenPanel = false;
+        let didContainPanel = false;
         for (var elmntName of Object.keys(power_user.movingUIState)) {
             var elmntState = power_user.movingUIState[elmntName];
             try {
@@ -2772,8 +2749,11 @@ export function loadMovingUIState() {
                     if (elmnt.length) {
                         console.debug(`loading state for ${targetName} from ${elmntName}`);
                         applyMovingUIStateStyles(elmnt[0], elmntState);
-                        // SillyBunny: make bad persisted panel geometry recoverable from Settings.
-                        hasOffscreenPanel = isMovingUIStateOutOfViewport(elmnt[0], elmntState) || hasOffscreenPanel;
+                        // Persisted geometry must never enlarge the document or
+                        // leave a panel unreachable after a viewport/monitor change.
+                        const containment = containMovingUIElement(elmnt[0], elmntState);
+                        didContainPanel = containment.changed || didContainPanel;
+                        hasOffscreenPanel = containment.remainsOutOfViewport || hasOffscreenPanel;
                         applied = true;
                     }
                 }
@@ -2785,6 +2765,9 @@ export function loadMovingUIState() {
             }
         }
         syncMovingUIOffscreenWarning(hasOffscreenPanel);
+        if (didContainPanel) {
+            saveSettingsDebounced();
+        }
     } else {
         console.debug('skipping movingUI state load');
         syncMovingUIOffscreenWarning(false);
@@ -4064,6 +4047,7 @@ jQuery(async () => {
         const scaleX = parseFloat(Number(window.innerWidth / coreTruthWinWidth).toFixed(4));
 
         if (Object.keys(power_user.movingUIState).length > 0) {
+            let hasOffscreenPanel = false;
             for (var elmntName of Object.keys(power_user.movingUIState)) {
                 var elmntState = power_user.movingUIState[elmntName];
                 var oldHeight = elmntState.height;
@@ -4095,23 +4079,27 @@ jQuery(async () => {
                         applyMovingUIStateStyle(element, 'height', newHeight);
                         applyMovingUIStateStyle(element, 'width', newWidth);
                         applyMovingUIStateStyle(element, 'inset', `${newTop}px ${newRight}px ${newBottom}px ${newLeft}px`);
+                        Object.assign(elmntState, {
+                            height: newHeight,
+                            width: newWidth,
+                            top: newTop,
+                            bottom: newBottom,
+                            left: newLeft,
+                            right: newRight,
+                        });
+                        const containment = containMovingUIElement(element, elmntState);
+                        hasOffscreenPanel = containment.remainsOutOfViewport || hasOffscreenPanel;
                         applied = true;
                     }
 
-                    if (applied) {
-                        power_user.movingUIState[elmntName].height = newHeight;
-                        power_user.movingUIState[elmntName].width = newWidth;
-                        power_user.movingUIState[elmntName].top = newTop;
-                        power_user.movingUIState[elmntName].bottom = newBottom;
-                        power_user.movingUIState[elmntName].left = newLeft;
-                        power_user.movingUIState[elmntName].right = newRight;
-                    } else {
+                    if (!applied) {
                         console.log(`skipping ${elmntName} because it doesn't exist in the DOM`);
                     }
                 } catch (err) {
                     console.log(`error occurred while processing ${elmntName}: ${err}`);
                 }
             }
+            syncMovingUIOffscreenWarning(hasOffscreenPanel);
         } else {
             console.debug('aborting MUI reset', Object.keys(power_user.movingUIState).length);
         }
