@@ -56,6 +56,7 @@ describe('chat recovery endpoint fallbacks', () => {
             groupChats: path.join(tempRoot, 'group chats'),
             groups: path.join(tempRoot, 'groups'),
             thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar-mobile'),
         };
         for (const directory of Object.values(directories)) {
             fs.mkdirSync(directory, { recursive: true });
