@@ -13,6 +13,7 @@ import { renameChatFile } from '../chat-rename.js';
 import {
     createCharacterChatTarget,
     createGroupChatTarget,
+    isRecognizedChatHeader,
     loadActiveChatWithRecovery,
     markChatDeleted,
     readChatJsonlStrict,
@@ -823,7 +824,12 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
 
     if (isBackupEnabled && recoveryTarget) {
         // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
-        writeLatestChatSnapshot(recoveryTarget, jsonlData);
+        try {
+            writeLatestChatSnapshot(recoveryTarget, jsonlData);
+        } catch (error) {
+            // Recovery storage is supplementary and must not prevent the authoritative chat write.
+            console.warn('Failed to write the exact chat recovery snapshot; continuing with the active chat save.', error);
+        }
     }
     tryWriteFileSync(filePath, jsonlData);
     if (!deferBackup) {
@@ -1149,7 +1155,7 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
 
             const jsonData = JSON.parse(header);
 
-            if (!(jsonData.user_name !== undefined || jsonData.name !== undefined || jsonData.chat_metadata !== undefined)) {
+            if (!isRecognizedChatHeader(jsonData)) {
                 console.error('Incorrect chat format .jsonl');
                 return response.send({ error: true });
             }

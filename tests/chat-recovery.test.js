@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import {
     CHAT_RECOVERY_QUARANTINE_LIMIT,
+    CHAT_RECOVERY_DIRECTORY,
     createCharacterChatTarget,
     createGroupChatTarget,
     getChatRecoveryPaths,
@@ -53,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    jest.restoreAllMocks();
     fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -93,7 +95,7 @@ describe('readChatJsonlStrict', () => {
             ['invalid JSON', '{"chat_metadata":{}}\n{', 'invalid-json'],
             ['a scalar row', '{"chat_metadata":{}}\n17', 'non-object'],
             ['an array row', '{"chat_metadata":{}}\n[]', 'non-object'],
-            ['a missing metadata header', '{"name":"header"}\n{"mes":"hello"}', 'missing-chat-metadata'],
+            ['a missing metadata header', '{"unexpected":"header"}\n{"mes":"hello"}', 'missing-chat-metadata'],
             ['non-object metadata', '{"chat_metadata":[]}', 'missing-chat-metadata'],
         ];
 
@@ -106,6 +108,25 @@ describe('readChatJsonlStrict', () => {
             expect(result.status).toBe('corrupt');
             expect(result.reason).toBe(reason);
             expect(result.data).toEqual(Buffer.from(serialized));
+        }
+    });
+
+    test('accepts and normalizes legacy headers permitted by the JSONL importer', () => {
+        const legacyHeaders = [
+            { user_name: 'User', character_name: 'Character' },
+            { name: 'Legacy Chat' },
+        ];
+
+        for (const [index, header] of legacyHeaders.entries()) {
+            const target = characterTarget('character-one', `legacy-${index}.jsonl`);
+            const serialized = Buffer.from(`${JSON.stringify(header)}\n{"mes":"hello"}`);
+            writeActive(target, serialized);
+
+            const result = readChatJsonlStrict(target.activePath);
+
+            expect(result.status).toBe('ok');
+            expect(result.data).toEqual(serialized);
+            expect(result.records[0]).toEqual({ ...header, chat_metadata: {} });
         }
     });
 
@@ -189,6 +210,23 @@ describe('snapshot and recovery operations', () => {
         expect(result).toMatchObject({ status: 'ok', source: 'active', recovered: false });
         expect(result.data).toEqual(serialized);
         expect(fs.readFileSync(getChatRecoveryPaths(target).latestPath)).toEqual(serialized);
+    });
+
+    test('loads valid active data when the recovery directory is unavailable', () => {
+        const target = characterTarget();
+        const serialized = chatData('active-without-recovery');
+        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        writeActive(target, serialized);
+        fs.writeFileSync(path.join(backupDirectory, CHAT_RECOVERY_DIRECTORY), 'not a directory');
+
+        const result = loadActiveChatWithRecovery(target);
+
+        expect(result).toMatchObject({ status: 'ok', source: 'active', recovered: false });
+        expect(result.data).toEqual(serialized);
+        expect(consoleWarn).toHaveBeenCalledWith(
+            'Failed to refresh the exact chat recovery snapshot; continuing with the valid active chat.',
+            expect.any(Error),
+        );
     });
 
     test('restores a missing active file byte-for-byte', () => {

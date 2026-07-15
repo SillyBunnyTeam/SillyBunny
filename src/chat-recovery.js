@@ -22,6 +22,21 @@ function isPlainObject(value) {
     return prototype === Object.prototype || prototype === null;
 }
 
+/**
+ * Matches the standard metadata header and the legacy headers accepted by the JSONL importer.
+ * @param {unknown} record Parsed first JSONL record.
+ * @returns {boolean} Whether the record is a recognized chat header.
+ */
+export function isRecognizedChatHeader(record) {
+    if (!isPlainObject(record)) {
+        return false;
+    }
+    if (record.chat_metadata !== undefined) {
+        return isPlainObject(record.chat_metadata);
+    }
+    return record.user_name !== undefined || record.name !== undefined;
+}
+
 function corruptResult(reason, data = null, details = {}) {
     return {
         status: 'corrupt',
@@ -121,8 +136,11 @@ function parseChatJsonl(data) {
     if (records.length === 0) {
         return corruptResult('empty', data);
     }
-    if (!isPlainObject(records[0].chat_metadata)) {
+    if (!isRecognizedChatHeader(records[0])) {
         return corruptResult('missing-chat-metadata', data);
+    }
+    if (!isPlainObject(records[0].chat_metadata)) {
+        records[0] = { ...records[0], chat_metadata: {} };
     }
 
     return {
@@ -409,7 +427,12 @@ export function loadActiveChatWithRecovery(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
     const active = readChatJsonlStrict(normalizedTarget.activePath);
     if (active.status === 'ok') {
-        storeValidSnapshot(normalizedTarget, active);
+        try {
+            storeValidSnapshot(normalizedTarget, active);
+        } catch (error) {
+            // The active chat remains authoritative when optional recovery storage is unavailable.
+            console.warn('Failed to refresh the exact chat recovery snapshot; continuing with the valid active chat.', error);
+        }
         return {
             ...active,
             source: 'active',

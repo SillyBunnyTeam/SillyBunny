@@ -53,6 +53,7 @@ describe('chat integrity rotation', () => {
     afterEach(() => {
         jest.runOnlyPendingTimers();
         jest.useRealTimers();
+        jest.restoreAllMocks();
     });
 
     test('rotates integrity on save and rejects stale second writers', async () => {
@@ -302,6 +303,39 @@ describe('chat integrity rotation', () => {
         const restored = loadActiveChatWithRecovery(recoveryTarget);
         expect(restored).toMatchObject({ status: 'ok', recovered: true });
         await expect(fs.readFile(chatFile, 'utf8')).resolves.toContain('deferred recovery data');
+    });
+
+    test('saves valid chats when the exact recovery directory is unavailable', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const { CHAT_RECOVERY_DIRECTORY, createCharacterChatTarget } = await import('../src/chat-recovery.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-recovery-unavailable-'));
+        const chatsDirectory = path.join(tempDir, 'chats');
+        const backupDirectory = path.join(tempDir, 'backups');
+        const owner = 'Test Card';
+        const fileName = 'Session.jsonl';
+        const chatDirectory = path.join(chatsDirectory, owner);
+        const chatFile = path.join(chatDirectory, fileName);
+        await fs.mkdir(chatDirectory, { recursive: true });
+        await fs.mkdir(backupDirectory);
+        await fs.writeFile(path.join(backupDirectory, CHAT_RECOVERY_DIRECTORY), 'not a directory');
+        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const recoveryTarget = createCharacterChatTarget({ chatsDirectory, backupDirectory, owner, filename: fileName });
+
+        await expect(trySaveChat(
+            chatWithIntegrity('initial-integrity', 'saved without recovery'),
+            chatFile,
+            true,
+            'recovery-user',
+            owner,
+            backupDirectory,
+            { deferBackup: true, recoveryTarget },
+        )).resolves.toEqual({ integrity: expect.any(String) });
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toContain('saved without recovery');
+        expect(consoleWarn).toHaveBeenCalledWith(
+            'Failed to write the exact chat recovery snapshot; continuing with the active chat save.',
+            expect.any(Error),
+        );
     });
 
     test('exposes default-off backup diagnostic logging for chat and settings backups', async () => {
