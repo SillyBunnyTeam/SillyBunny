@@ -71,6 +71,7 @@ export class AutoComplete {
     /**@type {function}*/ updatePositionDebounced;
     /**@type {function}*/ updateDetailsPositionDebounced;
     /**@type {function}*/ updateFloatingPositionDebounced;
+    /**@type {() => void}*/ windowResizeHandler;
 
     /**@type {(item:AutoCompleteOption)=>any}*/ onSelect;
 
@@ -165,7 +166,18 @@ export class AutoComplete {
         if (isFloating) {
             textarea.addEventListener('scroll', () => this.updateFloatingPositionDebounced());
         }
-        window.addEventListener('resize', () => this.updatePositionDebounced());
+        // Character/editor surfaces replace their textareas in place. Retire
+        // the resize callback once its input leaves the document so viewport
+        // changes cannot keep positioning a detached autocomplete forever.
+        this.windowResizeHandler = () => {
+            if (!this.getLayer()) {
+                window.removeEventListener('resize', this.windowResizeHandler);
+                this.hide();
+                return;
+            }
+            this.updatePositionDebounced();
+        };
+        window.addEventListener('resize', this.windowResizeHandler);
     }
 
     /**
@@ -506,6 +518,8 @@ export class AutoComplete {
      */
     render() {
         if (!this.isActive) return this.domWrap.remove();
+        const layer = this.getLayer();
+        if (!layer) return this.hide();
         if (this.isReplaceable) {
             this.dom.innerHTML = '';
             const frag = document.createDocumentFragment();
@@ -522,7 +536,7 @@ export class AutoComplete {
             }
             this.dom.append(frag);
             this.updatePosition();
-            this.getLayer().append(this.domWrap);
+            layer.append(this.domWrap);
         } else {
             this.domWrap.remove();
         }
@@ -535,17 +549,19 @@ export class AutoComplete {
     renderDetails() {
         if (!this.isActive) return this.detailsWrap.remove();
         if (!this.isShowingDetails && this.isReplaceable) return this.detailsWrap.remove();
+        const layer = this.getLayer();
+        if (!layer) return this.hide();
         this.detailsDom.innerHTML = '';
         this.detailsDom.append(this.selectedItem?.renderDetails() ?? 'NO ITEM');
-        this.getLayer().append(this.detailsWrap);
+        layer.append(this.detailsWrap);
         this.updateDetailsPositionDebounced();
     }
 
     /**
-     * @returns {HTMLElement} closest ancestor dialog or body
+     * @returns {HTMLElement|null} closest ancestor dialog or body
      */
     getLayer() {
-        return this.textarea.closest('dialog, body');
+        return this.textarea?.isConnected ? this.textarea.closest('dialog, body') : null;
     }
 
 
@@ -553,13 +569,17 @@ export class AutoComplete {
      * Update position of DOM.
      */
     updatePosition() {
+        const layer = this.getLayer();
+        if (!layer) {
+            return this.hide();
+        }
         if (this.isFloating) {
-            this.updateFloatingPosition();
+            this.updateFloatingPosition(layer);
         } else {
             const rect = {};
             rect[AUTOCOMPLETE_WIDTH.INPUT] = this.textarea.getBoundingClientRect();
             rect[AUTOCOMPLETE_WIDTH.CHAT] = document.querySelector('#sheld').getBoundingClientRect();
-            rect[AUTOCOMPLETE_WIDTH.FULL] = this.getLayer().getBoundingClientRect();
+            rect[AUTOCOMPLETE_WIDTH.FULL] = layer.getBoundingClientRect();
             this.domWrap.style.setProperty('--bottom', `${window.innerHeight - rect[AUTOCOMPLETE_WIDTH.INPUT].top}px`);
             this.dom.style.setProperty('--bottom', `${window.innerHeight - rect[AUTOCOMPLETE_WIDTH.INPUT].top}px`);
             this.domWrap.style.bottom = `${window.innerHeight - rect[AUTOCOMPLETE_WIDTH.INPUT].top}px`;
@@ -572,21 +592,24 @@ export class AutoComplete {
                 this.domWrap.style.setProperty('--rightOffset', `calc(100vw - min(99vw, ${rect[power_user.stscript.autocomplete.width.right].right}px)`);
             }
         }
-        this.updateDetailsPosition();
+        this.updateDetailsPosition(layer);
     }
 
     /**
      * Update position of details DOM.
      */
-    updateDetailsPosition() {
+    updateDetailsPosition(layer = this.getLayer()) {
+        if (!layer) {
+            return this.hide();
+        }
         if (this.isShowingDetails || !this.isReplaceable) {
             if (this.isFloating) {
-                this.updateFloatingDetailsPosition();
+                this.updateFloatingDetailsPosition(null, layer);
             } else {
                 const rect = {};
                 rect[AUTOCOMPLETE_WIDTH.INPUT] = this.textarea.getBoundingClientRect();
                 rect[AUTOCOMPLETE_WIDTH.CHAT] = document.querySelector('#sheld').getBoundingClientRect();
-                rect[AUTOCOMPLETE_WIDTH.FULL] = this.getLayer().getBoundingClientRect();
+                rect[AUTOCOMPLETE_WIDTH.FULL] = layer.getBoundingClientRect();
                 if (this.isReplaceable) {
                     this.detailsWrap.classList.remove('full');
                     const selRect = this.selectedItem.dom.children[0].getBoundingClientRect();
@@ -609,10 +632,13 @@ export class AutoComplete {
     /**
      * Update position of floating autocomplete.
      */
-    updateFloatingPosition() {
+    updateFloatingPosition(layer = this.getLayer()) {
+        if (!layer) {
+            return this.hide();
+        }
         const location = this.getCursorPosition();
         const rect = this.textarea.getBoundingClientRect();
-        const layerRect = this.getLayer().getBoundingClientRect();
+        const layerRect = layer.getBoundingClientRect();
         // cursor is out of view -> hide
         if (location.bottom < rect.top || location.top > rect.bottom || location.left < rect.left || location.left > rect.right) {
             return this.hide();
@@ -632,10 +658,13 @@ export class AutoComplete {
         }
     }
 
-    updateFloatingDetailsPosition(location = null) {
+    updateFloatingDetailsPosition(location = null, layer = this.getLayer()) {
+        if (!layer) {
+            return this.hide();
+        }
         if (!location) location = this.getCursorPosition();
         const rect = this.textarea.getBoundingClientRect();
-        const layerRect = this.getLayer().getBoundingClientRect();
+        const layerRect = layer.getBoundingClientRect();
         if (location.bottom < rect.top || location.top > rect.bottom || location.left < rect.left || location.left > rect.right) {
             return this.hide();
         }

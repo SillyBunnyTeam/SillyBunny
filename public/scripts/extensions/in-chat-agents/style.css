@@ -1896,6 +1896,9 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 /* ── Slide-out Tracker Panel ────────────────────────── */
 
 .ica--tpanel {
+    --ica--tpanel-viewport-height: var(--sb-shell-viewport-height, 100dvh);
+    --ica--tpanel-viewport-top: var(--sb-shell-viewport-top, 0px);
+    --ica--tpanel-sheet-height: min(70dvh, 560px, var(--ica--tpanel-viewport-height));
     position: fixed;
     /* Above the mobile shell's modal layer (--sb-z-modal-content: 3100), below toasts. */
     z-index: var(--sb-z-popout, 4000);
@@ -1907,7 +1910,7 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 92%, #000);
     -webkit-backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
     backdrop-filter: blur(calc(var(--blurStrength, 10) * 1px));
-    transition: transform 0.25s ease;
+    transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease;
     overflow-y: auto;
     overscroll-behavior: contain;
     contain: layout style;
@@ -1921,10 +1924,10 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 
 .ica--tpanel[data-edge="right"],
 .ica--tpanel[data-edge="left"] {
-    top: 0;
-    bottom: 0;
+    top: var(--ica--tpanel-viewport-top);
+    bottom: auto;
     width: min(420px, 94vw);
-    height: 100dvh;
+    height: var(--ica--tpanel-viewport-height);
 }
 
 .ica--tpanel[data-edge="right"] {
@@ -1932,7 +1935,8 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     left: auto;
     border-left-width: 1px;
     padding-right: calc(12px + env(safe-area-inset-right, 0px));
-    transform: translateX(100%);
+    -webkit-clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 0 0 100%);
 }
 
 .ica--tpanel[data-edge="left"] {
@@ -1940,7 +1944,8 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     right: auto;
     border-right-width: 1px;
     padding-left: calc(12px + env(safe-area-inset-left, 0px));
-    transform: translateX(-100%);
+    -webkit-clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 100% 0 0);
 }
 
 .ica--tpanel[data-edge="top"],
@@ -1948,42 +1953,43 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     left: 0;
     right: 0;
     width: 100%;
-    height: min(70dvh, 560px);
+    height: var(--ica--tpanel-sheet-height);
 }
 
 .ica--tpanel[data-edge="top"] {
-    top: 0;
+    top: var(--ica--tpanel-viewport-top);
     bottom: auto;
     border-bottom-width: 1px;
     padding-top: calc(12px + env(safe-area-inset-top, 0px));
-    transform: translateY(-100%);
+    -webkit-clip-path: inset(0 0 100% 0);
+    clip-path: inset(0 0 100% 0);
 }
 
 .ica--tpanel[data-edge="bottom"] {
-    bottom: 0;
-    top: auto;
+    /* The transformed zero-height <html> is the fixed-position containing block,
+       so bottom: 0 would place this sheet above the viewport. Use measured shell
+       coordinates for both normal and keyboard-shifted visual viewports. */
+    top: calc(var(--ica--tpanel-viewport-top) + var(--ica--tpanel-viewport-height) - var(--ica--tpanel-sheet-height));
+    bottom: auto;
     border-top-width: 1px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    transform: translateY(100%);
+    -webkit-clip-path: inset(100% 0 0 0);
+    clip-path: inset(100% 0 0 0);
 }
 
 .ica--tpanel:not(.is-open) {
     visibility: hidden;
     pointer-events: none;
     /* Delay hiding until the close slide finishes so the backdrop blur leaves in lockstep. */
-    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+    transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease, visibility 0s linear 0.25s;
 }
 
-/* Must out-rank the per-edge closed transforms above (same class+attr specificity,
-   later source order would otherwise keep the panel off-screen while open). */
 .ica--tpanel[data-edge="right"].is-open,
-.ica--tpanel[data-edge="left"].is-open {
-    transform: translateX(0);
-}
-
+.ica--tpanel[data-edge="left"].is-open,
 .ica--tpanel[data-edge="top"].is-open,
 .ica--tpanel[data-edge="bottom"].is-open {
-    transform: translateY(0);
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
 }
 
 .ica--tpanel-header {
@@ -2815,4 +2821,37 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 @keyframes mes-fix-trackers-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* Manual "Apply to..." target picker popup */
+.ica--run-target-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.ica--run-target-picker h4 {
+    margin: 0 0 4px 0;
+}
+
+.ica--run-target-picker .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ica--run-target-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.ica--run-target-range span {
+    flex: 0 0 auto;
+}
+
+.ica--run-target-range input {
+    min-width: 0;
 }

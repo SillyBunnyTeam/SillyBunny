@@ -714,6 +714,36 @@ function parseMessageSegments(text) {
     return segments;
 }
 
+// SillyBunny: filter action blocks before quote extraction so quoted actions remain excluded from dialogue-only narration.
+function filterTtsAsterisks(text, { narrateDialoguesOnly = false, passAsterisks = false } = {}) {
+    if (passAsterisks) {
+        return text;
+    }
+
+    return narrateDialoguesOnly
+        ? text.replace(/\*[^*]*?(\*|$)/g, '').trim()
+        : text.replaceAll('*', '').trim();
+}
+
+// SillyBunny: discard semantic blocks before quote extraction without dropping dialogue wrapped in presentation tags.
+function stripTtsTaggedBlocks(text, { preserveFormatting = false } = {}) {
+    const formattingTags = new Set([
+        'b', 'big', 'em', 'font', 'i', 'mark', 's', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'u',
+    ]);
+    let filteredText = String(text ?? '');
+    let previousText;
+
+    do {
+        previousText = filteredText;
+        filteredText = filteredText.replace(
+            /<([a-z][\w:-]*)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+            (_block, tagName, content) => preserveFormatting && formattingTags.has(tagName.toLowerCase()) ? content : '',
+        );
+    } while (filteredText !== previousText);
+
+    return filteredText;
+}
+
 async function processTtsQueue() {
     // Called each moduleWorker iteration to pull chat messages from queue
     if (currentTtsJob || ttsJobQueue.length <= 0 || audioPaused) {
@@ -795,14 +825,23 @@ async function processTtsQueue() {
         text = text.replace(/~~~.*?~~~/gs, '').trim();
     }
 
-    if (extension_settings.tts.skip_tags) {
-        text = text.replace(/<.*?>[\s\S]*?<\/.*?>/g, '').trim();
+    text = filterTtsAsterisks(text, {
+        narrateDialoguesOnly: extension_settings.tts.narrate_dialogues_only,
+        passAsterisks: extension_settings.tts.pass_asterisks,
+    });
+
+    // SillyBunny: Strip tag markup before quote extraction so wrappers preserve dialogue without narrating attributes.
+    if (extension_settings.tts.narrate_quoted_only) {
+        const partJoiner = (ttsProvider?.separator || ' ... ');
+        if (extension_settings.tts.skip_tags) {
+            text = stripTtsTaggedBlocks(text, { preserveFormatting: true });
+        }
+        text = text.replace(/<.*?>/g, '').trim();
+        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
 
-    if (!extension_settings.tts.pass_asterisks) {
-        text = extension_settings.tts.narrate_dialogues_only
-            ? text.replace(/\*[^*]*?(\*|$)/g, '').trim() // remove asterisks content
-            : text.replaceAll('*', '').trim(); // remove just the asterisks
+    if (extension_settings.tts.skip_tags) {
+        text = text.replace(/<.*?>[\s\S]*?<\/.*?>/g, '').trim();
     }
 
     if (extension_settings.tts.apply_regex && extension_settings.tts.regex_pattern) {
@@ -813,11 +852,6 @@ async function processTtsQueue() {
         } else {
             console.warn('Invalid regex pattern:', extension_settings.tts.regex_pattern);
         }
-    }
-
-    if (extension_settings.tts.narrate_quoted_only) {
-        const partJoiner = (ttsProvider?.separator || ' ... ');
-        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
 
     // Remove embedded images

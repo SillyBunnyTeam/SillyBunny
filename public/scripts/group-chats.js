@@ -553,11 +553,15 @@ let groupChatQueueOrder = new Map();
  * @param {boolean} reload Whether to reload characters after saving
  */
 async function _save(group, reload = true) {
-    await fetch('/api/groups/edit', {
+    const response = await fetch('/api/groups/edit', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify(group),
     });
+    // SillyBunny: surface metadata-save failures so chat rename can roll back consistently.
+    if (!response.ok) {
+        throw new Error(`Could not save group ${group.id}.`);
+    }
     if (reload) {
         await getCharacters();
     }
@@ -590,24 +594,26 @@ async function regenerateGroup() {
 /**
  * Loads group chat messages from the server.
  * @param {string} chatId Chat ID
+ * @param {boolean} allowCreate Whether a missing file is an explicitly new chat
  * @returns {Promise<ChatFile>} Array of chat messages
  */
-async function loadGroupChat(chatId) {
+async function loadGroupChat(chatId, allowCreate = false) {
     const response = await fetchWithCsrfRetry('/api/chats/group/get', () => ({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId }),
+        body: JSON.stringify({ id: chatId, allow_create: allowCreate }),
     }), { refreshCsrfToken });
 
-    if (response.ok) {
-        const data = await response.json();
-        if (!Array.isArray(data)) {
-            return [];
-        }
-        return data;
+    // SillyBunny: fail closed instead of replacing missing or corrupt persisted chat data with a greeting.
+    if (!response.ok) {
+        throw new Error(`Could not load group chat ${chatId}.`);
     }
 
-    return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+        throw new Error(`Invalid group chat data for ${chatId}.`);
+    }
+    return data;
 }
 
 /**
@@ -741,16 +747,25 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     await validateGroup(group, { trustActiveChat: newlyCreated });
     await unshallowGroupMembers(groupId);
 
+    let createdChat = false;
     if (!group.chat_id) {
         const freshChatId = humanizedDateTime();
         group.chat_id = freshChatId;
         group.chats = Array.isArray(group.chats) ? group.chats : [];
         group.chats.push(freshChatId);
         await editGroup(group.id, true, false);
+        createdChat = true;
     }
 
     const chat_id = group.chat_id;
-    const data = await loadGroupChat(chat_id);
+    let data;
+    try {
+        data = await loadGroupChat(chat_id, newlyCreated || createdChat);
+    } catch (error) {
+        console.error(error);
+        toastr.error(t`Could not load chat data. Try reloading the page.`);
+        return;
+    }
     const metadata = data?.[0]?.chat_metadata ?? {};
 
     // Remove chat file header if present
@@ -2905,8 +2920,11 @@ export async function renameGroupChat(groupId, oldChatId, newChatId) {
     const group = groups.find(x => x.id === groupId);
 
     if (!group || !group.chats.includes(oldChatId)) {
-        return;
+        throw new Error(`Group chat ${oldChatId} is not registered in group ${groupId}.`);
     }
+
+    const previousChatId = group.chat_id;
+    const previousChats = [...group.chats];
 
     if (group.chat_id === oldChatId) {
         group.chat_id = newChatId;
@@ -2915,7 +2933,13 @@ export async function renameGroupChat(groupId, oldChatId, newChatId) {
     group.chats.splice(group.chats.indexOf(oldChatId), 1);
     group.chats.push(newChatId);
 
-    await editGroup(groupId, true, true);
+    try {
+        await editGroup(groupId, true, false);
+    } catch (error) {
+        group.chat_id = previousChatId;
+        group.chats = previousChats;
+        throw error;
+    }
 }
 
 /**

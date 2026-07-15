@@ -2130,13 +2130,19 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     color: var(--color-primary, var(--sb-accent));
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar {
+#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
     grid-column: 1;
     grid-row: 1 / span 2;
-    align-self: center;
-    justify-self: center;
+    align-self: center !important;
+    justify-self: center !important;
     flex: 0 0 var(--avatar-base-width);
     margin: 0;
+}
+
+@media screen and (max-width: 1000px) {
+    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+        grid-row: 1 / -1 !important;
+    }
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {

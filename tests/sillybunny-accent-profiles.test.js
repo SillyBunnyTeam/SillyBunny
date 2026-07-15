@@ -57,7 +57,7 @@ describe('SillyBunny accent color profiles', () => {
         expect(indexSource).toContain('id="sb-accent-profiles-empty"');
         expect(indexSource).toContain('class="inline-drawer-toggle sb-accent-profiles-toggle"');
         expect(indexSource).toContain('class="inline-drawer-content sb-accent-profiles-content"');
-        expect(indexSource).toContain('css/sillybunny-theme.css?v=20260621a');
+        expect(indexSource).toContain('css/sillybunny-theme.css?v=');
         expect(powerUserSource).toContain('const SB_ACCENT_PROFILES_DRAWER_KEY = \'SBAccentProfilesDrawerExpanded\';');
         expect(powerUserSource).toContain('function bindSbAccentProfilesDrawerPersistence()');
         expect(powerUserSource).toContain('accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY)');

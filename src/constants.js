@@ -494,6 +494,10 @@ export const OPENAI_REASONING_EFFORT_MODELS = [
     'gpt-5.5',
     'gpt-5.5-2026-04-23',
     'gpt-5.5-pro',
+    // SillyBunny: GPT-5.6 native IDs expose configurable reasoning effort.
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
 ];
 
 export const OPENAI_REASONING_EFFORT_MAP = {

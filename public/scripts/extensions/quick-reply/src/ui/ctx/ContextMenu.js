@@ -2,6 +2,9 @@ import { QuickReply } from '../../QuickReply.js';
 import { QuickReplySet } from '../../QuickReplySet.js';
 import { MenuHeader } from './MenuHeader.js';
 import { MenuItem } from './MenuItem.js';
+// Constrain Quick Reply menus to the visual viewport so
+// long/user-positioned menus cannot make actions unreachable on mobile.
+import { clamp, constrainMenuSize, getMenuViewportBounds, syncMenuOverflow } from './MenuViewport.js';
 
 export class ContextMenu {
     /**@type {MenuItem[]}*/ itemList = [];
@@ -9,6 +12,8 @@ export class ContextMenu {
 
     /**@type {HTMLElement}*/ root;
     /**@type {HTMLElement}*/ menu;
+
+    /**@type {function|null}*/ viewportResizeHandler = null;
 
 
     constructor(/**@type {QuickReply}*/qr) {
@@ -102,15 +107,50 @@ export class ContextMenu {
     }
 
 
+    place(clientX, clientY) {
+        if (!this.menu?.isConnected) {
+            return;
+        }
+
+        const viewport = getMenuViewportBounds();
+        constrainMenuSize(this.menu, viewport);
+
+        const measuredRect = this.menu.getBoundingClientRect();
+        const menuWidth = Math.min(measuredRect.width, viewport.width);
+        const menuHeight = Math.min(measuredRect.height, viewport.height);
+        const left = clamp(clientX, viewport.left, Math.max(viewport.left, viewport.right - menuWidth));
+        const top = clamp(clientY - menuHeight, viewport.top, Math.max(viewport.top, viewport.bottom - menuHeight));
+
+        this.menu.style.left = `${Math.round(left)}px`;
+        this.menu.style.top = `${Math.round(top)}px`;
+        this.menu.style.right = 'auto';
+        this.menu.style.bottom = 'auto';
+        syncMenuOverflow(this.menu);
+        this.menu.style.visibility = 'visible';
+    }
+
+
     show({ clientX, clientY }) {
         if (this.isActive) return;
         this.isActive = true;
         this.render();
-        this.menu.style.bottom = `${window.innerHeight - clientY}px`;
-        this.menu.style.left = `${clientX}px`;
+        this.menu.style.visibility = 'hidden';
         document.body.append(this.root);
+        this.place(clientX, clientY);
+
+        this.viewportResizeHandler = () => this.place(clientX, clientY);
+        window.addEventListener('resize', this.viewportResizeHandler, { passive: true });
+        window.visualViewport?.addEventListener('resize', this.viewportResizeHandler, { passive: true });
+        window.visualViewport?.addEventListener('scroll', this.viewportResizeHandler, { passive: true });
     }
     hide() {
+        this.itemList.forEach(item => item.collapse?.());
+        if (this.viewportResizeHandler) {
+            window.removeEventListener('resize', this.viewportResizeHandler);
+            window.visualViewport?.removeEventListener('resize', this.viewportResizeHandler);
+            window.visualViewport?.removeEventListener('scroll', this.viewportResizeHandler);
+            this.viewportResizeHandler = null;
+        }
         if (this.root) {
             this.root.remove();
         }

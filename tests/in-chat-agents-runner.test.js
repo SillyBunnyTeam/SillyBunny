@@ -211,6 +211,7 @@ describe('in-chat agent post-processing runner', () => {
                 .replaceAll('{{user}}', 'Traveler')
                 .replaceAll('{{char}}', options.name2Override || 'Assistant')
                 .replaceAll('{{original}}', options.original ?? '')),
+            substituteParamsExtended: jest.fn(value => String(value ?? '')),
             generateQuietPrompt,
             getCurrentChatId: jest.fn(() => currentChatId),
             normalizeContentText: jest.fn(value => String(value ?? '')),
@@ -331,6 +332,7 @@ describe('in-chat agent post-processing runner', () => {
                 const match = String(value ?? '').match(/^\/([\s\S]*)\/([a-z]*)$/i);
                 return match ? new RegExp(match[1], match[2]) : new RegExp(String(value ?? ''));
             }),
+            uuidv4: jest.fn(() => 'test-uuid'),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
@@ -516,6 +518,34 @@ describe('in-chat agent post-processing runner', () => {
                 triggerKeywords: [],
                 triggerProbability: 100,
                 generationTypes: ['normal'],
+                ...(overrides.conditions ?? {}),
+            },
+        };
+    }
+
+    function createCompanionOutputTransformAgent(overrides = {}) {
+        return {
+            id: overrides.id ?? 'companion-output-transform',
+            name: overrides.name ?? 'Companion Output Transform',
+            phase: 'post',
+            prompt: overrides.prompt ?? 'Rewrite the companion note.',
+            injection: {
+                order: 100,
+                ...(overrides.injection ?? {}),
+            },
+            postProcess: {
+                enabled: false,
+                promptTransformEnabled: true,
+                promptTransformMode: 'rewrite',
+                promptTransformMaxTokens: 8192,
+                promptTransformShowNotifications: false,
+                ...(overrides.postProcess ?? {}),
+            },
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+                runOnCompanionOutputs: true,
                 ...(overrides.conditions ?? {}),
             },
         };
@@ -2205,6 +2235,87 @@ describe('in-chat agent post-processing runner', () => {
         expect(result.tokenUsage.inputTokens).toBeGreaterThan(0);
         expect(result.tokenUsage.outputTokens).toBeGreaterThan(0);
         expect(chat[0].extra.inChatAgentCompanionResults['token-companion'].tokenUsage).toEqual(result.tokenUsage);
+    });
+
+    test('applies opted-in post passes to companion output', async () => {
+        generateQuietPrompt
+            .mockResolvedValueOnce('Raw companion note')
+            .mockResolvedValueOnce('Rewritten companion note');
+        const companionAgent = createCompanionAgent({ id: 'post-pass-companion' });
+        const transformer = createCompanionOutputTransformAgent();
+        enabledAgents = [companionAgent, transformer];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const result = await companionRunner.runCompanionAgentOnMessage(companionAgent.id, 0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        expect(result?.content).toBe('Rewritten companion note');
+        expect(chat[0].extra.inChatAgentCompanionResults[companionAgent.id].content).toBe('Rewritten companion note');
+    });
+
+    test('keeps the raw companion output when a later post pass fails', async () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        generateQuietPrompt
+            .mockResolvedValueOnce('Raw companion note')
+            .mockResolvedValueOnce('Partial companion rewrite')
+            .mockRejectedValueOnce(new Error('post pass failed'));
+        const companionAgent = createCompanionAgent({ id: 'failing-post-pass-companion' });
+        const firstTransformer = createCompanionOutputTransformAgent({ id: 'first-companion-transform' });
+        const failingTransformer = createCompanionOutputTransformAgent({
+            id: 'failing-companion-transform',
+            injection: { order: 110 },
+        });
+        enabledAgents = [companionAgent, firstTransformer, failingTransformer];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        try {
+            chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+            const result = await companionRunner.runCompanionAgentOnMessage(companionAgent.id, 0);
+
+            expect(generateQuietPrompt).toHaveBeenCalledTimes(3);
+            expect(result?.status).toBe('done');
+            expect(result?.content).toBe('Raw companion note');
+            expect(chat[0].extra.inChatAgentCompanionResults[companionAgent.id].content).toBe('Raw companion note');
+        } finally {
+            warnSpy.mockRestore();
+        }
+    });
+
+    test('cancels companion post passes without starting later transforms', async () => {
+        let resolveTransform;
+        generateQuietPrompt
+            .mockResolvedValueOnce('Raw companion note')
+            .mockImplementationOnce(async () => await new Promise(resolve => {
+                resolveTransform = resolve;
+            }));
+        const companionAgent = createCompanionAgent({ id: 'cancelled-post-pass-companion' });
+        const firstTransformer = createCompanionOutputTransformAgent({ id: 'first-cancelled-companion-transform' });
+        const secondTransformer = createCompanionOutputTransformAgent({
+            id: 'second-cancelled-companion-transform',
+            injection: { order: 110 },
+        });
+        enabledAgents = [companionAgent, firstTransformer, secondTransformer];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const running = companionRunner.runCompanionAgentOnMessage(companionAgent.id, 0);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 2);
+        cancelAgentGeneration();
+        resolveTransform('First transformed note');
+
+        const result = await running;
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(2);
+        expect(result?.status).toBe('cancelled');
+        expect(chat[0].extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
+            status: 'cancelled',
+            content: '',
+        }));
     });
 
     test('stores generated companion notes raw and resolves them once when reused', async () => {

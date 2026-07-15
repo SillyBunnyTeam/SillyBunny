@@ -35,13 +35,29 @@ export class TavernCardValidator {
         if (this.validateV1()) {
             return 1;
         }
+        const v1Error = this.#lastValidationError;
 
         if (this.validateV2()) {
+            this.#lastValidationError = null;
             return 2;
         }
+        const v2Error = this.#lastValidationError;
 
         if (this.validateV3()) {
+            this.#lastValidationError = null;
             return 3;
+        }
+        const v3Error = this.#lastValidationError;
+
+        // Report the error from the spec the card declares, otherwise the
+        // last validator tried masks the real failure (e.g. a v2 card with a
+        // missing data field would be reported as a 'spec' mismatch by v3).
+        if (this.card?.spec === 'chara_card_v2') {
+            this.#lastValidationError = v2Error;
+        } else if (this.card?.spec === 'chara_card_v3') {
+            this.#lastValidationError = v3Error;
+        } else {
+            this.#lastValidationError = v1Error;
         }
 
         return false;

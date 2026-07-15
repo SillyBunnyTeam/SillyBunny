@@ -38,16 +38,24 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         expect(mobileShellCss).not.toContain('body.sb-ios-keyboard-locked');
     });
 
-    test('defines the focusin scroll helper', () => {
-        expect(tabsSource).toContain('function scrollMobileFocusedInputIntoView(');
+    test('defines the focused-input scroller and sync helpers', () => {
+        expect(tabsSource).toContain('function getMobileFocusedInputScroller(');
+        expect(tabsSource).toContain('function syncMobileFocusedInputScroll(');
+        expect(tabsSource).toContain('function scheduleMobileFocusedInputScroll(');
     });
 
     test('only runs inside the mobile viewport', () => {
-        expect(tabsSource).toMatch(/function scrollMobileFocusedInputIntoView\([\s\S]*?if \(!isMobileViewport\(\)\)/);
+        expect(tabsSource).toMatch(/function syncMobileFocusedInputScroll\([\s\S]*?if \(!isMobileViewport\(\)\)/);
     });
 
-    test('targets shell panel and drawer scrollers', () => {
-        expect(tabsSource).toMatch(/\.closest\('\.sb-shell-panel-scroller, \.scrollableInner, \.scrollableInnerFull'\)/);
+    test('prefers the shell panel scroller over compatibility wrappers', () => {
+        const helperSource = tabsSource.slice(
+            tabsSource.indexOf('function getMobileFocusedInputScroller('),
+            tabsSource.indexOf('function syncMobileFocusedInputScroll('),
+        );
+
+        expect(helperSource).toContain('target.closest(\'.sb-shell-panel-scroller\')');
+        expect(helperSource).toContain('target.closest(\'.scrollableInner, .scrollableInnerFull\')');
     });
 
     test('scrolls against the visual-viewport bottom so the input clears the keyboard', () => {
@@ -61,8 +69,14 @@ describe('mobile keyboard focused-input scroll wiring', () => {
         expect(tabsSource).toMatch(/scroller\.scrollTop \+= overflow/);
     });
 
-    test('wires the helper on a document focusin listener inside initAll', () => {
-        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scrollMobileFocusedInputIntoView)');
+    test('resyncs the focused input after Safari changes the visual viewport', () => {
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobileFocusedInputScroll)');
+        expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobileFocusedInputScroll)');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobileFocusedInputScroll, { passive: true })');
+        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobileFocusedInputScroll, { passive: true })');
+        expect(tabsSource).toContain('sbMobileFocusedInputScrollTimer = window.setTimeout(() => {');
+        expect(tabsSource).toContain('syncMobileFocusedInputScroll(target);');
+        expect(tabsSource).toContain('}, 360);');
     });
 });
 
@@ -87,8 +101,10 @@ describe('mobile popup keyboard shift wiring', () => {
 
         expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
         expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
+        expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
+        expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
-        expect(helperSource).toContain('dialog.style.transform = `translateY(-${shift}px)`;');
+        expect(helperSource).toContain('dialog.style.setProperty(\'transform\', `translateY(-${shift}px)${baseTransform}`, \'important\');');
     });
 
     test('clamps the shift so the dialog top stays inside the visible viewport', () => {
@@ -99,7 +115,12 @@ describe('mobile popup keyboard shift wiring', () => {
     test('clears the shift when focus leaves or the keyboard closes', () => {
         expect(tabsSource).toContain('function clearMobilePopupKeyboardShift(');
         expect(tabsSource).toContain('function clearAllMobilePopupKeyboardShifts(');
+        expect(tabsSource).toContain('if (dialog.dataset.sbKeyboardShift !== undefined) {');
+        expect(tabsSource).toContain('dialog.dataset.sbKeyboardTransform = dialog.style.transform;');
+        expect(tabsSource).toContain('dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority(\'transform\');');
+        expect(tabsSource).toContain('dialog.style.setProperty(\'transform\', previousTransform, previousTransformPriority);');
         expect(tabsSource).toMatch(/dialog\.style\.removeProperty\('transform'\)/);
+        expect(tabsSource).toContain('scroller.style.removeProperty(\'max-height\');');
         expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardShift;');
     });
 

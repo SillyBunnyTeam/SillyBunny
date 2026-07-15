@@ -450,9 +450,12 @@ export function initDefaultSlashCommands() {
                 return '';
             }
 
-            await renameChat(currentChatName, chatName.toString());
+            const result = await renameChat(currentChatName, chatName.toString());
+            if (!result) {
+                return '';
+            }
 
-            toastr.success(t`Successfully renamed chat to: ${chatName}`);
+            toastr.success(t`Successfully renamed chat to: ${result.newFileName}`);
             return '';
         },
         unnamedArgumentList: [

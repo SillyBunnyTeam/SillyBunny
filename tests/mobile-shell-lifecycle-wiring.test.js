@@ -1,4 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
+import { parse } from '@adobe/css-tools';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -102,6 +103,12 @@ function getFunctionSource(name) {
 }
 
 describe('mobile shell lifecycle wiring', () => {
+    test('keeps the trailing mobile chat hardening parseable', () => {
+        expect(() => parse(mobileShellCssSource, { source: 'sillybunny-mobile-shell.css' })).not.toThrow();
+        expect(mobileShellCssSource).toMatch(/#sb-bottom-chat-bar\s*\{[^}]*touch-action:\s*pan-x;/);
+        expect(mobileShellCssSource).toMatch(/#sb-bottom-chat-secondary-row\s*\{[^}]*touch-action:\s*pan-x;/);
+    });
+
     test('blocks mobile document panning from fixed chrome and scroll edges', () => {
         expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
         expect(browserFixesSource).toContain('captureDocumentPanStart');
@@ -168,6 +175,21 @@ describe('mobile shell lifecycle wiring', () => {
         });
         const quickReplyButton = createElementStub({ parentElement: quickReplyRail });
         const quickReplyStartButton = createElementStub({ parentElement: quickReplyRailAtStart });
+        const quickReplyControl = createElementStub({
+            parentElement: quickReplyRail,
+            matches: selector => selectorListIncludes(selector, '.interactable'),
+        });
+        const incidentalComposerRail = createElementStub({
+            parentElement: composerChrome,
+            matches: selector => selectorListIncludes(selector, '#leftSendForm'),
+            scrollWidth: 57,
+            clientWidth: 55,
+        });
+        const incidentalComposerGap = createElementStub({ parentElement: incidentalComposerRail });
+        const incidentalComposerControl = createElementStub({
+            parentElement: incidentalComposerRail,
+            matches: selector => selectorListIncludes(selector, '.interactable'),
+        });
         const sendFormButton = createElementStub({ parentElement: sendFormChrome });
         const genericButton = createElementStub({
             matches: selector => selectorListIncludes(selector, 'button'),
@@ -299,6 +321,9 @@ describe('mobile shell lifecycle wiring', () => {
         const railHorizontalMove = createTouchMove(quickReplyButton, { x: 40, y: 2 });
         const railAtStartEdgeMove = createTouchMove(quickReplyStartButton, { x: 40, y: 2 });
         const railVerticalMove = createTouchMove(quickReplyButton, { x: 2, y: -40 });
+        const railControlMove = createTouchMove(quickReplyControl, { x: -40, y: 2 });
+        const incidentalComposerGapMove = createTouchMove(incidentalComposerGap, { x: -40, y: 2 });
+        const incidentalComposerControlMove = createTouchMove(incidentalComposerControl, { x: -40, y: 2 });
         const companionHandleHorizontalMove = createTouchMove(companionHandle, { x: -40, y: 1 });
         const companionHandleVerticalMove = createTouchMove(companionHandle, { x: 1, y: 40 });
         const companionPanelVerticalMove = createTouchMove(companionPanelBody, { x: 1, y: -40 });
@@ -344,6 +369,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(railHorizontalMove.event, { touchStart: railHorizontalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(railAtStartEdgeMove.event, { touchStart: railAtStartEdgeMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(railControlMove.event, { touchStart: railControlMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(incidentalComposerGapMove.event, { touchStart: incidentalComposerGapMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(incidentalComposerControlMove.event, { touchStart: incidentalComposerControlMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(companionHandleHorizontalMove.event, { touchStart: companionHandleHorizontalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(companionHandleVerticalMove.event, { touchStart: companionHandleVerticalMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(companionPanelVerticalMove.event, { touchStart: companionPanelVerticalMove.touchStart })).toBe(false);
@@ -365,8 +393,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(legacyDialogInputMove.event, { touchStart: legacyDialogInputMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(legacyDialogButtonMove.event, { touchStart: legacyDialogButtonMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(genericPopupBodyMove.event, { touchStart: genericPopupBodyMove.touchStart })).toBe(false);
-        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(true);
-        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(shellNavHorizontalMove.event, { touchStart: shellNavHorizontalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(shellNavHorizontalAtStartEdgeMove.event, { touchStart: shellNavHorizontalAtStartEdgeMove.touchStart })).toBe(true);
@@ -374,7 +402,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
-    test('relaxes document pan guards inside open mobile shell menus', () => {
+    test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
         const createMenuRoot = rootSelector => createElementStub({
             matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
             scrollHeight: 1600,
@@ -388,7 +416,11 @@ describe('mobile shell lifecycle wiring', () => {
             scrollHeight: 1600,
             clientHeight: 600,
         });
-        const workspaceButton = createElementStub({ parentElement: workspaceRoot });
+        const workspaceButton = createElementStub({
+            parentElement: workspaceRoot,
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const connectionProfileAction = createElementStub({ parentElement: workspaceRoot });
         const customizeSelect = createElementStub({
             parentElement: customizeRoot,
             matches: selector => selector.includes('select'),
@@ -396,15 +428,38 @@ describe('mobile shell lifecycle wiring', () => {
         const characterCard = createElementStub({ parentElement: characterRoot });
         const closedWorkspaceButton = createElementStub({ parentElement: closedWorkspaceRoot });
 
+        const workspaceScrollMove = createTouchMove(workspaceButton, { x: 1, y: -40 });
         const workspaceAtTopPullDownMove = createTouchMove(workspaceButton, { x: 1, y: 40 });
+        const connectionProfileActionMove = createTouchMove(connectionProfileAction, { x: 40, y: 1 });
         const customizeSelectMove = createTouchMove(customizeSelect, { x: 1, y: -40 });
         const characterAtTopPullDownMove = createTouchMove(characterCard, { x: 1, y: 40 });
         const closedWorkspaceAtTopPullDownMove = createTouchMove(closedWorkspaceButton, { x: 1, y: 40 });
 
-        expect(shouldBlockMobileDocumentPan(workspaceAtTopPullDownMove.event, { touchStart: workspaceAtTopPullDownMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(workspaceScrollMove.event, { touchStart: workspaceScrollMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(workspaceAtTopPullDownMove.event, { touchStart: workspaceAtTopPullDownMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(connectionProfileActionMove.event, { touchStart: connectionProfileActionMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(customizeSelectMove.event, { touchStart: customizeSelectMove.touchStart })).toBe(false);
-        expect(shouldBlockMobileDocumentPan(characterAtTopPullDownMove.event, { touchStart: characterAtTopPullDownMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(characterAtTopPullDownMove.event, { touchStart: characterAtTopPullDownMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(closedWorkspaceAtTopPullDownMove.event, { touchStart: closedWorkspaceAtTopPullDownMove.touchStart })).toBe(true);
+    });
+
+    test('does not hand guarded control gestures to a scroll owner outside the guard', () => {
+        const documentScroller = createElementStub({
+            scrollHeight: 2000,
+            clientHeight: 800,
+            scrollTop: 200,
+        });
+        const guardedSurface = createElementStub({
+            parentElement: documentScroller,
+            matches: selector => selectorListIncludes(selector, '#send_form'),
+        });
+        const button = createElementStub({
+            parentElement: guardedSurface,
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const move = createTouchMove(button, { y: -40 });
+
+        expect(shouldBlockMobileDocumentPan(move.event, { touchStart: move.touchStart })).toBe(true);
     });
 
     test('imports the mobile shell lifecycle seam into the shell adapter', () => {
@@ -487,7 +542,10 @@ describe('mobile shell lifecycle wiring', () => {
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
         expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
-        expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing && isEditableFocusTarget(document.activeElement);');
+        expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
+        expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
+        expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
+        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement);');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
@@ -598,6 +656,17 @@ describe('mobile shell lifecycle wiring', () => {
         expect(mobileShellCssSource.lastIndexOf('bottom: auto !important;')).toBeGreaterThan(
             mobileShellCssSource.lastIndexOf('bottom: env(safe-area-inset-bottom, 0px) !important;'),
         );
+    });
+
+    test('keeps the iOS composer on stable viewport bounds without keyboard inset resizing', () => {
+        const getShellViewportSizeSource = getFunctionSource('getShellViewportSize');
+
+        expect(getShellViewportSizeSource).toContain('if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {');
+        expect(getShellViewportSizeSource).toContain('return layoutViewport;');
+        expect(tabsSource).not.toContain('function getComposerKeyboardInset(');
+        expect(tabsSource).not.toContain('handleComposerKeyboardFocusIn');
+        expect(tabsSource).not.toContain('sb-ios-composer-keyboard-inset-active');
+        expect(browserFixesSource).not.toContain('isComposerHeldAboveKeyboard');
     });
 
     test('routes mobile viewport sync planning through the lifecycle seam', () => {
