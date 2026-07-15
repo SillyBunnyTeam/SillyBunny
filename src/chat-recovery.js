@@ -10,6 +10,7 @@ export const CHAT_RECOVERY_DIRECTORY = '_chat_recovery';
 export const CHAT_RECOVERY_QUARANTINE_LIMIT = 3;
 
 const GROUP_CHAT_OWNER = 'shared';
+const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 const rekeyTransactions = new WeakMap();
 
@@ -45,6 +46,22 @@ function corruptResult(reason, data = null, details = {}) {
         records: null,
         ...details,
     };
+}
+
+/**
+ * Runs supplementary recovery work without allowing sidecar failures to block authoritative chat operations.
+ * @template T
+ * @param {() => T} operation Recovery operation
+ * @param {string} warningMessage Warning emitted when the operation fails
+ * @returns {{ok: true, value: T}|{ok: false, error: unknown}} Operation result
+ */
+export function runChatRecoveryBestEffort(operation, warningMessage) {
+    try {
+        return { ok: true, value: operation() };
+    } catch (error) {
+        console.warn(warningMessage, error);
+        return { ok: false, error };
+    }
 }
 
 function readRegularFile(filePath) {
@@ -187,7 +204,18 @@ function normalizeFilename(filename) {
     return sanitizedFilename;
 }
 
-function createTarget({ type, owner, filename, activeDirectory, backupDirectory, rootDirectoryKey, rootDirectory }) {
+function normalizeMaxRecoveryStates(value) {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+        return null;
+    }
+    return Math.floor(numericValue);
+}
+
+function createTarget({ type, owner, filename, activeDirectory, backupDirectory, rootDirectoryKey, rootDirectory, maxRecoveryStates }) {
     const normalizedFilename = normalizeFilename(filename);
     const normalizedBackupDirectory = normalizeDirectory(backupDirectory, 'Backup directory');
     const normalizedRootDirectory = normalizeDirectory(rootDirectory, type === 'character' ? 'Chats directory' : 'Group chats directory');
@@ -209,11 +237,12 @@ function createTarget({ type, owner, filename, activeDirectory, backupDirectory,
         activeDirectory: normalizedActiveDirectory,
         activePath: path.join(normalizedActiveDirectory, normalizedFilename),
         recoveryDirectory: path.join(normalizedBackupDirectory, CHAT_RECOVERY_DIRECTORY),
+        maxRecoveryStates: normalizeMaxRecoveryStates(maxRecoveryStates),
         id,
     });
 }
 
-export function createCharacterChatTarget({ chatsDirectory, backupDirectory, owner, filename }) {
+export function createCharacterChatTarget({ chatsDirectory, backupDirectory, owner, filename, maxRecoveryStates }) {
     const normalizedOwner = normalizeOwner(owner);
     const normalizedChatsDirectory = normalizeDirectory(chatsDirectory, 'Chats directory');
     return createTarget({
@@ -224,10 +253,11 @@ export function createCharacterChatTarget({ chatsDirectory, backupDirectory, own
         backupDirectory,
         rootDirectoryKey: 'chatsDirectory',
         rootDirectory: normalizedChatsDirectory,
+        maxRecoveryStates,
     });
 }
 
-export function createGroupChatTarget({ groupChatsDirectory, backupDirectory, filename }) {
+export function createGroupChatTarget({ groupChatsDirectory, backupDirectory, filename, maxRecoveryStates }) {
     const normalizedGroupChatsDirectory = normalizeDirectory(groupChatsDirectory, 'Group chats directory');
     return createTarget({
         type: 'group',
@@ -237,6 +267,7 @@ export function createGroupChatTarget({ groupChatsDirectory, backupDirectory, fi
         backupDirectory,
         rootDirectoryKey: 'groupChatsDirectory',
         rootDirectory: normalizedGroupChatsDirectory,
+        maxRecoveryStates,
     });
 }
 
@@ -327,6 +358,47 @@ function removeRegularFile(filePath) {
     }
 }
 
+function pruneRecoveryStates(target) {
+    const limit = target.maxRecoveryStates;
+    if (limit === null || !assertRecoveryDirectory(target)) {
+        return;
+    }
+
+    /** @type {Map<string, {id: string, mtimeMs: number, paths: string[]}>} */
+    const groups = new Map();
+    for (const name of fs.readdirSync(target.recoveryDirectory)) {
+        const match = RECOVERY_STATE_FILE_REGEXP.exec(name);
+        if (!match) {
+            continue;
+        }
+        const filePath = path.join(target.recoveryDirectory, name);
+        const stats = fs.lstatSync(filePath);
+        if (stats.isSymbolicLink() || !stats.isFile()) {
+            throw new Error(`Unsafe chat recovery file: ${filePath}`);
+        }
+        const id = match[1];
+        const group = groups.get(id) ?? { id, mtimeMs: 0, paths: [] };
+        group.mtimeMs = Math.max(group.mtimeMs, stats.mtimeMs);
+        group.paths.push(filePath);
+        groups.set(id, group);
+    }
+
+    const sortedGroups = [...groups.values()].sort((left, right) => {
+        if (left.id === target.id && right.id !== target.id) {
+            return -1;
+        }
+        if (right.id === target.id && left.id !== target.id) {
+            return 1;
+        }
+        return right.mtimeMs - left.mtimeMs || left.id.localeCompare(right.id);
+    });
+    for (const group of sortedGroups.slice(limit)) {
+        for (const filePath of group.paths) {
+            removeRegularFile(filePath);
+        }
+    }
+}
+
 function isTombstoned(target) {
     if (!assertRecoveryDirectory(target)) {
         return false;
@@ -347,6 +419,7 @@ function storeValidSnapshot(target, parsed) {
     const { latestPath, tombstonePath } = getChatRecoveryPaths(target);
     atomicWriteRecoveryFile(target, latestPath, parsed.data);
     removeRegularFile(tombstonePath);
+    pruneRecoveryStates(target);
 }
 
 export function writeLatestChatSnapshot(target, data) {
@@ -373,15 +446,18 @@ export function seedLatestChatSnapshot(target) {
 
 export function isChatRecoverable(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
-    if (isTombstoned(normalizedTarget)) {
-        return false;
-    }
-    if (!assertRecoveryDirectory(normalizedTarget)) {
-        return false;
-    }
+    const inspection = runChatRecoveryBestEffort(() => {
+        if (isTombstoned(normalizedTarget)) {
+            return false;
+        }
+        if (!assertRecoveryDirectory(normalizedTarget)) {
+            return false;
+        }
 
-    const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-    return readChatJsonlStrict(latestPath).status === 'ok';
+        const { latestPath } = getChatRecoveryPaths(normalizedTarget);
+        return readChatJsonlStrict(latestPath).status === 'ok';
+    }, 'Failed to inspect chat recoverability; treating recovery as unavailable.');
+    return inspection.ok ? inspection.value : false;
 }
 
 function captureRecoveryFile(filePath) {
@@ -408,6 +484,7 @@ function quarantineCorruptChat(target, data) {
         }
     }
     atomicWriteRecoveryFile(target, quarantinePaths[0], data);
+    pruneRecoveryStates(target);
     return quarantinePaths[0];
 }
 
@@ -441,7 +518,26 @@ export function loadActiveChatWithRecovery(target) {
         };
     }
 
-    if (isTombstoned(normalizedTarget)) {
+    const recoveryInspection = runChatRecoveryBestEffort(() => {
+        if (isTombstoned(normalizedTarget)) {
+            return { tombstoned: true, snapshot: null };
+        }
+
+        const { latestPath } = getChatRecoveryPaths(normalizedTarget);
+        return { tombstoned: false, snapshot: readChatJsonlStrict(latestPath) };
+    }, 'Failed to inspect chat recovery state; continuing without sidecar recovery.');
+
+    if (!recoveryInspection.ok) {
+        return {
+            ...active,
+            source: null,
+            recovered: false,
+            recoveryReason: 'recovery-unavailable',
+            quarantinePath: null,
+        };
+    }
+
+    if (recoveryInspection.value.tombstoned) {
         return {
             ...active,
             source: null,
@@ -451,8 +547,7 @@ export function loadActiveChatWithRecovery(target) {
         };
     }
 
-    const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-    const snapshot = readChatJsonlStrict(latestPath);
+    const snapshot = recoveryInspection.value.snapshot;
     if (snapshot.status !== 'ok') {
         return {
             ...active,
@@ -476,7 +571,11 @@ export function loadActiveChatWithRecovery(target) {
                 quarantinePath: null,
             };
         }
-        quarantinePath = quarantineCorruptChat(normalizedTarget, active.data);
+        const quarantineResult = runChatRecoveryBestEffort(
+            () => quarantineCorruptChat(normalizedTarget, active.data),
+            'Failed to quarantine corrupt chat bytes; continuing with safe snapshot recovery.',
+        );
+        quarantinePath = quarantineResult.ok ? quarantineResult.value : null;
     }
 
     atomicRestoreActive(normalizedTarget, snapshot.data);
@@ -500,6 +599,7 @@ export function markChatDeleted(target) {
 
     const { tombstonePath } = getChatRecoveryPaths(normalizedTarget);
     atomicWriteRecoveryFile(normalizedTarget, tombstonePath, Buffer.from(`${normalizedTarget.id}\n`, 'utf8'));
+    pruneRecoveryStates(normalizedTarget);
     return {
         status: 'marked',
         active,
@@ -511,6 +611,26 @@ export function markChatDeleted(target) {
 function getRecoveryStatePaths(target) {
     const paths = getChatRecoveryPaths(target);
     return [paths.latestPath, paths.tombstonePath, ...paths.quarantinePaths];
+}
+
+/**
+ * Removes all sidecar state for a chat after its authoritative file is intentionally deleted.
+ * @param {object} target Chat recovery target
+ * @returns {{status: 'cleared'|'missing', cleared: number}} Cleanup result
+ */
+export function clearChatRecoveryState(target) {
+    const normalizedTarget = normalizeChatRecoveryTarget(target);
+    if (!assertRecoveryDirectory(normalizedTarget)) {
+        return { status: 'missing', cleared: 0 };
+    }
+
+    let cleared = 0;
+    for (const filePath of getRecoveryStatePaths(normalizedTarget)) {
+        if (removeRegularFile(filePath)) {
+            cleared++;
+        }
+    }
+    return { status: 'cleared', cleared };
 }
 
 function captureRecoveryState(target) {

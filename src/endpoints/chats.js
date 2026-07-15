@@ -11,6 +11,7 @@ import _ from 'lodash';
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
 import {
+    clearChatRecoveryState,
     createCharacterChatTarget,
     createGroupChatTarget,
     isRecognizedChatHeader,
@@ -18,6 +19,7 @@ import {
     markChatDeleted,
     readChatJsonlStrict,
     rekeyChatRecoveryState,
+    runChatRecoveryBestEffort,
     seedLatestChatSnapshot,
     writeLatestChatSnapshot,
 } from '../chat-recovery.js';
@@ -734,6 +736,7 @@ function createChatRecoveryTarget(request, isGroup, fileName) {
             groupChatsDirectory: request.user.directories.groupChats,
             backupDirectory: request.user.directories.backups,
             filename: fileName,
+            maxRecoveryStates: maxTotalChatBackups,
         });
     }
 
@@ -742,6 +745,7 @@ function createChatRecoveryTarget(request, isGroup, fileName) {
         backupDirectory: request.user.directories.backups,
         owner: String(request.body.avatar_url).replace('.png', ''),
         filename: fileName,
+        maxRecoveryStates: maxTotalChatBackups,
     });
 }
 
@@ -944,18 +948,29 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         const sourceRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, originalFileName);
         const destinationRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, renamedFileName);
         if (isBackupEnabled) {
-            seedLatestChatSnapshot(sourceRecoveryTarget);
+            runChatRecoveryBestEffort(
+                () => seedLatestChatSnapshot(sourceRecoveryTarget),
+                'Failed to prepare chat recovery state; continuing with chat rename.',
+            );
         }
 
         // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
         const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
-        try {
-            if (isBackupEnabled) {
-                rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget);
+        if (isBackupEnabled) {
+            const rekeyResult = runChatRecoveryBestEffort(
+                () => rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget),
+                'Failed to move chat recovery state; continuing with renamed chat.',
+            );
+            if (!rekeyResult.ok) {
+                runChatRecoveryBestEffort(
+                    () => clearChatRecoveryState(sourceRecoveryTarget),
+                    'Failed to clear source chat recovery state after rename.',
+                );
+                runChatRecoveryBestEffort(
+                    () => clearChatRecoveryState(destinationRecoveryTarget),
+                    'Failed to clear destination chat recovery state after rename.',
+                );
             }
-        } catch (error) {
-            renameChatFile(pathToRenamedFile, pathToOriginalFile);
-            throw error;
         }
         console.info(`Successfully renamed chat file (${renameResult.method}).`);
         return response.send({ ok: true, sanitizedFileName });
@@ -978,12 +993,20 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
         if (!isPathUnderParent(request.user.directories.chats, chatFilePath)) {
             return response.sendStatus(400);
         }
+        const recoveryTarget = createChatRecoveryTarget(request, false, sanitizedChatFileName);
         if (isBackupEnabled) {
-            markChatDeleted(createChatRecoveryTarget(request, false, sanitizedChatFileName));
+            runChatRecoveryBestEffort(
+                () => markChatDeleted(recoveryTarget),
+                'Failed to mark chat recovery state for deletion; continuing with chat deletion.',
+            );
         }
 
         //Return success if the file was deleted.
         if (tryDeleteFile(chatFilePath)) {
+            runChatRecoveryBestEffort(
+                () => clearChatRecoveryState(recoveryTarget),
+                'Failed to clear chat recovery state after deletion.',
+            );
             return response.send({ ok: true });
         } else {
             console.error('The chat file was not deleted.');
@@ -1240,13 +1263,21 @@ router.post('/group/delete', (request, response) => {
         const id = request.body.id;
         const chatFileName = sanitize(`${id}.jsonl`);
         const chatFilePath = path.join(request.user.directories.groupChats, chatFileName);
+        const recoveryTarget = createChatRecoveryTarget(request, true, chatFileName);
 
         if (isBackupEnabled) {
-            markChatDeleted(createChatRecoveryTarget(request, true, chatFileName));
+            runChatRecoveryBestEffort(
+                () => markChatDeleted(recoveryTarget),
+                'Failed to mark chat recovery state for deletion; continuing with chat deletion.',
+            );
         }
 
         //Return success if the file was deleted.
         if (tryDeleteFile(chatFilePath)) {
+            runChatRecoveryBestEffort(
+                () => clearChatRecoveryState(recoveryTarget),
+                'Failed to clear chat recovery state after deletion.',
+            );
             return response.send({ ok: true });
         } else {
             console.error('The group chat file was not deleted.');

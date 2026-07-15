@@ -558,6 +558,7 @@ async function _save(group, reload = true) {
         headers: getRequestHeaders(),
         body: JSON.stringify(group),
     });
+    // SillyBunny: surface metadata-save failures so chat rename can roll back consistently.
     if (!response.ok) {
         throw new Error(`Could not save group ${group.id}.`);
     }
@@ -603,6 +604,7 @@ async function loadGroupChat(chatId, allowCreate = false) {
         body: JSON.stringify({ id: chatId, allow_create: allowCreate }),
     }), { refreshCsrfToken });
 
+    // SillyBunny: fail closed instead of replacing missing or corrupt persisted chat data with a greeting.
     if (!response.ok) {
         throw new Error(`Could not load group chat ${chatId}.`);
     }

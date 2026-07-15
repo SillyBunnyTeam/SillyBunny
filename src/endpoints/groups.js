@@ -8,10 +8,11 @@ import { default as writeFileAtomic } from 'write-file-atomic';
 
 import { color, getConfigValue, tryParse, tryWriteFileSync } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
-import { createGroupChatTarget, markChatDeleted } from '../chat-recovery.js';
+import { clearChatRecoveryState, createGroupChatTarget, markChatDeleted, runChatRecoveryBestEffort } from '../chat-recovery.js';
 
 export const router = express.Router();
 const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
+const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 
 /**
  * Warns if group data contains deprecated metadata keys and removes them.
@@ -241,17 +242,24 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
     try {
         // Delete group chats
         const group = JSON.parse(fs.readFileSync(pathToGroup, 'utf8'));
+        /** @type {ReturnType<typeof createGroupChatTarget>[]} */
+        let recoveryTargets = [];
 
         if (group && Array.isArray(group.chats)) {
             const chatFiles = group.chats.map(chat => sanitize(`${chat}.jsonl`));
+            recoveryTargets = chatFiles.map(chatFile => createGroupChatTarget({
+                groupChatsDirectory: request.user.directories.groupChats,
+                backupDirectory: request.user.directories.backups,
+                filename: chatFile,
+                maxRecoveryStates: maxTotalChatBackups,
+            }));
             if (isChatBackupEnabled) {
                 // SillyBunny: tombstones keep intentional group deletion from looking like recoverable loss.
-                for (const chatFile of chatFiles) {
-                    markChatDeleted(createGroupChatTarget({
-                        groupChatsDirectory: request.user.directories.groupChats,
-                        backupDirectory: request.user.directories.backups,
-                        filename: chatFile,
-                    }));
+                for (const recoveryTarget of recoveryTargets) {
+                    runChatRecoveryBestEffort(
+                        () => markChatDeleted(recoveryTarget),
+                        'Failed to mark chat recovery state for deletion; continuing with group deletion.',
+                    );
                 }
             }
             for (const chatFile of chatFiles) {
@@ -263,13 +271,18 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
                 }
             }
         }
+        if (fs.existsSync(pathToGroup)) {
+            fs.unlinkSync(pathToGroup);
+        }
+        for (const recoveryTarget of recoveryTargets) {
+            runChatRecoveryBestEffort(
+                () => clearChatRecoveryState(recoveryTarget),
+                'Failed to clear chat recovery state after group deletion.',
+            );
+        }
     } catch (error) {
         console.error('Could not delete group chats. Clean them up manually.', error);
         return response.sendStatus(500);
-    }
-
-    if (fs.existsSync(pathToGroup)) {
-        fs.unlinkSync(pathToGroup);
     }
 
     return response.send({ ok: true });

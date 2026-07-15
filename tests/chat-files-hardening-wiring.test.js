@@ -41,13 +41,20 @@ describe('chat file hardening wiring', () => {
     });
 
     test('connects exact recovery to save, load, rename, and intentional deletion routes', async () => {
-        const source = await readSource('../src/endpoints/chats.js');
+        const [source, characterSource, groupSource] = await Promise.all([
+            readSource('../src/endpoints/chats.js'),
+            readSource('../src/endpoints/characters.js'),
+            readSource('../src/endpoints/groups.js'),
+        ]);
 
         expect(source).toContain('writeLatestChatSnapshot(recoveryTarget, jsonlData);');
         expect(source).toContain('loadActiveChatWithRecovery(target)');
-        expect(source).toContain('rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget);');
-        expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, false, sanitizedChatFileName));');
-        expect(source).toContain('markChatDeleted(createChatRecoveryTarget(request, true, chatFileName));');
+        expect(source).toContain('rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget)');
+        expect(source).toContain('markChatDeleted(recoveryTarget)');
+        expect(source).toContain('clearChatRecoveryState(recoveryTarget)');
+        expect(source).toContain('maxRecoveryStates: maxTotalChatBackups');
+        expect(characterSource).toContain('maxRecoveryStates: maxTotalChatBackups');
+        expect(groupSource).toContain('maxRecoveryStates: maxTotalChatBackups');
     });
 
     test('uses the full chat list area while browsing backups', async () => {
@@ -70,10 +77,10 @@ describe('chat file hardening wiring', () => {
         ]);
         const previewBody = getFunctionBody(source, 'function createBackupPreview', 'class BackupsBrowser');
 
-        expect(previewBody).toContain("document.createElement('section')");
-        expect(previewBody).toContain("document.createElement('pre')");
-        expect(previewBody).not.toContain("document.createElement('textarea')");
-        expect(previewBody).toContain("preview.classList.add('chatBackupPreview'");
+        expect(previewBody).toContain('document.createElement(\'section\')');
+        expect(previewBody).toContain('document.createElement(\'pre\')');
+        expect(previewBody).not.toContain('document.createElement(\'textarea\')');
+        expect(previewBody).toContain('preview.classList.add(\'chatBackupPreview\'');
         expect(source).toContain('this.#backupsListElement.replaceChildren(preview);');
         expect(source).not.toContain('callGenericPopup(preview');
         expect(styles).toContain('.chatBackupPreview');

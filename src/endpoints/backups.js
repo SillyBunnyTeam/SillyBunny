@@ -7,6 +7,7 @@ import { CHAT_BACKUPS_PREFIX } from './chats.js';
 
 export const router = express.Router();
 
+// SillyBunny: canonical regular-file checks and metadata-only listing keep aliases, symlinks, and malformed or oversized contents out of backup handling.
 /**
  * Checks whether a name is a canonical top-level chat backup filename.
  * @param {unknown} name Filename to check

@@ -26,10 +26,12 @@ import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 import {
+    clearChatRecoveryState,
     createCharacterChatTarget,
     isChatRecoverable,
     markChatDeleted,
     readChatJsonlStrict,
+    runChatRecoveryBestEffort,
 } from '../chat-recovery.js';
 
 // With 100 MB limit it would take roughly 3000 characters to reach this limit
@@ -41,6 +43,7 @@ const isAndroid = process.platform === 'android';
 const useShallowCharacters = !!getConfigValue('performance.lazyLoadCharacters', false, 'boolean');
 const useDiskCache = !!getConfigValue('performance.useDiskCache', true, 'boolean');
 const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
+const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 const BULK_MERGE_CONCURRENCY = 8;
 const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
@@ -1424,22 +1427,39 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(403);
     }
 
+    /** @type {ReturnType<typeof createCharacterChatTarget>[]} */
+    let recoveryTargets = [];
     if (request.body.delete_chats == true) {
         try {
             const owner = sanitize(dir_name);
             const chatsDirectory = path.join(request.user.directories.chats, owner);
-            if (isChatBackupEnabled && fs.existsSync(chatsDirectory)) {
+            if (fs.existsSync(chatsDirectory)) {
                 const chatFiles = await fs.promises.readdir(chatsDirectory, { withFileTypes: true });
-                for (const chatFile of chatFiles.filter(entry => entry.isFile() && path.extname(entry.name) === '.jsonl')) {
-                    markChatDeleted(createCharacterChatTarget({
+                recoveryTargets = chatFiles
+                    .filter(entry => entry.isFile() && path.extname(entry.name) === '.jsonl')
+                    .map(chatFile => createCharacterChatTarget({
                         chatsDirectory: request.user.directories.chats,
                         backupDirectory: request.user.directories.backups,
                         owner,
                         filename: chatFile.name,
+                        maxRecoveryStates: maxTotalChatBackups,
                     }));
+            }
+            if (isChatBackupEnabled) {
+                for (const recoveryTarget of recoveryTargets) {
+                    runChatRecoveryBestEffort(
+                        () => markChatDeleted(recoveryTarget),
+                        'Failed to mark chat recovery state for deletion; continuing with character deletion.',
+                    );
                 }
             }
             await fs.promises.rm(chatsDirectory, { recursive: true, force: true });
+            for (const recoveryTarget of recoveryTargets) {
+                runChatRecoveryBestEffort(
+                    () => clearChatRecoveryState(recoveryTarget),
+                    'Failed to clear chat recovery state after character deletion.',
+                );
+            }
         } catch (err) {
             console.error(err);
             return response.sendStatus(500);
@@ -1551,6 +1571,7 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
                 backupDirectory: request.user.directories.backups,
                 owner: characterDirectory,
                 filename: requestedFileName,
+                maxRecoveryStates: maxTotalChatBackups,
             })
             : null;
 

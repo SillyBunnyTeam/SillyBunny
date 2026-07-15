@@ -29,12 +29,13 @@ function chatData(label = 'one') {
     return Buffer.from(`\n{"chat_metadata":{"future":{"enabled":true}},"unknown_header":"${label}"}\r\n\r\n{"name":"Character","mes":"${label}","unknown_message":17}\n`, 'utf8');
 }
 
-function characterTarget(owner = 'character-one', filename = 'chat.jsonl') {
+function characterTarget(owner = 'character-one', filename = 'chat.jsonl', maxRecoveryStates) {
     return createCharacterChatTarget({
         chatsDirectory,
         backupDirectory,
         owner,
         filename,
+        maxRecoveryStates,
     });
 }
 
@@ -180,6 +181,29 @@ describe('chat recovery targets', () => {
 });
 
 describe('snapshot and recovery operations', () => {
+    test('prunes the oldest recovery targets as complete groups within the configured limit', () => {
+        const first = characterTarget('character-one', 'first.jsonl', 2);
+        const second = characterTarget('character-one', 'second.jsonl', 2);
+        const third = characterTarget('character-one', 'third.jsonl', 2);
+        writeLatestChatSnapshot(first, chatData('first'));
+        markChatDeleted(first);
+        const firstPaths = getChatRecoveryPaths(first);
+        const secondPaths = getChatRecoveryPaths(second);
+        const thirdPaths = getChatRecoveryPaths(third);
+        const now = Date.now();
+        fs.utimesSync(firstPaths.latestPath, new Date(now - 3_000), new Date(now - 3_000));
+        fs.utimesSync(firstPaths.tombstonePath, new Date(now - 3_000), new Date(now - 3_000));
+
+        writeLatestChatSnapshot(second, chatData('second'));
+        fs.utimesSync(secondPaths.latestPath, new Date(now - 2_000), new Date(now - 2_000));
+        writeLatestChatSnapshot(third, chatData('third'));
+
+        expect(fs.existsSync(firstPaths.latestPath)).toBe(false);
+        expect(fs.existsSync(firstPaths.tombstonePath)).toBe(false);
+        expect(fs.existsSync(secondPaths.latestPath)).toBe(true);
+        expect(fs.existsSync(thirdPaths.latestPath)).toBe(true);
+    });
+
     test('writes and seeds exact snapshots while clearing tombstones', () => {
         const target = characterTarget();
         const written = chatData('written');
@@ -229,6 +253,18 @@ describe('snapshot and recovery operations', () => {
         );
     });
 
+    test('treats unsafe recovery state as unavailable when checking recoverability', () => {
+        const target = characterTarget();
+        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        fs.writeFileSync(path.join(backupDirectory, CHAT_RECOVERY_DIRECTORY), 'not a directory');
+
+        expect(isChatRecoverable(target)).toBe(false);
+        expect(consoleWarn).toHaveBeenCalledWith(
+            'Failed to inspect chat recoverability; treating recovery as unavailable.',
+            expect.any(Error),
+        );
+    });
+
     test('restores a missing active file byte-for-byte', () => {
         const target = characterTarget();
         const serialized = chatData('missing');
@@ -266,6 +302,30 @@ describe('snapshot and recovery operations', () => {
         expect(fs.readFileSync(paths.quarantinePaths[2])).toEqual(corruptVersions[1]);
         const quarantineFiles = fs.readdirSync(paths.directory).filter(file => file.includes(`${target.id}.corrupt-`));
         expect(quarantineFiles).toHaveLength(CHAT_RECOVERY_QUARANTINE_LIMIT);
+    });
+
+    test('restores from a valid snapshot when corrupt-byte quarantine storage is unsafe', () => {
+        const target = characterTarget();
+        const snapshot = chatData('snapshot');
+        const linkedData = Buffer.from('do-not-touch');
+        const linkedFile = path.join(tempRoot, 'linked-quarantine.jsonl');
+        const paths = getChatRecoveryPaths(target);
+        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        writeLatestChatSnapshot(target, snapshot);
+        fs.writeFileSync(linkedFile, linkedData);
+        fs.symlinkSync(linkedFile, paths.quarantinePaths[0]);
+        writeActive(target, Buffer.from('corrupt-active'));
+
+        const result = loadActiveChatWithRecovery(target);
+
+        expect(result).toMatchObject({ status: 'ok', source: 'snapshot', recovered: true, quarantinePath: null });
+        expect(fs.readFileSync(target.activePath)).toEqual(snapshot);
+        expect(fs.lstatSync(paths.quarantinePaths[0]).isSymbolicLink()).toBe(true);
+        expect(fs.readFileSync(linkedFile)).toEqual(linkedData);
+        expect(consoleWarn).toHaveBeenCalledWith(
+            'Failed to quarantine corrupt chat bytes; continuing with safe snapshot recovery.',
+            expect.any(Error),
+        );
     });
 
     test('leaves missing and corrupt active files alone without a valid snapshot', () => {
