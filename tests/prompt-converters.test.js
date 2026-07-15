@@ -120,7 +120,10 @@ describe('calculateClaudeBudgetTokens', () => {
 
         test('max returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'max', true, true)).toBe('max'));
 
-        test('xhigh returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+        // SillyBunny: Sonnet 5 accepts xhigh; older adaptive Claude models require max.
+        test('xhigh falls back to "max" when unsupported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+
+        test('xhigh remains "xhigh" when supported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true, true)).toBe('xhigh'));
     });
 
     describe('traditional model', () => {

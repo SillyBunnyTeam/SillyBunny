@@ -273,7 +273,8 @@ router.post('/caption-image', async (request, response) => {
     try {
         const mimeType = request.body.image.split(';')[0].split(':')[1];
         const base64Data = request.body.image.split(',')[1];
-        const model = request.body.model || 'gemini-2.0-flash';
+        // SillyBunny: use a current Gemini captioning default after Gemini 2.0 retirement.
+        const model = request.body.model || 'gemini-2.5-flash';
         const { url, headers, apiName, safetySettings } = await getGoogleApiConfig(request, model);
 
         const body = {
