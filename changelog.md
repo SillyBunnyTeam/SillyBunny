@@ -123,6 +123,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #661 (2026-07-12) `fix: Favs not lighting up, scrolling favorites on desktop, validator behavior changes, etc`
 - PR #663 (2026-07-15) `fix(continue): continue button also works when thinking is interrupted`
 - PR #664 (2026-07-15) `fix(ios): add exception to viewport fix on message box`
+- PR #665 (2026-07-15) `fix(mobile): remove icon overlap on message box`
 
 ## v1.6.5
 
