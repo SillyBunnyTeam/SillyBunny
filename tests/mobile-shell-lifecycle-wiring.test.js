@@ -369,7 +369,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(railHorizontalMove.event, { touchStart: railHorizontalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(railAtStartEdgeMove.event, { touchStart: railAtStartEdgeMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(railVerticalMove.event, { touchStart: railVerticalMove.touchStart })).toBe(true);
-        expect(shouldBlockMobileDocumentPan(railControlMove.event, { touchStart: railControlMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(railControlMove.event, { touchStart: railControlMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(incidentalComposerGapMove.event, { touchStart: incidentalComposerGapMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(incidentalComposerControlMove.event, { touchStart: incidentalComposerControlMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(companionHandleHorizontalMove.event, { touchStart: companionHandleHorizontalMove.touchStart })).toBe(true);
@@ -393,8 +393,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(legacyDialogInputMove.event, { touchStart: legacyDialogInputMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(legacyDialogButtonMove.event, { touchStart: legacyDialogButtonMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(genericPopupBodyMove.event, { touchStart: genericPopupBodyMove.touchStart })).toBe(false);
-        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(true);
-        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(genericPopupInputMove.event, { touchStart: genericPopupInputMove.touchStart })).toBe(false);
+        expect(shouldBlockMobileDocumentPan(genericPopupButtonMove.event, { touchStart: genericPopupButtonMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(characterDrawerMove.event, { touchStart: characterDrawerMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(shellNavHorizontalMove.event, { touchStart: shellNavHorizontalMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(shellNavHorizontalAtStartEdgeMove.event, { touchStart: shellNavHorizontalAtStartEdgeMove.touchStart })).toBe(true);
@@ -402,7 +402,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
-    test('allows owned scrolling but blocks control drags and edge overscroll in open mobile drawers', () => {
+    test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
         const createMenuRoot = rootSelector => createElementStub({
             matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
             scrollHeight: 1600,
@@ -438,9 +438,28 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(workspaceScrollMove.event, { touchStart: workspaceScrollMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(workspaceAtTopPullDownMove.event, { touchStart: workspaceAtTopPullDownMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(connectionProfileActionMove.event, { touchStart: connectionProfileActionMove.touchStart })).toBe(true);
-        expect(shouldBlockMobileDocumentPan(customizeSelectMove.event, { touchStart: customizeSelectMove.touchStart })).toBe(true);
+        expect(shouldBlockMobileDocumentPan(customizeSelectMove.event, { touchStart: customizeSelectMove.touchStart })).toBe(false);
         expect(shouldBlockMobileDocumentPan(characterAtTopPullDownMove.event, { touchStart: characterAtTopPullDownMove.touchStart })).toBe(true);
         expect(shouldBlockMobileDocumentPan(closedWorkspaceAtTopPullDownMove.event, { touchStart: closedWorkspaceAtTopPullDownMove.touchStart })).toBe(true);
+    });
+
+    test('does not hand guarded control gestures to a scroll owner outside the guard', () => {
+        const documentScroller = createElementStub({
+            scrollHeight: 2000,
+            clientHeight: 800,
+            scrollTop: 200,
+        });
+        const guardedSurface = createElementStub({
+            parentElement: documentScroller,
+            matches: selector => selectorListIncludes(selector, '#send_form'),
+        });
+        const button = createElementStub({
+            parentElement: guardedSurface,
+            matches: selector => selectorListIncludes(selector, 'button'),
+        });
+        const move = createTouchMove(button, { y: -40 });
+
+        expect(shouldBlockMobileDocumentPan(move.event, { touchStart: move.touchStart })).toBe(true);
     });
 
     test('imports the mobile shell lifecycle seam into the shell adapter', () => {

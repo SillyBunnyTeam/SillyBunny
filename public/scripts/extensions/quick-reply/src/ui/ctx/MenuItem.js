@@ -78,7 +78,7 @@ export class MenuItem {
                         });
                         item.append(trigger);
                     }
-                    item.addEventListener('mouseover', () => sub.show(item));
+                    item.addEventListener('pointerenter', event => this.expandFromHover(event));
                     item.addEventListener('mouseleave', event => sub.handlePointerLeave(event));
                 }
             }
@@ -93,11 +93,15 @@ export class MenuItem {
             this.onExpand();
         }
     }
+    expandFromHover(event) {
+        if (event.pointerType === 'mouse') {
+            this.expand();
+        }
+    }
     collapse() {
         this.subMenu?.hide();
     }
     toggle() {
-        // Touch activation must mirror hover expansion on mobile.
         if (this.subMenu.isActive) {
             this.collapse();
         } else {

@@ -77,7 +77,7 @@ import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashComma
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
-import { resolveMovingUIViewportState } from './moving-ui-viewport.js';
+import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -2714,15 +2714,12 @@ function containMovingUIElement(element, state) {
 
     if (resolution.changed) {
         Object.assign(state, resolution.state);
-        for (const property of movingUIPixelStyles) {
+        for (const property of Object.keys(resolution.updates)) {
             applyMovingUIStateStyle(element, property, resolution.state[property]);
         }
     }
 
-    return {
-        changed: resolution.changed,
-        remainsOutOfViewport: isMovingUIStateOutOfViewport(element, state),
-    };
+    return resolution.changed;
 }
 
 function syncMovingUIOffscreenWarning(showWarning) {
@@ -2743,6 +2740,8 @@ export function loadMovingUIState() {
             var elmntState = power_user.movingUIState[elmntName];
             try {
                 const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                const targetElements = [];
+                let sharedStateChanged = false;
                 let applied = false;
                 for (const targetName of targetNames) {
                     var elmnt = $('#' + $.escapeSelector(targetName));
@@ -2751,12 +2750,19 @@ export function loadMovingUIState() {
                         applyMovingUIStateStyles(elmnt[0], elmntState);
                         // Persisted geometry must never enlarge the document or
                         // leave a panel unreachable after a viewport/monitor change.
-                        const containment = containMovingUIElement(elmnt[0], elmntState);
-                        didContainPanel = containment.changed || didContainPanel;
-                        hasOffscreenPanel = containment.remainsOutOfViewport || hasOffscreenPanel;
+                        const didContainTarget = containMovingUIElement(elmnt[0], elmntState);
+                        didContainPanel = didContainTarget || didContainPanel;
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(elmnt[0]);
                         applied = true;
                     }
                 }
+                if (sharedStateChanged && targetElements.length > 1) {
+                    targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                }
+                targetElements.forEach(element => {
+                    hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                });
                 if (!applied) {
                     console.debug(`skipping ${elmntName} because it doesn't exist in the DOM`);
                 }
@@ -4050,23 +4056,12 @@ jQuery(async () => {
             let hasOffscreenPanel = false;
             for (var elmntName of Object.keys(power_user.movingUIState)) {
                 var elmntState = power_user.movingUIState[elmntName];
-                var oldHeight = elmntState.height;
-                var oldWidth = elmntState.width;
-                var oldLeft = elmntState.left;
-                var oldTop = elmntState.top;
-                var oldBottom = elmntState.bottom;
-                var oldRight = elmntState.right;
-                var newHeight, newWidth, newTop, newBottom, newLeft, newRight;
-
-                newHeight = Number(oldHeight * scaleY).toFixed(0);
-                newWidth = Number(oldWidth * scaleX).toFixed(0);
-                newLeft = Number(oldLeft * scaleX).toFixed(0);
-                newTop = Number(oldTop * scaleY).toFixed(0);
-                newBottom = Number(oldBottom * scaleY).toFixed(0);
-                newRight = Number(oldRight * scaleX).toFixed(0);
                 try {
                     const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                    const targetElements = [];
+                    let sharedStateChanged = false;
                     let applied = false;
+                    Object.assign(elmntState, scaleMovingUIViewportState(elmntState, { scaleX, scaleY }));
 
                     for (const targetName of targetNames) {
                         const elmnt = $('#' + $.escapeSelector(targetName));
@@ -4074,23 +4069,21 @@ jQuery(async () => {
                             continue;
                         }
 
-                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${newWidth}x${newHeight}`);
+                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${elmntState.width}x${elmntState.height}`);
                         const element = elmnt[0];
-                        applyMovingUIStateStyle(element, 'height', newHeight);
-                        applyMovingUIStateStyle(element, 'width', newWidth);
-                        applyMovingUIStateStyle(element, 'inset', `${newTop}px ${newRight}px ${newBottom}px ${newLeft}px`);
-                        Object.assign(elmntState, {
-                            height: newHeight,
-                            width: newWidth,
-                            top: newTop,
-                            bottom: newBottom,
-                            left: newLeft,
-                            right: newRight,
-                        });
-                        const containment = containMovingUIElement(element, elmntState);
-                        hasOffscreenPanel = containment.remainsOutOfViewport || hasOffscreenPanel;
+                        applyMovingUIStateStyles(element, elmntState);
+                        const didContainTarget = containMovingUIElement(element, elmntState);
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(element);
                         applied = true;
                     }
+
+                    if (sharedStateChanged && targetElements.length > 1) {
+                        targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                    }
+                    targetElements.forEach(element => {
+                        hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                    });
 
                     if (!applied) {
                         console.log(`skipping ${elmntName} because it doesn't exist in the DOM`);

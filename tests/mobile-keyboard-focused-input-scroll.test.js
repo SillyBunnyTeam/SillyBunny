@@ -104,7 +104,7 @@ describe('mobile popup keyboard shift wiring', () => {
         expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
         expect(helperSource).toContain('scroller.style.maxHeight = `${availableHeight}px`;');
         expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
-        expect(helperSource).toContain('dialog.style.transform = `translateY(-${shift}px)`;');
+        expect(helperSource).toContain('dialog.style.setProperty(\'transform\', `translateY(-${shift}px)${baseTransform}`, \'important\');');
     });
 
     test('clamps the shift so the dialog top stays inside the visible viewport', () => {
@@ -115,6 +115,10 @@ describe('mobile popup keyboard shift wiring', () => {
     test('clears the shift when focus leaves or the keyboard closes', () => {
         expect(tabsSource).toContain('function clearMobilePopupKeyboardShift(');
         expect(tabsSource).toContain('function clearAllMobilePopupKeyboardShifts(');
+        expect(tabsSource).toContain('if (dialog.dataset.sbKeyboardShift !== undefined) {');
+        expect(tabsSource).toContain('dialog.dataset.sbKeyboardTransform = dialog.style.transform;');
+        expect(tabsSource).toContain('dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority(\'transform\');');
+        expect(tabsSource).toContain('dialog.style.setProperty(\'transform\', previousTransform, previousTransformPriority);');
         expect(tabsSource).toMatch(/dialog\.style\.removeProperty\('transform'\)/);
         expect(tabsSource).toContain('scroller.style.removeProperty(\'max-height\');');
         expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardShift;');

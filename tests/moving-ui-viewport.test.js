@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { resolveMovingUIViewportState } from '../public/scripts/moving-ui-viewport.js';
+import { resolveMovingUIViewportState, scaleMovingUIViewportState } from '../public/scripts/moving-ui-viewport.js';
 
 describe('MovingUI viewport containment', () => {
     test('pulls a persisted panel back inside the viewport without changing its size', () => {
@@ -21,6 +21,10 @@ describe('MovingUI viewport containment', () => {
         expect(result).toMatchObject({
             changed: true,
             canContain: true,
+            updates: {
+                left: 664,
+                right: 0,
+            },
             state: {
                 position: 'fixed',
                 width: 600,
@@ -47,13 +51,17 @@ describe('MovingUI viewport containment', () => {
             viewportHeight: 720,
         });
 
-        expect(result.state).toMatchObject({
-            width: 1280,
-            height: 720,
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
+        expect(result).toMatchObject({
+            changed: true,
+            canContain: true,
+            updates: {
+                width: 1280,
+                height: 720,
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
         });
     });
 
@@ -68,13 +76,15 @@ describe('MovingUI viewport containment', () => {
             viewportHeight: 700,
         });
 
-        expect(result.state).toMatchObject({
-            width: 400,
-            height: 300,
-            left: 600,
-            top: 400,
-            right: 0,
-            bottom: 0,
+        expect(result).toMatchObject({
+            changed: true,
+            canContain: true,
+            updates: {
+                left: 600,
+                top: 400,
+                right: 0,
+                bottom: 0,
+            },
         });
     });
 
@@ -99,13 +109,22 @@ describe('MovingUI viewport containment', () => {
             },
         });
 
-        expect(result.state).toMatchObject({
-            width: 750,
-            height: 350,
-            left: 250,
-            top: 300,
-            right: 0,
-            bottom: 50,
+        expect(result).toMatchObject({
+            changed: true,
+            canContain: true,
+            updates: {
+                width: 750,
+                left: 250,
+                right: 0,
+            },
+            state: {
+                width: 750,
+                height: 700,
+                left: 250,
+                top: 300,
+                right: 0,
+                bottom: -300,
+            },
         });
     });
 
@@ -117,6 +136,7 @@ describe('MovingUI viewport containment', () => {
             viewportHeight: 720,
         })).toEqual({
             state,
+            updates: {},
             changed: false,
             canContain: false,
         });
@@ -137,8 +157,127 @@ describe('MovingUI viewport containment', () => {
             viewportHeight: 800,
         })).toEqual({
             state,
+            updates: {},
             changed: false,
             canContain: true,
         });
+    });
+
+    test('does not freeze responsive dimensions when rendered bounds are already contained', () => {
+        const state = {
+            width: 'var(--sheldWidth)',
+            left: 100,
+            top: 60,
+            right: 100,
+            bottom: 60,
+        };
+
+        expect(resolveMovingUIViewportState(state, {
+            viewportWidth: 1200,
+            viewportHeight: 800,
+            elementBounds: {
+                left: 100,
+                top: 60,
+                right: 1100,
+                bottom: 740,
+                width: 1000,
+                height: 680,
+            },
+        })).toEqual({
+            state,
+            updates: {},
+            changed: false,
+            canContain: true,
+        });
+    });
+
+    test('moves drag-only state without adding fixed dimensions', () => {
+        const result = resolveMovingUIViewportState({
+            left: 900,
+            top: 80,
+            right: -300,
+            bottom: 120,
+        }, {
+            viewportWidth: 1200,
+            viewportHeight: 800,
+            elementBounds: {
+                left: 900,
+                top: 80,
+                right: 1500,
+                bottom: 680,
+                width: 600,
+                height: 600,
+            },
+        });
+
+        expect(result).toMatchObject({
+            changed: true,
+            canContain: true,
+            updates: {
+                left: 600,
+                right: 0,
+            },
+        });
+        expect(result.state).not.toHaveProperty('width');
+        expect(result.state).not.toHaveProperty('height');
+    });
+
+    test('does not repeatedly rewrite contained state when CSS keeps the rendered box oversized', () => {
+        const state = {
+            width: 1000,
+            height: 700,
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+
+        expect(resolveMovingUIViewportState(state, {
+            viewportWidth: 1000,
+            viewportHeight: 700,
+            elementBounds: {
+                left: 0,
+                top: 0,
+                right: 1200,
+                bottom: 700,
+                width: 1200,
+                height: 700,
+            },
+        })).toEqual({
+            state,
+            updates: {},
+            changed: false,
+            canContain: true,
+        });
+    });
+});
+
+describe('MovingUI viewport scaling', () => {
+    test('scales pixel geometry while preserving responsive and absent dimensions', () => {
+        expect(scaleMovingUIViewportState({
+            width: 'var(--sheldWidth)',
+            left: '100px',
+            top: 50,
+            right: 20,
+            bottom: 30,
+        }, {
+            scaleX: 0.5,
+            scaleY: 2,
+        })).toEqual({
+            width: 'var(--sheldWidth)',
+            left: '50',
+            top: '100',
+            right: '10',
+            bottom: '60',
+        });
+    });
+
+    test('ignores invalid scale factors instead of persisting invalid geometry', () => {
+        const state = { width: 600, height: 500, left: 100, top: 50 };
+
+        expect(scaleMovingUIViewportState(state, {
+            scaleX: Number.NaN,
+            scaleY: 0,
+        })).toEqual(state);
     });
 });

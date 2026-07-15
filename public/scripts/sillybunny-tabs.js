@@ -2762,9 +2762,20 @@ function clearMobilePopupKeyboardShift(dialog) {
         delete scroller.dataset.sbKeyboardMaxHeight;
     }
 
+    if (dialog.dataset.sbKeyboardShift !== undefined) {
+        const previousTransform = dialog.dataset.sbKeyboardTransform;
+        const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
+        if (previousTransform) {
+            dialog.style.setProperty('transform', previousTransform, previousTransformPriority);
+        } else {
+            dialog.style.removeProperty('transform');
+        }
+    }
+
     delete dialog.dataset.sbKeyboardAdjusted;
     delete dialog.dataset.sbKeyboardShift;
-    dialog.style.removeProperty('transform');
+    delete dialog.dataset.sbKeyboardTransform;
+    delete dialog.dataset.sbKeyboardTransformPriority;
 }
 
 function clearAllMobilePopupKeyboardShifts(except = null) {
@@ -2839,7 +2850,11 @@ function syncMobilePopupKeyboardShift() {
 
     dialog.dataset.sbKeyboardAdjusted = 'true';
     dialog.dataset.sbKeyboardShift = String(shift);
-    dialog.style.transform = `translateY(-${shift}px)`;
+    dialog.dataset.sbKeyboardTransform = dialog.style.transform;
+    dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
+    const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
+    const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
+    dialog.style.setProperty('transform', `translateY(-${shift}px)${baseTransform}`, 'important');
 }
 
 let sbMobilePopupKeyboardSyncTimer = 0;

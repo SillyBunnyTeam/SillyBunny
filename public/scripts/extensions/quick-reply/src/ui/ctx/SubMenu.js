@@ -94,6 +94,16 @@ export class SubMenu {
         this.root.style.transform = '';
 
         const parentRect = this.parent.getBoundingClientRect();
+        const scrollParentRect = this.scrollParent?.getBoundingClientRect();
+        if (scrollParentRect
+            && (parentRect.right <= scrollParentRect.left
+                || parentRect.left >= scrollParentRect.right
+                || parentRect.bottom <= scrollParentRect.top
+                || parentRect.top >= scrollParentRect.bottom)) {
+            this.hide();
+            return;
+        }
+
         const layerRect = this.layer.getBoundingClientRect();
         const initialRect = this.root.getBoundingClientRect();
         const menuWidth = Math.min(initialRect.width, viewport.width);
@@ -107,6 +117,7 @@ export class SubMenu {
         this.root.style.top = `${Math.round(top - layerRect.top)}px`;
         syncMenuOverflow(this.root);
         this.root.style.visibility = 'visible';
+        this.itemList.forEach(item => item.subMenu?.place());
     }
 
     show(/**@type {HTMLElement}*/parent) {
@@ -118,13 +129,12 @@ export class SubMenu {
         this.render();
         this.root.style.visibility = 'hidden';
         this.layer.append(this.root);
-        requestAnimationFrame(() => this.place());
-
         this.viewportResizeHandler = () => this.place();
         window.addEventListener('resize', this.viewportResizeHandler, { passive: true });
         window.visualViewport?.addEventListener('resize', this.viewportResizeHandler, { passive: true });
         window.visualViewport?.addEventListener('scroll', this.viewportResizeHandler, { passive: true });
         this.scrollParent?.addEventListener('scroll', this.viewportResizeHandler, { passive: true });
+        this.place();
     }
     hide() {
         this.cancelHide();
