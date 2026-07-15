@@ -16,15 +16,34 @@ describe('TTS quoted-only filtering', () => {
             ttsSource.indexOf('async function processTtsQueue()'),
             ttsSource.indexOf('/**\n * Extract and join quoted blocks'),
         );
+        const asteriskFilterIndex = processTtsQueueBody.indexOf('text = filterTtsAsterisks(text, {');
         const quotedOnlyIndex = processTtsQueueBody.indexOf('if (extension_settings.tts.narrate_quoted_only)');
         const taggedBlockFilterIndex = processTtsQueueBody.indexOf('text = stripTtsTaggedBlocks(text, { preserveFormatting: true });', quotedOnlyIndex);
         const markupFilterIndex = processTtsQueueBody.indexOf('text = text.replace(/<.*?>/g, \'\').trim();', quotedOnlyIndex);
         const quoteExtractionIndex = processTtsQueueBody.indexOf('text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });', quotedOnlyIndex);
 
+        expect(asteriskFilterIndex).toBeGreaterThanOrEqual(0);
+        expect(asteriskFilterIndex).toBeLessThan(quotedOnlyIndex);
         expect(quotedOnlyIndex).toBeGreaterThanOrEqual(0);
         expect(taggedBlockFilterIndex).toBeGreaterThan(quotedOnlyIndex);
         expect(markupFilterIndex).toBeGreaterThan(taggedBlockFilterIndex);
         expect(quoteExtractionIndex).toBeGreaterThan(markupFilterIndex);
+    });
+
+    test('excludes quoted text inside asterisk actions when both filters are enabled', () => {
+        const filterTtsAsterisksStart = ttsSource.indexOf('function filterTtsAsterisks(');
+        const filterTtsAsterisksEnd = ttsSource.indexOf('// SillyBunny: discard semantic blocks', filterTtsAsterisksStart);
+
+        expect(filterTtsAsterisksStart).toBeGreaterThanOrEqual(0);
+        expect(filterTtsAsterisksEnd).toBeGreaterThan(filterTtsAsterisksStart);
+
+        const filterTtsAsterisks = vm.runInNewContext(`(${ttsSource.slice(filterTtsAsterisksStart, filterTtsAsterisksEnd)})`);
+        const filteredText = filterTtsAsterisks('*"Do not narrate me."*', {
+            narrateDialoguesOnly: true,
+            passAsterisks: false,
+        });
+
+        expect(joinQuotedBlocks(filteredText, { includeQuotes: true })).toBe('');
     });
 
     test('does not treat quoted font attributes as dialogue', () => {
