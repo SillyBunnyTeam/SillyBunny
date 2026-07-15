@@ -2,25 +2,29 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-const ttsSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/extensions/tts/index.js', import.meta.url)), 'utf8');
+const ttsSource = (await fs.readFile(fileURLToPath(new URL('../public/scripts/extensions/tts/index.js', import.meta.url)), 'utf8')).replace(/\r\n/g, '\n');
+const stripTtsTaggedBlocksStart = ttsSource.indexOf('function stripTtsTaggedBlocks(');
+const stripTtsTaggedBlocksEnd = ttsSource.indexOf('async function processTtsQueue()', stripTtsTaggedBlocksStart);
+const stripTtsTaggedBlocks = vm.runInNewContext(`(${ttsSource.slice(stripTtsTaggedBlocksStart, stripTtsTaggedBlocksEnd)})`);
 const joinQuotedBlocksStart = ttsSource.indexOf('function joinQuotedBlocks(');
-const joinQuotedBlocksEnd = ttsSource.indexOf('\n\nasync function playFullConversation()', joinQuotedBlocksStart);
+const joinQuotedBlocksEnd = ttsSource.indexOf('async function playFullConversation()', joinQuotedBlocksStart);
 const joinQuotedBlocks = vm.runInNewContext(`(${ttsSource.slice(joinQuotedBlocksStart, joinQuotedBlocksEnd)})`);
 
 describe('TTS quoted-only filtering', () => {
-    test('extracts quoted dialogue before removing tagged blocks', () => {
+    test('filters semantic blocks before extracting quoted dialogue', () => {
         const processTtsQueueBody = ttsSource.slice(
             ttsSource.indexOf('async function processTtsQueue()'),
             ttsSource.indexOf('/**\n * Extract and join quoted blocks'),
         );
         const quotedOnlyIndex = processTtsQueueBody.indexOf('if (extension_settings.tts.narrate_quoted_only)');
-        const skipTagsIndex = processTtsQueueBody.indexOf('if (extension_settings.tts.skip_tags)');
+        const taggedBlockFilterIndex = processTtsQueueBody.indexOf('text = stripTtsTaggedBlocks(text, { preserveFormatting: true });', quotedOnlyIndex);
+        const markupFilterIndex = processTtsQueueBody.indexOf('text = text.replace(/<.*?>/g, \'\').trim();', quotedOnlyIndex);
+        const quoteExtractionIndex = processTtsQueueBody.indexOf('text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });', quotedOnlyIndex);
 
         expect(quotedOnlyIndex).toBeGreaterThanOrEqual(0);
-        expect(skipTagsIndex).toBeGreaterThanOrEqual(0);
-        expect(quotedOnlyIndex).toBeLessThan(skipTagsIndex);
-        expect(processTtsQueueBody.slice(quotedOnlyIndex, skipTagsIndex))
-            .toContain('text = text.replace(/<.*?>/g, \'\').trim();\n        text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });');
+        expect(taggedBlockFilterIndex).toBeGreaterThan(quotedOnlyIndex);
+        expect(markupFilterIndex).toBeGreaterThan(taggedBlockFilterIndex);
+        expect(quoteExtractionIndex).toBeGreaterThan(markupFilterIndex);
     });
 
     test('does not treat quoted font attributes as dialogue', () => {
@@ -29,5 +33,14 @@ describe('TTS quoted-only filtering', () => {
 
         expect(joinQuotedBlocks(textWithoutTagMarkup, { includeQuotes: true }))
             .toBe('"More water. That fire\'s dying. Move, girl, move."');
+    });
+
+    test('drops quoted semantic blocks while preserving dialogue inside formatting wrappers', () => {
+        const taggedDialogue = '<think>"Keep this hidden."</think><font color="#c8a86e">"Speak this aloud."</font>';
+        const filteredText = stripTtsTaggedBlocks(taggedDialogue, { preserveFormatting: true });
+        const textWithoutTagMarkup = filteredText.replace(/<.*?>/g, '').trim();
+
+        expect(joinQuotedBlocks(textWithoutTagMarkup, { includeQuotes: true }))
+            .toBe('"Speak this aloud."');
     });
 });

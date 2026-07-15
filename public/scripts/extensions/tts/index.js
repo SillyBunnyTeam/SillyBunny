@@ -632,6 +632,25 @@ function parseMessageSegments(text) {
     return segments;
 }
 
+// SillyBunny: discard semantic blocks before quote extraction without dropping dialogue wrapped in presentation tags.
+function stripTtsTaggedBlocks(text, { preserveFormatting = false } = {}) {
+    const formattingTags = new Set([
+        'b', 'big', 'em', 'font', 'i', 'mark', 's', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'u',
+    ]);
+    let filteredText = String(text ?? '');
+    let previousText;
+
+    do {
+        previousText = filteredText;
+        filteredText = filteredText.replace(
+            /<([a-z][\w:-]*)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi,
+            (_block, tagName, content) => preserveFormatting && formattingTags.has(tagName.toLowerCase()) ? content : '',
+        );
+    } while (filteredText !== previousText);
+
+    return filteredText;
+}
+
 async function processTtsQueue() {
     // Called each moduleWorker iteration to pull chat messages from queue
     if (currentTtsJob || ttsJobQueue.length <= 0 || audioPaused) {
@@ -716,6 +735,9 @@ async function processTtsQueue() {
     // SillyBunny: Strip tag markup before quote extraction so wrappers preserve dialogue without narrating attributes.
     if (extension_settings.tts.narrate_quoted_only) {
         const partJoiner = (ttsProvider?.separator || ' ... ');
+        if (extension_settings.tts.skip_tags) {
+            text = stripTtsTaggedBlocks(text, { preserveFormatting: true });
+        }
         text = text.replace(/<.*?>/g, '').trim();
         text = joinQuotedBlocks(text, { separator: partJoiner, includeQuotes: true });
     }
