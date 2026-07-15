@@ -129,7 +129,7 @@ import {
 } from './scripts/openai.js';
 import {
     extractOocBlocksForDisplay,
-    hasTextOrArrayPayload,
+    hasPromptPayload,
     shouldRetainContextAtDepth,
     restoreOocBlocksForDisplay,
     stripHtmlTagsFromContext,
@@ -3801,19 +3801,6 @@ function notifyCardScriptStripped(messageElement, messageId) {
 }
 
 /**
- * Checks whether a prompt message still carries non-text payload after OOC text is removed.
- * @param {object} chatItem Message history item.
- * @returns {boolean} True if the prompt item should remain in context.
- */
-function hasPromptPayload(chatItem) {
-    return hasTextOrArrayPayload(chatItem?.mes, [
-        chatItem?.extra?.media,
-        chatItem?.extra?.files,
-        chatItem?.extra?.tool_invocations,
-    ]);
-}
-
-/**
  * Creates an Image element for the given API/model icon.
  * The image references the matching SVG file from `/img/` and includes a tooltip with API and model info.
  * The caller is responsible for appending the image to the DOM and optionally calling `SVGInject` on it.
@@ -7072,7 +7059,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const variant = worldInfoMessageVariants.get(chatItem.index);
         return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
     });
-    coreChat = coreChat.filter(hasPromptPayload);
+    // SillyBunny: preserve an interrupted reasoning-only prefix when continuing.
+    coreChat = coreChat.filter((chatItem, index) => hasPromptPayload(
+        chatItem,
+        isContinue && index === coreChat.length - 1,
+    ));
 
     const promptReasoning = new PromptReasoning();
     for (let i = coreChat.length - 1; i >= 0; i--) {

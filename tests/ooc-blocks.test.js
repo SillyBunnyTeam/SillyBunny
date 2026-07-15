@@ -2,6 +2,7 @@ import { describe, test, expect } from '@jest/globals';
 
 import {
     extractOocBlocksForDisplay,
+    hasPromptPayload,
     hasTextOrArrayPayload,
     normalizeContextRetentionDepth,
     renderOocBlock,
@@ -64,6 +65,21 @@ describe('OOC block handling', () => {
         expect(hasTextOrArrayPayload('', [[], [{ id: 'tool-call' }]])).toBe(true);
         expect(hasTextOrArrayPayload(stripOocBlocksFromContext('((note only))'), [])).toBe(false);
         expect(hasTextOrArrayPayload('', [[], undefined])).toBe(false);
+    });
+
+    test('keeps reasoning-only prompt messages only for continuation', () => {
+        const message = { mes: '', extra: { reasoning: 'partial reasoning' } };
+
+        expect(hasPromptPayload(message)).toBe(false);
+        expect(hasPromptPayload(message, true)).toBe(true);
+        expect(hasPromptPayload({ mes: '', extra: { reasoning: '   ' } }, true)).toBe(false);
+    });
+
+    test('keeps non-text prompt payloads without continuation reasoning', () => {
+        expect(hasPromptPayload({ mes: '', extra: { media: [{ url: 'image.png' }] } })).toBe(true);
+        expect(hasPromptPayload({ mes: '', extra: { files: [{ name: 'file.txt' }] } })).toBe(true);
+        expect(hasPromptPayload({ mes: '', extra: { tool_invocations: [{ id: 'tool-call' }] } })).toBe(true);
+        expect(hasPromptPayload({ mes: '' })).toBe(false);
     });
 
     test('normalizes context retention depth with -1 as preserve-all default', () => {
