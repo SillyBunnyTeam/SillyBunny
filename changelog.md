@@ -126,6 +126,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #664 (2026-07-15) `fix(ios): add exception to viewport fix on message box`
 - PR #665 (2026-07-15) `fix(mobile): remove icon overlap on message box`
 - PR #667 (2026-07-15) `fix(tts): TTS extension only considers actual quotes`
+- PR #668 (2026-07-15) `fix: Viewport scrolling offscreen in-depth`
 
 ## v1.6.5
 
