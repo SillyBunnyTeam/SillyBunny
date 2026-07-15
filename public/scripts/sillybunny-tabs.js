@@ -2654,16 +2654,39 @@ function getMobilePopupDialogForKeyboard(element) {
 }
 
 function clearMobilePopupKeyboardShift(dialog) {
-    if (!(dialog instanceof HTMLElement) || !dialog.dataset.sbKeyboardShift) {
+    if (!(dialog instanceof HTMLElement)) {
         return;
     }
 
+    const scroller = dialog.querySelector('[data-sb-keyboard-max-height]');
+    if (scroller instanceof HTMLElement) {
+        const previousMaxHeight = scroller.dataset.sbKeyboardMaxHeight;
+        if (previousMaxHeight) {
+            scroller.style.maxHeight = previousMaxHeight;
+        } else {
+            scroller.style.removeProperty('max-height');
+        }
+        delete scroller.dataset.sbKeyboardMaxHeight;
+    }
+
+    if (dialog.dataset.sbKeyboardShift !== undefined) {
+        const previousTransform = dialog.dataset.sbKeyboardTransform;
+        const previousTransformPriority = dialog.dataset.sbKeyboardTransformPriority;
+        if (previousTransform) {
+            dialog.style.setProperty('transform', previousTransform, previousTransformPriority);
+        } else {
+            dialog.style.removeProperty('transform');
+        }
+    }
+
+    delete dialog.dataset.sbKeyboardAdjusted;
     delete dialog.dataset.sbKeyboardShift;
-    dialog.style.removeProperty('transform');
+    delete dialog.dataset.sbKeyboardTransform;
+    delete dialog.dataset.sbKeyboardTransformPriority;
 }
 
 function clearAllMobilePopupKeyboardShifts(except = null) {
-    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-shift]')) {
+    for (const dialog of document.querySelectorAll('dialog.popup[data-sb-keyboard-adjusted], dialog.popup[data-sb-keyboard-shift]')) {
         if (dialog !== except) {
             clearMobilePopupKeyboardShift(dialog);
         }
@@ -2704,9 +2727,14 @@ function syncMobilePopupKeyboardShift() {
     // visualViewport tracks the keyboard: top grows and height shrinks as the
     // keyboard rises, so (top + height) is the bottom of the visible area.
     const viewportBottom = viewportSize.top + viewportSize.height;
-    const scroller = activeElement.closest('.popup-content');
+    const scroller = activeElement.closest('.popup-body, .popup-content');
 
     if (scroller instanceof HTMLElement) {
+        const availableHeight = Math.max(0, viewportSize.height - (MOBILE_POPUP_KEYBOARD_CLEARANCE_PX * 2));
+        scroller.dataset.sbKeyboardMaxHeight = scroller.style.maxHeight;
+        scroller.style.maxHeight = `${availableHeight}px`;
+        dialog.dataset.sbKeyboardAdjusted = 'true';
+
         const scrollOverflow = activeElement.getBoundingClientRect().bottom + MOBILE_POPUP_KEYBOARD_CLEARANCE_PX - viewportBottom;
         if (scrollOverflow > 0) {
             scroller.scrollTop += scrollOverflow;
@@ -2727,8 +2755,13 @@ function syncMobilePopupKeyboardShift() {
         return;
     }
 
+    dialog.dataset.sbKeyboardAdjusted = 'true';
     dialog.dataset.sbKeyboardShift = String(shift);
-    dialog.style.transform = `translateY(-${shift}px)`;
+    dialog.dataset.sbKeyboardTransform = dialog.style.transform;
+    dialog.dataset.sbKeyboardTransformPriority = dialog.style.getPropertyPriority('transform');
+    const computedTransform = dialog.style.transform || window.getComputedStyle(dialog).transform;
+    const baseTransform = computedTransform && computedTransform !== 'none' ? ` ${computedTransform}` : '';
+    dialog.style.setProperty('transform', `translateY(-${shift}px)${baseTransform}`, 'important');
 }
 
 let sbMobilePopupKeyboardSyncTimer = 0;
