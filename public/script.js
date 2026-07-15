@@ -41,6 +41,8 @@ import { shouldRestoreTextGenStatusOnStartup } from './scripts/textgen-startup-s
 import { normalizeCharacterChatName, resolveCharacterChatNameForLoad } from './scripts/character-chat-resolver.js';
 import { getDebouncedChatSaveAbortReason } from './scripts/chat-save-guard.js';
 import { getCharacterDefinitionFormValues, getSuspiciousEmptyCharacterDefinitionSave } from './scripts/character-save-guard.js';
+// SillyBunny: keep model-produced chat filenames behind a strict, independently tested parser.
+import { CHAT_LABEL_TITLE_LIMIT, extractGeneratedChatLabel, normalizeGeneratedChatLabel, truncateChatLabelText } from './scripts/chat-label.js';
 
 import {
     world_info,
@@ -57,6 +59,7 @@ import {
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
 } from './scripts/world-info.js';
+import { buildWorldInfoScanChat } from './scripts/world-info-scan-chat.js';
 
 import {
     groups,
@@ -126,7 +129,7 @@ import {
 } from './scripts/openai.js';
 import {
     extractOocBlocksForDisplay,
-    hasTextOrArrayPayload,
+    hasPromptPayload,
     shouldRetainContextAtDepth,
     restoreOocBlocksForDisplay,
     stripHtmlTagsFromContext,
@@ -1793,7 +1796,7 @@ export async function getCharacters() {
     }
 }
 
-async function getExistingCharacterChats(characterId) {
+async function getExistingCharacterChats(characterId, fileName = '') {
     const character = characters[characterId];
     if (!character?.avatar) {
         return [];
@@ -1802,7 +1805,7 @@ async function getExistingCharacterChats(characterId) {
     const response = await fetch('/api/characters/chats', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ avatar_url: character.avatar }),
+        body: JSON.stringify({ avatar_url: character.avatar, file_name: fileName }),
     });
 
     if (!response.ok) {
@@ -1831,7 +1834,7 @@ async function resolveCharacterChatForLoad(characterId, { allowCreate = false, a
         return { chatName: persistedChat, created: true };
     }
 
-    const existingChats = await getExistingCharacterChats(characterId);
+    const existingChats = await getExistingCharacterChats(characterId, persistedChat);
     // SillyBunny: avoid recreating stale character.chat filenames as new files.
     const resolvedChat = resolveCharacterChatNameForLoad({
         persistedChat,
@@ -3794,19 +3797,6 @@ function notifyCardScriptStripped(messageElement, messageId) {
 
     markCardScriptToastShown(toastKey);
     toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card scripts blocked`, { timeOut: 6000, preventDuplicates: true });
-}
-
-/**
- * Checks whether a prompt message still carries non-text payload after OOC text is removed.
- * @param {object} chatItem Message history item.
- * @returns {boolean} True if the prompt item should remain in context.
- */
-function hasPromptPayload(chatItem) {
-    return hasTextOrArrayPayload(chatItem?.mes, [
-        chatItem?.extra?.media,
-        chatItem?.extra?.files,
-        chatItem?.extra?.tool_invocations,
-    ]);
 }
 
 /**
@@ -7028,8 +7018,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         coreChat.pop();
     }
 
+    const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
-        let message = chatItem.mes;
+        const originalMessage = chatItem.mes;
+        let message = originalMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
@@ -7046,7 +7038,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         let regexedMessage = getRegexedString(message, regexType, options);
-        regexedMessage = await appendFileContent(chatItem, regexedMessage);
+        let worldInfoRegexedMessage = message === originalMessage ? undefined : getRegexedString(originalMessage, regexType, options);
+        const fileContent = await appendFileContent(chatItem, '');
+        regexedMessage = fileContent + regexedMessage;
+        if (worldInfoRegexedMessage !== undefined) {
+            worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
+        }
 
         const titles = [];
         if (chatItem?.extra?.append_title && chatItem?.extra?.title) {
@@ -7060,14 +7057,28 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
         }
         if (titles.length > 0) {
-            regexedMessage = `${regexedMessage}\n\n${titles.join('\n\n')}`;
+            const appendedTitles = `\n\n${titles.join('\n\n')}`;
+            regexedMessage += appendedTitles;
+            if (worldInfoRegexedMessage !== undefined) {
+                worldInfoRegexedMessage += appendedTitles;
+            }
         }
 
         const contextDepth = Math.max(0, coreChat.length - index - 1);
+        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
         const contextMessage = stripHtmlTagsFromContext(
-            stripOocBlocksFromContext(regexedMessage, shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth)),
-            shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth),
+            stripOocBlocksFromContext(regexedMessage, retainOoc),
+            retainHtml,
         );
+
+        if (worldInfoRegexedMessage !== undefined) {
+            const worldInfoContextMessage = stripHtmlTagsFromContext(
+                stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
+                retainHtml,
+            );
+            worldInfoMessageVariants.set(index, { prompt: contextMessage, worldInfo: worldInfoContextMessage });
+        }
 
         return {
             ...chatItem,
@@ -7075,7 +7086,16 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             index,
         };
     }));
-    coreChat = coreChat.filter(hasPromptPayload);
+    // SillyBunny: ICA prompt-only regexes must not remove stored chat text from World Info scans.
+    const worldInfoOnlyChat = coreChat.filter(chatItem => {
+        const variant = worldInfoMessageVariants.get(chatItem.index);
+        return variant && !hasPromptPayload(chatItem) && hasPromptPayload({ ...chatItem, mes: variant.worldInfo });
+    });
+    // SillyBunny: preserve an interrupted reasoning-only prefix when continuing.
+    coreChat = coreChat.filter((chatItem, index) => hasPromptPayload(
+        chatItem,
+        isContinue && index === coreChat.length - 1,
+    ));
 
     const promptReasoning = new PromptReasoning();
     for (let i = coreChat.length - 1; i >= 0; i--) {
@@ -7085,21 +7105,31 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         // In group chats, only include reasoning from the currently generating character
         const isOtherGroupMember = selected_group && coreChat[i].name !== name2;
 
+        const promptMessage = coreChat[i].mes;
+        const messageWithReasoning = isOtherGroupMember
+            ? promptMessage
+            : promptReasoning.addToMessage(
+                promptMessage,
+                getRegexedString(
+                    String(coreChat[i].extra?.reasoning ?? ''),
+                    regex_placement.REASONING,
+                    { isPrompt: true, depth: depth },
+                ),
+                isPrefix,
+                coreChat[i].extra?.reasoning_duration,
+            );
+
         coreChat[i] = {
             ...coreChat[i],
-            mes: isOtherGroupMember
-                ? coreChat[i].mes
-                : promptReasoning.addToMessage(
-                    coreChat[i].mes,
-                    getRegexedString(
-                        String(coreChat[i].extra?.reasoning ?? ''),
-                        regex_placement.REASONING,
-                        { isPrompt: true, depth: depth },
-                    ),
-                    isPrefix,
-                    coreChat[i].extra?.reasoning_duration,
-                ),
+            mes: messageWithReasoning,
         };
+
+        const worldInfoVariant = worldInfoMessageVariants.get(coreChat[i].index);
+        if (worldInfoVariant?.prompt === promptMessage && messageWithReasoning.endsWith(promptMessage)) {
+            const reasoningPrefix = messageWithReasoning.slice(0, messageWithReasoning.length - promptMessage.length);
+            worldInfoVariant.prompt = messageWithReasoning;
+            worldInfoVariant.worldInfo = reasoningPrefix + worldInfoVariant.worldInfo;
+        }
         if (promptReasoning.isLimitReached()) {
             break;
         }
@@ -7170,7 +7200,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Add WI to prompt (and also inject WI to AN value via hijack)
     // Make quiet prompt available for WIAN
     setExtensionPrompt(inject_ids.QUIET_PROMPT, quiet_prompt || '', extension_prompt_types.IN_PROMPT, 0, true);
-    const chatForWI = coreChat.map(x => world_info_include_names ? `${x.name}: ${x.mes}` : x.mes).reverse();
+    const chatForWI = buildWorldInfoScanChat(coreChat, worldInfoOnlyChat, worldInfoMessageVariants, world_info_include_names);
     /** @type {import('./scripts/world-info.js').WIGlobalScanData} */
     const globalScanData = {
         personaDescription: persona,
@@ -10782,6 +10812,7 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
                 ch_name: characters[this_chid].name,
                 file_name: resolvedChat.chatName,
                 avatar_url: characters[this_chid].avatar,
+                allow_create: resolvedChat.created,
             }),
         });
 
@@ -10814,9 +10845,12 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
             }
             $('#send_textarea').trigger('click').trigger('focus');
         });
+        return true;
     } catch (error) {
-        await getChatResult({ switchMenu });
+        // SillyBunny: a failed strict load must not be replaced with a newly saved greeting.
         console.log(error);
+        toastr.error(t`Could not load chat data. Try reloading the page.`);
+        return false;
     }
 }
 
@@ -10887,10 +10921,15 @@ export async function openCharacterChat(file_name) {
 
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
+    const previousChatName = characters[this_chid].chat;
     characters[this_chid].chat = file_name;
     chat_metadata = {};
     $('#selected_chat_pole').val(file_name);
-    await getChat();
+    if (!await getChat()) {
+        characters[this_chid].chat = previousChatName;
+        $('#selected_chat_pole').val(previousChatName);
+        return;
+    }
     await updateRemoteChatName(this_chid, file_name);
 }
 
@@ -12496,7 +12535,6 @@ export function getCurrentChatDetails() {
     return { sessionName: currentChat, group: group, characterName: displayName, avatarImgURL: avatarImg };
 }
 
-const CHAT_LABEL_TITLE_LIMIT = 72;
 const CHAT_LABEL_FILENAME_LIMIT = 120;
 const CHAT_LABEL_MAX_MESSAGES = 14;
 const CHAT_LABEL_HEAD_MESSAGES = 4;
@@ -12659,78 +12697,6 @@ function buildChatLabelTranscript(chatData) {
     }).join('\n');
 }
 
-function truncateChatLabelText(value, limit = CHAT_LABEL_TITLE_LIMIT) {
-    const text = String(value || '').trim();
-    if (text.length <= limit) {
-        return text;
-    }
-
-    const clipped = text.slice(0, limit).trim();
-    const wordBoundary = clipped.lastIndexOf(' ');
-    return (wordBoundary > 24 ? clipped.slice(0, wordBoundary) : clipped).replace(/[._ -]+$/g, '').trim();
-}
-
-function normalizeGeneratedChatLabel(value, displayName = '') {
-    let title = String(value || '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-        .replace(/```(?:json)?/gi, '')
-        .replace(/```/g, '')
-        .replace(/^chat\s*(?:title|label|name)\s*[:=-]\s*/i, '')
-        .replace(/\.(?:jsonl?|txt)$/i, '')
-        .replace(/[\\/:*?"<>|]+/g, ' ')
-        .replace(/[\u0000-\u001F\u007F]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[\s"'`*_]+|[\s"'`*_]+$/g, '')
-        .replace(/[._ -]+$/g, '')
-        .trim();
-
-    const normalizedDisplayName = String(displayName || '').trim();
-    if (normalizedDisplayName) {
-        title = title.replace(new RegExp(`^${escapeRegex(normalizedDisplayName)}\\s*[-:]\\s*`, 'i'), '').trim();
-    }
-
-    title = truncateChatLabelText(title);
-    const genericTitles = new Set(['chat', 'conversation', 'new chat', 'roleplay chat', 'untitled', 'untitled chat']);
-    return genericTitles.has(title.toLowerCase()) ? '' : title;
-}
-
-function extractGeneratedChatLabel(responseText, displayName = '') {
-    const text = String(responseText || '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-        .trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-
-    if (jsonMatch) {
-        try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const parsedTitle = parsed?.title || parsed?.label || parsed?.name;
-            const normalizedTitle = normalizeGeneratedChatLabel(parsedTitle, displayName);
-            if (normalizedTitle) {
-                return normalizedTitle;
-            }
-        } catch {
-            // Fall back to plain-text parsing below.
-        }
-    }
-
-    const plainTextLabel = normalizeGeneratedChatLabel(text, displayName);
-    if (plainTextLabel) {
-        return plainTextLabel;
-    }
-
-    for (const line of text.split('\n')) {
-        const normalizedLine = normalizeGeneratedChatLabel(line, displayName);
-        if (normalizedLine) {
-            return normalizedLine;
-        }
-    }
-
-    return '';
-}
-
 async function generateChatAutoLabelResponse(prompt, displayName, signal) {
     const generated = await generateRaw({
         prompt,
@@ -12885,7 +12851,7 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
     const oldFileName = getChatBaseName(fileName);
     const groupId = selected_group;
     const characterId = this_chid;
-    const isGroupChat = Boolean(groupId);
+    const isGroupChat = groupId !== undefined && groupId !== null;
     const chatDetails = getCurrentChatDetails();
     const displayName = chatDetails.characterName || '';
 
@@ -12912,7 +12878,18 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
         return { status: 'skipped', oldFileName };
     }
 
-    await renameGroupOrCharacterChat({
+    if (reloadCurrent) {
+        const isSameActiveTarget = isGroupChat
+            ? String(selected_group) === String(groupId) && getChatBaseName(getCurrentChatId()) === oldFileName
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && getChatBaseName(getCurrentChatId()) === oldFileName;
+        if (!isSameActiveTarget) {
+            throw new DOMException('Chat labeling was cancelled because the active chat changed.', 'AbortError');
+        }
+    }
+
+    const renameResult = await renameGroupOrCharacterChat({
         characterId,
         groupId,
         oldFileName,
@@ -12921,7 +12898,7 @@ async function autoLabelChatFile(fileName, { existingNames, force = false, sourc
         reloadCurrent,
     });
 
-    return { status: 'renamed', oldFileName, newFileName };
+    return { status: 'renamed', oldFileName, newFileName: renameResult.newFileName };
 }
 
 export async function autoLabelCurrentChat() {
@@ -15470,11 +15447,6 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
 
     chat_file_for_del = getCurrentChatDetails()?.sessionName;
 
-    // Make it easier to find in backups
-    if (deleteCurrentChat) {
-        await saveChatConditional();
-    }
-
     if (selected_group) {
         await createNewGroupChat(selected_group, { chatAlreadyPrepared: true });
         if (deleteCurrentChat) await deleteGroupChat(selected_group, chat_file_for_del, { jumpToNewChat: false }); // don't jump, new chat was already created and jumped to above
@@ -15482,9 +15454,14 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         //RossAscends: added character name to new chat filenames and replaced Date.now() with humanizedDateTime;
         chat_metadata = {};
         const newChatName = `${name2} - ${humanizedDateTime()}`;
+        const previousChatName = characters[this_chid].chat;
         characters[this_chid].chat = newChatName;
         $('#selected_chat_pole').val(newChatName);
-        await getChat({ allowMissingPersisted: true });
+        if (!await getChat({ allowMissingPersisted: true })) {
+            characters[this_chid].chat = previousChatName;
+            $('#selected_chat_pole').val(previousChatName);
+            return;
+        }
         await updateRemoteChatName(this_chid, newChatName);
         if (deleteCurrentChat) await delChat(chat_file_for_del + '.jsonl');
     }
@@ -15502,9 +15479,11 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
  */
 export async function renameGroupOrCharacterChat({ characterId, groupId, oldFileName, newFileName, loader: showLoader, reloadCurrent: shouldReloadCurrent = true }) {
     const currentChatId = getCurrentChatId();
+    const isGroupRename = groupId !== undefined && groupId !== null;
+    const targetCharacter = characterId !== undefined ? characters[characterId] : null;
     const body = {
-        is_group: !!groupId,
-        avatar_url: characters[characterId]?.avatar,
+        is_group: isGroupRename,
+        avatar_url: targetCharacter?.avatar,
         original_file: `${oldFileName}.jsonl`,
         renamed_file: `${newFileName.trim()}.jsonl`,
     };
@@ -15527,50 +15506,92 @@ export async function renameGroupOrCharacterChat({ characterId, groupId, oldFile
 
     try {
         const currentChatBaseName = getChatBaseName(currentChatId);
-        if (currentChatBaseName && currentChatBaseName === getChatBaseName(oldFileName)) {
+        const wasActiveTarget = isGroupRename
+            ? String(selected_group) === String(groupId) && currentChatBaseName === getChatBaseName(oldFileName)
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && currentChatBaseName === getChatBaseName(oldFileName);
+        if (wasActiveTarget) {
             const didFlush = await flushPendingChatSaves();
             if (!didFlush) {
                 throw new Error('Could not save the current chat before renaming.');
             }
         }
 
-        const response = await fetch('/api/chats/rename', {
-            method: 'POST',
-            body: JSON.stringify(body),
-            headers: getRequestHeaders(),
-        });
+        const sendRenameRequest = async (requestBody) => {
+            const response = await fetch('/api/chats/rename', {
+                method: 'POST',
+                body: JSON.stringify(requestBody),
+                headers: getRequestHeaders(),
+            });
+            if (!response.ok) {
+                throw new Error('Unsuccessful chat rename request.');
+            }
+            const data = await response.json();
+            if (data.error || !data.sanitizedFileName) {
+                throw new Error('Server returned an invalid chat rename result.');
+            }
+            return data.sanitizedFileName;
+        };
 
-        if (!response.ok) {
-            throw new Error('Unsuccessful request.');
+        const actualNewFileName = await sendRenameRequest(body);
+        // SillyBunny: update only the lightweight active-chat pointer, never rewrite the full card.
+        const shouldUpdateCharacterPointer = !isGroupRename
+            && characterId !== undefined
+            && getChatBaseName(targetCharacter?.chat) === getChatBaseName(oldFileName);
+
+        try {
+            if (isGroupRename) {
+                await renameGroupChat(groupId, oldFileName, actualNewFileName);
+            } else if (shouldUpdateCharacterPointer) {
+                await updateRemoteChatName(characterId, actualNewFileName);
+                if (String(characterId) === String(this_chid)) {
+                    $('#selected_chat_pole').val(actualNewFileName);
+                }
+            }
+        } catch (persistenceError) {
+            const rollbackBody = {
+                ...body,
+                original_file: `${actualNewFileName}.jsonl`,
+                renamed_file: `${oldFileName}.jsonl`,
+            };
+            try {
+                await sendRenameRequest(rollbackBody);
+            } catch (rollbackError) {
+                throw new AggregateError([persistenceError, rollbackError], 'Chat rename and rollback both failed.');
+            }
+            throw persistenceError;
         }
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error('Server returned an error.');
+        const isStillActiveTarget = isGroupRename
+            ? String(selected_group) === String(groupId) && getChatBaseName(getCurrentChatId()) === actualNewFileName
+            : (selected_group === null || selected_group === undefined)
+                && String(this_chid) === String(characterId)
+                && getChatBaseName(getCurrentChatId()) === actualNewFileName;
+        if (shouldReloadCurrent && wasActiveTarget && isStillActiveTarget) {
+            try {
+                await reloadCurrentChat();
+            } catch (error) {
+                console.error('Failed to reload renamed chat:', error);
+            }
         }
 
-        if (data.sanitizedFileName) {
-            newFileName = data.sanitizedFileName;
+        const eventData = {
+            avatarId: body.avatar_url,
+            groupId,
+            oldFileName: `${getChatBaseName(oldFileName)}.jsonl`,
+            newFileName: `${actualNewFileName}.jsonl`,
+        };
+        try {
+            await eventSource.emit(event_types.CHAT_RENAMED, eventData);
+        } catch (error) {
+            console.error('Failed to emit chat rename event:', error);
         }
-
-        if (groupId) {
-            await renameGroupChat(groupId, oldFileName, newFileName);
-        } else if (characterId !== undefined && String(characterId) === String(this_chid) && characters[characterId]?.chat === oldFileName) {
-            characters[characterId].chat = newFileName;
-            $('#selected_chat_pole').val(characters[characterId].chat);
-            await createOrEditCharacter();
-        }
-
-        if (shouldReloadCurrent && currentChatId) {
-            await reloadCurrentChat();
-        }
-
-        const eventData = { avatarId: body.avatar_url, groupId, oldFileName: body.original_file, newFileName: body.renamed_file };
-        await eventSource.emit(event_types.CHAT_RENAMED, eventData);
-    } catch {
+        return { oldFileName: getChatBaseName(oldFileName), newFileName: actualNewFileName };
+    } catch (error) {
         await delay(500);
         await callGenericPopup('An error has occurred. Chat was not renamed.', POPUP_TYPE.TEXT);
+        throw error;
     } finally {
         await loaderHandle?.hide();
     }
@@ -15631,10 +15652,8 @@ export async function closeCurrentChat() {
 export async function updateRemoteChatName(characterId, newName) {
     const character = characters[characterId];
     if (!character) {
-        console.warn(`Character not found for ID: ${characterId}`);
-        return;
+        throw new Error(`Character not found for ID: ${characterId}`);
     }
-    character.chat = newName;
     const mergeRequest = {
         avatar: character.avatar,
         chat: newName,
@@ -15645,8 +15664,9 @@ export async function updateRemoteChatName(characterId, newName) {
         body: JSON.stringify(mergeRequest),
     });
     if (!mergeResponse.ok) {
-        console.error('Failed to save extension field', mergeResponse.statusText);
+        throw new Error(`Failed to save character chat name: ${mergeResponse.statusText}`);
     }
+    character.chat = newName;
 }
 
 
@@ -16436,7 +16456,11 @@ jQuery(async function () {
             return;
         }
 
-        await renameChat(oldFileName, newName);
+        try {
+            await renameChat(oldFileName, newName);
+        } catch {
+            return;
+        }
 
         await delay(250);
         $('#option_select_chat').trigger('click');

@@ -120,7 +120,10 @@ describe('calculateClaudeBudgetTokens', () => {
 
         test('max returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'max', true, true)).toBe('max'));
 
-        test('xhigh returns "max"', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+        // SillyBunny: Sonnet 5 accepts xhigh; older adaptive Claude models require max.
+        test('xhigh falls back to "max" when unsupported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true)).toBe('max'));
+
+        test('xhigh remains "xhigh" when supported', () => expect(mod.calculateClaudeBudgetTokens(8192, 'xhigh', true, true, true)).toBe('xhigh'));
     });
 
     describe('traditional model', () => {
@@ -597,6 +600,25 @@ describe('convertXAIMessages', () => {
         const result = mod.convertXAIMessages(messages, groupNames);
         // Starts with group name, so charName prefix should not be added
         expect(result[0].content).toBe('Alice: speaking as Alice');
+    });
+
+    test('strips name from example dialogue system messages', () => {
+        const messages = [
+            { role: 'system', name: 'example_user', content: 'Question?' },
+            { role: 'system', name: 'example_assistant', content: 'Answer.' },
+        ];
+        const result = mod.convertXAIMessages(messages, names);
+        expect(result[0]).toEqual({ role: 'system', content: 'Player: Question?' });
+        expect(result[1]).toEqual({ role: 'system', content: 'Char: Answer.' });
+    });
+
+    test('deletes name without prefixing when content is not a string', () => {
+        const messages = [
+            { role: 'assistant', name: 'Char', content: [{ type: 'text', text: 'Hello' }] },
+        ];
+        const result = mod.convertXAIMessages(messages, names);
+        expect(result[0].name).toBeUndefined();
+        expect(result[0].content).toEqual([{ type: 'text', text: 'Hello' }]);
     });
 });
 

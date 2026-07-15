@@ -810,19 +810,21 @@ export function convertXAIMessages(messages, names) {
             return;
         }
 
-        const needsCharNamePrefix = [
-            { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
-            { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
-        ];
+        if (typeof msg.content === 'string') {
+            const needsCharNamePrefix = [
+                { role: 'assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_assistant', condition: names.charName && !msg.content.startsWith(`${names.charName}: `) && !names.startsWithGroupName(msg.content) },
+                { role: 'system', name: 'example_user', condition: names.userName && !msg.content.startsWith(`${names.userName}: `) },
+            ];
 
-        const matchingRule = needsCharNamePrefix.find(rule =>
-            msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
-        );
+            const matchingRule = needsCharNamePrefix.find(rule =>
+                msg.role === rule.role && (!rule.name || msg.name === rule.name) && rule.condition,
+            );
 
-        if (matchingRule) {
-            const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
-            msg.content = `${prefix}: ${msg.content}`;
+            if (matchingRule) {
+                const prefix = msg.role === 'system' && msg.name === 'example_user' ? names.userName : names.charName;
+                msg.content = `${prefix}: ${msg.content}`;
+            }
         }
 
         delete msg.name;
@@ -1137,9 +1139,10 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @param {string} reasoningEffort Reasoning effort
  * @param {boolean} stream If streaming is enabled
  * @param {boolean} isAdaptiveModel If the model supports adaptive thinking (Opus 4.6+)
+ * @param {boolean} supportsXhigh If the adaptive model accepts the xhigh effort value
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
-export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
+export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel, supportsXhigh = false) {
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
         switch (reasoningEffort) {
@@ -1154,8 +1157,10 @@ export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, 
                 return 'medium';
             case REASONING_EFFORT.high:
                 return 'high';
-            case REASONING_EFFORT.max:
             case REASONING_EFFORT.xhigh:
+                // SillyBunny: fall back for adaptive Claude models whose API rejects xhigh.
+                return supportsXhigh ? 'xhigh' : 'max';
+            case REASONING_EFFORT.max:
                 return 'max';
         }
         return null;

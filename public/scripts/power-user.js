@@ -77,6 +77,7 @@ import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashComma
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
+import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -2677,58 +2678,10 @@ function applyMovingUIStateStyles(element, state) {
     }
 }
 
-function parseMovingUIStatePixel(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-    }
-
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const trimmedValue = value.trim();
-    if (!/^-?\d+(?:\.\d+)?(?:px)?$/.test(trimmedValue)) {
-        return null;
-    }
-
-    return Number.parseFloat(trimmedValue);
-}
-
 function getMovingUIViewportSize() {
     return {
         width: window.innerWidth || document.documentElement.clientWidth || 0,
         height: window.innerHeight || document.documentElement.clientHeight || 0,
-    };
-}
-
-function getMovingUIStateBounds(state) {
-    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
-    const width = parseMovingUIStatePixel(state?.width);
-    const height = parseMovingUIStatePixel(state?.height);
-    const right = parseMovingUIStatePixel(state?.right);
-    const bottom = parseMovingUIStatePixel(state?.bottom);
-    let left = parseMovingUIStatePixel(state?.left);
-    let top = parseMovingUIStatePixel(state?.top);
-
-    if (left === null && right !== null && width !== null) {
-        left = viewportWidth - right - width;
-    }
-
-    if (top === null && bottom !== null && height !== null) {
-        top = viewportHeight - bottom - height;
-    }
-
-    if (left === null || top === null || width === null || height === null) {
-        return null;
-    }
-
-    return {
-        left,
-        top,
-        right: left + width,
-        bottom: top + height,
-        width,
-        height,
     };
 }
 
@@ -2767,7 +2720,27 @@ function isMovingUIStateOutOfViewport(element, state) {
         return isMovingUIBoundsOutOfViewport(elementBounds);
     }
 
-    return isMovingUIBoundsOutOfViewport(getMovingUIStateBounds(state));
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, { viewportWidth, viewportHeight });
+    return resolution.canContain && resolution.changed;
+}
+
+function containMovingUIElement(element, state) {
+    const { width: viewportWidth, height: viewportHeight } = getMovingUIViewportSize();
+    const resolution = resolveMovingUIViewportState(state, {
+        viewportWidth,
+        viewportHeight,
+        elementBounds: getMovingUIElementBounds(element),
+    });
+
+    if (resolution.changed) {
+        Object.assign(state, resolution.state);
+        for (const property of Object.keys(resolution.updates)) {
+            applyMovingUIStateStyle(element, property, resolution.state[property]);
+        }
+    }
+
+    return resolution.changed;
 }
 
 function syncMovingUIOffscreenWarning(showWarning) {
@@ -2783,21 +2756,34 @@ export function loadMovingUIState() {
         && power_user.movingUI === true) {
         console.debug('loading movingUI state');
         let hasOffscreenPanel = false;
+        let didContainPanel = false;
         for (var elmntName of Object.keys(power_user.movingUIState)) {
             var elmntState = power_user.movingUIState[elmntName];
             try {
                 const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                const targetElements = [];
+                let sharedStateChanged = false;
                 let applied = false;
                 for (const targetName of targetNames) {
                     var elmnt = $('#' + $.escapeSelector(targetName));
                     if (elmnt.length) {
                         console.debug(`loading state for ${targetName} from ${elmntName}`);
                         applyMovingUIStateStyles(elmnt[0], elmntState);
-                        // SillyBunny: make bad persisted panel geometry recoverable from Settings.
-                        hasOffscreenPanel = isMovingUIStateOutOfViewport(elmnt[0], elmntState) || hasOffscreenPanel;
+                        // Persisted geometry must never enlarge the document or
+                        // leave a panel unreachable after a viewport/monitor change.
+                        const didContainTarget = containMovingUIElement(elmnt[0], elmntState);
+                        didContainPanel = didContainTarget || didContainPanel;
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(elmnt[0]);
                         applied = true;
                     }
                 }
+                if (sharedStateChanged && targetElements.length > 1) {
+                    targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                }
+                targetElements.forEach(element => {
+                    hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                });
                 if (!applied) {
                     console.debug(`skipping ${elmntName} because it doesn't exist in the DOM`);
                 }
@@ -2806,6 +2792,9 @@ export function loadMovingUIState() {
             }
         }
         syncMovingUIOffscreenWarning(hasOffscreenPanel);
+        if (didContainPanel) {
+            saveSettingsDebounced();
+        }
     } else {
         console.debug('skipping movingUI state load');
         syncMovingUIOffscreenWarning(false);
@@ -4085,25 +4074,15 @@ jQuery(async () => {
         const scaleX = parseFloat(Number(window.innerWidth / coreTruthWinWidth).toFixed(4));
 
         if (Object.keys(power_user.movingUIState).length > 0) {
+            let hasOffscreenPanel = false;
             for (var elmntName of Object.keys(power_user.movingUIState)) {
                 var elmntState = power_user.movingUIState[elmntName];
-                var oldHeight = elmntState.height;
-                var oldWidth = elmntState.width;
-                var oldLeft = elmntState.left;
-                var oldTop = elmntState.top;
-                var oldBottom = elmntState.bottom;
-                var oldRight = elmntState.right;
-                var newHeight, newWidth, newTop, newBottom, newLeft, newRight;
-
-                newHeight = Number(oldHeight * scaleY).toFixed(0);
-                newWidth = Number(oldWidth * scaleX).toFixed(0);
-                newLeft = Number(oldLeft * scaleX).toFixed(0);
-                newTop = Number(oldTop * scaleY).toFixed(0);
-                newBottom = Number(oldBottom * scaleY).toFixed(0);
-                newRight = Number(oldRight * scaleX).toFixed(0);
                 try {
                     const targetNames = elmntName === 'nav-panel-shared-size' ? ['left-nav-panel', 'right-nav-panel'] : [elmntName];
+                    const targetElements = [];
+                    let sharedStateChanged = false;
                     let applied = false;
+                    Object.assign(elmntState, scaleMovingUIViewportState(elmntState, { scaleX, scaleY }));
 
                     for (const targetName of targetNames) {
                         const elmnt = $('#' + $.escapeSelector(targetName));
@@ -4111,28 +4090,30 @@ jQuery(async () => {
                             continue;
                         }
 
-                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${newWidth}x${newHeight}`);
+                        console.log(`scaling ${targetName} by ${scaleX}x${scaleY} to ${elmntState.width}x${elmntState.height}`);
                         const element = elmnt[0];
-                        applyMovingUIStateStyle(element, 'height', newHeight);
-                        applyMovingUIStateStyle(element, 'width', newWidth);
-                        applyMovingUIStateStyle(element, 'inset', `${newTop}px ${newRight}px ${newBottom}px ${newLeft}px`);
+                        applyMovingUIStateStyles(element, elmntState);
+                        const didContainTarget = containMovingUIElement(element, elmntState);
+                        sharedStateChanged = didContainTarget || sharedStateChanged;
+                        targetElements.push(element);
                         applied = true;
                     }
 
-                    if (applied) {
-                        power_user.movingUIState[elmntName].height = newHeight;
-                        power_user.movingUIState[elmntName].width = newWidth;
-                        power_user.movingUIState[elmntName].top = newTop;
-                        power_user.movingUIState[elmntName].bottom = newBottom;
-                        power_user.movingUIState[elmntName].left = newLeft;
-                        power_user.movingUIState[elmntName].right = newRight;
-                    } else {
+                    if (sharedStateChanged && targetElements.length > 1) {
+                        targetElements.forEach(element => applyMovingUIStateStyles(element, elmntState));
+                    }
+                    targetElements.forEach(element => {
+                        hasOffscreenPanel = isMovingUIStateOutOfViewport(element, elmntState) || hasOffscreenPanel;
+                    });
+
+                    if (!applied) {
                         console.log(`skipping ${elmntName} because it doesn't exist in the DOM`);
                     }
                 } catch (err) {
                     console.log(`error occurred while processing ${elmntName}: ${err}`);
                 }
             }
+            syncMovingUIOffscreenWarning(hasOffscreenPanel);
         } else {
             console.debug('aborting MUI reset', Object.keys(power_user.movingUIState).length);
         }

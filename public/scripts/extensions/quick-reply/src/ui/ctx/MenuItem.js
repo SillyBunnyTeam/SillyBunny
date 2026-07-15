@@ -64,6 +64,8 @@ export class MenuItem {
                     item.append(lbl);
                 }
                 if (this.childList.length > 0) {
+                    // Nested menus are portal-positioned by SubMenu;
+                    // defer closing while the pointer crosses into that overlay.
                     item.classList.add('ctx-has-children');
                     const sub = new SubMenu(this.childList);
                     this.subMenu = sub;
@@ -76,8 +78,8 @@ export class MenuItem {
                         });
                         item.append(trigger);
                     }
-                    item.addEventListener('mouseover', () => sub.show(item));
-                    item.addEventListener('mouseleave', () => sub.hide());
+                    item.addEventListener('pointerenter', event => this.expandFromHover(event));
+                    item.addEventListener('mouseleave', event => sub.handlePointerLeave(event));
                 }
             }
         }
@@ -91,14 +93,19 @@ export class MenuItem {
             this.onExpand();
         }
     }
+    expandFromHover(event) {
+        if (event.pointerType === 'mouse') {
+            this.expand();
+        }
+    }
     collapse() {
         this.subMenu?.hide();
     }
     toggle() {
         if (this.subMenu.isActive) {
-            this.expand();
-        } else {
             this.collapse();
+        } else {
+            this.expand();
         }
     }
 }

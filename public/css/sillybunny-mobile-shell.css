@@ -82,7 +82,7 @@
         grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto) !important;
         grid-template-areas: 'tools input action' !important;
         align-items: center !important;
-        gap: 0 4px !important;
+        gap: 0 clamp(10px, 3vw, 14px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 4px) !important;
         padding: 2px 4px !important;
         box-sizing: border-box !important;
@@ -96,7 +96,7 @@
         --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 3px !important;
+        gap: 0 clamp(10px, 3vw, 14px) !important;
     }
 
     #leftSendForm {
@@ -507,13 +507,21 @@
         padding: 3px 10px !important;
     }
 
-    #right-nav-panel.openDrawer .sb-character-favorites-label {
-        font-size: calc(var(--mainFontSize) * 0.66) !important;
-        letter-spacing: 0.12em !important;
+    /* The collapsed shell header parks the mode toggle + close button over the
+       right end of this band, and the characters button floats on its left;
+       inset the favorites block so the divider and strip sit cleanly between
+       the flanking controls instead of running underneath them.
+       Left 48px clears the 44px characters button; right 134px clears the
+       82px mode toggle + 36px close button and their edge offsets. */
+    #right-nav-panel.openDrawer #HotSwapWrapper {
+        margin: 0 134px 0 48px !important;
+        min-height: 44px;
+        justify-content: center;
     }
 
-    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
-        max-height: 28px !important;
+    #right-nav-panel.openDrawer .sb-character-favorites-label {
+        font-size: calc(var(--mainFontSize) * 0.66);
+        letter-spacing: 0.12em;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
@@ -2015,14 +2023,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         justify-content: flex-start;
     }
 
+    /* Horizontal-rail treatment like .sb-character-create-bar: the strip must
+       stay a real scroll container or touch panning has nothing to scroll
+       (mobile-styles.css and an earlier revision of this rule flattened it to
+       overflow: hidden). */
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap {
         min-width: 0;
         max-width: 100%;
-        max-height: 34px;
+        max-height: 28px;
         margin: 0;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
         white-space: nowrap;
-        text-overflow: ellipsis;
     }
 
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > .avatar {
@@ -2360,8 +2376,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         grid-column: 1;
         grid-row: 1 / -1;
-        align-self: center;
-        justify-self: center;
+        align-self: center !important;
+        justify-self: center !important;
         width: var(--sb-character-list-avatar-size) !important;
         min-width: var(--sb-character-list-avatar-size) !important;
         max-width: var(--sb-character-list-avatar-size) !important;
@@ -2694,8 +2710,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap, 0px)) !important;
         bottom: auto !important;
         box-sizing: border-box !important;
-        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+        max-height: calc(var(--sb-shell-available-height, calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)))) - var(--sb-mobile-shell-gap, 0px) - env(safe-area-inset-bottom, 0px)) !important;
     }
 }
 
@@ -2760,6 +2776,14 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
         --sb-bottom-chat-mobile-radius: 0px;
+        /* Keep vertical drags on the band between #chat and the composer from
+           becoming visual-viewport pans; its only owned gesture is the
+           horizontal secondary action rail. */
+        touch-action: pan-x;
+    }
+
+    #sb-bottom-chat-secondary-row {
+        touch-action: pan-x;
     }
 
     #chat {
@@ -2794,7 +2818,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
         --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 3px !important;
+        gap: 0 clamp(10px, 3vw, 14px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
     }

@@ -114,6 +114,19 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #651 (2026-07-09) `fix(card_imports): fixes chub AI import API + botbooru support`
 - PR #652 (2026-07-09) `fix(mobile): restore viewport pan hardening and keep popup inputs above the keyboard`
 - PR #653 (2026-07-09) `fix(tests): cover secret-bound profiles dropping plaintext keys (split from #627)`
+- PR #654 (2026-07-09) `feat: New ordering mechanism for agents and companion sidebar`
+- PR #655 (2026-07-09) `fix: that funkily-sized button (guided generations flush/sweep)`
+- PR #656 (2026-07-09) `fix: Grok example dialogue glitch`
+- PR #657 (2026-07-11) `feat(agents): let post-generation passes target companion outputs, impersonation text, and picked targets`
+- PR #658 (2026-07-11) `fix(mobile): hold the chat composer above the iOS keyboard to stop the viewport escape`
+- PR #659 (2026-07-15) `chore: add the new GPT 5.6 variants, Sonnet 5, remove deprecated models`
+- PR #661 (2026-07-12) `fix: Favs not lighting up, scrolling favorites on desktop, validator behavior changes, etc`
+- PR #662 (2026-07-15) `fix(chat_files): hardens chat files, fixes backups and chat renaming`
+- PR #663 (2026-07-15) `fix(continue): continue button also works when thinking is interrupted`
+- PR #664 (2026-07-15) `fix(ios): add exception to viewport fix on message box`
+- PR #665 (2026-07-15) `fix(mobile): remove icon overlap on message box`
+- PR #667 (2026-07-15) `fix(tts): TTS extension only considers actual quotes`
+- PR #668 (2026-07-15) `fix: Viewport scrolling offscreen in-depth`
 
 ## v1.6.5
 

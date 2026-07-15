@@ -82,7 +82,9 @@ import {
  * @property {string[]} triggerKeywords
  * @property {number} triggerProbability - 0-100
  * @property {string[]} generationTypes
- * @property {boolean} runOnImpersonate - Allows prompt-based post passes to rewrite generated impersonation text
+ * @property {boolean} runOnImpersonate - Allows this agent's post passes (prompt pass + agent regex) to rewrite generated impersonation text
+ * @property {boolean} runOnCompanionOutputs - Allows this agent's post passes (prompt pass + agent regex) to rewrite companion agent outputs
+ * @property {string[]} companionOutputTargetAgentIds - Companion agent/template ids to target; empty targets all companions
  */
 
 /**
@@ -1226,6 +1228,8 @@ export function createDefaultAgent() {
             triggerProbability: 100,
             generationTypes: ['normal', 'continue', 'impersonate'],
             runOnImpersonate: false,
+            runOnCompanionOutputs: false,
+            companionOutputTargetAgentIds: [],
         },
         tools: [],
         settings: {},
@@ -1363,6 +1367,12 @@ export function normalizeAgent(rawAgent = {}) {
             runOnImpersonate: Object.hasOwn(conditions, 'runOnImpersonate')
                 ? Boolean(conditions.runOnImpersonate)
                 : defaults.conditions.runOnImpersonate,
+            runOnCompanionOutputs: Object.hasOwn(conditions, 'runOnCompanionOutputs')
+                ? Boolean(conditions.runOnCompanionOutputs)
+                : defaults.conditions.runOnCompanionOutputs,
+            companionOutputTargetAgentIds: Array.isArray(conditions.companionOutputTargetAgentIds)
+                ? conditions.companionOutputTargetAgentIds.map(id => String(id ?? '').trim()).filter(Boolean)
+                : defaults.conditions.companionOutputTargetAgentIds,
         },
         tools: Array.isArray(rawAgent.tools)
             ? rawAgent.tools.map(tool => normalizeToolDef(tool))

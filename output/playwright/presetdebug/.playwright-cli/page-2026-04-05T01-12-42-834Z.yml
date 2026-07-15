@@ -1,0 +1,616 @@
+- generic [ref=e1]:
+  - generic:
+    - generic:
+      - generic:
+        - generic "AI Response Configuration": 
+      - text:                                       + No items                         ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰ ☑ ☰                                  + No items      ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰  ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰ ☰                  +     No items 
+    - generic:
+      - generic:
+        - generic "API Connections": 
+      - text:                                                                 
+    - generic:
+      - generic:
+        - generic "AI Response Formatting": 
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - heading "Advanced Formatting " [level=3] [ref=e7]:
+            - generic [ref=e8]: Advanced Formatting
+            - link "" [ref=e9] [cursor=pointer]:
+              - /url: https://docs.sillytavern.app/usage/core-concepts/advancedformatting/
+              - generic [ref=e10]: 
+          - generic [ref=e11]:
+            - generic "Import Advanced Formatting settings You can also provide legacy files for Instruct and Context templates." [ref=e12] [cursor=pointer]:
+              - generic [ref=e13]: 
+              - generic [ref=e14]: Master Import
+            - generic "Export Advanced Formatting settings" [ref=e15] [cursor=pointer]:
+              - generic [ref=e16]: 
+              - generic [ref=e17]: Master Export
+        - text: 
+        - generic [ref=e18]:
+          - generic [ref=e20]:
+            - heading "Context Template " [level=4] [ref=e21]:
+              - generic [ref=e22]: Context Template
+              - generic "Derive from Model Metadata, if possible." [ref=e24]:
+                - generic [ref=e26] [cursor=pointer]: 
+            - generic "Select your current Context Template" [ref=e27]:
+              - combobox [ref=e28]
+              - generic [ref=e29]:
+                - generic "Update current template" [ref=e30] [cursor=pointer]: 
+                - generic "Rename current template" [ref=e31] [cursor=pointer]: 
+                - generic "Save template as" [ref=e32] [cursor=pointer]: 
+                - text:  
+                - generic "Restore current template" [ref=e33] [cursor=pointer]: 
+                - generic "Delete the template" [ref=e34] [cursor=pointer]: 
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - generic [ref=e37]:
+                  - generic [ref=e38]: Story String
+                  - generic "Expand the editor" [ref=e39] [cursor=pointer]: 
+                - textbox "Story String " [ref=e40]
+              - generic [ref=e41]:
+                - generic [ref=e42]:
+                  - generic [ref=e43]: "Position:"
+                  - combobox "Position:" [ref=e44]:
+                    - option "Default (top of context)" [selected]
+                    - option "In-chat @ Depth"
+                - generic [ref=e45]:
+                  - generic [ref=e46]:
+                    - generic [ref=e47]: "Depth:"
+                    - spinbutton "Depth:" [ref=e48]
+                  - generic [ref=e49]:
+                    - generic [ref=e50]: "Role:"
+                    - combobox "Role:" [ref=e51]:
+                      - option "System" [selected]
+                      - option "User"
+                      - option "Assistant"
+              - generic [ref=e52]:
+                - generic [ref=e53]:
+                  - generic [ref=e54]: Example Separator
+                  - textbox "Example Separator" [ref=e56]
+                - generic [ref=e57]:
+                  - generic [ref=e58]: Chat Start
+                  - textbox "Chat Start" [ref=e60]
+              - generic [ref=e61]:
+                - heading "Context Formatting" [level=4] [ref=e62]
+                - generic [ref=e63]:
+                  - checkbox "Always add character's name to prompt" [ref=e64] [cursor=pointer]
+                  - generic [ref=e65]: Always add character's name to prompt
+                - generic [ref=e66]:
+                  - checkbox "Generate only one line per request" [ref=e67] [cursor=pointer]
+                  - generic [ref=e68]: Generate only one line per request
+                - generic [ref=e69]:
+                  - checkbox "Collapse Consecutive Newlines" [ref=e70] [cursor=pointer]
+                  - generic [ref=e71]: Collapse Consecutive Newlines
+                - generic [ref=e72]:
+                  - checkbox "Trim spaces " [ref=e73] [cursor=pointer]
+                  - generic [ref=e74]: Trim spaces
+                  - generic "Disabling is not recommended." [ref=e75]: 
+                - generic [ref=e76]:
+                  - checkbox "Trim Incomplete Sentences" [ref=e77] [cursor=pointer]
+                  - generic [ref=e78]: Trim Incomplete Sentences
+                - generic "Add Chat Start and Example Separator to a list of stopping strings." [ref=e79]:
+                  - checkbox "Separators as Stop Strings" [ref=e80] [cursor=pointer]
+                  - generic [ref=e81]: Separators as Stop Strings
+                - generic "Add Character and User names to a list of stopping strings." [ref=e82]:
+                  - checkbox "Names as Stop Strings" [ref=e83] [cursor=pointer]
+                  - generic [ref=e84]: Names as Stop Strings
+          - generic [ref=e85]:
+            - heading "Instruct Template   " [level=4] [ref=e86]:
+              - generic [ref=e88]: Instruct Template
+              - generic [ref=e89]:
+                - generic "Derive from Model Metadata, if possible." [ref=e90]:
+                  - generic [ref=e92] [cursor=pointer]: 
+                - generic "Bind to Context If enabled, Context templates will be automatically selected based on selected Instruct template name or by preference." [ref=e93]:
+                  - generic [ref=e95] [cursor=pointer]: 
+                - generic "Enable Instruct Mode" [ref=e96]:
+                  - generic [ref=e98] [cursor=pointer]: 
+            - generic [ref=e99]:
+              - generic "Select your current Instruct Template" [ref=e100]:
+                - combobox [ref=e101]
+                - generic [ref=e102]:
+                  - generic "Update current template" [ref=e103] [cursor=pointer]: 
+                  - generic "Rename current template" [ref=e104] [cursor=pointer]: 
+                  - generic "Save template as" [ref=e105] [cursor=pointer]: 
+                  - text:  
+                  - generic "Restore current template" [ref=e106] [cursor=pointer]: 
+                  - generic "Delete template" [ref=e107] [cursor=pointer]: 
+              - generic [ref=e109]:
+                - text: Activation Regex
+                - generic "When connecting to an API or choosing a model, automatically activate this Instruct Template if the model name matches the provided regular expression." [ref=e110]: 
+              - textbox "e.g. /llama(-)?[3|3.1]/i" [ref=e112]
+              - generic [ref=e113]:
+                - generic [ref=e114]:
+                  - checkbox "Wrap Sequences with Newline" [ref=e115] [cursor=pointer]
+                  - generic [ref=e116]: Wrap Sequences with Newline
+                - generic [ref=e117]:
+                  - checkbox "Replace Macro in Sequences" [ref=e118] [cursor=pointer]
+                  - generic [ref=e119]: Replace Macro in Sequences
+                - generic [ref=e120]:
+                  - checkbox "Sequences as Stop Strings" [ref=e121] [cursor=pointer]
+                  - generic [ref=e122]: Sequences as Stop Strings
+                - generic [ref=e123]:
+                  - checkbox "Skip Example Dialogues Formatting" [ref=e124] [cursor=pointer]
+                  - generic [ref=e125]: Skip Example Dialogues Formatting
+                - generic [ref=e126]:
+                  - text: Include Names
+                  - combobox [ref=e127]:
+                    - option "Never" [selected]
+                    - option "Groups and Past Personas"
+                    - option "Always"
+            - generic [ref=e128]:
+              - heading "Instruct Sequences" [level=4] [ref=e129]:
+                - generic [ref=e130]: Instruct Sequences
+              - group [ref=e131]:
+                - generic "Story String Sequences " [ref=e132] [cursor=pointer]:
+                  - text: Story String Sequences
+                  - generic "Used in Default position only." [ref=e133]: 
+                - generic [ref=e134]:
+                  - generic "Inserted before a Story String." [ref=e135]:
+                    - generic [ref=e136]: Story String Prefix
+                    - textbox "Story String Prefix" [ref=e138]
+                  - generic "Inserted after a Story String." [ref=e139]:
+                    - generic [ref=e140]: Story String Suffix
+                    - textbox "Story String Suffix" [ref=e142]
+              - group [ref=e143]:
+                - generic "User Message Sequences" [ref=e144] [cursor=pointer]
+                - generic [ref=e145]:
+                  - generic "Inserted before a User message and as a last prompt line when impersonating." [ref=e146]:
+                    - text: User Message Prefix
+                    - textbox [ref=e147]
+                  - generic "Inserted after a User message." [ref=e148]:
+                    - text: User Message Suffix
+                    - textbox [ref=e149]
+              - group [ref=e150]:
+                - generic "Assistant Message Sequences" [ref=e151] [cursor=pointer]
+                - generic [ref=e152]:
+                  - generic "Inserted before an Assistant message and as a last prompt line when generating an AI reply." [ref=e153]:
+                    - text: Assistant Message Prefix
+                    - textbox [ref=e154]
+                  - generic "Inserted after an Assistant message." [ref=e155]:
+                    - text: Assistant Message Suffix
+                    - textbox [ref=e156]
+              - group [ref=e157]:
+                - generic "System Message Sequences" [ref=e158] [cursor=pointer]
+              - group [ref=e159]:
+                - generic "Misc. Sequences" [ref=e160] [cursor=pointer]
+          - generic [ref=e161]:
+            - heading "System Prompt " [level=4] [ref=e162]:
+              - generic [ref=e164]: System Prompt
+              - generic "Enable System Prompt" [ref=e166]:
+                - generic [ref=e168] [cursor=pointer]: 
+            - generic [ref=e169]:
+              - generic "Select your current System Prompt" [ref=e170]:
+                - combobox [ref=e171]
+                - generic [ref=e172]:
+                  - generic "Update current prompt" [ref=e173] [cursor=pointer]: 
+                  - generic "Rename current prompt" [ref=e174] [cursor=pointer]: 
+                  - generic "Save prompt as" [ref=e175] [cursor=pointer]: 
+                  - text:  
+                  - generic "Restore current prompt" [ref=e176] [cursor=pointer]: 
+                  - generic "Delete prompt" [ref=e177] [cursor=pointer]: 
+              - generic [ref=e178]:
+                - generic [ref=e179]:
+                  - generic [ref=e180]: Prompt Content
+                  - generic "Expand the editor" [ref=e181] [cursor=pointer]: 
+                - textbox "Prompt Content " [ref=e182]
+              - generic [ref=e183]:
+                - generic [ref=e184]:
+                  - generic [ref=e185]: Post-History Instructions
+                  - generic "Expand the editor" [ref=e186] [cursor=pointer]: 
+                - textbox "Post-History Instructions " [ref=e187]
+            - generic [ref=e188]:
+              - heading "Custom Stopping Strings " [level=4] [ref=e189]:
+                - text: Custom Stopping Strings
+                - link "" [ref=e190] [cursor=pointer]:
+                  - /url: https://docs.sillytavern.app/usage/core-concepts/advancedformatting/#custom-stopping-strings
+                  - generic [ref=e191]: 
+              - generic [ref=e193]:
+                - text: JSON serialized array of strings
+                - 'generic "e.g: [\"Ford\", \"BMW\", \"Fiat\"]" [ref=e194]': 
+              - textbox [ref=e196]
+              - generic [ref=e197]:
+                - checkbox "Replace Macro in Stop Strings" [checked] [ref=e198] [cursor=pointer]
+                - generic [ref=e199]: Replace Macro in Stop Strings
+            - generic [ref=e200]:
+              - generic [ref=e201]:
+                - heading "Tokenizer " [level=4] [ref=e202]:
+                  - text: Tokenizer
+                  - link "" [ref=e203] [cursor=pointer]:
+                    - /url: https://docs.sillytavern.app/usage/prompts/tokenizer/
+                    - generic [ref=e204]: 
+                - combobox [ref=e205]:
+                  - option "Best match (recommended)" [selected]
+                  - option "None / Estimated"
+                  - option "GPT-2"
+                  - option "Llama 1/2"
+                  - option "Llama 3"
+                  - option "Gemma / Gemini"
+                  - option "Jamba"
+                  - option "Qwen2"
+                  - option "Command-R"
+                  - option "Command-A"
+                  - option "NerdStash (NovelAI Clio)"
+                  - option "NerdStash v2 (NovelAI Kayra)"
+                  - option "Mistral V1"
+                  - option "Mistral Nemo"
+                  - option "Yi"
+                  - option "Claude 1/2"
+                  - option "DeepSeek V3"
+                  - option "API (WebUI / koboldcpp)"
+              - generic [ref=e206]:
+                - generic [ref=e207]: Token Padding
+                - spinbutton [ref=e208]
+            - generic [ref=e209]:
+              - heading "Reasoning" [level=4] [ref=e210]
+              - generic [ref=e211]:
+                - generic [ref=e212]:
+                  - generic "Automatically parse reasoning blocks from main content between the reasoning prefix/suffix. Both fields must be defined and non-empty." [ref=e213]:
+                    - checkbox "Auto-Parse" [ref=e214] [cursor=pointer]
+                    - generic [ref=e215]: Auto-Parse
+                  - generic "Automatically expand reasoning blocks." [ref=e216]:
+                    - checkbox "Auto-Expand" [ref=e217] [cursor=pointer]
+                    - generic [ref=e218]: Auto-Expand
+                  - generic "Show reasoning time for models with hidden reasoning." [ref=e219]:
+                    - checkbox "Show Hidden" [ref=e220] [cursor=pointer]
+                    - generic [ref=e221]: Show Hidden
+                - generic [ref=e222]:
+                  - generic "Add existing reasoning blocks to prompts. To add a new reasoning block, use the message edit menu." [ref=e223]:
+                    - checkbox "Add to Prompts" [ref=e224] [cursor=pointer]
+                    - generic [ref=e225]: Add to Prompts
+                  - generic "Maximum number of reasoning blocks to be added per prompt, counting from the last message." [ref=e226]:
+                    - generic [ref=e227]: Max
+                    - spinbutton "Max" [ref=e228]
+                - group [ref=e229]:
+                  - generic "Reasoning Formatting" [ref=e230] [cursor=pointer]
+                  - text:       
+            - generic [ref=e231]:
+              - heading "Miscellaneous" [level=4] [ref=e232]
+              - generic [ref=e234]:
+                - checkbox "Bind Model to Templates " [ref=e235] [cursor=pointer]
+                - generic [ref=e236]: Bind Model to Templates
+                - generic "When connecting to an API or choosing a model, automatically activate the current Instruct and Context templates if the model name or its chat template matches the currently loaded model." [ref=e237]: 
+              - generic [ref=e238]:
+                - generic [ref=e239]: Non-markdown strings
+                - textbox "comma delimited,no spaces between" [ref=e241]
+              - generic [ref=e243]:
+                - generic [ref=e244]: Start Reply With
+                - textbox [ref=e246]
+                - generic [ref=e247]:
+                  - checkbox "Show reply prefix in chat" [ref=e248] [cursor=pointer]
+                  - generic [ref=e249]: Show reply prefix in chat
+    - generic:
+      - generic:
+        - generic "World Info": 
+      - text:                +     
+    - generic:
+      - generic:
+        - generic "User Settings": 
+      - generic [ref=e250]:
+        - generic [ref=e251]:
+          - generic [ref=e252]:
+            - heading "User Settings " [level=3] [ref=e255]:
+              - text: User Settings
+              - link "" [ref=e256] [cursor=pointer]:
+                - /url: https://docs.sillytavern.app/usage/user-settings/
+                - generic [ref=e257]: 
+            - generic [ref=e258]:
+              - generic [ref=e259]: "Language:"
+              - combobox [ref=e260]:
+                - option "Default" [selected]
+                - option "English"
+          - generic [ref=e262]:
+            - generic [ref=e263]:
+              - generic [ref=e264] [cursor=pointer]:
+                - generic [ref=e265]: 
+                - generic [ref=e266]: Account
+              - generic [ref=e267] [cursor=pointer]:
+                - generic [ref=e268]: 
+                - generic [ref=e269]: Admin Panel
+              - generic [ref=e270] [cursor=pointer]:
+                - generic [ref=e271]: 
+                - generic [ref=e272]: Logout
+            - textbox "Search Settings" [ref=e273]
+        - generic [ref=e274]:
+          - generic [ref=e276]:
+            - generic [ref=e277] [cursor=pointer]:
+              - generic [ref=e278]:
+                - generic [ref=e279]: 
+                - text: Appearance
+              - generic [ref=e280]: 
+            - generic [ref=e281]:
+              - generic [ref=e282]:
+                - heading "UI Theme   " [level=4] [ref=e283]:
+                  - generic [ref=e284]: UI Theme
+                  - generic [ref=e285]:
+                    - generic "Import a theme file" [ref=e286] [cursor=pointer]:
+                      - generic [ref=e287]: 
+                    - generic "Export a theme file" [ref=e288] [cursor=pointer]:
+                      - generic [ref=e289]: 
+                    - generic "Delete a theme" [ref=e290] [cursor=pointer]:
+                      - generic [ref=e291]: 
+                - generic [ref=e292]:
+                  - combobox [ref=e293]
+                  - generic "Update a theme file" [ref=e294] [cursor=pointer]:
+                    - generic [ref=e295]: 
+                  - generic "Save as a new theme" [ref=e296] [cursor=pointer]:
+                    - generic [ref=e297]: 
+                - generic [ref=e298]:
+                  - generic [ref=e299]: SillyBunny palettes
+                  - generic [ref=e300]:
+                    - button " Forest Dusk" [ref=e301] [cursor=pointer]:
+                      - generic [ref=e302]: 
+                      - generic [ref=e303]: Forest Dusk
+                    - button " Forest Dawn" [ref=e304] [cursor=pointer]:
+                      - generic [ref=e305]: 
+                      - generic [ref=e306]: Forest Dawn
+                    - button " Rose Glow" [ref=e307] [cursor=pointer]:
+                      - generic [ref=e308]: 
+                      - generic [ref=e309]: Rose Glow
+              - generic [ref=e310]:
+                - generic "Configure per-chat agent mode and per-service agent profiles." [ref=e311] [cursor=pointer]:
+                  - generic [ref=e312]: Agent Mode
+                  - generic [ref=e313]: 
+                - generic [ref=e314]:
+                  - generic [ref=e315]:
+                    - checkbox "Enable Agent Mode For This Chat" [ref=e316] [cursor=pointer]
+                    - generic [ref=e317]: Enable Agent Mode For This Chat
+                  - generic [ref=e318]:
+                    - generic [ref=e319]:
+                      - checkbox "Retrieval Agent" [ref=e320] [cursor=pointer]
+                      - generic [ref=e321]: Retrieval Agent
+                    - generic [ref=e322]:
+                      - checkbox "Memory Agent" [ref=e323] [cursor=pointer]
+                      - generic [ref=e324]: Memory Agent
+                    - generic [ref=e325]:
+                      - checkbox "Lorebook Agent" [ref=e326] [cursor=pointer]
+                      - generic [ref=e327]: Lorebook Agent
+                  - generic [ref=e328]:
+                    - generic [ref=e329] [cursor=pointer]:
+                      - generic [ref=e330]: 
+                      - generic [ref=e331]: Copy Main Profile To Agents
+                    - generic [ref=e332] [cursor=pointer]:
+                      - generic [ref=e333]: 
+                      - generic [ref=e334]: Run Lorebook Sync
+                    - generic [ref=e335] [cursor=pointer]:
+                      - generic [ref=e336]: 
+                      - generic [ref=e337]: Clear Agent Memory
+                  - generic [ref=e338]:
+                    - strong [ref=e339]: Memory Summary
+                    - textbox [ref=e340]
+                  - strong [ref=e342]: Recent Agent Runs
+                  - generic [ref=e343]:
+                    - strong [ref=e344]: Agent Profiles
+                    - generic [ref=e345]:
+                      - strong [ref=e346]: Retrieval Profile
+                      - generic [ref=e347]:
+                        - checkbox "Use Active Chat Model" [ref=e348] [cursor=pointer]
+                        - generic [ref=e349]: Use Active Chat Model
+                      - combobox [ref=e350]
+                      - textbox "Model" [ref=e351]
+                      - textbox "Reverse proxy (optional)" [ref=e352]
+                      - generic [ref=e353]:
+                        - spinbutton [ref=e354]
+                        - spinbutton [ref=e355]
+                    - generic [ref=e356]:
+                      - strong [ref=e357]: Memory Profile
+                      - generic [ref=e358]:
+                        - checkbox "Use Active Chat Model" [ref=e359] [cursor=pointer]
+                        - generic [ref=e360]: Use Active Chat Model
+                      - combobox [ref=e361]
+                      - textbox "Model" [ref=e362]
+                      - textbox "Reverse proxy (optional)" [ref=e363]
+                      - generic [ref=e364]:
+                        - spinbutton [ref=e365]
+                        - spinbutton [ref=e366]
+                    - generic [ref=e367]:
+                      - strong [ref=e368]: Lorebook Profile
+                      - generic [ref=e369]:
+                        - checkbox "Use Active Chat Model" [ref=e370] [cursor=pointer]
+                        - generic [ref=e371]: Use Active Chat Model
+                      - combobox [ref=e372]
+                      - textbox "Model" [ref=e373]
+                      - textbox "Reverse proxy (optional)" [ref=e374]
+                      - generic [ref=e375]:
+                        - spinbutton [ref=e376]
+                        - spinbutton [ref=e377]
+              - generic [ref=e378]:
+                - generic [ref=e379]:
+                  - generic "This style applies to all avatars globaly, including your Persona, Character Management, Account selection, etc." [ref=e380]:
+                    - generic [ref=e381]: "Avatars:"
+                    - combobox [ref=e382]:
+                      - option "Circle" [selected]
+                      - option "Square"
+                      - option "Rounded"
+                      - option "Rectangle"
+                  - generic [ref=e383]:
+                    - generic [ref=e384]: "Chat Style:"
+                    - combobox [ref=e385]:
+                      - option "Flat" [selected]
+                      - option "Bubbles"
+                      - option "Document"
+                  - generic "Default display style for media attachments in chat messages. Extensions can override this setting." [ref=e386]:
+                    - generic [ref=e387]: "Media Style:"
+                    - combobox [ref=e388]:
+                      - option "List" [selected]
+                      - option "Gallery"
+                  - generic [ref=e389]:
+                    - generic [ref=e390]: "Notifications:"
+                    - combobox [ref=e391]:
+                      - option "Top Left" [selected]
+                      - option "Top Center"
+                      - option "Top Right"
+                      - option "Bottom Left"
+                      - option "Bottom Center"
+                      - option "Bottom Right"
+                - generic "Specify colors for your theme." [ref=e393] [cursor=pointer]:
+                  - generic [ref=e394]: Theme Colors
+                  - generic [ref=e395]: 
+                - separator [ref=e396]
+                - generic [ref=e397]:
+                  - generic "Tune layout width, typography scale, blur strength, and text shadow." [ref=e398] [cursor=pointer]:
+                    - generic [ref=e400]: Layout & Clarity
+                    - generic [ref=e401]: 
+                  - text:     
+                - separator [ref=e402]
+                - generic [ref=e403]:
+                  - generic "Toggle motion, blur, timestamps, and other interface extras." [ref=e404] [cursor=pointer]:
+                    - generic [ref=e406]: Visual Toggles
+                    - generic [ref=e407]: 
+                  - text:   
+          - generic [ref=e409]:
+            - generic [ref=e410] [cursor=pointer]:
+              - generic [ref=e411]:
+                - generic [ref=e412]: 
+                - text: Chat & Characters
+              - generic [ref=e413]: 
+            - generic [ref=e414]:
+              - generic [ref=e415]:
+                - heading "Character Handling" [level=4] [ref=e416]
+                - generic "If set in the advanced character definitions, this field will be displayed in the characters list." [ref=e417]:
+                  - generic [ref=e418]: Char List Subheader
+                  - combobox "Char List Subheader" [ref=e419]:
+                    - option "Character Version" [selected]
+                    - option "Created by"
+                - generic "Defines on importing cards which action should be chosen for importing its listed tags. 'Ask' will always display the dialog." [ref=e420]:
+                  - generic [ref=e421]: Import Card Tags
+                  - combobox "Import Card Tags" [ref=e422]:
+                    - option "Ask" [selected]
+                    - option "None"
+                    - option "All"
+                    - option "Existing"
+                - generic "Use fuzzy matching, and search characters in the list by all data fields, not just by a name substring." [ref=e423]:
+                  - checkbox "Advanced Character Search" [ref=e424] [cursor=pointer]
+                  - generic [ref=e425]: Advanced Character Search
+                - generic "If checked and the character card contains a prompt override (System Prompt), use that instead." [ref=e426]:
+                  - checkbox "Prefer Char. Prompt" [ref=e427] [cursor=pointer]
+                  - generic [ref=e428]: Prefer Char. Prompt
+                - generic "If checked and the character card contains a Post-History Instructions override, use that instead." [ref=e429]:
+                  - checkbox "Prefer Char. Instructions" [ref=e430] [cursor=pointer]
+                  - generic [ref=e431]: Prefer Char. Instructions
+                - generic "Avoid cropping and resizing imported character images. When off, crop/resize to 512x768. This will disable the upload cropping popup for avatars." [ref=e432]:
+                  - checkbox "Never resize avatars" [ref=e433] [cursor=pointer]
+                  - generic [ref=e434]: Never resize avatars
+                - generic "Allow animations for WEBP backgrounds. This is only a change for the selection menu." [ref=e435]:
+                  - checkbox "Animated background thumbnails" [ref=e436] [cursor=pointer]
+                  - generic [ref=e437]: Animated background thumbnails
+                - generic "Show actual file names on the disk, in the characters list display only." [ref=e438]:
+                  - checkbox "Show avatar filenames" [ref=e439] [cursor=pointer]
+                  - generic [ref=e440]: Show avatar filenames
+                - generic "Hide character definitions from the editor panel behind a spoiler button." [ref=e441]:
+                  - checkbox "Spoiler Free Mode" [ref=e442] [cursor=pointer]
+                  - generic [ref=e443]: Spoiler Free Mode
+              - generic [ref=e444]:
+                - heading "Miscellaneous" [level=4] [ref=e445]
+                - generic [ref=e446]:
+                  - generic "Reload and redraw the currently open chat." [ref=e447] [cursor=pointer]:
+                    - generic [ref=e448]: Reload Chat
+                  - generic [ref=e450] [cursor=pointer]: Debug Menu
+                  - generic "Find and delete backups, unused chats, files, images, etc." [ref=e451] [cursor=pointer]:
+                    - generic [ref=e452]: Clean-Up
+                - generic [ref=e453]:
+                  - checkbox "Smooth Streaming" [ref=e454] [cursor=pointer]
+                  - generic [ref=e456]: Smooth Streaming
+                - generic "Fade in streamed text when it appears, instead of it just popping in." [ref=e457]:
+                  - checkbox "Stream Fade-In " [ref=e458] [cursor=pointer]
+                  - generic [ref=e459]: Stream Fade-In
+                  - generic "Experimental feature. May not work for all backends." [ref=e460]: 
+                - generic "Play a sound when a message generation finishes." [ref=e461]:
+                  - checkbox "Message Sound" [ref=e462] [cursor=pointer]
+                  - generic [ref=e463]: Message Sound
+                - generic "Only play a sound when ST's browser tab is unfocused." [ref=e464]:
+                  - checkbox "Background Sound Only" [ref=e465] [cursor=pointer]
+                  - generic [ref=e466]: Background Sound Only
+                - generic "Reduce the formatting requirements on API URLs." [ref=e467]:
+                  - checkbox "Relaxed API URLs" [ref=e468] [cursor=pointer]
+                  - generic [ref=e469]: Relaxed API URLs
+                - generic "Ask to import the World Info/Lorebook for every new character with embedded lorebook. If unchecked, a brief message will be shown instead." [ref=e470]:
+                  - checkbox "Lorebook Import Dialog" [ref=e471] [cursor=pointer]
+                  - generic [ref=e472]: Lorebook Import Dialog
+                - generic "Enable auto-select of input text in some text fields when clicking/selecting them. Applies to popup input textboxes, and possible other custom input fields." [ref=e473]:
+                  - checkbox [ref=e474] [cursor=pointer]
+                  - generic [ref=e475]: Auto-select Input Text
+                - generic "Enable hotkeys for inserting markdown format characters in certain text input boxes. See '/help hotkeys'." [ref=e476]:
+                  - checkbox "Markdown Hotkeys " [ref=e477] [cursor=pointer]
+                  - generic [ref=e478]:
+                    - text: Markdown Hotkeys
+                    - generic [ref=e479]: 
+                - generic "Restore unsaved user input on page refresh." [ref=e480]:
+                  - checkbox "Restore User Input" [ref=e481] [cursor=pointer]
+                  - generic [ref=e482]: Restore User Input
+                - generic [ref=e483]:
+                  - generic "Allow repositioning certain UI elements by dragging them. PC only, no effect on mobile." [ref=e484]:
+                    - checkbox "MovingUI " [ref=e485] [cursor=pointer]
+                    - generic [ref=e486]:
+                      - text: MovingUI
+                      - generic [ref=e487]: 
+                  - generic "Reset MovingUI panel sizes/locations." [ref=e488] [cursor=pointer]:
+                    - generic [ref=e489]: 
+                    - generic [ref=e490]: Reset
+                - generic [ref=e492]:
+                  - generic "MovingUI preset. Predefined/saved draggable positions." [ref=e493]:
+                    - text: "MovingUI Preset:"
+                    - combobox "MovingUI Preset:" [ref=e495]
+                  - generic "Save changes to a new MovingUI preset file." [ref=e496] [cursor=pointer]: 
+                - generic [ref=e497]:
+                  - generic "Apply a custom CSS style to the whole SillyBunny interface." [ref=e498] [cursor=pointer]:
+                    - generic [ref=e500]: Custom CSS
+                    - generic [ref=e501]: 
+                  - text: 
+            - generic [ref=e503]:
+              - generic [ref=e504]:
+                - generic [ref=e505] [cursor=pointer]:
+                  - generic [ref=e507]: Chat/Message Handling
+                  - generic [ref=e508]: 
+                - text:        
+              - generic "Options for the various autocomplete input boxes." [ref=e510] [cursor=pointer]:
+                - generic [ref=e511]: AutoComplete Settings
+                - generic [ref=e512]: 
+              - generic [ref=e513]:
+                - heading "STscript Settings" [level=4] [ref=e514]
+                - generic "Sets default flags for the STscript parser." [ref=e515]:
+                  - generic [ref=e517]: Parser Flags
+                  - generic "Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well." [ref=e518]:
+                    - checkbox "STRICT_ESCAPING " [ref=e519] [cursor=pointer]
+                    - generic [ref=e520]: STRICT_ESCAPING
+                    - link "" [ref=e521] [cursor=pointer]:
+                      - /url: https://docs.sillytavern.app/usage/st-script/#strict-escaping
+                      - generic [ref=e522]: 
+                  - 'generic "Prevents {{getvar::}} {{getglobalvar::}} macros from having literal macro-like values auto-evaluated. e.g. \"{{newline}}\" remains as literal string \"{{newline}}\" (This is done by internally replacing {{getvar::}} {{getglobalvar::}} macros with scoped variables.)" [ref=e523]':
+                    - checkbox "REPLACE_GETVAR " [ref=e524] [cursor=pointer]
+                    - generic [ref=e525]: REPLACE_GETVAR
+                    - link "" [ref=e526] [cursor=pointer]:
+                      - /url: https://docs.sillytavern.app/usage/st-script/#replace-variable-macros
+                      - generic [ref=e527]: 
+    - generic:
+      - generic "Change Background Image":
+        - generic: 
+      - text:       +    
+    - generic:
+      - generic:
+        - generic "Extensions": 
+      - text:  
+    - generic:
+      - generic:
+        - generic "Persona Management": 
+      - text:                
+    - generic:
+      - generic:
+        - generic "Character Management": 
+      - text:         Back  Favorite  Advanced                                  Group is empty.  No characters available         
+  - generic:                      +                                                                                +    + +                  
+  - generic:                  
+  - generic [ref=e528]:
+    - text: 
+    - generic [ref=e531]:
+      - text:  
+      - generic [ref=e532]:
+        - generic [ref=e534] [cursor=pointer]: 
+        - textbox "Not connected to API!" [ref=e535]
+        - generic:       
+  - text:               
+  - dialog [active] [ref=e536]:
+    - generic [ref=e539]:
+      - img "SillyBunny Badge" [ref=e540]
+      - generic [ref=e541]: 
+      - heading "Initializing…" [level=2] [ref=e542]
+    - text: 

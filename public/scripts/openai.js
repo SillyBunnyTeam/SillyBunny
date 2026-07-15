@@ -98,6 +98,7 @@ import {
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
+import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
 
@@ -5015,8 +5016,14 @@ function getReasoningEffort(settings = null, model = null) {
                     ? reasoning_effort_types.min
                     : reasoning_effort_types.low;
             case reasoning_effort_types.max: {
+                const nativeOpenAISource = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source);
+                // SillyBunny: GPT-5.6 exposes max separately from xhigh.
+                if (nativeOpenAISource && /^gpt-5\.6(?:-|$)/.test(model)) {
+                    return reasoning_effort_types.max;
+                }
+
                 // xhigh is supported on OpenAI models after gpt-5.1-codex-max and on xAI grok-4.20-multi-agent
-                const xhighOpenAI = [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source)
+                const xhighOpenAI = nativeOpenAISource
                     && /^gpt-5\.([2-9]|\d{2,})/.test(model);
                 const xhighXAI = settings.chat_completion_source === chat_completion_sources.XAI
                     && model.includes('grok-4.20-multi-agent');
@@ -5475,22 +5482,10 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    // SillyBunny: Claude Fable models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
-    // Substring match to also catch router ids like 'anthropic/claude-fable-5'.
-    if (/claude-fable/.test(model)) {
-        delete generate_data.temperature;
-        delete generate_data.top_p;
-        delete generate_data.top_k;
-        delete generate_data.frequency_penalty;
-        delete generate_data.presence_penalty;
-        // Keep reasoning_effort for the native Claude source (the backend maps it to adaptive thinking);
-        // strip it for proxies, which may translate it into a thinking budget that fable rejects.
-        // LinkAPI routes claude models through the native Claude handler, so it keeps effort too.
-        if (![chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)) {
-            delete generate_data.reasoning_effort;
-            delete generate_data.custom_reasoning_param_name;
-        }
-    }
+    // SillyBunny: Claude Fable and Sonnet 5 reject sampling parameters, including through provider-prefixed proxy model ids.
+    applyClaudeModelParameterConstraints(generate_data, {
+        preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source),
+    });
 
     if (jsonSchema) {
         generate_data.json_schema = jsonSchema;
@@ -7802,7 +7797,8 @@ function onSettingsPresetChange() {
 function getMaxContextOpenAI(value) {
     if (isMaxContextUnlockedForSource()) {
         return unlocked_max;
-    } else if (value.startsWith('gpt-5.4')) {
+    } else if (value.startsWith('gpt-5.4') || value.startsWith('gpt-5.6')) {
+        // SillyBunny: GPT-5.6 has the same one-million-token context tier as GPT-5.4.
         return max_1mil;
     } else if (value.startsWith('gpt-5')) {
         return max_400k;
@@ -8477,7 +8473,7 @@ async function onModelChange() {
     if (oai_settings.chat_completion_source == chat_completion_sources.CLAUDE) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', unlocked_max);
-        } else if (/^claude-(sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5 has a 1M context window
+        } else if (/^claude-(sonnet-5|sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5; |sonnet-5 — 1M context window
             $('#openai_max_context').attr('max', max_1mil);
         } else if (/^claude-(3|opus|haiku|sonnet)/.test(value)) {
             $('#openai_max_context').attr('max', max_200k);
@@ -9109,6 +9105,7 @@ export function isImageInliningSupported() {
         // Claude
         'claude-3',
         'claude-fable', // SillyBunny: claude-fable-5 vision support
+        'claude-sonnet-5', // SillyBunny: claude-sonnet-5 vision support
         'claude-opus-4',
         'claude-sonnet-4',
         'claude-haiku-4',

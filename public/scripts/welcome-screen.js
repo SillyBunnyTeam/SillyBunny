@@ -23,7 +23,6 @@ import {
     setActiveGroup,
     system_avatar,
     this_chid,
-    updateRemoteChatName,
 } from '../script.js';
 import { deleteGroupChatByName, getGroupAvatar, groups, is_group_generating, openGroupById, openGroupChat } from './group-chats.js';
 import { enableExtension, extension_settings, findExtension, installExtension } from './extensions.js';
@@ -1859,7 +1858,6 @@ async function renameRecentCharacterChat(avatarId, fileName) {
             newFileName: newName,
             loader: false,
         });
-        await updateRemoteChatName(characterId, newName);
         await refreshWelcomeScreen();
         toastr.success(t`Chat renamed.`);
     } catch (error) {

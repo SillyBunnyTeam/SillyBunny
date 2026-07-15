@@ -38,53 +38,46 @@
     flex: 0 0 var(--bottomFormBlockSize);
 }
 
+/*
+ * The flush button is an empty FA-icon button exactly like its siblings so
+ * theme icon-button sizing applies uniformly; do not add size or icon
+ * font-size overrides here. The count badge is a ::after pseudo-element fed
+ * from data-active-count, so the button stays :empty for theme selectors.
+ */
 .gg-flush-guides-button {
     position: relative;
-    width: var(--bottomFormBlockSize);
-    min-width: var(--bottomFormBlockSize);
-    max-width: var(--bottomFormBlockSize);
-    gap: 0;
-    flex: 0 0 var(--bottomFormBlockSize);
-    padding: 0;
     overflow: visible;
 }
 
-.gg-flush-guides-icon {
-    font-size: var(--bottomFormIconSize) !important;
-    line-height: 1;
-}
-
-.gg-flush-guides-label {
-    display: none;
-}
-
-.gg-flush-guides-count {
+.gg-flush-guides-button[data-active-count]::after {
+    content: attr(data-active-count);
     position: absolute;
-    top: 3px;
-    right: 3px;
+    top: 1px;
+    right: 1px;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
     border-radius: 999px;
     background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, var(--SmartThemeBlurTintColor) 86%);
     color: var(--SmartThemeBodyColor);
-    font-size: calc(var(--mainFontSize) * 0.68);
+    font-family: var(--mainFontFamily);
+    font-size: calc(var(--mainFontSize) * 0.6);
     font-weight: 700;
     line-height: 1;
-    opacity: 1;
     box-sizing: border-box;
     text-shadow: none;
+    pointer-events: none;
 }
 
 .gg-flush-guides-button.gg-flush-guides-active {
     box-shadow: inset 0 0 0 1px var(--SmartThemeQuoteColor);
 }
 
-.gg-flush-guides-button.gg-flush-guides-active .gg-flush-guides-count {
+.gg-flush-guides-button.gg-flush-guides-active::after {
     border-color: transparent;
     background-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--SmartThemeBlurTintColor)));
@@ -162,24 +155,12 @@
         padding: 0 !important;
     }
 
-    .gg-flush-guides-button {
-        width: var(--gg-mobile-action-size) !important;
-        max-width: var(--gg-mobile-action-size) !important;
-        flex: 0 0 var(--gg-mobile-action-size) !important;
-        gap: 0 !important;
-        padding: 0 !important;
-    }
-
-    .gg-flush-guides-label {
-        display: none;
-    }
-
-    .gg-flush-guides-count {
-        top: 2px;
-        right: 2px;
-        min-width: 14px;
-        height: 14px;
-        font-size: calc(var(--mainFontSize) * 0.62);
+    .gg-flush-guides-button[data-active-count]::after {
+        top: 0;
+        right: 0;
+        min-width: 12px;
+        height: 12px;
+        font-size: calc(var(--mainFontSize) * 0.55);
     }
 
     .gg-profile-row {

@@ -792,15 +792,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.select2-results__options',
 ].join(', ');
 
-const MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR = [
-    '#left-nav-panel.openDrawer',
-    '#right-nav-panel.openDrawer',
-    '#user-settings-block.openDrawer',
-    '.sb-shell-root.openDrawer',
-    '#ica--tracker-panel.is-open',
-    '.ica--tpanel.is-open',
-].join(', ');
-
 const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
     'input',
     'textarea',
@@ -809,6 +800,10 @@ const MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR = [
 ].join(', ');
 
 const MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR = [
+    'button',
+    '[role="button"]',
+    '.menu_button',
+    '.interactable',
     '#dialogue_popup_controls',
     '.popup-controls',
     '.popup-button-close',
@@ -919,8 +914,8 @@ function canElementScrollForGesture(element, delta, { requireAvailableScrollInDi
     const absX = Math.abs(delta.x);
     const absY = Math.abs(delta.y);
     const wantsHorizontalScroll = absX > absY;
-    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > 1 && canElementScrollOnAxis(element, 'x');
-    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > 1 && canElementScrollOnAxis(element, 'y');
+    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'x');
+    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'y');
 
     if (!requireAvailableScrollInDirection) {
         return wantsHorizontalScroll ? canScrollX : canScrollY;
@@ -933,7 +928,9 @@ function canElementScrollForGesture(element, delta, { requireAvailableScrollInDi
 
         const scrollLeft = normalizeNumber(element.scrollLeft);
         const maxScrollLeft = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth);
-        return delta.x > 0 ? scrollLeft > 0 : scrollLeft < maxScrollLeft - 1;
+        return delta.x > 0
+            ? scrollLeft > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX
+            : scrollLeft < maxScrollLeft - MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
     }
 
     if (!canScrollY) {
@@ -942,15 +939,24 @@ function canElementScrollForGesture(element, delta, { requireAvailableScrollInDi
 
     const scrollTop = normalizeNumber(element.scrollTop);
     const maxScrollTop = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight);
-    return delta.y > 0 ? scrollTop > 0 : scrollTop < maxScrollTop - 1;
+    return delta.y > 0
+        ? scrollTop > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX
+        : scrollTop < maxScrollTop - MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
 }
 
-function closestScrollableElementForGesture(target, delta, { requireAvailableScrollInDirection = false } = {}) {
+function closestScrollableElementForGesture(target, delta, {
+    requireAvailableScrollInDirection = false,
+    boundary = null,
+} = {}) {
     let element = target;
 
     while (element && typeof element === 'object') {
         if (canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection })) {
             return element;
+        }
+
+        if (element === boundary) {
+            break;
         }
 
         element = getParentElementLike(element);
@@ -980,28 +986,41 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
         return false;
     }
 
-    if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_OPEN_MENU_SELECTOR)) {
-        return false;
-    }
-
+    const gestureDelta = getGestureDelta(event, touchStart);
     const editableElement = closestMatchingElement(target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
     if (editableElement) {
         const isScrollableEditable = elementMatchesSelector(editableElement, 'textarea, [contenteditable="true"]');
-        if (isScrollableEditable) {
-            const gestureDelta = getGestureDelta(event, touchStart);
-            if (gestureDelta && canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
-                return false;
-            }
+        if (isScrollableEditable && gestureDelta && canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
+            return false;
         }
+
+        const ancestorScrollElement = guardedElement
+            ? closestScrollableElementForGesture(getParentElementLike(editableElement), gestureDelta, {
+                requireAvailableScrollInDirection: true,
+                boundary: guardedElement,
+            })
+            : null;
+        if (ancestorScrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(ancestorScrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+            return false;
+        }
+
         return true;
     }
 
+    const scrollElement = guardedElement
+        ? closestScrollableElementForGesture(target, gestureDelta, {
+            requireAvailableScrollInDirection: true,
+            boundary: guardedElement,
+        })
+        : null;
     if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR)) {
+        if (scrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+            return false;
+        }
+
         return true;
     }
 
-    const gestureDelta = getGestureDelta(event, touchStart);
-    const scrollElement = closestScrollableElementForGesture(target, gestureDelta, { requireAvailableScrollInDirection: true });
     if (scrollElement) {
         if (isHorizontalGesture(gestureDelta)) {
             return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
