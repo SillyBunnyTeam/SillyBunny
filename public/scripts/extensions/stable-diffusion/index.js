@@ -2096,10 +2096,10 @@ async function loadStabilityModels() {
 async function loadBflModels() {
     $('#sd_bfl_key').toggleClass('success', !!secret_state[SECRET_KEYS.BFL]);
 
-    // SillyBunny: omit BFL's retired unversioned flux-pro alias.
     return [
         { value: 'flux-pro-1.1-ultra', text: 'flux-pro-1.1-ultra' },
         { value: 'flux-pro-1.1', text: 'flux-pro-1.1' },
+        { value: 'flux-pro', text: 'flux-pro' },
         { value: 'flux-dev', text: 'flux-dev' },
     ];
 }
@@ -2454,7 +2454,6 @@ async function loadVladModels() {
 }
 
 async function loadNovelModels() {
-    // SillyBunny: omit NovelAI Diffusion V2 after its provider retirement.
     return [
         {
             value: 'nai-diffusion-4-5-full',
@@ -2477,6 +2476,10 @@ async function loadNovelModels() {
             text: 'NAI Diffusion Anime V3',
         },
         {
+            value: 'nai-diffusion-2',
+            text: 'NAI Diffusion Anime V2',
+        },
+        {
             value: 'nai-diffusion-furry-3',
             text: 'NAI Diffusion Furry V3',
         },
@@ -2484,13 +2487,27 @@ async function loadNovelModels() {
 }
 
 async function loadGoogleModels() {
-    // SillyBunny: keep the Google image catalog to current Imagen and Veo IDs.
     return [
         'imagen-4.0-generate-001',
         'imagen-4.0-ultra-generate-001',
         'imagen-4.0-fast-generate-001',
+        'imagen-4.0-generate-preview-06-06',
+        'imagen-4.0-fast-generate-preview-06-06',
+        'imagen-4.0-ultra-generate-preview-06-06',
+        'imagen-3.0-generate-002',
+        'imagen-3.0-generate-001',
+        'imagen-3.0-fast-generate-001',
+        'imagen-3.0-capability-001',
+        'imagegeneration@006',
+        'imagegeneration@005',
+        'imagegeneration@002',
         'veo-3.1-generate-preview',
         'veo-3.1-fast-generate-preview',
+        'veo-3.0-generate-001',
+        'veo-3.0-fast-generate-001',
+        'veo-2.0-generate-001',
+        'veo-2.0-generate-exp',
+        'veo-2.0-generate-preview',
     ].map(name => ({ value: name, text: name }));
 }
 

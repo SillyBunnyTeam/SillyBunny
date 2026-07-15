@@ -98,6 +98,7 @@ import {
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
+import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
 
@@ -5481,22 +5482,10 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    // SillyBunny: Claude Fable and Sonnet 5 models reject sampling parameters with HTTP 400, including via OpenAI-compatible proxies.
-    // Substring match to also catch router ids like 'anthropic/claude-fable-5'.
-    if (/claude-fable/.test(model) || model === 'claude-sonnet-5') {
-        delete generate_data.temperature;
-        delete generate_data.top_p;
-        delete generate_data.top_k;
-        delete generate_data.frequency_penalty;
-        delete generate_data.presence_penalty;
-        // Keep reasoning_effort for the native Claude source (the backend maps it to adaptive thinking);
-        // strip it for proxies, which may translate it into a thinking budget that fable rejects.
-        // LinkAPI routes claude models through the native Claude handler, so it keeps effort too.
-        if (![chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)) {
-            delete generate_data.reasoning_effort;
-            delete generate_data.custom_reasoning_param_name;
-        }
-    }
+    // SillyBunny: Claude Fable and Sonnet 5 reject sampling parameters, including through provider-prefixed proxy model ids.
+    applyClaudeModelParameterConstraints(generate_data, {
+        preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source),
+    });
 
     if (jsonSchema) {
         generate_data.json_schema = jsonSchema;

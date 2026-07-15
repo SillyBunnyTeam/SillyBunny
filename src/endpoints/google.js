@@ -470,8 +470,7 @@ router.post('/generate-native-tts', async (request, response) => {
 
 router.post('/generate-image', async (request, response) => {
     try {
-        // SillyBunny: use Imagen 4 after Imagen 3 retirement.
-        const model = request.body.model || 'imagen-4.0-generate-001';
+        const model = request.body.model || 'imagen-3.0-generate-002';
         const { url, headers, apiName } = await getGoogleApiConfig(request, model, 'predict');
 
         // AI Studio is stricter than Vertex AI.

@@ -135,6 +135,16 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.output_config?.effort).toBe('max');
     });
 
+    test.each(['claude-opus-4-8', 'claude-fable-5'])('%s does not inherit Sonnet 5 xhigh support', async (model) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({ model, reasoning_effort: 'xhigh' });
+        expect(res.status).toBe(200);
+        const body = getBody();
+
+        expect(body.thinking).toEqual({ type: 'adaptive' });
+        expect(body.output_config?.effort).toBe('max');
+    });
+
     test('Sonnet 5 with effort=none sends thinking.type disabled and omits sampling params', async () => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({ reasoning_effort: 'none' });

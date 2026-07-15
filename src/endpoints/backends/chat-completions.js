@@ -352,8 +352,8 @@ async function sendClaudeRequest(request, response) {
         const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnet5;
         // Sonnet 5 is always adaptive regardless of enableAdaptiveThinking; other adaptive models require the flag.
         const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnet5;
-        // SillyBunny: older adaptive Claude models reject xhigh and must receive max instead.
-        const supportsXhigh = /^claude-(sonnet-5|opus-4-(?:7|8))/.test(request.body.model) || isFableModel;
+        // SillyBunny: Sonnet 5 supports xhigh; existing adaptive Claude models keep the max fallback.
+        const supportsXhigh = isSonnet5;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];

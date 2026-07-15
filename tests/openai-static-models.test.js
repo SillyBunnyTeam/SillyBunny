@@ -207,35 +207,45 @@ test('Caption picker omits retired Cohere and Groq vision models', () => {
     expect(captionSource).toEqual(expect.not.stringContaining('value="meta-llama/llama-4-maverick-17b-128e-instruct"'));
 });
 
-test('Stable Diffusion image catalog omits retired models and retains current ones', () => {
+test('Stable Diffusion image catalog preserves models outside the declared retirements', () => {
     const source = readSource('../public/scripts/extensions/stable-diffusion/index.js');
+    const googleEndpoint = readSource('../src/endpoints/google.js');
 
-    // NovelAI: V2 retired
     const novelSection = source.match(/async function loadNovelModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    expect(novelSection).toEqual(expect.not.stringContaining('nai-diffusion-2'));
+    expect(novelSection).toContain('nai-diffusion-2');
     expect(novelSection).toContain('nai-diffusion-4-5-full');
     expect(novelSection).toContain('nai-diffusion-4-5-curated');
     expect(novelSection).toContain('nai-diffusion-3');
     expect(novelSection).toContain('nai-diffusion-furry-3');
 
-    // BFL: flux-pro (unversioned) retired
     const bflSection = source.match(/async function loadBflModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    expect(bflSection).toEqual(expect.not.stringContaining('\'flux-pro\''));
+    expect(bflSection).toContain('{ value: \'flux-pro\', text: \'flux-pro\' }');
     expect(bflSection).toContain('flux-pro-1.1');
     expect(bflSection).toContain('flux-pro-1.1-ultra');
     expect(bflSection).toContain('flux-dev');
 
-    // Google: only current Imagen 4 and Veo 3.1 entries
     const googleSection = source.match(/async function loadGoogleModels\(\)([\s\S]*?)\r?\n}\r?\n/)[1];
-    expect(googleSection).toContain('imagen-4.0-generate-001');
-    expect(googleSection).toContain('imagen-4.0-ultra-generate-001');
-    expect(googleSection).toContain('imagen-4.0-fast-generate-001');
-    expect(googleSection).toContain('veo-3.1-generate-preview');
-    expect(googleSection).toContain('veo-3.1-fast-generate-preview');
-    // Retired entries
-    expect(googleSection).toEqual(expect.not.stringContaining('imagen-3.0'));
-    expect(googleSection).toEqual(expect.not.stringContaining('imagegeneration@'));
-    expect(googleSection).toEqual(expect.not.stringContaining('imagen-4.0-generate-preview'));
-    expect(googleSection).toEqual(expect.not.stringContaining('veo-2.0'));
-    expect(googleSection).toEqual(expect.not.stringContaining('veo-3.0'));
+    const retainedGoogleModels = [
+        'imagen-4.0-generate-preview-06-06',
+        'imagen-4.0-fast-generate-preview-06-06',
+        'imagen-4.0-ultra-generate-preview-06-06',
+        'imagen-3.0-generate-002',
+        'imagen-3.0-generate-001',
+        'imagen-3.0-fast-generate-001',
+        'imagen-3.0-capability-001',
+        'imagegeneration@006',
+        'imagegeneration@005',
+        'imagegeneration@002',
+        'veo-3.0-generate-001',
+        'veo-3.0-fast-generate-001',
+        'veo-2.0-generate-001',
+        'veo-2.0-generate-exp',
+        'veo-2.0-generate-preview',
+    ];
+
+    for (const model of retainedGoogleModels) {
+        expect(googleSection).toContain(model);
+    }
+
+    expect(googleEndpoint).toContain('const model = request.body.model || \'imagen-3.0-generate-002\';');
 });
