@@ -4,6 +4,7 @@
     gap: 5px;
     transition: height var(--sb-transition);
     max-height: min(25dvh, 250px);
+    overflow-x: hidden;
     overflow-y: auto;
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
@@ -14,6 +15,25 @@
 .chatBackupsList:not(.open),
 .chatBackupsList:empty {
     display: none;
+}
+
+/* SillyBunny: Backups replace the chat list so cleanup controls cannot consume a short nested tray. */
+#select_chat_popup.chatBackupsOpen {
+    height: 100%;
+}
+
+#select_chat_popup.chatBackupsOpen :is(#select_chat_search, #chat_management_tools, #chat_cleanup_status, #select_chat_div) {
+    display: none;
+}
+
+#select_chat_popup.chatBackupsOpen .chatBackupsList {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+}
+
+body.safari #select_chat_popup.chatBackupsOpen {
+    height: 100%;
 }
 
 .chatBackupsListItem {
@@ -93,6 +113,61 @@
 
 .chatBackupsCleanupPreview code {
     overflow-wrap: anywhere;
+}
+
+.chatBackupsList.previewing {
+    gap: 0;
+}
+
+.chatBackupPreview {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.chatBackupPreviewName {
+    position: -webkit-sticky;
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    overflow: hidden;
+    padding: 8px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-button) var(--sb-radius-button) 0 0;
+    background: var(--sb-input-bg);
+    font-size: calc(var(--mainFontSize) * 0.9);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chatBackupPreviewMessages {
+    max-width: 100%;
+    min-width: 0;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-top: 0;
+    border-radius: 0 0 var(--sb-radius-button) var(--sb-radius-button);
+    background: var(--sb-input-bg);
+}
+
+.chatBackupPreviewMessage {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 12px;
+    color: var(--SmartThemeBodyColor);
+    font-size: calc(var(--mainFontSize) * 0.95);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-align: start;
+    white-space: pre-wrap;
+}
+
+.chatBackupPreviewMessage + .chatBackupPreviewMessage {
+    border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
 .chatBackupsListItemName {
