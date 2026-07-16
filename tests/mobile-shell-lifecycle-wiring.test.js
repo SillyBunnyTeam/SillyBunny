@@ -402,6 +402,46 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
+    test('allows horizontal scrolling within group and agent rails', () => {
+        for (const [rootSelector, railSelector] of [
+            ['#sheld', '.group_speaker_list'],
+            ['#left-nav-panel', '.ica--agent-tabs'],
+            ['.popup', '.ica--template-pill-row'],
+        ]) {
+            const root = createElementStub({
+                matches: selector => selectorListIncludes(selector, rootSelector),
+            });
+            const rail = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+                scrollLeft: 120,
+            });
+            const railAtStart = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+            });
+            const control = createElementStub({
+                parentElement: rail,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const controlAtStart = createElementStub({
+                parentElement: railAtStart,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const inwardMove = createTouchMove(control, { x: -40, y: 2 });
+            const outwardMove = createTouchMove(controlAtStart, { x: 40, y: 2 });
+            const verticalMove = createTouchMove(control, { x: 2, y: -40 });
+
+            expect(shouldBlockMobileDocumentPan(inwardMove.event, { touchStart: inwardMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(outwardMove.event, { touchStart: outwardMove.touchStart })).toBe(true);
+            expect(shouldBlockMobileDocumentPan(verticalMove.event, { touchStart: verticalMove.touchStart })).toBe(true);
+        }
+    });
+
     test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
         const createMenuRoot = rootSelector => createElementStub({
             matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),

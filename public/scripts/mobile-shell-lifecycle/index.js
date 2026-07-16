@@ -788,6 +788,9 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '#sb-bottom-chat-secondary-row',
     '.sb-bottom-chat-secondary-row',
     '#sb-persona-picker',
+    '.group_speaker_list',
+    '.ica--agent-tabs',
+    '.ica--template-pill-row',
     '.sb-shell-nav',
     '.select2-results__options',
 ].join(', ');
