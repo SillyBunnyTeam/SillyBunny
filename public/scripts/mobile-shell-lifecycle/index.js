@@ -792,6 +792,18 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.ica--agent-tabs',
     '.ica--template-pill-row',
     '.sb-shell-nav',
+    '.sb-settings-tabs-nav',
+    '.sb-conversation-channel-tabs',
+    '.sb-conversation-quick-actions',
+    '.sb-character-create-bar',
+    '#HotSwapWrapper .hotswap',
+    '#right-nav-panel .rm_tag_controls',
+    '#completion_prompt_manager .completion_prompt_manager_prompt > span:nth-child(3)',
+    '.popup.horizontal_scrolling_dialogue_popup .popup-content',
+    '.mes_text pre code',
+    '.mes_reasoning pre code',
+    '.img_enlarged_holder',
+    '.img_enlarged_container pre code',
     '.select2-results__options',
 ].join(', ');
 
