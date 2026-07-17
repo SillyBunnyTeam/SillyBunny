@@ -127,6 +127,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #665 (2026-07-15) `fix(mobile): remove icon overlap on message box`
 - PR #667 (2026-07-15) `fix(tts): TTS extension only considers actual quotes`
 - PR #668 (2026-07-15) `fix: Viewport scrolling offscreen in-depth`
+- PR #670 (2026-07-17) `fix(mobile): allow horizontal sliding`
 
 ## v1.6.5
 
