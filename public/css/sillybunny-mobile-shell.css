@@ -2347,6 +2347,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: grid !important;
         grid-template-columns: var(--sb-character-list-avatar-size) minmax(0, 1fr) !important;
         align-items: center !important;
+        flex: 0 0 auto;
         gap: 6px 10px;
         min-height: calc(var(--sb-character-list-avatar-size) + 18px);
         width: 100%;
