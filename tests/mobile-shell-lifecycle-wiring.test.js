@@ -402,6 +402,60 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
+    test('allows horizontal scrolling within designated mobile rails', () => {
+        for (const [rootSelector, railSelector] of [
+            ['#sheld', '.group_speaker_list'],
+            ['#left-nav-panel', '.ica--agent-tabs'],
+            ['.popup', '.ica--template-pill-row'],
+            ['#user-settings-block', '.sb-settings-tabs-nav'],
+            ['#sheld', '.sb-conversation-channel-tabs'],
+            ['#sheld', '.sb-conversation-quick-actions'],
+            ['#right-nav-panel', '.sb-character-create-bar'],
+            ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
+            ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],
+            ['#left-nav-panel', '#completion_prompt_manager .completion_prompt_manager_prompt > span:nth-child(3)'],
+            ['.popup', '.popup.horizontal_scrolling_dialogue_popup .popup-content'],
+            ['#chat', '.mes_text pre code'],
+            ['#chat', '.mes_reasoning pre code'],
+            ['.popup', '.img_enlarged_holder'],
+            ['.popup', '.img_enlarged_container pre code'],
+        ]) {
+            const root = createElementStub({
+                matches: selector => selectorListIncludes(selector, rootSelector),
+            });
+            const rail = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+                scrollLeft: 120,
+            });
+            const railAtStart = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+            });
+            const control = createElementStub({
+                parentElement: rail,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const controlAtStart = createElementStub({
+                parentElement: railAtStart,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const inwardMove = createTouchMove(control, { x: -40, y: 2 });
+            const railGapMove = createTouchMove(rail, { x: -40, y: 2 });
+            const outwardMove = createTouchMove(controlAtStart, { x: 40, y: 2 });
+            const verticalMove = createTouchMove(control, { x: 2, y: -40 });
+
+            expect(shouldBlockMobileDocumentPan(inwardMove.event, { touchStart: inwardMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(railGapMove.event, { touchStart: railGapMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(outwardMove.event, { touchStart: outwardMove.touchStart })).toBe(true);
+            expect(shouldBlockMobileDocumentPan(verticalMove.event, { touchStart: verticalMove.touchStart })).toBe(true);
+        }
+    });
+
     test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
         const createMenuRoot = rootSelector => createElementStub({
             matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
