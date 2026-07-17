@@ -129,6 +129,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #668 (2026-07-15) `fix: Viewport scrolling offscreen in-depth`
 - PR #670 (2026-07-17) `fix(mobile): allow horizontal sliding`
 - PR #675 (2026-07-17) `fix: Start-Node.bat unescaped parentheses causes immediate exit`
+- PR #676 (2026-07-17) `fix: Bun throws EEXIST on mkdir when SillyBunny is installed inside OneDrive`
 
 ## v1.6.5
 
