@@ -61,6 +61,7 @@ import cacheBuster from './middleware/cacheBuster.js';
 import corsProxyMiddleware from './middleware/corsProxy.js';
 import hostWhitelistMiddleware from './middleware/hostWhitelist.js';
 import userCssMiddleware from './middleware/userCss.js';
+import { createUploadStorage } from './middleware/uploadStorage.js';
 import {
     getVersion,
     color,
@@ -444,8 +445,9 @@ if (cliArgs.enableCorsProxy) {
 
 // File uploads
 const uploadsPath = path.join(cliArgs.dataRoot, UPLOADS_DIRECTORY);
-fs.mkdirSync(uploadsPath, { recursive: true });
-app.use(multer({ dest: uploadsPath, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));
+// SillyBunny: avoid Bun's recursive mkdir bug on ReadOnly Windows directories.
+const uploadStorage = createUploadStorage(uploadsPath);
+app.use(multer({ storage: uploadStorage, limits: { fieldSize: 500 * 1024 * 1024 } }).single('avatar'));
 app.use(multerMonkeyPatch);
 
 app.get('/version', async function (_, response) {
