@@ -115,6 +115,9 @@ WORK_DIR="$TMP_DIR/quick-image-gen"
 mkdir -p "$WORK_DIR"
 cp "$SOURCE_DIR/index.js" "$WORK_DIR/index.js"
 cp "$SOURCE_DIR/style.css" "$WORK_DIR/style.css"
+if [[ -d "$SOURCE_DIR/lib" ]]; then
+    cp -R "$SOURCE_DIR/lib" "$WORK_DIR/lib"
+fi
 
 node - "$WORK_DIR/style.css" <<'NODE'
 const fs = require('fs');
@@ -144,12 +147,13 @@ for (let index = 0; index < lines.length; index++) {
 fs.writeFileSync(stylePath, lines.join('\n'));
 NODE
 
-node - "$WORK_DIR/index.js" "$TARGET_DIR" <<'NODE'
+node - "$WORK_DIR/index.js" "$WORK_DIR" "$TARGET_DIR" <<'NODE'
 const fs = require('fs');
 const path = require('path');
 
 const indexPath = process.argv[2];
-const bundledExtensionDir = process.argv[3];
+const workDir = process.argv[3];
+const bundledExtensionDir = process.argv[4];
 let source = fs.readFileSync(indexPath, 'utf8');
 
 const importRewrites = new Map([
@@ -187,6 +191,43 @@ for (const [, specifier] of source.matchAll(dynamicImportPattern)) {
     if (!fs.existsSync(resolvedPath)) {
         console.error(`Quick Image Gen dynamic import does not resolve in the bundled location: ${specifier}`);
         process.exit(1);
+    }
+}
+
+const modulePaths = [indexPath];
+const libDir = path.join(workDir, 'lib');
+const collectModules = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) collectModules(entryPath);
+        else if (entry.isFile() && entry.name.endsWith('.js')) modulePaths.push(entryPath);
+    }
+};
+if (fs.existsSync(libDir)) collectModules(libDir);
+
+const staticImportPatterns = [
+    /\bimport\s+(?:[^;"']*?\s+from\s*)?["']([^"']+)["']/g,
+    /\bexport\s+(?:\*|\{[^}]*\})\s+from\s+["']([^"']+)["']/g,
+];
+for (const modulePath of modulePaths) {
+    const moduleSource = fs.readFileSync(modulePath, 'utf8');
+    const relativeModulePath = path.relative(workDir, modulePath);
+    for (const pattern of staticImportPatterns) {
+        for (const [, rawSpecifier] of moduleSource.matchAll(pattern)) {
+            if (!rawSpecifier.startsWith('.')) continue;
+
+            const specifier = rawSpecifier.split(/[?#]/, 1)[0];
+            const generatedPath = path.resolve(path.dirname(modulePath), specifier);
+            const bundledModulePath = path.join(bundledExtensionDir, relativeModulePath);
+            const bundledPath = path.resolve(path.dirname(bundledModulePath), specifier);
+            const resolvedPath = generatedPath.startsWith(`${workDir}${path.sep}`)
+                ? generatedPath
+                : bundledPath;
+            if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+                console.error(`Quick Image Gen static import does not resolve in the bundled location: ${relativeModulePath} -> ${rawSpecifier}`);
+                process.exit(1);
+            }
+        }
     }
 }
 
@@ -252,9 +293,18 @@ if [[ -n "$METADATA_FILE" ]]; then
     } > "$METADATA_FILE"
 fi
 
+LIB_IN_SYNC=0
+if [[ ! -d "$WORK_DIR/lib" && ! -e "$TARGET_DIR/lib" ]]; then
+    LIB_IN_SYNC=1
+elif [[ -d "$WORK_DIR/lib" && -d "$TARGET_DIR/lib" ]] \
+    && diff -qr "$WORK_DIR/lib" "$TARGET_DIR/lib" >/dev/null; then
+    LIB_IN_SYNC=1
+fi
+
 if cmp -s "$WORK_DIR/index.js" "$TARGET_DIR/index.js" \
     && cmp -s "$WORK_DIR/style.css" "$TARGET_DIR/style.css" \
-    && cmp -s "$WORK_DIR/manifest.json" "$TARGET_DIR/manifest.json"; then
+    && cmp -s "$WORK_DIR/manifest.json" "$TARGET_DIR/manifest.json" \
+    && (( LIB_IN_SYNC )); then
     echo "Quick Image Gen is already in sync with $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT), version $UPSTREAM_VERSION."
     exit 0
 fi
@@ -267,5 +317,9 @@ fi
 cp "$WORK_DIR/index.js" "$TARGET_DIR/index.js"
 cp "$WORK_DIR/style.css" "$TARGET_DIR/style.css"
 cp "$WORK_DIR/manifest.json" "$TARGET_DIR/manifest.json"
+rm -rf "$TARGET_DIR/lib"
+if [[ -d "$WORK_DIR/lib" ]]; then
+    cp -R "$WORK_DIR/lib" "$TARGET_DIR/lib"
+fi
 
 echo "Synced Quick Image Gen to version $UPSTREAM_VERSION from $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT)."
