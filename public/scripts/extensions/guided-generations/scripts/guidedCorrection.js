@@ -143,7 +143,7 @@ async function applyAppendedGenerationToTarget(context, targetIndex, targetMessa
 
 async function generateCorrection(target) {
     const forceCharacterId = getTargetForceCharacterId(target.message);
-    const options = {};
+    const options = { preserveLastMessage: true };
 
     if (forceCharacterId !== undefined) {
         options.force_chid = forceCharacterId;
@@ -198,6 +198,11 @@ async function guidedCorrection() {
         }
 
         trailingMessages = await isolateTargetMessage(context, target.index);
+
+        if (context.groupId) {
+            textarea.value = '';
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
 
         await generateCorrection(target);
         const targetWasUpdatedInPlace = await applyAppendedGenerationToTarget(context, target.index, target.message);
