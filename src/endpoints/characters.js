@@ -25,6 +25,7 @@ import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import {
     clearChatRecoveryState,
     createCharacterChatTarget,
@@ -48,6 +49,9 @@ const BULK_MERGE_CONCURRENCY = 8;
 const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
 const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
+const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
+const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
+    .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 
 class DiskCache {
     /**
@@ -229,9 +233,10 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
  * @param {string} outputFile - Target image file name
  * @param {import('express').Request} request - Express request obejct
  * @param {Crop|undefined} crop - Crop parameters
+ * @param {boolean} [preserveDateAdded] - Preserve preassigned metadata for rename operations
  * @returns {Promise<boolean>} - True if the operation was successful
  */
-async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined) {
+async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined, preserveDateAdded = false) {
     try {
         // Reset the cache
         for (const key of memoryCache.keys()) {
@@ -268,9 +273,27 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
 
         // Get the chunks
         const outputImage = write(inputImage, data);
-        const outputImagePath = path.join(request.user.directories.characters, `${outputFile}.png`);
+        const outputImageName = `${outputFile}.png`;
+        const outputImagePath = path.join(request.user.directories.characters, outputImageName);
+        const operationTime = Date.now();
+        const fileExists = fs.existsSync(outputImagePath);
+        const migrationFallback = fileExists ? getCharacterDateAddedFallback(fs.statSync(outputImagePath)) : operationTime;
 
+        if (fileExists) {
+            ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, migrationFallback, operationTime);
+        }
         tryWriteFileSync(outputImagePath, outputImage);
+        if (!fileExists) {
+            try {
+                if (preserveDateAdded) {
+                    ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, operationTime, operationTime);
+                } else {
+                    createEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, operationTime);
+                }
+            } catch (metadataError) {
+                console.error('Could not record date-added metadata after creating a character.', metadataError);
+            }
+        }
         return true;
     } catch (err) {
         console.error(err);
@@ -336,7 +359,10 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
     }
 
     const targetImg = avatar.replace('.png', '');
-    await writeCharacterData(avatarPath, JSON.stringify(character), targetImg, request);
+    const writeSucceeded = await writeCharacterData(avatarPath, JSON.stringify(character), targetImg, request);
+    if (!writeSucceeded) {
+        return { ok: false, error: 'Failed to write character data.' };
+    }
     return { ok: true };
 }
 
@@ -477,9 +503,10 @@ const toShallow = (character) => {
  * @param  {import('../users.js').UserDirectoryList} directories User directories
  * @param  {object} options Options for the character processing
  * @param  {boolean} options.shallow If true, only return the core character's metadata
+ * @param  {fs.Stats} [options.fileStat] Preloaded character file metadata
  * @return {Promise<object>}     A Promise that resolves when the character processing is done.
  */
-const processCharacter = async (item, directories, { shallow }) => {
+const processCharacter = async (item, directories, { shallow, fileStat }) => {
     try {
         const imgFile = path.join(directories.characters, item);
         const imgData = await readCharacterData(imgFile);
@@ -489,8 +516,8 @@ const processCharacter = async (item, directories, { shallow }) => {
         jsonObject.avatar = item;
         const character = jsonObject;
         character.json_data = imgData;
-        const charStat = fs.statSync(path.join(directories.characters, item));
-        character.date_added = charStat.ctimeMs;
+        const charStat = fileStat ?? fs.statSync(path.join(directories.characters, item));
+        character.date_added = getCharacterDateAddedFallback(charStat);
         character.create_date = jsonObject.create_date || new Date(Math.round(charStat.ctimeMs)).toISOString();
         const chatsDirectory = path.join(directories.chats, item.replace('.png', ''));
 
@@ -1134,11 +1161,28 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
     const newAvatarName = `${newInternalName}.png`;
 
     const oldAvatarPath = path.join(request.user.directories.characters, oldAvatarName);
+    const newAvatarPath = path.join(request.user.directories.characters, newAvatarName);
 
     const oldChatsPath = path.join(request.user.directories.chats, oldInternalName);
     const newChatsPath = path.join(request.user.directories.chats, newInternalName);
+    const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+    let dateAddedMoved = false;
+    let chatsCopied = false;
+    let oldDateAdded;
+    let operationTime;
 
     try {
+        operationTime = Date.now();
+        oldDateAdded = ensureEntityDateAdded(
+            dateAddedRoot,
+            'characters',
+            oldAvatarName,
+            getCharacterDateAddedFallback(fs.statSync(oldAvatarPath)),
+            operationTime,
+        );
+        prepareEntityDateAddedMove(dateAddedRoot, 'characters', oldAvatarName, newAvatarName, oldDateAdded, operationTime);
+        dateAddedMoved = true;
+
         // Read old file, replace name int it
         const rawOldData = await readCharacterData(oldAvatarPath);
         if (rawOldData === undefined) throw new Error('Failed to read character file');
@@ -1149,20 +1193,49 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         const newData = JSON.stringify(oldData);
 
         // Write data to new location
-        await writeCharacterData(oldAvatarPath, newData, newInternalName, request);
+        const writeSucceeded = await writeCharacterData(oldAvatarPath, newData, newInternalName, request, undefined, true);
+        if (!writeSucceeded) {
+            throw new Error('Failed to write renamed character data.');
+        }
 
         // Rename chats folder
         if (fs.existsSync(oldChatsPath) && !fs.existsSync(newChatsPath)) {
             fs.cpSync(oldChatsPath, newChatsPath, { recursive: true });
+            chatsCopied = true;
             fs.rmSync(oldChatsPath, { recursive: true, force: true });
         }
 
         // Remove the old character file
         fs.unlinkSync(oldAvatarPath);
+        try {
+            removeEntityDateAdded(dateAddedRoot, 'characters', oldAvatarName);
+        } catch (metadataError) {
+            console.error('Could not remove stale date-added metadata after character rename.', metadataError);
+        }
 
         // Return new avatar name to ST
         return response.send({ avatar: newAvatarName });
     } catch (err) {
+        if (dateAddedMoved && fs.existsSync(oldAvatarPath)) {
+            let chatsRestored = true;
+            if (chatsCopied) {
+                try {
+                    fs.cpSync(newChatsPath, oldChatsPath, { recursive: true });
+                    fs.rmSync(newChatsPath, { recursive: true, force: true });
+                } catch (rollbackError) {
+                    chatsRestored = false;
+                    console.error('Could not restore chats after a failed character rename.', rollbackError);
+                }
+            }
+            if (chatsRestored) {
+                try {
+                    fs.rmSync(newAvatarPath, { force: true });
+                    removeEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
+                } catch (rollbackError) {
+                    console.error('Could not clean up date-added metadata after a failed character rename.', rollbackError);
+                }
+            }
+        }
         console.error(err);
         return response.sendStatus(500);
     }
@@ -1212,15 +1285,17 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
     let targetFile = (request.body.avatar_url).replace('.png', '');
 
     try {
+        let writeSucceeded;
         if (!request.file) {
-            await writeCharacterData(avatarPath, char, targetFile, request);
+            writeSucceeded = await writeCharacterData(avatarPath, char, targetFile, request);
         } else {
             const crop = tryParse(request.query.crop);
             const newAvatarPath = path.join(request.file.destination, request.file.filename);
             invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
-            await writeCharacterData(newAvatarPath, char, targetFile, request, crop);
+            writeSucceeded = await writeCharacterData(newAvatarPath, char, targetFile, request, crop);
             fs.unlinkSync(newAvatarPath);
         }
+        if (!writeSucceeded) throw new Error('Failed to write character data.');
 
         return response.sendStatus(200);
     } catch (err) {
@@ -1254,10 +1329,11 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
 
         const crop = tryParse(request.query.crop);
         const fileName = request.body.avatar_url.replace('.png', '');
-        await writeCharacterData(uploadPath, data, fileName, request, crop);
+        const writeSucceeded = await writeCharacterData(uploadPath, data, fileName, request, crop);
 
         // Remove uploaded temp file
         fs.unlinkSync(uploadPath);
+        if (!writeSucceeded) throw new Error('Failed to write character avatar data.');
 
         // Reset thumbnail cache
         invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
@@ -1312,7 +1388,8 @@ router.post('/edit-attribute', validateAvatarUrlMiddleware, async function (requ
         char.data[request.body.field] = request.body.value;
         let newCharJSON = JSON.stringify(char);
         const targetFile = (request.body.avatar_url).replace('.png', '');
-        await writeCharacterData(avatarPath, newCharJSON, targetFile, request);
+        const writeSucceeded = await writeCharacterData(avatarPath, newCharJSON, targetFile, request);
+        if (!writeSucceeded) throw new Error('Failed to write character data.');
         return response.sendStatus(200);
     } catch (err) {
         console.error('An error occurred, character edit invalidated.', err);
@@ -1466,7 +1543,21 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         }
     }
 
-    fs.unlinkSync(avatarPath);
+    try {
+        fs.unlinkSync(avatarPath);
+    } catch (error) {
+        console.error('Could not delete character.', error);
+        return response.sendStatus(500);
+    }
+    try {
+        removeEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            request.body.avatar_url,
+        );
+    } catch (metadataError) {
+        console.error('Could not remove date-added metadata after character deletion.', metadataError);
+    }
     invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
 
     return response.sendStatus(200);
@@ -1527,8 +1618,29 @@ router.post('/all', async function (request, response) {
     try {
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
-        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
+        const fileStats = new Map();
+        const dateAddedEntries = pngFiles.map(file => {
+            try {
+                const fileStat = fs.statSync(path.join(request.user.directories.characters, file));
+                fileStats.set(file, fileStat);
+                return { id: file, fallback: getCharacterDateAddedFallback(fileStat) };
+            } catch {
+                return null;
+            }
+        }).filter(Boolean);
+        const dateAddedByFile = reconcileEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            dateAddedEntries,
+        );
+        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, {
+            shallow: useShallowCharacters,
+            fileStat: fileStats.get(file),
+        }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
+        for (const character of data) {
+            character.date_added = dateAddedByFile.get(character.avatar);
+        }
         return response.send(data);
     } catch (err) {
         console.error(err);
@@ -1548,6 +1660,24 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
         }
 
         const data = await processCharacter(item, request.user.directories, { shallow: false });
+        let fileStat;
+        try {
+            fileStat = fs.statSync(filePath);
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return response.sendStatus(404);
+            }
+            throw error;
+        }
+        const dateAddedByFile = reconcileEntityDateAdded(
+            getEntityDateAddedRoot(request.user.directories),
+            'characters',
+            [{ id: item, fallback: getCharacterDateAddedFallback(fileStat) }],
+        );
+        data.date_added = dateAddedByFile.get(item);
+        if (data.date_added === undefined) {
+            return response.sendStatus(404);
+        }
 
         return response.send(data);
     } catch (err) {
@@ -1725,7 +1855,15 @@ router.post('/duplicate', validateAvatarUrlMiddleware, async function (request, 
             suffix++;
         }
 
-        fs.copyFileSync(filename, newFilename);
+        const operationTime = Date.now();
+        const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+        const newAvatarName = path.basename(newFilename);
+        fs.copyFileSync(filename, newFilename, fs.constants.COPYFILE_EXCL);
+        try {
+            createEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
+        } catch (metadataError) {
+            console.error('Could not record date-added metadata after duplicating a character.', metadataError);
+        }
         console.info(`${filename} was copied to ${newFilename}`);
         response.send({ path: path.parse(newFilename).base });
     } catch (error) {
