@@ -9,10 +9,14 @@ import { default as writeFileAtomic } from 'write-file-atomic';
 import { color, getConfigValue, tryParse, tryWriteFileSync } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { clearChatRecoveryState, createGroupChatTarget, markChatDeleted, runChatRecoveryBestEffort } from '../chat-recovery.js';
+import { createEntityDateAdded, ensureEntityDateAdded, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 
 export const router = express.Router();
 const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
+const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.groups);
+const getGroupDateAddedFallback = stat => [stat.birthtimeMs, stat.ctimeMs, stat.mtimeMs]
+    .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 
 /**
  * Warns if group data contains deprecated metadata keys and removes them.
@@ -41,6 +45,25 @@ export async function migrateGroupChatsMetadataFormat(userDirectories) {
             const backupPath = path.join(userDirs.backups, '_group_metadata_update');
             const groupFiles = await fsPromises.readdir(userDirs.groups, { withFileTypes: true });
             const groupChatFiles = await fsPromises.readdir(userDirs.groupChats, { withFileTypes: true });
+            // Capture addition dates before metadata migration rewrites group files.
+            reconcileEntityDateAdded(
+                getEntityDateAddedRoot(userDirs),
+                'groups',
+                groupFiles
+                    .filter(groupFile => groupFile.isFile() && path.extname(groupFile.name) === '.json')
+                    .map(groupFile => ({
+                        groupFile,
+                        filePath: path.join(userDirs.groups, groupFile.name),
+                    }))
+                    .map(({ groupFile, filePath }) => {
+                        try {
+                            return { id: groupFile.name, fallback: getGroupDateAddedFallback(fs.statSync(filePath)) };
+                        } catch {
+                            return null;
+                        }
+                    })
+                    .filter(Boolean),
+            );
             for (const groupFile of groupFiles) {
                 try {
                     const isJsonFile = groupFile.isFile() && path.extname(groupFile.name) === '.json';
@@ -123,14 +146,29 @@ router.post('/all', (request, response) => {
     const files = fs.readdirSync(request.user.directories.groups).filter(x => path.extname(x) === '.json');
     const chats = fs.readdirSync(request.user.directories.groupChats).filter(x => path.extname(x) === '.jsonl');
     const chatFileSet = new Set(chats);
+    const groupStats = new Map();
+    const dateAddedEntries = files.map(file => {
+        try {
+            const fileStat = fs.statSync(path.join(request.user.directories.groups, file));
+            groupStats.set(file, fileStat);
+            return { id: file, fallback: getGroupDateAddedFallback(fileStat) };
+        } catch {
+            return null;
+        }
+    }).filter(Boolean);
+    const dateAddedByFile = reconcileEntityDateAdded(
+        getEntityDateAddedRoot(request.user.directories),
+        'groups',
+        dateAddedEntries,
+    );
 
     files.forEach(function (file) {
         try {
             const filePath = path.join(request.user.directories.groups, file);
             const fileContents = fs.readFileSync(filePath, 'utf8');
             const group = JSON.parse(fileContents);
-            const groupStat = fs.statSync(filePath);
-            group.date_added = groupStat.birthtimeMs;
+            const groupStat = groupStats.get(file) ?? fs.statSync(filePath);
+            group.date_added = dateAddedByFile.get(file);
             group.create_date = new Date(groupStat.birthtimeMs).toISOString();
 
             let chat_size = 0;
@@ -214,7 +252,15 @@ router.post('/create', (request, response) => {
         fs.mkdirSync(request.user.directories.groups);
     }
 
+    const operationTime = Date.now();
+    const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+    const fileName = path.basename(pathToFile);
     tryWriteFileSync(pathToFile, fileData);
+    try {
+        createEntityDateAdded(dateAddedRoot, 'groups', fileName, operationTime);
+    } catch (metadataError) {
+        console.error('Could not record date-added metadata after creating a group.', metadataError);
+    }
     return response.send(groupMetadata);
 });
 
@@ -226,8 +272,29 @@ router.post('/edit', getFileNameValidationFunction('id'), (request, response) =>
     const id = request.body.id;
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));
     const fileData = JSON.stringify(request.body, null, 4);
+    const operationTime = Date.now();
+    const fileExists = fs.existsSync(pathToFile);
+    const migrationFallback = fileExists ? getGroupDateAddedFallback(fs.statSync(pathToFile)) : operationTime;
+    const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+    const fileName = path.basename(pathToFile);
 
-    tryWriteFileSync(pathToFile, fileData);
+    if (fileExists) {
+        ensureEntityDateAdded(
+            dateAddedRoot,
+            'groups',
+            fileName,
+            migrationFallback,
+            operationTime,
+        );
+        tryWriteFileSync(pathToFile, fileData);
+    } else {
+        tryWriteFileSync(pathToFile, fileData);
+        try {
+            createEntityDateAdded(dateAddedRoot, 'groups', fileName, operationTime);
+        } catch (metadataError) {
+            console.error('Could not record date-added metadata after creating a group.', metadataError);
+        }
+    }
     return response.send({ ok: true });
 });
 
@@ -238,6 +305,8 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
 
     const id = request.body.id;
     const pathToGroup = path.join(request.user.directories.groups, sanitize(`${id}.json`));
+    const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
+    const groupFileName = path.basename(pathToGroup);
 
     try {
         // Delete group chats
@@ -273,6 +342,11 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
         }
         if (fs.existsSync(pathToGroup)) {
             fs.unlinkSync(pathToGroup);
+        }
+        try {
+            removeEntityDateAdded(dateAddedRoot, 'groups', groupFileName);
+        } catch (metadataError) {
+            console.error('Could not remove date-added metadata after group deletion.', metadataError);
         }
         for (const recoveryTarget of recoveryTargets) {
             runChatRecoveryBestEffort(

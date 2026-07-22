@@ -79,6 +79,7 @@
         "open": "^10.2.0",
         "png-chunk-text": "^1.0.0",
         "png-chunks-extract": "^1.0.0",
+        "proper-lockfile": "^4.1.2",
         "proxy-agent": "^6.5.0",
         "rate-limiter-flexible": "^5.0.5",
         "response-time": "^2.3.4",
