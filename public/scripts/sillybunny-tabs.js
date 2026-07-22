@@ -3,7 +3,7 @@ import {
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
 } from './mobile-shell-lifecycle/index.js';
-import { isIOSWebKitPlatform } from './mobile-send-button.js';
+import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
@@ -2505,9 +2505,73 @@ function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
     return isMobileShellPanelEditableElement(activeElement) || isChatComposerEditableElement(activeElement) || hasOpenMobileShellDrawer();
 }
 
+const MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX = 8;
+const MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS = 700;
+const MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX = 80;
+
+let sbLastIOSKeyboardHeight = 0;
+let sbComposerKeyboardPreShiftDeadline = 0;
+let sbComposerKeyboardSettleTimer = 0;
+
 function isVisualViewportKeyboardOpen(layoutViewport = getLayoutViewportSize(), visualViewportSize = getVisualViewportSize(layoutViewport)) {
     const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
-    return keyboardHeight > 80 || visualViewportSize.top > 2;
+    return keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX || visualViewportSize.top > 2;
+}
+
+/**
+ * SillyBunny: old iOS versions can force-scroll the document to reveal the
+ * composer caret. Shrink the stable shell by the keyboard height before that
+ * reveal while preserving the modern viewport behavior on iOS 26 and newer.
+ */
+function getComposerKeyboardInset(layoutViewport, visualViewportSize) {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return 0;
+    }
+
+    const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);
+    if (keyboardHeight > MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX) {
+        sbLastIOSKeyboardHeight = keyboardHeight;
+    }
+
+    if (!isChatComposerEditableElement(document.activeElement)) {
+        return 0;
+    }
+
+    const withinPreShiftWindow = Date.now() < sbComposerKeyboardPreShiftDeadline;
+
+    if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
+        // Do not shrink after Safari has already panned, which would recreate
+        // the empty space below the escaped composer.
+        if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {
+            return 0;
+        }
+
+        return withinPreShiftWindow ? Math.max(keyboardHeight, sbLastIOSKeyboardHeight) : keyboardHeight;
+    }
+
+    return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;
+}
+
+function handleComposerKeyboardFocusIn(event) {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    if (isChatComposerEditableElement(event.target)) {
+        sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;
+        window.clearTimeout(sbComposerKeyboardSettleTimer);
+        sbComposerKeyboardSettleTimer = window.setTimeout(queueMobileViewportStateSync, MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS + 50);
+    }
+
+    queueMobileViewportStateSync();
+}
+
+function handleMobileKeyboardFocusOut() {
+    if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {
+        return;
+    }
+
+    queueMobileViewportStateSync();
 }
 
 function syncIOSKeyboardBottomInset() {
@@ -2537,6 +2601,12 @@ function syncIOSKeyboardBottomInset() {
 function getShellViewportSize() {
     const layoutViewport = getLayoutViewportSize();
     const visualViewportSize = getVisualViewportSize(layoutViewport);
+
+    const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
+    if (composerKeyboardInset > 0) {
+        const height = Math.max(0, layoutViewport.height - composerKeyboardInset);
+        return { ...layoutViewport, height, bottom: height };
+    }
 
     // SillyBunny: iOS keyboard edits inside shell panels or the chat composer
     // should not feed Safari visualViewport jitter back into shell geometry.
@@ -2568,6 +2638,11 @@ function syncShellViewportBounds() {
     // SillyBunny: iOS Safari shifts the visual viewport while the keyboard opens;
     // keyboard edit paths intentionally keep the stable layout top.
     setRootViewportProperty('--sb-shell-viewport-top', `${viewportSize.top}px`);
+
+    // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
+    // legacy shell has moved the focused composer above the keyboard.
+    const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
+    root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
 }
 
 function getMobileFocusedInputScroller(target) {
@@ -16532,6 +16607,11 @@ function initAll() {
     if (isIOSWebKitPlatform()) {
         document.addEventListener('focusin', syncIOSKeyboardBottomInset);
         document.addEventListener('focusout', syncIOSKeyboardBottomInset);
+    }
+
+    if (isLegacyIOSWebKitPlatform()) {
+        document.addEventListener('focusin', handleComposerKeyboardFocusIn);
+        document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
 
     // SillyBunny: re-sync shell width when the chat width slider changes so settings
