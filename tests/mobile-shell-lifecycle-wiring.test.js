@@ -594,12 +594,14 @@ describe('mobile shell lifecycle wiring', () => {
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
-        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
         expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
         expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
         expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
-        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement);');
+        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
+        expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()');
+        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
@@ -674,7 +676,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function getShellViewportSize(');
         expect(tabsSource).toContain('function getVisualViewportSize(');
         expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
-        expect(tabsSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(tabsSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
@@ -712,15 +714,26 @@ describe('mobile shell lifecycle wiring', () => {
         );
     });
 
-    test('keeps the iOS composer on stable viewport bounds without keyboard inset resizing', () => {
+    test('uses keyboard inset resizing only for legacy iOS composer edits', () => {
+        const getComposerKeyboardInsetSource = getFunctionSource('getComposerKeyboardInset');
         const getShellViewportSizeSource = getFunctionSource('getShellViewportSize');
+        const handleComposerKeyboardFocusInSource = getFunctionSource('handleComposerKeyboardFocusIn');
+        const syncShellViewportBoundsSource = getFunctionSource('syncShellViewportBounds');
 
+        expect(getComposerKeyboardInsetSource).toContain('if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {');
+        expect(getComposerKeyboardInsetSource).toContain('const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);');
+        expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = keyboardHeight;');
+        expect(getComposerKeyboardInsetSource).toContain('if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {');
+        expect(getComposerKeyboardInsetSource).toContain('return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;');
+        expect(handleComposerKeyboardFocusInSource).toContain('sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;');
         expect(getShellViewportSizeSource).toContain('if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {');
         expect(getShellViewportSizeSource).toContain('return layoutViewport;');
-        expect(tabsSource).not.toContain('function getComposerKeyboardInset(');
-        expect(tabsSource).not.toContain('handleComposerKeyboardFocusIn');
-        expect(tabsSource).not.toContain('sb-ios-composer-keyboard-inset-active');
-        expect(browserFixesSource).not.toContain('isComposerHeldAboveKeyboard');
+        expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
+        expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
+        expect(syncShellViewportBoundsSource).toContain('root.classList.toggle(\'sb-ios-composer-keyboard-inset-active\', composerKeyboardInset > 0);');
+        expect(tabsSource).toContain('if (isLegacyIOSWebKitPlatform()) {');
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
+        expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
     });
 
     test('routes mobile viewport sync planning through the lifecycle seam', () => {
