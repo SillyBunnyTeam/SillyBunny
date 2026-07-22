@@ -131,6 +131,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #675 (2026-07-17) `fix: Start-Node.bat unescaped parentheses causes immediate exit`
 - PR #676 (2026-07-17) `fix: Bun throws EEXIST on mkdir when SillyBunny is installed inside OneDrive`
 - PR #677 (2026-07-20) `chore: refresh and update Pura's Director Preset to 15.0`
+- PR #678 (2026-07-22) `fix(ios): includes backwards compatibility of viewport fix for old iOS versions`
 - PR #680 (2026-07-22) `feat: Card sorting option based on newest additions (for real)`
 
 ## v1.6.5
