@@ -1,6 +1,6 @@
 import { redactUrlCredentials } from "./security.js";
 
-export const SETTINGS_TRANSFER_VERSION = 6;
+export const SETTINGS_TRANSFER_VERSION = 7;
 export const MAX_SETTINGS_IMPORT_BYTES = 10 * 1024 * 1024;
 
 const MAX_DEPTH = 16;
@@ -14,6 +14,9 @@ const PRIVATE_FIELD = /(?:ApiKey|Key|Token|Secret|Password|RefImages?|RefImage|C
 const KNOWN_PRIVATE_FIELD = /^(?:apiKey|key|token|secret|password|(?:proxy|nai|gptImage|pollinations|arli|routeway|navy|nanoGpt|chutes|civitai|nanobanana|stability|replicate|fal|together|zai|gemini|comfy)(?:Api)?Key)$/i;
 const DELIMITED_PRIVATE_FIELD = /^(?:api[_-]?key|access[_-]?token|auth|authorization|token|secret|password|passwd)$/i;
 const TRUSTED_ENDPOINT_FIELD = /(?:Url|Endpoint)$/;
+const CUSTOM_API_FIELD = /^customApi/;
+const CONTEXT_MEDIA_PRIVATE_FIELD = /^(?:base64|binary|binaryData|blob|buffer|bytes?|content|data|file|fileName|filePath|href|imageData|localMediaRef|localRef|mediaData|mediaIds?|mediaRef|mime|mimeType|path|payload|serverPath|src|storageKey|uri|url)$|(?:Uri|Url)$/i;
+const CONTEXT_MEDIA_PRIVATE_STRING = /(?:\b(?:blob|data|file|https?):|^(?:[A-Za-z][A-Za-z0-9!#$&^_.+-]*\/[A-Za-z0-9!#$&^_.+-]+$|\/|\\|\.\.?(?:\/|\\)|~(?:\/|\\)|[A-Za-z]:[\\/]))/i;
 
 const STORE_SHAPES = Object.freeze({
     connectionProfiles: "object",
@@ -27,6 +30,7 @@ const STORE_SHAPES = Object.freeze({
     activeFilterPoolIdsByCard: "object",
     activeFilterPoolIdsByChar: "object",
     promptReplacements: "array",
+    contextMedia: "object",
 });
 
 const EXPORTED_STORE_NAMES = Object.freeze(Object.keys(STORE_SHAPES).filter((name) =>
@@ -45,11 +49,15 @@ function byteLength(value) {
 
 function isPrivateField(key) {
     if (/cardkey$/i.test(key)) return false;
-    return key.startsWith("_backup") || PRIVATE_FIELD.test(key) || KNOWN_PRIVATE_FIELD.test(key) || DELIMITED_PRIVATE_FIELD.test(key);
+    return key.startsWith("_backup") || CUSTOM_API_FIELD.test(key) || PRIVATE_FIELD.test(key) || KNOWN_PRIVATE_FIELD.test(key) || DELIMITED_PRIVATE_FIELD.test(key);
 }
 
 function isLocalTrustField(key) {
-    return isPrivateField(key) || TRUSTED_ENDPOINT_FIELD.test(key) || key === "url" || key === "endpoint";
+    return CUSTOM_API_FIELD.test(key) || isPrivateField(key) || TRUSTED_ENDPOINT_FIELD.test(key) || key === "url" || key === "endpoint";
+}
+
+function isStructuredSettingsField(key) {
+    return /workflow/i.test(key) || key === "customApiRequestTemplate";
 }
 
 function sanitizeForExport(value, key = "", seen = new WeakSet(), depth = 0) {
@@ -58,7 +66,7 @@ function sanitizeForExport(value, key = "", seen = new WeakSet(), depth = 0) {
     if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
     if (typeof value === "string") {
         if (/^(?:data:image\/|blob:)/i.test(value)) return undefined;
-        if (/workflow/i.test(key) && /^\s*[\[{]/.test(value)) {
+        if (isStructuredSettingsField(key) && /^\s*[\[{]/.test(value)) {
             try {
                 const parsed = JSON.parse(value);
                 const sanitized = sanitizeForExport(parsed, key, seen, depth + 1);
@@ -85,6 +93,25 @@ function sanitizeForExport(value, key = "", seen = new WeakSet(), depth = 0) {
     for (const [childKey, childValue] of Object.entries(value).slice(0, MAX_OBJECT_KEYS)) {
         if (FORBIDDEN_KEYS.has(childKey)) continue;
         const sanitized = sanitizeForExport(childValue, childKey, seen, depth + 1);
+        if (sanitized !== undefined) result[childKey] = sanitized;
+    }
+    return result;
+}
+
+function sanitizeContextMedia(value, key = "", depth = 0) {
+    if (depth > MAX_DEPTH) return undefined;
+    if (key === "chatMap") return {};
+    if (key.toLowerCase() === "media") return Array.isArray(value) ? [] : undefined;
+    if (CONTEXT_MEDIA_PRIVATE_FIELD.test(key)) return undefined;
+    if (typeof value === "string" && CONTEXT_MEDIA_PRIVATE_STRING.test(value)) return undefined;
+    if (Array.isArray(value)) {
+        return value.map((item) => sanitizeContextMedia(item, key, depth + 1))
+            .filter((item) => item !== undefined);
+    }
+    if (!isPlainObject(value)) return value;
+    const result = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+        const sanitized = sanitizeContextMedia(childValue, childKey, depth + 1);
         if (sanitized !== undefined) result[childKey] = sanitized;
     }
     return result;
@@ -164,6 +191,15 @@ function validateIdMap(value, path) {
 function removeImportedPrivateFields(value, key = "", depth = 0) {
     if (isLocalTrustField(key) || depth > MAX_DEPTH) return undefined;
     if (typeof value === "string" && /^(?:data:image\/|blob:)/i.test(value)) return undefined;
+    if (typeof value === "string" && isStructuredSettingsField(key) && /^\s*[\[{]/.test(value)) {
+        try {
+            const parsed = JSON.parse(value);
+            const sanitized = removeImportedPrivateFields(parsed, key, depth + 1);
+            return sanitized === undefined ? undefined : JSON.stringify(sanitized);
+        } catch {
+            return undefined;
+        }
+    }
     if (Array.isArray(value)) {
         return value.map((item) => removeImportedPrivateFields(item, key, depth + 1))
             .filter((item) => item !== undefined);
@@ -171,6 +207,7 @@ function removeImportedPrivateFields(value, key = "", depth = 0) {
     if (!isPlainObject(value)) return value;
     const result = {};
     for (const [childKey, childValue] of Object.entries(value)) {
+        if (childKey === "provider" && childValue === "custom") continue;
         const sanitized = removeImportedPrivateFields(childValue, childKey, depth + 1);
         if (sanitized !== undefined) result[childKey] = sanitized;
     }
@@ -188,7 +225,14 @@ export function createSettingsExport(source, options = {}) {
         activeSettings: sanitizeForExport(source?.activeSettings || {}) || {},
     };
     for (const name of EXPORTED_STORE_NAMES) {
-        const sanitized = sanitizeForExport(source?.[name]);
+        let store = source?.[name];
+        if (name === "connectionProfiles" && isPlainObject(store)) {
+            store = Object.fromEntries(Object.entries(store).filter(([provider]) => provider !== "custom"));
+        } else if (name === "generationPresets" && Array.isArray(store)) {
+            store = store.filter(record => record?.provider !== "custom");
+        }
+        let sanitized = sanitizeForExport(store);
+        if (name === "contextMedia" && sanitized !== undefined) sanitized = sanitizeContextMedia(sanitized);
         if (sanitized !== undefined) payload[name] = sanitized;
     }
     return payload;
@@ -227,12 +271,17 @@ export function parseSettingsImport(text, options = {}) {
 
     for (const [name, shape] of Object.entries(STORE_SHAPES)) {
         if (parsed[name] === undefined) continue;
-        if (name === "charRefImages" && version >= SETTINGS_TRANSFER_VERSION) continue;
+        if (name === "charRefImages" && version >= 6) continue;
         assertShape(parsed[name], shape, name);
-        const cloned = cloneValidated(parsed[name], name, state);
+        let cloned = cloneValidated(parsed[name], name, state);
+        if (name === "connectionProfiles" && isPlainObject(cloned)) delete cloned.custom;
+        if (name === "generationPresets" && Array.isArray(cloned)) {
+            cloned = cloned.filter(record => record?.provider !== "custom");
+        }
         result[name] = name === "charRefImages"
             ? cloned
             : removeImportedPrivateFields(cloned) ?? (shape === "array" ? [] : {});
+        if (name === "contextMedia") result[name] = sanitizeContextMedia(result[name]) || {};
     }
 
     normalizeRecordIds(result.comfyWorkflows, "comfyWorkflows", createId);
