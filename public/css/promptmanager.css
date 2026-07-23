@@ -113,6 +113,11 @@
         transform var(--sb-transition-slow);
 }
 
+/* Runtime inspection rows have no editable controls, including on mobile. */
+#completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
+    grid-template-columns: minmax(0, 1fr) minmax(54px, auto);
+}
+
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
     display: flex;
     justify-content: flex-end;
@@ -683,6 +688,10 @@
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
         min-height: 0;
         padding: 10px;
+    }
+
+    #completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
+        grid-template-areas: "name tokens";
     }
 
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head > span:nth-child(2) {

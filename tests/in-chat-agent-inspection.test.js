@@ -109,6 +109,7 @@ describe('In-Chat Agent prompt inspection', () => {
         expect(rowSource).not.toContain('prompt_manager_prompt_draggable');
         expect(rowSource).not.toContain('prompt-manager-toggle-action');
         expect(rowSource).not.toContain('prompt-manager-edit-action');
+        expect(rowSource).not.toContain('prompt_manager_prompt_controls');
         expect(rowSource).not.toContain('<span class="prompt-manager-control-placeholder" aria-hidden="true"></span>\n                <span class="${prefix}prompt_manager_prompt_name"');
         expect(promptManagerSource).toContain("this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)");
         expect(promptManagerSource).toContain("this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect'");
@@ -131,7 +132,7 @@ describe('In-Chat Agent prompt inspection', () => {
             'content.js',
         ), 'utf8');
 
-        expect(presetToolsSource).toContain("if (row.dataset.pmRuntime === 'true')");
-        expect(presetToolsSource).toContain("if (row.dataset.pmRuntime === 'true') {\n                return;");
+        expect(presetToolsSource).toContain(".filter(row => row.dataset.pmRuntime !== 'true');");
+        expect(presetToolsSource).toContain("querySelectorAll(':scope > li[data-pm-runtime=\"true\"]')");
     });
 });

@@ -320,7 +320,8 @@ function getPromptRows() {
         return [];
     }
 
-    return Array.from(promptListElement.querySelectorAll(':scope > li.completion_prompt_manager_prompt[data-pm-identifier]'));
+    return Array.from(promptListElement.querySelectorAll(':scope > li.completion_prompt_manager_prompt[data-pm-identifier]'))
+        .filter(row => row.dataset.pmRuntime !== 'true');
 }
 
 function getPromptRowName(row) {
@@ -416,6 +417,12 @@ function cleanupPromptSections() {
     promptListElement.querySelectorAll('.bpt-section-row').forEach(row => row.remove());
 
     getPromptRows().forEach(row => {
+        row.classList.remove('bpt-section-item', 'bpt-divider-row', 'bpt-divider-source', 'bpt-divider-structural');
+        row.style.display = '';
+        delete row.dataset.sectionId;
+    });
+
+    promptListElement.querySelectorAll(':scope > li[data-pm-runtime="true"]').forEach(row => {
         row.classList.remove('bpt-section-item', 'bpt-divider-row', 'bpt-divider-source', 'bpt-divider-structural');
         row.style.display = '';
         delete row.dataset.sectionId;
@@ -930,10 +937,6 @@ function refreshPromptSections() {
         let currentSection = null;
 
         rows.forEach(row => {
-            if (row.dataset.pmRuntime === 'true') {
-                return;
-            }
-
             const promptName = getPromptRowName(row);
 
             if (isDividerPrompt(promptName, dividerRegex, settings)) {

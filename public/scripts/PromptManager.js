@@ -2381,14 +2381,6 @@ class PromptManager {
                     <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
                     <a title="Agents" class="prompt-manager-inspect-action">Agents</a>
                 </span>
-                <span>
-                    <span class="prompt_manager_prompt_controls">
-                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
-                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
-                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
-                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
-                    </span>
-                </span>
                 <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
             </li>
         `;
