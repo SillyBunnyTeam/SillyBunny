@@ -253,7 +253,7 @@ import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
-import { projectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { hasCompanionChatHistoryForHiddenHost, projectCompanionChatHistory, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -6722,6 +6722,7 @@ function removeLastMessage(messageId = null) {
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
+ * @property {ChatMessage} [companionHistoryTarget] Rewrite target whose Companion output must stay excluded during recursive tool calls.
  */
 
 /**
@@ -6766,7 +6767,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6993,24 +6994,45 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Collect messages with usable content
     const canUseTools = ToolManager.isToolCallingSupported();
     const canPerformToolCalls = !dryRun && ToolManager.canPerformToolCalls(type) && depth < ToolManager.RECURSE_LIMIT;
-    let coreChat = chat.filter(x => !x.is_system || (canUseTools && Array.isArray(x.extra?.tool_invocations)));
+    let coreChat = chat.filter(x => !x.is_system
+        || (canUseTools && Array.isArray(x.extra?.tool_invocations))
+        || hasCompanionChatHistoryForHiddenHost(x));
     if (generationChatFilter) {
         coreChat = coreChat.filter((message, index) => generationChatFilter(message, index, coreChat));
     }
     if (type === 'swipe') {
         coreChat.pop();
     }
+    const companionRewriteTarget = companionHistoryTarget
+        ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    const companionCandidateMessages = companionRewriteTarget
+        ? coreChat.filter(message => message !== companionRewriteTarget)
+        : coreChat;
+    const companionPolicyMessages = companionRewriteTarget && !chat.includes(companionRewriteTarget)
+        ? [...chat, companionRewriteTarget]
+        : chat;
+    const companionChatHistory = selectCompanionChatHistory(companionCandidateMessages, {
+        policyMessages: companionPolicyMessages,
+    });
+    coreChat = coreChat.filter(chatItem => !chatItem.is_system
+        || (canUseTools && Array.isArray(chatItem.extra?.tool_invocations))
+        || companionChatHistory.has(chatItem));
 
     const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
         const originalMessage = chatItem.mes;
+        const retainedAgentIds = companionChatHistory.get(chatItem);
+        const hiddenCompanionHistory = chatItem.is_system && retainedAgentIds instanceof Set;
         // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
-        const contextSourceMessage = isContinue && index === coreChat.length - 1
+        const contextSourceMessage = !retainedAgentIds
             ? originalMessage
             : projectCompanionChatHistory(chatItem, content => substituteParams(content, {
                 name2Override: String(chatItem.name ?? '').trim() || undefined,
-                original: originalMessage,
-            }));
+                original: hiddenCompanionHistory ? '' : originalMessage,
+            }), {
+                agentIds: retainedAgentIds,
+                includeOriginal: !hiddenCompanionHistory,
+            });
         let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
@@ -7029,17 +7051,17 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         let regexedMessage = getRegexedString(message, regexType, options);
         let worldInfoRegexedMessage = message === contextSourceMessage ? undefined : getRegexedString(contextSourceMessage, regexType, options);
-        const fileContent = await appendFileContent(chatItem, '');
+        const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
         regexedMessage = fileContent + regexedMessage;
         if (worldInfoRegexedMessage !== undefined) {
             worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
         }
 
         const titles = [];
-        if (chatItem?.extra?.append_title && chatItem?.extra?.title) {
+        if (!hiddenCompanionHistory && chatItem?.extra?.append_title && chatItem?.extra?.title) {
             titles.push(chatItem.extra.title);
         }
-        if (Array.isArray(chatItem?.extra?.media)) {
+        if (!hiddenCompanionHistory && Array.isArray(chatItem?.extra?.media)) {
             for (const mediaItem of chatItem.extra.media) {
                 if (mediaItem?.title && mediaItem?.append_title) {
                     titles.push(mediaItem.title);
@@ -7073,6 +7095,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         return {
             ...chatItem,
             mes: contextMessage,
+            extra: hiddenCompanionHistory ? {} : chatItem.extra,
+            is_system: hiddenCompanionHistory ? false : chatItem.is_system,
             index,
         };
     }));
@@ -8012,7 +8036,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         depth = depth + 1;
                         await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
                         startedSuccessorGeneration = true;
-                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
                     }
                 }
 
@@ -8219,7 +8243,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                 depth = depth + 1;
                 await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
             }
         }
 

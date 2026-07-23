@@ -503,6 +503,9 @@ export function setCompanionResult(message, agent, update = {}) {
             format: update.format ?? companion.format,
             displayMode: update.displayMode ?? companion.displayMode,
             includeInChatHistory: Boolean(companion.includeInChatHistory),
+            chatHistoryDepth: companion.chatHistoryDepth,
+            includeAllChatHistory: Boolean(companion.includeAllChatHistory),
+            keepInChatHistoryWhenHostHidden: Boolean(companion.keepInChatHistoryWhenHostHidden),
             updatedAt: update.updatedAt ?? new Date().toISOString(),
         },
     };

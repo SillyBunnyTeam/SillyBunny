@@ -2847,6 +2847,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', companion.includeSystemPrompt);
     editorEl.find('#ica--editor-companion-includeHistory').prop('checked', companion.includeHistory);
     editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);
+    editorEl.find('#ica--editor-companion-chatHistoryDepth').val(companion.chatHistoryDepth);
+    editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', companion.includeAllChatHistory);
+    editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', companion.keepInChatHistoryWhenHostHidden);
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
@@ -3172,6 +3175,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
 
         executionSelect.prop('disabled', category === 'companion');
         editorEl.find('#ica--companion-section').toggle(companionExecution);
+        const showChatHistoryOptions = companionExecution && editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked');
+        editorEl.find('#ica--companion-chat-history-row').toggle(showChatHistoryOptions);
+        editorEl.find('#ica--editor-companion-chatHistoryDepth').prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'));
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
         editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
@@ -3217,6 +3223,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             includeSystemPrompt: root.find('#ica--editor-companion-includeSystemPrompt').prop('checked'),
             includeHistory: root.find('#ica--editor-companion-includeHistory').prop('checked'),
             includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked'),
+            chatHistoryDepth: Number(root.find('#ica--editor-companion-chatHistoryDepth').val()) || current.chatHistoryDepth,
+            includeAllChatHistory: root.find('#ica--editor-companion-includeAllChatHistory').prop('checked'),
+            keepInChatHistoryWhenHostHidden: root.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked'),
             historyDepth: Number(root.find('#ica--editor-companion-historyDepth').val()) || current.historyDepth,
             feedback: {
                 ...current.feedback,
@@ -3249,6 +3258,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', nextCompanion.includeSystemPrompt);
         editorEl.find('#ica--editor-companion-includeHistory').prop('checked', nextCompanion.includeHistory);
         editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);
+        editorEl.find('#ica--editor-companion-chatHistoryDepth').val(nextCompanion.chatHistoryDepth);
+        editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);
+        editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
@@ -3265,7 +3277,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateTrackerBuilderVisibility();
         updateCompanionEditorVisibility();
     });
-    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-companion-includeInChatHistory, #ica--editor-companion-includeAllChatHistory, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
     editorEl.find('#ica--editor-companion-batch').on('change', () => {
         updateCompanionBatchAgentOptions();
         updateCompanionEditorVisibility();
@@ -3534,7 +3546,14 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-execution').val('companion').trigger('change');
         editorEl.find('#ica--editor-phase').val('post').trigger('change');
         editorEl.find('#ica--editor-prompt').val(generatedKit.prompt);
-        writeCompanionConfigToEditor(generatedKit.companion);
+        const currentCompanion = readCompanionConfigFromEditor(editorEl);
+        writeCompanionConfigToEditor({
+            ...generatedKit.companion,
+            includeInChatHistory: currentCompanion.includeInChatHistory,
+            chatHistoryDepth: currentCompanion.chatHistoryDepth,
+            includeAllChatHistory: currentCompanion.includeAllChatHistory,
+            keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden,
+        });
         toastr.success('Applied generated companion. Review and save when ready.');
     });
 

@@ -207,6 +207,15 @@
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
             <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
         </div>
+        <div class="ica--editor-row" id="ica--companion-chat-history-row">
+            <label>Retain (N) agent content in context
+                <input type="number" id="ica--editor-companion-chatHistoryDepth" class="text_pole" min="1" max="50" value="1" />
+            </label>
+            <div class="ica--regex-note">Only visible and existing agent cards that have been generated count.</div>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAllChatHistory" /><span>Include all notes in context</span></label>
+            <div class="ica--regex-note">Cannot be turned on with Retain (N) agent at the same time</div>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-keepInChatHistoryWhenHostHidden" /><span>Keep the agent outputs in context even when messages are hidden</span></label>
+        </div>
         <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
             <label>Feedback Depth
                 <input type="number" id="ica--editor-companion-feedbackDepth" class="text_pole" min="1" max="10" value="1" />

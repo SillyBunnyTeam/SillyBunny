@@ -137,7 +137,6 @@ export function normalizeCompanionMacroSyntax(content = '') {
 
 function getActiveCompanionResults(message) {
     const swipeInfo = !message?.is_user
-        && !message?.is_system
         && typeof message?.swipe_id === 'number'
         && Array.isArray(message?.swipe_info)
         ? message.swipe_info[message.swipe_id]
@@ -149,27 +148,105 @@ function getActiveCompanionResults(message) {
     return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
 }
 
+function isRetainedCompanionResult(result) {
+    return Boolean(
+        result
+        && result.status === 'done'
+        && result.includeInChatHistory === true
+        && String(result.content ?? '').trim(),
+    );
+}
+
+/**
+ * Whether a hidden host has retained Companion output configured to remain in context.
+ * @param {object} message
+ * @returns {boolean}
+ */
+export function hasCompanionChatHistoryForHiddenHost(message) {
+    if (!message?.is_system || message?.is_user) {
+        return false;
+    }
+
+    return Object.values(getActiveCompanionResults(message))
+        .some(result => isRetainedCompanionResult(result) && result.keepInChatHistoryWhenHostHidden === true);
+}
+
+/**
+ * Selects the latest retained results for each Companion across the supplied candidate messages.
+ * @param {object[]} messages
+ * @param {{ policyMessages?: object[] }} options
+ * @returns {Map<object, Set<string>>}
+ */
+export function selectCompanionChatHistory(messages = [], { policyMessages = messages } = {}) {
+    const policyByAgent = new Map();
+
+    for (const message of policyMessages) {
+        if (!message || message.is_user) continue;
+
+        for (const [agentId, result] of Object.entries(getActiveCompanionResults(message))) {
+            if (isRetainedCompanionResult(result)) {
+                policyByAgent.set(agentId, result);
+            }
+        }
+    }
+
+    const candidatesByAgent = new Map();
+
+    for (const message of messages) {
+        if (!message || message.is_user) continue;
+
+        for (const [agentId, result] of Object.entries(getActiveCompanionResults(message))) {
+            if (!isRetainedCompanionResult(result)) continue;
+
+            if (!message.is_system || result.keepInChatHistoryWhenHostHidden === true) {
+                const candidates = candidatesByAgent.get(agentId) ?? [];
+                candidates.push({ message, result });
+                candidatesByAgent.set(agentId, candidates);
+            }
+        }
+    }
+
+    const selections = new Map();
+    for (const [agentId, candidates] of candidatesByAgent) {
+        const policy = policyByAgent.get(agentId) ?? candidates.at(-1)?.result ?? {};
+        const depth = Math.max(1, Math.min(50, Math.floor(Number(policy.chatHistoryDepth) || 1)));
+        const selected = policy.includeAllChatHistory === false
+            ? candidates.slice(-depth)
+            : candidates;
+
+        for (const { message } of selected) {
+            const agentIds = selections.get(message) ?? new Set();
+            agentIds.add(agentId);
+            selections.set(message, agentIds);
+        }
+    }
+
+    return selections;
+}
+
 /**
  * Builds the prompt-only assistant message containing retained companion results.
  * @param {object} message
  * @param {(content: string) => string} resolveMacros
+ * @param {{ agentIds?: Set<string>|null, includeOriginal?: boolean }} options
  * @returns {string}
  */
-export function projectCompanionChatHistory(message, resolveMacros = content => content) {
+export function projectCompanionChatHistory(message, resolveMacros = content => content, { agentIds = null, includeOriginal = true } = {}) {
     const originalMessage = String(message?.mes ?? '');
-    if (!isAssistantMessage(message)) {
+    if (!message || message.is_user || (message.is_system && !(agentIds instanceof Set))) {
         return originalMessage;
     }
 
-    const retainedContent = Object.values(getActiveCompanionResults(message))
-        .filter(result => result?.status === 'done' && result?.includeInChatHistory === true)
+    const retainedContent = Object.entries(getActiveCompanionResults(message))
+        .filter(([agentId, result]) => isRetainedCompanionResult(result) && (!(agentIds instanceof Set) || agentIds.has(agentId)))
+        .map(([, result]) => result)
         .map(result => normalizeCompanionMacroSyntax(result.content ?? ''))
         .map(content => String(resolveMacros(content) ?? '').trim())
         .filter(Boolean);
 
     if (retainedContent.length === 0) {
-        return originalMessage;
+        return includeOriginal ? originalMessage : '';
     }
 
-    return [originalMessage, ...retainedContent].filter(Boolean).join('\n\n');
+    return [includeOriginal ? originalMessage : '', ...retainedContent].filter(Boolean).join('\n\n');
 }

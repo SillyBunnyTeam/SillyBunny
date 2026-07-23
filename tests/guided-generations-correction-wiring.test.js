@@ -10,7 +10,7 @@ const correctionSource = readFileSync(path.join(repoRoot, 'public', 'scripts', '
 describe('Guided Correction generation wiring', () => {
     test('retains correction targets without changing ordinary regeneration', () => {
         expect(scriptSource).toContain('@property {boolean} [preserveLastMessage]');
-        expect(scriptSource).toContain('preserveLastMessage = false } = {}, dryRun = false)');
+        expect(scriptSource).toContain('preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false)');
         expect(scriptSource).toContain('!(type === \'regenerate\' && preserveLastMessage)');
         expect(scriptSource).toContain('setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage)');
         expect(scriptSource).toContain('(type === \'regenerate\' && !preserveLastMessage)');

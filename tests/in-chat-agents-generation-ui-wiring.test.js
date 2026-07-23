@@ -112,6 +112,11 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
         expect(editorTemplateSource).toContain('Delay until selected companions finish');
         expect(editorTemplateSource).toContain('<span>Keep this agent in Chat History</span>');
+        expect(editorTemplateSource).toContain('Retain (N) agent content in context');
+        expect(editorTemplateSource).toContain('Only visible and existing agent cards that have been generated count.');
+        expect(editorTemplateSource).toContain('<span>Include all notes in context</span>');
+        expect(editorTemplateSource).toContain('Cannot be turned on with Retain (N) agent at the same time');
+        expect(editorTemplateSource).toContain('<span>Keep the agent outputs in context even when messages are hidden</span>');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
     });
 
@@ -136,10 +141,32 @@ describe('in-chat agents generation UI wiring', () => {
 
         expect(indexSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);");
         expect(readSource).toContain("includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked')");
+        expect(readSource).toContain("chatHistoryDepth: Number(root.find('#ica--editor-companion-chatHistoryDepth').val())");
+        expect(readSource).toContain("includeAllChatHistory: root.find('#ica--editor-companion-includeAllChatHistory').prop('checked')");
+        expect(readSource).toContain("keepInChatHistoryWhenHostHidden: root.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked')");
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-chatHistoryDepth').val(nextCompanion.chatHistoryDepth);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);");
+        expect(indexSource).toContain("prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'))");
+        expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
+        expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
+        expect(coreScriptSource).toContain('coreChat.filter(message => message !== companionRewriteTarget)');
+        expect(coreScriptSource).toContain('companionRewriteTarget && !chat.includes(companionRewriteTarget)');
+        expect(coreScriptSource).toContain('policyMessages: companionPolicyMessages');
+        expect(coreScriptSource.match(/companionHistoryTarget: companionRewriteTarget/g)).toHaveLength(2);
+        expect(coreScriptSource).toContain('hasCompanionChatHistoryForHiddenHost(x)');
         expect(coreScriptSource).toContain('projectCompanionChatHistory(chatItem');
-        expect(coreScriptSource).toContain('isContinue && index === coreChat.length - 1');
+        expect(coreScriptSource).toContain("original: hiddenCompanionHistory ? '' : originalMessage");
+        expect(coreScriptSource).toContain('includeOriginal: !hiddenCompanionHistory');
+        expect(coreScriptSource).toContain("const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');");
+        expect(coreScriptSource).toContain('extra: hiddenCompanionHistory ? {} : chatItem.extra');
+        expect(coreScriptSource).toContain('is_system: hiddenCompanionHistory ? false : chatItem.is_system');
         expect(coreScriptSource).toContain('getRegexedString(contextSourceMessage, regexType, options)');
+        expect(indexSource).toContain('includeInChatHistory: currentCompanion.includeInChatHistory');
+        expect(indexSource).toContain('chatHistoryDepth: currentCompanion.chatHistoryDepth');
+        expect(indexSource).toContain('includeAllChatHistory: currentCompanion.includeAllChatHistory');
+        expect(indexSource).toContain('keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden');
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {

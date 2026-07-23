@@ -355,6 +355,9 @@ describe('in-chat agent post-processing runner', () => {
                 includeSystemPrompt: Boolean(agent?.companion?.includeSystemPrompt),
                 includeHistory: Boolean(agent?.companion?.includeHistory),
                 includeInChatHistory: Boolean(agent?.companion?.includeInChatHistory),
+                chatHistoryDepth: Number(agent?.companion?.chatHistoryDepth) || 1,
+                includeAllChatHistory: agent?.companion?.includeAllChatHistory !== false,
+                keepInChatHistoryWhenHostHidden: Boolean(agent?.companion?.keepInChatHistoryWhenHostHidden),
                 historyDepth: Number(agent?.companion?.historyDepth) || 3,
                 feedback: {
                     enabled: Boolean(agent?.companion?.feedback?.enabled),
@@ -1001,11 +1004,17 @@ describe('in-chat agent post-processing runner', () => {
             status: 'done',
             content: 'note A',
             includeInChatHistory: true,
+            chatHistoryDepth: 1,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: false,
         }));
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
             status: 'done',
             content: 'note A',
             includeInChatHistory: true,
+            chatHistoryDepth: 1,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: false,
         }));
 
         // Swipe to a fresh second swipe: the active extra no longer carries the note.
@@ -1087,6 +1096,160 @@ describe('in-chat agent post-processing runner', () => {
         };
 
         expect(projectCompanionChatHistory(message)).toBe('Open the door.');
+    });
+
+    test('selects the latest retained notes per companion or all current notes', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (contentA, contentB = '') => ({
+            mes: contentA,
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    agentA: {
+                        status: 'done',
+                        content: `A: ${contentA}`,
+                        includeInChatHistory: true,
+                        chatHistoryDepth: 2,
+                        includeAllChatHistory: false,
+                    },
+                    ...(contentB ? {
+                        agentB: {
+                            status: 'done',
+                            content: `B: ${contentB}`,
+                            includeInChatHistory: true,
+                            includeAllChatHistory: true,
+                        },
+                    } : {}),
+                },
+            },
+        });
+        const oldest = createMessage('oldest', 'oldest');
+        const middle = createMessage('middle');
+        const latest = createMessage('latest', 'latest');
+
+        const selected = selectCompanionChatHistory([oldest, middle, latest]);
+
+        expect(selected.get(oldest)).toEqual(new Set(['agentB']));
+        expect(selected.get(middle)).toEqual(new Set(['agentA']));
+        expect(selected.get(latest)).toEqual(new Set(['agentA', 'agentB']));
+    });
+
+    test('uses excluded and hidden results for policy without selecting them as context', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createResult = (content, overrides = {}) => ({
+            status: 'done',
+            content,
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+            ...overrides,
+        });
+        const oldest = {
+            mes: 'Oldest visible host',
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: { agentA: createResult('Oldest A') } },
+        };
+        const latestCandidate = {
+            mes: 'Latest visible host',
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: { agentA: createResult('Latest A') } },
+        };
+        const hiddenPolicy = {
+            mes: 'Hidden host',
+            is_user: false,
+            is_system: true,
+            extra: {
+                inChatAgentCompanionResults: {
+                    agentA: createResult('Hidden A', {
+                        chatHistoryDepth: 1,
+                        includeAllChatHistory: false,
+                        keepInChatHistoryWhenHostHidden: false,
+                    }),
+                    agentB: createResult('Hidden B', {
+                        keepInChatHistoryWhenHostHidden: true,
+                    }),
+                },
+            },
+        };
+
+        const selected = selectCompanionChatHistory([oldest, latestCandidate, hiddenPolicy], {
+            policyMessages: [oldest, latestCandidate, hiddenPolicy],
+        });
+
+        expect(selected.has(oldest)).toBe(false);
+        expect(selected.get(latestCandidate)).toEqual(new Set(['agentA']));
+        expect(selected.get(hiddenPolicy)).toEqual(new Set(['agentB']));
+    });
+
+    test('uses a rewrite target policy without selecting the target result', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (content, includeAllChatHistory) => ({
+            mes: `${content} host`,
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content,
+                        includeInChatHistory: true,
+                        chatHistoryDepth: 1,
+                        includeAllChatHistory,
+                    },
+                },
+            },
+        });
+        const oldest = createMessage('Oldest note', true);
+        const latestCandidate = createMessage('Latest candidate note', true);
+        const rewriteTarget = createMessage('Rewrite target note', false);
+
+        const selected = selectCompanionChatHistory([oldest, latestCandidate], {
+            policyMessages: [oldest, latestCandidate, rewriteTarget],
+        });
+
+        expect(selected.has(oldest)).toBe(false);
+        expect(selected.get(latestCandidate)).toEqual(new Set(['tracker']));
+        expect(selected.has(rewriteTarget)).toBe(false);
+    });
+
+    test('keeps selected Companion output as standalone context for hidden host messages', async () => {
+        const {
+            hasCompanionChatHistoryForHiddenHost,
+            projectCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const hiddenKept = {
+            mes: 'Hidden assistant reply',
+            is_user: false,
+            is_system: true,
+            extra: {
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content: 'Retained tracker state',
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                        keepInChatHistoryWhenHostHidden: true,
+                    },
+                },
+            },
+        };
+        const hiddenDropped = structuredClone(hiddenKept);
+        hiddenDropped.extra.inChatAgentCompanionResults.tracker.content = 'Dropped tracker state';
+        hiddenDropped.extra.inChatAgentCompanionResults.tracker.keepInChatHistoryWhenHostHidden = false;
+
+        const selected = selectCompanionChatHistory([hiddenKept, hiddenDropped]);
+
+        expect(hasCompanionChatHistoryForHiddenHost(hiddenKept)).toBe(true);
+        expect(hasCompanionChatHistoryForHiddenHost(hiddenDropped)).toBe(false);
+        expect(selected.get(hiddenKept)).toEqual(new Set(['tracker']));
+        expect(selected.has(hiddenDropped)).toBe(false);
+        expect(projectCompanionChatHistory(hiddenKept, content => content, {
+            agentIds: selected.get(hiddenKept),
+            includeOriginal: false,
+        })).toBe('Retained tracker state');
     });
 
     test('sends raw-prompt companion prompts verbatim without extra instructions', async () => {
