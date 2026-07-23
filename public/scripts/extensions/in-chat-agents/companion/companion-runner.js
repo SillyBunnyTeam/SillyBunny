@@ -539,6 +539,47 @@ export function updateCompanionResult(message, agentId, update = {}) {
     return nextResults[agentId];
 }
 
+/**
+ * Applies a live Companion's history policy to its existing cards in the active chat.
+ * Stored snapshots remain the fallback for cards whose agent was deleted.
+ * @param {object} agent
+ * @returns {Promise<number>}
+ */
+export async function syncCompanionChatHistoryConfig(agent) {
+    if (!agent?.id || !isCompanionAgent(agent)) {
+        return 0;
+    }
+
+    const chatId = getCurrentChatId();
+    const messages = [...chat];
+    const companion = getCompanionConfig(agent);
+    const update = {
+        includeInChatHistory: Boolean(companion.includeInChatHistory),
+        chatHistoryDepth: companion.chatHistoryDepth,
+        includeAllChatHistory: Boolean(companion.includeAllChatHistory),
+        keepInChatHistoryWhenHostHidden: Boolean(companion.keepInChatHistoryWhenHostHidden),
+    };
+    let updatedCount = 0;
+
+    for (let messageIndex = 0; messageIndex < messages.length; messageIndex++) {
+        if (getCurrentChatId() !== chatId || chat[messageIndex] !== messages[messageIndex]) {
+            break;
+        }
+
+        const message = messages[messageIndex];
+        const result = getCompanionResults(message)[agent.id];
+        if (!result || Object.entries(update).every(([key, value]) => result[key] === value)) {
+            continue;
+        }
+
+        updateCompanionResult(message, agent.id, update);
+        updatedCount++;
+        await emitCompanionResultsUpdated(messageIndex, agent.id);
+    }
+
+    return updatedCount;
+}
+
 export function deleteCompanionResult(message, agentId) {
     const results = getCompanionResults(message);
     if (!agentId || !Object.hasOwn(results, agentId)) {

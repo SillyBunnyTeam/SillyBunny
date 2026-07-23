@@ -1135,6 +1135,37 @@ describe('in-chat agent post-processing runner', () => {
         expect(selected.get(latest)).toEqual(new Set(['agentA', 'agentB']));
     });
 
+    test('updates existing Companion cards when history retention settings change', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const companion = createCompanionAgent({
+            id: 'history-companion',
+            companion: {
+                includeInChatHistory: true,
+                includeAllChatHistory: false,
+                chatHistoryDepth: 1,
+            },
+        });
+        chat.push(
+            { mes: 'First reply', is_user: false, is_system: false, extra: {} },
+            { mes: 'Second reply', is_user: false, is_system: false, extra: {} },
+            { mes: 'Third reply', is_user: false, is_system: false, extra: {} },
+        );
+        chat.forEach((message, index) => {
+            companionRunner.setCompanionResult(message, companion, { status: 'done', content: `Note ${index + 1}` });
+        });
+
+        expect(selectCompanionChatHistory(chat).size).toBe(1);
+
+        companion.companion.includeAllChatHistory = true;
+        expect(await companionRunner.syncCompanionChatHistoryConfig(companion)).toBe(3);
+
+        const selected = selectCompanionChatHistory(chat);
+        expect(selected.get(chat[0])).toEqual(new Set([companion.id]));
+        expect(selected.get(chat[1])).toEqual(new Set([companion.id]));
+        expect(selected.get(chat[2])).toEqual(new Set([companion.id]));
+    });
+
     test('uses excluded and hidden results for policy without selecting them as context', async () => {
         const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
         const createResult = (content, overrides = {}) => ({

@@ -149,6 +149,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);");
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);");
         expect(indexSource).toContain("prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'))");
+        expect(indexSource).toContain('syncCompanionChatHistoryConfig(agent) > 0');
         expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
