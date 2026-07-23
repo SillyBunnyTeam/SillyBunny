@@ -10,6 +10,7 @@ const SAFE_IMAGE_MIME_TYPES = new Set([
     "image/bmp",
     "image/gif",
     "image/jpeg",
+    "image/jpg",
     "image/png",
     "image/tiff",
     "image/webp",
@@ -77,14 +78,20 @@ export function normalizeImageSource(value, {
     const source = value.trim();
     if (!source) return null;
 
-    const dataMatch = source.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/i);
-    if (dataMatch) {
-        const mime = dataMatch[1].toLowerCase();
-        if (!SAFE_IMAGE_MIME_TYPES.has(mime)) return null;
-        const estimatedBytes = Math.floor(dataMatch[2].length * 3 / 4);
-        return estimatedBytes <= maxInlineBytes ? source : null;
+    if (source.startsWith("data:")) {
+        const dataMatch = source.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+        if (dataMatch) {
+            let mime = dataMatch[1].toLowerCase().trim();
+            if (mime === "image/jpg") mime = "image/jpeg";
+            if (!SAFE_IMAGE_MIME_TYPES.has(mime)) return null;
+            const cleanB64 = dataMatch[2].replace(/[\s\r\n]/g, "").replace(/-/g, "+").replace(/_/g, "/");
+            if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanB64)) return null;
+            const estimatedBytes = Math.floor(cleanB64.length * 3 / 4);
+            if (estimatedBytes > maxInlineBytes) return null;
+            return `data:${mime};base64,${cleanB64}`;
+        }
+        return null;
     }
-    if (source.startsWith("data:")) return null;
     if (/[\u0000-\u0020"'<>`]/.test(source)) return null;
 
     try {

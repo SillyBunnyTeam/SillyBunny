@@ -2,7 +2,7 @@ import { redactUrlCredentials } from "./security.js";
 import { getCustomBackendCapabilities } from "./custom-backend.js";
 
 const PRIVATE_FIELD = /(?:ApiKey|Key|Token|Secret|Password|RefImages?|RefImage|ControlNetImage|LocalRefImage|ImageBase64|Url|Endpoint)$/;
-const KNOWN_PRIVATE_FIELD = /^(?:apiKey|key|token|secret|password|(?:proxy|nai|gptImage|pollinations|arli|routeway|navy|nanoGpt|chutes|civitai|nanobanana|stability|replicate|fal|together|zai|gemini|comfy)(?:Api)?Key|url|endpoint)$/i;
+const KNOWN_PRIVATE_FIELD = /^(?:apiKey|key|token|secret|password|(?:proxy|nai|gptImage|pollinations|arli|routeway|navy|nanoGpt|chutes|civitai|nanobanana|stability|replicate|fal|together|zai|gemini|comfy)(?:Proxy|Api)?Key|url|endpoint)$/i;
 const MAX_SNAPSHOT_STRING = 16_384;
 
 function sanitizeValue(value, key = "", seen = new WeakSet()) {
