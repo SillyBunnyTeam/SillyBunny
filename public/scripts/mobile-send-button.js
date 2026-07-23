@@ -1,4 +1,5 @@
 const IOS_SYNTHETIC_CLICK_SUPPRESS_MS = 2500;
+const IOS_STABLE_COMPOSER_VIEWPORT_MAJOR = 26;
 
 /**
  * Detects iOS Safari/WebKit surfaces, including iPadOS desktop-mode Safari.
@@ -12,6 +13,22 @@ export function isIOSWebKitPlatform(navigatorRef = globalThis.navigator) {
 
     const platform = String(navigatorRef.platform || '');
     return /iPad|iPhone|iPod/.test(platform) || (platform === 'MacIntel' && Number(navigatorRef.maxTouchPoints) > 1);
+}
+
+/**
+ * Detects known iOS versions that need the legacy composer keyboard inset.
+ * Unknown versions retain the modern stable viewport behavior.
+ * @param {Navigator} [navigatorRef] Navigator-like object
+ * @returns {boolean}
+ */
+export function isLegacyIOSWebKitPlatform(navigatorRef = globalThis.navigator) {
+    if (!isIOSWebKitPlatform(navigatorRef)) {
+        return false;
+    }
+
+    const match = String(navigatorRef.userAgent || '').match(/\bCPU(?: iPhone)? OS (\d+)(?:[_\s]|$)/i);
+    const majorVersion = Number(match?.[1]);
+    return Number.isInteger(majorVersion) && majorVersion < IOS_STABLE_COMPOSER_VIEWPORT_MAJOR;
 }
 
 /**

@@ -71,18 +71,18 @@
     }
 
     #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(34px, calc(42px * var(--sb-bottom-bar-scale, 1)), 56px);
-        --sb-composer-action-size: clamp(20px, calc(26px * var(--sb-bottom-bar-scale, 1)), 36px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.45);
-        --sb-composer-action-icon-size: clamp(10px, calc(13px * var(--sb-bottom-bar-scale, 1)), 18px);
-        --sb-composer-left-rail-width: min(28vw, calc(var(--sb-composer-action-size) * 2 + 3px));
+        --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 56px);
+        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
         display: grid !important;
         grid-template-columns: var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width) !important;
         grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto) !important;
         grid-template-areas: 'tools input action' !important;
         align-items: center !important;
-        gap: 0 clamp(10px, 3vw, 14px) !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 4px) !important;
         padding: 2px 4px !important;
         box-sizing: border-box !important;
@@ -90,13 +90,13 @@
     }
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(30px, calc(34px * var(--sb-bottom-bar-scale, 1)), 48px);
-        --sb-composer-action-size: clamp(18px, calc(22px * var(--sb-bottom-bar-scale, 1)), 32px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.42);
-        --sb-composer-action-icon-size: clamp(9px, calc(11px * var(--sb-bottom-bar-scale, 1)), 16px);
-        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 2px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 clamp(10px, 3vw, 14px) !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
     }
 
     #leftSendForm {
@@ -2347,6 +2347,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: grid !important;
         grid-template-columns: var(--sb-character-list-avatar-size) minmax(0, 1fr) !important;
         align-items: center !important;
+        flex: 0 0 auto;
         gap: 6px 10px;
         min-height: calc(var(--sb-character-list-avatar-size) + 18px);
         width: 100%;
@@ -2811,21 +2812,46 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         backdrop-filter: blur(8px);
     }
 
+    #send_form:focus-within {
+        border-top-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 56%, var(--sb-shell-border)) !important;
+        box-shadow:
+            0 -6px 20px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 12%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent) !important;
+        outline: none !important;
+    }
+
+    #send_form.sb-generating-controls {
+        border-top-color: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 78%, var(--sb-shell-border)) !important;
+        box-shadow:
+            0 -6px 24px color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 28%, transparent),
+            inset 0 1px 0 color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 52%, transparent) !important;
+    }
+
     #nonQRFormItems {
-        --sb-mobile-composer-input-height: clamp(32px, calc(38px * var(--sb-bottom-bar-scale, 1)), 52px);
-        --sb-composer-action-size: clamp(20px, calc(24px * var(--sb-bottom-bar-scale, 1)), 34px);
-        --sb-composer-send-width: calc(var(--sb-composer-action-size) * 1.40);
-        --sb-composer-action-icon-size: clamp(10px, calc(12px * var(--sb-bottom-bar-scale, 1)), 17px);
-        --sb-composer-left-rail-width: min(26vw, calc(var(--sb-composer-action-size) * 2 + 2px));
+        --sb-mobile-composer-input-height: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 52px);
+        --sb-composer-action-size: clamp(40px, calc(44px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(13px, calc(16px * var(--sb-bottom-bar-scale, 1)), 18px);
+        --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 2px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 2px);
-        gap: 0 clamp(10px, 3vw, 14px) !important;
+        gap: 0 clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
     }
 
+    :root[data-sb-compact-mode='true'] #nonQRFormItems {
+        --sb-mobile-composer-input-height: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 44px);
+        --sb-composer-action-size: clamp(34px, calc(38px * var(--sb-bottom-bar-scale, 1)), 40px);
+        --sb-composer-send-width: var(--sb-composer-action-size);
+        --sb-composer-action-icon-size: clamp(11px, calc(14px * var(--sb-bottom-bar-scale, 1)), 16px);
+    }
+
     #send_textarea {
-        padding: 8px 10px !important;
+        padding: 8px 6px !important;
         line-height: 1.15 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
 
     #leftSendForm,

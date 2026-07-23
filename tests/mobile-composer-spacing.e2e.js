@@ -7,14 +7,16 @@ const IPHONE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X
 function getComposerSpacing(page) {
     return page.evaluate(() => {
         const composer = document.getElementById('nonQRFormItems');
-        const textareaRect = document.getElementById('send_textarea')?.getBoundingClientRect();
+        const textarea = document.getElementById('send_textarea');
+        const form = document.getElementById('send_form');
+        const textareaRect = textarea?.getBoundingClientRect();
         const getVisibleControlRects = id => Array.from(document.getElementById(id)?.children ?? [])
             .map(element => element.getBoundingClientRect())
             .filter(rect => rect.width > 0 && rect.height > 0);
         const leftControlRects = getVisibleControlRects('leftSendForm');
         const rightControlRects = getVisibleControlRects('rightSendForm');
 
-        if (!composer || !textareaRect || leftControlRects.length === 0 || rightControlRects.length === 0) {
+        if (!composer || !form || !textareaRect || leftControlRects.length === 0 || rightControlRects.length === 0) {
             return null;
         }
 
@@ -22,6 +24,9 @@ function getComposerSpacing(page) {
             columnGap: Number.parseFloat(getComputedStyle(composer).columnGap),
             leftClearance: textareaRect.left - Math.max(...leftControlRects.map(rect => rect.right)),
             rightClearance: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
+            textareaWidth: textareaRect.width,
+            textareaBorderRadius: getComputedStyle(textarea).borderRadius,
+            formOutlineStyle: getComputedStyle(form).outlineStyle,
         };
     });
 }
@@ -44,14 +49,18 @@ test.describe('mobile composer spacing at 320x568', () => {
 
         for (const compactMode of ['false', 'true']) {
             await page.evaluate(mode => document.documentElement.setAttribute('data-sb-compact-mode', mode), compactMode);
+            await page.locator('#send_textarea').focus();
             await waitForAnimationFrames(page, 2);
 
             const spacing = await getComposerSpacing(page);
 
             expect(spacing).not.toBeNull();
-            expect(spacing.columnGap).toBeGreaterThanOrEqual(10);
+            expect(spacing.columnGap).toBeGreaterThanOrEqual(8);
             expect(spacing.leftClearance).toBeGreaterThanOrEqual(6);
             expect(spacing.rightClearance).toBeGreaterThanOrEqual(6);
+            expect(spacing.textareaWidth).toBeGreaterThanOrEqual(100);
+            expect(spacing.textareaBorderRadius).toBe('0px');
+            expect(spacing.formOutlineStyle).toBe('none');
         }
     });
 });

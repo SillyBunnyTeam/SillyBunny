@@ -94,6 +94,14 @@ describe('connection-state-checker parsers', () => {
 
         expect(table).toEqual(new Set(['::1:8080>127.0.0.2:5555']));
     });
+
+    test('marks netstat output with localized TCP states as unavailable', () => {
+        const table = testExports.parseNetstatOutput(
+            '  TCP    127.0.0.1:8080    127.0.0.2:5555    HERGESTELLT    1234\n',
+        );
+
+        expect(table).toBeNull();
+    });
 });
 
 describe('isSocketConnected', () => {
@@ -125,6 +133,15 @@ describe('isSocketConnected', () => {
 
         await expect(isSocketConnected(createSocket())).resolves.toBe(true);
         expect(mockExecFile).toHaveBeenCalledWith('netstat', ['-ano', '-p', 'TCP'], expect.objectContaining({ timeout: 1000 }), expect.any(Function));
+    });
+
+    test('falls back to connected when Windows localizes netstat states', async () => {
+        mockPlatform.mockReturnValue('win32');
+        mockExecFile.mockImplementation((command, args, options, callback) => {
+            callback(null, '  TCP    127.0.0.1:8080    127.0.0.2:5555    HERGESTELLT    1234\n', '');
+        });
+
+        await expect(isSocketConnected(createSocket())).resolves.toBe(true);
     });
 
     test('falls back to connected on unsupported platforms', async () => {

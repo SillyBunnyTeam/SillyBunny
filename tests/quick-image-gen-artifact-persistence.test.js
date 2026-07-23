@@ -48,6 +48,7 @@ describe('Quick Image Gen artifact persistence', () => {
         expect(getFunctionSource('deleteSelectedComfyWorkflowPreset')).toContain('await saveComfyWorkflowStoreNow()');
         expect(getFunctionSource('savePreset')).toContain('await saveGenerationPresetStoreNow()');
         expect(getFunctionSource('deletePreset')).toContain('await saveGenerationPresetStoreNow("Failed to delete preset. Browser storage may be full.")');
-        expect(getFunctionSource('importSettings')).toContain('await flushSettingsBackup();');
+        expect(getFunctionSource('importSettings')).toContain('await commitSettingsImport(data);');
+        expect(getFunctionSource('commitSettingsImportNow')).toContain('await flushSettingsBackup();');
     });
 });

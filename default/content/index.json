@@ -492,6 +492,10 @@
         "type": "openai_preset"
     },
     {
+        "filename": "presets/openai/Pura's Director Preset 15.0 (SillyBunny).json",
+        "type": "openai_preset"
+    },
+    {
         "filename": "presets/openai/Geechan - Universal Roleplay (Chat Completions) (v5.2).json",
         "type": "openai_preset"
     },

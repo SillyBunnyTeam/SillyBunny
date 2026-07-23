@@ -38,6 +38,7 @@ declare global {
         avatar_url?: string;
         hideMutedSprites?: boolean;
         fav?: boolean;
+        date_added?: number;
         date_last_chat?: MessageTimestamp;
     }
 

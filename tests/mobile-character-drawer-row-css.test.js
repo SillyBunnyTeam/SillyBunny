@@ -7,12 +7,15 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const mobileStylesCss = readFileSync(path.join(repoRoot, 'public', 'css', 'mobile-styles.css'), 'utf8').replace(/\r\n/g, '\n');
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
 
-function getRuleBody(cssSource, selector) {
+function getRuleBodies(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const matches = [...cssSource.matchAll(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gs'))];
-    const match = matches.at(-1);
+    const matches = [...cssSource.matchAll(new RegExp(`^\\s*${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gms'))];
 
-    return match?.groups?.body ?? '';
+    return matches.map(match => match.groups?.body ?? '');
+}
+
+function getRuleBody(cssSource, selector) {
+    return getRuleBodies(cssSource, selector).at(-1) ?? '';
 }
 
 describe('mobile character drawer top row css', () => {
@@ -43,5 +46,17 @@ describe('mobile character drawer top row css', () => {
         expect(editorHotswapRule).toContain('display: none !important;');
         expect(backRule).toContain('grid-column: 4;');
         expect(closeRule).toContain('grid-column: 5;');
+    });
+});
+
+describe('mobile character drawer entity row css', () => {
+    test('lets tag-heavy rows grow instead of shrinking inside the scroller', () => {
+        const entityRowRules = getRuleBodies(
+            mobileShellCss,
+            '#right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar)',
+        ).join('\n');
+
+        expect(entityRowRules).toContain('flex: 0 0 auto;');
+        expect(entityRowRules).toContain('overflow: hidden;');
     });
 });

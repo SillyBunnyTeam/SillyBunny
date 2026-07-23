@@ -90,6 +90,7 @@ jobs:
           delete-branch: true
           add-paths: |
             public/scripts/extensions/quick-image-gen/index.js
+            public/scripts/extensions/quick-image-gen/lib/**
             public/scripts/extensions/quick-image-gen/manifest.json
             public/scripts/extensions/quick-image-gen/style.css
           commit-message: 'chore: sync Quick Image Gen v${{ steps.sync.outputs.version }}'
