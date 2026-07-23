@@ -2573,6 +2573,29 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 }
 
 @media (max-width: 720px) {
+    .popup:has(#ica--editor).wide_dialogue_popup {
+        width: calc(100vw - 20px);
+        width: calc(100dvw - 20px);
+        min-width: 0;
+        max-width: calc(100vw - 20px);
+        max-width: calc(100dvw - 20px);
+    }
+
+    .popup:has(#ica--editor) .popup-body,
+    .popup:has(#ica--editor) .popup-content,
+    #ica--editor,
+    #ica--editor .ica--editor-section {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    #ica--editor :is(input, select, textarea) {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
     .ica--templates-callout {
         position: relative;
         flex-direction: column;

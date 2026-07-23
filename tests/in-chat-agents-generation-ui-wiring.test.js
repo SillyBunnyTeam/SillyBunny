@@ -155,6 +155,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
         expect(agentRunnerSource).toContain('companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes)');
+        expect(agentRunnerSource).toContain('await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });');
         expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
         expect(coreScriptSource).toContain('coreChat.filter(message => message !== companionRewriteTarget)');
         expect(coreScriptSource).toContain('companionRewriteTarget && !chat.includes(companionRewriteTarget)');
@@ -173,6 +174,8 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('chatHistoryDepth: currentCompanion.chatHistoryDepth');
         expect(indexSource).toContain('includeAllChatHistory: currentCompanion.includeAllChatHistory');
         expect(indexSource).toContain('keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden');
+        expect(extensionStyleSource).toContain('.popup:has(#ica--editor).wide_dialogue_popup');
+        expect(extensionStyleSource).toContain('width: calc(100dvw - 20px);');
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {

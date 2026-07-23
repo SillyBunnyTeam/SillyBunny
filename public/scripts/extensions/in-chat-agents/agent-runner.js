@@ -3821,8 +3821,8 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         if (typeof cleanedAuxiliaryEchoes === 'string' && cleanedAuxiliaryEchoes !== normalizeContentText(message.mes)) {
             message.mes = cleanedAuxiliaryEchoes;
             await syncPromptTransformMessageStateAsync(message, messageIndex);
+            await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });
             chatStateChanged = true;
-            messageDisplayChanged = true;
         }
 
         // Companions normally run last so they see the post-transform reply; the concurrent
