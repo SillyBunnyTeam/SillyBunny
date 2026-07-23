@@ -16,6 +16,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER } from './in-chat-agent-inspection.js';
 import {
     resolvePromptManagerRenderState,
     resolvePromptManagerScrollRestore,
@@ -39,8 +40,6 @@ function debouncePromise(func, delay) {
 const DEFAULT_DEPTH = 4;
 const DEFAULT_ORDER = 100;
 const PROMPT_MANAGER_DESKTOP_SPLIT_QUERY = '(min-width: 961px)';
-// SillyBunny In-Chat Agents reserve this extension prompt key prefix.
-const IN_CHAT_AGENT_PROMPT_KEY_PREFIX = 'inchat_agent_';
 
 /**
  * @enum {number}
@@ -371,6 +370,9 @@ class PromptManager {
 
         // Message collection of the most recent chatcompletion
         this.messages = null;
+
+        // Detached, inspection-only In-Chat Agent messages from the latest prompt assembly.
+        this.runtimeAgentMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
 
         // The current token handler instance
         this.tokenHandler = null;
@@ -751,8 +753,10 @@ class PromptManager {
             this.clearInspectForm();
 
             const promptID = event.target.closest('.' + this.configuration.prefix + 'prompt_manager_prompt').dataset.pmIdentifier;
-            if (true === this.messages.hasItemWithIdentifier(promptID)) {
-                const messages = this.messages.getItemByIdentifier(promptID);
+            const messages = promptID === RUNTIME_AGENTS_IDENTIFIER
+                ? this.runtimeAgentMessages
+                : this.messages.getItemByIdentifier(promptID);
+            if (messages) {
                 this.selectedPromptId = promptID;
                 this.activePopupArea = 'inspect';
 
@@ -2052,6 +2056,14 @@ class PromptManager {
         const messages = chatCompletion.getMessages();
 
         this.setMessages(messages);
+        this.runtimeAgentMessages = chatCompletion.getRuntimeAgentMessages();
+        if (this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect') {
+            const messageList = document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_inspect_list');
+            if (messageList) {
+                messageList.innerHTML = '';
+                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);
+            }
+        }
         this.populateTokenCounts(messages);
         this.overriddenPrompts = chatCompletion.getOverriddenPrompts();
     }
@@ -2087,6 +2099,10 @@ class PromptManager {
     }
 
     getInChatAgentTokenUsage() {
+        if (this.runtimeAgentMessages) {
+            return this.runtimeAgentMessages.getTokens();
+        }
+
         return Object.entries(this.getActivePromptTokenCounts() ?? {}).reduce((total, [identifier, tokens]) => {
             if (!identifier.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX)) {
                 return total;
@@ -2167,7 +2183,7 @@ class PromptManager {
             }
         }
 
-        if (this.selectedPromptId && !this.getPromptById(this.selectedPromptId)) {
+        if (this.selectedPromptId && this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)) {
             this.hidePopup();
             this.clearEditForm();
             this.clearInspectForm();
@@ -2354,6 +2370,29 @@ class PromptManager {
                 </li>
             `;
         });
+
+        const runtimeAgentTokens = this.runtimeAgentMessages?.getTokens() ?? 0;
+        const runtimeSelectedClass = this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea
+            ? `${prefix}prompt_manager_prompt_selected`
+            : '';
+        listItemHtml += `
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}">
+                <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+                <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
+                    <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
+                    <a title="Agents" class="prompt-manager-inspect-action">Agents</a>
+                </span>
+                <span>
+                    <span class="prompt_manager_prompt_controls">
+                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+                        <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+                    </span>
+                </span>
+                <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+            </li>
+        `;
 
         if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
             return false;

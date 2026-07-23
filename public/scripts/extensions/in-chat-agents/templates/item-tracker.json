@@ -10,7 +10,7 @@
         "items",
         "objects"
     ],
-    "version": 2,
+    "version": 3,
     "author": "Purachina",
     "prompt": "### Inventory\nTrack items {{user}} acquires, loses, or uses that have narrative significance. Do not list mundane carried items unless plot-relevant. Use this EXACT format:\n\n[ITEM|Action|Name|Detail]\nnote: MANDATORY; explain origin or significance\n[/ITEM]\n\nAction options: ➕ GAINED | ➖ LOST | 🔄 USED | 💔 BROKEN | 🎁 GIVEN\n\nRules:\n- Items appear AFTER narrative content when inventory changes\n- Only show items that CHANGED this scene\n- Do not track currency, consumables, or mundane objects unless plot-relevant",
     "phase": "both",
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\[ITEM\\|[^\\]]*\\]",
+        "extractPattern": "\\[ITEM\\|[^\\]\\r\\n]*\\](?:(?!\\[ITEM(?=[:|\\]]))[\\s\\S])*?\\[/ITEM\\]",
         "extractVariable": "item_data"
     },
     "enabled": false,

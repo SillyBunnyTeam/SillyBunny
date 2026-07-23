@@ -225,6 +225,30 @@ export function selectCompanionChatHistory(messages = [], { policyMessages = mes
 }
 
 /**
+ * Collects retained Companion content selected for a prompt-only chat message.
+ * @param {object} message
+ * @param {(content: string) => string} resolveMacros
+ * @param {{ agentIds?: Set<string>|null }} options
+ * @returns {{ identifier: string, name: string, role: string, content: string, kind: string }[]}
+ */
+export function getCompanionChatHistoryContributions(message, resolveMacros = content => content, { agentIds = null } = {}) {
+    if (!message || message.is_user || (message.is_system && !(agentIds instanceof Set))) {
+        return [];
+    }
+
+    return Object.entries(getActiveCompanionResults(message))
+        .filter(([agentId, result]) => isRetainedCompanionResult(result) && (!(agentIds instanceof Set) || agentIds.has(agentId)))
+        .map(([agentId, result]) => ({
+            identifier: `inchat_agent_companion_history_${agentId}`,
+            name: String(result.agentName ?? 'Companion').trim() || 'Companion',
+            role: 'assistant',
+            content: String(resolveMacros(normalizeCompanionMacroSyntax(result.content ?? '')) ?? '').trim(),
+            kind: 'retained-history',
+        }))
+        .filter(contribution => contribution.content);
+}
+
+/**
  * Builds the prompt-only assistant message containing retained companion results.
  * @param {object} message
  * @param {(content: string) => string} resolveMacros
@@ -233,16 +257,8 @@ export function selectCompanionChatHistory(messages = [], { policyMessages = mes
  */
 export function projectCompanionChatHistory(message, resolveMacros = content => content, { agentIds = null, includeOriginal = true } = {}) {
     const originalMessage = String(message?.mes ?? '');
-    if (!message || message.is_user || (message.is_system && !(agentIds instanceof Set))) {
-        return originalMessage;
-    }
-
-    const retainedContent = Object.entries(getActiveCompanionResults(message))
-        .filter(([agentId, result]) => isRetainedCompanionResult(result) && (!(agentIds instanceof Set) || agentIds.has(agentId)))
-        .map(([, result]) => result)
-        .map(result => normalizeCompanionMacroSyntax(result.content ?? ''))
-        .map(content => String(resolveMacros(content) ?? '').trim())
-        .filter(Boolean);
+    const retainedContent = getCompanionChatHistoryContributions(message, resolveMacros, { agentIds })
+        .map(contribution => contribution.content);
 
     if (retainedContent.length === 0) {
         return includeOriginal ? originalMessage : '';

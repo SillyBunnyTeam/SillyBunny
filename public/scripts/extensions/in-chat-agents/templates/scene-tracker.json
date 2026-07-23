@@ -10,7 +10,7 @@
         "location",
         "time"
     ],
-    "version": 2,
+    "version": 3,
     "author": "Purachina",
     "prompt": "### Scene Tracker\nMark scene transitions, time shifts, and location changes. Use this EXACT format at the BEGINNING of the response when scene context changes:\n\n[SCENE|Location|Time|Weather/Atmosphere]\ndetail: MANDATORY; one-line sensory detail that informs the current environment\n[/SCENE]\n\nRules:\n- Appears at the TOP of responses where setting shifts\n- Never repeat if location/time has not changed\n- Time can be specific (3:47 PM) or atmospheric (late afternoon, the golden hour before dusk)\n- Weather/Atmosphere is a brief mood descriptor (humid, tense, festive)",
     "phase": "both",
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\[SCENE\\|[^\\]]*\\]",
+        "extractPattern": "\\[SCENE\\|[^\\]\\r\\n]*\\](?:(?!\\[SCENE(?=[:|\\]]))[\\s\\S])*?\\[/SCENE\\]",
         "extractVariable": "scene_data"
     },
     "enabled": false,

@@ -253,7 +253,8 @@ import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
-import { hasCompanionChatHistoryForHiddenHost, projectCompanionChatHistory, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { getCompanionChatHistoryContributions, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -5502,9 +5503,10 @@ export function getExtensionPromptMaxDepth() {
  * @param {string} [separator] Separator for joining multiple prompts
  * @param {number} [role] Role of the prompt
  * @param {boolean} [wrap] Wrap start and end with a separator
+ * @param {(entry: {key: string, prompt: object, value: string}) => void} [resolvedPromptCallback] Receives source prompts from the same macro expansion pass
  * @returns {Promise<string>} Extension prompt
  */
-export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true) {
+export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true, resolvedPromptCallback = null) {
     const filterByFunction = async (prompt) => {
         const hasFilter = typeof prompt.filter === 'function';
         if (hasFilter && !await prompt.filter()) {
@@ -5521,7 +5523,18 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
         .filter(filterByFunction);
     const prompts = await Promise.all(promptPromises);
 
-    let values = prompts.map(x => x.value.trim()).join(separator);
+    const promptKeyByValue = new Map(Object.keys(extension_prompts).map(key => [extension_prompts[key], key]));
+    const promptSegments = prompts.map((prompt, index) => ({
+        prompt,
+        key: promptKeyByValue.get(prompt) ?? '',
+        start: `\uE000ICA${index}S\uE001`,
+        end: `\uE000ICA${index}E\uE001`,
+    }));
+    const collectResolvedPrompts = typeof resolvedPromptCallback === 'function';
+    const collectedSegments = promptSegments.filter(segment => collectResolvedPrompts && segment.key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX));
+    let values = promptSegments.map(segment => collectedSegments.includes(segment)
+        ? instrumentInChatAgentPromptValue(segment.prompt.value, segment.start, segment.end)
+        : segment.prompt.value.trim()).join(separator);
     if (wrap && values.length && !values.startsWith(separator)) {
         values = separator + values;
     }
@@ -5530,6 +5543,20 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
     }
     if (values.length) {
         values = substituteParams(values);
+    }
+    if (collectResolvedPrompts) {
+        for (const segment of collectedSegments) {
+            const start = values.indexOf(segment.start);
+            const end = start >= 0 ? values.indexOf(segment.end, start + segment.start.length) : -1;
+            if (start >= 0 && end >= 0) {
+                resolvedPromptCallback({
+                    key: segment.key,
+                    prompt: segment.prompt,
+                    value: values.slice(start + segment.start.length, end),
+                });
+            }
+            values = values.replace(segment.start, '').replace(segment.end, '');
+        }
     }
     return values;
 }
@@ -6860,7 +6887,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // Occurs only if the generation is not aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage }, dryRun);
+    const companionFeedbackTarget = companionHistoryTarget
+        ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget }, dryRun);
 
     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
@@ -6883,7 +6912,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     if (selected_group && !is_group_generating) {
         if (!dryRun) {
             // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage });
+            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget });
         }
 
         const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
@@ -7023,16 +7052,19 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const originalMessage = chatItem.mes;
         const retainedAgentIds = companionChatHistory.get(chatItem);
         const hiddenCompanionHistory = chatItem.is_system && retainedAgentIds instanceof Set;
+        const resolveRetainedMacros = content => substituteParams(content, {
+            name2Override: String(chatItem.name ?? '').trim() || undefined,
+            original: hiddenCompanionHistory ? '' : originalMessage,
+        });
         // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
-        const contextSourceMessage = !retainedAgentIds
+        const retainedContributions = getCompanionChatHistoryContributions(chatItem, resolveRetainedMacros, {
+            agentIds: retainedAgentIds,
+        });
+        const contextSourceMessage = retainedContributions.length === 0
             ? originalMessage
-            : projectCompanionChatHistory(chatItem, content => substituteParams(content, {
-                name2Override: String(chatItem.name ?? '').trim() || undefined,
-                original: hiddenCompanionHistory ? '' : originalMessage,
-            }), {
-                agentIds: retainedAgentIds,
-                includeOriginal: !hiddenCompanionHistory,
-            });
+            : [hiddenCompanionHistory ? '' : originalMessage, ...retainedContributions.map(contribution => contribution.content)]
+                .filter(Boolean)
+                .join('\n\n');
         let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
@@ -7083,6 +7115,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             stripOocBlocksFromContext(regexedMessage, retainOoc),
             retainHtml,
         );
+        const agentContributions = retainedContributions
+            .filter(contribution => contribution.content && contextMessage.includes(contribution.content));
 
         if (worldInfoRegexedMessage !== undefined) {
             const worldInfoContextMessage = stripHtmlTagsFromContext(
@@ -7097,6 +7131,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             mes: contextMessage,
             extra: hiddenCompanionHistory ? {} : chatItem.extra,
             is_system: hiddenCompanionHistory ? false : chatItem.is_system,
+            ...(agentContributions.length > 0 && { agentContributions }),
             index,
         };
     }));

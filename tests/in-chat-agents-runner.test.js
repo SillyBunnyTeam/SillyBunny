@@ -702,7 +702,7 @@ describe('in-chat agent post-processing runner', () => {
             postProcess: {
                 enabled: true,
                 type: 'extract',
-                extractPattern: '\\[STATUS\\|[^\\]]*\\]',
+                extractPattern: '\\[STATUS\\|[^\\]]*\\][\\s\\S]*?\\[\\/STATUS\\]',
                 extractVariable: 'status_data',
                 promptTransformEnabled: false,
             },
@@ -866,7 +866,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
 
-        expect(injectCompanionFeedbackPrompts).toHaveBeenCalledWith([companionAgent]);
+        expect(injectCompanionFeedbackPrompts).toHaveBeenCalledWith([companionAgent], { excludeMessage: null });
         expect(extensionPrompts[`inchat_agent_${companionAgent.id}`]).toBeUndefined();
     });
 
@@ -1568,8 +1568,8 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.setCompanionResult(earlierReply, feedbackCompanion, { status: 'done', content: 'State one' });
         companionRunner.setCompanionResult(tailReply, feedbackCompanion, { status: 'done', content: 'Stale swipe state' });
 
-        // Assistant tail = swipe/regenerate of that message: its own state must not feed back.
-        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        // Explicit swipe/regenerate target: its own state must not feed back.
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion], { excludeMessage: tailReply });
         const injected = extensionPrompts['inchat_agent_companion_feedback-companion'];
         expect(injected.name).toBe('Companion');
         expect(injected.value).toContain('State one');
@@ -1579,6 +1579,23 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('includes an assistant tail in normal dry-run feedback previews', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'preview-feedback-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const tailReply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(tailReply);
+        companionRunner.setCompanionResult(tailReply, feedbackCompanion, { status: 'done', content: 'Latest preview note' });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+
+        expect(extensionPrompts['inchat_agent_companion_preview-feedback-companion'].value).toContain('Latest preview note');
     });
 
     test('excludes chat-history companion results from feedback prompts', async () => {
@@ -1849,6 +1866,330 @@ describe('in-chat agent post-processing runner', () => {
 
         const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
         expect(normalMessages[0].content).not.toContain('Repair mode: produce the requested result');
+    });
+
+    test('normalizes a valid tracker companion without calling the model', async () => {
+        const tracker = createCompanionAgent({
+            id: 'valid-tracker-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'error',
+            content: 'prefix\n[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]\nsuffix',
+            error: 'Old error',
+        });
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]',
+            error: '',
+        }));
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+        expect(saveChatDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('restores the complete prior tracker companion result after invalid repair output', async () => {
+        const tracker = createCompanionAgent({
+            id: 'invalid-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockResolvedValueOnce('This is not tracker output.');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            profileId: 'profile-a',
+            tokenUsage: { inputTokens: 12, outputTokens: 4 },
+        });
+        const previousResult = structuredClone(chat[0].extra.inChatAgentCompanionResults[tracker.id]);
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(previousResult);
+        expect(chat[0].extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    test('restores the prior tracker companion result when repair is cancelled', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'cancelled-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+        });
+        const previousResult = structuredClone(chat[0].extra.inChatAgentCompanionResults[tracker.id]);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual(previousResult);
+        expect(chat[0].extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+    });
+
+    test('removes a first tracker companion result when repair is cancelled', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'cancelled-first-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toBeUndefined();
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+    });
+
+    test('does not apply tracker companion repair after switching chats', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'chat-switch-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+        companionRunner.setCompanionResult(originalMessage, tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+        });
+        const previousResult = structuredClone(originalMessage.extra.inChatAgentCompanionResults[tracker.id]);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual(previousResult);
+        expect(chat[0].mes).toBe('Different chat reply');
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('removes a first tracker companion pending result after switching chats', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'chat-switch-first-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('stops a tracker companion batch after switching chats', async () => {
+        let resolveRepair;
+        const makeTracker = id => createCompanionAgent({
+            id,
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: `${id}_world_data`,
+            },
+        });
+        const firstTracker = makeTracker('first-chat-switch-tracker');
+        const secondTracker = makeTracker('second-chat-switch-tracker');
+        enabledAgents = [firstTracker, secondTracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+        for (const tracker of enabledAgents) {
+            companionRunner.setCompanionResult(originalMessage, tracker, {
+                status: 'done',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            });
+        }
+        const previousResults = structuredClone(originalMessage.extra.inChatAgentCompanionResults);
+
+        const running = companionRunner.runTrackerCompanionsOnMessage(0);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual([]);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults).toEqual(previousResults);
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('repairs only runnable tracker companions', async () => {
+        const runnableTracker = createCompanionAgent({
+            id: 'runnable-tracker-companion',
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        const nonRunnableTracker = createCompanionAgent({
+            id: 'non-runnable-tracker-companion',
+            category: 'tracker',
+            phase: 'post',
+            prompt: '',
+            postProcess: { enabled: false },
+        });
+        enabledAgents = [runnableTracker, nonRunnableTracker];
+        generateQuietPrompt.mockResolvedValueOnce('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], runnableTracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+        });
+        companionRunner.setCompanionResult(chat[0], nonRunnableTracker, {
+            status: 'done',
+            content: 'Unchanged custom state.',
+        });
+        const previousNonRunnable = structuredClone(chat[0].extra.inChatAgentCompanionResults[nonRunnableTracker.id]);
+
+        const results = await companionRunner.runTrackerCompanionsOnMessage(0);
+
+        expect(results).toHaveLength(1);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults[runnableTracker.id]).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]',
+        }));
+        expect(chat[0].extra.inChatAgentCompanionResults[nonRunnableTracker.id]).toEqual(previousNonRunnable);
+    });
+
+    test('stops tracker companion repair after cancellation', async () => {
+        let resolveFirstRepair;
+        const makeTracker = id => createCompanionAgent({
+            id,
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: `${id}_world_data`,
+            },
+        });
+        const firstTracker = makeTracker('first-cancelled-tracker');
+        const secondTracker = makeTracker('second-cancelled-tracker');
+        enabledAgents = [firstTracker, secondTracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveFirstRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration, getAgentGenerationCancelRevision } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        for (const tracker of enabledAgents) {
+            companionRunner.setCompanionResult(chat[0], tracker, {
+                status: 'done',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            });
+        }
+        const previousFirst = structuredClone(chat[0].extra.inChatAgentCompanionResults[firstTracker.id]);
+        const previousSecond = structuredClone(chat[0].extra.inChatAgentCompanionResults[secondTracker.id]);
+        const cancelRevision = getAgentGenerationCancelRevision();
+
+        const running = companionRunner.runTrackerCompanionsOnMessage(0, { cancelRevision });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveFirstRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual([previousFirst]);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults[firstTracker.id]).toEqual(previousFirst);
+        expect(chat[0].extra.inChatAgentCompanionResults[secondTracker.id]).toEqual(previousSecond);
     });
 
     test('feeds a companion its previous states when history is enabled', async () => {
@@ -3791,7 +4132,7 @@ describe('in-chat agent post-processing runner', () => {
         const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         chat.push({
             name: 'Assistant',
-            mes: 'Fresh reply\n[STATUS|Alice|Tired|Moderate]',
+            mes: 'Fresh reply\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]',
             is_user: false,
             is_system: false,
             extra: {},
@@ -3799,14 +4140,15 @@ describe('in-chat agent post-processing runner', () => {
 
         await runTrackerFixOnMessage(0);
 
-        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
         expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
     });
 
     test('manual tracker fix regenerates missing extract tracker blocks', async () => {
         usePreExtractTracker();
-        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Alice|Tired|Moderate]');
+        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
 
         const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         chat.push({
@@ -3819,11 +4161,174 @@ describe('in-chat agent post-processing runner', () => {
 
         await runTrackerFixOnMessage(0);
 
-        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
-        expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
+        expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.\n\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
         expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers fixed');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix preserves prepend placement for scene trackers', async () => {
+        usePreExtractTracker();
+        Object.assign(enabledAgents[0], {
+            id: 'agent-scene-tracker',
+            sourceTemplateId: 'tpl-scene-tracker',
+            prompt: 'Track the current scene.',
+        });
+        Object.assign(enabledAgents[0].postProcess, {
+            extractPattern: '\\[SCENE\\|[^\\]]*\\][\\s\\S]*?\\[\\/SCENE\\]',
+            extractVariable: 'scene_data',
+        });
+        generateQuietPrompt.mockResolvedValueOnce('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]');
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without a scene tracker.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toBe('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]\n\nFresh reply without a scene tracker.');
+        expect(chatMetadata.agent_scene_data).toBe('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix cancellation prevents later tracker requests', async () => {
+        usePreExtractTracker();
+        enabledAgents.push({
+            ...structuredClone(enabledAgents[0]),
+            id: 'agent-second-extract-tracker',
+            name: 'Second Extract Tracker',
+            postProcess: {
+                ...enabledAgents[0].postProcess,
+                extractVariable: 'second_status_data',
+            },
+        });
+
+        const { cancelAgentGeneration, runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        generateQuietPrompt.mockImplementationOnce(async () => {
+            cancelAgentGeneration();
+            return '[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]';
+        });
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without tracker blocks.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].mes).toBe('Fresh reply without tracker blocks.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(chatMetadata.agent_second_status_data).toBeUndefined();
+    });
+
+    test('manual tracker fix does not mutate a newly selected chat', async () => {
+        usePreExtractTracker();
+        let resolveRepair;
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const originalMessage = {
+            name: 'Assistant',
+            mes: 'Fresh reply without tracker blocks.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(originalMessage);
+
+        const running = runTrackerFixOnMessage(0);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { name: 'Assistant', mes: 'Different chat reply.', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]');
+
+        await running;
+        expect(chat[0].mes).toBe('Different chat reply.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('manual tracker fix rejects invalid generated blocks atomically', async () => {
+        usePreExtractTracker();
+        generateQuietPrompt.mockResolvedValueOnce('No tracker block was produced.');
+        chatMetadata.agent_status_data = '[STATUS|Stale|Value|Old]\nstale\n[/STATUS]';
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without a tracker.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toBe('Fresh reply without a tracker.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers fixed');
+    });
+
+    test('manual tracker fix keeps metadata from the newest valid tracker state', async () => {
+        usePreExtractTracker();
+        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Older|Recovered|Mild]\nrepaired\n[/STATUS]');
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push(
+            { name: 'Assistant', mes: 'Older reply without a tracker.', is_user: false, is_system: false, extra: {} },
+            { name: 'User', mes: 'Continue.', is_user: true, is_system: false, extra: {} },
+            { name: 'Assistant', mes: 'Newest reply\n[STATUS|Newest|Current|Severe]\ncurrent\n[/STATUS]', is_user: false, is_system: false, extra: {} },
+        );
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toContain('[STATUS|Older|Recovered|Mild]');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Newest|Current|Severe]\ncurrent\n[/STATUS]');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix preserves unrelated regex snapshot references', async () => {
+        usePreExtractTracker();
+        const tracker = enabledAgents[0];
+        useRegexOnlyAgent();
+        enabledAgents = [tracker, enabledAgents[0]];
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply\n[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['agent-regex-only'],
+                    generationType: 'normal',
+                    regexScriptRefs: [{ agentId: 'agent-regex-only', scriptId: 'regex-script-1', revision: 'existing-revision' }],
+                    edited: false,
+                },
+            },
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].extra.inChatAgents.regexScriptRefs).toEqual([
+            expect.objectContaining({ agentId: 'agent-regex-only', scriptId: 'regex-script-1' }),
+        ]);
     });
 
     test('snapshots regex-only agents on streamed tokens before final message events', async () => {

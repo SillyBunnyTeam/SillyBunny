@@ -150,15 +150,18 @@ describe('in-chat agents generation UI wiring', () => {
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);");
         expect(indexSource).toContain("prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'))");
         expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
+        expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
+        expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
         expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
         expect(coreScriptSource).toContain('coreChat.filter(message => message !== companionRewriteTarget)');
         expect(coreScriptSource).toContain('companionRewriteTarget && !chat.includes(companionRewriteTarget)');
         expect(coreScriptSource).toContain('policyMessages: companionPolicyMessages');
         expect(coreScriptSource.match(/companionHistoryTarget: companionRewriteTarget/g)).toHaveLength(2);
         expect(coreScriptSource).toContain('hasCompanionChatHistoryForHiddenHost(x)');
-        expect(coreScriptSource).toContain('projectCompanionChatHistory(chatItem');
+        expect(coreScriptSource).toContain('getCompanionChatHistoryContributions(chatItem, resolveRetainedMacros');
         expect(coreScriptSource).toContain("original: hiddenCompanionHistory ? '' : originalMessage");
-        expect(coreScriptSource).toContain('includeOriginal: !hiddenCompanionHistory');
+        expect(coreScriptSource).toContain('const contextSourceMessage = retainedContributions.length === 0');
+        expect(coreScriptSource).toContain("[hiddenCompanionHistory ? '' : originalMessage, ...retainedContributions.map(contribution => contribution.content)]");
         expect(coreScriptSource).toContain("const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');");
         expect(coreScriptSource).toContain('extra: hiddenCompanionHistory ? {} : chatItem.extra');
         expect(coreScriptSource).toContain('is_system: hiddenCompanionHistory ? false : chatItem.is_system');
@@ -204,23 +207,29 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('await migrateLevelUpStatsContextLinks();');
     });
 
-    test('targets tracker fixes only at assistant messages while allowing connected companions on user messages', () => {
+    test('targets inline and companion tracker fixes independently', () => {
         const visibilitySource = getFunctionSource('updateFixTrackersButtonVisibility');
         const runSource = getFunctionSource('runTrackerFixFromButton');
         const globalButtonStart = indexSource.indexOf("$('#ica--fixTrackers').on('click'");
         const globalButtonEnd = indexSource.indexOf("$('#ica--templatesCallout')", globalButtonStart);
         const globalButtonSource = indexSource.slice(globalButtonStart, globalButtonEnd);
 
-        expect(visibilitySource).toContain('hasTrackerCandidates');
-        expect(visibilitySource).toContain('hasConnectedCandidates');
+        expect(visibilitySource).toContain('hasInlineCandidates');
+        expect(visibilitySource).toContain('hasCompanionCandidates');
         expect(visibilitySource).toContain('const isAssistantMessage = isNonSystemMessage');
-        expect(visibilitySource).toContain('(hasTrackerCandidates && isAssistantMessage)');
-        expect(visibilitySource).toContain('(hasConnectedCandidates && isNonSystemMessage)');
-        expect(runSource).toContain('canRunTrackersOnMessage');
-        expect(runSource).toContain('hasTrackers && canRunTrackersOnMessage');
+        expect(visibilitySource).toContain('(hasInlineCandidates && isAssistantMessage)');
+        expect(visibilitySource).toContain('(hasCompanionCandidates && isNonSystemMessage)');
+        expect(runSource).toContain('hasRunnableInlineTrackerAgents()');
+        expect(runSource).toContain('hasRunnableCompanionTrackerAgents()');
+        expect(runSource).toContain('const cancelRevision = getAgentGenerationCancelRevision();');
+        expect(runSource).toContain('const fixChatId = getCurrentChatId();');
+        expect(runSource).toContain('isFixContextCurrent()');
+        expect(runSource).toContain('runTrackerFixOnMessage(inlineMessageIndex, { cancelRevision })');
+        expect(runSource).toContain('runTrackerCompanionsOnMessage(companionMessageIndex, { cancelRevision })');
         expect(runSource).toContain('No assistant reply selected to fix trackers on.');
-        expect(globalButtonSource).toContain('hasConnectedCompanionAgents()');
-        expect(globalButtonSource).toContain('getLastAssistantMessageIndex()');
+        expect(globalButtonSource).toContain('const inlineMessageIndex = getLastAssistantMessageIndex();');
+        expect(globalButtonSource).toContain('const companionMessageIndex = getLatestValidCompanionMessageIndex();');
+        expect(globalButtonSource).toContain('{ inlineMessageIndex, companionMessageIndex }');
     });
 
     test('populates companion dependency selector during editor setup', () => {

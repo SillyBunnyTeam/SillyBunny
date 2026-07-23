@@ -101,6 +101,7 @@ import {
 import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier } from './in-chat-agent-inspection.js';
 
 export {
     openai_messages_count,
@@ -856,7 +857,18 @@ function setOpenAIMessages(chat) {
             });
         }
 
-        const message = { 'role': role, 'content': content, name: name, 'media': media, 'mediaDisplay': mediaDisplay, 'mediaIndex': mediaIndex, 'invocations': invocations, 'signature': signature, 'reasoning': reasoning };
+        const message = {
+            'role': role,
+            'content': content,
+            name: name,
+            'media': media,
+            'mediaDisplay': mediaDisplay,
+            'mediaIndex': mediaIndex,
+            'invocations': invocations,
+            'signature': signature,
+            'reasoning': reasoning,
+            ...(Array.isArray(chat[j].agentContributions) && { agentContributions: structuredClone(chat[j].agentContributions) }),
+        };
         if (hasPromptPayload(message)) {
             messages[i] = message;
         }
@@ -1080,13 +1092,39 @@ async function populationInjectionPrompts(prompts, messages) {
                     .join(separator);
 
                 // Get extension prompt
+                const extensionContributions = [];
                 const extensionPrompt = order === extensionPromptsOrder
-                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap)
+                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap, ({ key, prompt, value }) => {
+                        if (!key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX) || !value.trim()) return;
+                        extensionContributions.push({
+                            identifier: key.replace(/\W/g, '_'),
+                            name: String(prompt.name ?? '').trim() || key,
+                            role,
+                            content: value.trim(),
+                            kind: getInChatAgentContributionKind(key),
+                        });
+                    })
                     : '';
                 const jointPrompt = [rolePrompts, extensionPrompt].filter(x => x).map(x => x.trim()).join(separator);
 
+                const promptContributions = orderPrompts
+                    .filter(prompt => prompt.role === role && isInChatAgentPromptIdentifier(prompt.identifier) && prompt.content)
+                    .map(prompt => ({
+                        identifier: prompt.identifier,
+                        name: String(prompt.name ?? '').trim() || prompt.identifier,
+                        role,
+                        content: String(prompt.content).trim(),
+                        kind: getInChatAgentContributionKind(prompt.identifier),
+                    }));
+                const agentContributions = [...promptContributions, ...extensionContributions];
+
                 if (jointPrompt && jointPrompt.length) {
-                    roleMessages.push({ 'role': role, 'content': jointPrompt, injected: true });
+                    roleMessages.push({
+                        'role': role,
+                        'content': jointPrompt,
+                        injected: true,
+                        ...(agentContributions.length > 0 && { agentContributions }),
+                    });
                 }
             }
         }
@@ -1181,6 +1219,9 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
         const prompt = new Prompt(chatPrompt);
         prompt.identifier = `chatHistory-${messages.length - index}`;
         const chatMessage = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
+        if (Array.isArray(chatPrompt.agentContributions)) {
+            chatMessage.agentContributions = structuredClone(chatPrompt.agentContributions);
+        }
 
         if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
             const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
@@ -1834,6 +1875,7 @@ export async function prepareOpenAIMessages({
             chatCompletion.log('----------------------------------------------------');
         }
     } finally {
+        await chatCompletion.buildRuntimeAgentMessages();
         // Pass chat completion to prompt manager for inspection
         promptManager.setChatCompletion(chatCompletion);
 
@@ -5952,6 +5994,8 @@ class Message {
     signature = null;
     /** @type {string?} */
     reasoning = null;
+    /** @type {object[]|null} */
+    agentContributions = null;
 
     /**
      * @constructor
@@ -6390,6 +6434,7 @@ export class ChatCompletion {
     constructor() {
         this.tokenBudget = 0;
         this.messages = new MessageCollection('root');
+        this.runtimeAgentMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
         this.loggingEnabled = false;
         this.overriddenPrompts = [];
     }
@@ -6401,6 +6446,27 @@ export class ChatCompletion {
      */
     getMessages() {
         return this.messages;
+    }
+
+    getRuntimeAgentMessages() {
+        return this.runtimeAgentMessages;
+    }
+
+    async buildRuntimeAgentMessages() {
+        const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
+
+        try {
+            for (const record of collectInChatAgentInspectionRecords(this.messages.flatten())) {
+                const message = await Message.createAsync(record.role, record.content, record.identifier);
+                message.displayName = record.name;
+                message.kind = record.kind;
+                runtimeMessages.add(message);
+            }
+        } catch (error) {
+            console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
+        }
+
+        this.runtimeAgentMessages = runtimeMessages;
     }
 
     /**
