@@ -930,6 +930,10 @@ function refreshPromptSections() {
         let currentSection = null;
 
         rows.forEach(row => {
+            if (row.dataset.pmRuntime === 'true') {
+                return;
+            }
+
             const promptName = getPromptRowName(row);
 
             if (isDividerPrompt(promptName, dividerRegex, settings)) {

@@ -2376,8 +2376,7 @@ class PromptManager {
             ? `${prefix}prompt_manager_prompt_selected`
             : '';
         listItemHtml += `
-            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}">
-                <span class="prompt-manager-control-placeholder" aria-hidden="true"></span>
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
                 <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
                     <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
                     <a title="Agents" class="prompt-manager-inspect-action">Agents</a>

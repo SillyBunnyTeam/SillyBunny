@@ -104,9 +104,12 @@ describe('In-Chat Agent prompt inspection', () => {
         expect(RUNTIME_AGENTS_IDENTIFIER).toBe('sillybunnyRuntimeAgents');
         expect(rowSource).toContain('>Agents</a>');
         expect(rowSource).toContain('prompt-manager-inspect-action');
+        expect(rowSource).toContain('prompt-manager-runtime-row');
+        expect(rowSource).toContain('data-pm-runtime="true"');
         expect(rowSource).not.toContain('prompt_manager_prompt_draggable');
         expect(rowSource).not.toContain('prompt-manager-toggle-action');
         expect(rowSource).not.toContain('prompt-manager-edit-action');
+        expect(rowSource).not.toContain('<span class="prompt-manager-control-placeholder" aria-hidden="true"></span>\n                <span class="${prefix}prompt_manager_prompt_name"');
         expect(promptManagerSource).toContain("this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)");
         expect(promptManagerSource).toContain("this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect'");
         expect(promptManagerSource).toContain("messageList.innerHTML = '';\n                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);");
@@ -115,5 +118,20 @@ describe('In-Chat Agent prompt inspection', () => {
         expect(openaiSource).not.toContain('this.messages.add(runtimeMessages)');
         expect(settingsSource).not.toContain(RUNTIME_AGENTS_IDENTIFIER);
         expect(presetSource).not.toContain(RUNTIME_AGENTS_IDENTIFIER);
+    });
+
+    test('keeps runtime rows outside Bunny Preset Tools sections', () => {
+        const presetToolsSource = readFileSync(path.join(
+            repoRoot,
+            'public',
+            'scripts',
+            'extensions',
+            'third-party',
+            'BunnyPresetTools',
+            'content.js',
+        ), 'utf8');
+
+        expect(presetToolsSource).toContain("if (row.dataset.pmRuntime === 'true')");
+        expect(presetToolsSource).toContain("if (row.dataset.pmRuntime === 'true') {\n                return;");
     });
 });
