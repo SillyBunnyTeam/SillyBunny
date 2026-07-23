@@ -4400,10 +4400,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 /* Bottom chat management bar */
 #nonQRFormItems {
     display: grid !important;
-    grid-template-columns: var(--sb-composer-side-rail-width, min(16%, 132px)) minmax(0, 1fr) var(--sb-composer-side-rail-width, min(16%, 132px)) !important;
+    grid-template-columns: max-content minmax(0, 1fr) max-content !important;
     grid-template-areas: 'tools input action' !important;
     align-items: center !important;
-    gap: 0 4px !important;
+    gap: 0 6px !important;
     min-width: 0 !important;
     overflow: visible !important;
     box-sizing: border-box !important;
@@ -4411,9 +4411,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #leftSendForm {
     grid-area: tools !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: min(35vw, calc(var(--sb-composer-action-size, 38px) * 6 + 30px)) !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
     scrollbar-width: none !important;
@@ -4435,9 +4435,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #rightSendForm {
     grid-area: action !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: max-content !important;
     overflow: visible !important;
     justify-self: end !important;
     justify-content: flex-end !important;
@@ -4451,7 +4451,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 #send_form .mes_stop,
@@ -4463,7 +4463,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 @media screen and (min-width: 1001px) {
