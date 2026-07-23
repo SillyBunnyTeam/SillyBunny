@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const indexSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'index.js'), 'utf8');
 const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
+const agentRunnerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'agent-runner.js'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
 const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
 const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
@@ -153,6 +154,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
+        expect(agentRunnerSource).toContain('companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes)');
         expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
         expect(coreScriptSource).toContain('coreChat.filter(message => message !== companionRewriteTarget)');
         expect(coreScriptSource).toContain('companionRewriteTarget && !chat.includes(companionRewriteTarget)');

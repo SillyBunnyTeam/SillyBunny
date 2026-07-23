@@ -1734,11 +1734,70 @@ describe('in-chat agent post-processing runner', () => {
         const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
         const guardPrompt = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
-        expect(guardPrompt.value).toBe('HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Proceed with your normal story reply only.');
+        expect(guardPrompt.value).toBe('HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. NEVER reproduce, paraphrase, update, restate, or wrap any reply content in tracker formats inside `auxiliary notes`. Proceed with your normal story reply only.');
         expect(reputationPrompt).not.toContain('HARD STOP');
         expect(eventPrompt).not.toContain('HARD STOP');
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
         expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
+    });
+
+    test('removes complete auxiliary tracker echoes while preserving unrelated blocks', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = [
+            'The scene continues normally.',
+            '[Parallel Off-Screen - auxiliary notes]',
+            '[PARALLEL|District|Complication]',
+            '- Echoed tracker content',
+            '[/PARALLEL]',
+            '[CHOICES]',
+            '- Keep this unrelated block',
+            '[/CHOICES]',
+        ].join('\n\n');
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['PARALLEL'])).toBe([
+            'The scene continues normally.',
+            '[CHOICES]',
+            '- Keep this unrelated block',
+            '[/CHOICES]',
+        ].join('\n\n'));
+    });
+
+    test('leaves malformed auxiliary echoes intact to avoid deleting adjacent prose', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story before.\n\n[PARALLEL|District|Complication]\nUnclosed tracker\nStory after.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['PARALLEL'])).toBe(response);
+    });
+
+    test('removes echoed retained Companion trackers before post-processing the reply', async () => {
+        const tracker = createCompanionAgent({
+            id: 'parallel-tracker',
+            companion: { includeInChatHistory: true },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ stripAuxiliaryTrackerEchoes: companionRunner.stripAuxiliaryTrackerEchoes });
+        initAgentRunner();
+        const priorReply = { mes: 'Prior reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const generatedReply = {
+            mes: 'Narrative reply.\n\n[PARALLEL|District|Complication]\nEchoed state.\n[/PARALLEL]',
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(priorReply, generatedReply);
+        companionRunner.setCompanionResult(priorReply, tracker, {
+            status: 'done',
+            content: '[PARALLEL|District|Complication]\nSource state.\n[/PARALLEL]',
+        });
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(generatedReply.mes)).toBe('Narrative reply.');
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(generatedReply.mes).toBe('Narrative reply.');
+        expect(saveChatDebounced).toHaveBeenCalled();
     });
 
     test('leaves non-tracker feedback verbatim with no anti-echo guard', async () => {

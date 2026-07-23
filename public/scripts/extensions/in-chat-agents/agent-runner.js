@@ -3817,6 +3817,14 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         let chatStateChanged = false;
         let messageDisplayChanged = false;
 
+        const cleanedAuxiliaryEchoes = companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes);
+        if (typeof cleanedAuxiliaryEchoes === 'string' && cleanedAuxiliaryEchoes !== normalizeContentText(message.mes)) {
+            message.mes = cleanedAuxiliaryEchoes;
+            await syncPromptTransformMessageStateAsync(message, messageIndex);
+            chatStateChanged = true;
+            messageDisplayChanged = true;
+        }
+
         // Companions normally run last so they see the post-transform reply; the concurrent
         // option trades that for speed and runs them against the current reply alongside the passes.
         const companionStageArgs = { messageIndex, message, generationType, activeAgents };

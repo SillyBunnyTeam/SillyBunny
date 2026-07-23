@@ -52,7 +52,7 @@ import {
     normalizePlotCompassObjective,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
-import { normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
+import { findTrackerBlocks, normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
 
 export { COMPANION_RESULTS_EXTRA_KEY };
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -818,8 +818,9 @@ const COMPANION_TASK_ANCHOR = `[Task]\nUse the conversation above only as read-o
 // trackers (author's notes / world info) are NOT routed through this path and stay unaffected.
 // Detection is dynamic so custom tracker tags are covered automatically, while one shared prompt
 // covers every tracker companion without repeating the guard in each auxiliary-notes block.
-const COMPANION_TRACKER_TAG_PATTERN = /\[([A-Z][A-Z0-9_]*)\|/g;
-const COMPANION_TRACKER_ECHO_GUARD = 'HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Proceed with your normal story reply only.';
+const COMPANION_TRACKER_TAG_PATTERN = /\[([A-Z][A-Z0-9_]*)(?::[^|\]\n]+)?\|/g;
+const COMPANION_TRACKER_ECHO_GUARD = 'HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. NEVER reproduce, paraphrase, update, restate, or wrap any reply content in tracker formats inside `auxiliary notes`. Proceed with your normal story reply only.';
+let activeFeedbackTrackerTags = new Set();
 
 function extractTrackerTags(text) {
     if (!text) {
@@ -830,6 +831,53 @@ function extractTrackerTags(text) {
         tags.add(match[1].toUpperCase());
     }
     return [...tags];
+}
+
+function getAuxiliaryTrackerTags() {
+    const tags = new Set(activeFeedbackTrackerTags);
+
+    for (const message of chat) {
+        for (const result of Object.values(getCompanionResults(message))) {
+            if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
+            extractTrackerTags(result.content).forEach(tag => tags.add(tag));
+        }
+    }
+
+    return tags;
+}
+
+/**
+ * Removes complete tracker blocks echoed from Companion auxiliary context.
+ * Unclosed blocks remain intact rather than risking removal of adjacent story prose.
+ * @param {string} text
+ * @param {Iterable<string>} tags
+ * @returns {string}
+ */
+export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags()) {
+    const source = String(text ?? '').replaceAll(/\r\n?/g, '\n');
+    const ranges = [];
+
+    for (const tag of tags) {
+        for (const block of findTrackerBlocks(source, String(tag ?? '').trim())) {
+            if (block.complete) {
+                ranges.push({ start: block.start, end: block.end });
+            }
+        }
+    }
+
+    if (ranges.length === 0) {
+        return source;
+    }
+
+    let cleaned = source;
+    for (const range of ranges.sort((left, right) => right.start - left.start)) {
+        cleaned = cleaned.slice(0, range.start) + cleaned.slice(range.end);
+    }
+
+    return cleaned
+        .replace(/^\s*\[[^\]\n]+ - auxiliary notes\]\s*$/gim, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function getFormatInstruction(format) {
@@ -1674,7 +1722,8 @@ export async function runCompanionStage({ messageIndex, message, generationType 
 export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessage = null } = {}) {
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
-    let hasTrackerFeedback = false;
+    const feedbackTrackerTags = new Set();
+    activeFeedbackTrackerTags = feedbackTrackerTags;
 
     for (const agent of activeAgents) {
         if (!isCompanionAgent(agent)) {
@@ -1703,7 +1752,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        hasTrackerFeedback ||= extractTrackerTags(body).length > 0;
+        extractTrackerTags(body).forEach(tag => feedbackTrackerTags.add(tag));
         const label = `[${String(agent.name ?? 'Companion').trim()} - auxiliary notes]`;
 
         setExtensionPrompt(
@@ -1718,7 +1767,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
         );
     }
 
-    if (hasTrackerFeedback) {
+    if (feedbackTrackerTags.size > 0) {
         setExtensionPrompt(
             COMPANION_TRACKER_ECHO_GUARD_KEY,
             COMPANION_TRACKER_ECHO_GUARD,
@@ -1964,6 +2013,7 @@ export function initCompanionRunner() {
     registerCompanionRuntime({
         runCompanionStage,
         injectCompanionFeedbackPrompts,
+        stripAuxiliaryTrackerEchoes,
         runCompanionAgentOnMessage,
         applyAgentPostPassesToCompanionResult,
     });
