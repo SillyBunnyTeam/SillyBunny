@@ -36,12 +36,14 @@ function getMediaQueryPxValues(cssSource) {
 // sillybunny-mobile-shell.css raised 665 -> 677: phone-only edge-to-edge
 // composer and safe-area overrides need to beat upstream mobile padding and
 // border rules without affecting desktop.
+// sillybunny-mobile-shell.css raised 677 -> 685: the unified composer surface
+// and input state styling need to override upstream mobile composer rules.
 // sillybunny-paper-theme.css starts at 55: the phone-only paper texture and
 // chrome adjustment sheet is budgeted from introduction.
 // sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
 // override upstream !important avatar alignment rules for missing avatars.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
-    'sillybunny-mobile-shell.css': 677,
+    'sillybunny-mobile-shell.css': 685,
     'sillybunny-paper-theme.css': 55,
     'sillybunny-tabs.css': 386,
     'sillybunny-chat-styles.css': 225,
