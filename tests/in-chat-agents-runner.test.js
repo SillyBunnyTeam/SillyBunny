@@ -1899,6 +1899,34 @@ describe('in-chat agent post-processing runner', () => {
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
     });
 
+    test('fixes a single malformed tracker Companion card without calling the model', async () => {
+        const tracker = createCompanionAgent({
+            id: 'malformed-tracker-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n/WORLD]',
+        });
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]',
+        }));
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+    });
+
     test('restores the complete prior tracker companion result after invalid repair output', async () => {
         const tracker = createCompanionAgent({
             id: 'invalid-repair-companion',
@@ -1916,7 +1944,7 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
         companionRunner.setCompanionResult(chat[0], tracker, {
             status: 'done',
-            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
             profileId: 'profile-a',
             tokenUsage: { inputTokens: 12, outputTokens: 4 },
         });
@@ -1950,7 +1978,7 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
         companionRunner.setCompanionResult(chat[0], tracker, {
             status: 'done',
-            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
         });
         const previousResult = structuredClone(chat[0].extra.inChatAgentCompanionResults[tracker.id]);
 
@@ -2013,7 +2041,7 @@ describe('in-chat agent post-processing runner', () => {
         chat.push(originalMessage);
         companionRunner.setCompanionResult(originalMessage, tracker, {
             status: 'done',
-            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
         });
         const previousResult = structuredClone(originalMessage.extra.inChatAgentCompanionResults[tracker.id]);
 
@@ -2087,7 +2115,7 @@ describe('in-chat agent post-processing runner', () => {
         for (const tracker of enabledAgents) {
             companionRunner.setCompanionResult(originalMessage, tracker, {
                 status: 'done',
-                content: '[WORLD|Culture|Market]\nbroken detail without closer',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
             });
         }
         const previousResults = structuredClone(originalMessage.extra.inChatAgentCompanionResults);
@@ -2130,7 +2158,7 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
         companionRunner.setCompanionResult(chat[0], runnableTracker, {
             status: 'done',
-            content: '[WORLD|Culture|Market]\nbroken detail without closer',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
         });
         companionRunner.setCompanionResult(chat[0], nonRunnableTracker, {
             status: 'done',
@@ -2174,7 +2202,7 @@ describe('in-chat agent post-processing runner', () => {
         for (const tracker of enabledAgents) {
             companionRunner.setCompanionResult(chat[0], tracker, {
                 status: 'done',
-                content: '[WORLD|Culture|Market]\nbroken detail without closer',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
             });
         }
         const previousFirst = structuredClone(chat[0].extra.inChatAgentCompanionResults[firstTracker.id]);

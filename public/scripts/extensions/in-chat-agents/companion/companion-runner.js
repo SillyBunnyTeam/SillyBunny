@@ -52,7 +52,7 @@ import {
     normalizePlotCompassObjective,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
-import { getTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
+import { normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
 
 export { COMPANION_RESULTS_EXTRA_KEY };
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -1236,7 +1236,7 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
         if (repair && agent.category === 'tracker') {
-            const payload = getTrackerRepairPayload(agent, content).payload;
+            const payload = normalizeCompanionTrackerRepairPayload(agent, content).payload;
             if (!payload) {
                 throw new Error('Tracker repair returned invalid output.');
             }
@@ -1702,7 +1702,7 @@ export async function runCompanionAgentOnMessage(agentId, messageIndex, { cancel
     const previousResult = storedResult && typeof storedResult === 'object' ? structuredClone(storedResult) : null;
     const previousContent = getCompanionResultContent(message, agent.id);
     if (repair && agent.category === 'tracker') {
-        const existingPayload = getTrackerRepairPayload(agent, previousContent).payload;
+        const existingPayload = normalizeCompanionTrackerRepairPayload(agent, previousContent).payload;
         if (existingPayload) {
             if (existingPayload !== previousContent || storedResult?.status !== 'done') {
                 updateCompanionResult(message, agent.id, { status: 'done', content: existingPayload, error: '' });

@@ -10,8 +10,11 @@ import {
     getAgentRegexScripts,
     getCompanionConfig,
     getEnabledAgents,
+    getHiddenAgentIds,
+    isAgentHidden,
     isCompanionAgent,
     saveAgent,
+    setHiddenAgentIds,
 } from '../agent-store.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from '../regex-scripts.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
@@ -44,6 +47,11 @@ import {
 let companionUiInitialized = false;
 let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
+let companionCardHooks = null;
+
+export function configureCompanionCardUi(hooks) {
+    companionCardHooks = hooks;
+}
 
 function normalizeChatroomField(value = '') {
     return String(value ?? '').replaceAll('|', '/').replaceAll(/\r?\n/g, ' ').trim();
@@ -521,6 +529,14 @@ function buildCompanionCard(agentId, result, message) {
     // Results saved before profile labels were resolved to names may carry raw profile ids.
     const meta = [profileLabel, modelLabel].filter(isReadableLabel).join(' / ');
     const openAttribute = result.collapsed ? '' : ' open';
+    const agent = getAgentById(agentId);
+    const isHidden = isAgentHidden(agentId);
+    const hiddenTitle = isHidden ? 'Unhide this companion' : 'Hide this companion (skipped on auto-trigger)';
+    const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
+    const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
+    const settingsButton = agent
+        ? '<button type="button" class="ica--companion-action" data-action="settings" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
+        : '';
 
     return `
         <details class="ica--companion-card ica--companion-card--${escapeHtml(status)}" data-agent-id="${escapeHtml(agentId)}"${openAttribute}>
@@ -533,6 +549,8 @@ function buildCompanionCard(agentId, result, message) {
                 ${meta ? `<span class="ica--companion-meta">${escapeHtml(meta)}</span>` : ''}
                 <span class="ica--companion-status">${escapeHtml(getStatusLabel(status))}</span>
                 <span class="ica--companion-actions">
+                    <button type="button" class="ica--companion-action" data-action="hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>
+                    ${settingsButton}
                     <button type="button" class="ica--companion-action" data-action="regenerate" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--companion-action" data-action="edit" title="Edit companion note" aria-label="Edit companion note"><i class="fa-solid fa-pen-to-square"></i></button>
                     <button type="button" class="ica--companion-action" data-action="copy" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
@@ -800,6 +818,23 @@ async function handleCompanionAction(event) {
     const { messageIndex, agentId, message, result } = getCompanionActionContext(event.currentTarget);
     if (!isValidCompanionMessage(message) || !agentId) {
         toastr.warning('Invalid companion note.');
+        return;
+    }
+
+    if (action === 'hide') {
+        const hiddenAgentIds = getHiddenAgentIds();
+        const nextHiddenAgentIds = hiddenAgentIds.includes(agentId)
+            ? hiddenAgentIds.filter(id => id !== agentId)
+            : [...hiddenAgentIds, agentId];
+        setHiddenAgentIds(nextHiddenAgentIds);
+        renderCompanionResultsForMessage(messageIndex);
+        return;
+    }
+
+    if (action === 'settings') {
+        if (getAgentById(agentId)) {
+            companionCardHooks?.openEditor?.(agentId);
+        }
         return;
     }
 

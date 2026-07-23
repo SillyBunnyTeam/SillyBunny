@@ -286,6 +286,22 @@ describe('in-chat agents generation UI wiring', () => {
         expect(handlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
     });
 
+    test('offers chosen-target application from Quick Toggles', () => {
+        const quickStart = indexSource.indexOf("quickItem.find('.ica--quick-chip-apply-target').on('click'");
+        const quickEnd = indexSource.indexOf("quickItem.find('.ica--quick-chip-pin').on('click'", quickStart);
+        const quickHandlerSource = indexSource.slice(quickStart, quickEnd);
+
+        expect(indexSource).toContain('const canApplyToChosenTarget = !isPathfinderAgent(agent) && !companionExecution;');
+        expect(indexSource).toContain('ica--quick-chip-apply-target');
+        expect(quickHandlerSource).toContain('const targets = await pickManualAgentRunTargets(agent);');
+        expect(quickHandlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
+    });
+
+    test('wires inline Companion card settings to the shared editor', () => {
+        expect(indexSource).toContain("import { configureCompanionCardUi, initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';");
+        expect(indexSource).toContain('configureCompanionCardUi({\n        openEditor: agentId => openEditor(agentId),\n    });');
+    });
+
     test('allows the manual reply target to expand to an assistant message range', () => {
         const parserSource = getFunctionSource('getManualAgentRunMessageIndices');
         const pickerSource = getFunctionSource('pickManualAgentRunTargets');

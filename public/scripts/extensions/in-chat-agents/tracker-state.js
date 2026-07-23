@@ -180,6 +180,39 @@ export function getTrackerRepairPayload(agent = {}, text = '') {
 }
 
 /**
+ * Companion cards are sidecar tracker output rather than story prose. Repair a
+ * single card-local missing or mistyped closer before asking the model again.
+ * Inline message repair intentionally continues to reject malformed spans.
+ * @param {object} agent
+ * @param {string} text
+ */
+export function normalizeCompanionTrackerRepairPayload(agent = {}, text = '') {
+    const source = normalizeText(text);
+    const inspection = getTrackerRepairPayload(agent, source);
+    if (inspection.payload) {
+        return inspection;
+    }
+
+    const malformedBlocks = inspection.blocks.filter(block => !block.complete);
+    const firstContentIndex = source.search(/\S/u);
+    if (!inspection.tag || malformedBlocks.length !== 1 || inspection.blocks.length !== 1 || malformedBlocks[0].start !== firstContentIndex) {
+        return inspection;
+    }
+
+    const escapedTag = escapeRegex(inspection.tag);
+    const malformedCloser = new RegExp(`(?:\\r?\\n)?\\s*\\/?${escapedTag}\\]\\s*$`, 'i');
+    let normalized = source.trim();
+    if (malformedCloser.test(normalized)) {
+        normalized = normalized.replace(malformedCloser, `\n[/${inspection.tag}]`);
+    }
+    if (!new RegExp(`\\[\\/${escapedTag}\\]\\s*$`, 'i').test(normalized)) {
+        normalized = `${normalized}\n[/${inspection.tag}]`;
+    }
+
+    return getTrackerRepairPayload(agent, normalized);
+}
+
+/**
  * Atomically replaces an agent's existing complete blocks, repairs a safely
  * bounded trailing malformed block, or inserts a missing tracker payload.
  * @param {object} agent

@@ -243,7 +243,8 @@
 
 .ica--quick-chip-main,
 .ica--quick-chip-pin,
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     border: none;
     color: inherit;
     -webkit-appearance: none;
@@ -266,7 +267,8 @@
 
 .ica--quick-chip-main:hover,
 .ica--quick-chip-pin:hover,
-.ica--quick-chip-apply:hover {
+.ica--quick-chip-apply:hover,
+.ica--quick-chip-apply-target:hover {
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 18%, transparent);
 }
 
@@ -327,7 +329,8 @@
     flex: 0 0 auto;
 }
 
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     width: 38px;
     min-width: 38px;
     display: inline-flex;
@@ -345,7 +348,9 @@
 }
 
 .ica--quick-chip-apply:hover,
-.ica--quick-chip-apply:focus-visible {
+.ica--quick-chip-apply:focus-visible,
+.ica--quick-chip-apply-target:hover,
+.ica--quick-chip-apply-target:focus-visible {
     opacity: 1;
     color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
 }
@@ -759,7 +764,8 @@ button.ica--card-pill--version-update {
     }
 
     .ica--quick-chip-pin,
-    .ica--quick-chip-apply {
+    .ica--quick-chip-apply,
+    .ica--quick-chip-apply-target {
         width: 30px;
         min-width: 30px;
     }

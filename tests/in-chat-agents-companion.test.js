@@ -103,8 +103,11 @@ describe('companion card ui', () => {
             getAgentRegexScripts: jest.fn(agent => Array.isArray(agent?.regexScripts) ? agent.regexScripts : []),
             getCompanionConfig: jest.fn(() => ({ displayMode: 'card' })),
             getEnabledAgents: jest.fn(() => [...agents]),
+            getHiddenAgentIds: jest.fn(() => []),
+            isAgentHidden: jest.fn(() => false),
             isCompanionAgent: jest.fn(agent => agent?.execution === 'companion' || agent?.category === 'companion'),
             saveAgent: jest.fn(async () => {}),
+            setHiddenAgentIds: jest.fn(),
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
@@ -186,6 +189,19 @@ describe('companion card ui', () => {
 
         expect(html).toBe('<md>Note start <div class="status">calm</div> end</md>');
         expect(sanitize).toHaveBeenCalled();
+    });
+
+    test('wires inline cards to hide and configure their live Companion agent', () => {
+        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', import.meta.url), 'utf8');
+
+        expect(source).toContain('export function configureCompanionCardUi(hooks)');
+        expect(source).toContain('data-action="hide"');
+        expect(source).toContain('data-action="settings"');
+        expect(source).toContain('fa-eye-slash');
+        expect(source).toContain('fa-gear');
+        expect(source).toContain('const hiddenAgentIds = getHiddenAgentIds();');
+        expect(source).toContain('setHiddenAgentIds(nextHiddenAgentIds);');
+        expect(source).toContain('companionCardHooks?.openEditor?.(agentId);');
     });
 
     test('beautifies Chat Only transcript speaker turns before markdown conversion', async () => {

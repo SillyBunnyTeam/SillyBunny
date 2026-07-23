@@ -5,6 +5,7 @@ import {
     getTrackerRepairPayload,
     inspectTrackerState,
     mergeTrackerRepairPayload,
+    normalizeCompanionTrackerRepairPayload,
 } from '../public/scripts/extensions/in-chat-agents/tracker-state.js';
 
 const statusAgent = {
@@ -42,6 +43,19 @@ describe('in-chat agent tracker state', () => {
         expect(inspection.blocks).toEqual([
             expect.objectContaining({ complete: false, replaceable: false }),
         ]);
+    });
+
+    test('normalizes a single malformed Companion card closer without relaxing message repair', () => {
+        const malformedCloser = '[STATUS|Alice|Tired|Moderate]\nnote: Long day\n/STATUS]';
+        const missingCloser = '[STATUS|Alice|Tired|Moderate]\nnote: Long day';
+
+        expect(normalizeCompanionTrackerRepairPayload(statusAgent, malformedCloser).payload)
+            .toBe('[STATUS|Alice|Tired|Moderate]\nnote: Long day\n[/STATUS]');
+        expect(normalizeCompanionTrackerRepairPayload(statusAgent, missingCloser).payload)
+            .toBe('[STATUS|Alice|Tired|Moderate]\nnote: Long day\n[/STATUS]');
+        expect(normalizeCompanionTrackerRepairPayload(statusAgent, `Story\n${missingCloser}`).payload).toBe('');
+        expect(mergeTrackerRepairPayload(statusAgent, `Story\n${missingCloser}`, '[STATUS|Alice|Ready|Mild]\nnote\n[/STATUS]'))
+            .toEqual(expect.objectContaining({ changed: false, reason: 'unsafe-malformed' }));
     });
 
     test('rejects incomplete openers and mixed complete and malformed blocks', () => {

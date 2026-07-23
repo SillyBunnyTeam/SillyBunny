@@ -93,7 +93,7 @@ import {
 } from './profile-utils.js';
 import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage } from './companion/companion-runner.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
-import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
+import { configureCompanionCardUi, initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
@@ -2346,6 +2346,7 @@ function renderAgentList() {
                 const executionLabel = companionExecution ? 'Companion' : phaseLabel;
                 const orderLabel = `Order ${getAgentOrderValue(agent)}`;
                 const canApplyToLastReply = !isPathfinderAgent(agent);
+                const canApplyToChosenTarget = !isPathfinderAgent(agent) && !companionExecution;
                 const applyTitle = companionExecution ? 'Run Companion on Last Reply' : 'Apply to Last Reply';
                 const applyIcon = companionExecution ? 'fa-user-astronaut' : 'fa-robot';
                 const quickItem = $(`
@@ -2365,6 +2366,7 @@ function renderAgentList() {
                                     <i class="fa-solid ${applyIcon}"></i>
                                 </button>
                             ` : ''}
+                            ${canApplyToChosenTarget ? '<button type="button" class="ica--quick-chip-apply-target" title="Apply this agent to a chosen target: the last reply, the composer text, or a companion note" aria-label="Apply to Target"><i class="fa-solid fa-crosshairs"></i></button>' : ''}
                             <button type="button" class="ica--quick-chip-pin is-active" title="Remove from Quick Toggles">
                                 <i class="fa-solid fa-star"></i>
                             </button>
@@ -2385,6 +2387,15 @@ function renderAgentList() {
                         return;
                     }
                     await runAgentOnMessage(agent.id, lastCharMessageIndex);
+                });
+
+                quickItem.find('.ica--quick-chip-apply-target').on('click', async event => {
+                    stopEvent(event);
+                    const targets = await pickManualAgentRunTargets(agent);
+                    if (!targets) {
+                        return;
+                    }
+                    await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
                 });
 
                 quickItem.find('.ica--quick-chip-pin').on('click', async event => {
@@ -5701,6 +5712,9 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
     // Render the panel
     renderAgentList();
+    configureCompanionCardUi({
+        openEditor: agentId => openEditor(agentId),
+    });
     initCompanionCardUi();
     configureCompanionDashboard({
         openEditor: agentId => openEditor(agentId),
