@@ -114,6 +114,7 @@
  * @property {number} talkativeness - talkativeness
  * @property {boolean|string} fav - fav
  * @property {string} create_date - create_date
+ * @property {number} date_added - local date-added timestamp
  * @property {v2CharData} data - v2 data extension
  * // Non-standard extensions added by the ST server (not part of the original data)
  * @property {string} chat - name of the current chat file chat

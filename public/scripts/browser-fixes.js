@@ -1,6 +1,6 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
 import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
-import { isIOSWebKitPlatform } from './mobile-send-button.js';
+import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -119,9 +119,15 @@ function isMobileShellPanelEditable(element) {
 function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {
     let resetScheduled = false;
 
+    // SillyBunny: the legacy shell inset keeps the caret visible, so old iOS
+    // force-scroll can be anchored immediately instead of waiting for blur.
+    const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()
+        && document.documentElement.classList.contains('sb-ios-composer-keyboard-inset-active');
+
     const shouldSuspendDocumentScrollReset = () => suspendWhileEditing
         && isEditableFocusTarget(document.activeElement)
-        && !isMobileShellPanelEditable(document.activeElement);
+        && !isMobileShellPanelEditable(document.activeElement)
+        && !isComposerHeldAboveKeyboard();
 
     const resetDocumentScroll = () => {
         if (shouldSuspendDocumentScrollReset()) {

@@ -8,6 +8,24 @@ const TCP_ESTABLISHED = '01';
 const CONNECTION_TABLE_CACHE_MS = 50;
 const DEFAULT_POLL_INTERVAL_MS = 150;
 const NETSTAT_TIMEOUT_MS = 1000;
+const NETSTAT_ESTABLISHED_STATE = 'ESTABLISHED';
+const NETSTAT_TCP_STATES = new Set([
+    'CLOSED',
+    'CLOSE_WAIT',
+    'CLOSING',
+    'DELETE_TCB',
+    'ESTABLISHED',
+    'FIN_WAIT_1',
+    'FIN_WAIT_2',
+    'LAST_ACK',
+    'LISTEN',
+    'LISTENING',
+    'SYN_RECEIVED',
+    'SYN_RECV',
+    'SYN_RCVD',
+    'SYN_SENT',
+    'TIME_WAIT',
+]);
 
 /**
  * @typedef {object} SocketAddress
@@ -17,7 +35,7 @@ const NETSTAT_TIMEOUT_MS = 1000;
  * @property {number} remotePort Remote socket port
  */
 
-/** @type {{ platform: string, expiresAt: number, promise: Promise<Set<string>> } | null} */
+/** @type {{ platform: string, expiresAt: number, promise: Promise<Set<string> | null> } | null} */
 let connectionTableCache = null;
 
 function normalizeAddress(address) {
@@ -200,7 +218,7 @@ function parseNetstatOutput(text) {
         const remoteEndpoint = fields[tcpIndex + endpointOffset + 1];
         const state = fields[tcpIndex + endpointOffset + 2];
 
-        if (!localEndpoint || !remoteEndpoint || !/^established$/i.test(state)) {
+        if (!localEndpoint || !remoteEndpoint) {
             continue;
         }
 
@@ -208,6 +226,17 @@ function parseNetstatOutput(text) {
         const remote = parseNetstatEndpoint(remoteEndpoint);
 
         if (!local || !remote || !local.port || !remote.port) {
+            continue;
+        }
+
+        const normalizedState = String(state || '').toUpperCase();
+        if (!NETSTAT_TCP_STATES.has(normalizedState)) {
+            // Windows localizes TCP states. An unrecognized state makes the
+            // table unsafe for disconnect detection, so callers fail open.
+            return null;
+        }
+
+        if (normalizedState !== NETSTAT_ESTABLISHED_STATE) {
             continue;
         }
 

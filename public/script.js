@@ -3864,6 +3864,18 @@ const CUSTOM_MODEL_ICON_PATTERNS = Object.freeze([
     { icon: 'perplexity', pattern: /\bsonar\b|perplexity[/:_-]|r1-1776/i },
     { icon: 'moonshot', pattern: /\b(?:kimi|moonshot)\b/i },
     { icon: 'zai', pattern: /\b(?:glm|autoglm)\b|zai-org[/:_-]/i },
+    { icon: 'minimax', pattern: /\bminimax(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'poolside', pattern: /poolside[/:_-]|\blaguna-(?:xs|s)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'meta', pattern: /meta[/:]|meta-llama[/:_-]|\b(?:llama|codellama)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'microsoft', pattern: /microsoft[/:_-]|\bphi-[\w.-]+\b/i },
+    { icon: 'nova', pattern: /(?:amazon[/:_-]|amazon\.)nova(?:[-_.][\w.-]+)*\b|\bnova-(?:micro|lite|pro|premier)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'ai2', pattern: /allenai[/:_-]|\b(?:olmoe?|tulu)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'nousresearch', pattern: /nousresearch[/:_-]|\b(?:nous|hermes)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'ibm', pattern: /ibm-granite[/:_-]|\bgranite(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'arcee', pattern: /arcee-ai[/:_-]|\barcee(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'inception', pattern: /inception[/:_-]|\bmercury(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'baidu', pattern: /baidu[/:_-]|\b(?:ernie|wenxin)(?:[-_.][\w.-]+)*\b/i },
+    { icon: 'upstage', pattern: /upstage[/:_-]|\bsolar(?:[-_.][\w.-]+)*\b/i },
     { icon: 'qwen', pattern: /\bqwen[\w.-]*\b|\b(?:qwq|qvq)(?:[\w.-]*)?\b/i },
     { icon: 'xiaomi', pattern: /\bmimo(?:[-_.][\w.-]+)*\b|\bxiaomi\b|xiaomi[/:_-]/i },
     { icon: 'longcat', pattern: /\blong[-_ ]?cat(?:[-_.][\w.-]+)*\b/i },
@@ -6740,6 +6752,7 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
  */
 
 /**
@@ -6784,7 +6797,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6793,7 +6806,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     await unshallowCharacter(this_chid);
 
     // Occurs every time, even if the generation is aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope }, dryRun);
+    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope, preserveLastMessage }, dryRun);
 
     // Don't recreate abort controller if signal is passed
     if (!(abortController && signal)) {
@@ -6829,7 +6842,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             textareaText = '';
             if (chat.length && lastMessage.is_user) {
                 //do nothing? why does this check exist?
-            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length) {
+            // SillyBunny: Guided Correction regenerates against the existing assistant reply.
+            } else if (type !== 'quiet' && type !== 'swipe' && !isImpersonate && !dryRun && !depth && chat.length && !(type === 'regenerate' && preserveLastMessage)) {
                 if (type === 'regenerate') {
                     requestMobileChatBottomPin();
                 }
@@ -6876,7 +6890,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // Occurs only if the generation is not aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope }, dryRun);
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage }, dryRun);
 
     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
@@ -6899,7 +6913,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     if (selected_group && !is_group_generating) {
         if (!dryRun) {
             // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope });
+            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage });
         }
 
         const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
@@ -7532,7 +7546,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     injectedIndices = newInjectedIndices;
 
     if (main_api !== 'openai') {
-        setInContextMessages(arrMes.length - injectedIndices.length, type);
+        setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage);
     }
 
     // Estimate how many unpinned example messages fit in the context
@@ -7890,7 +7904,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             if (!dryRun) {
-                setInContextMessages(openai_messages_count, type);
+                setInContextMessages(openai_messages_count, type, preserveLastMessage);
             }
             break;
         }
@@ -7921,7 +7935,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         let additionalPromptStuff = {
             ...thisPromptBits[currentArrayEntry],
             rawPrompt: generate_data.prompt || generate_data.input,
-            mesId: getNextMessageId(type),
+            mesId: getNextMessageId(type, preserveLastMessage),
             allAnchors: await getAllExtensionPrompts(),
             chatInjects: injectedIndices?.map(index => arrMes[arrMes.length - index - 1])?.join('') || '',
             summarizeString: (extension_prompts['1_memory']?.value || ''),
@@ -8411,8 +8425,8 @@ function unblockGeneration(type, { emitGenerationEnded = true, force = false } =
     }
 }
 
-export function getNextMessageId(type) {
-    return type == 'swipe' ? chat.length - 1 : chat.length;
+export function getNextMessageId(type, preserveLastMessage = false) {
+    return type == 'swipe' || (type === 'regenerate' && preserveLastMessage) ? chat.length - 1 : chat.length;
 }
 
 /**
@@ -8797,10 +8811,10 @@ export async function duplicateCharacter({ avatar = null, silent = false } = {})
     return data.path;
 }
 
-function setInContextMessages(msgInContextCount, type) {
+function setInContextMessages(msgInContextCount, type, preserveLastMessage = false) {
     chatElement.find('.mes').removeClass('lastInContext');
 
-    if (type === 'swipe' || type === 'regenerate' || type === 'continue') {
+    if (type === 'swipe' || (type === 'regenerate' && !preserveLastMessage) || type === 'continue') {
         msgInContextCount++;
     }
 

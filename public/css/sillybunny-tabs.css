@@ -3746,10 +3746,66 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     margin-bottom: var(--sb-shell-space-md);
 }
 
-.sb-theme-card-header {
-    display: flex;
+.sb-theme-settings-drawer {
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--sb-radius-md, 16px);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 78%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header {
+    min-height: 48px;
+    margin: 0;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header > strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: calc(var(--mainFontSize) * 0.82);
+}
+
+.sb-theme-settings-drawer > .inline-drawer-header > .inline-drawer-icon {
+    flex: 0 0 auto;
+    font-size: calc(var(--mainFontSize) * 1.15);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+    min-width: 0;
+    margin: 0;
+    padding: 0 var(--sb-shell-space-md) var(--sb-shell-space-md);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body[style*='display: block'] {
+    display: flex !important;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sb-shell-space-sm);
+}
+
+.sb-theme-settings-drawer > .sb-theme-settings-drawer-body > p:first-child {
+    margin-top: 0;
+}
+
+:root[data-sb-compact-mode='true'] .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+    padding: 0 var(--sb-shell-space-sm) var(--sb-shell-space-sm);
+}
+
+@media screen and (max-width: 620px) {
+    .sb-theme-settings-drawer > .inline-drawer-header {
+        padding: 9px 10px;
+    }
+
+    .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
+        padding: 0 10px 10px;
+    }
 }
 
 .sb-theme-slider-group {
@@ -3801,6 +3857,24 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     font-size: calc(var(--mainFontSize) * 0.72);
     line-height: 1.45;
     opacity: 0.72;
+}
+
+.sb-interface-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sb-shell-space-sm);
+}
+
+.sb-interface-settings-group.sb-theme-slider-group {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sb-interface-settings-group + .sb-interface-settings-group {
+    padding-top: var(--sb-shell-space-md);
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
 }
 
 .sb-mobile-only-setting {
@@ -3915,15 +3989,12 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 70%, transparent);
 }
 
-.sb-topbar-label-group,
-.sb-topbar-label-header,
 .sb-topbar-label-section,
 .sb-topbar-custom-text-field {
     display: flex;
     flex-direction: column;
 }
 
-.sb-topbar-label-group,
 .sb-topbar-label-section,
 .sb-topbar-custom-text-field {
     gap: 12px;
@@ -4400,10 +4471,10 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 /* Bottom chat management bar */
 #nonQRFormItems {
     display: grid !important;
-    grid-template-columns: var(--sb-composer-side-rail-width, min(16%, 132px)) minmax(0, 1fr) var(--sb-composer-side-rail-width, min(16%, 132px)) !important;
+    grid-template-columns: max-content minmax(0, 1fr) max-content !important;
     grid-template-areas: 'tools input action' !important;
     align-items: center !important;
-    gap: 0 4px !important;
+    gap: 0 6px !important;
     min-width: 0 !important;
     overflow: visible !important;
     box-sizing: border-box !important;
@@ -4411,9 +4482,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #leftSendForm {
     grid-area: tools !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: min(35vw, calc(var(--sb-composer-action-size, 38px) * 6 + 30px)) !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
     scrollbar-width: none !important;
@@ -4435,9 +4506,9 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 
 #rightSendForm {
     grid-area: action !important;
-    width: 100% !important;
+    width: max-content !important;
     min-width: 0 !important;
-    max-width: 100% !important;
+    max-width: max-content !important;
     overflow: visible !important;
     justify-self: end !important;
     justify-content: flex-end !important;
@@ -4451,7 +4522,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 #send_form .mes_stop,
@@ -4463,7 +4534,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     min-height: var(--sb-composer-action-size, 30px) !important;
     max-height: var(--sb-composer-action-size, 30px) !important;
     flex: 0 0 var(--sb-composer-send-width, calc(var(--sb-composer-action-size, 30px) * 1.45)) !important;
-    border-radius: var(--sb-radius-button, 14px) !important;
+    border-radius: var(--sb-radius-sm, 10px) !important;
 }
 
 @media screen and (min-width: 1001px) {
@@ -4480,7 +4551,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     align-items: center;
     gap: calc(4px * var(--sb-bottom-bar-scale));
     box-sizing: border-box;
-    margin-block-end: var(--sb-chat-composer-gap, 8px);
+    margin-block-end: 4px;
     padding: calc(3px * var(--sb-bottom-bar-scale)) calc(8px * var(--sb-bottom-bar-scale));
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
     border-radius: var(--sb-radius-md, 14px);

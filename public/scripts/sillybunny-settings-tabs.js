@@ -127,7 +127,28 @@
         if (parentAppearance && col1) {
             // Give parent drawer header a cleaner title
             const mainHeaderSpan = parentAppearance.querySelector(':scope > .inline-drawer-header b span');
-            if (mainHeaderSpan) mainHeaderSpan.textContent = 'UI Theme & Presets';
+            if (mainHeaderSpan) {
+                mainHeaderSpan.textContent = 'UI Theme';
+                mainHeaderSpan.setAttribute('data-i18n', 'UI Theme');
+            }
+
+            // Keep palettes and accent controls separate from full UI themes
+            const themePresets = parentAppearance.querySelector('#UI-presets-block > .sb-theme-presets');
+            if (themePresets && !document.getElementById('sb-theme-presets-drawer')) {
+                const presetsDrawer = document.createElement('div');
+                presetsDrawer.id = 'sb-theme-presets-drawer';
+                presetsDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+                presetsDrawer.innerHTML = `
+                    <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable">
+                        <b><i class="fa-solid fa-swatchbook"></i> <span data-i18n="Presets">Presets</span></b>
+                        <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                    </div>
+                    <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
+                    </div>
+                `;
+                parentAppearance.insertAdjacentElement('afterend', presetsDrawer);
+                presetsDrawer.querySelector('.inline-drawer-content').appendChild(themePresets);
+            }
 
             // Find AppearanceLayoutSection
             const layoutSec = document.getElementById('AppearanceLayoutSection');
@@ -320,6 +341,7 @@
         const mappings = {
             // Appearance Tab
             'AppearanceSection': 'appearance',
+            'sb-theme-presets-drawer': 'appearance',
             'sb-theme-colors-drawer': 'appearance',
             'sb-avatar-chat-styles-drawer': 'appearance',
             'AppearanceLayoutSection': 'appearance',

@@ -402,6 +402,60 @@ describe('mobile shell lifecycle wiring', () => {
         expect(shouldBlockMobileDocumentPan(nonCancelableMove.event, { touchStart: nonCancelableMove.touchStart })).toBe(false);
     });
 
+    test('allows horizontal scrolling within designated mobile rails', () => {
+        for (const [rootSelector, railSelector] of [
+            ['#sheld', '.group_speaker_list'],
+            ['#left-nav-panel', '.ica--agent-tabs'],
+            ['.popup', '.ica--template-pill-row'],
+            ['#user-settings-block', '.sb-settings-tabs-nav'],
+            ['#sheld', '.sb-conversation-channel-tabs'],
+            ['#sheld', '.sb-conversation-quick-actions'],
+            ['#right-nav-panel', '.sb-character-create-bar'],
+            ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
+            ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],
+            ['#left-nav-panel', '#completion_prompt_manager .completion_prompt_manager_prompt > span:nth-child(3)'],
+            ['.popup', '.popup.horizontal_scrolling_dialogue_popup .popup-content'],
+            ['#chat', '.mes_text pre code'],
+            ['#chat', '.mes_reasoning pre code'],
+            ['.popup', '.img_enlarged_holder'],
+            ['.popup', '.img_enlarged_container pre code'],
+        ]) {
+            const root = createElementStub({
+                matches: selector => selectorListIncludes(selector, rootSelector),
+            });
+            const rail = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+                scrollLeft: 120,
+            });
+            const railAtStart = createElementStub({
+                parentElement: root,
+                matches: selector => selectorListIncludes(selector, railSelector),
+                scrollWidth: 600,
+                clientWidth: 240,
+            });
+            const control = createElementStub({
+                parentElement: rail,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const controlAtStart = createElementStub({
+                parentElement: railAtStart,
+                matches: selector => selectorListIncludes(selector, 'button'),
+            });
+            const inwardMove = createTouchMove(control, { x: -40, y: 2 });
+            const railGapMove = createTouchMove(rail, { x: -40, y: 2 });
+            const outwardMove = createTouchMove(controlAtStart, { x: 40, y: 2 });
+            const verticalMove = createTouchMove(control, { x: 2, y: -40 });
+
+            expect(shouldBlockMobileDocumentPan(inwardMove.event, { touchStart: inwardMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(railGapMove.event, { touchStart: railGapMove.touchStart })).toBe(false);
+            expect(shouldBlockMobileDocumentPan(outwardMove.event, { touchStart: outwardMove.touchStart })).toBe(true);
+            expect(shouldBlockMobileDocumentPan(verticalMove.event, { touchStart: verticalMove.touchStart })).toBe(true);
+        }
+    });
+
     test('allows owned scrolling from controls while blocking edge overscroll in mobile drawers', () => {
         const createMenuRoot = rootSelector => createElementStub({
             matches: selector => selectorListIncludes(selector, rootSelector) || selectorListIncludes(selector, `${rootSelector}.openDrawer`),
@@ -540,12 +594,14 @@ describe('mobile shell lifecycle wiring', () => {
     });
 
     test('settles mobile viewport reset without reapplying the fixed-position workaround', () => {
-        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(browserFixesSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(browserFixesSource).toContain('function addDocumentViewportAnchorPatch({ suspendWhileEditing = false } = {}) {');
         expect(browserFixesSource).toContain('function isMobileShellPanelEditable(element) {');
         expect(browserFixesSource).toContain('const shouldSuspendDocumentScrollReset = () => suspendWhileEditing');
         expect(browserFixesSource).toContain('&& isEditableFocusTarget(document.activeElement)');
-        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement);');
+        expect(browserFixesSource).toContain('&& !isMobileShellPanelEditable(document.activeElement)');
+        expect(browserFixesSource).toContain('const isComposerHeldAboveKeyboard = () => isLegacyIOSWebKitPlatform()');
+        expect(browserFixesSource).toContain('&& !isComposerHeldAboveKeyboard();');
         expect(browserFixesSource).toContain('if (shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('if (resetScheduled || shouldSuspendDocumentScrollReset()) {');
         expect(browserFixesSource).toContain('document.addEventListener(\'focusout\', scheduleDocumentScrollReset, true);');
@@ -620,7 +676,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(tabsSource).toContain('function getShellViewportSize(');
         expect(tabsSource).toContain('function getVisualViewportSize(');
         expect(tabsSource).toContain('function shouldUseStableIOSPanelViewport(');
-        expect(tabsSource).toContain('import { isIOSWebKitPlatform } from \'./mobile-send-button.js\';');
+        expect(tabsSource).toContain('import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from \'./mobile-send-button.js\';');
         expect(tabsSource).toContain('function isChatComposerEditableElement(');
         expect(tabsSource).toContain('function hasOpenMobileShellDrawer(');
         expect(tabsSource).toContain('!isIOSWebKitPlatform() || !isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)');
@@ -658,15 +714,26 @@ describe('mobile shell lifecycle wiring', () => {
         );
     });
 
-    test('keeps the iOS composer on stable viewport bounds without keyboard inset resizing', () => {
+    test('uses keyboard inset resizing only for legacy iOS composer edits', () => {
+        const getComposerKeyboardInsetSource = getFunctionSource('getComposerKeyboardInset');
         const getShellViewportSizeSource = getFunctionSource('getShellViewportSize');
+        const handleComposerKeyboardFocusInSource = getFunctionSource('handleComposerKeyboardFocusIn');
+        const syncShellViewportBoundsSource = getFunctionSource('syncShellViewportBounds');
 
+        expect(getComposerKeyboardInsetSource).toContain('if (!isLegacyIOSWebKitPlatform() || !isMobileViewport()) {');
+        expect(getComposerKeyboardInsetSource).toContain('const keyboardHeight = Math.max(0, layoutViewport.height - visualViewportSize.height);');
+        expect(getComposerKeyboardInsetSource).toContain('sbLastIOSKeyboardHeight = keyboardHeight;');
+        expect(getComposerKeyboardInsetSource).toContain('if (visualViewportSize.top > MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX) {');
+        expect(getComposerKeyboardInsetSource).toContain('return withinPreShiftWindow ? sbLastIOSKeyboardHeight : 0;');
+        expect(handleComposerKeyboardFocusInSource).toContain('sbComposerKeyboardPreShiftDeadline = Date.now() + MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS;');
         expect(getShellViewportSizeSource).toContain('if (shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize)) {');
         expect(getShellViewportSizeSource).toContain('return layoutViewport;');
-        expect(tabsSource).not.toContain('function getComposerKeyboardInset(');
-        expect(tabsSource).not.toContain('handleComposerKeyboardFocusIn');
-        expect(tabsSource).not.toContain('sb-ios-composer-keyboard-inset-active');
-        expect(browserFixesSource).not.toContain('isComposerHeldAboveKeyboard');
+        expect(getShellViewportSizeSource).toContain('const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);');
+        expect(getShellViewportSizeSource).toContain('return { ...layoutViewport, height, bottom: height };');
+        expect(syncShellViewportBoundsSource).toContain('root.classList.toggle(\'sb-ios-composer-keyboard-inset-active\', composerKeyboardInset > 0);');
+        expect(tabsSource).toContain('if (isLegacyIOSWebKitPlatform()) {');
+        expect(tabsSource).toContain('document.addEventListener(\'focusin\', handleComposerKeyboardFocusIn);');
+        expect(tabsSource).toContain('document.addEventListener(\'focusout\', handleMobileKeyboardFocusOut);');
     });
 
     test('routes mobile viewport sync planning through the lifecycle seam', () => {

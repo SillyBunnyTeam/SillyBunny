@@ -357,7 +357,7 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > a,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title] {
+#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title]:not(.fa-solid) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
