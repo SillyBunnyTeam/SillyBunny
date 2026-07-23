@@ -1,4 +1,6 @@
-:root, #qig-settings, .qig-popup {
+:root,
+#qig-settings,
+.qig-popup {
     --qig-accent: var(--SmartThemeQuoteColor);
     --qig-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor) 12%);
     --qig-surface-soft: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%);
@@ -8,6 +10,10 @@
     --qig-success: color-mix(in srgb, var(--qig-accent) 76%, var(--SmartThemeBodyColor) 24%);
     --qig-ease: cubic-bezier(0.22, 1, 0.36, 1);
     --qig-radius: 8px;
+}
+
+#qig-settings,
+.qig-popup {
     color: var(--SmartThemeBodyColor);
     container-type: inline-size;
 }
@@ -102,13 +108,20 @@
     top: 0;
     z-index: 20;
     display: grid;
-    grid-template-columns: minmax(150px, 1fr) auto auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     align-items: stretch;
     padding: 10px 0 8px;
     margin: -10px 0 -4px;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, transparent);
     border-bottom: 1px solid var(--qig-line);
+}
+
+.qig-action-bar > .menu_button {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    margin: 0;
 }
 
 .qig-action-bar::before {
@@ -436,6 +449,32 @@
 
 .qig-inline-control__main select {
     margin-top: 0;
+}
+
+#qig-profile-select {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 6px;
+    align-items: stretch;
+}
+
+#qig-profile-select .qig-muted {
+    grid-column: 1 / -1;
+    align-self: center;
+    margin: 0;
+}
+
+#qig-settings #qig-profile-dropdown {
+    width: auto;
+    min-width: 0;
+    margin: 0;
+}
+
+#qig-settings #qig-profile-del {
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
 }
 
 .qig-provider-card,
@@ -1685,6 +1724,7 @@
     }
 
     .qig-action-bar__secondary,
+    .qig-action-bar__prominent,
     #qig-generate-btn.qig-primary-action {
         width: 100%;
         min-height: 44px;
@@ -1741,6 +1781,12 @@
 
     #qig-settings textarea {
         font-size: 16px;
+    }
+
+    #qig-settings #qig-profile-del {
+        width: 44px;
+        min-width: 44px;
+        min-height: 44px;
     }
 
     .qig-size-row {
@@ -1802,6 +1848,25 @@
 
     .qig-action-bar__secondary {
         width: 100%;
+        min-height: 44px;
+    }
+
+    .qig-action-bar__prominent {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .qig-profile-control {
+        flex-direction: column;
+    }
+
+    #qig-profile-save {
+        width: 100%;
+    }
+
+    #qig-settings #qig-profile-del {
+        width: 44px;
+        min-width: 44px;
         min-height: 44px;
     }
 

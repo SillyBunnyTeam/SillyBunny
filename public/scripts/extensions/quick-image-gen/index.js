@@ -39,6 +39,17 @@ import { mergeSTStylePrompts, resolveSTStyleSettings } from "./lib/st-style.js";
 import { executeCustomBackend, getCustomBackendCapabilities } from "./lib/custom-backend.js";
 import { getGeminiCandidateFailure, isEffectivelyBlankPixels } from "./lib/generated-image.js";
 import {
+    buildGptImagePayload,
+    buildNanobananaPayload,
+    describeProviderImageSource,
+    extractProviderImageSource,
+    getGptImageApiUrl,
+    getNanobananaApiUrl,
+    imageResponseToDataUrl,
+    isOpenAIChatCompletionsEndpoint,
+    materializeProviderImageSource,
+} from "./lib/provider-adapters.js";
+import {
     buildContextMediaCandidates,
     canDeleteContextMediaPath,
     normalizeContextMediaLibrary,
@@ -6183,12 +6194,6 @@ async function genNovelAI(prompt, negative, s, signal) {
     { const u = URL.createObjectURL(new Blob([pngData], { type: "image/png" })); blobUrls.add(u); return u; }
 }
 
-function getGptImageApiUrl(proxyUrl = "") {
-    const trimmed = String(proxyUrl || "").trim().replace(/\/$/, "");
-    if (!trimmed) return "https://api.openai.com/v1/images/generations";
-    return resolveProxyRequestUrl(trimmed, "images_generations");
-}
-
 function getGptImageSize(settings = getSettings()) {
     const width = Number(settings?.width) || 1024;
     const height = Number(settings?.height) || 1024;
@@ -6284,37 +6289,6 @@ function normalizeGptImageOption(value, allowed, fallback = "auto") {
     return allowed.includes(normalized) ? normalized : fallback;
 }
 
-function extractGptImageDataUrl(value, format = "png") {
-    if (typeof value !== "string" || !value.trim()) return null;
-    const b64 = value.trim();
-    return b64.startsWith("data:")
-        ? b64
-        : `data:${getGptImageMime(format)};base64,${b64}`;
-}
-
-function extractGptImageFromJson(data, format = "png", options = {}) {
-    const dataItem = data?.data?.[0];
-    const b64Candidates = [
-        dataItem?.b64_json,
-        dataItem?.image_base64,
-        dataItem?.imageBase64,
-        dataItem?.base64,
-        data?.b64_json,
-        data?.image_base64,
-        data?.imageBase64,
-        data?.base64,
-    ];
-    for (const candidate of b64Candidates) {
-        const image = extractGptImageDataUrl(candidate, format);
-        if (image) return image;
-    }
-
-    const image = extractProxyImageFromJson(data, options);
-    if (image) return image;
-
-    throw new Error(`GPT Image returned no image: ${JSON.stringify(data || {}).substring(0, 300)}`);
-}
-
 async function genGptImage(prompt, negative, s, signal) {
     const apiKey = s.gptImageProxyKey || s.gptImageKey;
     if (!apiKey) throw new Error("GPT Image API key required");
@@ -6327,34 +6301,31 @@ async function genGptImage(prompt, negative, s, signal) {
     const quality = normalizeGptImageOption(s.gptImageQuality, ["auto", "low", "medium", "high"]);
     const background = normalizeGptImageOption(s.gptImageBackground, ["auto", "transparent", "opaque"]);
     const moderation = normalizeGptImageOption(s.gptImageModeration, ["auto", "low"]);
-    const effectivePrompt = negative
-        ? `${prompt}\n\nAvoid in the image: ${negative}`
-        : prompt;
-    const payload = {
+    const payload = buildGptImagePayload({
         model,
-        prompt: effectivePrompt,
+        prompt,
+        negative,
         size: getGptImageSize(s),
-        n: 1,
-    };
-
-    if (quality !== "auto") payload.quality = quality;
-    if (outputFormat !== "png") payload.output_format = outputFormat;
-    if (background !== "auto") {
-        if (background === "transparent" && outputFormat === "jpeg") {
-            log("GPT Image: transparent backgrounds require PNG or WebP output; omitting background for JPEG.");
-        } else {
-            payload.background = background;
-        }
+        quality,
+        outputFormat,
+        background,
+        moderation,
+    });
+    if (background === "transparent" && outputFormat === "jpeg") {
+        log("GPT Image: transparent backgrounds require PNG or WebP output; omitting background for JPEG.");
     }
-    if (moderation !== "auto") payload.moderation = moderation;
+    if (s.gptImageProxyUrl && !/\/(?:v1|images(?:\/generations)?)\/?(?:[?#].*)?$/i.test(String(s.gptImageProxyUrl).trim())) {
+        log("GPT Image: proxy URL does not end in /v1 or /images/generations; treating it as the full generation endpoint.");
+    }
 
-    log(`GPT Image request to ${apiUrl}: model=${model}, size=${payload.size}, quality=${payload.quality || "auto"}, format=${payload.output_format || "png"}`);
+    log(`GPT Image request to ${describeProviderImageSource(apiUrl)}: model=${model}, size=${payload.size}, quality=${payload.quality || "auto"}, format=${payload.output_format || "png"}`);
+    const headers = {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+    };
     const res = await fetch(apiUrl, {
         method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(payload),
         signal,
     });
@@ -6364,8 +6335,28 @@ async function genGptImage(prompt, negative, s, signal) {
         throw new Error(`GPT Image error ${res.status}: ${detail || res.statusText}`);
     }
 
+    const contentType = res.headers.get("content-type") || "";
+    const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
+    log(`GPT Image response: status=${res.status}, type=${responseMime || "unknown"}, endpoint=${describeProviderImageSource(res.url || apiUrl)}`);
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+        return await imageResponseToDataUrl(res);
+    }
+
+    const responseBaseUrl = res.url || apiUrl;
     const data = await readResponseJson(res);
-    return extractGptImageFromJson(data, outputFormat, { trustedBaseUrl: apiUrl });
+    const source = extractProviderImageSource(data, { defaultMime: getGptImageMime(outputFormat) });
+    if (!source) throw new Error(`GPT Image returned no image: ${JSON.stringify(data || {}).substring(0, 300)}`);
+    log(`GPT Image result source: ${describeProviderImageSource(source, responseBaseUrl)}`);
+    const materialized = await materializeProviderImageSource(source, {
+        requestUrl: apiUrl,
+        responseUrl: responseBaseUrl,
+        headers,
+        signal,
+        fetchImpl: corsFetch,
+        allowBrowserFallback: false,
+    });
+    log(`GPT Image result ready: ${materialized.startsWith("data:") ? "validated inline image" : describeProviderImageSource(materialized)}`);
+    return materialized;
 }
 
 function findPngStart(bytes) {
@@ -6728,26 +6719,6 @@ async function genCivitAI(prompt, negative, s, signal) {
     throw new Error(`CivitAI job timeout. Last error: ${lastError || 'Still processing'}`);
 }
 
-function getNanobananaApiUrl(proxyUrl = "", model = "gemini-3-pro-image", apiKey = "") {
-    const trimmedProxy = String(proxyUrl || "").trim().replace(/\/$/, "");
-    if (!trimmedProxy) {
-        return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    }
-    if (trimmedProxy.includes(":generateContent") || trimmedProxy.includes("/chat/completions")) {
-        let url = trimmedProxy;
-        if (apiKey && !url.includes("key=")) {
-            url += (url.includes("?") ? "&" : "?") + `key=${apiKey}`;
-        }
-        return url;
-    }
-    const path = trimmedProxy.endsWith("/v1beta") ? trimmedProxy : `${trimmedProxy}/v1beta`;
-    let url = `${path}/models/${model}:generateContent`;
-    if (apiKey) {
-        url += `?key=${apiKey}`;
-    }
-    return url;
-}
-
 async function genNanobanana(prompt, negative, s, signal) {
     // Build parts array with reference images and prompt
     const parts = [];
@@ -6804,26 +6775,46 @@ async function genNanobanana(prompt, negative, s, signal) {
 
     const apiKey = s.nanobananaProxyKey || s.nanobananaKey;
     const url = getNanobananaApiUrl(s.nanobananaProxyUrl, s.nanobananaModel, apiKey);
+    const isOpenAIProxy = isOpenAIChatCompletionsEndpoint(url);
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
-        headers["x-goog-api-key"] = apiKey;
+        if (!isOpenAIProxy) headers["x-goog-api-key"] = apiKey;
     }
+    const payload = buildNanobananaPayload({
+        endpointUrl: url,
+        model: s.nanobananaModel,
+        parts,
+        generationConfig,
+        safetySettings,
+    });
+    log(`Nanobanana request mode: ${isOpenAIProxy ? "OpenAI chat/completions" : "native Gemini generateContent"}`);
 
     const res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-            contents: [{ role: "user", parts }],
-            generationConfig,
-            safetySettings,
-        }),
+        body: JSON.stringify(payload),
         signal
     });
     if (!res.ok) {
         const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
         throw new Error(`Nanobanana error: ${res.status}${errText ? ` - ${errText.slice(0, 300)}` : ""}`);
     }
+    const contentType = res.headers.get("content-type") || "";
+    const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+        return {
+            url: await imageResponseToDataUrl(res),
+            effectiveRequest: {
+                parameters: {
+                    aspectRatio: generationConfig.imageConfig.aspectRatio,
+                    imageSize: generationConfig.imageConfig.imageSize,
+                },
+            },
+        };
+    }
+
+    const responseBaseUrl = res.url || url;
     const data = await readResponseJson(res);
 
     if (data.promptFeedback?.blockReason) {
@@ -6833,6 +6824,10 @@ async function genNanobanana(prompt, negative, s, signal) {
     const candidates = data.candidates || [];
     const candidateFailures = [];
     const textResponses = [];
+    let imageSource = extractProviderImageSource(data, {
+        defaultMime: "image/png",
+        includeGeminiCandidates: false,
+    });
 
     for (const candidate of candidates) {
         const failure = getGeminiCandidateFailure(candidate);
@@ -6841,57 +6836,34 @@ async function genNanobanana(prompt, negative, s, signal) {
             continue;
         }
         for (const part of candidate.content?.parts || []) {
-            if (part.inlineData?.data) {
-                return {
-                    url: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`,
-                    effectiveRequest: {
-                        parameters: {
-                            aspectRatio: generationConfig.imageConfig.aspectRatio,
-                            imageSize: generationConfig.imageConfig.imageSize,
-                        },
-                    },
-                };
-            }
-            if (part.fileData?.fileUri) {
-                return {
-                    url: part.fileData.fileUri,
-                    effectiveRequest: {
-                        parameters: {
-                            aspectRatio: generationConfig.imageConfig.aspectRatio,
-                            imageSize: generationConfig.imageConfig.imageSize,
-                        },
-                    },
-                };
-            }
             if (part.text) {
                 textResponses.push(part.text.trim());
-                const imgMatch = part.text.match(/!\[.*?\]\((https?:\/\/[^\s\)]+|data:image\/[^;]+;base64,[^\s\)]+)\)/i)
-                    || part.text.match(/(https?:\/\/[^\s\)]+\.(?:png|jpe?g|webp|gif|avif))/i)
-                    || part.text.match(/(data:image\/[^;]+;base64,[A-Za-z0-9+/=_]+)/i);
-                if (imgMatch) {
-                    return {
-                        url: imgMatch[1],
-                        effectiveRequest: {
-                            parameters: {
-                                aspectRatio: generationConfig.imageConfig.aspectRatio,
-                                imageSize: generationConfig.imageConfig.imageSize,
-                            },
-                        },
-                    };
-                }
             }
+            imageSource ||= extractProviderImageSource({ candidates: [{ content: { parts: [part] } }] });
         }
-        if (candidate.b64_json) {
-            return {
-                url: `data:image/png;base64,${candidate.b64_json}`,
-                effectiveRequest: {
-                    parameters: {
-                        aspectRatio: generationConfig.imageConfig.aspectRatio,
-                        imageSize: generationConfig.imageConfig.imageSize,
-                    },
+        imageSource ||= extractProviderImageSource({ candidates: [candidate] });
+    }
+
+    if (imageSource) {
+        const safeSource = normalizeProviderImageSource(imageSource, { trustedBaseUrl: responseBaseUrl });
+        if (!safeSource) throw new Error("Nanobanana returned an unsafe or unsupported image URL");
+        const materialized = await materializeProviderImageSource(safeSource, {
+            requestUrl: url,
+            responseUrl: responseBaseUrl,
+            headers,
+            signal,
+            fetchImpl: corsFetch,
+            allowBrowserFallback: false,
+        });
+        return {
+            url: materialized,
+            effectiveRequest: {
+                parameters: {
+                    aspectRatio: generationConfig.imageConfig.aspectRatio,
+                    imageSize: generationConfig.imageConfig.imageSize,
                 },
-            };
-        }
+            },
+        };
     }
 
     if (candidateFailures.length) throw new Error(candidateFailures[0]);
@@ -7631,28 +7603,43 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     }
 
     const contentType = res.headers.get("content-type") || "";
+    const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
+    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+        return await imageResponseToDataUrl(res);
+    }
+
+    const responseBaseUrl = res.url || requestUrl;
+    const materializeProxyResult = (source) => materializeProviderImageSource(source, {
+        requestUrl,
+        responseUrl: responseBaseUrl,
+        headers,
+        signal,
+        fetchImpl: corsFetch,
+        allowBrowserFallback: false,
+    });
     if (endpointMode === "images_generations" && (contentType.includes("text/event-stream") || contentType.includes("text/plain"))) {
         log(`Parsing ${contentType.includes("text/event-stream") ? "SSE" : "text"} response`);
         const text = await readResponseText(res);
-        const responseOptions = { trustedBaseUrl: requestUrl };
+        const responseOptions = { trustedBaseUrl: responseBaseUrl };
         const direct = extractProxyImageFromString(text, responseOptions);
-        if (direct) return direct;
+        if (direct) return await materializeProxyResult(direct);
         const streamed = extractProxyImageFromSseText(text, responseOptions);
-        if (streamed) return streamed;
+        if (streamed) return await materializeProxyResult(streamed);
+        let parsed = null;
         try {
-            const parsed = JSON.parse(text);
-            const parsedImage = extractProxyImageFromJson(parsed, responseOptions);
-            if (parsedImage) return parsedImage;
+            parsed = JSON.parse(text);
         } catch {
             // Not JSON; continue to error below.
         }
+        const parsedImage = extractProxyImageFromJson(parsed, responseOptions);
+        if (parsedImage) return await materializeProxyResult(parsedImage);
         throw new Error(`No image in ${contentType.includes("text/event-stream") ? "SSE" : "text"} response`);
     }
 
     const data = await readResponseJson(res);
     log(`Response keys: ${JSON.stringify(Object.keys(data || {}))}`);
-    const imageUrl = extractProxyImageFromJson(data, { trustedBaseUrl: requestUrl });
-    if (imageUrl) return imageUrl;
+    const imageUrl = extractProxyImageFromJson(data, { trustedBaseUrl: responseBaseUrl });
+    if (imageUrl) return await materializeProxyResult(imageUrl);
 
     if (endpointMode === "chat_completions") {
         log(`Full message structure: ${JSON.stringify(data?.choices?.[0]?.message || {}).substring(0, 500)}`);
@@ -7803,7 +7790,7 @@ function createPopup(id, title, content, onShow, options = {}) {
         popup = document.createElement("div");
         popup.id = id;
         popup.className = "qig-popup";
-        popup.style.cssText = "display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.95);z-index:2147483647;justify-content:center;align-items:center;";
+        popup.style.display = "none";
         document.body.appendChild(popup);
     }
     const popupClass = options.popupClass ? ` qig-popup--${options.popupClass}` : "";
@@ -8133,6 +8120,8 @@ async function saveLockedBackgroundMetadata(cssUrl, path) {
     const ctx = getContext?.();
     if (!ctx?.chatMetadata) throw new Error("No active chat metadata available");
 
+    const previousBackground = ctx.chatMetadata.custom_background;
+    const previousBackgrounds = ctx.chatMetadata.chat_backgrounds;
     ctx.chatMetadata.custom_background = cssUrl;
     if (path) {
         const list = Array.isArray(ctx.chatMetadata.chat_backgrounds) ? [...ctx.chatMetadata.chat_backgrounds] : [];
@@ -8140,10 +8129,16 @@ async function saveLockedBackgroundMetadata(cssUrl, path) {
         ctx.chatMetadata.chat_backgrounds = list;
     }
 
-    if (typeof ctx.saveMetadataDebounced === "function") {
-        ctx.saveMetadataDebounced();
-    } else if (typeof ctx.saveMetadata === "function") {
-        await ctx.saveMetadata();
+    try {
+        if (typeof ctx.saveMetadataDebounced === "function") {
+            ctx.saveMetadataDebounced();
+        } else if (typeof ctx.saveMetadata === "function") {
+            await ctx.saveMetadata();
+        }
+    } catch (error) {
+        ctx.chatMetadata.custom_background = previousBackground;
+        ctx.chatMetadata.chat_backgrounds = previousBackgrounds;
+        throw error;
     }
 }
 
@@ -8152,11 +8147,19 @@ async function setImageAsBackground(entryOrUrl, mode = getSettings()?.background
     const { url, path } = await resolveBackgroundImageUrl(entryOrUrl, normalizedMode);
     const cssUrl = toCssImageUrl(url);
 
+    await verifyRenderableImage(url);
     options.commitGuard?.();
+    const backgroundElement = document.getElementById("bg1");
+    const previousBackground = backgroundElement?.style.backgroundImage || "";
     if (!applyBackgroundCss(cssUrl)) throw new Error("Could not find SillyTavern background element");
-    if (normalizedMode === "locked") {
-        options.commitGuard?.();
-        await saveLockedBackgroundMetadata(cssUrl, path);
+    try {
+        if (normalizedMode === "locked") {
+            options.commitGuard?.();
+            await saveLockedBackgroundMetadata(cssUrl, path);
+        }
+    } catch (error) {
+        applyBackgroundCss(previousBackground);
+        throw error;
     }
 
     const modeLabel = normalizedMode === "locked" ? "locked chat" : "temporary";
@@ -10382,11 +10385,7 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
 
     const text = await readResponseText(res, MAX_PROVIDER_RESPONSE_BYTES);
     const trimmedText = text.trim();
-    const extractJsonImage = (data) => {
-        const b64 = data?.data?.[0]?.b64_json;
-        if (b64) return extractGptImageDataUrl(b64, "png");
-        return extractProxyImageFromJson(data);
-    };
+    const extractJsonImage = (data) => extractProviderImageSource(data, { defaultMime: "image/png" });
     const looksJson = contentType.includes("application/json") || /^[\[{]/.test(trimmedText);
     let jsonError = null;
 
@@ -10501,7 +10500,7 @@ async function verifyRenderableImage(url) {
                 }
             }
         } catch (e) {
-            if (e.message?.includes("format") || e.message?.includes("corrupted") || e.message?.includes("empty")) throw e;
+            throw new Error(`Provider returned malformed or corrupted image data: ${e?.message || "decode failed"}`);
         }
     }
 
@@ -10549,7 +10548,12 @@ async function verifyRenderableImage(url) {
             };
             img.onerror = () => {
                 cleanup();
-                reject(new Error("Generated image failed to load or render"));
+                if (url.startsWith("data:")) {
+                    reject(new Error("Generated image data passed validation but the browser could not decode it"));
+                    return;
+                }
+                const sourceDescription = describeProviderImageSource(url);
+                reject(new Error(`Generated image URL could not be loaded: ${sourceDescription}. The URL may be expired, protected, or blocked by browser policy.`));
             };
             img.src = url;
         });
@@ -12696,12 +12700,17 @@ function renderProfileSelect(selectedName = "") {
     const provider = getSettings().provider;
     const profiles = Object.keys(connectionProfiles[provider] || {});
     const previousSelection = document.getElementById("qig-profile-dropdown")?.value || "";
-    const selected = selectedName || previousSelection;
+    const requestedSelection = selectedName || previousSelection;
+    const selected = profiles.includes(requestedSelection) ? requestedSelection : "";
     container.innerHTML = profiles.length
-        ? `<select id="qig-profile-dropdown" aria-label="Connection profile for ${escapeHtml(PROVIDERS[provider]?.name || provider)}"><option value="">-- Select Profile --</option>${profiles.map(p => `<option value="${escapeHtml(p)}" ${p === selected ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button id="qig-profile-del" class="menu_button" type="button" aria-label="Delete selected connection profile" title="Delete selected connection profile" style="padding:2px 6px;">🗑️</button>`
+        ? `<select id="qig-profile-dropdown" aria-label="Connection profile for ${escapeHtml(PROVIDERS[provider]?.name || provider)}"><option value="">-- Select Profile --</option>${profiles.map(p => `<option value="${escapeHtml(p)}" ${p === selected ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button id="qig-profile-del" class="menu_button" type="button" aria-label="Delete selected connection profile" title="Delete selected connection profile" ${selected ? "" : "disabled"}><span class="fa-solid fa-trash-can" aria-hidden="true"></span></button>`
         : "<span class='qig-muted'>No saved profiles</span>";
     const dropdown = document.getElementById("qig-profile-dropdown");
-    if (dropdown) dropdown.onchange = (e) => { if (e.target.value) loadConnectionProfile(e.target.value); };
+    if (dropdown) dropdown.onchange = (e) => {
+        const deleteButton = document.getElementById("qig-profile-del");
+        if (deleteButton) deleteButton.disabled = !e.target.value;
+        if (e.target.value) loadConnectionProfile(e.target.value);
+    };
     const delBtn = document.getElementById("qig-profile-del");
     if (delBtn) delBtn.onclick = () => { const dd = document.getElementById("qig-profile-dropdown"); if (dd?.value) deleteConnectionProfile(dd.value); };
 }
@@ -14396,7 +14405,7 @@ function createUI() {
                         </div>
                         <div class="qig-field qig-field--full">
                             <label>Connection Profile</label>
-                            <div class="qig-inline-control">
+                            <div class="qig-inline-control qig-profile-control">
                                 <div id="qig-profile-select" class="qig-inline-control__main"></div>
                                 <button id="qig-profile-save" class="menu_button" title="Save current provider, API key, and model as a reusable profile"><span class="fa-solid fa-floppy-disk"></span><span>Save Profile</span></button>
                             </div>
@@ -14439,6 +14448,7 @@ function createUI() {
                     <small style="opacity:0.6;font-size:10px;">Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
                     <label>Proxy URL <small>(optional — leave blank to use official OpenAI API)</small></label>
                     <input id="qig-gpt-image-proxy-url" type="text" value="${esc(s.gptImageProxyUrl)}" placeholder="https://your-proxy-url/v1">
+                    <small>A URL ending in <code>/v1</code> expands to OpenAI's image route. Any other path, such as <code>/proxy/openai</code>, is used as the exact POST endpoint.</small>
                     <label>Proxy Key <small>(optional — overrides API key above for proxy)</small></label>
                     <input id="qig-gpt-image-proxy-key" type="password" value="${esc(s.gptImageProxyKey)}" placeholder="Leave blank to use API key above">
                     <div class="qig-row">
@@ -14571,7 +14581,7 @@ function createUI() {
                         <div>
                             <label for="qig-nanobanana-proxy-url">Reverse Proxy URL (optional)</label>
                             <input id="qig-nanobanana-proxy-url" type="text" value="${esc(s.nanobananaProxyUrl || "")}" placeholder="https://proxy.example.com or https://generativelanguage.googleapis.com">
-                            <small>Custom endpoint domain/path if using an OpenAI/Gemini reverse proxy or API gateway.</small>
+                            <small>Use a Gemini proxy base for native requests, or a full <code>/chat/completions</code> URL for OpenAI-compatible requests.</small>
                         </div>
                         <div>
                             <label for="qig-nanobanana-proxy-key">Reverse Proxy Key (optional)</label>
@@ -15186,6 +15196,7 @@ function createUI() {
                 </div>
                         </div>
                     </div>
+                    </div>
                 </section>
 
                 <section class="qig-menu-section qig-menu-section--prompt qig-menu-section--collapsible qig-flow-create" aria-labelledby="qig-prompt-heading">
@@ -15297,6 +15308,7 @@ function createUI() {
                                 <small style="opacity:0.6;font-size:10px;">Supports {{scene}}, {{char}}, {{user}}, {{charDesc}}, and {{userDesc}}.</small>
                             </div>
                         </div>
+                    </div>
                     </div>
                     </div>
                 </section>
