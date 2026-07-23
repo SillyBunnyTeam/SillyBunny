@@ -4480,7 +4480,7 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     align-items: center;
     gap: calc(4px * var(--sb-bottom-bar-scale));
     box-sizing: border-box;
-    margin-block-end: var(--sb-chat-composer-gap, 8px);
+    margin-block-end: 4px;
     padding: calc(3px * var(--sb-bottom-bar-scale)) calc(8px * var(--sb-bottom-bar-scale));
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
     border-radius: var(--sb-radius-md, 14px);
