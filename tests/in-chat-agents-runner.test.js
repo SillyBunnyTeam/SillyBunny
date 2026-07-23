@@ -203,9 +203,15 @@ describe('in-chat agent post-processing runner', () => {
             extension_prompts: extensionPrompts,
             eventSource,
             event_types: eventTypes,
-            setExtensionPrompt: jest.fn((key, value, _position, _depth, _scan, _role, _filter = null, name = null) => {
+            setExtensionPrompt: jest.fn((key, value, position, depth, scan, role, _filter = null, name = null) => {
                 const promptName = typeof name === 'string' ? name.trim() : '';
                 extensionPrompts[key] = { value, ...(promptName && { name: promptName }) };
+                Object.defineProperties(extensionPrompts[key], {
+                    position: { value, enumerable: false },
+                    depth: { value: depth, enumerable: false },
+                    scan: { value: scan, enumerable: false },
+                    role: { value: role, enumerable: false },
+                });
             }),
             substituteParams: jest.fn((value, options = {}) => String(value ?? '')
                 .replaceAll('{{user}}', 'Traveler')
@@ -1735,6 +1741,7 @@ describe('in-chat agent post-processing runner', () => {
         const guardPrompt = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
         expect(guardPrompt.value).toBe('HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. NEVER reproduce, paraphrase, update, restate, or wrap any reply content in tracker formats inside `auxiliary notes`. Proceed with your normal story reply only.');
+        expect(guardPrompt.depth).toBe(4);
         expect(reputationPrompt).not.toContain('HARD STOP');
         expect(eventPrompt).not.toContain('HARD STOP');
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');

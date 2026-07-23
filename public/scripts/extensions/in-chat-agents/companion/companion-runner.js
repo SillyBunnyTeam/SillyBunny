@@ -1723,6 +1723,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
     const feedbackTrackerTags = new Set();
+    let feedbackTrackerDepth = 0;
     activeFeedbackTrackerTags = feedbackTrackerTags;
 
     for (const agent of activeAgents) {
@@ -1752,7 +1753,11 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        extractTrackerTags(body).forEach(tag => feedbackTrackerTags.add(tag));
+        const trackerTags = extractTrackerTags(body);
+        trackerTags.forEach(tag => feedbackTrackerTags.add(tag));
+        if (trackerTags.length > 0) {
+            feedbackTrackerDepth = Math.max(feedbackTrackerDepth, Number(agent.injection.depth) || 0);
+        }
         const label = `[${String(agent.name ?? 'Companion').trim()} - auxiliary notes]`;
 
         setExtensionPrompt(
@@ -1772,7 +1777,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             COMPANION_TRACKER_ECHO_GUARD_KEY,
             COMPANION_TRACKER_ECHO_GUARD,
             extension_prompt_types.IN_CHAT,
-            0,
+            feedbackTrackerDepth,
             false,
             extension_prompt_roles.SYSTEM,
         );
