@@ -249,6 +249,37 @@ export function getCompanionChatHistoryContributions(message, resolveMacros = co
 }
 
 /**
+ * Collects selected retained notes across messages and assigns them to the newest selected host.
+ * Each note is resolved against its original host before consolidation.
+ * @param {object[]} messages
+ * @param {Map<object, Set<string>>} selections
+ * @param {(message: object) => ((content: string) => string)} getMacroResolver
+ * @param {(message: object) => boolean} canHost
+ * @returns {{ host: object|null, entries: { message: object, contribution: { identifier: string, name: string, role: string, content: string, kind: string } }[] }}
+ */
+export function consolidateCompanionChatHistory(messages = [], selections = new Map(), getMacroResolver = () => content => content, canHost = () => true) {
+    let host = null;
+    const entries = [];
+
+    for (const message of messages) {
+        const agentIds = selections.get(message);
+        if (!(agentIds instanceof Set)) continue;
+
+        const selected = getCompanionChatHistoryContributions(message, getMacroResolver(message), { agentIds });
+        if (selected.length === 0) continue;
+
+        if (canHost(message)) {
+            host = message;
+        }
+        entries.push(...selected.map(contribution => ({ message, contribution })));
+    }
+
+    host ??= messages.findLast(message => message && !message.is_user && canHost(message)) ?? null;
+
+    return { host, entries };
+}
+
+/**
  * Builds the prompt-only assistant message containing retained companion results.
  * @param {object} message
  * @param {(content: string) => string} resolveMacros

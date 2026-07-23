@@ -57,3 +57,36 @@ export function collectInChatAgentInspectionRecords(messages = []) {
 
     return records;
 }
+
+export function trimOldestRetainedContribution(content, contributions = []) {
+    const retained = contributions
+        .map((contribution, index) => ({ contribution, index }))
+        .filter(({ contribution }) => contribution?.kind === 'retained-history' && contribution.content);
+    if (retained.length === 0) {
+        return { content, contributions, changed: false };
+    }
+
+    const source = String(content ?? '');
+    let cursor = source.length;
+    const positions = new Map();
+    for (let index = retained.length - 1; index >= 0; index--) {
+        const retainedContent = String(retained[index].contribution.content);
+        const contentIndex = source.lastIndexOf(retainedContent, cursor - 1);
+        if (contentIndex < 0) {
+            return { content, contributions, changed: false };
+        }
+        positions.set(retained[index].index, contentIndex);
+        cursor = contentIndex;
+    }
+
+    const retainedIndex = retained[0].index;
+    const retainedContent = String(contributions[retainedIndex].content);
+    const contentIndex = positions.get(retainedIndex);
+    const separated = source.slice(Math.max(0, contentIndex - 2), contentIndex) === '\n\n';
+    const removeStart = separated ? contentIndex - 2 : contentIndex;
+    return {
+        content: source.slice(0, removeStart) + source.slice(contentIndex + retainedContent.length),
+        contributions: contributions.filter((_, index) => index !== retainedIndex),
+        changed: true,
+    };
+}

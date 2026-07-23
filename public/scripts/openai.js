@@ -101,7 +101,7 @@ import {
 import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
-import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier } from './in-chat-agent-inspection.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
 
 export {
     openai_messages_count,
@@ -844,6 +844,14 @@ function setOpenAIMessages(chat) {
         const isSameModel = originApi === currentApi && originModel === currentModel;
         const signature = isSameModel ? chat[j]?.extra?.reasoning_signature : null;
         const reasoning = isSameModel ? String(chat[j]?.extra?.reasoning ?? '') : '';
+        const agentContributions = Array.isArray(chat[j].agentContributions)
+            ? structuredClone(chat[j].agentContributions).map(contribution => ({
+                ...contribution,
+                content: typeof contribution.content === 'string'
+                    ? contribution.content.replace(/\r/gm, '')
+                    : contribution.content,
+            }))
+            : null;
 
         // Remove reasoning metadata from invocations if the API/model don't match
         if (Array.isArray(invocations) && invocations.length > 0) {
@@ -867,7 +875,7 @@ function setOpenAIMessages(chat) {
             'invocations': invocations,
             'signature': signature,
             'reasoning': reasoning,
-            ...(Array.isArray(chat[j].agentContributions) && { agentContributions: structuredClone(chat[j].agentContributions) }),
+            ...(agentContributions && { agentContributions }),
         };
         if (hasPromptPayload(message)) {
             messages[i] = message;
@@ -1218,21 +1226,16 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
         // We do not want to mutate the prompt
         const prompt = new Prompt(chatPrompt);
         prompt.identifier = `chatHistory-${messages.length - index}`;
-        const chatMessage = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
-        if (Array.isArray(chatPrompt.agentContributions)) {
-            chatMessage.agentContributions = structuredClone(chatPrompt.agentContributions);
-        }
-
-        if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
-            const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
-            await chatMessage.setName(messageName);
-        }
+        let survivingContributions = Array.isArray(chatPrompt.agentContributions)
+            ? structuredClone(chatPrompt.agentContributions)
+            : [];
 
         /**
          * Inline a media attachment into the chat message.
          * @param {MediaAttachment} media - The media attachment to inline.
+         * @param {Message} message - The message receiving the attachment.
          */
-        const inlineMediaAttachment = async (media) => {
+        const inlineMediaAttachment = async (media, message) => {
             if (!media || !media.url) {
                 return;
             }
@@ -1240,26 +1243,46 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
                 media.type = MEDIA_TYPE.IMAGE;
             }
             if (imageInlining && media.type === MEDIA_TYPE.IMAGE) {
-                await chatMessage.addImage(media.url);
+                await message.addImage(media.url);
             }
             if (videoInlining && media.type === MEDIA_TYPE.VIDEO) {
-                await chatMessage.addVideo(media.url);
+                await message.addVideo(media.url);
             }
             if (audioInlining && media.type === MEDIA_TYPE.AUDIO) {
-                await chatMessage.addAudio(media.url);
+                await message.addAudio(media.url);
             }
         };
 
-        if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
-                for (const media of chatPrompt.media) {
-                    await inlineMediaAttachment(media);
+        const buildChatMessage = async () => {
+            const message = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
+            if (survivingContributions.length > 0) {
+                message.agentContributions = survivingContributions;
+            }
+            if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
+                const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
+                await message.setName(messageName);
+            }
+            if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
+                    for (const media of chatPrompt.media) {
+                        await inlineMediaAttachment(media, message);
+                    }
+                }
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
+                    const media = chatPrompt.media[chatPrompt.mediaIndex];
+                    await inlineMediaAttachment(media, message);
                 }
             }
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
-                const media = chatPrompt.media[chatPrompt.mediaIndex];
-                await inlineMediaAttachment(media);
-            }
+            return message;
+        };
+
+        let chatMessage = await buildChatMessage();
+        while (!chatCompletion.canAfford(chatMessage) && survivingContributions.length > 0 && typeof prompt.content === 'string') {
+            const trimmed = trimOldestRetainedContribution(prompt.content, survivingContributions);
+            if (!trimmed.changed) break;
+            prompt.content = trimmed.content;
+            survivingContributions = trimmed.contributions;
+            chatMessage = await buildChatMessage();
         }
 
         if (canUseTools && Array.isArray(chatPrompt.invocations)) {

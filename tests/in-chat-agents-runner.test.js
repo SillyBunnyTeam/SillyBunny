@@ -1141,6 +1141,125 @@ describe('in-chat agent post-processing runner', () => {
         expect(selected.get(latest)).toEqual(new Set(['agentA', 'agentB']));
     });
 
+    test('consolidates selected retained notes onto the newest selected host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (host, results) => ({
+            mes: host,
+            name: host,
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: results },
+        });
+        const result = (agentName, content) => ({
+            agentName,
+            status: 'done',
+            content,
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+        });
+        const oldest = createMessage('Oldest host', {
+            tracker: result('Tracker', 'Oldest note from {{original}}'),
+        });
+        const middle = createMessage('Middle host', {
+            tracker: result('Tracker', 'Middle note from {{original}}'),
+            details: result('Details', 'Middle details'),
+        });
+        const latest = createMessage('Latest host', {
+            tracker: result('Tracker', 'Latest note from {{original}}'),
+        });
+        const messages = [oldest, middle, latest];
+        const selections = selectCompanionChatHistory(messages);
+
+        const consolidated = consolidateCompanionChatHistory(messages, selections, message => content => content.replaceAll('{{original}}', message.mes));
+
+        expect(consolidated.host).toBe(latest);
+        expect(consolidated.entries.map(item => item.contribution.content)).toEqual([
+            'Oldest note from Oldest host',
+            'Middle note from Middle host',
+            'Middle details',
+            'Latest note from Latest host',
+        ]);
+        expect(consolidated.entries.map(item => item.message)).toEqual([oldest, middle, middle, latest]);
+        expect(oldest.mes).toBe('Oldest host');
+        expect(middle.mes).toBe('Middle host');
+        expect(latest.mes).toBe('Latest host');
+    });
+
+    test('avoids consolidating retained notes onto a tool-call host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (host, toolCall = false) => ({
+            mes: host,
+            is_user: false,
+            is_system: false,
+            extra: {
+                ...(toolCall && { tool_invocations: [{ id: 'tool-call' }] }),
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        agentName: 'Tracker',
+                        status: 'done',
+                        content: `${host} note`,
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                    },
+                },
+            },
+        });
+        const ordinaryHost = createMessage('Ordinary host');
+        const toolHost = createMessage('Tool host', true);
+        const messages = [ordinaryHost, toolHost];
+
+        const consolidated = consolidateCompanionChatHistory(
+            messages,
+            selectCompanionChatHistory(messages),
+            () => content => content,
+            message => !Array.isArray(message.extra?.tool_invocations),
+        );
+
+        expect(consolidated.host).toBe(ordinaryHost);
+        expect(consolidated.entries.map(item => item.contribution.content)).toEqual(['Ordinary host note', 'Tool host note']);
+    });
+
+    test('does not fall back to an excluded rewrite target as the consolidated host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const toolHost = {
+            mes: 'Tool host',
+            is_user: false,
+            is_system: false,
+            extra: {
+                tool_invocations: [{ id: 'tool-call' }],
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content: 'Retained note',
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                    },
+                },
+            },
+        };
+        const rewriteTarget = { mes: 'Rewrite target', is_user: false, is_system: false, extra: {} };
+        const candidates = [toolHost];
+
+        const consolidated = consolidateCompanionChatHistory(
+            candidates,
+            selectCompanionChatHistory(candidates, { policyMessages: [toolHost, rewriteTarget] }),
+            () => content => content,
+            message => !Array.isArray(message.extra?.tool_invocations),
+        );
+
+        expect(consolidated.host).toBeNull();
+        expect(consolidated.entries).toHaveLength(1);
+    });
+
     test('updates existing Companion cards when history retention settings change', async () => {
         const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');

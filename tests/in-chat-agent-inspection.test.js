@@ -7,6 +7,7 @@ import {
     collectInChatAgentInspectionRecords,
     getInChatAgentContributionKind,
     instrumentInChatAgentPromptValue,
+    trimOldestRetainedContribution,
 } from '../public/scripts/in-chat-agent-inspection.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -90,6 +91,39 @@ describe('In-Chat Agent prompt inspection', () => {
 
         expect(instrumentedAgent).toBe('{{trim}}<START>Agent body<END>{{trim}}');
         expect(trimMacros(instrumented).replace('<START>', '').replace('<END>', '')).toBe(trimMacros(source));
+    });
+
+    test('drops the oldest retained note from a consolidated assistant message', () => {
+        const contributions = [
+            { kind: 'retained-history', content: 'Old note' },
+            { kind: 'retained-history', content: 'New note' },
+        ];
+
+        expect(trimOldestRetainedContribution('Reply\n\nOld note\n\nNew note', contributions)).toEqual({
+            content: 'Reply\n\nNew note',
+            contributions: [contributions[1]],
+            changed: true,
+        });
+    });
+
+    test('does not remove matching prose from the original assistant reply', () => {
+        const contributions = [
+            { kind: 'retained-history', content: 'Repeated state' },
+            { kind: 'retained-history', content: 'New note' },
+        ];
+
+        expect(trimOldestRetainedContribution('Repeated state in prose\n\nRepeated state\n\nNew note', contributions).content)
+            .toBe('Repeated state in prose\n\nNew note');
+    });
+
+    test('trims normalized CRLF contribution content', () => {
+        const contribution = { kind: 'retained-history', content: 'Old\nstate' };
+
+        expect(trimOldestRetainedContribution('Reply\n\nOld\nstate', [contribution])).toEqual({
+            content: 'Reply',
+            contributions: [],
+            changed: true,
+        });
     });
 
     test('keeps the synthetic Agents row out of presets and the outbound root', () => {
