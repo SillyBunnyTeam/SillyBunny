@@ -1,4 +1,4 @@
-/* global document, getComputedStyle */
+/* global document, getComputedStyle, HTMLElement */
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
@@ -25,7 +25,13 @@ function getComposerSpacing(page) {
             leftClearance: textareaRect.left - Math.max(...leftControlRects.map(rect => rect.right)),
             rightClearance: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
             textareaWidth: textareaRect.width,
+            composerBorderRadius: getComputedStyle(composer).borderRadius,
+            composerBorderTopWidth: getComputedStyle(composer).borderTopWidth,
+            composerBorderColor: getComputedStyle(composer).borderColor,
+            composerBackgroundImage: getComputedStyle(composer).backgroundImage,
             textareaBorderRadius: getComputedStyle(textarea).borderRadius,
+            textareaBackgroundColor: getComputedStyle(textarea).backgroundColor,
+            textareaBoxShadow: getComputedStyle(textarea).boxShadow,
             formOutlineStyle: getComputedStyle(form).outlineStyle,
         };
     });
@@ -48,19 +54,53 @@ test.describe('mobile composer spacing at 320x568', () => {
         });
 
         for (const compactMode of ['false', 'true']) {
-            await page.evaluate(mode => document.documentElement.setAttribute('data-sb-compact-mode', mode), compactMode);
+            await page.evaluate(mode => {
+                document.documentElement.setAttribute('data-sb-compact-mode', mode);
+                document.getElementById('send_form')?.classList.remove('sb-generating-controls');
+                if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                }
+            }, compactMode);
+            await waitForAnimationFrames(page, 2);
+
+            const defaultState = await getComposerSpacing(page);
+
+            expect(defaultState).not.toBeNull();
+            expect(Number.parseFloat(defaultState.composerBorderRadius)).toBeGreaterThan(0);
+            expect(Number.parseFloat(defaultState.composerBorderTopWidth)).toBeGreaterThan(0);
+            expect(defaultState.composerBackgroundImage).not.toBe('none');
+            expect(Number.parseFloat(defaultState.textareaBorderRadius)).toBeGreaterThan(0);
+            expect(defaultState.textareaBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
             await page.locator('#send_textarea').focus();
             await waitForAnimationFrames(page, 2);
 
-            const spacing = await getComposerSpacing(page);
+            const focusState = await getComposerSpacing(page);
 
-            expect(spacing).not.toBeNull();
-            expect(spacing.columnGap).toBeGreaterThanOrEqual(8);
-            expect(spacing.leftClearance).toBeGreaterThanOrEqual(6);
-            expect(spacing.rightClearance).toBeGreaterThanOrEqual(6);
-            expect(spacing.textareaWidth).toBeGreaterThanOrEqual(100);
-            expect(spacing.textareaBorderRadius).toBe('0px');
-            expect(spacing.formOutlineStyle).toBe('none');
+            expect(focusState).not.toBeNull();
+            expect(focusState.columnGap).toBeGreaterThanOrEqual(8);
+            expect(focusState.leftClearance).toBeGreaterThanOrEqual(6);
+            expect(focusState.rightClearance).toBeGreaterThanOrEqual(6);
+            expect(focusState.textareaWidth).toBeGreaterThanOrEqual(100);
+            expect(focusState.formOutlineStyle).toBe('none');
+            expect(focusState.composerBorderColor).not.toBe(defaultState.composerBorderColor);
+            expect(focusState.composerBackgroundImage).not.toBe(defaultState.composerBackgroundImage);
+            expect(focusState.textareaBackgroundColor).not.toBe(defaultState.textareaBackgroundColor);
+            expect(focusState.textareaBoxShadow).not.toBe(defaultState.textareaBoxShadow);
+
+            await page.evaluate(() => {
+                if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                }
+                document.getElementById('send_form')?.classList.add('sb-generating-controls');
+            });
+            await waitForAnimationFrames(page, 2);
+
+            const generatingState = await getComposerSpacing(page);
+
+            expect(generatingState).not.toBeNull();
+            expect(generatingState.composerBorderColor).not.toBe(defaultState.composerBorderColor);
+            expect(generatingState.composerBackgroundImage).not.toBe(defaultState.composerBackgroundImage);
         }
     });
 });

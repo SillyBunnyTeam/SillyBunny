@@ -2849,9 +2849,14 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #send_textarea {
         padding: 8px 6px !important;
         line-height: 1.15 !important;
-        border-radius: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
+        border-radius: 10px !important;
+        background: var(--sb-composer-input-state-bg, var(--sb-composer-input-bg)) !important;
+        box-shadow: var(--sb-composer-input-state-shadow, none) !important;
+    }
+
+    #send_form:focus-within #send_textarea {
+        --sb-composer-input-state-bg: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 8%, var(--sb-composer-input-bg));
+        --sb-composer-input-state-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 32%, transparent);
     }
 
     #leftSendForm,
