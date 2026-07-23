@@ -1658,33 +1658,39 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).not.toContain('{{user}}');
     });
 
-    test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
-        const trackerCompanion = createCompanionAgent({
-            id: 'tracker-companion',
+    test('injects one shared anti-echo prompt for multiple tracker feedback bodies', async () => {
+        const reputationCompanion = createCompanionAgent({
+            id: 'reputation-companion',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
-        enabledAgents = [trackerCompanion];
+        const eventCompanion = createCompanionAgent({
+            id: 'event-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [reputationCompanion, eventCompanion];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
         chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
-        companionRunner.setCompanionResult(reply, trackerCompanion, {
+        companionRunner.setCompanionResult(reply, reputationCompanion, {
             status: 'done',
-            content: '[REP|Guild|Warm|Trusted]\nFaction warmed to the party.\n[/REP]\n\n[EVENT|Plot|Ambush at the gate|Tonight]\nGuards spotted.\n[/EVENT]',
+            content: '[REP|Guild|Warm|Trusted]\nFaction warmed to the party.\n[/REP]',
+        });
+        companionRunner.setCompanionResult(reply, eventCompanion, {
+            status: 'done',
+            content: '[EVENT|Plot|Ambush at the gate|Tonight]\nGuards spotted.\n[/EVENT]',
         });
 
-        companionRunner.injectCompanionFeedbackPrompts([trackerCompanion]);
-        const injected = extensionPrompts['inchat_agent_companion_tracker-companion'].value;
+        companionRunner.injectCompanionFeedbackPrompts([reputationCompanion, eventCompanion]);
+        const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
+        const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
+        const guardPrompt = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
-        // The guard must call out the exact tracker tags detected in the body, including closers.
-        expect(injected).toContain('[REP|...]');
-        expect(injected).toContain('[/REP]');
-        expect(injected).toContain('[EVENT|...]');
-        expect(injected).toContain('[/EVENT]');
-        // Guard wording forbids echoing the bracket format.
-        expect(injected.toLowerCase()).toContain('do not emit');
-        // The original tracker body still reaches the model as reference.
-        expect(injected).toContain('[REP|Guild|Warm|Trusted]');
+        expect(guardPrompt.value).toBe('HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Proceed with your normal story reply only.');
+        expect(reputationPrompt).not.toContain('HARD STOP');
+        expect(eventPrompt).not.toContain('HARD STOP');
+        expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
+        expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
     });
 
     test('leaves non-tracker feedback verbatim with no anti-echo guard', async () => {
@@ -1705,16 +1711,13 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([proseCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_prose-companion'].value;
 
-        // No tracker tags => no guard text injected.
-        expect(injected.toLowerCase()).not.toContain('do not emit');
-        expect(injected).not.toContain('[|...]');
+        // No tracker tags => no shared guard prompt injected.
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         // Prose note passes through unchanged.
         expect(injected).toContain('The scene has a tense, hushed tone.');
     });
 
-    test('does not forbid inline-only tracker tags absent from the feedback body', async () => {
-        // A SCENE tracker lives inline (author's note), NOT in the companion feedback body.
-        // Only REP/STATUS come from companions here, so only those must be forbidden.
+    test('ignores inline-only tracker tags absent from the feedback body', async () => {
         const mixedCompanion = createCompanionAgent({
             id: 'mixed-companion',
             companion: { feedback: { enabled: true, depth: 2 } },
@@ -1732,11 +1735,10 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
 
-        // Companion-sourced tags are forbidden...
-        expect(injected).toContain('[REP|...]');
-        expect(injected).toContain('[STATUS|...]');
-        // ...but SCENE (kept inline) is never mentioned, so the main reply may keep producing it.
-        expect(injected).not.toContain('[SCENE');
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeDefined();
+        expect(injected).toContain('[REP|Thieves Guild|+10|Liked]');
+        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
+        expect(injected).not.toContain('HARD STOP');
     });
 
     test('gates auto companions behind their context token threshold', async () => {
