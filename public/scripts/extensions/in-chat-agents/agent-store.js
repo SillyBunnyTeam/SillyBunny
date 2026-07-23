@@ -37,6 +37,7 @@ import {
  * @property {boolean} includePersona
  * @property {boolean} includeWorldInfo
  * @property {boolean} includeHistory
+ * @property {boolean} includeInChatHistory
  * @property {number} historyDepth
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
@@ -949,6 +950,7 @@ export function createDefaultCompanionConfig() {
         includeAuthorsNote: true,
         includeSystemPrompt: true,
         includeHistory: true,
+        includeInChatHistory: false,
         historyDepth: 3,
         feedback: {
             enabled: false,
@@ -997,6 +999,7 @@ export function normalizeCompanionConfig(raw = {}) {
         includeAuthorsNote: rawConfig.includeAuthorsNote === undefined ? defaults.includeAuthorsNote : Boolean(rawConfig.includeAuthorsNote),
         includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
         includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
+        includeInChatHistory: Boolean(rawConfig.includeInChatHistory),
         historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
         feedback: {
             enabled: Boolean(rawFeedback.enabled),

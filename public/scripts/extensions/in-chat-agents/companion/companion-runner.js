@@ -39,6 +39,7 @@ import {
     CHATROOM_CUSTOM_STYLE_VALUE,
     CHATROOM_STYLE_VALUES,
     CHATROOM_TEMPLATE_ID,
+    COMPANION_RESULTS_EXTRA_KEY,
     DIRECTORS_COMMENTARY_TEMPLATE_ID,
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
@@ -48,7 +49,7 @@ import {
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
 
-export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
+export { COMPANION_RESULTS_EXTRA_KEY };
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
 
 const MAX_COMPANION_RESULT_CHARS = 64 * 1024;
@@ -501,6 +502,7 @@ export function setCompanionResult(message, agent, update = {}) {
             ...update,
             format: update.format ?? companion.format,
             displayMode: update.displayMode ?? companion.displayMode,
+            includeInChatHistory: Boolean(companion.includeInChatHistory),
             updatedAt: update.updatedAt ?? new Date().toISOString(),
         },
     };
@@ -650,7 +652,7 @@ async function getWorldInfoSection(messageIndex, companion) {
     }
 }
 
-export function collectRecentCompanionResults(agentId, { beforeMessageIndex = chat.length, depth = 1 } = {}) {
+export function collectRecentCompanionResults(agentId, { beforeMessageIndex = chat.length, depth = 1, excludeChatHistory = false } = {}) {
     const results = [];
     const maxDepth = Math.max(1, Math.min(10, Number(depth) || 1));
 
@@ -661,7 +663,7 @@ export function collectRecentCompanionResults(agentId, { beforeMessageIndex = ch
         }
 
         const result = getCompanionResults(message)[agentId];
-        if (result?.status === 'done' && normalizeText(result.content)) {
+        if (result?.status === 'done' && normalizeText(result.content) && !(excludeChatHistory && result.includeInChatHistory === true)) {
             results.push({
                 messageIndex: index,
                 ...result,
@@ -1626,6 +1628,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = []) {
         const notes = collectRecentCompanionResults(agent.id, {
             beforeMessageIndex,
             depth: companion.feedback.depth,
+            excludeChatHistory: true,
         });
         if (notes.length === 0) {
             continue;

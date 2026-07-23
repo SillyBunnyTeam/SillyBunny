@@ -365,6 +365,7 @@ describe('in-chat agent scoped enabled state', () => {
             includeAuthorsNote: true,
             includeSystemPrompt: true,
             includeHistory: true,
+            includeInChatHistory: false,
             historyDepth: 3,
             feedback: {
                 enabled: false,
@@ -393,6 +394,7 @@ describe('in-chat agent scoped enabled state', () => {
             includePersona: true,
             includeWorldInfo: true,
             includeHistory: true,
+            includeInChatHistory: true,
             historyDepth: -1,
             feedback: {
                 enabled: true,
@@ -414,6 +416,7 @@ describe('in-chat agent scoped enabled state', () => {
             includePersona: true,
             includeWorldInfo: true,
             includeHistory: true,
+            includeInChatHistory: true,
             historyDepth: 1,
             feedback: {
                 enabled: true,

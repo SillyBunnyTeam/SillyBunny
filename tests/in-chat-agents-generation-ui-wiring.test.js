@@ -10,6 +10,7 @@ const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
 const editorTemplateSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'editor.html'), 'utf8');
 const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
+const coreScriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 
 function getFunctionSource(name) {
     const marker = `function ${name}(`;
@@ -110,6 +111,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('ica--editor-companion-contextRecipientAgentIds');
         expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
         expect(editorTemplateSource).toContain('Delay until selected companions finish');
+        expect(editorTemplateSource).toContain('<span>Keep this agent in Chat History</span>');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
     });
 
@@ -126,6 +128,18 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain("#ica--editor-companion-waitForDependencies");
         expect(readSource).toContain("waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked')");
         expect(writeSource).toContain("editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);");
+    });
+
+    test('persists companion chat history and projects it into prompt-only messages', () => {
+        const readSource = getFunctionSource('readCompanionConfigFromEditor');
+        const writeSource = getFunctionSource('writeCompanionConfigToEditor');
+
+        expect(indexSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);");
+        expect(readSource).toContain("includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked')");
+        expect(writeSource).toContain("editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);");
+        expect(coreScriptSource).toContain('projectCompanionChatHistory(chatItem');
+        expect(coreScriptSource).toContain('isContinue && index === coreChat.length - 1');
+        expect(coreScriptSource).toContain('getRegexedString(contextSourceMessage, regexType, options)');
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {

@@ -253,6 +253,7 @@ import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
+import { projectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -7003,7 +7004,14 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
         const originalMessage = chatItem.mes;
-        let message = originalMessage;
+        // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
+        const contextSourceMessage = isContinue && index === coreChat.length - 1
+            ? originalMessage
+            : projectCompanionChatHistory(chatItem, content => substituteParams(content, {
+                name2Override: String(chatItem.name ?? '').trim() || undefined,
+                original: originalMessage,
+            }));
+        let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
@@ -7020,7 +7028,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         let regexedMessage = getRegexedString(message, regexType, options);
-        let worldInfoRegexedMessage = message === originalMessage ? undefined : getRegexedString(originalMessage, regexType, options);
+        let worldInfoRegexedMessage = message === contextSourceMessage ? undefined : getRegexedString(contextSourceMessage, regexType, options);
         const fileContent = await appendFileContent(chatItem, '');
         regexedMessage = fileContent + regexedMessage;
         if (worldInfoRegexedMessage !== undefined) {

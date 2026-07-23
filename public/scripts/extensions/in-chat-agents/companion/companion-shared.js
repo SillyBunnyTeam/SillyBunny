@@ -15,6 +15,12 @@ export const CHAT_ONLY_TEMPLATE_ID = 'tpl-chat-only-companion';
 export const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 export const MEMORY_SHARD_TEMPLATE_ID = 'tpl-memory-shard-companion';
 export const EXPRESSIONS_AGENT_TEMPLATE_ID = 'tpl-expressions-agent';
+export const COMPANION_RESULTS_EXTRA_KEY = 'inChatAgentCompanionResults';
+
+const ESCAPED_MACRO_OPEN_RE = /\\\{\\\{/g;
+const ESCAPED_MACRO_CLOSE_RE = /\\\}\\\}/g;
+const ENTITY_OPEN_BRACE_RE = /&(?:#123|#x7b|lcub);/gi;
+const ENTITY_CLOSE_BRACE_RE = /&(?:#125|#x7d|rcub);/gi;
 
 export const CHATROOM_CUSTOM_STYLE_VALUE = 'custom';
 export const CHATROOM_STYLE_VALUES = new Set([
@@ -119,4 +125,51 @@ export function isAssistantMessage(message) {
  */
 export function isValidCompanionMessage(message) {
     return Boolean(message && !message.is_system);
+}
+
+export function normalizeCompanionMacroSyntax(content = '') {
+    return String(content ?? '')
+        .replace(ESCAPED_MACRO_OPEN_RE, '{{')
+        .replace(ESCAPED_MACRO_CLOSE_RE, '}}')
+        .replace(ENTITY_OPEN_BRACE_RE, '{')
+        .replace(ENTITY_CLOSE_BRACE_RE, '}');
+}
+
+function getActiveCompanionResults(message) {
+    const swipeInfo = !message?.is_user
+        && !message?.is_system
+        && typeof message?.swipe_id === 'number'
+        && Array.isArray(message?.swipe_info)
+        ? message.swipe_info[message.swipe_id]
+        : null;
+    const stored = swipeInfo?.extra
+        ? swipeInfo.extra[COMPANION_RESULTS_EXTRA_KEY]
+        : message?.extra?.[COMPANION_RESULTS_EXTRA_KEY];
+
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+}
+
+/**
+ * Builds the prompt-only assistant message containing retained companion results.
+ * @param {object} message
+ * @param {(content: string) => string} resolveMacros
+ * @returns {string}
+ */
+export function projectCompanionChatHistory(message, resolveMacros = content => content) {
+    const originalMessage = String(message?.mes ?? '');
+    if (!isAssistantMessage(message)) {
+        return originalMessage;
+    }
+
+    const retainedContent = Object.values(getActiveCompanionResults(message))
+        .filter(result => result?.status === 'done' && result?.includeInChatHistory === true)
+        .map(result => normalizeCompanionMacroSyntax(result.content ?? ''))
+        .map(content => String(resolveMacros(content) ?? '').trim())
+        .filter(Boolean);
+
+    if (retainedContent.length === 0) {
+        return originalMessage;
+    }
+
+    return [originalMessage, ...retainedContent].filter(Boolean).join('\n\n');
 }

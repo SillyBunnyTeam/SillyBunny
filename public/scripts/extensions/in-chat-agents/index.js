@@ -2846,6 +2846,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', companion.includeAuthorsNote);
     editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', companion.includeSystemPrompt);
     editorEl.find('#ica--editor-companion-includeHistory').prop('checked', companion.includeHistory);
+    editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
@@ -3215,6 +3216,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             includeAuthorsNote: root.find('#ica--editor-companion-includeAuthorsNote').prop('checked'),
             includeSystemPrompt: root.find('#ica--editor-companion-includeSystemPrompt').prop('checked'),
             includeHistory: root.find('#ica--editor-companion-includeHistory').prop('checked'),
+            includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked'),
             historyDepth: Number(root.find('#ica--editor-companion-historyDepth').val()) || current.historyDepth,
             feedback: {
                 ...current.feedback,
@@ -3246,6 +3248,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', nextCompanion.includeAuthorsNote);
         editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', nextCompanion.includeSystemPrompt);
         editorEl.find('#ica--editor-companion-includeHistory').prop('checked', nextCompanion.includeHistory);
+        editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);

@@ -354,6 +354,7 @@ describe('in-chat agent post-processing runner', () => {
                 includeAuthorsNote: Boolean(agent?.companion?.includeAuthorsNote),
                 includeSystemPrompt: Boolean(agent?.companion?.includeSystemPrompt),
                 includeHistory: Boolean(agent?.companion?.includeHistory),
+                includeInChatHistory: Boolean(agent?.companion?.includeInChatHistory),
                 historyDepth: Number(agent?.companion?.historyDepth) || 3,
                 feedback: {
                     enabled: Boolean(agent?.companion?.feedback?.enabled),
@@ -978,7 +979,7 @@ describe('in-chat agent post-processing runner', () => {
     });
 
     test('persists companion notes per swipe and restores them on swipe back', async () => {
-        const companionAgent = createCompanionAgent();
+        const companionAgent = createCompanionAgent({ companion: { includeInChatHistory: true } });
         enabledAgents = [companionAgent];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
@@ -999,10 +1000,12 @@ describe('in-chat agent post-processing runner', () => {
         expect(message.extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
             status: 'done',
             content: 'note A',
+            includeInChatHistory: true,
         }));
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
             status: 'done',
             content: 'note A',
+            includeInChatHistory: true,
         }));
 
         // Swipe to a fresh second swipe: the active extra no longer carries the note.
@@ -1027,6 +1030,63 @@ describe('in-chat agent post-processing runner', () => {
         expect(companionRunner.getCompanionResults(message)).toEqual({});
         expect(message.extra.inChatAgentCompanionResults).toBeUndefined();
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults).toBeUndefined();
+    });
+
+    test('projects only completed opted-in companion results from the active swipe', async () => {
+        const { projectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const message = {
+            mes: 'The door opened.',
+            name: 'Mira',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    stale: { status: 'done', content: 'Wrong swipe', includeInChatHistory: true },
+                },
+            },
+            swipe_id: 1,
+            swipe_info: [
+                { extra: {} },
+                {
+                    extra: {
+                        inChatAgentCompanionResults: {
+                            retained: { status: 'done', content: '\\{\\{char\\}\\} remembers &#123;&#123;original&#125;&#125;', includeInChatHistory: true },
+                            normal: { status: 'done', content: 'Not retained', includeInChatHistory: false },
+                            pending: { status: 'pending', content: 'Not finished', includeInChatHistory: true },
+                            empty: { status: 'done', content: '   ', includeInChatHistory: true },
+                        },
+                    },
+                },
+            ],
+        };
+        const originalMessage = structuredClone(message);
+
+        const projected = projectCompanionChatHistory(message, content => content
+            .replaceAll('{{char}}', message.name)
+            .replaceAll('{{original}}', message.mes));
+
+        expect(projected).toBe('The door opened.\n\nMira remembers The door opened.');
+        expect(message).toEqual(originalMessage);
+        expect(projected).not.toContain('Wrong swipe');
+        expect(projected).not.toContain('Not retained');
+        expect(projected).not.toContain('Not finished');
+    });
+
+    test('does not project retained companion results on user messages', async () => {
+        const { projectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const message = {
+            mes: 'Open the door.',
+            name: 'Traveler',
+            is_user: true,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    retained: { status: 'done', content: 'Should remain separate', includeInChatHistory: true },
+                },
+            },
+        };
+
+        expect(projectCompanionChatHistory(message)).toBe('Open the door.');
     });
 
     test('sends raw-prompt companion prompts verbatim without extra instructions', async () => {
@@ -1356,6 +1416,31 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('excludes chat-history companion results from feedback prompts', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'retained-feedback-companion',
+            companion: {
+                includeInChatHistory: true,
+                feedback: { enabled: true, depth: 2 },
+            },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const earlierReply = { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const laterReply = { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(earlierReply, laterReply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(earlierReply, feedbackCompanion, { status: 'done', content: 'Older feedback-only note' });
+        companionRunner.updateCompanionResult(earlierReply, feedbackCompanion.id, { includeInChatHistory: false });
+        companionRunner.setCompanionResult(laterReply, feedbackCompanion, { status: 'done', content: 'Retained note' });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+
+        const injected = extensionPrompts['inchat_agent_companion_retained-feedback-companion'].value;
+        expect(injected).toContain('Older feedback-only note');
+        expect(injected).not.toContain('Retained note');
     });
 
     test('skips hidden companions when injecting feedback prompts', async () => {
