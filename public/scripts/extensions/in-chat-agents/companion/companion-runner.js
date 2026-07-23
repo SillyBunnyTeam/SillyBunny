@@ -1,8 +1,6 @@
 import {
     chat,
     chat_metadata,
-    extension_prompt_roles,
-    extension_prompt_types,
     getCurrentChatId,
     normalizeContentText,
     saveChatDebounced,
@@ -59,7 +57,6 @@ export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_
 
 const MAX_COMPANION_RESULT_CHARS = 64 * 1024;
 const COMPANION_PROMPT_KEY_PREFIX = 'inchat_agent_companion_';
-const COMPANION_TRACKER_ECHO_GUARD_KEY = `${COMPANION_PROMPT_KEY_PREFIX}tracker_echo_guard`;
 const BATCH_MARKER_RE = /<<<(?:COMPANION|companion):([\w-]+)>>>([\s\S]*?)<<<(?:END|end):\1>>>/g;
 const CHATROOM_CUSTOM_STYLES_MAX_CHARS = 6000;
 const CHATROOM_CUSTOM_STYLE_NAME_MAX_CHARS = 80;
@@ -816,10 +813,9 @@ const COMPANION_TASK_ANCHOR = `[Task]\nUse the conversation above only as read-o
 // via injectCompanionFeedbackPrompts. Without this guard the model mimics the bracket format and
 // emits new [TAG|...] blocks in its reply, which the user then has to delete by hand. Inline
 // trackers (author's notes / world info) are NOT routed through this path and stay unaffected.
-// Detection is dynamic so custom tracker tags are covered automatically, while one shared prompt
-// covers every tracker companion without repeating the guard in each auxiliary-notes block.
+// Detection is dynamic so custom tracker tags are covered automatically. The guard is prepended
+// to one tracker feedback block, preserving its proximity to the format without repeating it.
 const COMPANION_TRACKER_TAG_PATTERN = /\[([A-Z][A-Z0-9_]*)(?::[^|\]\n]+)?\|/g;
-const COMPANION_TRACKER_ECHO_GUARD = 'HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. NEVER reproduce, paraphrase, update, restate, or wrap any reply content in tracker formats inside `auxiliary notes`. Proceed with your normal story reply only.';
 let activeFeedbackTrackerTags = new Set();
 
 function extractTrackerTags(text) {
@@ -831,6 +827,11 @@ function extractTrackerTags(text) {
         tags.add(match[1].toUpperCase());
     }
     return [...tags];
+}
+
+function buildTrackerEchoGuard(tags) {
+    const examples = tags.flatMap(tag => [`[${tag}|...]`, `[/${tag}]`]).join(', ');
+    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: ' + examples + ' (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.';
 }
 
 function getAuxiliaryTrackerTags() {
@@ -1723,7 +1724,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
     const feedbackTrackerTags = new Set();
-    let feedbackTrackerDepth = 0;
+    const feedbackPrompts = [];
     activeFeedbackTrackerTags = feedbackTrackerTags;
 
     for (const agent of activeAgents) {
@@ -1755,31 +1756,26 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
 
         const trackerTags = extractTrackerTags(body);
         trackerTags.forEach(tag => feedbackTrackerTags.add(tag));
-        if (trackerTags.length > 0) {
-            feedbackTrackerDepth = Math.max(feedbackTrackerDepth, Number(agent.injection.depth) || 0);
-        }
+        feedbackPrompts.push({ agent, body, trackerTags });
+    }
+
+    let trackerGuardInjected = false;
+    for (const { agent, body, trackerTags } of feedbackPrompts) {
+        const echoGuard = trackerTags.length > 0 && !trackerGuardInjected
+            ? buildTrackerEchoGuard([...feedbackTrackerTags]) + '\n\n'
+            : '';
+        trackerGuardInjected ||= trackerTags.length > 0;
         const label = `[${String(agent.name ?? 'Companion').trim()} - auxiliary notes]`;
 
         setExtensionPrompt(
             COMPANION_PROMPT_KEY_PREFIX + agent.id,
-            `${label}\n${body}`,
+            `${label}\n${echoGuard}${body}`,
             agent.injection.position,
             agent.injection.depth,
             agent.injection.scan,
             agent.injection.role,
             null,
             agent.name,
-        );
-    }
-
-    if (feedbackTrackerTags.size > 0) {
-        setExtensionPrompt(
-            COMPANION_TRACKER_ECHO_GUARD_KEY,
-            COMPANION_TRACKER_ECHO_GUARD,
-            extension_prompt_types.IN_CHAT,
-            feedbackTrackerDepth,
-            false,
-            extension_prompt_roles.SYSTEM,
         );
     }
 }

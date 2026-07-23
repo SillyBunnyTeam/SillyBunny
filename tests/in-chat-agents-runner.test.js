@@ -1712,7 +1712,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).not.toContain('{{user}}');
     });
 
-    test('injects one shared anti-echo prompt for multiple tracker feedback bodies', async () => {
+    test('prepends one delimiter-specific anti-echo guard to tracker feedback', async () => {
         const reputationCompanion = createCompanionAgent({
             id: 'reputation-companion',
             companion: { feedback: { enabled: true, depth: 2 } },
@@ -1738,12 +1738,10 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([reputationCompanion, eventCompanion]);
         const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
         const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
-        const guardPrompt = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
 
-        expect(guardPrompt.value).toBe('HARD STOP for your reply: the bracket-format tracker notes with the `auxiliary notes` tag are read-only reference information to inform the scene. NEVER reproduce, paraphrase, update, restate, or wrap any reply content in tracker formats inside `auxiliary notes`. Proceed with your normal story reply only.');
-        expect(guardPrompt.depth).toBe(4);
-        expect(reputationPrompt).not.toContain('HARD STOP');
+        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.');
         expect(eventPrompt).not.toContain('HARD STOP');
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
         expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
     });
@@ -1849,10 +1847,10 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
 
-        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeDefined();
         expect(injected).toContain('[REP|Thieves Guild|+10|Liked]');
         expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
-        expect(injected).not.toContain('HARD STOP');
+        expect(injected).toContain('Specifically, do not emit any of: [REP|...], [/REP], [STATUS|...], [/STATUS]');
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
     });
 
     test('gates auto companions behind their context token threshold', async () => {
