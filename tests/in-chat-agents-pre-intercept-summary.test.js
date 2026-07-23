@@ -57,6 +57,7 @@ beforeAll(async () => {
         generateQuietPrompt: jest.fn(),
         is_send_press: false,
         normalizeContentText: jest.fn(value => String(value ?? '')),
+        saveChatDebounced: jest.fn(),
         saveSettingsDebounced: jest.fn(),
         substituteParams: jest.fn(value => String(value ?? '')),
     }));
@@ -204,9 +205,11 @@ beforeAll(async () => {
         initCompanionRunner: jest.fn(),
         runConnectedCompanionsOnMessage: jest.fn(async () => []),
         runTrackerCompanionsOnMessage: jest.fn(async () => []),
+        syncCompanionChatHistoryConfig: jest.fn(() => 0),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
+        configureCompanionCardUi: jest.fn(),
         initCompanionCardUi: jest.fn(),
         updateCompanionButtonVisibility: jest.fn(),
     }));
