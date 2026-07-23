@@ -11989,6 +11989,27 @@ function injectSillyTavernImportCard() {
     updateSillyTavernImportInteractivity();
 }
 
+function createThemeSettingsDrawer({ id, title, content, className = '' }) {
+    const drawer = createElement('section', {
+        id,
+        className: `inline-drawer sb-theme-settings-drawer ${className}`.trim(),
+        attrs: {
+            'data-settings-tab': 'appearance',
+        },
+    });
+    const header = createElement('div', { className: 'inline-drawer-toggle inline-drawer-header' });
+    const heading = createElement('strong', { text: title });
+    const icon = createElement('div', { className: 'fa-solid fa-circle-chevron-down inline-drawer-icon down' });
+    const body = createElement('div', { className: 'inline-drawer-content sb-theme-settings-drawer-body' });
+    body.style.display = 'none';
+
+    header.append(heading);
+    header.append(icon);
+    body.append(...content);
+    drawer.append(header, body);
+    return drawer;
+}
+
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
     const sliderGroup = createElement('div', { className: `sb-theme-slider-group ${className}`.trim() });
     const sliderHeader = createElement('div', { className: 'sb-theme-slider-header' });
@@ -12056,14 +12077,10 @@ function createTopbarLabelOption(mode, part) {
 }
 
 function createShortcutSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group',
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
     });
-
-    const heading = createElement('div', { className: 'sb-theme-slider-label' });
-    heading.innerHTML = '<strong>Quick Access Shortcuts</strong><br><small>Assign a shell tab or universal search to each shortcut button in the top bar.</small>';
-    group.appendChild(heading);
-
     const rows = createElement('div', {
         className: 'sb-shortcut-rows',
     });
@@ -12107,8 +12124,11 @@ function createShortcutSettingsGroup() {
         rows.appendChild(row);
     }
 
-    group.appendChild(rows);
-    return group;
+    return createThemeSettingsDrawer({
+        id: 'sb-quick-access-shortcuts-drawer',
+        title: 'Quick Access Shortcuts',
+        content: [description, rows],
+    });
 }
 
 function getMobileQuickActionContextLabel(action) {
@@ -12695,7 +12715,7 @@ function createPaperTextureSettingsGroup() {
 
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-frontend-icon-group',
+        className: 'sb-interface-settings-group sb-frontend-icon-group',
     });
     const header = createElement('div', { className: 'sb-frontend-icon-header' });
     const title = createElement('strong', { text: 'Frontend Icon' });
@@ -12783,11 +12803,6 @@ function syncShortcutButtonActiveStates() {
 }
 
 function createTopbarLabelSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-topbar-label-group',
-    });
-    const header = createElement('div', { className: 'sb-topbar-label-header' });
-    const title = createElement('strong', { text: 'Top Bar Label' });
     const description = createElement('p', {
         className: 'sb-theme-slider-caption',
         text: 'Choose what the center label shows. Desktop can mix multiple parts with a middle dot, while mobile keeps one selection at a time.',
@@ -12854,7 +12869,6 @@ function createTopbarLabelSettingsGroup() {
     clickCycleCopy.append(clickCycleTitle, clickCycleDescription);
     clickCycleOption.append(clickCycleCheckbox, clickCycleCopy);
 
-    header.append(title, description);
     desktopHeading.append(desktopTitle, desktopDescription);
     mobileHeading.append(mobileTitle, mobileDescription);
     customTextHeading.append(customTextTitle, customTextDescription);
@@ -12867,9 +12881,12 @@ function createTopbarLabelSettingsGroup() {
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
     customTextField.append(customTextHeading, customTextInput);
-    group.append(header, desktopSection, mobileSection, customTextField, clickCycleOption);
 
-    return group;
+    return createThemeSettingsDrawer({
+        id: 'sb-topbar-label-drawer',
+        title: 'Top Bar Label',
+        content: [description, desktopSection, mobileSection, customTextField, clickCycleOption],
+    });
 }
 
 function injectThemePicker() {
@@ -12884,8 +12901,6 @@ function injectThemePicker() {
     }
 
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
-    const header = createElement('div', { className: 'sb-theme-card-header' });
-    const title = createElement('strong', { text: 'Shell Style' });
     const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
     const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
@@ -12899,6 +12914,7 @@ function injectThemePicker() {
         ariaLabel: 'Background visibility',
         caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through.',
         onInput: nextValue => setSurfaceTransparency(nextValue),
+        className: 'sb-interface-settings-group',
     });
     const bottomBarSliderGroup = createThemeSliderGroup({
         title: 'Bottom Bar Size',
@@ -12911,6 +12927,7 @@ function injectThemePicker() {
         ariaLabel: 'Bottom bar size',
         caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS.',
         onInput: nextValue => setBottomBarScale(nextValue),
+        className: 'sb-interface-settings-group',
     });
     const desktopButtonSliderGroup = createThemeSliderGroup({
         title: 'Desktop Button Size',
@@ -12955,8 +12972,6 @@ function injectThemePicker() {
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    header.append(title, description);
-
     for (const theme of SB_THEMES) {
         const button = createElement('button', {
             className: 'sb-theme-option',
@@ -12973,6 +12988,17 @@ function injectThemePicker() {
         button.addEventListener('click', () => setShellTheme(theme.id));
         optionRow.appendChild(button);
     }
+
+    const shellStyleSettingsGroup = createThemeSettingsDrawer({
+        id: 'sb-shell-style-drawer',
+        title: 'Shell Style',
+        content: [description, optionRow],
+    });
+    const interfaceSettingsGroup = createThemeSettingsDrawer({
+        id: 'sb-interface-drawer',
+        title: 'Interface',
+        content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],
+    });
 
     getMessageStyleSelect()?.addEventListener('change', updateThemePickerUi);
     document.addEventListener('sb:chat-style-updated', updateThemePickerUi);
@@ -13001,7 +13027,7 @@ function injectThemePicker() {
         );
     }
 
-    card.append(header, optionRow, frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
             desktopNavLayoutSettingsGroup,
@@ -13024,7 +13050,7 @@ function injectThemePicker() {
             mobileQuickActionSettingsGroup,
         );
     }
-    themeBlock.prepend(card);
+    themeBlock.append(card);
     updateThemePickerUi();
 }
 

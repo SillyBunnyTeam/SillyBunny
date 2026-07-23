@@ -9,6 +9,8 @@ const readSource = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'ut
 describe('SillyBunny settings theme drawers', () => {
     const indexSource = readSource('public', 'index.html');
     const settingsTabsSource = readSource('public', 'scripts', 'sillybunny-settings-tabs.js');
+    const shellTabsSource = readSource('public', 'scripts', 'sillybunny-tabs.js');
+    const shellTabsCssSource = readSource('public', 'css', 'sillybunny-tabs.css');
 
     test('separates full UI themes from palette and accent presets', () => {
         expect(settingsTabsSource).not.toContain('UI Theme & Presets');
@@ -30,5 +32,29 @@ describe('SillyBunny settings theme drawers', () => {
         expect(themeBlock).toContain('id="ui_preset_import_file"');
         expect(themeBlock).toContain('id="ui_preset_export_button"');
         expect(themeBlock).toContain('id="ui-preset-save-button"');
+    });
+
+    test('groups shell theme controls into persisted appearance drawers', () => {
+        const drawerIds = [
+            'sb-shell-style-drawer',
+            'sb-interface-drawer',
+            'sb-topbar-label-drawer',
+            'sb-quick-access-shortcuts-drawer',
+        ];
+
+        expect(shellTabsSource).toContain('\'data-settings-tab\': \'appearance\'');
+        expect(shellTabsSource).toContain('body.style.display = \'none\';');
+        expect(shellTabsSource).toContain('themeBlock.append(card);');
+        expect(shellTabsSource).not.toContain('themeBlock.prepend(card);');
+        for (const drawerId of drawerIds) {
+            expect(shellTabsSource).toContain(`'${drawerId}'`);
+        }
+        expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],');
+        expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');
+        expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
+        expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');
+        expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .inline-drawer-header');
+        expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .sb-theme-settings-drawer-body');
+        expect(shellTabsCssSource).toContain('.sb-interface-settings-group + .sb-interface-settings-group');
     });
 });
