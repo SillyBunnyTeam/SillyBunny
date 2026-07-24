@@ -77,5 +77,76 @@ export function normalizeWorldInfoPosition(position, positions) {
 export function normalizeCharacterBookPosition(extensionPosition, entryPosition, positions) {
     return normalizeWorldInfoPosition(extensionPosition, positions)
         ?? normalizeWorldInfoPosition(entryPosition, positions)
-        ?? positions.after;
+        ?? positions.before;
+}
+
+/**
+ * Escapes regex delimiter slashes without adding duplicate escaping on repeated conversions.
+ * @param {string} value Raw CharacterBook regex
+ * @returns {string} Regex body safe for slash-delimited storage
+ */
+export function escapeCharacterBookRegex(value) {
+    return String(value).replace(/(\\*)\//g, (_match, backslashes) => {
+        const delimiterEscape = backslashes.length % 2 === 0 ? '\\' : '';
+        return `${backslashes}${delimiterEscape}/`;
+    });
+}
+
+function unescapeCharacterBookRegex(value) {
+    return String(value).replace(/(\\*)\//g, (_match, backslashes) => {
+        const rawBackslashes = backslashes.length % 2 === 1 ? backslashes.slice(0, -1) : backslashes;
+        return `${rawBackslashes}/`;
+    });
+}
+
+function parseWorldInfoRegexKey(value) {
+    const match = String(value).match(/^\/([\s\S]+)\/([gimsuy]*)$/);
+    if (!match) {
+        return null;
+    }
+
+    const body = match[1];
+    for (let index = 0; index < body.length; index++) {
+        if (body[index] !== '/') {
+            continue;
+        }
+        let backslashes = 0;
+        for (let cursor = index - 1; cursor >= 0 && body[cursor] === '\\'; cursor--) {
+            backslashes++;
+        }
+        if (backslashes % 2 === 0) {
+            return null;
+        }
+    }
+
+    try {
+        RegExp(body, match[2]);
+        return match;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Serializes internal slash-delimited keys for CharacterBook storage.
+ * @param {string[]} primaryKeys Primary entry keys
+ * @param {string[]} secondaryKeys Secondary entry keys
+ * @returns {{keys: string[], secondaryKeys: string[], useRegex: boolean}} Serialized keys and regex mode
+ */
+export function serializeCharacterBookKeys(primaryKeys = [], secondaryKeys = []) {
+    const allKeys = [...primaryKeys, ...secondaryKeys];
+    const parsedKeys = allKeys.map(parseWorldInfoRegexKey);
+    const useRegex = allKeys.length > 0 && parsedKeys.every(Boolean);
+    const serializeKey = key => {
+        if (!useRegex) {
+            return key;
+        }
+        const match = parseWorldInfoRegexKey(key);
+        return match?.[2] ? key : unescapeCharacterBookRegex(match?.[1] ?? key);
+    };
+    return {
+        keys: primaryKeys.map(serializeKey),
+        secondaryKeys: secondaryKeys.map(serializeKey),
+        useRegex,
+    };
 }

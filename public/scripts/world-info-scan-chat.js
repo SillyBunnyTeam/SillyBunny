@@ -21,3 +21,28 @@ export function buildWorldInfoScanChat(chat, supplementalChat, messageVariants, 
         return includeNames ? `${message.name}: ${content}` : content;
     }).reverse();
 }
+
+/**
+ * Expands greeting macros while preserving automatic participant-name macros for World Info scans.
+ * @param {string} message Greeting text
+ * @param {(message: string) => string} substitute Macro substitution function
+ * @param {{char: string, user: string}} names Participant names
+ * @returns {{prompt: string, worldInfo: string}} Prompt and name-excluded World Info variants
+ */
+export function substituteWorldInfoGreeting(message, substitute, names) {
+    const macros = [];
+    const protectedMessage = String(message ?? '').replace(/{{\s*(char|user)\s*}}|<(BOT|CHAR|USER)>/gi, (macro, curlyName, legacyName) => {
+        const placeholder = `__SB_WI_NAME_MACRO_${macros.length}__`;
+        const name = String(curlyName || legacyName).toLowerCase() === 'user' ? 'user' : 'char';
+        macros.push({ macro, name });
+        return placeholder;
+    });
+    const substitutedMessage = substitute(protectedMessage);
+    return macros.reduce((result, item, index) => {
+        const placeholder = `__SB_WI_NAME_MACRO_${index}__`;
+        return {
+            prompt: result.prompt.replace(placeholder, () => names[item.name]),
+            worldInfo: result.worldInfo.replace(placeholder, () => item.macro),
+        };
+    }, { prompt: substitutedMessage, worldInfo: substitutedMessage });
+}

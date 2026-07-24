@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { normalizeCharacterBookPosition, normalizeWorldInfoPosition } from '../public/scripts/world-info-character-book.js';
+import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys } from '../public/scripts/world-info-character-book.js';
 
 const positions = {
     before: 0,
@@ -100,11 +100,61 @@ describe('normalizeCharacterBookPosition', () => {
         expect(normalizeCharacterBookPosition('0', 'after_char', positions)).toBe(positions.before);
     });
 
-    test('falls back to after when no known position exists', () => {
-        expect(normalizeCharacterBookPosition('unknown', undefined, positions)).toBe(positions.after);
+    test('falls back to before when no known position exists', () => {
+        expect(normalizeCharacterBookPosition('unknown', undefined, positions)).toBe(positions.before);
     });
 
-    test('falls back to after for out-of-enum integer positions', () => {
-        expect(normalizeCharacterBookPosition(99, 12, positions)).toBe(positions.after);
+    test('falls back to before for out-of-enum integer positions', () => {
+        expect(normalizeCharacterBookPosition(99, 12, positions)).toBe(positions.before);
+    });
+});
+
+describe('serializeCharacterBookKeys', () => {
+    test('serializes unflagged regexes without delimiters', () => {
+        expect(serializeCharacterBookKeys(['/foo/'], ['/bar/'])).toEqual({
+            keys: ['foo'],
+            secondaryKeys: ['bar'],
+            useRegex: true,
+        });
+    });
+
+    test('preserves delimiters when they carry regex flags', () => {
+        expect(serializeCharacterBookKeys(['/foo/i'], [])).toEqual({
+            keys: ['/foo/i'],
+            secondaryKeys: [],
+            useRegex: true,
+        });
+    });
+
+    test('keeps internal keys unchanged when regex and plaintext keys are mixed', () => {
+        expect(serializeCharacterBookKeys(['/foo/i'], ['bar'])).toEqual({
+            keys: ['/foo/i'],
+            secondaryKeys: ['bar'],
+            useRegex: false,
+        });
+    });
+
+    test('does not classify plaintext with unescaped slashes as regex', () => {
+        expect(serializeCharacterBookKeys(['/foo/bar/'], [])).toEqual({
+            keys: ['/foo/bar/'],
+            secondaryKeys: [],
+            useRegex: false,
+        });
+    });
+
+    test('round-trips delimiter slashes without accumulating backslashes', () => {
+        const rawKey = 'foo/bar';
+        const internalKey = `/${escapeCharacterBookRegex(rawKey)}/`;
+        const serialized = serializeCharacterBookKeys([internalKey], []);
+
+        expect(internalKey).toBe('/foo\\/bar/');
+        expect(serialized.keys).toEqual([rawKey]);
+        expect(`/${escapeCharacterBookRegex(serialized.keys[0])}/`).toBe(internalKey);
+    });
+
+    test('preserves literal backslashes before delimiter slashes', () => {
+        const rawKey = String.raw`foo\\/bar`;
+        const internalKey = `/${escapeCharacterBookRegex(rawKey)}/`;
+        expect(serializeCharacterBookKeys([internalKey], []).keys).toEqual([rawKey]);
     });
 });
