@@ -1834,7 +1834,7 @@
         align-items: center !important;
         justify-content: center !important;
         box-sizing: border-box !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         line-height: 1 !important;
         font-size: var(--sb-composer-action-icon-size) !important;
     }
@@ -1844,7 +1844,7 @@
     :root[data-sb-compact-mode='true'] #send_but,
     :root[data-sb-compact-mode='true'] #send_form .mes_stop,
     :root[data-sb-compact-mode='true'] #send_form.sb-generating-controls #mes_stop {
-        border-radius: 7px !important;
+        border-radius: 9px !important;
         font-size: var(--sb-composer-action-icon-size) !important;
     }
 

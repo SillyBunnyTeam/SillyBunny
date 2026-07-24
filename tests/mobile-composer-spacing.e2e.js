@@ -9,20 +9,30 @@ function getComposerSpacing(page) {
         const composer = document.getElementById('nonQRFormItems');
         const textarea = document.getElementById('send_textarea');
         const form = document.getElementById('send_form');
+        const leftRail = document.getElementById('leftSendForm');
         const textareaRect = textarea?.getBoundingClientRect();
-        const getVisibleControlRects = id => Array.from(document.getElementById(id)?.children ?? [])
-            .map(element => element.getBoundingClientRect())
-            .filter(rect => rect.width > 0 && rect.height > 0);
-        const leftControlRects = getVisibleControlRects('leftSendForm');
-        const rightControlRects = getVisibleControlRects('rightSendForm');
+        const getVisibleControls = id => Array.from(document.getElementById(id)?.children ?? [])
+            .filter(element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            });
+        const leftControls = getVisibleControls('leftSendForm');
+        const rightControls = getVisibleControls('rightSendForm');
+        const leftControlRects = leftControls.map(element => element.getBoundingClientRect());
+        const rightControlRects = rightControls.map(element => element.getBoundingClientRect());
+        const rightmostLeftControl = leftControls.reduce((rightmost, element) => (
+            !rightmost || element.getBoundingClientRect().right > rightmost.getBoundingClientRect().right ? element : rightmost
+        ), null);
 
-        if (!composer || !form || !textareaRect || leftControlRects.length === 0 || rightControlRects.length === 0) {
+        if (!composer || !form || !leftRail || !rightmostLeftControl || !textareaRect || rightControlRects.length === 0) {
             return null;
         }
 
         return {
             columnGap: Number.parseFloat(getComputedStyle(composer).columnGap),
             leftClearance: textareaRect.left - Math.max(...leftControlRects.map(rect => rect.right)),
+            leftRailPaintClearance: leftRail.getBoundingClientRect().right - rightmostLeftControl.getBoundingClientRect().right,
+            leftControlBorderRadius: getComputedStyle(rightmostLeftControl).borderTopRightRadius,
             rightClearance: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
             textareaWidth: textareaRect.width,
             composerBorderRadius: getComputedStyle(composer).borderRadius,
@@ -71,6 +81,8 @@ test.describe('mobile composer spacing at 320x568', () => {
             expect(defaultState.composerBackgroundImage).not.toBe('none');
             expect(Number.parseFloat(defaultState.textareaBorderRadius)).toBeGreaterThan(0);
             expect(defaultState.textareaBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+            expect(defaultState.leftRailPaintClearance).toBeGreaterThanOrEqual(1);
+            expect(Number.parseFloat(defaultState.leftControlBorderRadius)).toBeGreaterThanOrEqual(compactMode === 'true' ? 9 : 10);
 
             await page.locator('#send_textarea').focus();
             await waitForAnimationFrames(page, 2);
