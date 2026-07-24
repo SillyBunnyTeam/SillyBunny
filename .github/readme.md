@@ -16,7 +16,7 @@ English | [Deutsch](.github/readme-de_de.md) | [中文](.github/readme-zh_cn.md)
 An elegant fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern), designed with a cleaner, graphical shell UI; Bun-based backend; built-in tutorials, presets, extensions, and a quick-start dashboard; and a lightweight agentic system to facilitate modern agent functionality.
 
 > [!WARNING]
-> This is an in-dev fork, and is considered beta quality. [Please direct SillyBunny-specific issues to this project's issue tracker.](https://github.com/platberlitz/SillyBunny/issues) If an issue is reproducible in upstream SillyTavern, please report it upstream instead.
+> This is an in-dev fork, and is considered beta quality. [Please direct SillyBunny-specific issues to this project's issue tracker.](https://github.com/SillyBunnyTeam/SillyBunny/issues) If an issue is reproducible in upstream SillyTavern, please report it upstream instead.
 >
 > Disclaimer: LLMs are used to facilitate development of this fork. Overall software design, prompting, testing, and documentation are handled by humans. To keep things simple, we try to maintain close to upstream as possible.
 
@@ -82,12 +82,12 @@ These screenshots show the graphical shell UI across Workspace, Customize, Agent
 
 ## Installation
 
-[Grab the latest release here.](https://github.com/platberlitz/SillyBunny/releases/latest)
+[Grab the latest release here.](https://github.com/SillyBunnyTeam/SillyBunny/releases/latest)
 
 Or run:
 
 ```bash
-git clone https://github.com/platberlitz/SillyBunny.git
+git clone https://github.com/SillyBunnyTeam/SillyBunny.git
 cd SillyBunny
 ```
 
@@ -123,7 +123,7 @@ bun run start:no-csrf  # disable CSRF (local dev)
 ```bash
 pkg update && pkg upgrade -y
 pkg install -y git curl unzip
-git clone https://github.com/platberlitz/SillyBunny.git
+git clone https://github.com/SillyBunnyTeam/SillyBunny.git
 cd SillyBunny
 bash start-termux-node.sh
 ```
@@ -287,7 +287,7 @@ This update introduces Companion Agents, sidecar-style auxiliary AI helpers that
 **Removed**
 * No user-facing features were removed in this release.
 
-[Find other changelogs in our Releases.](https://github.com/platberlitz/SillyBunny/releases)
+[Find other changelogs in our Releases.](https://github.com/SillyBunnyTeam/SillyBunny/releases)
 
 ---
 

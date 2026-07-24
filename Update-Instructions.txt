@@ -77,4 +77,4 @@ Troubleshooting
 - If your data is missing after a ZIP update, confirm it was copied into the
   new data folder, not into public.
 - If you need help with a SillyBunny-specific update issue, open an issue at:
-  https://github.com/platberlitz/SillyBunny/issues
+  https://github.com/SillyBunnyTeam/SillyBunny/issues
