@@ -1,0 +1,21 @@
+# Normalize line endings: all text files are LF in the repo and on checkout.
+# Prevents CRLF checkouts (core.autocrlf=true) from breaking source-string test assertions.
+* text=auto eol=lf
+
+# Windows scripts require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.mp3 binary
+*.wav binary
+*.zip binary
