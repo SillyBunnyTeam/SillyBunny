@@ -1,12 +1,13 @@
 import {
     MAX_IMAGE_BYTES,
     MAX_PROVIDER_RESPONSE_BYTES,
+    isCredentialFieldName,
     normalizeImageSource,
     readResponseArrayBuffer,
     readResponseJson,
     readResponseText,
 } from "./security.js";
-import { detectImageFormat } from "./image-metadata.js";
+import { detectImageFormat, validateImageData } from "./image-metadata.js";
 
 const MAX_TEMPLATE_LENGTH = 64 * 1024;
 const MIN_POLL_INTERVAL_MS = 250;
@@ -16,10 +17,15 @@ const MAX_TIMEOUT_MS = 30 * 60_000;
 const MAX_TEMPLATE_DEPTH = 24;
 const MAX_TEMPLATE_NODES = 5_000;
 const MAX_REFERENCE_BYTES = MAX_IMAGE_BYTES;
+export const MAX_CUSTOM_REQUEST_BYTES = MAX_PROVIDER_RESPONSE_BYTES;
+const MAX_JOB_ID_BYTES = 1_024;
+const MAX_RESPONSE_IMAGE_DEPTH = 64;
+const MAX_RESPONSE_IMAGE_NODES = 10_000;
 const TEMPLATE_TOKEN = /\{\{([A-Za-z][A-Za-z0-9]*)\}\}/g;
 const POLL_JOB_ID_SENTINEL = "qig-job-id-placeholder-6f7c1e";
-const FORBIDDEN_TEMPLATE_KEY = /(?:^|[_-])(?:__proto__|prototype|constructor|api[_-]?key|access[_-]?token|authorization|auth(?:[_-]?token)?|token|secret|password|passwd|credentials?|session(?:[_-]?id)?)(?:$|[_-])/i;
+const FORBIDDEN_TEMPLATE_KEY = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_REFERENCE_MIME = new Set(["image/avif", "image/bmp", "image/gif", "image/jpeg", "image/png", "image/tiff", "image/webp"]);
+const FORBIDDEN_AUTH_HEADER = /^(?:accept|accept-charset|accept-encoding|access-control-request-headers|access-control-request-method|connection|content-length|content-type|cookie2?|date|dnt|expect|host|keep-alive|origin|permissions-policy|referer|te|trailer|transfer-encoding|upgrade|via)$/i;
 const ALLOWED_TOKENS = new Set([
     "prompt", "negative", "model", "width", "height", "size", "steps",
     "cfgScale", "sampler", "seed", "referenceImages", "firstReferenceImage",
@@ -34,6 +40,120 @@ function parseList(value, fallback = []) {
     if (Array.isArray(value)) return value.map(item => String(item).trim()).filter(Boolean);
     const items = String(value || "").split(",").map(item => item.trim()).filter(Boolean);
     return items.length ? items : fallback;
+}
+
+function utf8ByteLength(value, stopAfter = Number.POSITIVE_INFINITY) {
+    const source = String(value);
+    let bytes = 0;
+    for (let index = 0; index < source.length; index++) {
+        const code = source.charCodeAt(index);
+        if (code <= 0x7f) bytes += 1;
+        else if (code <= 0x7ff) bytes += 2;
+        else if (code >= 0xd800 && code <= 0xdbff && index + 1 < source.length) {
+            const next = source.charCodeAt(index + 1);
+            if (next >= 0xdc00 && next <= 0xdfff) {
+                bytes += 4;
+                index += 1;
+            } else bytes += 3;
+        } else bytes += 3;
+        if (bytes > stopAfter) return bytes;
+    }
+    return bytes;
+}
+
+function jsonStringContentByteLength(value, stopAfter = Number.POSITIVE_INFINITY) {
+    const source = String(value);
+    let bytes = 0;
+    for (let index = 0; index < source.length; index++) {
+        const code = source.charCodeAt(index);
+        if (code === 0x22 || code === 0x5c) bytes += 2;
+        else if (code < 0x20) bytes += 6;
+        else if (code <= 0x7f) bytes += 1;
+        else if (code <= 0x7ff) bytes += 2;
+        else if (code >= 0xd800 && code <= 0xdbff && index + 1 < source.length) {
+            const next = source.charCodeAt(index + 1);
+            if (next >= 0xdc00 && next <= 0xdfff) {
+                bytes += 4;
+                index += 1;
+            } else bytes += 6;
+        } else if (code >= 0xdc00 && code <= 0xdfff) bytes += 6;
+        else bytes += 3;
+        if (bytes > stopAfter) return bytes;
+    }
+    return bytes;
+}
+
+function estimateJsonBytes(value, maxBytes, depth = 0) {
+    if (depth > MAX_TEMPLATE_DEPTH + 2) return maxBytes + 1;
+    if (value == null) return 4;
+    if (typeof value === "string") return 2 + jsonStringContentByteLength(value, maxBytes);
+    if (typeof value === "number") return Number.isFinite(value) ? String(value).length : 4;
+    if (typeof value === "boolean") return value ? 4 : 5;
+    if (Array.isArray(value)) {
+        let total = 2 + Math.max(0, value.length - 1);
+        for (const item of value) {
+            total += estimateJsonBytes(item, maxBytes - total, depth + 1);
+            if (total > maxBytes) return total;
+        }
+        return total;
+    }
+    if (typeof value === "object") {
+        const entries = Object.entries(value);
+        let total = 2 + Math.max(0, entries.length - 1);
+        for (const [key, item] of entries) {
+            total += 3 + jsonStringContentByteLength(key, maxBytes - total);
+            total += estimateJsonBytes(item, maxBytes - total, depth + 1);
+            if (total > maxBytes) return total;
+        }
+        return total;
+    }
+    return 4;
+}
+
+function estimateRenderedStringBytes(value, tokens, maxBytes) {
+    const exact = value.match(/^\{\{([A-Za-z][A-Za-z0-9]*)\}\}$/);
+    if (exact) return estimateJsonBytes(tokens[exact[1]], maxBytes);
+    let total = 2;
+    let offset = 0;
+    for (const match of value.matchAll(TEMPLATE_TOKEN)) {
+        total += jsonStringContentByteLength(value.slice(offset, match.index), maxBytes - total);
+        const token = tokens[match[1]];
+        if (token != null) {
+            if (typeof token === "object") total += estimateJsonBytes(token, maxBytes) * 2;
+            else total += jsonStringContentByteLength(String(token), maxBytes - total);
+        }
+        if (total > maxBytes) return total;
+        offset = match.index + match[0].length;
+    }
+    return total + jsonStringContentByteLength(value.slice(offset), maxBytes - total);
+}
+
+function estimateRenderedTemplateBytes(value, tokens, maxBytes, depth = 0) {
+    if (depth > MAX_TEMPLATE_DEPTH + 2) return maxBytes + 1;
+    if (typeof value === "string") return estimateRenderedStringBytes(value, tokens, maxBytes);
+    if (value == null || typeof value !== "object") return estimateJsonBytes(value, maxBytes);
+    if (Array.isArray(value)) {
+        let total = 2 + Math.max(0, value.length - 1);
+        for (const item of value) {
+            total += estimateRenderedTemplateBytes(item, tokens, maxBytes - total, depth + 1);
+            if (total > maxBytes) return total;
+        }
+        return total;
+    }
+    const entries = Object.entries(value);
+    let total = 2 + Math.max(0, entries.length - 1);
+    for (const [key, item] of entries) {
+        total += 3 + jsonStringContentByteLength(key, maxBytes - total);
+        total += estimateRenderedTemplateBytes(item, tokens, maxBytes - total, depth + 1);
+        if (total > maxBytes) return total;
+    }
+    return total;
+}
+
+function assertExpandedRequestSize(template, tokens) {
+    if (estimateRenderedTemplateBytes(template, tokens, MAX_CUSTOM_REQUEST_BYTES) > MAX_CUSTOM_REQUEST_BYTES) {
+        throw new Error("Expanded Custom API request exceeds the configured size limit");
+    }
 }
 
 function parseHttpUrl(value, label) {
@@ -84,7 +204,7 @@ function validateTemplateTokens(value, depth = 0, state = { nodes: 0 }) {
     }
     if (value && typeof value === "object") {
         for (const [key, item] of Object.entries(value)) {
-            if (FORBIDDEN_TEMPLATE_KEY.test(key)) {
+            if (FORBIDDEN_TEMPLATE_KEY.has(key) || isCredentialFieldName(key)) {
                 throw new Error(`Request template field is reserved for authentication: ${key}`);
             }
             validateTemplateTokens(item, depth + 1, state);
@@ -168,22 +288,63 @@ function dataUrlToBlob(value) {
     return new Blob([bytes], { type: mime });
 }
 
-function appendMultipartValue(form, key, value) {
+function addMultipartBytes(state, bytes) {
+    state.bytes += bytes + 512;
+    if (state.bytes > MAX_CUSTOM_REQUEST_BYTES) {
+        throw new Error("Expanded Custom API request exceeds the configured size limit");
+    }
+}
+
+function appendMultipartValue(form, key, value, state) {
     if (value == null) return;
     if (Array.isArray(value)) {
-        value.forEach(item => appendMultipartValue(form, key, item));
+        value.forEach(item => appendMultipartValue(form, key, item, state));
         return;
     }
     if (typeof value === "string") {
         const blob = dataUrlToBlob(value);
         if (blob) {
+            addMultipartBytes(state, blob.size + utf8ByteLength(key));
             form.append(key, blob, `reference.${blob.type.split("/")[1] || "png"}`);
             return;
         }
+        addMultipartBytes(state, utf8ByteLength(key) + utf8ByteLength(value));
         form.append(key, value);
         return;
     }
-    form.append(key, typeof value === "object" ? JSON.stringify(value) : String(value));
+    const serialized = typeof value === "object" ? JSON.stringify(value) : String(value);
+    addMultipartBytes(state, utf8ByteLength(key) + utf8ByteLength(serialized));
+    form.append(key, serialized);
+}
+
+function validateAuthName(authType, authName) {
+    if (authType === "header") {
+        if (!/^[A-Za-z0-9-]{1,64}$/.test(authName)) throw new Error("API key header name is invalid");
+        if (FORBIDDEN_AUTH_HEADER.test(authName) || /^(?:proxy-|sec-)/i.test(authName)) {
+            throw new Error("API key header name conflicts with a reserved request header");
+        }
+    }
+    if (authType === "query" && !/^[A-Za-z0-9_.-]{1,64}$/.test(authName)) {
+        throw new Error("API key query parameter is invalid");
+    }
+}
+
+function encodeBasicCredential(value) {
+    const bytes = new TextEncoder().encode(value);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
+}
+
+function validateBasicCredential(value) {
+    const separator = value.indexOf(":");
+    if (separator <= 0) throw new Error("Basic authentication credential must use username:password format");
+    if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error("Basic authentication credential contains invalid control characters");
+    // RFC 7617 permits an empty password, but not a colon in the username.
+    return value;
 }
 
 function buildAuth(config, url, headers) {
@@ -193,21 +354,23 @@ function buildAuth(config, url, headers) {
     if (authType === "none" || !key) return;
     if (authType === "bearer") headers.Authorization = `Bearer ${key}`;
     else if (authType === "header") {
-        if (!/^[A-Za-z0-9-]{1,64}$/.test(authName)) throw new Error("API key header name is invalid");
+        validateAuthName(authType, authName);
         headers[authName] = key;
     } else if (authType === "query") {
-        if (!/^[A-Za-z0-9_.-]{1,64}$/.test(authName)) throw new Error("API key query parameter is invalid");
+        validateAuthName(authType, authName);
         url.searchParams.set(authName, key);
     } else if (authType === "basic") {
-        headers.Authorization = `Basic ${btoa(key)}`;
+        headers.Authorization = `Basic ${encodeBasicCredential(validateBasicCredential(key))}`;
     } else {
         throw new Error(`Unsupported authentication mode: ${authType}`);
     }
 }
 
 function isLoopbackUrl(url) {
-    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "::1";
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    if (host === "localhost" || host.endsWith(".localhost") || host === "::1") return true;
+    const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    return !!ipv4 && ipv4.slice(1).map(Number).every(octet => octet <= 255) && Number(ipv4[1]) === 127;
 }
 
 function assertSafeAuthDestination(url, authType, apiKey, label) {
@@ -224,6 +387,9 @@ export function normalizeCustomBackendConfig(config = {}) {
     const requestUrl = parseHttpUrl(config.url, "Request URL");
     const authType = ["none", "bearer", "header", "query", "basic"].includes(config.authType) ? config.authType : "none";
     const apiKey = String(config.apiKey || "");
+    const authName = String(config.authName || "X-API-Key").trim();
+    validateAuthName(authType, authName);
+    if (authType === "basic") validateBasicCredential(apiKey);
     assertSafeAuthDestination(requestUrl, authType, apiKey, "Request URL");
     const normalized = {
         mode,
@@ -231,7 +397,7 @@ export function normalizeCustomBackendConfig(config = {}) {
         method,
         requestType,
         authType,
-        authName: String(config.authName || "X-API-Key").trim(),
+        authName,
         apiKey,
         requestTemplate: parseCustomRequestTemplate(config.requestTemplate),
         responsePath: normalizePointer(config.responsePath, "Image response path"),
@@ -247,6 +413,12 @@ export function normalizeCustomBackendConfig(config = {}) {
         const pollUrl = parseHttpUrl(probePollUrl, "Polling URL");
         if (pollUrl.host.includes(POLL_JOB_ID_SENTINEL)) {
             throw new Error("Polling URL must keep {{jobId}} outside the scheme and authority");
+        }
+        if (!(pollUrl.pathname + pollUrl.search).includes(POLL_JOB_ID_SENTINEL)) {
+            throw new Error("Polling URL must place {{jobId}} in the path or query, not the fragment");
+        }
+        if (pollUrl.hash.includes(POLL_JOB_ID_SENTINEL)) {
+            throw new Error("Polling URL must not place {{jobId}} in the fragment");
         }
         assertSafeAuthDestination(pollUrl, authType, apiKey, "Polling URL");
         if (authType !== "none" && apiKey && pollUrl.origin !== requestUrl.origin) {
@@ -292,42 +464,56 @@ export function buildCustomBackendRequest(config, input = {}) {
     const normalized = normalizeCustomBackendConfig(config);
     const url = new URL(normalized.url);
     const headers = { Accept: "application/json, image/*" };
+    if (normalized.requestType === "json") headers["Content-Type"] = "application/json";
     buildAuth(normalized, url, headers);
-    const rendered = renderCustomTemplate(normalized.requestTemplate, createTokens(input));
+    const tokens = createTokens(input);
+    assertExpandedRequestSize(normalized.requestTemplate, tokens);
+    const rendered = renderCustomTemplate(normalized.requestTemplate, tokens);
     let body;
     if (normalized.requestType === "multipart") {
         body = new FormData();
-        Object.entries(rendered).forEach(([key, value]) => appendMultipartValue(body, key, value));
+        const state = { bytes: 0 };
+        Object.entries(rendered).forEach(([key, value]) => appendMultipartValue(body, key, value, state));
     } else {
-        headers["Content-Type"] = "application/json";
         body = JSON.stringify(rendered);
+        if (utf8ByteLength(body, MAX_CUSTOM_REQUEST_BYTES) > MAX_CUSTOM_REQUEST_BYTES) {
+            throw new Error("Expanded Custom API request exceeds the configured size limit");
+        }
     }
     return { config: normalized, url: url.href, method: normalized.method, headers, body };
 }
 
 function imageFromValue(value, responseType = "auto") {
-    if (value == null) return null;
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            const image = imageFromValue(item, responseType);
-            if (image) return image;
+    const stack = [{ value, depth: 0 }];
+    const seen = new WeakSet();
+    let nodes = 0;
+    while (stack.length && nodes < MAX_RESPONSE_IMAGE_NODES) {
+        const current = stack.pop();
+        if (current.depth > MAX_RESPONSE_IMAGE_DEPTH || current.value == null) continue;
+        nodes += 1;
+        if (typeof current.value !== "object") {
+            const text = String(current.value).trim();
+            if (!text) continue;
+            if (responseType === "url") return text;
+            if (responseType === "base64") return text.startsWith("data:image/") ? text : `data:image/png;base64,${text}`;
+            if (/^(?:https?:|data:image\/|\/|\.\.?(?:\/|$))/i.test(text)) return text;
+            if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(text)) return `data:image/png;base64,${text}`;
+            continue;
         }
-        return null;
+        if (seen.has(current.value)) continue;
+        seen.add(current.value);
+        const candidates = Array.isArray(current.value)
+            ? current.value
+            : [
+                current.value.url, current.value.image, current.value.image_url?.url, current.value.imageUrl,
+                current.value.b64_json, current.value.base64, current.value.image_base64,
+                current.value.imageBase64, current.value.inline_data?.data, current.value.inlineData?.data,
+                current.value.source?.data, current.value.data, current.value.content, current.value.parts,
+            ];
+        for (let index = candidates.length - 1; index >= 0; index--) {
+            if (candidates[index] != null) stack.push({ value: candidates[index], depth: current.depth + 1 });
+        }
     }
-    if (typeof value === "object") {
-        return imageFromValue(
-            value.url ?? value.image_url?.url ?? value.imageUrl ?? value.b64_json ?? value.base64
-                ?? value.image_base64 ?? value.imageBase64 ?? value.inline_data?.data ?? value.inlineData?.data
-                ?? value.source?.data ?? value.data ?? value.content ?? value.parts,
-            responseType,
-        );
-    }
-    const text = String(value).trim();
-    if (!text) return null;
-    if (responseType === "url") return text;
-    if (responseType === "base64") return text.startsWith("data:image/") ? text : `data:image/png;base64,${text}`;
-    if (/^(?:https?:|data:image\/|\/|\.\.?(?:\/|$))/i.test(text)) return text;
-    if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(text)) return `data:image/png;base64,${text}`;
     return null;
 }
 
@@ -351,17 +537,17 @@ async function readCustomResponse(response, config, fallbackUrl) {
         const detail = await readResponseText(response, 1024 * 1024).catch(() => "");
         throw new Error(`Custom API error ${response.status}: ${detail.replace(/\s+/g, " ").trim().slice(0, 500) || response.statusText}`);
     }
-    const contentType = response.headers.get("content-type") || "";
+    const contentType = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
     if (contentType.startsWith("image/")) {
         const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
-        const format = detectImageFormat(buffer);
+        const format = await validateImageData(buffer);
         if (!format) throw new Error("Custom API response is not a supported image format");
         return { buffer, contentType: format.mime };
     }
     return { data: await readResponseJson(response, MAX_PROVIDER_RESPONSE_BYTES), responseUrl: response.url || fallbackUrl };
 }
 
-async function materializeImage(image, baseUrl, fetchImpl, signal) {
+async function materializeImage(image, baseUrl, config, fetchImpl, signal) {
     const source = normalizeImageSource(image, {
         baseUrl,
         allowHttp: true,
@@ -370,9 +556,9 @@ async function materializeImage(image, baseUrl, fetchImpl, signal) {
     });
     if (!source) throw new Error("Custom API returned an invalid image source");
     if (source.startsWith("data:")) {
-        const response = await fetchImpl(source, { signal });
+        const response = await fetchImpl(source, { signal, credentials: "omit" });
         const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
-        const format = detectImageFormat(buffer);
+        const format = await validateImageData(buffer);
         if (!format) throw new Error("Custom API output is not a supported image format");
         return { buffer, contentType: format.mime };
     }
@@ -387,16 +573,34 @@ async function materializeImage(image, baseUrl, fetchImpl, signal) {
     if (parsed.origin !== apiUrl.origin && !safePublicSource) {
         throw new Error("Custom API image URL is not a safe public HTTPS URL");
     }
-    const response = await fetchImpl(source, {
-        headers: { Accept: "image/*" },
+    const headers = { Accept: "image/*" };
+    if (/^https?:$/.test(parsed.protocol) && parsed.origin === new URL(config.url).origin) {
+        buildAuth(config, parsed, headers);
+    }
+    const response = await fetchImpl(parsed.href, {
+        headers,
         signal,
         redirect: "error",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
     });
     if (!response.ok) throw new Error(`Failed to fetch Custom API image (${response.status})`);
     const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
-    const format = detectImageFormat(buffer);
+    const format = await validateImageData(buffer);
     if (!format) throw new Error("Custom API output is not a supported image format");
     return { buffer, contentType: format.mime };
+}
+
+function normalizeJobId(value) {
+    if (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))) {
+        throw new Error("Async API job ID must be a string or finite number");
+    }
+    const jobId = String(value).trim();
+    if (!jobId) throw new Error("Async API response did not contain a job ID");
+    if (utf8ByteLength(jobId, MAX_JOB_ID_BYTES) > MAX_JOB_ID_BYTES) {
+        throw new Error("Async API job ID is too long");
+    }
+    return jobId;
 }
 
 function waitForPoll(ms, signal, sleep) {
@@ -439,22 +643,23 @@ export async function executeCustomBackend(config, input, options = {}) {
             body: request.body,
             signal: controller.signal,
             redirect: "error",
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
         });
         const submitted = await readCustomResponse(response, request.config, request.url);
         if (submitted.buffer) return submitted;
         if (request.config.mode === "json") {
             const image = extractCustomBackendImage(submitted.data, request.config.responsePath, request.config.responseType);
             if (!image) throw new Error("No image found at the configured response path");
-            return await materializeImage(image, submitted.responseUrl, fetchImpl, controller.signal);
+            return await materializeImage(image, submitted.responseUrl, request.config, fetchImpl, controller.signal);
         }
 
-        const jobId = resolveJsonPointer(submitted.data, request.config.jobIdPath);
-        if (jobId == null || String(jobId).trim() === "") throw new Error("Async API response did not contain a job ID");
+        const jobId = normalizeJobId(resolveJsonPointer(submitted.data, request.config.jobIdPath));
         const success = new Set(request.config.successValues.map(value => value.toLowerCase()));
         const failure = new Set(request.config.failureValues.map(value => value.toLowerCase()));
         while (true) {
             await waitForPoll(request.config.pollIntervalMs, controller.signal, options.sleep);
-            const pollUrl = new URL(request.config.pollUrl.replaceAll("{{jobId}}", encodeURIComponent(String(jobId))));
+            const pollUrl = new URL(request.config.pollUrl.replaceAll("{{jobId}}", encodeURIComponent(jobId)));
             if (pollUrl.origin !== request.config.pollOrigin) {
                 throw new Error("Polling URL origin changed after inserting the job ID");
             }
@@ -465,6 +670,8 @@ export async function executeCustomBackend(config, input, options = {}) {
                 headers,
                 signal: controller.signal,
                 redirect: "error",
+                credentials: "omit",
+                referrerPolicy: "no-referrer",
             });
             const polled = await readCustomResponse(pollResponse, request.config, pollUrl.href);
             if (polled.buffer) return polled;
@@ -473,7 +680,7 @@ export async function executeCustomBackend(config, input, options = {}) {
             if (!success.has(status)) continue;
             const image = extractCustomBackendImage(polled.data, request.config.responsePath, request.config.responseType);
             if (!image) throw new Error("Completed custom API job did not contain an image");
-            return await materializeImage(image, polled.responseUrl, fetchImpl, controller.signal);
+            return await materializeImage(image, polled.responseUrl, request.config, fetchImpl, controller.signal);
         }
     } catch (error) {
         if (error?.name === "AbortError" && timedOut && !options.signal?.aborted) {
