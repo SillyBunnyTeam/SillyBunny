@@ -75,7 +75,7 @@ const STARTER_PACK_EXTENSIONS = Object.freeze({
     }),
     groupUtilities: Object.freeze({
         id: 'third-party/SB-GroupUtilities',
-        repoUrl: 'https://github.com/DrMortum/SB-GroupUtilities',
+        repoUrl: 'https://github.com/aracnai/SB-GroupUtilities',
     }),
     laLib: Object.freeze({
         id: 'third-party/SillyTavern-LALib',
