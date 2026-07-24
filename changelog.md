@@ -134,6 +134,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #678 (2026-07-22) `fix(ios): includes backwards compatibility of viewport fix for old iOS versions`
 - PR #680 (2026-07-22) `feat: Card sorting option based on newest additions (for real)`
 - PR #682 (2026-07-23) `chore: Update Group Utilities Link to correct GitHub`
+- PR #683 (2026-07-24) `chore: enforce LF line endings via .gitattributes`
 
 ## v1.6.5
 
