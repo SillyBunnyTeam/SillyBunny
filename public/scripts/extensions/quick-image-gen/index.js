@@ -2,32 +2,44 @@ import {
     MAX_IMAGE_BYTES,
     MAX_PROVIDER_RESPONSE_BYTES,
     normalizeImageSource,
+    redactUrlCredentials,
     readResponseArrayBuffer,
     readResponseJson,
     readResponseText,
     replaceSelectOptions,
 } from "./lib/security.js";
 import {
+    attachResultFailures,
     clampChatMessageIndex,
     collectBatchResults,
+    collectSequentialResults,
+    getResultFailures,
     normalizeBatchCount,
 } from "./lib/generation.js";
 import { GenerationRunManager, snapshotGenerationSettings } from "./lib/generation-run.js";
-import { normalizeProviderResult } from "./lib/provider-contract.js";
+import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
 import {
     createSettingsExport,
     MAX_SETTINGS_IMPORT_BYTES,
     mergePreservingPrivateFields,
+    mergeSettingsImportStores,
     parseSettingsImport,
     stageStorageTransaction,
 } from "./lib/settings-transfer.js";
-import { GalleryRepository } from "./lib/gallery-repository.js";
+import {
+    canSeedSynchronizedStoreFromLocal,
+    cloneSynchronizedValue,
+    persistSynchronizedStore,
+    persistSynchronizedStores,
+    reconcileSynchronizedStore,
+} from "./lib/settings-persistence.js";
+import { clearGalleryRepositoryStorage, GalleryRepository } from "./lib/gallery-repository.js";
 import {
     detectImageFormat,
-    embedPngMetadata as embedPNGMetadata,
+    embedPngMetadataBundle,
     MAX_PNG_FILE_BYTES,
     parseGenerationParameters,
-    readPngMetadata,
+    readPngMetadataBundle,
     sanitizeServerSubfolder,
 } from "./lib/image-metadata.js";
 import {
@@ -37,18 +49,72 @@ import {
 } from "./lib/inject-regex.js";
 import { mergeSTStylePrompts, resolveSTStyleSettings } from "./lib/st-style.js";
 import { executeCustomBackend, getCustomBackendCapabilities } from "./lib/custom-backend.js";
+import {
+    buildComfyBuiltinWorkflow,
+    buildComfyPromptRequest,
+    cancelComfyPrompt,
+    getComfyWorkflowCapabilities,
+    normalizeComfyModelLoader,
+    normalizeComfySettings,
+    parseComfyPromptResponse,
+    pollComfyHistory,
+    selectComfyModelList,
+} from "./lib/comfyui-backend.js";
+import {
+    buildA1111ADetailerUnit,
+    normalizeA1111BaseUrl,
+    parseFiniteFloat,
+    parseFiniteInt,
+} from "./lib/a1111-runtime.js";
 import { getGeminiCandidateFailure, isEffectivelyBlankPixels } from "./lib/generated-image.js";
 import {
     buildGptImagePayload,
     buildNanobananaPayload,
     describeProviderImageSource,
+    extractProviderErrorMessage,
     extractProviderImageSource,
     getGptImageApiUrl,
+    getNanobananaAuthHeaders,
     getNanobananaApiUrl,
+    getOpenAICompatibleApiUrl,
     imageResponseToDataUrl,
+    isNovelAICompatibleProxyUrl,
     isOpenAIChatCompletionsEndpoint,
     materializeProviderImageSource,
+    readProviderErrorResponse,
+    requestGptImageWithRouteRetry,
 } from "./lib/provider-adapters.js";
+import {
+    getFalEffectiveGuidance,
+    getFalEffectiveSteps,
+    getGlmImageResolution,
+    getNanoGptEffectiveResolution,
+    getNanoGptModelCapabilities,
+    getNanoGptReferenceConstraints,
+    getProviderGenerationCapabilities,
+    pollinationsModelRequiresAuth,
+    registerPollinationsModelMetadata,
+    validateReplicateSdxlVersion,
+} from "./lib/provider-capabilities.js";
+import {
+    abortableSleep,
+    buildNovelAIProxyRequestUrl,
+    buildCivitaiWorkflowBody,
+    createHostedProviderDeadline,
+    extractCivitaiFailureReason,
+    fetchCivitaiOutput,
+    findEmbeddedPngRange,
+    getCivitaiWorkflowImageUrls,
+    getRetryAfterMs,
+    HOSTED_PROVIDER_IDS,
+    isTransientProviderStatus,
+    isTrustedProviderOutputUrl,
+    looksLikeSsePayload,
+    mapCivitaiSdcppSampler,
+    parseCivitaiLoras,
+    PROVIDER_OUTPUT_HOST_SUFFIXES,
+    readSseDataStream,
+} from "./lib/hosted-provider.js";
 import {
     buildContextMediaCandidates,
     canDeleteContextMediaPath,
@@ -58,6 +124,27 @@ import {
     validateContextMediaFile,
     validateContextMediaRemoteUrl,
 } from "./lib/context-media.js";
+import {
+    applyStateBeforePersistence,
+    createConversationCheckpoint,
+    createLatestWinsAsyncRunner,
+    getCharacterProviderReferences,
+    hasCharacterReferenceOverrides,
+    hasStorageKey,
+    isConversationCheckpointCurrent,
+    isGeneratedImageMessage,
+    materializeAndValidateProviderOutput,
+    normalizeCharacterReferenceRecord,
+    normalizeMessageSourceIdentity,
+    normalizePromptHistory,
+    readConstrainedNumber,
+    registerConversationCheckpointInsertion,
+    rethrowAfterRollbackPersistence,
+    sendIsolatedConnectionManagerRequest,
+    setCharacterProviderReferences,
+    summarizeOperationOutcomes,
+    unregisterConversationCheckpointInsertion,
+} from "./lib/client-orchestration.js";
 
 // Artist lists for random selection
 const ARTISTS_NATURAL = ["a1 (initial-g)", "abubu", "afrobull", "aiue oka", "akairiot", "akamatsu ken", "alex ahad", "alzi xiaomi", "amazuyu tatsuki", "aoi nagisa (metalder)", "ask (askzy)", "atdan", "awa", "ayami kojima", "azasuke", "azto dio", "bkub", "blade (galaxist)", "boris (noborhys)", "bow (bhp)", "butcha-u", "chouzuki maryou", "ciloranko", "circle anco", "crote", "dagasi", "dairi", "dino (dinoartforame)", "dishwasher1910", "drawfag", "dsmile", "ebifurya", "eroquis", "fkey", "fuzichoco", "gomennasai", "hammer (sunset beach)", "hana kazari", "hara (harayutaka)", "haruyama kazunori", "hews", "hiroki (yyqw7151)", "hiten", "hoshi (snacherubi)", "inoino", "itomugi-kun", "ixy", "kagami hirotaka", "kanon (kurogane knights)", "kantoku", "kawacy", "ke-ta", "kou hiyoyo", "kouji (campus life)", "kuavera", "kuon (kwonchan)", "lack", "lm7", "lolita channel", "m-da s-tarou", "matsunaga kouyou", "mika pikazo", "mikeinel", "mizuki hitoshi", "mizumizuni", "morikura en", "naga u", "nardack", "neco", "nel-zel formula", "neocoill", "nian", "nixeu", "nyamota", "nyantcha", "ojipon", "onikobe rin", "piromizu", "pochi (pochi-goya)", "qp:flapper", "rebecca (keinelove)", "redjuice", "rei (sanbonzakura)", "rurudo", "ruu (tksymkw)", "shirataki", "sincos", "sky-freedom", "tofuubear", "tony taka", "tukiwani", "wanke", "yaegashi nan", "yamakaze", "yoko juusuke", "yoshiaki", "yuuki tatsuya"];
@@ -70,7 +157,7 @@ function getRandomArtist(useTagFormat = false) {
 }
 
 const extensionName = "quick-image-gen";
-let extension_settings, getContext, saveSettingsDebounced, saveSettings, generateQuietPrompt, generateRaw, generateRawData, createRawPrompt, substituteParams, secret_state, rotateSecret, getRequestHeaders;
+let extension_settings, getContext, saveSettingsDebounced, saveSettings, generateQuietPrompt, generateRaw, generateRawData, createRawPrompt, substituteParams, getRequestHeaders;
 let createGenerationParameters, getChatCompletionModel;
 let saveBase64AsFile, getSanitizedFilename, humanizedDateTime;
 
@@ -595,8 +682,13 @@ function applyPromptSource(mode, { persist = true } = {}) {
     const s = getSettings();
     if (!s) return;
     const normalized = PROMPT_SOURCE_LABELS[mode] ? mode : "manual";
+    const previousMode = derivePromptSource(s);
     s.useLastMessage = normalized === "chat";
     s.injectEnabled = normalized === "tags";
+    if (previousMode !== normalized) {
+        _automationRevision += 1;
+        clearPendingAutoGenerateTimer();
+    }
     if (normalized === "tags") {
         if (!s.autoGenerate) setAutoGenerateEnabled(true);
         s.paletteMode = "inject";
@@ -666,7 +758,9 @@ function collectQigStatus(s = getSettings()) {
         const every = normalizeAutoGenerateEveryMessages(s.autoGenerateEveryMessages);
         items.push(every > 1 ? `Auto every ${every} replies` : "Auto-generate on");
     }
-    if (PROVIDERS[s.provider]?.needsKey && !getProviderKeyValue(s)) {
+    const selectedModelNeedsKey = s.provider === "pollinations"
+        && pollinationsModelRequiresAuth(s.pollinationsModel);
+    if ((PROVIDERS[s.provider]?.needsKey || selectedModelNeedsKey) && !getProviderKeyValue(s)) {
         warnings.push(`${providerName} needs an API key. Open More settings → Provider Setup or Quick Setup to add one.`);
     }
     if (s.provider === "proxy" && !String(s.proxyUrl || "").trim()) {
@@ -751,6 +845,8 @@ function applyChatGptNbpWorkflowPreset({ persist = true, notify = true } = {}) {
         autoInsert: true,
         outputMode: "inline",
         manualInsertTarget: "assistant",
+        injectEnabled: false,
+        paletteMode: "direct",
     });
     if (persist) saveSettingsDebounced?.();
     if (notify) toastr?.success?.("Configured ChatGPT + Nano Banana Pro workflow");
@@ -807,6 +903,7 @@ const defaultSettings = {
     enableParagraphPicker: false,
     batchCount: 1,
     sequentialSeeds: false,
+    hostedTimeout: 300,
     lastLoadedPresetId: "",
     // Reverse Proxy
     proxyUrl: "",
@@ -877,7 +974,7 @@ const defaultSettings = {
     navyModel: "flux",
     // NanoGPT
     nanogptKey: "",
-    nanogptModel: "image-flux-schnell",
+    nanogptModel: "flux-schnell",
     nanogptRefImages: [],
     nanogptStrength: 0.75,
     // Chutes
@@ -988,6 +1085,7 @@ const defaultSettings = {
     a1111SaveToWebUI: true,
     // ComfyUI specific
     comfyWorkflow: "",
+    comfyModelLoader: "checkpoint",
     comfyClipSkip: 1,
     comfyDenoise: 1.0,
     comfyScheduler: "normal",
@@ -995,6 +1093,9 @@ const defaultSettings = {
     comfyUpscale: false,
     comfyUpscaleModel: "RealESRGAN_x4plus.pth",
     comfyLoras: "",
+    comfyOutputNodeIds: "",
+    comfyOutputImageIndex: -1,
+    comfyAllowLegacyInterrupt: false,
     // ST Style integration
     useSTStyle: true,
     // Inject Mode (wickedcode01-style)
@@ -1020,6 +1121,7 @@ const defaultSettings = {
     _replacementMapsMigrated: false,
     _legacyTemplatesIgnored: false,
     _charSettingsBaseState: null,
+    _syncCacheId: "",
     // Backups of localStorage stores (survive browser storage wipes)
     _backupCharSettings: null,
     _backupProfiles: null,
@@ -1039,6 +1141,9 @@ let lastNegative = "";
 let lastPromptWasLLM = false;
 let lastProxyContextRefImages = [];
 let lastGenerationSourceMessageIndex = null;
+let lastGenerationSourceChatId = "";
+let lastGenerationSourceMessageId = "";
+let lastGenerationSourceMessageSignature = "";
 let lastEffectiveRequest = null;
 let originalPrompt = "";
 let originalNegative = "";
@@ -1072,13 +1177,14 @@ const BACKUP_KEYS = {
     qig_active_pool_ids_by_char: "_backupActiveFilterPoolIdsByChar",
     [CONTEXT_MEDIA_STORE_KEY]: "_backupContextMedia",
 };
+const SYNC_CACHE_ID_KEY = "qig_sync_cache_id";
 function writeBackupToSettings(localKey, data) {
     const backupKey = BACKUP_KEYS[localKey];
     if (!backupKey) return false;
     try {
         const es = extension_settings?.[extensionName];
         if (!es) return false;
-        es[backupKey] = data;
+        es[backupKey] = cloneSynchronizedValue(data);
         return true;
     } catch (e) {
         log(`Backup write failed for ${backupKey}: ${e.message}`);
@@ -1111,14 +1217,68 @@ async function saveBackupToSettings(localKey, data) {
 }
 
 function saveLocalStoreBackup(localKey, data, errorMessage) {
-    if (!safeSetStorage(localKey, JSON.stringify(data), errorMessage)) return false;
-    backupToSettings(localKey, data);
-    return true;
+    const cacheSaved = safeSetStorage(localKey, JSON.stringify(data));
+    const backupSaved = writeBackupToSettings(localKey, data);
+    if (backupSaved) saveSettingsDebounced?.();
+    if (!cacheSaved && backupSaved) {
+        log(`Server sync was queued while the local cache write failed for ${localKey}`);
+        toastr?.warning?.("Settings were queued for synchronization, but this browser's local cache could not be updated.");
+    }
+    if (!backupSaved && errorMessage) toastr?.error?.(errorMessage);
+    return backupSaved;
 }
 
 async function saveLocalStoreBackupNow(localKey, data, errorMessage) {
-    if (!safeSetStorage(localKey, JSON.stringify(data), errorMessage)) return false;
-    return saveBackupToSettings(localKey, data);
+    const backupKey = BACKUP_KEYS[localKey];
+    const settings = extension_settings?.[extensionName];
+    if (!backupKey || !settings) return false;
+    try {
+        const result = await persistSynchronizedStore({
+            storage: localStorage,
+            settings,
+            localKey,
+            backupKey,
+            value: data,
+            save: flushSettingsBackup,
+        });
+        if (!result.cacheSaved) {
+            log(`Local cache write failed for ${localKey}: ${result.cacheError?.message || "unknown error"}`);
+            toastr?.warning?.("Saved to your SillyTavern account, but this browser's local cache could not be updated.");
+        }
+        return true;
+    } catch (error) {
+        log(`Server synchronization failed for ${localKey}: ${error.message}`);
+        toastr?.error?.(errorMessage || "Failed to synchronize settings with SillyTavern.");
+        return false;
+    }
+}
+
+const activeSynchronizedStoreMutations = new Set();
+let settingsImportInProgress = false;
+function blockMutationDuringSettingsImport() {
+    if (!settingsImportInProgress) return false;
+    toastr?.info?.("Settings are being imported. Please wait a moment.");
+    return true;
+}
+
+async function runSynchronizedStoreMutations(localKeys, task, { throwIfBusy = false } = {}) {
+    const keys = [...new Set(localKeys)];
+    if (keys.some(key => activeSynchronizedStoreMutations.has(key))) {
+        const message = "Synchronized settings are already being updated. Please wait a moment.";
+        if (throwIfBusy) throw new Error(message);
+        toastr?.info?.(message);
+        return false;
+    }
+    keys.forEach(key => activeSynchronizedStoreMutations.add(key));
+    try {
+        return await task();
+    } finally {
+        keys.forEach(key => activeSynchronizedStoreMutations.delete(key));
+    }
+}
+
+function runSynchronizedStoreMutation(localKey, task) {
+    return runSynchronizedStoreMutations([localKey], task);
 }
 function escapeHtml(str) {
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -1149,7 +1309,7 @@ function generateUUID() {
 let sessionGallery = [];
 let galleryRepository = null;
 let galleryInitializationPromise = Promise.resolve();
-let promptHistory = safeParse("qig_prompt_history", []);
+let promptHistory = normalizePromptHistory(safeParse("qig_prompt_history", []));
 let charSettings = safeParse("qig_char_settings", {});
 let connectionProfiles = safeParse("qig_profiles", {});
 let charRefImages = safeParse("qig_char_ref_images", {});
@@ -1172,6 +1332,7 @@ let selectedComfyWorkflowId = "";
 let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
 let activeGenerationRun = null;
+let activeComfyPrompt = null;
 const blobUrls = new Set();
 let lifecycleCleanupInstalled = false;
 let batchKeyHandler = null;
@@ -1179,7 +1340,7 @@ const _processedInjectIndices = new Set();
 let _injectProcessingCount = 0;
 let currentAbortController = null;
 let _autoGenTimeout = null;
-const _autoInjectTimeouts = new Set();
+const _autoInjectTimeouts = new Map();
 let _autoGenerateEligibleCount = 0;
 let _autoGenerateLastEligibleMessageIndex = null;
 let _contextMediaTimeout = null;
@@ -1200,6 +1361,8 @@ let paletteCancelLockUntil = 0;
 let _palettePresetMenuCleanup = null;
 let _paletteInjectActive = false;
 let _paletteInjectSerial = 0;
+let _automationRevision = 0;
+let _promptHistorySaveQueued = false;
 let transientGenerationTarget = null;
 let transientGenerationSettingsOverride = null;
 let qigMessageActionObserver = null;
@@ -1285,23 +1448,9 @@ function getAbortError(signal, message = "Generation cancelled by user") {
 async function runAbortableTask(taskFactory, signal) {
     if (!signal) return await taskFactory();
     if (signal.aborted) throw getAbortError(signal);
-
-    return await new Promise((resolve, reject) => {
-        let settled = false;
-        const finish = (handler, value) => {
-            if (settled) return;
-            settled = true;
-            signal.removeEventListener("abort", onAbort);
-            handler(value);
-        };
-        const onAbort = () => finish(reject, getAbortError(signal));
-        signal.addEventListener("abort", onAbort, { once: true });
-
-        Promise.resolve()
-            .then(taskFactory)
-            .then((value) => finish(resolve, value))
-            .catch((error) => finish(reject, error));
-    });
+    const result = await taskFactory();
+    if (signal.aborted) throw getAbortError(signal);
+    return result;
 }
 
 function beginInternalLLMRequest(label = "internal LLM request") {
@@ -1352,7 +1501,10 @@ function clearPendingAutoGenerateTimer() {
         _autoGenTimeout = null;
     }
     if (_autoInjectTimeouts.size) {
-        for (const timeoutId of _autoInjectTimeouts) clearTimeout(timeoutId);
+        for (const [timeoutId, dedupeKey] of _autoInjectTimeouts) {
+            clearTimeout(timeoutId);
+            _processedInjectIndices.delete(dedupeKey);
+        }
         _autoInjectTimeouts.clear();
     }
 }
@@ -1657,6 +1809,70 @@ function getSceneMessageSources(message) {
     return sources;
 }
 
+function getMessagePersistentId(message) {
+    if (!message || typeof message !== "object") return "";
+    const value = message.id ?? message.message_id ?? message.messageId ?? message.extra?.id ?? message.extra?.message_id;
+    return value == null ? "" : String(value);
+}
+
+function getMessageContentSignature(message) {
+    if (!message || typeof message !== "object") return "";
+    return hashString(JSON.stringify({
+        id: getMessagePersistentId(message),
+        isUser: !!message.is_user,
+        isSystem: !!message.is_system,
+        name: String(message.name || ""),
+        sendDate: String(message.send_date || ""),
+        swipeId: Number.isInteger(message.swipe_id) ? message.swipe_id : 0,
+        sources: [
+            ["mes", message.mes],
+            ["display", message.extra?.display_text],
+            ["swipe", getCurrentMessageSwipeText(message)],
+            ["reasoningDisplay", message.extra?.reasoning_display_text],
+            ["reasoning", message.extra?.reasoning],
+        ].map(([key, value]) => [key, hashString(String(value ?? ""))]),
+    }));
+}
+
+function createMessageTargetSnapshot(chat, index) {
+    const numericIndex = Number(index);
+    if (!Array.isArray(chat) || !Number.isInteger(numericIndex) || numericIndex < 0 || numericIndex >= chat.length) return null;
+    const message = chat[numericIndex];
+    if (!message || typeof message !== "object") return null;
+    return Object.freeze({
+        chat,
+        chatId: getContextMediaChatId(),
+        index: numericIndex,
+        message,
+        messageId: getMessagePersistentId(message),
+        signature: getMessageContentSignature(message),
+    });
+}
+
+function isMessageTargetSnapshotCurrent(snapshot) {
+    if (!snapshot?.chat || !Number.isInteger(snapshot.index) || snapshot.chat[snapshot.index] !== snapshot.message) return false;
+    if (getContext?.()?.chat !== snapshot.chat) return false;
+    if (snapshot.chatId !== getContextMediaChatId()) return false;
+    if (snapshot.messageId && getMessagePersistentId(snapshot.message) !== snapshot.messageId) return false;
+    return getMessageContentSignature(snapshot.message) === snapshot.signature;
+}
+
+function assertMessageTargetSnapshot(snapshot, message = "Generation source message changed") {
+    if (!isMessageTargetSnapshotCurrent(snapshot)) {
+        throw new DOMException(message, "AbortError");
+    }
+    return snapshot.message;
+}
+
+function rememberLastGenerationSource(source = null) {
+    lastGenerationSourceMessageIndex = Number.isInteger(source?.index ?? source?.sourceMessageIndex)
+        ? (source.index ?? source.sourceMessageIndex)
+        : null;
+    lastGenerationSourceChatId = String(source?.chatId ?? source?.sourceChatId ?? "");
+    lastGenerationSourceMessageId = String(source?.messageId ?? source?.sourceMessageId ?? "");
+    lastGenerationSourceMessageSignature = String(source?.signature ?? source?.sourceMessageSignature ?? "");
+}
+
 function resolveSceneMessageSource(message) {
     const sources = getSceneMessageSources(message);
     return sources.length ? sources[0] : null;
@@ -1772,7 +1988,7 @@ const PROVIDER_KEYS = {
     fal: ["falKey", "falModel"],
     together: ["togetherKey", "togetherModel"],
     zai: ["zaiKey", "zaiModel", "zaiQuality"],
-    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"],
+    local: ["localUrl", "localType", "localModel", "localRefImage", "localDenoise", "a1111Model", "a1111ClipSkip", "a1111Scheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength", "a1111Adetailer", "a1111AdetailerModel", "a1111AdetailerPrompt", "a1111AdetailerNegative", "a1111AdetailerDenoise", "a1111AdetailerConfidence", "a1111AdetailerMaskBlur", "a1111AdetailerDilateErode", "a1111AdetailerInpaintOnlyMasked", "a1111AdetailerInpaintPadding", "a1111Adetailer2", "a1111Adetailer2Model", "a1111Adetailer2Prompt", "a1111Adetailer2Negative", "a1111Adetailer2Denoise", "a1111Adetailer2Confidence", "a1111Adetailer2MaskBlur", "a1111Adetailer2DilateErode", "a1111Adetailer2InpaintOnlyMasked", "a1111Adetailer2InpaintPadding", "a1111Loras", "a1111Vae", "a1111HiresFix", "a1111HiresUpscaler", "a1111HiresScale", "a1111HiresSteps", "a1111HiresDenoise", "a1111HiresSampler", "a1111HiresScheduler", "a1111HiresPrompt", "a1111HiresNegative", "a1111HiresResizeX", "a1111HiresResizeY", "a1111SaveToWebUI", "a1111IpAdapter", "a1111IpAdapterMode", "a1111IpAdapterWeight", "a1111IpAdapterPixelPerfect", "a1111IpAdapterResizeMode", "a1111IpAdapterControlMode", "a1111IpAdapterStartStep", "a1111IpAdapterEndStep", "a1111ControlNet", "a1111ControlNetModel", "a1111ControlNetModule", "a1111ControlNetWeight", "a1111ControlNetResizeMode", "a1111ControlNetControlMode", "a1111ControlNetPixelPerfect", "a1111ControlNetGuidanceStart", "a1111ControlNetGuidanceEnd", "a1111ControlNetImage", "comfyWorkflow", "comfyModelLoader", "comfyClipSkip", "comfyDenoise", "comfyScheduler", "comfyTimeout", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyAllowLegacyInterrupt", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"],
     proxy: ["proxyUrl", "proxyKey", "proxyModel", "proxyLoras", "proxyFacefix", "proxyExtraInstructions", "proxyRefImages", "proxyTimeout", "proxyComfyMode", "proxyComfyTimeout", "proxyComfyNodeId", "proxyComfyWorkflow"],
     custom: ["customApiUrl", "customApiKey", "customApiAuthType", "customApiAuthName", "customApiModel", "customApiPollUrl", "customApiRefImages"]
 };
@@ -1862,12 +2078,7 @@ function syncNaiResolutionSelect() {
 }
 
 function getNovelAIProxyGenerateUrl(proxyUrl) {
-    const trimmed = String(proxyUrl || "").trim().replace(/\/$/, "");
-    if (!trimmed) return "";
-    if (/\/generate$/i.test(trimmed)) return trimmed;
-    if (/\/chat\/completions$/i.test(trimmed)) return trimmed.replace(/\/chat\/completions$/i, "/generate");
-    if (/\/v1$/i.test(trimmed)) return trimmed.replace(/\/v1$/i, "/generate");
-    return `${trimmed}/generate`;
+    return buildNovelAIProxyRequestUrl(proxyUrl, "generate");
 }
 
 function resolveNovelAIProxyImageUrl(rawUrl, proxyUrl) {
@@ -1887,6 +2098,8 @@ function resolveNovelAIProxyImageUrl(rawUrl, proxyUrl) {
 }
 
 function extractNovelAIProxyImageUrl(json, proxyUrl) {
+    const sharedSource = extractProviderImageSource(json);
+    if (sharedSource) return resolveNovelAIProxyImageUrl(sharedSource, proxyUrl);
     const urlCandidates = [
         json?.url,
         json?.image_url,
@@ -2094,7 +2307,7 @@ function shouldInlineAutoProxyRefUrl(url) {
     }
 }
 
-async function normalizeAutoProxyRefUrl(url, { messageIndex = null, sourceLabel = "" } = {}) {
+async function normalizeAutoProxyRefUrl(url, { messageIndex = null, sourceLabel = "", signal } = {}) {
     const source = String(url || "").trim();
     if (!source) return "";
     if (isDataImageUrl(source)) return source;
@@ -2106,12 +2319,13 @@ async function normalizeAutoProxyRefUrl(url, { messageIndex = null, sourceLabel 
     }
 
     try {
-        const { buffer } = await fetchImageBuffer(absoluteUrl);
+        const { buffer } = await fetchImageBuffer(absoluteUrl, { signal });
         const formatInfo = detectImageFormat(buffer);
         if (!formatInfo) throw new Error("Response is not a supported image format");
         log(`Auto chat ref: Inlined ${sourceLabel || "message image"}${messageIndex != null ? ` from message #${messageIndex}` : ""}`);
         return `data:${formatInfo.mime};base64,${arrayBufferToBase64(buffer)}`;
     } catch (e) {
+        if (e.name === "AbortError") throw e;
         log(`Auto chat ref: Failed to inline ${sourceLabel || "message image"}${messageIndex != null ? ` from message #${messageIndex}` : ""}: ${e.message}`);
         return "";
     }
@@ -2189,22 +2403,7 @@ function resolveProxyEndpointMode(proxyUrl, settings) {
 }
 
 function resolveProxyRequestUrl(proxyUrl, endpointMode) {
-    const trimmed = String(proxyUrl || "").trim().replace(/\/$/, "");
-    if (!trimmed) return "";
-
-    if (endpointMode === "chat_completions") {
-        if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
-        if (/\/images\/generations$/i.test(trimmed)) return trimmed.replace(/\/images\/generations$/i, "/chat/completions");
-        if (/\/images$/i.test(trimmed)) return trimmed.replace(/\/images$/i, "/chat/completions");
-        if (/\/v1$/i.test(trimmed)) return `${trimmed}/chat/completions`;
-        return `${trimmed}/chat/completions`;
-    }
-
-    if (/\/images\/generations$/i.test(trimmed)) return trimmed;
-    if (/\/chat\/completions$/i.test(trimmed)) return trimmed.replace(/\/chat\/completions$/i, "/images/generations");
-    if (/\/images$/i.test(trimmed)) return `${trimmed}/generations`;
-    if (/\/v1$/i.test(trimmed)) return `${trimmed}/images/generations`;
-    return trimmed;
+    return getOpenAICompatibleApiUrl(proxyUrl, endpointMode);
 }
 
 function parseProxyLoras(raw) {
@@ -2231,16 +2430,59 @@ function summarizeProxyRefImage(img) {
     return "local/non-public URL";
 }
 
-function normalizeProxyRefImages(refImages, refMode) {
+function normalizePublicHttpsImageUrl(value) {
+    return normalizeImageSource(value, {
+        allowHttp: false,
+        allowRelative: false,
+        blockPrivateHosts: true,
+    });
+}
+
+async function normalizeProxyRefImages(refImages, refMode, signal) {
     const normalized = [];
+    let inlineBytes = 0;
     for (const raw of refImages || []) {
         if (typeof raw !== "string") continue;
         const value = raw.trim();
         if (!value) continue;
-        if (refMode === "url_only" && !isHttpUrl(value)) {
-            throw new Error("This proxy compatibility mode only accepts public image URLs for reference images. Remove uploaded/local refs and paste https:// image URLs instead.");
+        if (refMode === "url_only") {
+            const publicUrl = normalizePublicHttpsImageUrl(value);
+            if (!publicUrl) {
+                throw new Error("URL-only reference mode requires public HTTPS image URLs without credentials; private, local, HTTP, data, blob, and userinfo URLs are rejected.");
+            }
+            normalized.push(publicUrl);
+            continue;
         }
-        normalized.push(value);
+
+        if (isDataImageUrl(value)) {
+            const safeInline = normalizeImageSource(value, { allowHttp: false, allowRelative: false });
+            if (!safeInline) throw new Error("Reference image contains malformed or oversized inline image data");
+            inlineBytes += getInlineImageBytes(safeInline);
+            if (inlineBytes > MAX_IMAGE_BYTES) throw new Error("Reference images are limited to 25 MiB total");
+            normalized.push(safeInline);
+            continue;
+        }
+
+        const publicUrl = normalizePublicHttpsImageUrl(value);
+        if (publicUrl && !shouldInlineAutoProxyRefUrl(publicUrl)) {
+            normalized.push(publicUrl);
+            continue;
+        }
+
+        const absoluteUrl = toAbsoluteImageUrl(value);
+        if (!absoluteUrl) throw new Error("Reference image URL is invalid or unsupported");
+        const parsedUrl = new URL(absoluteUrl);
+        if (parsedUrl.username || parsedUrl.password) throw new Error("Reference image URLs must not contain userinfo credentials");
+        try {
+            const { buffer } = await fetchImageBuffer(absoluteUrl, { signal, maxBytes: MAX_IMAGE_BYTES - inlineBytes });
+            const format = detectImageFormat(buffer);
+            if (!format) throw new Error("URL did not return a supported image");
+            inlineBytes += buffer.byteLength;
+            normalized.push(`data:${format.mime};base64,${arrayBufferToBase64(buffer)}`);
+        } catch (error) {
+            if (error?.name === "AbortError") throw error;
+            throw new Error(`Reference image could not be materialized for the proxy: ${error.message}`);
+        }
     }
     return normalized;
 }
@@ -2253,8 +2495,7 @@ function shouldUseProxySse(settings, payloadMode) {
 }
 
 async function readProxyErrorResponse(res) {
-    const text = await readResponseText(res, 1024 * 1024).catch(() => "");
-    return text.replace(/\s+/g, " ").trim().slice(0, 500);
+    return (await readProviderErrorResponse(res)).message.slice(0, 500);
 }
 
 function extractProxyImageFromString(value, options = {}) {
@@ -2292,6 +2533,11 @@ function extractProxyImageValue(candidate, options = {}) {
 }
 
 function extractProxyImageFromJson(data, options = {}) {
+    const sharedSource = extractProviderImageSource(data);
+    if (sharedSource) {
+        const normalizedSharedSource = normalizeProviderImageSource(sharedSource, options);
+        if (normalizedSharedSource) return normalizedSharedSource;
+    }
     const directCandidates = [
         data?.data?.[0],
         data?.output?.[0],
@@ -2344,28 +2590,6 @@ function extractProxyImageFromJson(data, options = {}) {
     return null;
 }
 
-function extractProxyImageFromSseText(text, options = {}) {
-    for (const line of String(text || "").split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed === "data: [DONE]" || trimmed === "data: : keepalive") continue;
-        if (!trimmed.startsWith("data:")) continue;
-
-        const payload = trimmed.slice(5).trim();
-        const direct = extractProxyImageFromString(payload, options);
-        if (direct) return direct;
-
-        try {
-            const parsed = JSON.parse(payload);
-            log(`SSE event: ${JSON.stringify(parsed).substring(0, 200)}`);
-            const result = extractProxyImageFromJson(parsed, options);
-            if (result) return result;
-        } catch {
-            // Ignore non-JSON SSE lines.
-        }
-    }
-    return null;
-}
-
 function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, proxySeed) {
     const negPrompt = negative ? `\nAvoid: ${negative}` : "";
     const extraInstr = s.proxyExtraInstructions ? `\n${s.proxyExtraInstructions}` : "";
@@ -2408,8 +2632,8 @@ function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, prox
     if (payloadMode !== "openai_strict") {
         payload.width = s.width;
         payload.height = s.height;
-        payload.steps = s.proxySteps || 25;
-        payload.cfg_scale = s.proxyCfg || 6;
+        payload.steps = s.proxySteps ?? 25;
+        payload.cfg_scale = s.proxyCfg ?? 6;
         payload.sampler = s.proxySampler || "Euler a";
         payload.seed = proxySeed;
         payload.negative_prompt = negative;
@@ -2417,7 +2641,7 @@ function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, prox
         payload.facefix = s.proxyFacefix || undefined;
     }
 
-    if (/gemini.*image|gemini.*preview/i.test(s.proxyModel)) {
+    if (payloadMode !== "openai_strict" && /gemini.*image|gemini.*preview/i.test(s.proxyModel)) {
         payload.response_modalities = ["TEXT", "IMAGE"];
         payload.generationConfig = { responseModalities: ["TEXT", "IMAGE"] };
         log("Gemini image model detected, adding responseModalities");
@@ -2448,8 +2672,8 @@ function buildProxyImagesPayload(prompt, negative, s, refImages, payloadMode, pr
         payload.negative_prompt = negative;
         payload.width = s.width;
         payload.height = s.height;
-        payload.steps = s.proxySteps || 25;
-        payload.cfg_scale = s.proxyCfg || 6;
+        payload.steps = s.proxySteps ?? 25;
+        payload.cfg_scale = s.proxyCfg ?? 6;
         payload.sampler = s.proxySampler || "Euler a";
         payload.seed = proxySeed;
         payload.sse = sseEnabled;
@@ -2457,17 +2681,15 @@ function buildProxyImagesPayload(prompt, negative, s, refImages, payloadMode, pr
         payload.facefix = s.proxyFacefix || undefined;
     }
 
-    if (allRefImages.length > 0) {
+    if (allRefImages.length > 0 && payloadMode !== "openai_strict") {
         log(`Attaching ${allRefImages.length} reference image(s) to images/generations request`);
         allRefImages.forEach(img => log(`  ref image: ${img.substring(0, Math.min(img.length, 80))}${img.length > 80 ? "..." : ""} (${summarizeProxyRefImage(img)})`));
         // OpenAI-compatible image proxies are inconsistent here:
         // Airforce's own image playground posts `image_urls`, while some other
         // proxy stacks still look for the older `image` field.
         payload.image_urls = allRefImages;
-        if (payloadMode !== "openai_strict") {
-            payload.image = allRefImages;
-        }
-        log(`Proxy ref payload fields: ${payloadMode === "openai_strict" ? "image_urls" : "image_urls, image"}`);
+        payload.image = allRefImages;
+        log("Proxy ref payload fields: image_urls, image");
     }
 
     return payload;
@@ -2532,21 +2754,17 @@ const POLLINATIONS_MODEL_OPTIONS = [
     { id: "qwen-image", name: "Qwen Image Plus" },
     { id: "klein", name: "FLUX.2 Klein 4B" },
     { id: "kontext", name: "FLUX.1 Kontext" },
-    { id: "nanobanana", name: "NanoBanana (Paid)", paid: true },
-    { id: "nanobanana-2", name: "NanoBanana 2 (Paid)", paid: true },
-    { id: "nanobanana-pro", name: "NanoBanana Pro (Paid)", paid: true },
-    { id: "seedream5", name: "Seedream 5.0 Lite (Paid)", paid: true },
-    { id: "wan-image-pro", name: "Wan 2.7 Image Pro (Paid)", paid: true },
-    { id: "grok-imagine", name: "Grok Imagine (Paid)", paid: true },
-    { id: "grok-imagine-pro", name: "Grok Imagine Pro (Paid)", paid: true },
-    { id: "p-image", name: "Pruna p-image (Paid)", paid: true },
-    { id: "p-image-edit", name: "Pruna p-image-edit (Paid)", paid: true },
-    { id: "nova-canvas", name: "Nova Canvas (Paid)", paid: true },
+    { id: "nanobanana", name: "NanoBanana (Paid)" },
+    { id: "nanobanana-2", name: "NanoBanana 2 (Paid)" },
+    { id: "nanobanana-pro", name: "NanoBanana Pro (Paid)" },
+    { id: "seedream5", name: "Seedream 5.0 Lite (Paid)" },
+    { id: "wan-image-pro", name: "Wan 2.7 Image Pro (Paid)" },
+    { id: "grok-imagine", name: "Grok Imagine (Paid)" },
+    { id: "grok-imagine-pro", name: "Grok Imagine Pro (Paid)" },
+    { id: "p-image", name: "Pruna p-image (Paid)" },
+    { id: "p-image-edit", name: "Pruna p-image-edit (Paid)" },
+    { id: "nova-canvas", name: "Nova Canvas (Paid)" },
 ];
-
-const POLLINATIONS_PAID_MODEL_IDS = new Set(
-    POLLINATIONS_MODEL_OPTIONS.filter(model => model.paid).map(model => model.id),
-);
 
 const PROVIDER_MODELS = {
     pollinations: [
@@ -2590,7 +2808,7 @@ const PROVIDER_MODELS = {
 };
 
 const ROUTEWAY_MODEL_SIZES = {
-    "flux-1-schnell": ["1792x1024", "1024x1792", "1024x768", "768x1024", "1080x1350"],
+    "flux-1-schnell": ["1024x1024", "1792x1024", "1024x1792", "1024x768", "768x1024", "1080x1350"],
     "qwen-image-2.0": ["1024x1024", "1280x720", "720x1280", "1536x1024", "1024x1536"],
     "qwen-image-2.0-pro": ["1024x1024", "1280x720", "720x1280", "1536x1024", "1024x1536"],
     "seedream-v5.0-lite": ["2048x2048", "2560x1440", "1440x2560", "3072x2048", "2048x3072", "4096x2304", "2304x4096"],
@@ -2678,6 +2896,38 @@ function clampNumber(value, min, max, fallback) {
     return Math.max(min, Math.min(max, n));
 }
 
+function normalizeComfyOutputImageIndex(value) {
+    if (value == null || value === "") return -1;
+    const index = Number(value);
+    return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function normalizeComfyIntegrationSettings(settings, { partial = false } = {}) {
+    const source = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
+    const hasExplicitLoaderField = Object.prototype.hasOwnProperty.call(source, "comfyModelLoader");
+    const hasLegacyUnetSignals = !!source.comfySkipNegativePrompt
+        && !!String(source.comfyFluxClipModel1 || "").trim();
+    const normalized = !partial || hasExplicitLoaderField || hasLegacyUnetSignals
+        ? normalizeComfySettings(source)
+        : { ...source };
+    if (hasExplicitLoaderField
+        && normalized.comfyModelLoader === "unet"
+        && !Object.prototype.hasOwnProperty.call(source, "comfyFluxVaeModel")) {
+        normalized.comfyFluxVaeModel = "";
+    }
+    if (!partial || Object.prototype.hasOwnProperty.call(source, "comfyOutputImageIndex")) {
+        normalized.comfyOutputImageIndex = normalizeComfyOutputImageIndex(source.comfyOutputImageIndex);
+    }
+    return normalized;
+}
+
+function hasComfyConnectionProfileSignals(profile) {
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) return false;
+    return profile.localType === "comfyui"
+        || Object.prototype.hasOwnProperty.call(profile, "comfyModelLoader")
+        || (!!profile.comfySkipNegativePrompt && !!String(profile.comfyFluxClipModel1 || "").trim());
+}
+
 function normalizeAutoGenerateEveryMessages(value) {
     return Math.trunc(clampNumber(value, AUTO_GENERATE_EVERY_MIN, AUTO_GENERATE_EVERY_MAX, AUTO_GENERATE_EVERY_DEFAULT));
 }
@@ -2706,10 +2956,6 @@ function normalizeContextMediaSettings(settings) {
 
 function normalizeBackgroundMode(value) {
     return value === "locked" ? "locked" : "temporary";
-}
-
-function isComfyFluxMode(s) {
-    return !!s?.comfySkipNegativePrompt && !!(s?.comfyFluxClipModel1 || "").trim();
 }
 
 const QIG_RELAY_BASE = "/api/plugins/quick-image-gen-relay";
@@ -2746,8 +2992,12 @@ function getSameOriginJsonHeaders() {
 }
 
 let _qigRelayState = 0; // 0=unknown, 1=available, -1=unavailable
+let _qigRelayCheckedAt = 0;
+const QIG_RELAY_NEGATIVE_CACHE_MS = 5000;
+const QIG_RELAY_POSITIVE_CACHE_MS = 60000;
 async function qigRelayAvailable(signal) {
-    if (_qigRelayState !== 0) return _qigRelayState === 1;
+    if (_qigRelayState === 1 && Date.now() - _qigRelayCheckedAt < QIG_RELAY_POSITIVE_CACHE_MS) return true;
+    if (_qigRelayState === -1 && Date.now() - _qigRelayCheckedAt < QIG_RELAY_NEGATIVE_CACHE_MS) return false;
     try {
         const res = await fetch(`${QIG_RELAY_BASE}/healthz`, {
             method: "GET",
@@ -2756,30 +3006,59 @@ async function qigRelayAvailable(signal) {
             signal,
         });
         _qigRelayState = res.ok ? 1 : -1;
+        _qigRelayCheckedAt = Date.now();
         return res.ok;
     } catch (e) {
         if (e?.name === 'AbortError') throw e;
         _qigRelayState = -1;
+        _qigRelayCheckedAt = Date.now();
         return false;
     }
 }
 
 async function qigRelayFetch(provider, payload, signal) {
-    return fetch(`${QIG_RELAY_BASE}/${provider}`, {
-        method: "POST",
-        headers: getSameOriginJsonHeaders(),
-        body: JSON.stringify(payload),
-        credentials: "same-origin",
-        signal,
-    });
+    try {
+        const response = await fetch(`${QIG_RELAY_BASE}/${provider}`, {
+            method: "POST",
+            headers: getSameOriginJsonHeaders(),
+            body: JSON.stringify(payload),
+            credentials: "same-origin",
+            signal,
+        });
+        if ([404, 405, 501].includes(response.status)) {
+            _qigRelayState = 0;
+            _qigRelayCheckedAt = 0;
+        }
+        return response;
+    } catch (error) {
+        if (error?.name !== "AbortError") {
+            _qigRelayState = 0;
+            _qigRelayCheckedAt = 0;
+        }
+        throw error;
+    }
 }
 
 async function civitaiFetch(action, payload, signal) {
-    if (await qigRelayAvailable(signal)) {
-        return qigRelayFetch("civitai", { action, ...payload }, signal);
+    if (action === "getOutput") {
+        if (await qigRelayAvailable(signal)) {
+            return qigRelayFetch("civitai", {
+                action,
+                ...payload,
+                sendOutputAuthorization: new URL(payload.url).origin === "https://orchestration.civitai.com",
+            }, signal);
+        }
+        return fetchCivitaiOutput(payload.url, payload.apiKey, {
+            fetchImpl: (url, options) => corsFetch(url, { ...options, qigAllowProxy: false }),
+            signal,
+        });
     }
-    if (action === "createJob") {
-        return corsFetch("https://civitai.com/api/v1/consumer/jobs", {
+    if (await qigRelayAvailable(signal)) {
+        return qigRelayFetch("civitai", { action, ...payload, sendOutputAuthorization: action !== "getOutput" }, signal);
+    }
+    const workflowBase = "https://orchestration.civitai.com/v2/consumer/workflows";
+    if (action === "createWorkflow") {
+        return corsFetch(`${workflowBase}?wait=0`, {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${payload.apiKey}`,
@@ -2789,10 +3068,9 @@ async function civitaiFetch(action, payload, signal) {
             signal,
         });
     }
-    if (action === "getJobs") {
-        const url = new URL("https://civitai.com/api/v1/consumer/jobs");
-        url.searchParams.set("token", payload.token);
-        return corsFetch(url.toString(), {
+    if (action === "getWorkflow" || action === "cancelWorkflow") {
+        return corsFetch(`${workflowBase}/${encodeURIComponent(payload.id)}`, {
+            method: action === "cancelWorkflow" ? "DELETE" : "GET",
             headers: { "Authorization": `Bearer ${payload.apiKey}` },
             signal,
         });
@@ -2802,14 +3080,19 @@ async function civitaiFetch(action, payload, signal) {
 
 async function replicateFetch(action, payload, signal) {
     if (await qigRelayAvailable(signal)) {
-        return qigRelayFetch("replicate", { action, ...payload }, signal);
+        return qigRelayFetch("replicate", {
+            action,
+            ...payload,
+            authScheme: "Bearer",
+            sendOutputAuthorization: action === "getOutput" && isExactReplicateApiUrl(payload.url),
+        }, signal);
     }
     if (action === "createPrediction") {
         return corsFetch("https://api.replicate.com/v1/predictions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Token ${payload.apiKey}`,
+                "Authorization": `Bearer ${payload.apiKey}`,
             },
             body: JSON.stringify(payload.body),
             signal,
@@ -2817,11 +3100,37 @@ async function replicateFetch(action, payload, signal) {
     }
     if (action === "getPrediction") {
         return corsFetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(payload.id)}`, {
-            headers: { "Authorization": `Token ${payload.apiKey}` },
+            headers: { "Authorization": `Bearer ${payload.apiKey}` },
+            signal,
+        });
+    }
+    if (action === "cancelPrediction") {
+        return corsFetch(`https://api.replicate.com/v1/predictions/${encodeURIComponent(payload.id)}/cancel`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${payload.apiKey}` },
+            signal,
+        });
+    }
+    if (action === "getOutput") {
+        if (!isTrustedProviderOutputUrl("replicate", payload.url, "https://api.replicate.com/v1/predictions")) {
+            throw new Error("Replicate returned an untrusted output URL");
+        }
+        return corsFetch(payload.url, {
+            headers: isExactReplicateApiUrl(payload.url) ? { "Authorization": `Bearer ${payload.apiKey}` } : {},
+            redirect: "error",
             signal,
         });
     }
     throw new Error(`Unknown Replicate relay action: ${action}`);
+}
+
+function isExactReplicateApiUrl(value) {
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname.toLowerCase().replace(/\.$/, "") === "api.replicate.com";
+    } catch {
+        return false;
+    }
 }
 
 // CORS-aware fetch: tries direct, falls back to ST's /proxy/ endpoint
@@ -2879,7 +3188,7 @@ let a1111ModelsCache = [];
 let a1111ControlNetScriptKey = "ControlNet";
 async function fetchA1111Models(url) {
     try {
-        const baseUrl = url.replace(/\/$/, "");
+        const baseUrl = normalizeA1111BaseUrl(url);
         const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`);
         if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
         const models = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
@@ -2893,7 +3202,7 @@ async function fetchA1111Models(url) {
 }
 
 async function fetchControlNetModels(url) {
-    const baseUrl = url.replace(/\/$/, "");
+    const baseUrl = normalizeA1111BaseUrl(url);
     const endpoints = [
         `${baseUrl}/controlnet/model_list`,
         `${baseUrl}/api/proxy/controlnet/model_list`
@@ -2911,7 +3220,7 @@ async function fetchControlNetModels(url) {
 
 async function switchA1111Model(url, modelTitle) {
     try {
-        const baseUrl = url.replace(/\/$/, "");
+        const baseUrl = normalizeA1111BaseUrl(url);
         log(`A1111: Switching to model: ${modelTitle}`);
         const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, {
             method: "POST",
@@ -2929,7 +3238,7 @@ async function switchA1111Model(url, modelTitle) {
 
 async function getCurrentA1111Model(url) {
     try {
-        const baseUrl = url.replace(/\/$/, "");
+        const baseUrl = normalizeA1111BaseUrl(url);
         const res = await corsFetch(`${baseUrl}/sdapi/v1/options`);
         if (!res.ok) return null;
         const opts = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
@@ -2941,7 +3250,7 @@ async function getCurrentA1111Model(url) {
 
 async function fetchA1111Upscalers(url) {
     try {
-        const res = await corsFetch(`${url.replace(/\/$/, "")}/sdapi/v1/upscalers`);
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`);
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(u => u.name);
     } catch (e) {
@@ -2953,7 +3262,7 @@ async function fetchA1111Upscalers(url) {
 
 async function fetchA1111VAEs(url) {
     try {
-        const res = await corsFetch(`${url.replace(/\/$/, "")}/sdapi/v1/sd-vae`);
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`);
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(v => v.model_name);
     } catch (e) {
@@ -2975,34 +3284,79 @@ async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
     return Array.isArray(values) ? values : [];
 }
 
-async function fetchComfyUIModels(url, preferUnet = false) {
+async function fetchComfyUIModels(url, modelLoader = "checkpoint") {
     const rethrow403 = (e) => { if (e.message?.includes("403 Forbidden")) throw e; return []; };
     try {
-        const baseUrl = url.replace(/\/$/, "");
+        const baseUrl = url.replace(/\/+$/, "");
         const [ckpts, unets] = await Promise.all([
             fetchComfyNodeModelList(baseUrl, "CheckpointLoaderSimple", "ckpt_name").catch(rethrow403),
             fetchComfyNodeModelList(baseUrl, "UNETLoader", "unet_name").catch(rethrow403)
         ]);
 
-        if (preferUnet) {
-            if (unets.length > 0) return unets;
-            if (ckpts.length > 0) {
-                log("ComfyUI: UNET list unavailable, falling back to checkpoints");
-                return ckpts;
-            }
-        } else {
-            if (ckpts.length > 0) return ckpts;
-            if (unets.length > 0) {
-                log("ComfyUI: Checkpoint list unavailable, falling back to UNET models");
-                return unets;
-            }
-        }
-        return [];
+        return selectComfyModelList({ checkpoints: ckpts, unets }, modelLoader);
     } catch (e) {
         log("Failed to fetch ComfyUI models: " + e.message);
         if (e.message?.includes("403 Forbidden")) throw e;
         return [];
     }
+}
+
+let comfyModelRefreshSerial = 0;
+
+async function refreshComfyModelCatalog() {
+    const s = getSettings();
+    const modelSelect = document.getElementById("qig-local-model");
+    if (!s || !modelSelect) return;
+
+    const requestId = ++comfyModelRefreshSerial;
+    const baseUrl = String(s.localUrl || "").replace(/\/+$/, "");
+    const modelLoader = normalizeComfyModelLoader(s.comfyModelLoader, s);
+    const loadedModel = String(s.localModel || "");
+    const loadingOptions = loadedModel
+        ? [{ value: loadedModel, label: loadedModel }, { value: "", label: "Loading...", disabled: true }]
+        : [{ value: "", label: "Loading..." }];
+    replaceSelectOptions(modelSelect, loadingOptions, loadedModel);
+
+    let models;
+    let error = null;
+    try {
+        models = await fetchComfyUIModels(baseUrl, modelLoader);
+    } catch (caught) {
+        error = caught;
+        models = [];
+    }
+
+    const current = getSettings();
+    const isCurrentRequest = requestId === comfyModelRefreshSerial
+        && current?.localType === "comfyui"
+        && String(current?.localUrl || "").replace(/\/+$/, "") === baseUrl
+        && normalizeComfyModelLoader(current?.comfyModelLoader, current) === modelLoader;
+    if (!isCurrentRequest) return;
+
+    const showCatalogStatus = label => {
+        const currentModel = String(current.localModel || "");
+        const options = currentModel
+            ? [{ value: currentModel, label: currentModel }, { value: "", label, disabled: true }]
+            : [{ value: "", label }];
+        replaceSelectOptions(modelSelect, options, currentModel);
+    };
+
+    if (error?.message?.includes("403 Forbidden")) {
+        showCatalogStatus("-- 403 Forbidden (see error) --");
+        toastr?.error?.(error.message, "ComfyUI Connection Error", { timeOut: 0, extendedTimeOut: 0, escapeHtml: true });
+        return;
+    }
+    if (models.length > 0) {
+        const currentModel = String(current.localModel || "");
+        const selectedModel = models.includes(currentModel) ? currentModel : models[0];
+        replaceSelectOptions(modelSelect, models.map(model => ({ value: model, label: model })), selectedModel);
+        if (current.localModel !== selectedModel) {
+            current.localModel = selectedModel;
+            saveSettingsDebounced();
+        }
+        return;
+    }
+    showCatalogStatus("-- Failed to load (check if ComfyUI running) --");
 }
 
 const cachedElements = {};
@@ -3071,14 +3425,18 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
     }
 }
 
-function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), disableGenerateButton = false, clearPendingAuto = false } = {}) {
+function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), messageSnapshots = [], conversationCheckpoint = null, disableGenerateButton = false, clearPendingAuto = false } = {}) {
     closePalettePresetMenu();
+    cancelContextMediaWork();
     if (clearPendingAuto) {
         resetAutoGenerateCadence({ clearTimer: true });
     }
     const run = generationRunManager.start(settings, {
         chatRef: context?.chat || null,
+        chatId: getContextMediaChatId(context),
         serverSubfolder: getServerSubfolder(context),
+        messageSnapshots: Array.isArray(messageSnapshots) ? messageSnapshots : [],
+        conversationCheckpoint,
     });
     activeGenerationRun = run;
     cancelRequested = false;
@@ -3090,6 +3448,7 @@ function beginGeneration({ settings = getGenerationSettingsForRun(), context = g
 
 function endGeneration(run, { disableGenerateButton = false } = {}) {
     if (!generationRunManager.finish(run)) return false;
+    if (activeComfyPrompt?.runId === run.id) activeComfyPrompt = null;
     activeGenerationRun = null;
     currentAbortController = null;
     isGenerating = false;
@@ -3098,6 +3457,64 @@ function endGeneration(run, { disableGenerateButton = false } = {}) {
     showStatus(null);
     setGenerationActiveUI(false, { disableGenerateButton });
     return true;
+}
+
+function comfyQueueContainsPrompt(queue, promptId) {
+    if (!Array.isArray(queue)) return false;
+    return queue.some(entry => {
+        if (Array.isArray(entry)) return String(entry[1] ?? "") === promptId;
+        if (!entry || typeof entry !== "object") return false;
+        return String(entry.prompt_id ?? entry.promptId ?? entry.id ?? "") === promptId;
+    });
+}
+
+function normalizeComfyPromptState(value) {
+    const state = String(value || "").trim().toLowerCase();
+    if (["queued", "pending", "waiting"].includes(state)) return "queued";
+    if (["running", "executing", "in_progress", "in-progress"].includes(state)) return "running";
+    return "unknown";
+}
+
+async function getComfyPromptState(baseUrl, promptId) {
+    const normalizedBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
+    try {
+        const response = await corsFetch(`${normalizedBaseUrl}/queue`, { redirect: "error" });
+        if (response.ok) {
+            const queue = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+            if (comfyQueueContainsPrompt(queue?.queue_pending, promptId)) return "queued";
+            if (comfyQueueContainsPrompt(queue?.queue_running, promptId)) return "running";
+        }
+    } catch { /* fall through to the jobs API when queue inspection is unavailable */ }
+
+    try {
+        const response = await corsFetch(`${normalizedBaseUrl}/api/jobs/${encodeURIComponent(promptId)}`, { redirect: "error" });
+        if (!response.ok) return "unknown";
+        const job = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+        const candidates = [
+            job?.state,
+            job?.status,
+            job?.status?.status,
+            job?.status?.status_str,
+            job?.job?.state,
+            job?.job?.status,
+        ];
+        for (const candidate of candidates) {
+            const state = normalizeComfyPromptState(candidate);
+            if (state !== "unknown") return state;
+        }
+    } catch { /* unknown state keeps legacy cancellation fail-safe */ }
+    return "unknown";
+}
+
+async function cancelTrackedComfyPrompt(tracked) {
+    const promptState = await getComfyPromptState(tracked.baseUrl, tracked.promptId);
+    return cancelComfyPrompt(tracked.promptId, {
+        baseUrl: tracked.baseUrl,
+        fetchImpl: corsFetch,
+        tryJobsCancel: true,
+        promptState,
+        allowLegacyInterrupt: tracked.allowLegacyInterrupt === true,
+    });
 }
 
 function requestGenerationCancel(reason = "Generation cancelled by user", { force = false } = {}) {
@@ -3118,13 +3535,18 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
     generationRunManager.cancel(reason);
     resetAutoGenerateCadence({ clearTimer: true });
 
-    // Send server-side interrupt (fire-and-forget) so the GPU actually stops
+    // Best-effort server cancellation. ComfyUI never receives a bodyless global interrupt.
     try {
         const s = activeGenerationRun?.settings || extension_settings?.[extensionName];
         if (s?.provider === "local" && s.localUrl) {
-            const baseUrl = s.localUrl.replace(/\/$/, "");
+            const baseUrl = normalizeA1111BaseUrl(s.localUrl);
             if (s.localType === "comfyui") {
-                corsFetch(`${baseUrl}/interrupt`, { method: "POST" }).catch(() => {});
+                const tracked = activeComfyPrompt;
+                if (tracked?.promptId) {
+                    cancelTrackedComfyPrompt(tracked).then(result => {
+                        if (result.cancelled === false) log(`ComfyUI: ${result.reason || "prompt could not be safely cancelled"}`);
+                    }).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
+                }
             } else {
                 corsFetch(`${baseUrl}/sdapi/v1/interrupt`, { method: "POST" }).catch(() => {});
             }
@@ -3153,14 +3575,25 @@ function assertGenerationCanCommit(run) {
     if (originalChat && getContext?.()?.chat !== originalChat) {
         throw new DOMException("Active chat changed during generation", "AbortError");
     }
+    for (const snapshot of run.context.messageSnapshots || []) {
+        assertMessageTargetSnapshot(snapshot);
+    }
+    if (run.context.conversationCheckpoint
+        && !isConversationCheckpointCurrent(run.context.conversationCheckpoint, getContext?.()?.chat)) {
+        throw new DOMException("Conversation advanced during generation", "AbortError");
+    }
 }
 
 function getGenerationFinalizationOptions(run, options = {}) {
+    const additionalCommitGuard = options.commitGuard;
     return {
         ...options,
         signal: run.signal,
         serverSubfolder: run.context.serverSubfolder,
-        commitGuard: () => assertGenerationCanCommit(run),
+        commitGuard: () => {
+            assertGenerationCanCommit(run);
+            additionalCommitGuard?.();
+        },
     };
 }
 
@@ -3243,7 +3676,13 @@ function migratePromptReplacementsToFilters(rules, {
 
     contextualFilters.push(...migrated);
     normalizeContextualFilterOrder(contextualFilters);
-    ensureFilterPoolsState({ persist });
+    ensureFilterPoolsState({ persist: false });
+    if (persist) {
+        for (const [localKey, value] of getFilterStoreEntries()) {
+            safeSetStorage(localKey, JSON.stringify(value));
+            writeBackupToSettings(localKey, value);
+        }
+    }
 
     if (settings && sourceLabel === "saved settings") {
         settings._replacementMapsMigrated = true;
@@ -3256,7 +3695,7 @@ function migratePromptReplacementsToFilters(rules, {
     };
 }
 
-function migrateLegacyReplacementStores(settings = getSettings()) {
+function migrateLegacyReplacementStores(settings = getSettings(), { allowLocalStore = true } = {}) {
     const s = settings || getSettings();
     if (!s || s._replacementMapsMigrated) return false;
 
@@ -3281,7 +3720,7 @@ function migrateLegacyReplacementStores(settings = getSettings()) {
         }
     };
 
-    appendRules(safeParse("qig_prompt_replacements", []));
+    if (allowLocalStore) appendRules(safeParse("qig_prompt_replacements", []));
     appendRules(s._backupPromptReplacements);
 
     if (storedRules.length) {
@@ -3294,19 +3733,35 @@ function migrateLegacyReplacementStores(settings = getSettings()) {
         s._replacementMapsMigrated = true;
     }
 
-    localStorage.removeItem("qig_prompt_replacements");
-    localStorage.removeItem("qig_active_prompt_replacement_ids_global");
-    localStorage.removeItem("qig_active_prompt_replacement_ids_by_char");
     s._backupPromptReplacements = null;
     s._backupActivePromptReplacementIdsGlobal = null;
     s._backupActivePromptReplacementIdsByChar = null;
     return storedRules.length > 0;
 }
 
+function cleanupLegacyReplacementLocalStores() {
+    for (const key of [
+        "qig_prompt_replacements",
+        "qig_active_prompt_replacement_ids_global",
+        "qig_active_prompt_replacement_ids_by_char",
+    ]) {
+        try {
+            localStorage.removeItem(key);
+        } catch (error) {
+            log(`Could not remove migrated legacy cache ${key}: ${error.message}`);
+        }
+    }
+}
+
 async function loadSettings() {
     const saved = extension_settings[extensionName];
-    extension_settings[extensionName] = { ...defaultSettings, ...saved };
+    const normalizedSaved = normalizeComfyIntegrationSettings(saved || {});
+    extension_settings[extensionName] = { ...defaultSettings, ...normalizedSaved };
     const s = extension_settings[extensionName];
+    const comfyModelLoaderNeedsMigration = !!saved
+        && (saved.comfyModelLoader !== normalizedSaved.comfyModelLoader
+            || saved.comfyFluxVaeModel !== normalizedSaved.comfyFluxVaeModel
+            || !Object.is(saved.comfyOutputImageIndex, normalizedSaved.comfyOutputImageIndex));
     // Existing installs keep their current behavior: no first-run wizard, no starter presets.
     if (saved && Object.keys(saved).length > 0) {
         if (saved.setupWizardSeen === undefined) s.setupWizardSeen = true;
@@ -3341,55 +3796,114 @@ async function loadSettings() {
     s.proxySse = normalizeProxySseSetting(s.proxySse);
     s.outputMode = normalizeOutputMode(s.outputMode);
     s.manualInsertTarget = normalizeManualInsertTarget(s.manualInsertTarget);
+    normalizeGenerationNumericSettings(s);
     cleanupLegacyTemplateStores(s);
-    // Restore localStorage stores from extensionSettings backup if localStorage was wiped
-    const restoreTargets = [
-        { localKey: "qig_char_settings", backupKey: "_backupCharSettings", setter: v => { charSettings = v; } },
-        { localKey: "qig_profiles", backupKey: "_backupProfiles", setter: v => { connectionProfiles = v; } },
-        { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", setter: v => { charRefImages = v; } },
-        { localKey: "qig_gen_presets", backupKey: "_backupGenPresets", setter: v => { generationPresets = v; } },
-        { localKey: "qig_comfy_workflows", backupKey: "_backupComfyWorkflows", setter: v => { comfyWorkflows = v; } },
-        { localKey: "qig_contextual_filters", backupKey: "_backupContextualFilters", setter: v => { contextualFilters = v; } },
-        { localKey: "qig_filter_pools", backupKey: "_backupFilterPools", setter: v => { filterPools = v; } },
-        { localKey: "qig_active_pool_ids_global", backupKey: "_backupActiveFilterPoolIdsGlobal", setter: v => { activeFilterPoolIdsGlobal = v; } },
-        { localKey: "qig_active_pool_ids_by_card", backupKey: "_backupActiveFilterPoolIdsByCard", setter: v => { activeFilterPoolIdsByCard = v; } },
-        { localKey: "qig_active_pool_ids_by_char", backupKey: "_backupActiveFilterPoolIdsByChar", setter: v => { activeFilterPoolIdsByChar = v; } },
-        { localKey: CONTEXT_MEDIA_STORE_KEY, backupKey: "_backupContextMedia", setter: v => { contextMediaLibrary = v; } },
-    ];
-    let restoredCount = 0;
-    for (const { localKey, backupKey, setter } of restoreTargets) {
-        const localVal = localStorage.getItem(localKey);
-        const backupVal = s[backupKey];
-        if (backupVal == null) continue;
-
-        let parsedLocal;
-        let hasParsableLocal = false;
-        if (localVal != null) {
+    // Server settings are authoritative; localStorage is only a same-device cache.
+    const savedCacheId = typeof saved?._syncCacheId === "string" ? saved._syncCacheId : "";
+    let localCacheId = "";
+    try { localCacheId = localStorage.getItem(SYNC_CACHE_ID_KEY) || ""; } catch { /* server state remains usable */ }
+    let localCacheWritesAllowed = true;
+    if (localCacheId && localCacheId !== savedCacheId) {
+        try {
+            localStorage.removeItem(SYNC_CACHE_ID_KEY);
+            localCacheId = "";
+        } catch (error) {
             try {
-                parsedLocal = JSON.parse(localVal);
-                hasParsableLocal = true;
+                localStorage.setItem(SYNC_CACHE_ID_KEY, "");
+                localCacheId = "";
             } catch {
-                hasParsableLocal = false;
+                localCacheWritesAllowed = false;
+                log(`Could not clear mismatched synchronized cache ownership: ${error.message}`);
             }
         }
-
-        const expectsArray = Array.isArray(backupVal);
-        const expectsObject = !expectsArray && typeof backupVal === "object" && backupVal !== null;
-        const typeMismatch = hasParsableLocal && (
-            (expectsArray && !Array.isArray(parsedLocal)) ||
-            (expectsObject && (typeof parsedLocal !== "object" || parsedLocal === null || Array.isArray(parsedLocal)))
-        );
-
-        if (localVal == null || !hasParsableLocal || typeMismatch) {
-            setter(backupVal);
-            safeSetStorage(localKey, JSON.stringify(backupVal));
-            restoredCount++;
+    }
+    const cacheOwnerMatches = canSeedSynchronizedStoreFromLocal({
+        serverCacheId: savedCacheId,
+        localCacheId,
+    });
+    let serverSettingsNeedSave = comfyModelLoaderNeedsMigration;
+    if (!savedCacheId) {
+        s._syncCacheId = generateUUID();
+        serverSettingsNeedSave = true;
+    }
+    const restoreTargets = [
+        { localKey: "qig_char_settings", backupKey: "_backupCharSettings", expectedType: "object", fallback: {}, setter: v => { charSettings = v; }, getter: () => charSettings },
+        { localKey: "qig_profiles", backupKey: "_backupProfiles", expectedType: "object", fallback: {}, setter: v => { connectionProfiles = v; }, getter: () => connectionProfiles },
+        { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", expectedType: "object", fallback: {}, setter: v => { charRefImages = v; }, getter: () => charRefImages },
+        { localKey: "qig_gen_presets", backupKey: "_backupGenPresets", expectedType: "array", fallback: [], setter: v => { generationPresets = v; }, getter: () => generationPresets },
+        { localKey: "qig_comfy_workflows", backupKey: "_backupComfyWorkflows", expectedType: "array", fallback: [], setter: v => { comfyWorkflows = v; }, getter: () => comfyWorkflows },
+        { localKey: "qig_contextual_filters", backupKey: "_backupContextualFilters", expectedType: "array", fallback: [], setter: v => { contextualFilters = v; }, getter: () => contextualFilters },
+        { localKey: "qig_filter_pools", backupKey: "_backupFilterPools", expectedType: "array", fallback: [], setter: v => { filterPools = v; }, getter: () => filterPools },
+        { localKey: "qig_active_pool_ids_global", backupKey: "_backupActiveFilterPoolIdsGlobal", expectedType: "array", fallback: [DEFAULT_FILTER_POOL_ID], setter: v => { activeFilterPoolIdsGlobal = v; }, getter: () => activeFilterPoolIdsGlobal },
+        { localKey: "qig_active_pool_ids_by_card", backupKey: "_backupActiveFilterPoolIdsByCard", expectedType: "object", fallback: {}, setter: v => { activeFilterPoolIdsByCard = v; }, getter: () => activeFilterPoolIdsByCard },
+        { localKey: "qig_active_pool_ids_by_char", backupKey: "_backupActiveFilterPoolIdsByChar", expectedType: "object", fallback: {}, setter: v => { activeFilterPoolIdsByChar = v; }, getter: () => activeFilterPoolIdsByChar },
+        { localKey: CONTEXT_MEDIA_STORE_KEY, backupKey: "_backupContextMedia", expectedType: "object", fallback: {}, setter: v => { contextMediaLibrary = v; }, getter: () => contextMediaLibrary },
+    ];
+    const localValues = new Map();
+    for (const { localKey } of restoreTargets) {
+        try {
+            const raw = localStorage.getItem(localKey);
+            localValues.set(localKey, raw == null ? undefined : JSON.parse(raw));
+        } catch {
+            localValues.set(localKey, undefined);
         }
     }
-    if (restoredCount > 0) {
-        log(`Restored ${restoredCount} preset store(s) from server backup`);
-        toastr?.info?.(`Restored ${restoredCount} setting(s) from server backup (localStorage was empty)`);
+    let localLegacyReplacementRules;
+    try {
+        const raw = localStorage.getItem("qig_prompt_replacements");
+        localLegacyReplacementRules = raw == null ? undefined : JSON.parse(raw);
+    } catch { /* malformed legacy data is ignored */ }
+    const hasUnownedSynchronizedData = restoreTargets.some(({ localKey, backupKey, expectedType }) => {
+        const serverValue = s[backupKey];
+        const serverIsValid = expectedType === "array"
+            ? Array.isArray(serverValue)
+            : serverValue && typeof serverValue === "object" && !Array.isArray(serverValue);
+        if (serverIsValid) return false;
+        const value = localValues.get(localKey);
+        if (expectedType === "array") return Array.isArray(value) && value.length > 0;
+        return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+    });
+    const hasUnownedLegacyReplacementData = !Array.isArray(s._backupPromptReplacements)
+        && Array.isArray(localLegacyReplacementRules)
+        && localLegacyReplacementRules.length > 0;
+    const hasUnownedLegacyData = !savedCacheId
+        && !localCacheId
+        && (hasUnownedSynchronizedData || hasUnownedLegacyReplacementData);
+    const legacySeedApproved = hasUnownedLegacyData && confirm("Quick Image Gen found legacy browser-only settings that are not linked to a SillyTavern account. Import them into the current server user? They may include API keys and private reference images. Choose Cancel if this browser data belongs to another user.");
+    const legacySeedDeclined = hasUnownedLegacyData && !legacySeedApproved;
+    const maySeedFromLocal = cacheOwnerMatches || legacySeedApproved;
+    const quarantinedLegacyCacheKeys = new Set();
+    let synchronizedFromServer = 0;
+    let serverStoresSeeded = 0;
+    let localCachesRefreshed = true;
+    for (const { localKey, backupKey, expectedType, fallback, setter } of restoreTargets) {
+        const localValue = localValues.get(localKey);
+        const localHasData = expectedType === "array"
+            ? Array.isArray(localValue) && localValue.length > 0
+            : localValue && typeof localValue === "object" && !Array.isArray(localValue) && Object.keys(localValue).length > 0;
+        if (legacySeedDeclined && localHasData) quarantinedLegacyCacheKeys.add(localKey);
+        const reconciled = reconcileSynchronizedStore({
+            serverValue: s[backupKey],
+            localValue: maySeedFromLocal ? localValues.get(localKey) : undefined,
+            fallback,
+            expectedType,
+        });
+        setter(reconciled.value);
+        if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(localKey)) {
+            localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(reconciled.value)) && localCachesRefreshed;
+        } else if (!localCacheWritesAllowed) {
+            localCachesRefreshed = false;
+        }
+        if (reconciled.serverNeedsUpdate) {
+            s[backupKey] = cloneSynchronizedValue(reconciled.value);
+            serverStoresSeeded++;
+            serverSettingsNeedSave = true;
+        } else {
+            synchronizedFromServer++;
+        }
     }
+    if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
+    if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
     try {
         contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
     } catch (error) {
@@ -3397,21 +3911,73 @@ async function loadSettings() {
         contextMediaLibrary = normalizeContextMediaLibrary({});
         toastr?.warning?.("Invalid Context Media data was reset so Quick Image Gen could continue.");
     }
-    safeSetStorage(CONTEXT_MEDIA_STORE_KEY, JSON.stringify(contextMediaLibrary), "Failed to migrate Context Media. Browser storage may be full.");
+    if (localCacheWritesAllowed && !quarantinedLegacyCacheKeys.has(CONTEXT_MEDIA_STORE_KEY)) {
+        localCachesRefreshed = safeSetStorage(CONTEXT_MEDIA_STORE_KEY, JSON.stringify(contextMediaLibrary), "Failed to migrate Context Media. Browser storage may be full.") && localCachesRefreshed;
+    }
     backupToSettings(CONTEXT_MEDIA_STORE_KEY, contextMediaLibrary);
     const normalizedPresets = normalizeGenerationPresetStore(generationPresets);
-    ensureGenerationPresetIds({ persist: true });
+    ensureGenerationPresetIds({ persist: !quarantinedLegacyCacheKeys.has("qig_gen_presets") });
     if (normalizedPresets) {
-        saveGenerationPresetStore("Failed to migrate chat-image preset settings. Browser storage may be full.");
+        if (!quarantinedLegacyCacheKeys.has("qig_gen_presets")) {
+            saveGenerationPresetStore("Failed to migrate chat-image preset settings. Browser storage may be full.");
+        }
+        backupToSettings("qig_gen_presets", generationPresets);
+        serverSettingsNeedSave = true;
     }
-    if (normalizeProxyProfileStore(connectionProfiles)) {
-        safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to migrate chat-image profiles. Browser storage may be full.");
+    const comfyProfilesNormalized = normalizeComfyConnectionProfileStore(connectionProfiles);
+    if (normalizeProxyProfileStore(connectionProfiles) || comfyProfilesNormalized) {
+        if (!quarantinedLegacyCacheKeys.has("qig_profiles")) {
+            safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to migrate chat-image profiles. Browser storage may be full.");
+        }
         backupToSettings("qig_profiles", connectionProfiles);
+        if (comfyProfilesNormalized) serverSettingsNeedSave = true;
+    }
+    if (normalizeComfyWorkflowPresetStore(comfyWorkflows)) {
+        if (!quarantinedLegacyCacheKeys.has("qig_comfy_workflows")) {
+            safeSetStorage("qig_comfy_workflows", JSON.stringify(comfyWorkflows), "Failed to migrate workflow presets. Browser storage may be full.");
+        }
+        backupToSettings("qig_comfy_workflows", comfyWorkflows);
+        serverSettingsNeedSave = true;
     }
     syncActiveGenerationPresetSetting({ persist: true });
-    ensureFilterPoolsState({ persist: true });
-    migrateLegacyReplacementStores(s);
-    saveSettingsDebounced?.();
+    if (ensureFilterPoolsState()) {
+        for (const [localKey, value] of getFilterStoreEntries()) {
+            if (!quarantinedLegacyCacheKeys.has(localKey)) safeSetStorage(localKey, JSON.stringify(value));
+            writeBackupToSettings(localKey, value);
+        }
+        serverSettingsNeedSave = true;
+    }
+    const legacyReplacementMigrationPending = !s._replacementMapsMigrated;
+    migrateLegacyReplacementStores(s, { allowLocalStore: maySeedFromLocal });
+    if (legacyReplacementMigrationPending) serverSettingsNeedSave = true;
+    let initialServerSaveSucceeded = !serverSettingsNeedSave;
+    if (serverSettingsNeedSave) {
+        try {
+            await flushSettingsBackup();
+            initialServerSaveSucceeded = true;
+        } catch (error) {
+            log(`Initial settings synchronization failed: ${error.message}`);
+            toastr?.warning?.("Quick Image Gen loaded, but synchronized settings could not be saved to SillyTavern yet.");
+            saveSettingsDebounced?.();
+        }
+    } else {
+        saveSettingsDebounced?.();
+    }
+    if (initialServerSaveSucceeded && maySeedFromLocal && legacyReplacementMigrationPending) {
+        cleanupLegacyReplacementLocalStores();
+    }
+    if (initialServerSaveSucceeded && localCacheWritesAllowed) {
+        localCachesRefreshed = true;
+        for (const { localKey, getter } of restoreTargets) {
+            if (quarantinedLegacyCacheKeys.has(localKey)) continue;
+            localCachesRefreshed = safeSetStorage(localKey, JSON.stringify(getter())) && localCachesRefreshed;
+        }
+    }
+    if (initialServerSaveSucceeded && localCachesRefreshed && !legacySeedDeclined) {
+        safeSetStorage(SYNC_CACHE_ID_KEY, s._syncCacheId);
+    } else if (!localCachesRefreshed) {
+        log("Synchronized cache ownership marker was not updated because one or more local cache writes failed");
+    }
 }
 
 function normalizePoolIdList(poolIds) {
@@ -3444,26 +4010,85 @@ function isDefaultFilterPoolName(name) {
     return String(name || "").trim().toLowerCase() === DEFAULT_FILTER_POOL_NAME.toLowerCase();
 }
 
-function saveFilterPools() {
-    const ok = safeSetStorage("qig_filter_pools", JSON.stringify(filterPools), "Failed to save filter pools. Browser storage may be full.");
-    if (ok) backupToSettings("qig_filter_pools", filterPools);
-    return ok;
+const FILTER_STORE_CONFIG = Object.freeze([
+    ["qig_contextual_filters", "_backupContextualFilters"],
+    ["qig_filter_pools", "_backupFilterPools"],
+    ["qig_active_pool_ids_global", "_backupActiveFilterPoolIdsGlobal"],
+    ["qig_active_pool_ids_by_card", "_backupActiveFilterPoolIdsByCard"],
+    ["qig_active_pool_ids_by_char", "_backupActiveFilterPoolIdsByChar"],
+]);
+
+function getFilterStoreEntries() {
+    return [
+        ["qig_contextual_filters", contextualFilters],
+        ["qig_filter_pools", filterPools],
+        ["qig_active_pool_ids_global", activeFilterPoolIdsGlobal],
+        ["qig_active_pool_ids_by_card", activeFilterPoolIdsByCard],
+        ["qig_active_pool_ids_by_char", activeFilterPoolIdsByChar],
+    ];
 }
 
-function saveActiveFilterPools() {
-    const okGlobal = safeSetStorage("qig_active_pool_ids_global", JSON.stringify(activeFilterPoolIdsGlobal), "Failed to save active global pools. Browser storage may be full.");
-    const okByCard = safeSetStorage("qig_active_pool_ids_by_card", JSON.stringify(activeFilterPoolIdsByCard), "Failed to save active card pools. Browser storage may be full.");
-    const okByChar = safeSetStorage("qig_active_pool_ids_by_char", JSON.stringify(activeFilterPoolIdsByChar), "Failed to save active character pools. Browser storage may be full.");
-    if (okGlobal) backupToSettings("qig_active_pool_ids_global", activeFilterPoolIdsGlobal);
-    if (okByCard) backupToSettings("qig_active_pool_ids_by_card", activeFilterPoolIdsByCard);
-    if (okByChar) backupToSettings("qig_active_pool_ids_by_char", activeFilterPoolIdsByChar);
-    return okGlobal && okByCard && okByChar;
+function snapshotFilterPoolState() {
+    return getFilterStoreEntries().map(([key, value]) => [key, cloneSynchronizedValue(value)]);
 }
 
-function persistFilterPoolState() {
-    saveContextualFilters();
-    saveFilterPools();
-    saveActiveFilterPools();
+function restoreFilterPoolState(snapshot) {
+    const values = Object.fromEntries(snapshot || []);
+    contextualFilters = values.qig_contextual_filters ?? [];
+    filterPools = values.qig_filter_pools ?? [];
+    activeFilterPoolIdsGlobal = values.qig_active_pool_ids_global ?? [];
+    activeFilterPoolIdsByCard = values.qig_active_pool_ids_by_card ?? {};
+    activeFilterPoolIdsByChar = values.qig_active_pool_ids_by_char ?? {};
+}
+
+function blockFilterStoreMutation() {
+    if (blockMutationDuringSettingsImport()) return true;
+    if (!FILTER_STORE_CONFIG.some(([key]) => activeSynchronizedStoreMutations.has(key))) return false;
+    toastr?.info?.("Filter settings are already being saved. Please wait a moment.");
+    return true;
+}
+
+async function persistFilterPoolState(previousState) {
+    const settings = extension_settings?.[extensionName];
+    if (!settings) {
+        restoreFilterPoolState(previousState);
+        toastr?.error?.("Filter settings persistence is unavailable. No changes were saved.");
+        return false;
+    }
+    try {
+        const result = await runSynchronizedStoreMutations(
+            FILTER_STORE_CONFIG.map(([localKey]) => localKey),
+            () => persistSynchronizedStores({
+                storage: localStorage,
+                settings,
+                stores: FILTER_STORE_CONFIG.map(([localKey, backupKey]) => ({
+                    localKey,
+                    backupKey,
+                    value: new Map(getFilterStoreEntries()).get(localKey),
+                })),
+                save: flushSettingsBackup,
+            }),
+            { throwIfBusy: true },
+        );
+        if (!result.cacheSaved) {
+            const failedKeys = result.cacheErrors.map(item => item.localKey).join(", ");
+            log(`Filter settings local cache write failed for ${failedKeys}`);
+            toastr?.warning?.("Saved filter settings to your SillyTavern account, but this browser's local cache could not be fully updated.");
+        }
+        return true;
+    } catch (error) {
+        restoreFilterPoolState(previousState);
+        log(`Filter settings synchronization failed: ${error.message}`);
+        toastr?.error?.("Failed to synchronize filter settings with SillyTavern. No changes were saved.");
+        return false;
+    }
+}
+
+async function commitFilterPoolStateMutation(previousState) {
+    ensureFilterPoolsState({ persist: false });
+    const saved = await persistFilterPoolState(previousState);
+    renderContextualFilters();
+    return saved;
 }
 
 function getActiveCardScopeKeys(ctx = getContext()) {
@@ -3536,7 +4161,7 @@ function getVisibleFilterPools(scopeRef = getNormalizedScopedRecord(FILTER_SCOPE
     return { globalPools, scopedPools, scopeInfo };
 }
 
-function ensureFilterPoolsState({ persist = false } = {}) {
+function ensureFilterPoolsState() {
     let changed = false;
 
     const incomingPools = Array.isArray(filterPools) ? filterPools : [];
@@ -3595,10 +4220,10 @@ function ensureFilterPoolsState({ persist = false } = {}) {
     }
 
     const hadStoredGlobalPoolState =
-        localStorage.getItem("qig_active_pool_ids_global") != null ||
+        hasStorageKey(localStorage, "qig_active_pool_ids_global") ||
         extension_settings?.[extensionName]?._backupActiveFilterPoolIdsGlobal != null;
     const hadStoredCardPoolState =
-        localStorage.getItem("qig_active_pool_ids_by_card") != null ||
+        hasStorageKey(localStorage, "qig_active_pool_ids_by_card") ||
         extension_settings?.[extensionName]?._backupActiveFilterPoolIdsByCard != null;
     const originalGlobalIds = normalizePoolIdList(activeFilterPoolIdsGlobal);
     let nextGlobalIds = originalGlobalIds.filter(id => globalPoolIds.has(id));
@@ -3727,9 +4352,6 @@ function ensureFilterPoolsState({ persist = false } = {}) {
     }
     if (normalizeContextualFilterOrder(contextualFilters)) changed = true;
 
-    if (persist) {
-        persistFilterPoolState();
-    }
     return changed;
 }
 
@@ -4167,7 +4789,7 @@ function resolveChatProfileContext(ctx = getContext()) {
         };
     }
 
-    const isGroup = !!ctx.groupId;
+    const isGroup = ctx.groupId != null;
     const characters = getContextCharactersList(ctx);
     let activeEntries = [];
     if (isGroup) {
@@ -4305,6 +4927,8 @@ function applyProxyChatImageSimpleMode({ persist = true, notify = true } = {}) {
         autoInsert: true,
         outputMode: "inline",
         manualInsertTarget: "assistant",
+        injectEnabled: false,
+        paletteMode: "direct",
     });
     if (!String(s.proxyChatImageSystemPrompt || "").trim()) {
         s.proxyChatImageSystemPrompt = DEFAULT_PROXY_CHAT_IMAGE_SYSTEM_PROMPT;
@@ -4379,10 +5003,14 @@ function getSettings() {
 
 function getGenerationSettingsForRun() {
     const baseSettings = getSettings();
-    if (!transientGenerationSettingsOverride || typeof transientGenerationSettingsOverride !== "object") {
-        return snapshotGenerationSettings(baseSettings);
+    const merged = transientGenerationSettingsOverride && typeof transientGenerationSettingsOverride === "object"
+        ? { ...baseSettings, ...transientGenerationSettingsOverride }
+        : baseSettings;
+    const snapshot = snapshotGenerationSettings(merged);
+    if (!Array.isArray(snapshot.__qigActiveContextualFilters)) {
+        snapshot.__qigActiveContextualFilters = snapshotGenerationSettings(getActiveFilters().map(resolveContextualFilter));
     }
-    return snapshotGenerationSettings({ ...baseSettings, ...transientGenerationSettingsOverride });
+    return snapshot;
 }
 
 async function withTransientGenerationSettings(overrides, task) {
@@ -4398,10 +5026,15 @@ async function withTransientGenerationSettings(overrides, task) {
     }
 }
 
-function setTransientGenerationTarget(messageIndex, { forceMessagePrompt = true } = {}) {
+function setTransientGenerationTarget(messageIndex, { forceMessagePrompt = true, conversationCheckpoint = null } = {}) {
+    const ctx = getContext?.();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const targetSnapshot = createMessageTargetSnapshot(chat, messageIndex);
     transientGenerationTarget = {
-        messageIndex: Number(messageIndex),
+        messageIndex: targetSnapshot?.index ?? Number(messageIndex),
         forceMessagePrompt: forceMessagePrompt !== false,
+        targetSnapshot,
+        conversationCheckpoint,
         createdAt: Date.now(),
     };
     return transientGenerationTarget;
@@ -4414,12 +5047,15 @@ function clearTransientGenerationTarget() {
 function getTransientGenerationTarget(ctx = getContext?.()) {
     if (!transientGenerationTarget || typeof transientGenerationTarget !== "object") return null;
     const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-    const resolvedIndex = clampChatMessageIndex(transientGenerationTarget.messageIndex, chat.length);
-    if (!Number.isInteger(resolvedIndex)) {
-        return { ...transientGenerationTarget, messageIndex: null, message: null };
-    }
+    const resolvedIndex = Number(transientGenerationTarget.messageIndex);
+    const targetSnapshot = transientGenerationTarget.targetSnapshot;
+    const valid = Number.isInteger(resolvedIndex)
+        && resolvedIndex >= 0
+        && resolvedIndex < chat.length
+        && (!targetSnapshot || isMessageTargetSnapshotCurrent(targetSnapshot));
+    if (!valid) return { ...transientGenerationTarget, messageIndex: null, message: null, stale: true };
     const message = chat[resolvedIndex];
-    if (!message || typeof message !== "object") return null;
+    if (!message || typeof message !== "object") return { ...transientGenerationTarget, messageIndex: null, message: null, stale: true };
     return {
         ...transientGenerationTarget,
         messageIndex: resolvedIndex,
@@ -4429,7 +5065,7 @@ function getTransientGenerationTarget(ctx = getContext?.()) {
 
 function shouldUseChatMessageScene(settings = getSettings(), ctx = getContext?.()) {
     const target = getTransientGenerationTarget(ctx);
-    return !!target?.message || !!settings?.useLastMessage;
+    return (!!target?.message && target.forceMessagePrompt !== false) || !!settings?.useLastMessage;
 }
 
 function resolvePrompt(template, overrides = null) {
@@ -4610,7 +5246,7 @@ function getSceneMessageEntries(settings = getSettings(), ctx = getContext?.()) 
     if (!chat.length) return [];
 
     const target = getTransientGenerationTarget(ctx);
-    if (target?.message) {
+    if (target?.message && target.forceMessagePrompt !== false) {
         return [{ index: target.messageIndex, message: target.message, targeted: true }];
     }
 
@@ -4679,7 +5315,7 @@ function extractMessageAttachedImageRefs(message) {
     return refs;
 }
 
-async function collectChatContextProxyRefImages(settings = getSettings(), ctx = getContext()) {
+async function collectChatContextProxyRefImages(settings = getSettings(), ctx = getContext(), signal) {
     if (settings?.provider !== "proxy" || !shouldUseChatMessageScene(settings, ctx)) return [];
 
     const selectedMessages = getSelectedSceneMessages(settings, ctx);
@@ -4691,6 +5327,7 @@ async function collectChatContextProxyRefImages(settings = getSettings(), ctx = 
     let discoveredImageCount = 0;
 
     for (const entry of selectedMessages) {
+        if (signal?.aborted) throw new DOMException("Generation cancelled", "AbortError");
         const imageRefs = extractMessageAttachedImageRefs(entry.message);
         if (!imageRefs.length) continue;
         sourceMessageCount++;
@@ -4700,6 +5337,7 @@ async function collectChatContextProxyRefImages(settings = getSettings(), ctx = 
             const normalized = await normalizeAutoProxyRefUrl(imageRef.url, {
                 messageIndex: entry.index,
                 sourceLabel: imageRef.label,
+                signal,
             });
             const value = String(normalized || "").trim();
             if (!value || seen.has(value)) continue;
@@ -4889,22 +5527,22 @@ function selectContextualSeedOverride(filters = []) {
     return selected;
 }
 
-function applyContextualFilters(prompt, negative, sceneText) {
-    const activeFilters = getActiveFilters();
+function getRunContextualFilters(settings) {
+    return Array.isArray(settings?.__qigActiveContextualFilters)
+        ? settings.__qigActiveContextualFilters
+        : getActiveFilters().map(resolveContextualFilter);
+}
+
+function applyContextualFilters(prompt, negative, sceneText, settings = null) {
+    const activeFilters = getRunContextualFilters(settings);
     if (!activeFilters.length || !sceneText) return { prompt, negative, matchedFilters: [] };
-    const activeCardKeys = new Set(getActiveCardScopeKeys());
-    const activeCharIds = new Set(getActiveCharacterScopeIds());
-    const scopedFilterCount = contextualFilters.filter(f => isContextualFilterInCurrentContext(f, { activeCardKeys, activeCharIds })).length;
-    if (scopedFilterCount > activeFilters.length) {
-        log(`Contextual pools: ${activeFilters.length}/${scopedFilterCount} scoped filter(s) enabled by active pools`);
-    }
     const sceneForMatching = enrichSceneTextForFilters(sceneText, "Contextual filters");
     const scene = sceneForMatching.toLowerCase();
     const matched = [];
     for (const f of activeFilters) {
         if (!f.enabled) continue;
         if (f.matchMode === "LLM") continue;
-        const resolvedFilter = resolveContextualFilter(f);
+        const resolvedFilter = f;
         const keywords = resolvedFilter.keywords.split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
         if (!keywords.length) continue;
         const hit = resolvedFilter.matchMode === "AND"
@@ -4932,13 +5570,14 @@ async function applyResolvedContextualFilters(prompt, negative, {
     matchText,
     llmSceneText,
     signal = null,
+    settings = null,
 } = {}) {
-    const applied = applyContextualFilters(prompt, negative, matchText);
+    const applied = applyContextualFilters(prompt, negative, matchText, settings);
     let nextPrompt = applied.prompt;
     let nextNegative = applied.negative;
     const matchedFilters = [...(applied.matchedFilters || [])];
 
-    const llmMatched = await matchLLMFilters(llmSceneText || matchText, signal);
+    const llmMatched = await matchLLMFilters(llmSceneText || matchText, signal, settings);
     if (llmMatched.length) {
         const llmApplied = applyMatchedFiltersWithDebug(nextPrompt, nextNegative, llmMatched, "LLM contextual filter");
         nextPrompt = llmApplied.prompt;
@@ -4964,10 +5603,9 @@ function getBatchBaseSeed(settings, batchCount, seedOverride = null) {
     return baseSeed;
 }
 
-async function matchLLMFilters(sceneText, signal = null) {
-    const llmFilters = getActiveFilters()
+async function matchLLMFilters(sceneText, signal = null, settings = null) {
+    const llmFilters = getRunContextualFilters(settings)
         .filter(f => f.enabled && f.matchMode === "LLM" && f.description)
-        .map(resolveContextualFilter)
         .filter(f => f.description);
     if (!llmFilters.length || !sceneText) return [];
     const sceneForMatching = enrichSceneTextForFilters(sceneText, "LLM filters");
@@ -4984,11 +5622,11 @@ ${sceneForMatching.substring(0, 2000)}
 Concepts:
 ${conceptList}`;
 
-    const s = getSettings();
+    const s = settings || activeGenerationRun?.settings || getSettings();
     let response;
     try {
         if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
-            response = await callOverrideLLM(instruction, "You are a scene analyst. Reply only with numbers.", signal);
+            response = await callOverrideLLM(instruction, "You are a scene analyst. Reply only with numbers.", signal, { settings: s });
         } else {
             response = await callInternalQuietPrompt(instruction, {
                 signal,
@@ -5214,16 +5852,6 @@ function extractLLMResponse(response) {
     return extractLLMResponseDetails(response).text;
 }
 
-function findSecretKeyForId(secretId) {
-    if (!secret_state) return null;
-    for (const [key, secrets] of Object.entries(secret_state)) {
-        if (Array.isArray(secrets) && secrets.some(s => s.id === secretId)) {
-            return key;
-        }
-    }
-    return null;
-}
-
 async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", returnMeta = false, settings = null } = {}) {
     const s = settings || activeGenerationRun?.settings || getSettings();
     const requestedMaxTokens = s.llmOverrideMaxTokens || 500;
@@ -5266,46 +5894,17 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
     const requestedPreset = s.llmOverridePreset || "";
     log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"})`);
 
-    // Rotate to the profile's secret if it has one
-    let previousSecretId = null;
-    let secretKey = null;
-    let profile = null;
-    let originalProfilePreset;
-    let presetOverridden = false;
     try {
-        profile = CMRS.getProfile(s.llmOverrideProfileId);
-
-        // Apply selected preset for this request only, then restore it.
-        if (profile && requestedPreset && profile.preset !== requestedPreset) {
-            originalProfilePreset = profile.preset;
-            profile.preset = requestedPreset;
-            presetOverridden = true;
-        }
-
-        const profileSecretId = profile?.['secret-id'];
-        if (profileSecretId && rotateSecret && secret_state) {
-            secretKey = findSecretKeyForId(profileSecretId);
-            if (secretKey) {
-                previousSecretId = secret_state[secretKey]?.find(sec => sec.active)?.id;
-                if (previousSecretId !== profileSecretId) {
-                    log(`LLM Override: Rotating secret for '${secretKey}' to profile's key`);
-                    await rotateSecret(secretKey, profileSecretId);
-                } else {
-                    previousSecretId = null; // already correct, no restore needed
-                }
-            }
-        }
-    } catch (e) {
-        log(`LLM Override: Could not prepare profile override: ${e.message}`);
-    }
-
-    try {
-        const response = await runWithInternalLLMRequest("LLM override profile request", async () => await runAbortableTask(() => CMRS.sendRequest(
-            s.llmOverrideProfileId,
+        const context = getContext();
+        const response = await runWithInternalLLMRequest("LLM override profile request", () => sendIsolatedConnectionManagerRequest({
+            service: CMRS,
+            context,
+            profileId: s.llmOverrideProfileId,
             messages,
-            requestedMaxTokens,
-            { extractData: true, includePreset: true, stream: false }
-        ), signal));
+            maxTokens: requestedMaxTokens,
+            preset: requestedPreset,
+            signal,
+        }));
         const details = extractLLMResponseDetails(response);
         const meta = {
             ...details,
@@ -5313,9 +5912,7 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
             requestedMaxTokens,
             profileId: s.llmOverrideProfileId,
         };
-        if (!details.text) {
-            logLLMHelperResponseMeta(meta, "LLM Override response");
-        }
+        if (!details.text) logLLMHelperResponseMeta(meta, "LLM Override response");
         return returnMeta ? meta : details.text;
     } catch (e) {
         if (e.name === "AbortError") throw e;
@@ -5343,21 +5940,6 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
             profileId: s.llmOverrideProfileId,
         };
         return returnMeta ? fallbackMeta : fallbackText;
-    } finally {
-        // Restore original secret
-        if (previousSecretId && secretKey && rotateSecret) {
-            try {
-                log(`LLM Override: Restoring original secret for '${secretKey}'`);
-                await rotateSecret(secretKey, previousSecretId);
-            } catch (e) {
-                log(`LLM Override: Could not restore secret: ${e.message}`);
-            }
-        }
-
-        // Restore profile preset if we overrode it for this call.
-        if (presetOverridden && profile) {
-            profile.preset = originalProfilePreset;
-        }
     }
 }
 
@@ -5973,15 +6555,31 @@ async function pollinationsFetchImageData(prompt, negative, s, signal) {
     });
 
     if (!res.ok) {
-        const err = await readResponseJson(res).catch(() => null);
-        const message = err?.error?.message || err?.message || res.statusText || `HTTP ${res.status}`;
-        throw new Error(`Pollinations error ${res.status}: ${message}`);
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Pollinations error ${res.status}: ${message || res.statusText}`);
     }
 
     const data = await readResponseJson(res);
-    if (data.data?.[0]?.b64_json) return `data:image/png;base64,${data.data[0].b64_json}`;
-    if (data.data?.[0]?.url) return data.data[0].url;
+    const source = extractProviderImageSource(data);
+    if (source) return source;
     throw new Error("No image in Pollinations response");
+}
+
+let pollinationsModelDiscoveryPromise = null;
+async function refreshPollinationsModelMetadata(signal) {
+    if (!pollinationsModelDiscoveryPromise) {
+        pollinationsModelDiscoveryPromise = (async () => {
+            const response = await fetch("https://gen.pollinations.ai/image/models", { redirect: "error", signal });
+            if (!response.ok) throw new Error(`Pollinations model discovery failed (${response.status})`);
+            const models = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+            registerPollinationsModelMetadata(models);
+        })().catch(error => {
+            pollinationsModelDiscoveryPromise = null;
+            if (error?.name === "AbortError") throw error;
+            log(`Pollinations model discovery unavailable: ${error.message}`);
+        });
+    }
+    return pollinationsModelDiscoveryPromise;
 }
 
 async function genPollinations(prompt, negative, s, signal) {
@@ -5994,7 +6592,8 @@ async function genPollinations(prompt, negative, s, signal) {
         return await pollinationsFetchImageData(prompt, negative, s, signal);
     }
 
-    if (model && POLLINATIONS_PAID_MODEL_IDS.has(model)) {
+    if (model) await refreshPollinationsModelMetadata(signal);
+    if (model && pollinationsModelRequiresAuth(model)) {
         throw new Error(`Pollinations model '${model}' requires an API key`);
     }
 
@@ -6003,11 +6602,18 @@ async function genPollinations(prompt, negative, s, signal) {
     if (negative) url += `&negative=${encodeURIComponent(negative)}`;
     if (model && model !== "flux") url += `&model=${encodeURIComponent(model)}`;
     log(`Pollinations URL: ${url.substring(0, 100)}...`);
-    return url;
+    const response = await corsFetch(url, { signal, redirect: "error" });
+    if (!response.ok) {
+        const { message } = await readProviderErrorResponse(response);
+        throw new Error(`Pollinations error ${response.status}: ${message || response.statusText}`);
+    }
+    return imageResponseToDataUrl(response);
 }
 
 async function genNovelAI(prompt, negative, s, signal) {
     normalizeSize(s);
+    const effectiveDimensions = { width: s.width, height: s.height };
+    const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
     const isV4 = s.naiModel.includes("-4");
     // Map SillyTavern sampler names to NovelAI API format
     const samplerMap = {
@@ -6057,52 +6663,24 @@ async function genNovelAI(prompt, negative, s, signal) {
     const payload = { input: prompt, model: s.naiModel, action: "generate", parameters: params };
 
     // OpenAI-compatible proxy (e.g. linkapi.cc/v1 → yousebaby → NAI)
-    if (s.naiProxyUrl && s.naiProxyUrl.includes("/v1")) {
+    if (s.naiProxyUrl && isNovelAICompatibleProxyUrl(s.naiProxyUrl)) {
         const proxyKey = s.naiProxyKey || s.naiKey;
-        const proxyUrl = String(s.naiProxyUrl || "").replace(/\/$/, "");
-
-        if (proxyUrl.includes("/chat/completions")) {
-            const exactGenerateUrl = getNovelAIProxyGenerateUrl(proxyUrl);
-            if (exactGenerateUrl) {
-                const exactPayload = {
-                    input: prompt,
-                    model: s.naiModel,
-                    action: "generate",
-                    parameters: { ...params, return_base64: true }
-                };
-                try {
-                    log(`NAI v1 proxy exact-size attempt to ${exactGenerateUrl}: size=${s.width}x${s.height}`);
-                    const exactRes = await fetch(exactGenerateUrl, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${proxyKey}`, "Content-Type": "application/json", "Accept": "*/*" },
-                        body: JSON.stringify(exactPayload),
-                        signal
-                    });
-                    if (exactRes.ok) {
-                        const exactJson = await readResponseJson(exactRes);
-                        return extractNovelAIProxyImageUrl(exactJson, exactGenerateUrl);
-                    }
-                    const errText = await readResponseText(exactRes, 1024 * 1024).catch(() => "");
-                    log(`NAI v1 proxy exact-size fallback: ${exactRes.status} ${errText.substring(0, 180)}`);
-                } catch (e) {
-                    if (e.name === "AbortError") throw e;
-                    log(`NAI v1 proxy exact-size fallback (error): ${e.message}`);
-                }
-            }
-        }
+        const proxyUrl = String(s.naiProxyUrl || "").trim();
 
         const v1SamplerMap = {
             "k_euler_ancestral": "Euler Ancestral", "k_euler": "Euler",
             "k_dpmpp_2m": "DPM++ 2M", "k_dpmpp_sde": "DPM++ SDE",
             "k_dpmpp_2m_sde": "DPM++ 2M SDE", "ddim": "DDIM", "ddim_v3": "DDIM"
         };
-        const v1Url = proxyUrl.includes("/chat/completions")
+        const v1Url = isOpenAIChatCompletionsEndpoint(proxyUrl)
             ? proxyUrl
-            : proxyUrl + "/chat/completions";
+            : buildNovelAIProxyRequestUrl(proxyUrl, "chat");
+        const v1Size = s.width > s.height ? "1216:832" : s.width < s.height ? "832:1216" : "1024:1024";
+        const [v1Width, v1Height] = v1Size.split(":").map(Number);
         const v1Payload = {
             model: s.naiModel,
             messages: [{ role: "user", content: prompt }],
-            size: s.width > s.height ? "1216:832" : s.width < s.height ? "832:1216" : "1024:1024",
+            size: v1Size,
             negative_prompt: negative,
             sampler: v1SamplerMap[sampler] || "Euler Ancestral",
             return_base64: true,
@@ -6116,16 +6694,16 @@ async function genNovelAI(prompt, negative, s, signal) {
             signal
         });
         if (!res.ok) {
-            const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
-            throw new Error(`NovelAI proxy error: ${res.status} ${errText}`);
+            const { message } = await readProviderErrorResponse(res);
+            throw new Error(`NovelAI proxy error ${res.status}: ${message || res.statusText}`);
         }
         const json = await readResponseJson(res);
         const content = json.choices?.[0]?.message?.content;
         if (!content) throw new Error(`NovelAI proxy returned no image: ${JSON.stringify(json).substring(0, 300)}`);
-        if (content.startsWith("data:")) return content;
-        if (content.startsWith("http")) return content;
+        if (content.startsWith("data:")) return withEffectiveDimensions(content, { width: v1Width, height: v1Height });
+        if (content.startsWith("http")) return withEffectiveDimensions(content, { width: v1Width, height: v1Height });
         const mdMatch = content.match(/!\[.*?\]\((.*?)\)/);
-        if (mdMatch) return mdMatch[1];
+        if (mdMatch) return withEffectiveDimensions(mdMatch[1], { width: v1Width, height: v1Height });
         throw new Error(`NovelAI proxy returned unexpected content: ${content.substring(0, 200)}`);
     }
 
@@ -6145,14 +6723,14 @@ async function genNovelAI(prompt, negative, s, signal) {
         signal
     });
     if (!res.ok) {
-        const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
-        throw new Error(`NovelAI error: ${res.status} ${errText}`);
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`NovelAI error ${res.status}: ${message || res.statusText}`);
     }
 
     // Proxy returns JSON with a URL or base64 data URI
     if (isProxy) {
         const json = await readResponseJson(res);
-        return extractNovelAIProxyImageUrl(json, apiUrl);
+        return withEffectiveDimensions(extractNovelAIProxyImageUrl(json, apiUrl));
     }
 
     const arrayBuffer = await readResponseArrayBuffer(res, MAX_IMAGE_BYTES);
@@ -6172,7 +6750,7 @@ async function genNovelAI(prompt, negative, s, signal) {
         // Verify PNG signature
         if (pngData[0] === 0x89 && pngData[1] === 0x50 && pngData[2] === 0x4E && pngData[3] === 0x47) {
             log(`Extracted valid PNG from ZIP: ${pngData.length} bytes`);
-            { const u = URL.createObjectURL(new Blob([pngData], { type: "image/png" })); blobUrls.add(u); return u; }
+            { const u = URL.createObjectURL(new Blob([pngData], { type: "image/png" })); blobUrls.add(u); return withEffectiveDimensions(u); }
         } else {
             log(`Invalid PNG signature after extraction: ${pngData[0]} ${pngData[1]} ${pngData[2]} ${pngData[3]}`);
             throw new Error("Extracted data is not a valid PNG file.");
@@ -6180,18 +6758,16 @@ async function genNovelAI(prompt, negative, s, signal) {
     }
 
     // V4+ returns msgpack events, V3 returns zip - both contain PNG data we can extract
-    const pngStart = findPngStart(bytes);
-    if (pngStart < 0) {
+    const pngRange = findEmbeddedPngRange(bytes);
+    if (!pngRange) {
         const textResponse = new TextDecoder().decode(bytes.slice(0, Math.min(200, bytes.length)));
         log(`First 200 bytes as text: ${textResponse}`);
         throw new Error("No PNG found in response. Check your API key and model settings.");
     }
 
-    // Find PNG end (IEND chunk + CRC)
-    const pngEnd = findPngEnd(bytes, pngStart);
-    log(`Extracted PNG: ${pngStart} to ${pngEnd} (${pngEnd - pngStart} bytes)`);
-    const pngData = bytes.slice(pngStart, pngEnd);
-    { const u = URL.createObjectURL(new Blob([pngData], { type: "image/png" })); blobUrls.add(u); return u; }
+    log(`Extracted PNG: ${pngRange.start} to ${pngRange.end} (${pngRange.end - pngRange.start} bytes)`);
+    const pngData = bytes.slice(pngRange.start, pngRange.end);
+    { const u = URL.createObjectURL(new Blob([pngData], { type: "image/png" })); blobUrls.add(u); return withEffectiveDimensions(u); }
 }
 
 function getGptImageSize(settings = getSettings()) {
@@ -6315,40 +6891,62 @@ async function genGptImage(prompt, negative, s, signal) {
         log("GPT Image: transparent backgrounds require PNG or WebP output; omitting background for JPEG.");
     }
     if (s.gptImageProxyUrl && !/\/(?:v1|images(?:\/generations)?)\/?(?:[?#].*)?$/i.test(String(s.gptImageProxyUrl).trim())) {
-        log("GPT Image: proxy URL does not end in /v1 or /images/generations; treating it as the full generation endpoint.");
+        log("GPT Image: trying the configured proxy URL as an exact endpoint first.");
     }
 
-    log(`GPT Image request to ${describeProviderImageSource(apiUrl)}: model=${model}, size=${payload.size}, quality=${payload.quality || "auto"}, format=${payload.output_format || "png"}`);
     const headers = {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
     };
-    const res = await fetch(apiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        signal,
+    const requestImage = async (requestUrl) => {
+        log(`GPT Image request to ${describeProviderImageSource(requestUrl)}: model=${model}, size=${payload.size}, quality=${payload.quality || "auto"}, format=${payload.output_format || "png"}`);
+        const response = await fetch(requestUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+            signal,
+        });
+        if (!response.ok) {
+            const failure = await readProviderErrorResponse(response);
+            return {
+                ok: false,
+                status: response.status,
+                data: failure.data || (failure.message ? { error: { message: failure.message } } : null),
+                error: failure.message ? `GPT Image error ${response.status}: ${failure.message}` : "",
+            };
+        }
+
+        const contentType = response.headers.get("content-type") || "";
+        const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
+        const responseBaseUrl = response.url || requestUrl;
+        log(`GPT Image response: status=${response.status}, type=${responseMime || "unknown"}, endpoint=${describeProviderImageSource(responseBaseUrl)}`);
+        if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+            return { image: await imageResponseToDataUrl(response), requestUrl, responseBaseUrl };
+        }
+
+        const data = await readResponseJson(response);
+        return {
+            data,
+            source: extractProviderImageSource(data, { defaultMime: getGptImageMime(outputFormat) }),
+            requestUrl,
+            responseBaseUrl,
+        };
+    };
+
+    const result = await requestGptImageWithRouteRetry(apiUrl, requestImage, (retryUrl) => {
+            log(`GPT Image proxy namespace rejected the root route; retrying ${describeProviderImageSource(retryUrl)}`);
     });
-
-    if (!res.ok) {
-        const detail = await readProxyErrorResponse(res);
-        throw new Error(`GPT Image error ${res.status}: ${detail || res.statusText}`);
+    if (result.image) return result.image;
+    const { data, source, requestUrl, responseBaseUrl } = result;
+    if (!source) {
+        const providerError = extractProviderErrorMessage(data);
+        throw new Error(providerError
+            ? `GPT Image proxy returned an error: ${providerError}`
+            : `GPT Image returned no image: ${JSON.stringify(data || {}).substring(0, 300)}`);
     }
-
-    const contentType = res.headers.get("content-type") || "";
-    const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
-    log(`GPT Image response: status=${res.status}, type=${responseMime || "unknown"}, endpoint=${describeProviderImageSource(res.url || apiUrl)}`);
-    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
-        return await imageResponseToDataUrl(res);
-    }
-
-    const responseBaseUrl = res.url || apiUrl;
-    const data = await readResponseJson(res);
-    const source = extractProviderImageSource(data, { defaultMime: getGptImageMime(outputFormat) });
-    if (!source) throw new Error(`GPT Image returned no image: ${JSON.stringify(data || {}).substring(0, 300)}`);
     log(`GPT Image result source: ${describeProviderImageSource(source, responseBaseUrl)}`);
     const materialized = await materializeProviderImageSource(source, {
-        requestUrl: apiUrl,
+        requestUrl,
         responseUrl: responseBaseUrl,
         headers,
         signal,
@@ -6357,23 +6955,6 @@ async function genGptImage(prompt, negative, s, signal) {
     });
     log(`GPT Image result ready: ${materialized.startsWith("data:") ? "validated inline image" : describeProviderImageSource(materialized)}`);
     return materialized;
-}
-
-function findPngStart(bytes) {
-    for (let i = 0; i < bytes.length - 8; i++) {
-        if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47) return i;
-    }
-    return -1;
-}
-
-function findPngEnd(bytes, start) {
-    // Look for IEND chunk (49 45 4E 44) followed by CRC
-    for (let i = start; i < bytes.length - 8; i++) {
-        if (bytes[i] === 0x49 && bytes[i + 1] === 0x45 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x44) {
-            return i + 8; // IEND + 4 byte CRC
-        }
-    }
-    return bytes.length;
 }
 
 async function extractPngFromZip(zipBytes) {
@@ -6461,22 +7042,11 @@ async function extractPngFromZip(zipBytes) {
 }
 
 function searchForPngInBytes(bytes) {
-    // Search for PNG signature in raw bytes
-    for (let i = 0; i < bytes.length - 8; i++) {
-        if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47 &&
-            bytes[i + 4] === 0x0D && bytes[i + 5] === 0x0A && bytes[i + 6] === 0x1A && bytes[i + 7] === 0x0A) {
-
-            // Find IEND
-            for (let j = i + 8; j < bytes.length - 8; j++) {
-                if (bytes[j] === 0x49 && bytes[j + 1] === 0x45 && bytes[j + 2] === 0x4E && bytes[j + 3] === 0x44) {
-                    const pngData = bytes.slice(i, j + 8);
-                    console.log(`Found PNG via direct search: ${pngData.length} bytes`);
-                    return pngData;
-                }
-            }
-        }
-    }
-    return null;
+    const range = findEmbeddedPngRange(bytes);
+    if (!range) return null;
+    const pngData = bytes.slice(range.start, range.end);
+    console.log(`Found PNG via structured chunk parsing: ${pngData.length} bytes`);
+    return pngData;
 }
 
 async function decompressDeflate(compressedData, expectedSize = 0) {
@@ -6564,41 +7134,155 @@ async function genArliAI(prompt, negative, s, signal) {
         }),
         signal
     });
-    if (!res.ok) throw new Error(`ArliAI error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`ArliAI error ${res.status}: ${message || res.statusText}`);
+    }
     const data = await readResponseJson(res);
-    if (data.images?.[0]) return `data:image/png;base64,${data.images[0]}`;
+    const source = extractProviderImageSource(data);
+    if (source) return source;
     throw new Error("No image in response");
 }
 
-async function genNanoGPT(prompt, negative, s, signal) {
-    const body = {
-        model: s.nanogptModel,
-        prompt: prompt,
-        negative_prompt: negative,
-        size: `${s.width}x${s.height}`,
-        n: 1
-    };
-    const refs = s.nanogptRefImages || [];
-    if (refs.length === 1) {
-        body.imageDataUrl = refs[0];
-        body.strength = s.nanogptStrength ?? 0.75;
-    } else if (refs.length > 1) {
-        body.imageDataUrls = refs;
-        body.strength = s.nanogptStrength ?? 0.75;
+const NANOGPT_MAX_ENCODED_INPUT_BYTES = 4 * 1024 * 1024;
+const nanoGptModelMetadataCache = new Map();
+
+async function getNanoGptModelMetadata(model, signal) {
+    const id = String(model || "").trim();
+    if (!id) return null;
+    if (nanoGptModelMetadataCache.has(id)) return nanoGptModelMetadataCache.get(id);
+    try {
+        const response = await fetch(`https://nano-gpt.com/api/v1/images/models/${encodeURIComponent(id)}/endpoints`, {
+            signal,
+            redirect: "error",
+        });
+        if (!response.ok) return null;
+        const endpoints = await readResponseJson(response, MAX_DISCOVERY_RESPONSE_BYTES);
+        const metadata = { id, endpoints: endpoints?.endpoints || [] };
+        nanoGptModelMetadataCache.set(id, metadata);
+        return metadata;
+    } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        return null;
     }
-    const res = await fetch("https://nano-gpt.com/v1/images/generations", {
+}
+
+async function materializeReferenceDataUrl(source, signal, maxEncodedBytes = NANOGPT_MAX_ENCODED_INPUT_BYTES) {
+    const value = String(source || "").trim();
+    if (!value) throw new Error("Reference image is empty");
+    if (value.startsWith("data:")) {
+        if (new TextEncoder().encode(value).byteLength > maxEncodedBytes) {
+            throw new Error(`Reference image exceeds the ${Math.floor(maxEncodedBytes / 1024 / 1024)} MB encoded input limit`);
+        }
+        const normalized = await materializeProviderImageSource(value, { requestUrl: "https://reference.invalid/" });
+        if (new TextEncoder().encode(normalized).byteLength > maxEncodedBytes) {
+            throw new Error(`Reference image exceeds the ${Math.floor(maxEncodedBytes / 1024 / 1024)} MB encoded input limit`);
+        }
+        return normalized;
+    }
+
+    const maxRawBytes = Math.floor((maxEncodedBytes - 128) * 3 / 4);
+    const { buffer } = await fetchImageBuffer(value, { signal, maxBytes: maxRawBytes });
+    const format = detectImageFormat(buffer);
+    if (!format) throw new Error("Reference URL did not return a supported image");
+    const dataUrl = `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
+    if (new TextEncoder().encode(dataUrl).byteLength > maxEncodedBytes) {
+        throw new Error(`Reference image exceeds the ${Math.floor(maxEncodedBytes / 1024 / 1024)} MB encoded input limit`);
+    }
+    return dataUrl;
+}
+
+async function genNanoGPT(prompt, negative, s, signal) {
+    const model = String(s.nanogptModel || "flux-schnell").trim() || "flux-schnell";
+    const metadata = await getNanoGptModelMetadata(model, signal);
+    s.__qigNanoGptModelMetadata = metadata;
+    const capabilities = getNanoGptModelCapabilities(model, metadata);
+    const referenceConstraints = getNanoGptReferenceConstraints(metadata);
+    const effectiveResolution = getNanoGptEffectiveResolution(s.width, s.height, metadata);
+    const { resolution } = effectiveResolution;
+    const body = {
+        model,
+        prompt: negative ? `${prompt}\n\nAvoid in the image: ${negative}` : prompt,
+        resolution,
+        n: 1,
+    };
+    const supported = metadata?.endpoints?.[0]?.supported_parameters || {};
+    if (capabilities.steps) {
+        const key = Object.hasOwn(supported, "steps") ? "steps" : "num_inference_steps";
+        body[key] = Math.max(1, Math.min(100, Math.trunc(Number(s.steps) || 25)));
+    }
+    if (capabilities.cfgScale) {
+        const key = Object.hasOwn(supported, "guidance")
+            ? "guidance"
+            : (Object.hasOwn(supported, "cfg_scale") ? "cfg_scale" : "guidance_scale");
+        body[key] = Math.max(0, Math.min(20, Number.isFinite(Number(s.cfgScale)) ? Number(s.cfgScale) : 7));
+    }
+    const seed = capabilities.seed ? resolveRandomSeed(s.seed, s) : undefined;
+    if (seed !== undefined) body.seed = seed;
+    const refs = s.nanogptRefImages || [];
+    if (refs.length && !capabilities.referenceImages) {
+        throw new Error(`NanoGPT model '${model}' does not support reference image input`);
+    }
+    if (referenceConstraints.maxImages != null && refs.length > referenceConstraints.maxImages) {
+        throw new Error(`NanoGPT model '${model}' accepts at most ${referenceConstraints.maxImages} reference image(s)`);
+    }
+    const materializedRefs = [];
+    for (let index = 0; index < refs.length; index++) {
+        try {
+            const routeMaxEncodedBytes = referenceConstraints.maxBytes
+                ? Math.min(NANOGPT_MAX_ENCODED_INPUT_BYTES, Math.ceil(referenceConstraints.maxBytes * 4 / 3) + 128)
+                : NANOGPT_MAX_ENCODED_INPUT_BYTES;
+            const reference = await materializeReferenceDataUrl(refs[index], signal, routeMaxEncodedBytes);
+            const mimeType = reference.match(/^data:([^;,]+);base64,/i)?.[1]?.toLowerCase() || "";
+            if (referenceConstraints.mimeTypes.length && !referenceConstraints.mimeTypes.includes(mimeType)) {
+                throw new Error(`format ${mimeType || "unknown"} is not supported; use ${referenceConstraints.mimeTypes.join(", ")}`);
+            }
+            materializedRefs.push(reference);
+        } catch (error) {
+            if (error?.name === "AbortError") throw error;
+            if (/too large|exceeds|size limit/i.test(error?.message || "")) {
+                throw new Error(`NanoGPT reference image ${index + 1} exceeds the 4 MB encoded input limit`);
+            }
+            throw new Error(`NanoGPT reference image ${index + 1} could not be attached: ${error.message}`);
+        }
+    }
+    if (materializedRefs.length) body.input_references = materializedRefs;
+    const serializedBody = JSON.stringify(body);
+    if (new TextEncoder().encode(serializedBody).byteLength > NANOGPT_MAX_ENCODED_INPUT_BYTES) {
+        throw new Error("NanoGPT request exceeds the 4 MB encoded input limit; remove or reduce reference images");
+    }
+    const res = await fetch("https://nano-gpt.com/api/v1/images", {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${s.nanogptKey}`,
             "Content-Type": "application/json"
         },
-        body: JSON.stringify(body),
+        body: serializedBody,
         signal
     });
-    if (!res.ok) throw new Error(`NanoGPT error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`NanoGPT error ${res.status}: ${message || res.statusText}`);
+    }
     const data = await readResponseJson(res);
-    if (data.data?.[0]?.url) return data.data[0].url;
-    if (data.data?.[0]?.b64_json) return `data:image/png;base64,${data.data[0].b64_json}`;
+    const source = extractProviderImageSource(data);
+    if (source) {
+        return {
+            url: source,
+            effectiveRequest: {
+                parameters: {
+                    model,
+                    resolution,
+                    imageSize: resolution,
+                    width: effectiveResolution.width,
+                    height: effectiveResolution.height,
+                    steps: capabilities.steps ? body.steps ?? body.num_inference_steps : undefined,
+                    cfgScale: capabilities.cfgScale ? body.guidance ?? body.cfg_scale ?? body.guidance_scale : undefined,
+                    seed,
+                },
+            },
+        };
+    }
     throw new Error("No image in response");
 }
 
@@ -6622,131 +7306,142 @@ async function genChutes(prompt, negative, s, signal) {
         }),
         signal
     });
-    if (!res.ok) throw new Error(`Chutes error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Chutes error ${res.status}: ${message || res.statusText}`);
+    }
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("image/")) {
         return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
     }
     const data = await readResponseJson(res);
-    if (data.images?.[0]) {
-        const img = data.images[0];
-        if (img.startsWith?.("data:") || img.startsWith?.("http")) return img;
-        return `data:image/png;base64,${img}`;
-    }
-    if (data.image) {
-        if (data.image.startsWith?.("data:") || data.image.startsWith?.("http")) return data.image;
-        return `data:image/png;base64,${data.image}`;
-    }
+    const source = extractProviderImageSource(data);
+    if (source) return source;
     throw new Error("No image in response");
 }
 
 async function genCivitAI(prompt, negative, s, signal) {
     const seed = resolveRandomSeed(s.seed, s);
-    // Parse LoRAs into additionalNetworks map
-    let additionalNetworks;
-    if (s.civitaiLoras && s.civitaiLoras.trim()) {
-        additionalNetworks = {};
-        for (const entry of s.civitaiLoras.split(",")) {
-            const trimmed = entry.trim();
-            if (!trimmed) continue;
-            const lastColon = trimmed.lastIndexOf(":");
-            // URNs contain colons, so split on the last one for urn:weight
-            const hasWeight = lastColon > 0 && !isNaN(parseFloat(trimmed.slice(lastColon + 1)));
-            const urn = hasWeight ? trimmed.slice(0, lastColon).trim() : trimmed;
-            const strength = hasWeight ? parseFloat(trimmed.slice(lastColon + 1)) : 1.0;
-            additionalNetworks[urn] = { strength };
-        }
-        if (Object.keys(additionalNetworks).length > 0) {
-            log(`CivitAI: Using ${Object.keys(additionalNetworks).length} LoRA(s): ${Object.keys(additionalNetworks).map(u => u.split(":").pop()).join(", ")}`);
-        } else {
-            additionalNetworks = undefined;
-        }
-    }
-
-    const input = {
+    const loras = parseCivitaiLoras(s.civitaiLoras);
+    const sampler = mapCivitaiSdcppSampler(s.civitaiScheduler || s.sampler);
+    const body = buildCivitaiWorkflowBody({
         model: s.civitaiModel,
-        params: {
-            prompt: prompt,
-            negativePrompt: negative,
-            scheduler: s.civitaiScheduler || "EulerA",
-            steps: s.steps,
-            cfgScale: s.cfgScale,
-            width: s.width,
-            height: s.height,
-            seed: seed,
-            clipSkip: parseInt(s.a1111ClipSkip) || 2
-        },
-        batchSize: 1
-    };
-    if (additionalNetworks) input.additionalNetworks = additionalNetworks;
+        prompt,
+        negativePrompt: negative,
+        sampler: s.civitaiScheduler || s.sampler,
+        steps: s.steps,
+        cfgScale: s.cfgScale,
+        width: s.width,
+        height: s.height,
+        seed,
+        loras,
+    });
+    if (Object.keys(loras).length) log(`CivitAI: Using ${Object.keys(loras).length} LoRA(s)`);
 
-    const res = await civitaiFetch("createJob", {
-        apiKey: s.civitaiKey,
-        body: { $type: "textToImage", input },
-    }, signal);
-    if (!res.ok) {
-        const errText = await readResponseText(res, 1024 * 1024);
-        throw new Error(`CivitAI error: ${res.status} - ${errText}`);
-    }
-    const data = await readResponseJson(res, 1024 * 1024);
-
-    // Poll for job completion using token
-    const jobToken = data.token;
-    if (!jobToken) throw new Error(`No job token returned: ${JSON.stringify(data)}`);
-
-    let lastError = null;
-    for (let i = 0; i < 60; i++) {
-        if (signal?.aborted) throw new DOMException("Generation cancelled", "AbortError");
-        await new Promise(r => setTimeout(r, 2000));
-        const statusRes = await civitaiFetch("getJobs", {
+    let workflowId = "";
+    try {
+        const submission = await civitaiFetch("createWorkflow", {
             apiKey: s.civitaiKey,
-            token: jobToken,
+            body,
         }, signal);
-        if (!statusRes.ok) {
-            lastError = `Status error: ${statusRes.status}`;
-            continue;
+        if (!submission.ok) {
+            const { message } = await readProviderErrorResponse(submission);
+            throw new Error(`CivitAI submission error ${submission.status}: ${message || submission.statusText}`);
         }
-        const jobs = await readResponseJson(statusRes, 1024 * 1024);
-        const job = jobs?.[0];
+        const created = await readResponseJson(submission, 1024 * 1024);
+        workflowId = String(created?.id || "").trim();
+        if (!workflowId) throw new Error("CivitAI did not return a workflow id");
 
-        if (job?.result?.blobUrl) {
-            return job.result.blobUrl;
+        while (true) {
+            await abortableSleep(1500, signal);
+            const statusResponse = await civitaiFetch("getWorkflow", {
+                apiKey: s.civitaiKey,
+                id: workflowId,
+            }, signal);
+            if (!statusResponse.ok) {
+                const { message } = await readProviderErrorResponse(statusResponse);
+                if (statusResponse.status === 401 || statusResponse.status === 403) {
+                    throw new Error(`CivitAI authorization failed (${statusResponse.status}): ${message || statusResponse.statusText}`);
+                }
+                if (isTransientProviderStatus(statusResponse.status)) {
+                    await abortableSleep(getRetryAfterMs(statusResponse), signal);
+                    continue;
+                }
+                throw new Error(`CivitAI polling error ${statusResponse.status}: ${message || statusResponse.statusText}`);
+            }
+
+            const workflow = await readResponseJson(statusResponse, 1024 * 1024);
+            const status = String(workflow?.status || "").toLowerCase();
+            if (status === "succeeded") {
+                const urls = getCivitaiWorkflowImageUrls(workflow);
+                if (!urls.length) throw new Error("CivitAI workflow succeeded without an output image");
+                return {
+                    images: urls,
+                    effectiveRequest: { parameters: { sampler: sampler.sampleMethod, schedule: sampler.schedule } },
+                };
+            }
+            if (["failed", "expired", "canceled", "cancelled"].includes(status)) {
+                const detail = extractCivitaiFailureReason(workflow) || extractProviderErrorMessage(workflow) || "No failure detail";
+                throw new Error(`CivitAI workflow ${status}: ${detail}`);
+            }
         }
-        if (job?.scheduled === false && !job?.result) {
-            throw new Error(`CivitAI job failed: ${job.message || 'Unknown error'}`);
+    } catch (error) {
+        if (workflowId && signal?.aborted) {
+            const cancelSignal = AbortSignal.timeout(5000);
+            await civitaiFetch("cancelWorkflow", { apiKey: s.civitaiKey, id: workflowId }, cancelSignal).catch(() => {});
         }
+        throw error;
     }
-    throw new Error(`CivitAI job timeout. Last error: ${lastError || 'Still processing'}`);
 }
 
 async function genNanobanana(prompt, negative, s, signal) {
     // Build parts array with reference images and prompt
     const parts = [];
+    let decodedReferenceBytes = 0;
+    let encodedReferenceBytes = 0;
+    const addReference = (mimeType, encoded) => {
+        decodedReferenceBytes += Math.floor(encoded.length * 3 / 4);
+        encodedReferenceBytes += encoded.length;
+        if (decodedReferenceBytes > MAX_IMAGE_BYTES || encodedReferenceBytes > MAX_PROVIDER_RESPONSE_BYTES) {
+            throw new Error("Nanobanana reference images exceed the aggregate request size limit");
+        }
+        parts.push({ inlineData: { mimeType, data: encoded } });
+    };
     if (s.nanobananaRefImages?.length) {
         log(`Adding ${s.nanobananaRefImages.length} reference images to Nanobanana request`);
-        for (const img of s.nanobananaRefImages) {
+        for (let index = 0; index < s.nanobananaRefImages.length; index++) {
+            const img = s.nanobananaRefImages[index];
             const match = img.match(/^data:([^;]+);base64,(.+)$/);
             if (match) {
-                parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+                const safeInline = normalizeImageSource(img, { allowHttp: false, allowRelative: false });
+                const safeMatch = safeInline?.match(/^data:([^;]+);base64,(.+)$/);
+                if (!safeMatch) throw new Error(`Nanobanana reference image ${index + 1} contains malformed or oversized image data`);
+                addReference(safeMatch[1], safeMatch[2]);
             } else if (img.startsWith('http')) {
                 // URL-based reference image — fetch and convert to inline data
                 try {
                     log(`Fetching reference image URL: ${img.substring(0, 80)}`);
                     const imgRes = await fetch(img, { signal });
                     if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
-                    const buffer = await readResponseArrayBuffer(imgRes, MAX_IMAGE_BYTES);
+                    const remainingBytes = MAX_IMAGE_BYTES - decodedReferenceBytes;
+                    if (remainingBytes <= 0) throw new Error("aggregate decoded request size limit reached");
+                    const buffer = await readResponseArrayBuffer(imgRes, remainingBytes);
                     const format = detectImageFormat(buffer);
                     if (!format) throw new Error("Reference is not a supported image");
-                    parts.push({ inlineData: { mimeType: format.mime, data: arrayBufferToBase64(buffer) } });
+                    addReference(format.mime, arrayBufferToBase64(buffer));
                 } catch (e) {
-                    log(`Failed to fetch reference image URL: ${e.message}`);
+                    if (e?.name === "AbortError") throw e;
+                    throw new Error(`Nanobanana reference image ${index + 1} could not be attached: ${e.message}`);
                 }
+            } else {
+                throw new Error(`Nanobanana reference image ${index + 1} is not a supported data URL or HTTP URL`);
             }
         }
     }
 
     let finalPrompt = `Generate an image: ${prompt}`;
-    if (s.nanobananaRefImages?.length) {
+    const attachedReferenceCount = parts.filter(part => part.inlineData?.data).length;
+    if (attachedReferenceCount > 0) {
         finalPrompt = `Look at the reference image(s) above. Match their style, composition, and visual characteristics. Now generate a new image with this description: ${prompt}`;
     }
     const nbpDirectorInstruction = buildNbpDirectorInstruction(s);
@@ -6776,11 +7471,7 @@ async function genNanobanana(prompt, negative, s, signal) {
     const apiKey = s.nanobananaProxyKey || s.nanobananaKey;
     const url = getNanobananaApiUrl(s.nanobananaProxyUrl, s.nanobananaModel, apiKey);
     const isOpenAIProxy = isOpenAIChatCompletionsEndpoint(url);
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-        if (!isOpenAIProxy) headers["x-goog-api-key"] = apiKey;
-    }
+    const headers = { "Content-Type": "application/json", ...getNanobananaAuthHeaders(url, apiKey) };
     const payload = buildNanobananaPayload({
         endpointUrl: url,
         model: s.nanobananaModel,
@@ -6788,17 +7479,21 @@ async function genNanobanana(prompt, negative, s, signal) {
         generationConfig,
         safetySettings,
     });
+    const serializedPayload = JSON.stringify(payload);
+    if (new TextEncoder().encode(serializedPayload).byteLength > MAX_PROVIDER_RESPONSE_BYTES) {
+        throw new Error("Nanobanana request exceeds the aggregate encoded request size limit");
+    }
     log(`Nanobanana request mode: ${isOpenAIProxy ? "OpenAI chat/completions" : "native Gemini generateContent"}`);
 
     const res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: serializedPayload,
         signal
     });
     if (!res.ok) {
-        const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
-        throw new Error(`Nanobanana error: ${res.status}${errText ? ` - ${errText.slice(0, 300)}` : ""}`);
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Nanobanana error ${res.status}: ${message || res.statusText}`);
     }
     const contentType = res.headers.get("content-type") || "";
     const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
@@ -6871,8 +7566,52 @@ async function genNanobanana(prompt, negative, s, signal) {
     throw new Error("No image in response");
 }
 
-async function genLocal(prompt, negative, s, signal) {
-    const baseUrl = s.localUrl.replace(/\/$/, "");
+function startA1111ProgressPolling(baseUrl, generationSignal) {
+    const controller = new AbortController();
+    const pollingSignal = generationSignal
+        ? AbortSignal.any([generationSignal, controller.signal])
+        : controller.signal;
+    let stopped = false;
+    let timeoutId = null;
+
+    const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        generationSignal?.removeEventListener("abort", stop);
+        controller.abort();
+    };
+
+    const poll = async () => {
+        if (stopped) return;
+        try {
+            const response = await corsFetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true`, {
+                signal: pollingSignal,
+            });
+            if (response.ok) {
+                const progress = await readResponseJson(response, 1024 * 1024);
+                if (!stopped && progress.progress > 0 && progress.progress < 1) {
+                    const percent = Math.round(progress.progress * 100);
+                    const step = progress.state?.sampling_step !== undefined
+                        ? ` | Step ${progress.state.sampling_step}/${progress.state.sampling_steps}` : "";
+                    const eta = progress.eta_relative ? ` | ~${Math.round(progress.eta_relative)}s left` : "";
+                    showStatus(`Generating... ${percent}%${step}${eta}`);
+                }
+            }
+        } catch { /* ignore polling errors */ }
+        if (!stopped) timeoutId = setTimeout(poll, 500);
+    };
+
+    if (generationSignal?.aborted) stop();
+    else {
+        generationSignal?.addEventListener("abort", stop, { once: true });
+        timeoutId = setTimeout(poll, 500);
+    }
+    return stop;
+}
+
+async function genLocal(prompt, negative, s, signal, options = {}) {
+    const baseUrl = normalizeA1111BaseUrl(s.localUrl);
 
     if (s.localType === "comfyui") {
         // Map sampler names to ComfyUI format
@@ -6894,236 +7633,238 @@ async function genLocal(prompt, negative, s, signal) {
         const seed = resolveRandomSeed(s.seed, s);
         const denoise = parseFloatOr(s.comfyDenoise, 1.0);
         const clipSkip = parseIntOr(s.comfyClipSkip, 1);
-        const comfyTimeoutSeconds = Math.max(10, parseIntOr(s.comfyTimeout, 300));
+        const comfyTimeoutSeconds = Math.max(10, Math.min(1800, parseIntOr(s.comfyTimeout, 300)));
+        const comfyDeadline = Date.now() + comfyTimeoutSeconds * 1000;
+        const clientId = generateUUID();
+        const outputNodeIds = String(s.comfyOutputNodeIds || "")
+            .split(",")
+            .map(value => value.trim())
+            .filter(Boolean);
+        const configuredImageIndex = normalizeComfyOutputImageIndex(s.comfyOutputImageIndex);
+        const outputImageIndex = configuredImageIndex >= 0
+            ? configuredImageIndex
+            : undefined;
 
-        async function waitForComfyImage(promptId) {
-            for (let i = 0; i < comfyTimeoutSeconds; i++) {
-                if (signal?.aborted) throw new DOMException("Generation cancelled", "AbortError");
-                await new Promise(r => setTimeout(r, 1000));
-                showStatus(`Generating... (waiting ${i + 1}s)`);
-                let hist;
-                try {
-                    const histRes = await corsFetch(`${baseUrl}/history/${promptId}`, { signal });
-                    if (!histRes.ok) continue;
-                    hist = await readResponseJson(histRes, 1024 * 1024);
-                } catch { continue; }
-                const result = hist[promptId];
-                checkComfyResult(result);
-                if (result?.outputs) {
-                    for (const nodeId in result.outputs) {
-                        const output = result.outputs[nodeId];
-                        if (output.images?.[0]) {
-                            const img = output.images[0];
-                            return `${baseUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || "")}&type=${img.type || "output"}`;
-                        }
-                    }
+        function getRemainingComfyTimeout(phase) {
+            const remaining = comfyDeadline - Date.now();
+            if (remaining > 0) return remaining;
+            const error = new Error(`ComfyUI timed out during ${phase} after ${comfyTimeoutSeconds} seconds`);
+            error.code = "COMFY_DEADLINE_TIMEOUT";
+            throw error;
+        }
+
+        async function runComfyRequest(phase, task) {
+            const controller = new AbortController();
+            let timedOut = false;
+            const remainingTimeout = getRemainingComfyTimeout(phase);
+            const abortFromParent = () => controller.abort(signal?.reason);
+            if (signal?.aborted) abortFromParent();
+            else signal?.addEventListener("abort", abortFromParent, { once: true });
+            const timeoutId = setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+            }, remainingTimeout);
+            try {
+                return await task(controller.signal);
+            } catch (error) {
+                if (error?.name === "AbortError" && timedOut && !signal?.aborted) {
+                    const timeoutError = new Error(`ComfyUI timed out during ${phase} after ${comfyTimeoutSeconds} seconds`);
+                    timeoutError.code = "COMFY_DEADLINE_TIMEOUT";
+                    throw timeoutError;
                 }
+                throw error;
+            } finally {
+                clearTimeout(timeoutId);
+                signal?.removeEventListener("abort", abortFromParent);
             }
-            throw new Error(`ComfyUI timed out after ${comfyTimeoutSeconds}s`);
+        }
+
+        async function uploadComfyReference() {
+            return runComfyRequest("reference upload", async requestSignal => {
+                const { blob, filename } = await createComfyReferenceUpload(s.localRefImage, requestSignal);
+                const formData = new FormData();
+                formData.append("image", blob, filename);
+                const uploadRes = await corsFetch(`${baseUrl}/upload/image`, {
+                    method: "POST",
+                    body: formData,
+                    signal: requestSignal,
+                });
+                if (!uploadRes.ok) {
+                    const detail = await readResponseText(uploadRes, 64 * 1024).catch(() => "");
+                    throw new Error(`ComfyUI reference upload failed with HTTP ${uploadRes.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+                }
+                const uploadData = await readResponseJson(uploadRes, 1024 * 1024);
+                const descriptor = {
+                    name: String(uploadData?.name || filename),
+                    subfolder: typeof uploadData?.subfolder === "string" ? uploadData.subfolder : "",
+                    type: typeof uploadData?.type === "string" && uploadData.type ? uploadData.type : "input",
+                };
+                log(`ComfyUI: Uploaded reference image as "${descriptor.name}"`);
+                return descriptor;
+            });
+        }
+
+        async function submitComfyWorkflow(request, effectiveParameters = {}) {
+            const body = { ...request, client_id: clientId };
+            const promptResponse = await runComfyRequest("prompt submission", async requestSignal => {
+                const res = await corsFetch(`${baseUrl}/prompt`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                    signal: requestSignal,
+                });
+                if (!res.ok) {
+                    let detail = "";
+                    try {
+                        const errorBody = await readResponseJson(res, 1024 * 1024);
+                        detail = errorBody.error?.message || errorBody.error || "";
+                        if (typeof detail !== "string") detail = JSON.stringify(detail);
+                    } catch { /* preserve the HTTP status */ }
+                    throw new Error(`ComfyUI error ${res.status}${detail ? `: ${detail.slice(0, 500)}` : ""}`);
+                }
+                return parseComfyPromptResponse(await readResponseJson(res, 1024 * 1024));
+            });
+            const trackedPrompt = {
+                runId: activeGenerationRun?.id ?? null,
+                baseUrl,
+                promptId: promptResponse.prompt_id,
+                allowLegacyInterrupt: s.comfyAllowLegacyInterrupt === true,
+            };
+            activeComfyPrompt = trackedPrompt;
+            showStatus("🖼️ ComfyUI workflow queued...");
+            try {
+                const historyResult = await pollComfyHistory(promptResponse.prompt_id, {
+                    baseUrl,
+                    fetchImpl: corsFetch,
+                    signal,
+                    timeoutMs: getRemainingComfyTimeout("history polling"),
+                    outputNodeIds: outputNodeIds.length ? outputNodeIds : undefined,
+                    imageIndex: outputImageIndex,
+                });
+                const images = [];
+                for (const image of historyResult.images) {
+                    const materializedUrl = await runComfyRequest("output download", async requestSignal => {
+                        const response = await corsFetch(image.url, {
+                            signal: requestSignal,
+                            redirect: "error",
+                        });
+                        if (!response.ok) throw new Error(`ComfyUI output download failed with HTTP ${response.status}`);
+                        const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
+                        const format = detectImageFormat(buffer);
+                        if (!format) throw new Error("ComfyUI output is not a supported image format");
+                        return `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
+                    });
+                    images.push({
+                        url: materializedUrl,
+                        effectiveRequest: {
+                            parameters: {
+                                ...effectiveParameters,
+                                outputNode: image.nodeId,
+                                outputImageIndex: image.imageIndex,
+                                comfySourceUrl: image.url,
+                            },
+                        },
+                    });
+                }
+                return {
+                    images,
+                    effectiveRequest: { parameters: effectiveParameters },
+                };
+            } catch (error) {
+                if (error?.code === "COMFY_HISTORY_TIMEOUT" || error?.code === "COMFY_DEADLINE_TIMEOUT") {
+                    cancelTrackedComfyPrompt(trackedPrompt).then(result => {
+                        if (result.cancelled === false) log(`ComfyUI timeout cleanup: ${result.reason || "prompt could not be safely cancelled"}`);
+                    }).catch(cancelError => log(`ComfyUI timeout cleanup failed: ${cancelError.message}`));
+                }
+                throw error;
+            } finally {
+                if (activeComfyPrompt === trackedPrompt) activeComfyPrompt = null;
+            }
         }
 
         // Check for custom workflow JSON
         if (s.comfyWorkflow && s.comfyWorkflow.trim()) {
-            let customWorkflow = null;
-            try {
-                customWorkflow = JSON.parse(s.comfyWorkflow);
-            } catch (e) {
-                log(`ComfyUI: Invalid workflow JSON: ${e.message}, using default`);
-            }
-
-            if (customWorkflow && typeof customWorkflow === "object" && !Array.isArray(customWorkflow)) {
-
-                // Upload reference image for %reference_image% placeholder
-                let uploadedRefName = '';
-                if (s.localRefImage) {
-                    try {
-                        const { blob, filename } = await createComfyReferenceUpload(s.localRefImage, signal);
-                        const formData = new FormData();
-                        formData.append("image", blob, filename);
-                        const uploadRes = await corsFetch(`${baseUrl}/upload/image`, {
-                            method: "POST",
-                            body: formData,
-                            signal
-                        });
-                        if (uploadRes.ok) {
-                            const uploadData = await readResponseJson(uploadRes, 1024 * 1024);
-                            uploadedRefName = uploadData.name || filename;
-                            log(`ComfyUI: Uploaded reference image as "${uploadedRefName}"`);
-                        } else {
-                            log(`ComfyUI: Failed to upload reference image (${uploadRes.status})`);
-                        }
-                    } catch (uploadErr) {
-                        log(`ComfyUI: Reference image upload error: ${uploadErr.message}`);
-                    }
-                }
-
-                // Replace placeholders like sd-proxy does
-                const replacements = {
-                    '%prompt%': prompt,
-                    '%negative%': negative,
-                    '%seed%': String(seed),
-                    '%width%': String(s.width),
-                    '%height%': String(s.height),
-                    '%steps%': String(s.steps),
-                    '%cfg%': String(s.cfgScale),
-                    '%denoise%': String(denoise),
-                    '%clip_skip%': String(clipSkip),
-                    '%sampler%': samplerName,
-                    '%scheduler%': schedulerName,
-                    '%model%': s.localModel || 'model.safetensors',
-                    '%reference_image%': uploadedRefName
-                };
-                const typedReplacements = {
-                    '%prompt%': prompt,
-                    '%negative%': negative,
-                    '%seed%': seed,
-                    '%width%': Number(s.width),
-                    '%height%': Number(s.height),
-                    '%steps%': Number(s.steps),
-                    '%cfg%': Number(s.cfgScale),
-                    '%denoise%': denoise,
-                    '%clip_skip%': clipSkip,
-                    '%sampler%': samplerName,
-                    '%scheduler%': schedulerName,
-                    '%model%': s.localModel || 'model.safetensors',
-                    '%reference_image%': uploadedRefName
-                };
-
-                const replaceInObj = (obj) => {
-                    for (const key in obj) {
-                        if (typeof obj[key] === 'string') {
-                            if (Object.prototype.hasOwnProperty.call(typedReplacements, obj[key])) {
-                                obj[key] = typedReplacements[obj[key]];
-                                continue;
-                            }
-                            for (const [placeholder, value] of Object.entries(replacements)) {
-                                obj[key] = obj[key].split(placeholder).join(value);
-                            }
-                        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                            replaceInObj(obj[key]);
-                        }
-                    }
-                };
-                replaceInObj(customWorkflow);
-
-                log(`ComfyUI: Using custom workflow with ${Object.keys(customWorkflow).length} nodes`);
-
-                const res = await corsFetch(`${baseUrl}/prompt`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt: customWorkflow }),
-                    signal
-                });
-                if (!res.ok) {
-                    let detail = "";
-                    try { const b = await readResponseJson(res, 1024 * 1024); detail = b.error?.message || b.error || ""; } catch {}
-                    throw new Error(`ComfyUI error ${res.status}${detail ? ": " + detail : ""}`);
-                }
-                const data = await readResponseJson(res, 1024 * 1024);
-
-                const promptId = data.prompt_id;
-                return await waitForComfyImage(promptId);
-            }
-            if (customWorkflow) log("ComfyUI: Workflow JSON must be an API-format object, using default");
-        }
-
-        function checkComfyResult(result) {
-            if (result?.status?.status_str === "error") {
-                const errorMsgs = result.status.messages || [];
-                const executionError = errorMsgs.find(m => m[0] === "execution_error");
-                const errMsg = executionError?.[1]?.exception_message || "Unknown execution error";
-                let hint = "";
-                if (/clip.*invalid|invalid.*clip|clip.*not.*found/i.test(errMsg)) {
-                    hint = " (Hint: model may lack a built-in CLIP encoder. For UNET-only models, enable 'Skip Negative Prompt' and fill in the CLIP Model and VAE Model fields below it. Or use a custom workflow JSON exported from ComfyUI.)";
-                } else if (/vae.*invalid|invalid.*vae|vae.*not.*found/i.test(errMsg)) {
-                    hint = " (Hint: model may lack a built-in VAE. For UNET-only models, enable 'Skip Negative Prompt' and fill in the VAE Model field below it. Or use a custom workflow JSON exported from ComfyUI.)";
-                } else if (/negative.*conditioning|conditioning.*negative/i.test(errMsg)) {
-                    hint = " (Hint: this model may not support negative prompts. Try enabling 'Skip Negative Prompt' in ComfyUI settings.)";
-                }
-                throw new Error(`ComfyUI execution error: ${errMsg}${hint}`);
-            }
+            const capabilities = getComfyWorkflowCapabilities(s.comfyWorkflow);
+            const uploadedReference = capabilities.referenceImages && s.localRefImage
+                ? await uploadComfyReference()
+                : null;
+            const uploadedReferencePath = uploadedReference?.subfolder
+                ? `${uploadedReference.subfolder.replace(/^\/+|\/+$/g, "")}/${uploadedReference.name}`
+                : uploadedReference?.name;
+            const tokenValues = {
+                prompt,
+                negativePrompt: negative,
+                seed,
+                width: Number(s.width),
+                height: Number(s.height),
+                steps: Number(s.steps),
+                cfgScale: Number(s.cfgScale),
+                denoise,
+                clipSkip,
+                samplerName,
+                schedulerName,
+                modelName: s.localModel || "model.safetensors",
+                referenceImages: uploadedReferencePath ? [uploadedReferencePath] : [],
+                batchIndex: Number.isInteger(options.batchIndex) ? options.batchIndex : 0,
+                batchCount: Number.isInteger(options.batchCount) ? options.batchCount : 1,
+                clientId,
+                filenamePrefix: "qig",
+            };
+            const request = buildComfyPromptRequest(s.comfyWorkflow, tokenValues);
+            const nodeCount = Object.keys(request.prompt || {}).length;
+            log(`ComfyUI: Using custom API workflow with ${nodeCount} nodes`);
+            return submitComfyWorkflow(request, {
+                model: capabilities.model ? tokenValues.modelName : undefined,
+                width: capabilities.width ? tokenValues.width : undefined,
+                height: capabilities.height ? tokenValues.height : undefined,
+                steps: capabilities.steps ? tokenValues.steps : undefined,
+                cfgScale: capabilities.cfgScale ? tokenValues.cfgScale : undefined,
+                sampler: capabilities.sampler ? samplerName : undefined,
+                scheduler: capabilities.scheduler ? schedulerName : undefined,
+                seed: capabilities.seed ? seed : undefined,
+                denoise: capabilities.denoise ? denoise : undefined,
+                clipSkip: capabilities.clipSkip ? clipSkip : undefined,
+                workflowTokens: capabilities.tokens,
+            });
         }
 
         // ComfyUI API - Default workflow
-        const skipNeg = !!s.comfySkipNegativePrompt;
-        const fluxMode = isComfyFluxMode(s);
-
-        let workflowNodes;
-        if (fluxMode) {
-            // Flux/UNET-only workflow: separate UNETLoader + CLIP loader(s) + VAELoader
-            const hasDualClip = !!(s.comfyFluxClipModel2 || "").trim();
-            const clipType = (s.comfyFluxClipType || "flux").trim();
-            const clipRef = clipSkip > 1 ? ["10", 0] : ["12", 0];
-            workflowNodes = {
-                "3": {
-                    class_type: "KSampler",
-                    inputs: {
-                        seed: seed,
-                        steps: s.steps,
-                        cfg: s.cfgScale,
-                        sampler_name: samplerName,
-                        scheduler: schedulerName,
-                        denoise: denoise,
-                        model: ["11", 0],
-                        positive: ["6", 0],
-                        negative: ["6", 0],
-                        latent_image: ["5", 0]
-                    }
-                },
-                "5": { class_type: "EmptyLatentImage", inputs: { width: s.width, height: s.height, batch_size: 1 } },
-                "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: clipRef } },
-                "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["13", 0] } },
-                "9": { class_type: "SaveImage", inputs: { filename_prefix: "qig", images: ["8", 0] } },
-                "11": { class_type: "UNETLoader", inputs: { unet_name: s.localModel || "model.safetensors", weight_dtype: "default" } },
-                "12": hasDualClip
-                    ? { class_type: "DualCLIPLoader", inputs: { clip_name1: s.comfyFluxClipModel1, clip_name2: s.comfyFluxClipModel2, type: clipType } }
-                    : { class_type: "CLIPLoader", inputs: { clip_name: s.comfyFluxClipModel1, type: clipType } },
-                "13": { class_type: "VAELoader", inputs: { vae_name: s.comfyFluxVaeModel || "ae.safetensors" } }
-            };
-            if (clipSkip > 1) {
-                workflowNodes["10"] = { class_type: "CLIPSetLastLayer", inputs: { stop_at_clip_layer: -clipSkip, clip: ["12", 0] } };
-            }
-            log(`ComfyUI: Using Flux/UNET workflow (UNETLoader + ${hasDualClip ? 'DualCLIPLoader' : 'CLIPLoader'} + VAELoader)`);
-        } else {
-            // Standard checkpoint workflow
-            workflowNodes = {
-                "3": {
-                    class_type: "KSampler",
-                    inputs: {
-                        seed: seed,
-                        steps: s.steps,
-                        cfg: s.cfgScale,
-                        sampler_name: samplerName,
-                        scheduler: schedulerName,
-                        denoise: denoise,
-                        model: ["4", 0],
-                        positive: ["6", 0],
-                        negative: skipNeg ? ["6", 0] : ["7", 0],
-                        latent_image: ["5", 0]
-                    }
-                },
-                "4": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: s.localModel || "model.safetensors" } },
-                "5": { class_type: "EmptyLatentImage", inputs: { width: s.width, height: s.height, batch_size: 1 } },
-                "6": { class_type: "CLIPTextEncode", inputs: { text: prompt, clip: clipSkip > 1 ? ["10", 0] : ["4", 1] } },
-                "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
-                "9": { class_type: "SaveImage", inputs: { filename_prefix: "qig", images: ["8", 0] } }
-            };
-            if (!skipNeg) {
-                workflowNodes["7"] = { class_type: "CLIPTextEncode", inputs: { text: negative, clip: clipSkip > 1 ? ["10", 0] : ["4", 1] } };
-            }
-            if (clipSkip > 1) {
-                workflowNodes["10"] = { class_type: "CLIPSetLastLayer", inputs: { stop_at_clip_layer: -clipSkip, clip: ["4", 1] } };
-            }
+        const builtInWorkflow = buildComfyBuiltinWorkflow({
+            modelLoader: s.comfyModelLoader,
+            modelName: s.localModel,
+            clipModel1: s.comfyFluxClipModel1,
+            clipModel2: s.comfyFluxClipModel2,
+            vaeModel: s.comfyFluxVaeModel,
+            clipType: s.comfyFluxClipType,
+            skipNegativePrompt: s.comfySkipNegativePrompt,
+            clipSkip,
+            prompt,
+            negativePrompt: negative,
+            seed,
+            steps: s.steps,
+            cfgScale: s.cfgScale,
+            samplerName,
+            schedulerName,
+            denoise,
+            width: s.width,
+            height: s.height,
+        });
+        const workflowNodes = builtInWorkflow.workflow;
+        if (builtInWorkflow.modelLoader === "unet") {
+            log(`ComfyUI: Using Diffusion/UNET workflow (UNETLoader + ${builtInWorkflow.hasDualClip ? "DualCLIPLoader" : "CLIPLoader"} + VAELoader)`);
         }
+        let nextOptionalNodeId = Math.max(...Object.keys(workflowNodes).map(id => Number(id)).filter(Number.isFinite)) + 1;
+        const allocateComfyNodeId = () => String(nextOptionalNodeId++);
+        let usedReferenceImage = false;
+        let usedUpscale = false;
 
         // LoRA injection for ComfyUI default workflow
         if (s.comfyLoras && s.comfyLoras.trim()) {
-            let loraNodeStart = 20;
-            let lastModelRef = fluxMode ? ["11", 0] : ["4", 0];
-            let lastClipRef = fluxMode ? ["12", 0] : ["4", 1];
+            let lastModelRef = builtInWorkflow.refs.model;
+            let lastClipRef = builtInWorkflow.refs.clip;
             const loras = s.comfyLoras.split(",").map(l => l.trim()).filter(l => l);
             let injectedCount = 0;
-            loras.forEach((l, i) => {
+            loras.forEach((l) => {
                 const lastColon = l.lastIndexOf(":");
                 const hasWeight = lastColon > 0 && !isNaN(parseFloat(l.slice(lastColon + 1)));
                 const name = (hasWeight ? l.slice(0, lastColon) : l).trim();
@@ -7131,7 +7872,7 @@ async function genLocal(prompt, negative, s, signal) {
                 const weight = isNaN(pw) ? 0.8 : pw;
                 if (!name) return;
                 injectedCount++;
-                const nodeId = String(loraNodeStart + i);
+                const nodeId = allocateComfyNodeId();
                 workflowNodes[nodeId] = {
                     class_type: "LoraLoader",
                     inputs: {
@@ -7159,75 +7900,59 @@ async function genLocal(prompt, negative, s, signal) {
 
         // img2img: swap EmptyLatentImage for LoadImage + VAEEncode when reference image present
         if (s.localRefImage && denoise < 1.0) {
-            // Upload image to ComfyUI
-            const { blob, filename } = await createComfyReferenceUpload(s.localRefImage, signal);
-            const formData = new FormData();
-            formData.append("image", blob, filename);
-            try {
-                const uploadRes = await corsFetch(`${baseUrl}/upload/image`, {
-                    method: "POST",
-                    body: formData,
-                    signal
-                });
-                if (uploadRes.ok) {
-                    const uploadData = await readResponseJson(uploadRes, 1024 * 1024);
-                    const uploadedName = uploadData.name || filename;
-
-                    // Replace EmptyLatentImage (node 5) with LoadImage
-                    workflowNodes["5"] = {
-                        class_type: "LoadImage",
-                        inputs: { image: uploadedName }
-                    };
-                    // Add VAEEncode node (node 15) to encode the loaded image to latent
-                    const vaeRef = fluxMode ? ["13", 0] : ["4", 2];
-                    workflowNodes["15"] = {
-                        class_type: "VAEEncode",
-                        inputs: { pixels: ["5", 0], vae: vaeRef }
-                    };
-                    // Rewire KSampler latent_image to VAEEncode output
-                    workflowNodes["3"].inputs.latent_image = ["15", 0];
-                    log(`ComfyUI: img2img mode — uploaded reference image as "${uploadedName}", denoise=${denoise}`);
-                } else {
-                    log(`ComfyUI: Failed to upload reference image (${uploadRes.status}), falling back to txt2img`);
-                }
-            } catch (uploadErr) {
-                log(`ComfyUI: Image upload error: ${uploadErr.message}, falling back to txt2img`);
-            }
+            const uploadedReference = await uploadComfyReference();
+            const uploadedName = uploadedReference.subfolder
+                ? `${uploadedReference.subfolder.replace(/\/+$/, "")}/${uploadedReference.name}`
+                : uploadedReference.name;
+            workflowNodes["5"] = {
+                class_type: "LoadImage",
+                inputs: { image: uploadedName },
+            };
+            const vaeEncodeNodeId = allocateComfyNodeId();
+            const vaeRef = builtInWorkflow.refs.vae;
+            workflowNodes[vaeEncodeNodeId] = {
+                class_type: "VAEEncode",
+                inputs: { pixels: ["5", 0], vae: vaeRef },
+            };
+            workflowNodes["3"].inputs.latent_image = [vaeEncodeNodeId, 0];
+            usedReferenceImage = true;
+            log(`ComfyUI: img2img mode, uploaded reference image as "${uploadedName}", denoise=${denoise}`);
         }
 
         // Upscale: inject UpscaleModelLoader + ImageUpscaleWithModel between VAEDecode and SaveImage
         if (s.comfyUpscale && s.comfyUpscaleModel) {
-            workflowNodes["30"] = {
+            const upscaleLoaderNodeId = allocateComfyNodeId();
+            const upscaleNodeId = allocateComfyNodeId();
+            workflowNodes[upscaleLoaderNodeId] = {
                 class_type: "UpscaleModelLoader",
                 inputs: { model_name: s.comfyUpscaleModel }
             };
-            workflowNodes["31"] = {
+            workflowNodes[upscaleNodeId] = {
                 class_type: "ImageUpscaleWithModel",
-                inputs: { upscale_model: ["30", 0], image: ["8", 0] }
+                inputs: { upscale_model: [upscaleLoaderNodeId, 0], image: ["8", 0] }
             };
             // Rewire SaveImage to take upscaled output instead of VAEDecode
-            workflowNodes["9"].inputs.images = ["31", 0];
+            workflowNodes["9"].inputs.images = [upscaleNodeId, 0];
+            usedUpscale = true;
             log(`ComfyUI: Upscale enabled with model=${s.comfyUpscaleModel}`);
         }
 
         log(`ComfyUI: sampler=${samplerName}, scheduler=${schedulerName}, steps=${s.steps}, cfg=${s.cfgScale}, seed=${seed}, denoise=${denoise}, clip_skip=${clipSkip}, size=${s.width}x${s.height}${s.localRefImage && denoise < 1.0 ? ', mode=img2img' : ''}${s.comfyUpscale ? ', upscale=' + s.comfyUpscaleModel : ''}`);
 
-        const res = await corsFetch(`${baseUrl}/prompt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: workflowNodes }),
-            signal
+        return submitComfyWorkflow({ prompt: workflowNodes }, {
+            model: s.localModel || "model.safetensors",
+            width: usedReferenceImage || usedUpscale ? undefined : Number(s.width),
+            height: usedReferenceImage || usedUpscale ? undefined : Number(s.height),
+            steps: Number(s.steps),
+            cfgScale: Number(s.cfgScale),
+            sampler: samplerName,
+            scheduler: schedulerName,
+            seed,
+            denoise,
+            clipSkip,
+            ...(usedUpscale ? { upscaleModel: s.comfyUpscaleModel } : {}),
+            ...(usedReferenceImage ? { dimensionsFromReference: true } : {}),
         });
-        if (!res.ok) {
-            let detail = "";
-            try { const b = await readResponseJson(res, 1024 * 1024); detail = b.error?.message || b.error || ""; } catch {}
-            const hint403 = res.status === 403 ? " (Hint: ComfyUI-Manager's security check may be blocking this request. In ComfyUI-Manager settings, set Security Level to 'normal', then restart ComfyUI. Also ensure --enable-cors-header is set.)" : "";
-            throw new Error(`ComfyUI error ${res.status}${detail ? ": " + detail : ""}${hint403}`);
-        }
-        const data = await readResponseJson(res, 1024 * 1024);
-        // Poll for result - find any SaveImage output
-        const promptId = data.prompt_id;
-        return await waitForComfyImage(promptId);
     }
 
     // A1111 API
@@ -7237,13 +7962,13 @@ async function genLocal(prompt, negative, s, signal) {
     const payload = {
         prompt: prompt,
         negative_prompt: negative,
-        width: s.width,
-        height: s.height,
-        steps: s.steps,
-        cfg_scale: s.cfgScale,
+        width: parseFiniteInt(s.width, SIZE_DEFAULT, SIZE_MIN, SIZE_MAX),
+        height: parseFiniteInt(s.height, SIZE_DEFAULT, SIZE_MIN, SIZE_MAX),
+        steps: parseFiniteInt(s.steps, 25, 1, 150),
+        cfg_scale: parseFiniteFloat(s.cfgScale, 7, 1, 30),
         sampler_name: SAMPLER_DISPLAY_NAMES[s.sampler] || s.sampler,
         scheduler: s.a1111Scheduler || "Automatic",
-        seed: s.seed
+        seed: parseFiniteInt(s.seed, -1)
     };
     if (s.a1111Model) {
         payload.override_settings = { sd_model_checkpoint: s.a1111Model };
@@ -7256,9 +7981,9 @@ async function genLocal(prompt, negative, s, signal) {
     if (s.a1111Tiling) payload.tiling = true;
 
     // Variation Seed / Subseed
-    const subseedStrength = parseFloatOr(s.a1111SubseedStrength, 0);
+    const subseedStrength = parseFiniteFloat(s.a1111SubseedStrength, 0, 0, 1);
     if (subseedStrength > 0) {
-        payload.subseed = s.a1111Subseed ?? -1;
+        payload.subseed = parseFiniteInt(s.a1111Subseed, -1);
         payload.subseed_strength = subseedStrength;
     }
 
@@ -7282,7 +8007,7 @@ async function genLocal(prompt, negative, s, signal) {
     }
 
     // CLIP skip
-    const clipSkip = parseIntOr(s.a1111ClipSkip, 1);
+    const clipSkip = parseFiniteInt(s.a1111ClipSkip, 1, 1, 12);
     if (clipSkip > 1) {
         payload.override_settings = payload.override_settings || {};
         payload.override_settings.CLIP_stop_at_last_layers = clipSkip;
@@ -7298,15 +8023,15 @@ async function genLocal(prompt, negative, s, signal) {
     if (s.a1111HiresFix && !isImg2Img) {
         payload.enable_hr = true;
         payload.hr_upscaler = s.a1111HiresUpscaler || "Latent";
-        payload.hr_scale = parseFloatOr(s.a1111HiresScale, 2);
-        payload.hr_second_pass_steps = parseIntOr(s.a1111HiresSteps, 0);
-        payload.denoising_strength = parseFloatOr(s.a1111HiresDenoise, 0.55);
+        payload.hr_scale = parseFiniteFloat(s.a1111HiresScale, 2, 1, 4);
+        payload.hr_second_pass_steps = parseFiniteInt(s.a1111HiresSteps, 0, 0, 150);
+        payload.denoising_strength = parseFiniteFloat(s.a1111HiresDenoise, 0.55, 0, 1);
         if (s.a1111HiresSampler) payload.hr_sampler_name = s.a1111HiresSampler;
         if (s.a1111HiresScheduler) payload.hr_scheduler = s.a1111HiresScheduler;
         if (s.a1111HiresPrompt) payload.hr_prompt = s.a1111HiresPrompt;
         if (s.a1111HiresNegative) payload.hr_negative_prompt = s.a1111HiresNegative;
-        const hiresResizeX = parseIntOr(s.a1111HiresResizeX, 0);
-        const hiresResizeY = parseIntOr(s.a1111HiresResizeY, 0);
+        const hiresResizeX = parseFiniteInt(s.a1111HiresResizeX, 0, 0, 4096);
+        const hiresResizeY = parseFiniteInt(s.a1111HiresResizeY, 0, 0, 4096);
         if (hiresResizeX > 0) payload.hr_resize_x = hiresResizeX;
         if (hiresResizeY > 0) payload.hr_resize_y = hiresResizeY;
         log(`A1111: Hires Fix: upscaler=${payload.hr_upscaler}, scale=${payload.hr_scale}, denoise=${payload.denoising_strength}${payload.hr_sampler_name ? ', sampler=' + payload.hr_sampler_name : ''}${payload.hr_scheduler ? ', scheduler=' + payload.hr_scheduler : ''}${hiresResizeX ? ', resize=' + hiresResizeX + 'x' + hiresResizeY : ''}`);
@@ -7314,36 +8039,32 @@ async function genLocal(prompt, negative, s, signal) {
 
     // ADetailer
     if (s.a1111Adetailer) {
-        const buildADetailerUnit = (model, prompt, neg, denoise, confidence, maskBlur, dilateErode, inpaintOnly, inpaintPadding) => ({
-            ad_model: model,
-            ad_prompt: prompt || "",
-            ad_negative_prompt: neg || "",
-            ad_denoising_strength: parseFloat(denoise) ?? 0.4,
-            ad_confidence: parseFloat(confidence) ?? 0.3,
-            ad_mask_blur: parseInt(maskBlur) ?? 4,
-            ad_dilate_erode: parseInt(dilateErode) ?? 4,
-            ad_inpaint_only_masked: inpaintOnly ?? true,
-            ad_inpaint_only_masked_padding: parseInt(inpaintPadding) ?? 32
-        });
-
         payload.alwayson_scripts = payload.alwayson_scripts || {};
-        const adUnit1 = buildADetailerUnit(
-            s.a1111AdetailerModel || "face_yolov8n.pt",
-            s.a1111AdetailerPrompt, s.a1111AdetailerNegative,
-            s.a1111AdetailerDenoise, s.a1111AdetailerConfidence,
-            s.a1111AdetailerMaskBlur, s.a1111AdetailerDilateErode,
-            s.a1111AdetailerInpaintOnlyMasked, s.a1111AdetailerInpaintPadding
-        );
+        const adUnit1 = buildA1111ADetailerUnit({
+            model: s.a1111AdetailerModel || "face_yolov8n.pt",
+            prompt: s.a1111AdetailerPrompt,
+            negativePrompt: s.a1111AdetailerNegative,
+            denoise: s.a1111AdetailerDenoise,
+            confidence: s.a1111AdetailerConfidence,
+            maskBlur: s.a1111AdetailerMaskBlur,
+            dilateErode: s.a1111AdetailerDilateErode,
+            inpaintOnlyMasked: s.a1111AdetailerInpaintOnlyMasked,
+            inpaintPadding: s.a1111AdetailerInpaintPadding,
+        });
         const adArgs = [true, adUnit1];
 
         if (s.a1111Adetailer2) {
-            const adUnit2 = buildADetailerUnit(
-                s.a1111Adetailer2Model || "hand_yolov8n.pt",
-                s.a1111Adetailer2Prompt, s.a1111Adetailer2Negative,
-                s.a1111Adetailer2Denoise, s.a1111Adetailer2Confidence,
-                s.a1111Adetailer2MaskBlur, s.a1111Adetailer2DilateErode,
-                s.a1111Adetailer2InpaintOnlyMasked, s.a1111Adetailer2InpaintPadding
-            );
+            const adUnit2 = buildA1111ADetailerUnit({
+                model: s.a1111Adetailer2Model || "hand_yolov8n.pt",
+                prompt: s.a1111Adetailer2Prompt,
+                negativePrompt: s.a1111Adetailer2Negative,
+                denoise: s.a1111Adetailer2Denoise,
+                confidence: s.a1111Adetailer2Confidence,
+                maskBlur: s.a1111Adetailer2MaskBlur,
+                dilateErode: s.a1111Adetailer2DilateErode,
+                inpaintOnlyMasked: s.a1111Adetailer2InpaintOnlyMasked,
+                inpaintPadding: s.a1111Adetailer2InpaintPadding,
+            });
             adArgs.push(adUnit2);
         }
 
@@ -7358,7 +8079,7 @@ async function genLocal(prompt, negative, s, signal) {
     if (isImg2Img && !s.a1111IpAdapter) {
         // Standard img2img - use as init image
         payload.init_images = [s.localRefImage.replace(/^data:image\/.+;base64,/, '')];
-        payload.denoising_strength = parseFloatOr(s.localDenoise, 0.75);
+        payload.denoising_strength = parseFiniteFloat(s.localDenoise, 0.75, 0, 1);
     }
 
     // IP-Adapter Face - use reference image for face only
@@ -7378,14 +8099,14 @@ async function genLocal(prompt, negative, s, signal) {
             enabled: true,
             module: ipAdapterPreprocessor,
             model: ipAdapterModel,
-            weight: parseFloatOr(s.a1111IpAdapterWeight, 0.7),
+            weight: parseFiniteFloat(s.a1111IpAdapterWeight, 0.7, 0, 1.5),
             image: imageData,
             input_image: imageData,  // Forge Neo compatibility
             resize_mode: s.a1111IpAdapterResizeMode || "Crop and Resize",
             control_mode: s.a1111IpAdapterControlMode || "Balanced",
             pixel_perfect: s.a1111IpAdapterPixelPerfect ?? true,
-            guidance_start: parseFloatOr(s.a1111IpAdapterStartStep, 0),
-            guidance_end: parseFloatOr(s.a1111IpAdapterEndStep, 1)
+            guidance_start: parseFiniteFloat(s.a1111IpAdapterStartStep, 0, 0, 1),
+            guidance_end: parseFiniteFloat(s.a1111IpAdapterEndStep, 1, 0, 1)
         };
         controlNetUnits.push(controlNetUnit);
 
@@ -7400,12 +8121,12 @@ async function genLocal(prompt, negative, s, signal) {
             enabled: true,
             module: s.a1111ControlNetModule || "none",
             model: s.a1111ControlNetModel,
-            weight: parseFloatOr(s.a1111ControlNetWeight, 1.0),
+            weight: parseFiniteFloat(s.a1111ControlNetWeight, 1.0, 0, 2),
             resize_mode: s.a1111ControlNetResizeMode || "Crop and Resize",
             control_mode: s.a1111ControlNetControlMode || "Balanced",
             pixel_perfect: s.a1111ControlNetPixelPerfect ?? true,
-            guidance_start: parseFloatOr(s.a1111ControlNetGuidanceStart, 0),
-            guidance_end: parseFloatOr(s.a1111ControlNetGuidanceEnd, 1)
+            guidance_start: parseFiniteFloat(s.a1111ControlNetGuidanceStart, 0, 0, 1),
+            guidance_end: parseFiniteFloat(s.a1111ControlNetGuidanceEnd, 1, 0, 1)
         };
         if (s.a1111ControlNetImage) {
             const cnImageData = s.a1111ControlNetImage.replace(/^data:image\/.+;base64,/, '');
@@ -7422,23 +8143,7 @@ async function genLocal(prompt, negative, s, signal) {
 
     log(`A1111: steps=${s.steps}, cfg=${s.cfgScale}, clip_skip=${clipSkip}, loras=${s.a1111Loras || 'none'}, hires=${s.a1111HiresFix && !isImg2Img ? 'on' : 'off'}, adetailer=${s.a1111Adetailer ? 'on' : 'off'}, ip-adapter=${s.a1111IpAdapter && s.localRefImage ? 'on' : 'off'}, controlnet=${s.a1111ControlNet ? 'on' : 'off'}`);
 
-    // Start progress polling
-    let progressInterval = null;
-    progressInterval = setInterval(async () => {
-        try {
-            const pr = await corsFetch(`${baseUrl}/sdapi/v1/progress`);
-            if (pr.ok) {
-                const p = await readResponseJson(pr, 1024 * 1024);
-                if (p.progress > 0 && p.progress < 1) {
-                    const pct = Math.round(p.progress * 100);
-                    const step = p.state?.sampling_step !== undefined
-                        ? ` | Step ${p.state.sampling_step}/${p.state.sampling_steps}` : "";
-                    const eta = p.eta_relative ? ` | ~${Math.round(p.eta_relative)}s left` : "";
-                    showStatus(`Generating... ${pct}%${step}${eta}`);
-                }
-            }
-        } catch { /* ignore polling errors */ }
-    }, 500);
+    const stopProgressPolling = startA1111ProgressPolling(baseUrl, signal);
 
     const getAlternateControlNetScriptKey = (key) => key === "ControlNet" ? "sd_forge_controlnet" : "ControlNet";
     const parseA1111ErrorDetail = async (res) => {
@@ -7462,10 +8167,11 @@ async function genLocal(prompt, negative, s, signal) {
     try {
         let requestPayload = payload;
         let res = await postA1111(requestPayload);
+        let responseDetail;
         if (!res.ok && controlNetUnits.length > 0 && res.status === 422) {
-            const detail = await parseA1111ErrorDetail(res);
+            responseDetail = await parseA1111ErrorDetail(res);
             const missingCurrentScript = new RegExp(`always on script ${a1111ControlNetScriptKey} not found`, "i");
-            if (missingCurrentScript.test(detail)) {
+            if (missingCurrentScript.test(responseDetail)) {
                 const fallbackKey = getAlternateControlNetScriptKey(a1111ControlNetScriptKey);
                 log(`A1111: Script "${a1111ControlNetScriptKey}" not found, retrying ControlNet payload as "${fallbackKey}"`);
                 const retryPayload = JSON.parse(JSON.stringify(requestPayload));
@@ -7477,6 +8183,7 @@ async function genLocal(prompt, negative, s, signal) {
                     if (retryRes.ok) {
                         a1111ControlNetScriptKey = fallbackKey;
                         res = retryRes;
+                        responseDetail = undefined;
                         requestPayload = retryPayload;
                     } else {
                         const retryDetail = await parseA1111ErrorDetail(retryRes);
@@ -7486,7 +8193,7 @@ async function genLocal(prompt, negative, s, signal) {
             }
         }
         if (!res.ok) {
-            const detail = await parseA1111ErrorDetail(res);
+            const detail = responseDetail ?? await parseA1111ErrorDetail(res);
             throw new Error(`A1111 error: ${res.status}${detail ? `: ${detail}` : ""}`);
         }
         const data = await readResponseJson(res);
@@ -7505,7 +8212,7 @@ async function genLocal(prompt, negative, s, signal) {
         }
         throw new Error("No image in response");
     } finally {
-        if (progressInterval) clearInterval(progressInterval);
+        stopProgressPolling();
     }
 }
 
@@ -7521,13 +8228,15 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         // If workflow JSON is provided, use POST with body
         const hasWorkflow = s.proxyComfyWorkflow && s.proxyComfyWorkflow.trim();
         const url = `${baseUrl}/prompt/${encodeURIComponent(prompt)}${qs}`;
-        log(`ComfyUI Proxy: ${url.substring(0, 80)}...`);
+        log(`ComfyUI Proxy: ${redactUrlCredentials(url).substring(0, 80)}...`);
 
         const controller = new AbortController();
         let timedOut = false;
-        const timeout = (s.proxyComfyTimeout || 300) * 1000;
-        const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
-        if (signal) signal.addEventListener("abort", () => controller.abort(), { once: true });
+        const proxyComfyTimeoutSeconds = Math.max(10, Math.min(1800, parseIntOr(s.proxyComfyTimeout, 300)));
+        const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, proxyComfyTimeoutSeconds * 1000);
+        const abortFromParent = () => controller.abort();
+        if (signal?.aborted) abortFromParent();
+        else signal?.addEventListener("abort", abortFromParent, { once: true });
 
         const fetchOpts = { signal: controller.signal };
         if (hasWorkflow) {
@@ -7536,22 +8245,22 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
             fetchOpts.body = s.proxyComfyWorkflow.trim();
         }
 
-        let res;
         try {
-            res = await fetch(url, fetchOpts);
+            const res = await fetch(url, fetchOpts);
+            if (!res.ok) {
+                const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
+                throw new Error(`ComfyUI Proxy error ${res.status}: ${errText || res.statusText}`);
+            }
+            return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
         } catch (e) {
             if (e.name === "AbortError" && timedOut && !signal?.aborted) {
-                throw new Error(`ComfyUI Proxy timed out after ${s.proxyComfyTimeout}s`);
+                throw new Error(`ComfyUI Proxy timed out after ${proxyComfyTimeoutSeconds}s`);
             }
             throw e;
         } finally {
             clearTimeout(timeoutId);
+            if (signal) signal.removeEventListener("abort", abortFromParent);
         }
-        if (!res.ok) {
-            const errText = await readResponseText(res, 1024 * 1024).catch(() => "");
-            throw new Error(`ComfyUI Proxy error ${res.status}: ${errText || res.statusText}`);
-        }
-        return createTransientImageObjectUrl(await readResponseArrayBuffer(res, MAX_IMAGE_BYTES));
     }
 
     const headers = { "Content-Type": "application/json" };
@@ -7562,32 +8271,142 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     const refMode = normalizeProxyRefImageSetting(s.proxyRefImageMode);
     const requestUrl = resolveProxyRequestUrl(s.proxyUrl, endpointMode);
     const proxySeed = resolveRandomSeed(s.proxySeed, s);
-    const manualRefImages = normalizeProxyRefImages(s.proxyRefImages || [], refMode);
+    const withEffectiveProxyRequest = (url) => ({
+        url,
+        effectiveRequest: {
+            parameters: payloadMode === "openai_strict"
+                ? {}
+                : {
+                    steps: Number(s.proxySteps ?? 25),
+                    cfgScale: Number(s.proxyCfg ?? 6),
+                    sampler: s.proxySampler || "Euler a",
+                    seed: proxySeed,
+                },
+        },
+    });
+    const manualRefImages = normalizeProxyRuntimeRefImages(s.proxyRefImages || []);
     const runtimeRefImages = normalizeProxyRuntimeRefImages(options?.proxyRefImages || []);
-    const refImages = mergeProxyRefImages(manualRefImages, runtimeRefImages);
+    const normalizedPrompt = normalizeProxyPromptInputs(prompt, mergeProxyRefImages(manualRefImages, runtimeRefImages));
+    const rawRefImages = normalizedPrompt.refImages;
     const sseEnabled = endpointMode === "images_generations" ? shouldUseProxySse(s, payloadMode) : false;
 
     if (!requestUrl) throw new Error("Proxy URL is required");
-    log(`Proxy mode: endpoint=${endpointMode}, payload=${payloadMode}, refMode=${refMode}, sse=${sseEnabled}, refImages=${refImages.length}, runtimeRefs=${runtimeRefImages.length}, url=${requestUrl.substring(0, 80)}`);
+    if (endpointMode === "images_generations" && payloadMode === "openai_strict" && rawRefImages.length) {
+        throw new Error("OpenAI-strict images/generations does not support reference images. Remove the references, switch to chat/completions, or use Extended payload mode with a compatible proxy.");
+    }
 
     const controller = new AbortController();
     let timedOut = false;
     const proxyTimeoutSeconds = Math.max(30, Math.min(1800, parseIntOr(s.proxyTimeout, 600)));
     const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, proxyTimeoutSeconds * 1000);
-    if (signal) signal.addEventListener("abort", () => controller.abort(), { once: true });
+    const abortFromParent = () => controller.abort();
+    if (signal?.aborted) abortFromParent();
+    else signal?.addEventListener("abort", abortFromParent, { once: true });
 
-    let res;
     try {
+        const refImages = await normalizeProxyRefImages(rawRefImages, refMode, controller.signal);
+        const requestPrompt = normalizedPrompt.promptText || getProxyPromptFallback(refImages.length > 0);
+        log(`Proxy mode: endpoint=${endpointMode}, payload=${payloadMode}, refMode=${refMode}, sse=${sseEnabled}, refImages=${refImages.length}, runtimeRefs=${runtimeRefImages.length}, url=${redactUrlCredentials(requestUrl).substring(0, 80)}`);
         const payload = endpointMode === "chat_completions"
-            ? buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, proxySeed)
-            : buildProxyImagesPayload(prompt, negative, s, refImages, payloadMode, proxySeed, sseEnabled);
+            ? buildProxyChatPayload(requestPrompt, negative, s, refImages, payloadMode, proxySeed)
+            : buildProxyImagesPayload(requestPrompt, negative, s, refImages, payloadMode, proxySeed, sseEnabled);
         log(`${endpointMode === "chat_completions" ? "Chat" : "Images"} endpoint payload keys: ${Object.keys(payload).join(", ")}`);
-        res = await fetch(requestUrl, {
+        const res = await fetch(requestUrl, {
             method: "POST",
             headers,
             body: JSON.stringify(payload),
             signal: controller.signal
         });
+
+        if (!res.ok) {
+            const detail = await readProxyErrorResponse(res);
+            throw new Error(`Proxy error ${res.status}: ${detail || res.statusText}`);
+        }
+
+        const contentType = res.headers.get("content-type") || "";
+        const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
+        if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
+            return withEffectiveProxyRequest(await imageResponseToDataUrl(res));
+        }
+
+        const responseBaseUrl = res.url || requestUrl;
+        const plainTextResponse = contentType.includes("text/plain")
+            ? await readResponseText(res, MAX_PROVIDER_RESPONSE_BYTES)
+            : null;
+        const materializeProxyResult = (source) => {
+            if (/^https?:/i.test(String(source || ""))
+                && !isTrustedProviderOutputUrl("custom", source, requestUrl, { allowRequestSubdomains: true })) {
+                throw new Error("Proxy returned an image URL outside its configured endpoint origin");
+            }
+            return materializeProviderImageSource(source, {
+                requestUrl,
+                responseUrl: responseBaseUrl,
+                headers: {},
+                signal: controller.signal,
+                fetchImpl: corsFetch,
+                allowBrowserFallback: false,
+            });
+        };
+        if (endpointMode === "images_generations"
+            && (contentType.includes("text/event-stream") || (sseEnabled && looksLikeSsePayload(plainTextResponse)))) {
+            log("Parsing incremental SSE response");
+            const responseOptions = { trustedBaseUrl: responseBaseUrl };
+            const streamResponse = plainTextResponse == null
+                ? res
+                : new Response(plainTextResponse, { headers: { "content-type": "text/event-stream" } });
+            const streamed = await readSseDataStream(streamResponse, async eventData => {
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(eventData);
+                } catch {
+                    // Some proxies send a bare URL or data URL as an SSE data event.
+                }
+                const status = String(parsed?.status || parsed?.type || parsed?.event || "").toLowerCase();
+                const failed = ["failed", "error", "expired", "timeout", "timed_out", "canceled", "cancelled"].includes(status)
+                    || /(?:^|[._-])(?:failed|error|expired|timeout|timed_out|canceled|cancelled)$/i.test(status);
+                if (failed) {
+                    throw new Error(extractProviderErrorMessage(parsed) || parsed?.reason || parsed?.blockedReason || `Proxy SSE generation ${status}`);
+                }
+                const image = parsed
+                    ? extractProxyImageFromJson(parsed, responseOptions)
+                    : extractProxyImageFromString(eventData, responseOptions);
+                const terminal = parsed?.done === true
+                    || ["done", "completed", "complete", "succeeded", "success"].includes(status)
+                    || /(?:^|[._-])completed$|(?:^|[._-])succeeded$/i.test(status);
+                const provisional = !terminal && (["queued", "pending", "processing", "running", "preview"].includes(status)
+                    || /(?:^|[._-])(?:partial_image|preview|progress|processing|running)$/i.test(status));
+                return { value: image || undefined, provisional, terminal };
+            }, { signal: controller.signal });
+            if (streamed.value) return withEffectiveProxyRequest(await materializeProxyResult(streamed.value));
+            if (streamed.provisionalOnly) throw new Error("SSE generation ended before a final image was returned");
+            throw new Error("SSE generation completed without a final image");
+        }
+
+        if (endpointMode === "images_generations" && contentType.includes("text/plain")) {
+            const text = plainTextResponse || "";
+            const responseOptions = { trustedBaseUrl: responseBaseUrl };
+            const direct = extractProxyImageFromString(text, responseOptions);
+            if (direct) return withEffectiveProxyRequest(await materializeProxyResult(direct));
+            const parsed = (() => { try { return JSON.parse(text); } catch { return null; } })();
+            const parsedImage = extractProxyImageFromJson(parsed, responseOptions);
+            if (parsedImage) return withEffectiveProxyRequest(await materializeProxyResult(parsedImage));
+            throw new Error("No image in text response");
+        }
+
+        const data = await readResponseJson(res);
+        log(`Response keys: ${JSON.stringify(Object.keys(data || {}))}`);
+        const imageUrl = extractProxyImageFromJson(data, { trustedBaseUrl: responseBaseUrl });
+        if (imageUrl) return withEffectiveProxyRequest(await materializeProxyResult(imageUrl));
+
+        if (endpointMode === "chat_completions") {
+            log(`Full message structure: ${JSON.stringify(data?.choices?.[0]?.message || {}).substring(0, 500)}`);
+            const msgContent = data?.choices?.[0]?.message?.content;
+            throw new Error(msgContent === null
+                ? "Model returned empty response - image generation may not be supported via this proxy"
+                : "No image in response");
+        }
+
+        throw new Error("No image in response");
     } catch (e) {
         if (e.name === "AbortError" && timedOut && !signal?.aborted) {
             throw new Error(`Proxy request timed out after ${proxyTimeoutSeconds} seconds`);
@@ -7595,61 +8414,8 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         throw e;
     } finally {
         clearTimeout(timeoutId);
+        if (signal) signal.removeEventListener("abort", abortFromParent);
     }
-
-    if (!res.ok) {
-        const detail = await readProxyErrorResponse(res);
-        throw new Error(`Proxy error ${res.status}: ${detail || res.statusText}`);
-    }
-
-    const contentType = res.headers.get("content-type") || "";
-    const responseMime = contentType.toLowerCase().split(";", 1)[0].trim();
-    if (responseMime.startsWith("image/") || responseMime === "application/octet-stream") {
-        return await imageResponseToDataUrl(res);
-    }
-
-    const responseBaseUrl = res.url || requestUrl;
-    const materializeProxyResult = (source) => materializeProviderImageSource(source, {
-        requestUrl,
-        responseUrl: responseBaseUrl,
-        headers,
-        signal,
-        fetchImpl: corsFetch,
-        allowBrowserFallback: false,
-    });
-    if (endpointMode === "images_generations" && (contentType.includes("text/event-stream") || contentType.includes("text/plain"))) {
-        log(`Parsing ${contentType.includes("text/event-stream") ? "SSE" : "text"} response`);
-        const text = await readResponseText(res);
-        const responseOptions = { trustedBaseUrl: responseBaseUrl };
-        const direct = extractProxyImageFromString(text, responseOptions);
-        if (direct) return await materializeProxyResult(direct);
-        const streamed = extractProxyImageFromSseText(text, responseOptions);
-        if (streamed) return await materializeProxyResult(streamed);
-        let parsed = null;
-        try {
-            parsed = JSON.parse(text);
-        } catch {
-            // Not JSON; continue to error below.
-        }
-        const parsedImage = extractProxyImageFromJson(parsed, responseOptions);
-        if (parsedImage) return await materializeProxyResult(parsedImage);
-        throw new Error(`No image in ${contentType.includes("text/event-stream") ? "SSE" : "text"} response`);
-    }
-
-    const data = await readResponseJson(res);
-    log(`Response keys: ${JSON.stringify(Object.keys(data || {}))}`);
-    const imageUrl = extractProxyImageFromJson(data, { trustedBaseUrl: responseBaseUrl });
-    if (imageUrl) return await materializeProxyResult(imageUrl);
-
-    if (endpointMode === "chat_completions") {
-        log(`Full message structure: ${JSON.stringify(data?.choices?.[0]?.message || {}).substring(0, 500)}`);
-        const msgContent = data?.choices?.[0]?.message?.content;
-        throw new Error(msgContent === null
-            ? "Model returned empty response - image generation may not be supported via this proxy"
-            : "No image in response");
-    }
-
-    throw new Error("No image in response");
 }
 
 async function genCustomApi(prompt, negative, s, signal) {
@@ -7872,7 +8638,7 @@ function showPromptHistory() {
         promptHistory.map((entry, i) => `
             <div class="qig-history-entry">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span class="qig-history-entry__meta">#${promptHistory.length - i} - ${entry.time}</span>
+                    <span class="qig-history-entry__meta">#${promptHistory.length - i} - ${escapeHtml(entry.time)}</span>
                     <button class="qig-copy-prompt menu_button" data-index="${i}">Copy</button>
                 </div>
                 <pre class="qig-history-entry__prompt">${escapeHtml(entry.prompt)}</pre>
@@ -7936,6 +8702,42 @@ async function persistReferenceImageSource(source) {
     return `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
 }
 
+function getInlineImageBytes(source) {
+    const encoded = String(source || "").match(/^data:[^;,]+;base64,([A-Za-z0-9+/]*={0,2})$/i)?.[1];
+    return encoded ? Math.floor(encoded.length * 3 / 4) : 0;
+}
+
+async function readValidatedReferenceFiles(files, existingSources = [], maxCount = 15) {
+    const slots = Math.max(0, maxCount - existingSources.length);
+    const candidates = Array.from(files || []).slice(0, slots);
+    let availableBytes = MAX_IMAGE_BYTES - existingSources.reduce((total, source) => total + getInlineImageBytes(source), 0);
+    const sources = [];
+    const errors = [];
+
+    for (const file of candidates) {
+        try {
+            if (!file || typeof file.arrayBuffer !== "function") throw new Error("Unreadable file");
+            if (Number(file.size) > availableBytes) throw new Error("25 MiB aggregate limit exceeded");
+            const buffer = await file.arrayBuffer();
+            if (buffer.byteLength > availableBytes) throw new Error("25 MiB aggregate limit exceeded");
+            const format = detectImageFormat(buffer);
+            if (!format) throw new Error("Unsupported or invalid image format");
+            sources.push(`data:${format.mime};base64,${arrayBufferToBase64(buffer)}`);
+            availableBytes -= buffer.byteLength;
+        } catch (error) {
+            errors.push(`${file?.name || "file"}: ${error.message}`);
+        }
+    }
+    if (Array.from(files || []).length > candidates.length) errors.push(`Maximum ${maxCount} reference image${maxCount === 1 ? "" : "s"} reached`);
+    return { sources, errors };
+}
+
+function reportReferenceFileErrors(errors) {
+    if (!errors?.length) return;
+    log(`Reference upload skipped: ${errors.join("; ")}`);
+    toastr.warning(`${errors.length} reference image${errors.length === 1 ? " was" : "s were"} skipped. Files must be valid supported images and stay within the 25 MiB total limit.`);
+}
+
 async function useImageAsReference(source, popup) {
     const persistedSource = await persistReferenceImageSource(source);
     const s = getSettings();
@@ -7971,6 +8773,11 @@ async function useImageAsReference(source, popup) {
         if (!Array.isArray(s[key])) s[key] = [];
         if (s[key].length >= 15) {
             toastr.warning("Maximum 15 reference images reached");
+            return;
+        }
+        const inlineBytes = s[key].reduce((total, value) => total + getInlineImageBytes(value), 0) + getInlineImageBytes(persistedSource);
+        if (inlineBytes > MAX_IMAGE_BYTES) {
+            toastr.warning("Reference images are limited to 25 MiB total");
             return;
         }
         s[key].push(persistedSource);
@@ -8019,9 +8826,9 @@ function toAbsoluteImageUrl(url) {
     }
 }
 
-async function resolveChatInsertImageUrl(entryOrUrl) {
+async function resolveChatInsertImageUrl(entryOrUrl, outputMode = getSettings()?.outputMode) {
     const entry = normalizeGenerationEntry(entryOrUrl);
-    if (normalizeOutputMode(getSettings()?.outputMode) !== "image_url") {
+    if (normalizeOutputMode(outputMode) !== "image_url") {
         return entry.url;
     }
 
@@ -8038,6 +8845,7 @@ async function resolveChatInsertImageUrl(entryOrUrl) {
 
     const savedUrl = await saveImageToServer(entry.url, entry.prompt, entry.negative, {
         ...cloneMetadataSettings(entry.metadataSettings || {}),
+        effectiveRequest: cloneMetadataSettings(entry.effectiveRequest || {}),
         saveToServer: true,
     });
     if (!isUrlBasedImageSource(savedUrl)) {
@@ -8089,6 +8897,7 @@ async function resolveBackgroundImageUrl(entryOrUrl, mode) {
     const saveCandidate = entry.url && !isUrlBasedImageSource(entry.url) ? entry.url : (entry.sourceUrl || entry.url);
     const savedUrl = await saveImageToServer(saveCandidate, entry.prompt, entry.negative, {
         ...cloneMetadataSettings(entry.metadataSettings || {}),
+        effectiveRequest: cloneMetadataSettings(entry.effectiveRequest || {}),
         saveToServer: true,
     });
     if (!isUrlBasedImageSource(savedUrl)) throw new Error("Failed to create a server image URL");
@@ -8147,7 +8956,7 @@ async function setImageAsBackground(entryOrUrl, mode = getSettings()?.background
     const { url, path } = await resolveBackgroundImageUrl(entryOrUrl, normalizedMode);
     const cssUrl = toCssImageUrl(url);
 
-    await verifyRenderableImage(url);
+    await verifyRenderableImage(url, options.signal);
     options.commitGuard?.();
     const backgroundElement = document.getElementById("bg1");
     const previousBackground = backgroundElement?.style.backgroundImage || "";
@@ -8175,12 +8984,32 @@ async function maybeAutoSetBackground(results, settings = getSettings(), run = n
         await setImageAsBackground(entry, settings.backgroundMode, {
             silent: true,
             commitGuard: run ? () => assertGenerationCanCommit(run) : null,
+            signal: run?.signal,
         });
     } catch (e) {
         if (e.name === "AbortError") throw e;
         log(`Auto background failed: ${e.message}`);
         toastr?.warning?.(`Auto background failed: ${e.message}`, "Image Gen", { timeOut: 5000, escapeHtml: true });
     }
+}
+
+function restoreMessageExtra(message, hadExtra, previousExtra) {
+    if (hadExtra) message.extra = previousExtra;
+    else delete message.extra;
+}
+
+function rerenderMessageMedia(ctx, message, index) {
+    if (typeof ctx.appendMediaToMessage !== "function") return;
+    const messageElement = $(`.mes[mesid="${index}"]`);
+    if (messageElement.length) ctx.appendMediaToMessage(message, messageElement, "replace");
+}
+
+function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
+    const index = chat[expectedIndex] === message ? expectedIndex : chat.lastIndexOf(message);
+    if (index >= 0) chat.splice(index, 1);
+    const renderedIndex = index >= 0 ? index : expectedIndex;
+    const messageElement = $(`.mes[mesid="${renderedIndex}"]`);
+    if (messageElement.length) messageElement.remove();
 }
 
 async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, options = {}) {
@@ -8191,56 +9020,90 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     const entry = normalizeGenerationEntry(entryOrUrl);
     const s = getSettings();
     const fallbackIdx = resolveManualInsertFallbackIndex(chat, s);
-    const preferredEntryIdx = clampChatMessageIndex(entry.sourceMessageIndex, chat.length);
-    const resolvedTargetIdx = clampChatMessageIndex(targetMessageIndex, chat.length);
-    const idx = Number.isInteger(resolvedTargetIdx)
-        ? resolvedTargetIdx
-        : (Number.isInteger(preferredEntryIdx) ? preferredEntryIdx : fallbackIdx);
+    let idx;
+    if (options.targetSnapshot) {
+        assertMessageTargetSnapshot(options.targetSnapshot);
+        idx = options.targetSnapshot.index;
+    } else if (targetMessageIndex != null) {
+        idx = Number(targetMessageIndex);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= chat.length) throw new Error("Image insertion target no longer exists");
+    } else if (Number.isInteger(entry.sourceMessageIndex)) {
+        idx = entry.sourceMessageIndex;
+        if (idx < 0 || idx >= chat.length) throw new Error("Generated image source message no longer exists");
+    } else {
+        idx = fallbackIdx;
+    }
     const message = chat[idx];
     if (!message) throw new Error("Could not find target message");
+    if (!options.ignoreSourceIdentity && entry.sourceChatId && entry.sourceChatId !== getContextMediaChatId(ctx)) {
+        throw new DOMException("Generated image belongs to a different chat", "AbortError");
+    }
+    if (!options.ignoreSourceIdentity && entry.sourceMessageId && getMessagePersistentId(message) !== entry.sourceMessageId) {
+        throw new DOMException("Generated image source message changed", "AbortError");
+    }
+    if (!options.ignoreSourceIdentity && entry.sourceMessageSignature && getMessageContentSignature(message) !== entry.sourceMessageSignature) {
+        throw new DOMException("Generated image source message changed", "AbortError");
+    }
+    const mutationTargetSnapshot = options.targetSnapshot || createMessageTargetSnapshot(chat, idx);
+    if (!mutationTargetSnapshot) throw new Error("Image insertion target no longer exists");
 
-    let url = await resolveChatInsertImageUrl(entry);
+    let url = await resolveChatInsertImageUrl(entry, options.outputMode);
+    assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed");
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
+        assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed");
     }
     options.commitGuard?.();
 
+    const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
+    const previousExtra = hadExtra && message.extra && typeof message.extra === "object"
+        ? snapshotGenerationSettings(message.extra)
+        : message.extra;
     if (!message.extra || typeof message.extra !== 'object') {
         message.extra = {};
     }
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
 
-    // Use modern media API if available
-    if (typeof ctx.appendMediaToMessage === 'function') {
-        if (!Array.isArray(message.extra.media)) {
-            message.extra.media = [];
-        }
-        if (!message.extra.media.length && !message.extra.media_display) {
-            message.extra.media_display = 'gallery';
+    try {
+        // Use modern media API if available
+        if (typeof ctx.appendMediaToMessage === 'function') {
+            if (!Array.isArray(message.extra.media)) {
+                message.extra.media = [];
+            }
+            if (!message.extra.media.length && !message.extra.media_display) {
+                message.extra.media_display = 'gallery';
+            }
+
+            message.extra.media.push({
+                url: url,
+                type: 'image',
+                title: title,
+                source: 'generated',
+            });
+            message.extra.inline_image = true;
+            message.extra.media_index = message.extra.media.length - 1;
+
+            rerenderMessageMedia(ctx, message, idx);
+        } else {
+            // Legacy fallback for older ST versions
+            message.extra.image = url;
+            message.extra.inline_image = true;
+            message.extra.title = title;
         }
 
-        message.extra.media.push({
-            url: url,
-            type: 'image',
-            title: title,
-            source: 'generated',
-        });
-        message.extra.inline_image = true;
-        message.extra.media_index = message.extra.media.length - 1;
-
-        const messageElement = $(`.mes[mesid="${idx}"]`);
-        if (messageElement.length) {
-            ctx.appendMediaToMessage(message, messageElement, 'replace');
+        await ctx.saveChat();
+        options.commitGuard?.();
+        assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed while saving chat");
+    } catch (error) {
+        restoreMessageExtra(message, hadExtra, previousExtra);
+        try {
+            rerenderMessageMedia(ctx, message, idx);
+        } catch (rollbackError) {
+            log(`Failed to refresh message after insert rollback: ${rollbackError.message}`);
         }
-    } else {
-        // Legacy fallback for older ST versions
-        message.extra.image = url;
-        message.extra.inline_image = true;
-        message.extra.title = title;
+        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Image insertion failed and its rollback could not be persisted");
     }
-
-    await ctx.saveChat();
 }
 
 async function insertImageAsNewMessage(entryOrUrl, options = {}) {
@@ -8249,7 +9112,7 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
-    let url = await resolveChatInsertImageUrl(entry);
+    let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
     }
@@ -8270,11 +9133,27 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
         },
     };
 
-    chat.push(message);
-    if (typeof ctx.addOneMessage === 'function') {
-        ctx.addOneMessage(message);
+    const messageIndex = chat.length;
+    let checkpointRegistered = false;
+    try {
+        chat.push(message);
+        checkpointRegistered = registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+        if (options.conversationCheckpoint && !checkpointRegistered) {
+            throw new DOMException("Conversation advanced before image insertion", "AbortError");
+        }
+        if (typeof ctx.addOneMessage === 'function') {
+            ctx.addOneMessage(message);
+        }
+        await ctx.saveChat();
+        options.commitGuard?.();
+        if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
+            throw new DOMException("Chat changed while saving inserted image", "AbortError");
+        }
+    } catch (error) {
+        if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+        rollbackInsertedMessage(ctx, chat, message, messageIndex);
+        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "New image message insertion failed and its rollback could not be persisted");
     }
-    await ctx.saveChat();
 }
 
 async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
@@ -8283,7 +9162,7 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
     if (!chat) throw new Error("No active chat");
 
     const entry = normalizeGenerationEntry(entryOrUrl);
-    let url = await resolveChatInsertImageUrl(entry);
+    let url = await resolveChatInsertImageUrl(entry, options.outputMode);
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
     }
@@ -8304,23 +9183,83 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
         },
     };
 
-    chat.push(message);
-    if (typeof ctx.addOneMessage === 'function') {
-        ctx.addOneMessage(message);
+    const messageIndex = chat.length;
+    let checkpointRegistered = false;
+    try {
+        chat.push(message);
+        checkpointRegistered = registerConversationCheckpointInsertion(options.conversationCheckpoint, message);
+        if (options.conversationCheckpoint && !checkpointRegistered) {
+            throw new DOMException("Conversation advanced before hidden image insertion", "AbortError");
+        }
+        if (typeof ctx.addOneMessage === 'function') {
+            ctx.addOneMessage(message);
+        }
+        await ctx.saveChat();
+        options.commitGuard?.();
+        if (getContext?.()?.chat !== chat || chat[messageIndex] !== message) {
+            throw new DOMException("Chat changed while saving hidden image", "AbortError");
+        }
+    } catch (error) {
+        if (checkpointRegistered) unregisterConversationCheckpointInsertion(options.conversationCheckpoint, message);
+        rollbackInsertedMessage(ctx, chat, message, messageIndex);
+        await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Hidden image message insertion failed and its rollback could not be persisted");
     }
-    await ctx.saveChat();
 }
 
-async function autoInsertInjectImage(entryOrUrl, { messageIndex, insertMode, commitGuard } = {}) {
+async function autoInsertInjectImage(entryOrUrl, { messageIndex, insertMode, commitGuard, conversationCheckpoint, targetSnapshot, outputMode } = {}) {
     const mode = insertMode || "replace";
-    if (mode === "hidden") return await insertImageAsHiddenReply(entryOrUrl, { commitGuard });
+    if (mode === "hidden") return await insertImageAsHiddenReply(entryOrUrl, { commitGuard, conversationCheckpoint, outputMode });
     if (mode === "new") {
-        return await insertImageAsNewMessage(entryOrUrl, { commitGuard });
+        return await insertImageAsNewMessage(entryOrUrl, { commitGuard, conversationCheckpoint, outputMode });
     }
     if (mode === "replace" && Number.isInteger(messageIndex)) {
-        return await insertImageIntoMessage(entryOrUrl, messageIndex, { commitGuard });
+        return await insertImageIntoMessage(entryOrUrl, messageIndex, { commitGuard, targetSnapshot, outputMode });
     }
-    return await insertImageIntoMessage(entryOrUrl, null, { commitGuard });
+    return await insertImageIntoMessage(entryOrUrl, null, { commitGuard, targetSnapshot, outputMode });
+}
+
+function reportAutoInsertOutcome(insertedCount, failedResults) {
+    if (insertedCount > 0) {
+        toastr.success(`${insertedCount === 1 ? "Image" : `${insertedCount} images`} inserted into chat`);
+    }
+    if (!failedResults.length) return;
+    toastr.warning(`${failedResults.length === 1 ? "One image" : `${failedResults.length} images`} could not be inserted and remain available in the result viewer.`);
+    if (failedResults.length === 1) displayImage(failedResults[0]);
+    else displayBatchResults(failedResults);
+}
+
+async function deliverInjectResults(results, { settings, sourceMessageIndex, targetSnapshot, run } = {}) {
+    const entries = Array.isArray(results) ? results : [];
+    if (!entries.length) return { inserted: 0, failed: [] };
+    if (!settings?.autoInsert) {
+        if (entries.length === 1) displayImage(entries[0]);
+        else displayBatchResults(entries);
+        return { inserted: 0, failed: [] };
+    }
+
+    let inserted = 0;
+    const failed = [];
+    const insertMode = settings.insertAsHiddenReply ? "hidden" : settings.injectInsertMode;
+    for (const entry of entries) {
+        void addToGallery(entry);
+        try {
+            await autoInsertInjectImage(entry, {
+                messageIndex: sourceMessageIndex,
+                insertMode,
+                targetSnapshot,
+                outputMode: settings.outputMode,
+                commitGuard: run ? () => assertGenerationCanCommit(run) : null,
+                conversationCheckpoint: run?.context?.conversationCheckpoint,
+            });
+            inserted += 1;
+        } catch (error) {
+            if (error.name === "AbortError") throw error;
+            log(`Inject: Auto-insert failed: ${error.message}`);
+            failed.push(entry);
+        }
+    }
+    reportAutoInsertOutcome(inserted, failed);
+    return { inserted, failed };
 }
 
 function normalizeContextMediaUrl(value) {
@@ -8467,7 +9406,7 @@ async function addContextMediaRemoteUrls(rawValue, target) {
     return inserted;
 }
 
-async function insertContextMedia(media, { messageIndex, insertMode = "replace", commitGuard } = {}) {
+async function insertContextMedia(media, { messageIndex, insertMode = "replace", commitGuard, targetSnapshot } = {}) {
     const ctx = getContext();
     const chat = ctx?.chat;
     if (!Array.isArray(chat)) throw new Error("No active chat");
@@ -8478,25 +9417,39 @@ async function insertContextMedia(media, { messageIndex, insertMode = "replace",
     }
 
     if (insertMode === "replace") {
-        const idx = clampChatMessageIndex(messageIndex, chat.length);
+        const idx = targetSnapshot?.index ?? Number(messageIndex);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= chat.length) throw new Error("Could not find Context Media target message");
+        if (targetSnapshot) assertMessageTargetSnapshot(targetSnapshot, "Context Media target changed");
         const message = chat[idx];
         if (!message) throw new Error("Could not find Context Media target message");
-        message.extra = message.extra && typeof message.extra === "object" ? message.extra : {};
-        message.extra.media = Array.isArray(message.extra.media) ? message.extra.media : [];
-        if (!message.extra.media.length && !message.extra.media_display) message.extra.media_display = "gallery";
-        message.extra.media.push(attachment);
-        message.extra.inline_image = true;
-        message.extra.media_index = message.extra.media.length - 1;
-        if (typeof ctx.appendMediaToMessage === "function") {
-            const messageElement = $(`.mes[mesid="${idx}"]`);
-            if (messageElement.length) {
-                ctx.appendMediaToMessage(message, messageElement, "replace");
-                applyRemoteContextMediaPrivacy(messageElement, ctx);
-                scheduleRefreshMessageGenerateActions();
+        const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
+        const previousExtra = hadExtra && message.extra && typeof message.extra === "object"
+            ? snapshotGenerationSettings(message.extra)
+            : message.extra;
+        try {
+            message.extra = message.extra && typeof message.extra === "object" ? message.extra : {};
+            message.extra.media = Array.isArray(message.extra.media) ? message.extra.media : [];
+            if (!message.extra.media.length && !message.extra.media_display) message.extra.media_display = "gallery";
+            message.extra.media.push(attachment);
+            message.extra.inline_image = true;
+            message.extra.media_index = message.extra.media.length - 1;
+            if (typeof ctx.appendMediaToMessage === "function") {
+                const messageElement = $(`.mes[mesid="${idx}"]`);
+                if (messageElement.length) {
+                    ctx.appendMediaToMessage(message, messageElement, "replace");
+                    applyRemoteContextMediaPrivacy(messageElement, ctx);
+                    scheduleRefreshMessageGenerateActions();
+                }
+            } else if (attachment.type === "image") {
+                message.extra.image = attachment.url;
+                message.extra.title = attachment.title;
             }
-        } else if (attachment.type === "image") {
-            message.extra.image = attachment.url;
-            message.extra.title = attachment.title;
+            commitGuard?.();
+            await ctx.saveChat();
+        } catch (error) {
+            restoreMessageExtra(message, hadExtra, previousExtra);
+            try { rerenderMessageMedia(ctx, message, idx); } catch { /* best-effort DOM rollback */ }
+            throw error;
         }
     } else {
         const hidden = insertMode === "hidden";
@@ -8513,14 +9466,21 @@ async function insertContextMedia(media, { messageIndex, insertMode = "replace",
                 inline_image: true,
             },
         };
-        chat.push(message);
-        if (typeof ctx.addOneMessage === "function") {
-            ctx.addOneMessage(message);
-            applyRemoteContextMediaPrivacy($(`.mes[mesid="${chat.length - 1}"]`), ctx);
+        const messageIndexAtInsert = chat.length;
+        try {
+            chat.push(message);
+            if (typeof ctx.addOneMessage === "function") {
+                ctx.addOneMessage(message);
+                applyRemoteContextMediaPrivacy($(`.mes[mesid="${chat.length - 1}"]`), ctx);
+                scheduleRefreshMessageGenerateActions();
+            }
+            await ctx.saveChat();
+        } catch (error) {
+            rollbackInsertedMessage(ctx, chat, message, messageIndexAtInsert);
             scheduleRefreshMessageGenerateActions();
+            throw error;
         }
     }
-    await ctx.saveChat();
 }
 
 function getContextMediaChatId(ctx = getContext?.()) {
@@ -8981,10 +9941,24 @@ function showContextMediaManager() {
             if (!profile) return toastr?.warning?.("Select a Context Media profile to test.");
             const settings = normalizeContextMediaSettings(getSettings());
             const revision = _contextMediaRevision;
+            const conversationCheckpoint = createConversationCheckpoint(chat);
+            const start = Math.max(0, index - 3);
+            const contextSnapshots = [];
+            const entries = [];
+            for (let currentIndex = start; currentIndex <= index; currentIndex++) {
+                const targetSnapshot = createMessageTargetSnapshot(chat, currentIndex);
+                if (!targetSnapshot) continue;
+                contextSnapshots.push(targetSnapshot);
+                entries.push({ index: currentIndex, message: targetSnapshot.message });
+            }
+            const targetSnapshot = contextSnapshots.find(snapshot => snapshot.index === index);
             const commitGuard = () => {
-                if (controller.signal.aborted || getContext?.()?.chat !== chat || chat[index] !== message || _contextMediaRevision !== revision) {
+                if (controller.signal.aborted
+                    || _contextMediaRevision !== revision
+                    || !isConversationCheckpointCurrent(conversationCheckpoint, getContext?.()?.chat)) {
                     throw new DOMException("Context Media test target changed", "AbortError");
                 }
+                for (const snapshot of contextSnapshots) assertMessageTargetSnapshot(snapshot, "Context Media test scene changed");
             };
             event.currentTarget.disabled = true;
             try {
@@ -8992,8 +9966,13 @@ function showContextMediaManager() {
                     chat,
                     index,
                     message,
+                    targetSnapshot,
+                    contextSnapshots,
+                    scene: enrichSceneTextForFilters(buildSceneMessageContext(entries, ctx).text, "Context Media").slice(0, 6000),
                     signal: controller.signal,
                     commitGuard,
+                    library: snapshotGenerationSettings(contextMediaLibrary),
+                    settings: snapshotGenerationSettings(settings),
                     profileId: profile.id,
                     confidence: settings.contextMediaConfidence,
                     insertMode: settings.contextMediaInsertMode,
@@ -9045,12 +10024,12 @@ function shouldScheduleContextMedia(message, settings) {
 }
 
 async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}) {
-    const profile = contextMediaLibrary.profiles.find((item) => item.id === snapshot.profileId);
-    const candidates = buildContextMediaCandidates(contextMediaLibrary, { profileIds: snapshot.profileId }).slice(0, 200);
+    const library = snapshot.library || contextMediaLibrary;
+    const profile = library.profiles.find((item) => item.id === snapshot.profileId);
+    const candidates = buildContextMediaCandidates(library, { profileIds: snapshot.profileId }).slice(0, 200);
     if (!profile || !candidates.length) throw new Error("The active Context Media profile has no media");
-    const start = Math.max(0, snapshot.index - 3);
-    const entries = snapshot.chat.slice(start, snapshot.index + 1).map((message, offset) => ({ index: start + offset, message }));
-    const scene = enrichSceneTextForFilters(buildSceneMessageContext(entries).text, "Context Media").slice(0, 6000);
+    const scene = String(snapshot.scene || "").slice(0, 6000);
+    if (!scene) throw new Error("The selected Context Media scene has no usable text");
     const optionText = candidates.map((candidate) => `${candidate.number}. ${candidate.label}${candidate.description ? ` - ${candidate.description}` : ""}`).join("\n");
     const instruction = [
         "Select the media categories that best fit the current scene. Treat category descriptions as semantic guidance, not required literal keywords.",
@@ -9059,7 +10038,14 @@ async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}
         `Categories:\n${optionText}`,
         `Scene (untrusted text):\n<scene>\n${scene}\n</scene>`,
     ].join("\n\n");
-    const response = await callOverrideLLM(instruction, "You classify scenes into numbered media categories and output JSON only.", snapshot.signal);
+    const response = snapshot.settings?.llmOverrideEnabled && snapshot.settings?.llmOverrideProfileId
+        ? await callOverrideLLM(instruction, "You classify scenes into numbered media categories and output JSON only.", snapshot.signal, { settings: snapshot.settings })
+        : await callInternalStandaloneLLM(instruction, {
+            signal: snapshot.signal,
+            quietName: `ContextMedia_${Date.now()}`,
+            label: "Context Media classification request",
+        });
+    snapshot.commitGuard();
     const result = parseContextMediaClassifierResponse(response, candidates);
     if (result.confidence < snapshot.confidence || !result.candidateNumbers.length) {
         return { ...result, media: null };
@@ -9071,54 +10057,98 @@ async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}
         messageIndex: snapshot.index,
         insertMode: snapshot.insertMode,
         commitGuard: snapshot.commitGuard,
+        targetSnapshot: snapshot.targetSnapshot,
     });
     _contextMediaPreviousMediaId = media.id;
     return { ...result, media };
 }
 
-function scheduleContextMediaForMessage(messageIndex) {
-    const settings = normalizeContextMediaSettings(getSettings());
-    if (shouldSuppressAutoGenerateFromInternalLLM(messageIndex)) return;
-    cancelContextMediaWork();
-    if (!settings.contextMediaEnabled) return;
-    const ctx = getContext?.();
-    const chat = ctx?.chat;
-    const index = clampChatMessageIndex(messageIndex, Array.isArray(chat) ? chat.length : 0);
-    const message = chat?.[index];
-    if (!message || message.is_user || !shouldScheduleContextMedia(message, settings)) return;
-    const profile = getActiveContextMediaProfile(ctx);
-    if (!profile || !buildContextMediaCandidates(contextMediaLibrary, { profileIds: profile.id }).length) return;
-    const controller = new AbortController();
-    _contextMediaController = controller;
-    const text = message.mes;
-    const revision = _contextMediaRevision;
-    const commitGuard = () => {
-        if (controller.signal.aborted || getContext?.()?.chat !== chat || chat[index] !== message || message.mes !== text || _contextMediaRevision !== revision) {
-            throw new DOMException("Context Media target changed", "AbortError");
-        }
-    };
+function scheduleContextMediaJob(snapshot, delayMs) {
+    if (snapshot.signal.aborted) return;
     _contextMediaTimeout = setTimeout(async () => {
         _contextMediaTimeout = null;
+        if (snapshot.signal.aborted) return;
+        const liveSettings = getSettings();
+        if (!liveSettings?.contextMediaEnabled) {
+            if (_contextMediaController === snapshot.controller) _contextMediaController = null;
+            return;
+        }
+        if (isGenerating || _paletteInjectActive || _injectProcessingCount > 0 || shouldSuppressAutoGenerateFromInternalLLM(snapshot.index)) {
+            scheduleContextMediaJob(snapshot, 250);
+            return;
+        }
         try {
-            await classifyAndInsertContextMedia({
-                chat,
-                index,
-                message,
-                signal: controller.signal,
-                commitGuard,
-                profileId: profile.id,
-                confidence: settings.contextMediaConfidence,
-                insertMode: settings.contextMediaInsertMode,
-            });
+            snapshot.commitGuard();
+            await classifyAndInsertContextMedia(snapshot);
         } catch (error) {
             if (error.name !== "AbortError") {
                 log(`Context Media: ${error.message}`);
                 toastr?.warning?.(`Context Media: ${error.message}`, "Quick Image Gen", { escapeHtml: true });
             }
         } finally {
-            if (_contextMediaController === controller) _contextMediaController = null;
+            if (_contextMediaController === snapshot.controller) _contextMediaController = null;
         }
-    }, settings.contextMediaDelayMs);
+    }, delayMs);
+}
+
+function scheduleContextMediaForMessage(messageIndex) {
+    const settings = normalizeContextMediaSettings(getSettings());
+    if (!settings.contextMediaEnabled) return;
+    const ctx = getContext?.();
+    const chat = ctx?.chat;
+    const index = Number(messageIndex);
+    if (!Array.isArray(chat) || !Number.isInteger(index) || index < 0 || index >= chat.length) return;
+    const message = chat?.[index];
+    if (!message || message.is_user || isGeneratedImageMessage(message) || !shouldScheduleContextMedia(message, settings)) return;
+    const profile = getActiveContextMediaProfile(ctx);
+    if (!profile || !buildContextMediaCandidates(contextMediaLibrary, { profileIds: profile.id }).length) return;
+    cancelContextMediaWork();
+    const controller = new AbortController();
+    _contextMediaController = controller;
+    const revision = _contextMediaRevision;
+    const conversationCheckpoint = createConversationCheckpoint(chat);
+    const start = Math.max(0, index - 3);
+    const contextSnapshots = [];
+    const entries = [];
+    for (let currentIndex = start; currentIndex <= index; currentIndex++) {
+        const targetSnapshot = createMessageTargetSnapshot(chat, currentIndex);
+        if (!targetSnapshot) continue;
+        contextSnapshots.push(targetSnapshot);
+        entries.push({ index: currentIndex, message: targetSnapshot.message });
+    }
+    const targetSnapshot = contextSnapshots.find(snapshot => snapshot.index === index);
+    const scene = enrichSceneTextForFilters(buildSceneMessageContext(entries, ctx).text, "Context Media").slice(0, 6000);
+    if (!targetSnapshot || !scene) {
+        if (_contextMediaController === controller) _contextMediaController = null;
+        controller.abort();
+        return;
+    }
+    const settingsSnapshot = snapshotGenerationSettings(settings);
+    const commitGuard = () => {
+        if (controller.signal.aborted
+            || _contextMediaRevision !== revision
+            || !getSettings()?.contextMediaEnabled
+            || !isConversationCheckpointCurrent(conversationCheckpoint, getContext?.()?.chat)) {
+            throw new DOMException("Context Media target changed", "AbortError");
+        }
+        for (const snapshot of contextSnapshots) assertMessageTargetSnapshot(snapshot, "Context Media scene changed");
+    };
+    scheduleContextMediaJob({
+        chat,
+        index,
+        message,
+        targetSnapshot,
+        contextSnapshots,
+        scene,
+        controller,
+        signal: controller.signal,
+        commitGuard,
+        library: snapshotGenerationSettings(contextMediaLibrary),
+        settings: settingsSnapshot,
+        profileId: profile.id,
+        confidence: settingsSnapshot.contextMediaConfidence,
+        insertMode: settingsSnapshot.contextMediaInsertMode,
+    }, settingsSnapshot.contextMediaDelayMs);
 }
 
 function shouldPersistImageUrl(url) {
@@ -9183,11 +10213,15 @@ function createGenerationEntry(url, prompt = lastPrompt, negative = lastNegative
     if (provider && !snapshot.provider) snapshot.provider = provider;
     const normalizedUrl = normalizeGeneratedImageSource(url) || "";
     const normalizedSourceUrl = normalizeGeneratedImageSource(options.sourceUrl ?? url) || normalizedUrl;
+    const sourceIdentity = normalizeMessageSourceIdentity({
+        ...options,
+        sourceChatId: options.sourceChatId ?? activeGenerationRun?.context?.chatId ?? "",
+    });
     return {
         id: typeof options.id === "string" && options.id ? options.id : generateUUID(),
         url: normalizedUrl,
         sourceUrl: normalizedSourceUrl,
-        sourceMessageIndex: Number.isInteger(options.sourceMessageIndex) ? options.sourceMessageIndex : null,
+        ...sourceIdentity,
         thumbnail: options.thumbnail ?? null,
         prompt: prompt || "",
         negative: negative || "",
@@ -9213,6 +10247,7 @@ function normalizeGenerationEntry(entryOrUrl, fallback = {}) {
     const normalizedSourceUrl = normalizeGeneratedImageSource(
         entryOrUrl.sourceUrl ?? fallback.sourceUrl ?? entryOrUrl.url ?? fallback.url ?? "",
     ) || normalizedUrl;
+    const sourceIdentity = normalizeMessageSourceIdentity(entryOrUrl, fallback);
     return {
         ...entryOrUrl,
         id: typeof entryOrUrl.id === "string" && entryOrUrl.id
@@ -9220,9 +10255,7 @@ function normalizeGenerationEntry(entryOrUrl, fallback = {}) {
             : (typeof fallback.id === "string" && fallback.id ? fallback.id : generateUUID()),
         url: normalizedUrl,
         sourceUrl: normalizedSourceUrl,
-        sourceMessageIndex: Number.isInteger(entryOrUrl.sourceMessageIndex)
-            ? entryOrUrl.sourceMessageIndex
-            : (Number.isInteger(fallback.sourceMessageIndex) ? fallback.sourceMessageIndex : null),
+        ...sourceIdentity,
         prompt: entryOrUrl.prompt ?? fallback.prompt ?? "",
         negative: entryOrUrl.negative ?? fallback.negative ?? "",
         provider,
@@ -9235,9 +10268,6 @@ function normalizeGenerationEntry(entryOrUrl, fallback = {}) {
 
 async function finalizeGeneratedEntry(providerResult, prompt, negative, settings, options = {}) {
     const resolvedSeed = settings && Number.isFinite(settings.__qigResolvedSeed) ? settings.__qigResolvedSeed : undefined;
-    if (settings && Object.prototype.hasOwnProperty.call(settings, "__qigResolvedSeed")) {
-        delete settings.__qigResolvedSeed;
-    }
     const normalizedResult = providerResult && typeof providerResult === "object" && typeof providerResult.url === "string"
         ? providerResult
         : normalizeProviderResult(providerResult, settings, {
@@ -9278,6 +10308,24 @@ async function finalizeGeneratedEntry(providerResult, prompt, negative, settings
     }
 }
 
+async function finalizeGeneratedResults(providerResult, prompt, negative, settings, options = {}) {
+    const providerResults = Array.isArray(providerResult) ? providerResult : [providerResult];
+    try {
+        const outcome = await collectSequentialResults(providerResults, result =>
+            finalizeGeneratedEntry(result, prompt, negative, settings, options)
+        );
+        if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
+        return attachResultFailures(outcome.results, [
+            ...getResultFailures(providerResult),
+            ...outcome.errors,
+        ]);
+    } finally {
+        if (settings && Object.prototype.hasOwnProperty.call(settings, "__qigResolvedSeed")) {
+            delete settings.__qigResolvedSeed;
+        }
+    }
+}
+
 async function createGalleryThumbnailBlob(blob) {
     const objectUrl = URL.createObjectURL(blob);
     try {
@@ -9300,7 +10348,11 @@ async function createGalleryAsset(entryOrUrl) {
     try {
         const { buffer } = await fetchImageBuffer(source);
         const format = detectImageFormat(buffer);
-        if (!format) throw new Error("Response is not a supported image format");
+        if (!format) {
+            const error = new Error("Response is not a supported image format");
+            error.code = "INVALID_GALLERY_IMAGE";
+            throw error;
+        }
         const blob = new Blob([buffer], { type: format.mime });
         const thumbnailBlob = await createGalleryThumbnailBlob(blob);
         return { blob, thumbnailBlob, fallbackUrl: source };
@@ -9308,6 +10360,7 @@ async function createGalleryAsset(entryOrUrl) {
         return {
             fallbackUrl: source,
             error: error instanceof Error ? error.message : "Image bytes could not be stored",
+            invalid: error?.code === "INVALID_GALLERY_IMAGE",
         };
     }
 }
@@ -9447,14 +10500,27 @@ async function importImageUrlToGallery(rawUrl, { insert = false } = {}) {
 }
 
 function savePromptHistory() {
-    try {
-        localStorage.setItem("qig_prompt_history", JSON.stringify(promptHistory));
-    } catch {
-        while (promptHistory.length > 10) {
-            promptHistory.pop();
-            try { localStorage.setItem("qig_prompt_history", JSON.stringify(promptHistory)); return; } catch {}
+    promptHistory = normalizePromptHistory(promptHistory);
+    if (_promptHistorySaveQueued) return;
+    _promptHistorySaveQueued = true;
+    queueMicrotask(() => {
+        _promptHistorySaveQueued = false;
+        let candidate = normalizePromptHistory(promptHistory);
+        while (candidate.length >= 0) {
+            try {
+                localStorage.setItem("qig_prompt_history", JSON.stringify(candidate));
+                promptHistory = candidate;
+                return;
+            } catch (error) {
+                if (!candidate.length) {
+                    log(`Prompt history could not be saved: ${error.message}`);
+                    toastr?.warning?.("Prompt history could not be saved because browser storage is unavailable or full.");
+                    return;
+                }
+                candidate = candidate.slice(0, -1);
+            }
         }
-    }
+    });
 }
 
 function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
@@ -9469,6 +10535,7 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
     const imageNegative = entry.negative || "";
     const imagePromptWasLLM = !!entry.promptWasLLM;
     const imageMetadataSettings = cloneMetadataSettings(entry.metadataSettings || {});
+    imageMetadataSettings.effectiveRequest = cloneMetadataSettings(entry.effectiveRequest || imageMetadataSettings.effectiveRequest || {});
 
     const popup = createPopup("qig-popup", "Generated Image", `
         <img id="qig-result-img" src="" alt="Generated image result">
@@ -9551,7 +10618,7 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 lastNegative = negativeTextarea.value;
             }
             lastPromptWasLLM = false;
-            lastGenerationSourceMessageIndex = Number.isInteger(entry.sourceMessageIndex) ? entry.sourceMessageIndex : null;
+            rememberLastGenerationSource(entry);
             lastEffectiveRequest = cloneMetadataSettings(entry.effectiveRequest || imageMetadataSettings.effectiveRequest || {});
             if (!lastPrompt.trim()) {
                 toastr.error("Prompt cannot be empty");
@@ -9574,7 +10641,7 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 if (s.insertAsHiddenReply) {
                     await insertImageAsHiddenReply(entry);
                 } else {
-                    await insertImageIntoMessage(entry, popupInsertTargetIndex);
+                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, s), { ignoreSourceIdentity: true });
                 }
                 toastr.success("Image inserted into message");
             } catch (err) {
@@ -9752,24 +10819,34 @@ function displayBatchResults(results, returnFocusElement = null) {
         document.getElementById("qig-batch-download").onclick = async (e) => {
             e.stopPropagation();
             const activeEntry = getCurrentEntry();
-            await downloadWithMetadata(activeEntry.url, `generated-${Date.now()}.png`, activeEntry.prompt, activeEntry.negative, activeEntry.metadataSettings);
+            await downloadWithMetadata(activeEntry.url, `generated-${Date.now()}.png`, activeEntry.prompt, activeEntry.negative, {
+                ...activeEntry.metadataSettings,
+                effectiveRequest: activeEntry.effectiveRequest,
+            });
         };
         document.getElementById("qig-batch-save-all").onclick = async (e) => {
             e.stopPropagation();
             const ts = Date.now();
+            const outcomes = [];
             for (let i = 0; i < entries.length; i++) {
                 const item = entries[i];
-                await downloadWithMetadata(item.url, `generated-${ts}-${i + 1}.png`, item.prompt, item.negative, item.metadataSettings);
+                const outcome = await downloadWithMetadata(item.url, `generated-${ts}-${i + 1}.png`, item.prompt, item.negative, {
+                    ...item.metadataSettings,
+                    effectiveRequest: item.effectiveRequest,
+                }, { notify: false });
+                outcomes.push(outcome);
                 if (i < entries.length - 1) await new Promise(r => setTimeout(r, 300));
             }
-            toastr.success(`Downloaded ${entries.length} images`);
+            const { succeeded, failed } = summarizeOperationOutcomes(outcomes);
+            if (!failed) toastr.success(`Downloaded ${succeeded} image${succeeded === 1 ? "" : "s"}`);
+            else if (succeeded) toastr.warning(`Downloaded ${succeeded}; ${failed} failed`);
+            else toastr.error(`Could not download ${failed} image${failed === 1 ? "" : "s"}`);
         };
         document.getElementById("qig-batch-insert-all").onclick = async (e) => {
             e.stopPropagation();
             try {
                 for (const entry of entries) {
-                    const insertTargetIndex = Number.isInteger(entry?.sourceMessageIndex) ? entry.sourceMessageIndex : batchFallbackSourceMessageIndex;
-                    await insertImageIntoMessage(entry, insertTargetIndex);
+                    await insertImageIntoMessage(entry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
                 }
                 toastr.success(`Inserted ${entries.length} images into message`);
             } catch (err) {
@@ -9791,7 +10868,7 @@ function displayBatchResults(results, returnFocusElement = null) {
             }
             lastPromptWasLLM = false;
             const activeEntry = getCurrentEntry();
-            lastGenerationSourceMessageIndex = Number.isInteger(activeEntry?.sourceMessageIndex) ? activeEntry.sourceMessageIndex : null;
+            rememberLastGenerationSource(activeEntry);
             lastEffectiveRequest = cloneMetadataSettings(activeEntry?.effectiveRequest || activeEntry?.metadataSettings?.effectiveRequest || {});
             if (!lastPrompt.trim()) {
                 toastr.error("Prompt cannot be empty");
@@ -9811,8 +10888,7 @@ function displayBatchResults(results, returnFocusElement = null) {
             e.stopPropagation();
             try {
                 const activeEntry = getCurrentEntry();
-                const insertTargetIndex = Number.isInteger(activeEntry?.sourceMessageIndex) ? activeEntry.sourceMessageIndex : batchFallbackSourceMessageIndex;
-                await insertImageIntoMessage(activeEntry, insertTargetIndex);
+                await insertImageIntoMessage(activeEntry, resolveManualInsertFallbackIndex(getContext()?.chat, getSettings()), { ignoreSourceIdentity: true });
                 toastr.success("Image inserted into message");
             } catch (err) {
                 console.error("[Quick Image Gen] Insert failed:", err);
@@ -9947,9 +11023,12 @@ async function showGallery(returnFocusElement = null) {
                     await galleryRepository.clear();
                     sessionGallery = galleryRepository.list();
                 } else {
+                    const recovery = await clearGalleryRepositoryStorage();
                     sessionGallery = [];
-                    localStorage.removeItem("qig_gallery");
-                    localStorage.removeItem("qig_gallery_manifest_v2");
+                    if (!recovery.assetsCleared) {
+                        log(`Gallery asset clear deferred: ${recovery.error?.message || "IndexedDB unavailable"}`);
+                        toastr.warning("Gallery was marked cleared. Stored image bytes will be removed when IndexedDB is available again.");
+                    }
                 }
                 blobUrls.forEach(url => URL.revokeObjectURL(url));
                 blobUrls.clear();
@@ -10184,9 +11263,13 @@ async function genStability(prompt, negative, s, signal) {
         }),
         signal
     });
-    if (!res.ok) throw new Error(`Stability error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Stability error ${res.status}: ${message || res.statusText}`);
+    }
     const data = await readResponseJson(res);
-    if (data.artifacts?.[0]) return `data:image/png;base64,${data.artifacts[0].base64}`;
+    const source = extractProviderImageSource(data);
+    if (source) return source;
     throw new Error("No image in response");
 }
 
@@ -10194,7 +11277,7 @@ async function genReplicate(prompt, negative, s, signal) {
     if (!s.replicateKey) throw new Error("Replicate API key required");
     const seed = resolveRandomSeed(s.seed, s);
     // Default to SDXL if no model specified
-    const version = s.replicateModel || "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b";
+    const version = validateReplicateSdxlVersion(s.replicateModel);
 
     // Create prediction
     const res = await replicateFetch("createPrediction", {
@@ -10222,32 +11305,65 @@ async function genReplicate(prompt, negative, s, signal) {
             }
         },
     }, signal);
-    if (!res.ok) throw new Error(`Replicate error: ${res.status}`);
-    const pred = await readResponseJson(res, 1024 * 1024);
-
-    // Poll for result
-    for (let i = 0; i < 60; i++) {
-        if (signal?.aborted) throw new DOMException("Generation cancelled", "AbortError");
-        await new Promise(r => setTimeout(r, 2000));
-        const statusRes = await replicateFetch("getPrediction", {
-            apiKey: s.replicateKey,
-            id: pred.id,
-        }, signal);
-        if (!statusRes.ok) throw new Error(`Replicate polling error: ${statusRes.status}`);
-        const status = await readResponseJson(statusRes);
-        if (status.status === "succeeded") {
-            const outputs = Array.isArray(status.output) ? status.output : [status.output];
-            for (const output of outputs) {
-                if (typeof output === "string" && output) return output;
-                if (typeof output?.url === "string" && output.url) return output.url;
-                if (typeof output?.image === "string" && output.image) return output.image;
-                if (typeof output?.image?.url === "string" && output.image.url) return output.image.url;
-            }
-            throw new Error("Replicate returned no image in response");
-        }
-        if (status.status === "failed") throw new Error(status.error || "Generation failed");
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Replicate error ${res.status}: ${message || res.statusText}`);
     }
-    throw new Error("Replicate timeout");
+    const pred = await readResponseJson(res, 1024 * 1024);
+    const predictionId = String(pred?.id || "").trim();
+    if (!predictionId) throw new Error("Replicate did not return a prediction id");
+
+    try {
+        while (true) {
+            await abortableSleep(1500, signal);
+            const statusRes = await replicateFetch("getPrediction", {
+                apiKey: s.replicateKey,
+                id: predictionId,
+            }, signal);
+            if (!statusRes.ok) {
+                const { message } = await readProviderErrorResponse(statusRes);
+                if (statusRes.status === 401 || statusRes.status === 403) {
+                    throw new Error(`Replicate authorization failed (${statusRes.status}): ${message || statusRes.statusText}`);
+                }
+                if (isTransientProviderStatus(statusRes.status)) {
+                    await abortableSleep(getRetryAfterMs(statusRes), signal);
+                    continue;
+                }
+                throw new Error(`Replicate polling error ${statusRes.status}: ${message || statusRes.statusText}`);
+            }
+            const status = await readResponseJson(statusRes);
+            const state = String(status?.status || "").toLowerCase();
+            if (state === "succeeded") {
+                const source = extractProviderImageSource({ output: status.output });
+                if (!source) throw new Error("Replicate returned no image in response");
+                if (!/^https?:/i.test(source)) return source;
+                if (!isTrustedProviderOutputUrl("replicate", source, "https://api.replicate.com/v1/predictions")) {
+                    throw new Error("Replicate returned an image URL from an untrusted host");
+                }
+                const imageResponse = await replicateFetch("getOutput", {
+                    apiKey: s.replicateKey,
+                    url: source,
+                }, signal);
+                if (!imageResponse.ok) {
+                    const { message } = await readProviderErrorResponse(imageResponse);
+                    throw new Error(`Replicate output error ${imageResponse.status}: ${message || imageResponse.statusText}`);
+                }
+                return imageResponseToDataUrl(imageResponse);
+            }
+            if (["failed", "canceled", "cancelled"].includes(state)) {
+                throw new Error(status.error || `Replicate prediction ${state}`);
+            }
+        }
+    } catch (error) {
+        if (signal?.aborted) {
+            const cancelSignal = AbortSignal.timeout(5000);
+            await replicateFetch("cancelPrediction", {
+                apiKey: s.replicateKey,
+                id: predictionId,
+            }, cancelSignal).catch(() => {});
+        }
+        throw error;
+    }
 }
 
 async function genFal(prompt, negative, s, signal) {
@@ -10256,6 +11372,8 @@ async function genFal(prompt, negative, s, signal) {
     // Default to Flux Schnell
     const model = s.falModel || "fal-ai/flux/schnell";
     const endpoint = `https://fal.run/${model}`;
+    const effectiveSteps = getFalEffectiveSteps(model, s.steps);
+    const effectiveGuidance = getFalEffectiveGuidance(model, s.cfgScale);
 
     const res = await fetch(endpoint, {
         method: "POST",
@@ -10267,17 +11385,21 @@ async function genFal(prompt, negative, s, signal) {
             prompt: prompt,
             negative_prompt: negative || "",
             image_size: { width: s.width, height: s.height },
-            num_inference_steps: s.steps,
-            guidance_scale: s.cfgScale,
+            num_inference_steps: effectiveSteps,
+            guidance_scale: effectiveGuidance,
             seed: seed,
             num_images: 1,
             enable_safety_checker: false
         }),
         signal
     });
-    if (!res.ok) throw new Error(`Fal.ai error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Fal.ai error ${res.status}: ${message || res.statusText}`);
+    }
     const data = await readResponseJson(res);
-    if (data.images?.[0]?.url) return data.images[0].url;
+    const source = extractProviderImageSource(data);
+    if (source) return { url: source, effectiveRequest: { parameters: { steps: effectiveSteps, cfgScale: effectiveGuidance } } };
     throw new Error("No image in response");
 }
 
@@ -10299,20 +11421,27 @@ async function genTogether(prompt, negative, s, signal) {
             width: s.width,
             height: s.height,
             steps: Math.min(s.steps, 50),
+            guidance_scale: s.cfgScale,
             seed: seed,
             n: 1
         }),
         signal
     });
-    if (!res.ok) throw new Error(`Together AI error: ${res.status}`);
+    if (!res.ok) {
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Together AI error ${res.status}: ${message || res.statusText}`);
+    }
     const data = await readResponseJson(res);
-    if (data.data?.[0]?.url) return data.data[0].url;
-    if (data.data?.[0]?.b64_json) return `data:image/png;base64,${data.data[0].b64_json}`;
+    const source = extractProviderImageSource(data);
+    if (source) return source;
     throw new Error("No image in response");
 }
 
 async function genZai(prompt, negative, s, signal) {
     if (!s.zaiKey) throw new Error("Z.AI API key required");
+    const model = s.zaiModel || "cogview-4-250304";
+    const size = model === "glm-image" ? getGlmImageResolution(s.width, s.height) : `${s.width}x${s.height}`;
+    const [effectiveWidth, effectiveHeight] = size.split("x").map(Number);
     const res = await fetch("https://api.z.ai/api/paas/v4/images/generations", {
         method: "POST",
         headers: {
@@ -10320,19 +11449,20 @@ async function genZai(prompt, negative, s, signal) {
             "Authorization": `Bearer ${s.zaiKey}`
         },
         body: JSON.stringify({
-            model: s.zaiModel || "cogview-4-250304",
+            model,
             prompt: prompt,
             quality: s.zaiQuality || "hd",
-            size: `${s.width}x${s.height}`
+            size,
         }),
         signal
     });
     if (!res.ok) {
-        const err = await readResponseJson(res, 1024 * 1024).catch(() => ({}));
-        throw new Error(`Z.AI error ${res.status}: ${err.message || res.statusText}`);
+        const { message } = await readProviderErrorResponse(res);
+        throw new Error(`Z.AI error ${res.status}: ${message || res.statusText}`);
     }
     const data = await readResponseJson(res);
-    if (data.data?.[0]?.url) return data.data[0].url;
+    const source = extractProviderImageSource(data);
+    if (source) return { url: source, effectiveRequest: { parameters: { model, width: effectiveWidth, height: effectiveHeight } } };
     throw new Error("No image in Z.AI response");
 }
 
@@ -10340,7 +11470,7 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
     if (!apiKey) throw new Error(`${providerName} API key required`);
     const trimmedModel = String(model || "").trim();
     if (!trimmedModel) throw new Error(`${providerName} model required`);
-    const effectivePrompt = negative
+    const effectivePrompt = negative && !options.separateNegativePrompt
         ? `${prompt}\n\nAvoid in the image: ${negative}`
         : prompt;
     const size = getOpenAICompatibleImageSize(provider, trimmedModel, s);
@@ -10353,6 +11483,7 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
                 model: trimmedModel,
                 width: effectiveWidth,
                 height: effectiveHeight,
+                ...(options.effectiveParameters || {}),
             },
         },
     });
@@ -10362,6 +11493,7 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
         size,
         n: 1,
     };
+    Object.assign(payload, options.payload || {});
     if (options.includeResponseFormat !== false) payload.response_format = "b64_json";
     const res = await fetch(apiUrl, {
         method: "POST",
@@ -10420,6 +11552,9 @@ async function genOpenAICompatibleImageProvider(provider, providerName, apiUrl, 
 }
 
 async function genRouteway(prompt, negative, s, signal) {
+    const seed = resolveRandomSeed(s.seed, s);
+    const steps = Math.max(1, Math.trunc(Number(s.steps) || 25));
+    const guidance = Number.isFinite(Number(s.cfgScale)) ? Number(s.cfgScale) : 7;
     return await genOpenAICompatibleImageProvider(
         "routeway",
         "Routeway",
@@ -10430,6 +11565,16 @@ async function genRouteway(prompt, negative, s, signal) {
         negative,
         s,
         signal,
+        {
+            separateNegativePrompt: true,
+            payload: {
+                negative_prompt: negative,
+                steps,
+                guidance,
+                seed,
+            },
+            effectiveParameters: { steps, cfgScale: guidance, seed },
+        },
     );
 }
 
@@ -10470,7 +11615,8 @@ const providerGenerators = {
     custom: genCustomApi,
 };
 
-async function verifyRenderableImage(url) {
+async function verifyRenderableImage(url, signal = null) {
+    if (signal?.aborted) throw getAbortError(signal);
     if (!url || typeof url !== "string") {
         throw new Error("Provider returned an empty or invalid image URL");
     }
@@ -10508,19 +11654,27 @@ async function verifyRenderableImage(url) {
         await new Promise((resolve, reject) => {
             const img = new Image();
             let timer = null;
-            function cleanup() {
+            function cleanup(clearSource = true) {
                 if (timer) clearTimeout(timer);
+                signal?.removeEventListener("abort", onAbort);
                 img.onload = null;
                 img.onerror = null;
+                if (clearSource) img.removeAttribute?.("src");
             }
+            const onAbort = () => {
+                cleanup();
+                reject(getAbortError(signal));
+            };
+            signal?.addEventListener("abort", onAbort, { once: true });
             timer = setTimeout(() => {
                 cleanup();
                 reject(new Error("Generated image timed out while loading"));
             }, 6000);
 
             img.onload = () => {
-                cleanup();
+                cleanup(false);
                 if (img.naturalWidth <= 1 || img.naturalHeight <= 1) {
+                    img.removeAttribute?.("src");
                     reject(new Error("Provider returned a blank or unrenderable image"));
                     return;
                 }
@@ -10534,16 +11688,19 @@ async function verifyRenderableImage(url) {
                         context.drawImage(img, 0, 0, canvas.width, canvas.height);
                         const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
                         if (isEffectivelyBlankPixels(pixels)) {
+                            img.removeAttribute?.("src");
                             reject(new Error("Provider returned a blank placeholder image"));
                             return;
                         }
                     }
                 } catch (error) {
                     if (error?.name !== "SecurityError") {
+                        img.removeAttribute?.("src");
                         reject(new Error(`Generated image could not be inspected: ${error?.message || "unknown error"}`));
                         return;
                     }
                 }
+                img.removeAttribute?.("src");
                 resolve(true);
             };
             img.onerror = () => {
@@ -10555,36 +11712,205 @@ async function verifyRenderableImage(url) {
                 const sourceDescription = describeProviderImageSource(url);
                 reject(new Error(`Generated image URL could not be loaded: ${sourceDescription}. The URL may be expired, protected, or blocked by browser policy.`));
             };
+            if (signal?.aborted) {
+                onAbort();
+                return;
+            }
             img.src = url;
         });
     }
 }
 
+function getHostedProviderOutputRequest(provider, settings) {
+    switch (provider) {
+        case "pollinations":
+            return {
+                requestUrl: settings.pollinationsKey
+                    ? "https://gen.pollinations.ai/v1/images/generations"
+                    : "https://image.pollinations.ai/",
+                headers: settings.pollinationsKey ? { Authorization: `Bearer ${settings.pollinationsKey}` } : {},
+            };
+        case "novelai":
+            return {
+                requestUrl: settings.naiProxyUrl
+                    ? (isNovelAICompatibleProxyUrl(settings.naiProxyUrl)
+                        ? buildNovelAIProxyRequestUrl(settings.naiProxyUrl, "chat")
+                        : getNovelAIProxyGenerateUrl(settings.naiProxyUrl))
+                    : "https://image.novelai.net/ai/generate-image",
+                headers: { Authorization: `Bearer ${settings.naiProxyKey || settings.naiKey}` },
+            };
+        case "gptimage":
+            return {
+                requestUrl: getGptImageApiUrl(settings.gptImageProxyUrl),
+                headers: { Authorization: `Bearer ${settings.gptImageProxyKey || settings.gptImageKey}` },
+            };
+        case "arliai":
+            return { requestUrl: "https://api.arliai.com/v1/txt2img", headers: { Authorization: `Bearer ${settings.arliKey}` } };
+        case "routeway":
+            return { requestUrl: "https://api.routeway.ai/v1/images/generations", headers: { Authorization: `Bearer ${settings.routewayKey}` } };
+        case "navy":
+            return { requestUrl: "https://api.navy/v1/images/generations", headers: { Authorization: `Bearer ${settings.navyKey}` } };
+        case "nanogpt":
+            return { requestUrl: "https://nano-gpt.com/api/v1/images", headers: { Authorization: `Bearer ${settings.nanogptKey}` } };
+        case "chutes":
+            return { requestUrl: "https://image.chutes.ai/generate", headers: { Authorization: `Bearer ${settings.chutesKey}` } };
+        case "civitai":
+            return { requestUrl: "https://orchestration.civitai.com/v2/consumer/workflows", headers: { Authorization: `Bearer ${settings.civitaiKey}` } };
+        case "nanobanana": {
+            const key = settings.nanobananaProxyKey || settings.nanobananaKey;
+            const requestUrl = getNanobananaApiUrl(settings.nanobananaProxyUrl, settings.nanobananaModel, key);
+            return {
+                requestUrl,
+                headers: getNanobananaAuthHeaders(requestUrl, key),
+            };
+        }
+        case "stability":
+            return { requestUrl: "https://api.stability.ai/", headers: { Authorization: `Bearer ${settings.stabilityKey}` } };
+        case "replicate":
+            return { requestUrl: "https://api.replicate.com/v1/predictions", headers: { Authorization: `Bearer ${settings.replicateKey}` } };
+        case "fal":
+            return { requestUrl: "https://fal.run/", headers: { Authorization: `Key ${settings.falKey}` } };
+        case "together":
+            return { requestUrl: "https://api.together.xyz/v1/images/generations", headers: { Authorization: `Bearer ${settings.togetherKey}` } };
+        case "zai":
+            return { requestUrl: "https://api.z.ai/api/paas/v4/images/generations", headers: { Authorization: `Bearer ${settings.zaiKey}` } };
+        default:
+            return null;
+    }
+}
+
+async function materializeHostedProviderOutput(source, provider, settings, signal) {
+    if (String(source || "").startsWith("blob:")) return source;
+    if (provider === "civitai" && /^https?:/i.test(String(source || ""))) {
+        const response = await civitaiFetch("getOutput", {
+            apiKey: settings.civitaiKey,
+            url: source,
+        }, signal);
+        if (!response.ok) {
+            const { message } = await readProviderErrorResponse(response);
+            throw new Error(`CivitAI output error ${response.status}: ${message || response.statusText}`);
+        }
+        return createTransientImageObjectUrl(await readResponseArrayBuffer(response, MAX_IMAGE_BYTES));
+    }
+    const request = getHostedProviderOutputRequest(provider, settings);
+    if (!request) throw new Error(`No trusted output policy is configured for ${provider}`);
+    if (provider === "replicate" && /^https?:/i.test(String(source || ""))) {
+        if (!isTrustedProviderOutputUrl("replicate", source, request.requestUrl)) {
+            throw new Error("Replicate returned an image URL from an untrusted host");
+        }
+    }
+    return materializeProviderImageSource(source, {
+        requestUrl: request.requestUrl,
+        headers: request.headers,
+        signal,
+        fetchImpl: corsFetch,
+        allowBrowserFallback: false,
+        forceFetch: true,
+        allowedHostSuffixes: PROVIDER_OUTPUT_HOST_SUFFIXES[provider] || [],
+        credentialHostSuffixes: [],
+        credentialOrigins: provider === "replicate" ? ["https://api.replicate.com"] : [],
+        materializeBytes: createTransientImageObjectUrl,
+    });
+}
+
+function releaseTransientProviderResult(result) {
+    if (typeof result === "string") {
+        releaseTransientBlobUrl(result);
+        return;
+    }
+    if (Array.isArray(result)) {
+        result.forEach(releaseTransientProviderResult);
+        return;
+    }
+    if (!result || typeof result !== "object") return;
+    releaseTransientBlobUrl(result.url);
+    releaseTransientProviderResult(result.images);
+}
+
 async function generateForProvider(prompt, negative, settings, signal, options = {}) {
     const generator = providerGenerators[settings.provider];
     if (!generator) throw new Error(`Unknown provider: ${settings.provider}`);
-    const result = await generator(prompt, negative, settings, signal, options);
-    const normalized = normalizeProviderResult(result, settings, {
-        provider: settings.provider,
-        model: getProviderModelId(settings, settings.provider),
-        resolvedSeed: Number.isFinite(settings.__qigResolvedSeed) ? settings.__qigResolvedSeed : undefined,
-    });
-    const trustedLocalBackend = settings.provider === "local" || settings.provider === "comfyui";
-    const trustedBaseUrl = settings.provider === "proxy"
-        ? settings.proxyUrl
-        : settings.provider === "custom"
-            ? settings.customApiUrl
-        : settings.provider === "novelai"
-            ? settings.naiProxyUrl
-            : settings.provider === "gptimage"
-                ? settings.gptImageProxyUrl
-                : settings.provider === "nanobanana"
-                    ? settings.nanobananaProxyUrl
-                    : "";
-    const safeUrl = normalizeProviderImageSource(normalized.url, { trustedLocalBackend, trustedBaseUrl });
-    if (!safeUrl) throw new Error("Provider returned an unsafe or unsupported image URL");
-    await verifyRenderableImage(safeUrl);
-    return { ...normalized, url: safeUrl };
+    const providerName = PROVIDERS[settings.provider]?.name || settings.provider;
+    const deadline = HOSTED_PROVIDER_IDS.has(settings.provider)
+        ? createHostedProviderDeadline(signal, settings.hostedTimeout, providerName)
+        : null;
+    const runSignal = deadline?.signal || signal;
+    let result;
+    try {
+        result = await generator(prompt, negative, settings, runSignal, options);
+        let normalized;
+        try {
+            normalized = normalizeProviderResult(result, settings, {
+                provider: settings.provider,
+                model: getProviderModelId(settings, settings.provider),
+                resolvedSeed: Number.isFinite(settings.__qigResolvedSeed) ? settings.__qigResolvedSeed : undefined,
+            });
+        } catch (error) {
+            releaseTransientProviderResult(result);
+            throw error;
+        }
+        const normalizedResults = Array.isArray(normalized) ? normalized : [normalized];
+        if (!normalizedResults.length) {
+            releaseTransientProviderResult(result);
+            throw new Error("Provider returned no images");
+        }
+        if (settings.provider === "proxy"
+            && normalizeProxyPayloadSetting(settings.proxyPayloadMode) !== "openai_strict"
+            && Number(settings.proxyCfg) === 0) {
+            for (const item of normalizedResults) {
+                if (item?.effectiveRequest?.parameters) item.effectiveRequest.parameters.cfgScale = 0;
+            }
+        }
+        const trustedLocalBackend = settings.provider === "local" || settings.provider === "comfyui";
+        const trustedBaseUrl = settings.provider === "proxy"
+            ? settings.proxyUrl
+            : settings.provider === "custom"
+                ? settings.customApiUrl
+                : settings.provider === "novelai"
+                    ? settings.naiProxyUrl
+                    : settings.provider === "gptimage"
+                        ? settings.gptImageProxyUrl
+                        : settings.provider === "nanobanana"
+                            ? settings.nanobananaProxyUrl
+                            : "";
+        const validatedResults = [];
+        let outcome;
+        try {
+            outcome = await collectSequentialResults(normalizedResults, async item => {
+                const validated = await materializeAndValidateProviderOutput(item, {
+                    materialize: async source => {
+                        if (settings.provider === "custom" && /^https?:/i.test(String(source || ""))
+                            && !isTrustedProviderOutputUrl("custom", source, settings.customApiUrl, { allowRequestSubdomains: true })
+                            && !isTrustedProviderOutputUrl("custom", source, settings.customApiPollUrl, { allowRequestSubdomains: true })) {
+                            throw new Error("Custom API returned an image URL outside its trusted endpoint origin");
+                        }
+                        return deadline
+                            ? materializeHostedProviderOutput(source, settings.provider, settings, runSignal)
+                            : source;
+                    },
+                    normalize: source => normalizeProviderImageSource(source, { trustedLocalBackend, trustedBaseUrl }),
+                    verify: source => verifyRenderableImage(source, runSignal),
+                    release: releaseTransientBlobUrl,
+                });
+                validatedResults.push(validated);
+                return validated;
+            });
+        } catch (error) {
+            validatedResults.forEach(releaseTransientProviderResult);
+            normalizedResults.forEach(releaseTransientProviderResult);
+            throw error;
+        }
+        if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
+        const safeResults = outcome.results;
+        return Array.isArray(normalized)
+            ? attachResultFailures(safeResults, outcome.errors)
+            : safeResults[0];
+    } catch (error) {
+        if (deadline?.didTimeOut()) throw deadline.timeoutError();
+        throw error;
+    } finally {
+        deadline?.dispose();
+    }
 }
 
 function reportPartialBatchErrors(label, outcome) {
@@ -10605,6 +11931,8 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
         showStatus("❌ No previous prompt to regenerate");
         return;
     }
+    _automationRevision += 1;
+    resetAutoGenerateCadence({ clearTimer: true });
     const liveSettings = getGenerationSettingsForRun();
     const reproducibleSettings = effectiveRequest?.settings && typeof effectiveRequest.settings === "object"
         ? effectiveRequest.settings
@@ -10621,7 +11949,22 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
     const regenerationSettings = reproducibleSettings
         ? { ...settingsWithoutCurrentReferences, ...reproducibleSettings, provider: effectiveRequest.provider || reproducibleSettings.provider || liveSettings.provider }
         : settingsWithoutCurrentReferences;
-    const run = beginGeneration({ settings: regenerationSettings, disableGenerateButton: true });
+    const ctx = getContext?.();
+    const sourceTargetSnapshot = createMessageTargetSnapshot(ctx?.chat, lastGenerationSourceMessageIndex);
+    if ((lastGenerationSourceChatId && lastGenerationSourceChatId !== getContextMediaChatId(ctx))
+        || (Number.isInteger(lastGenerationSourceMessageIndex)
+        && (!sourceTargetSnapshot
+            || (lastGenerationSourceMessageId && sourceTargetSnapshot.messageId !== lastGenerationSourceMessageId)
+            || (lastGenerationSourceMessageSignature && sourceTargetSnapshot.signature !== lastGenerationSourceMessageSignature)))) {
+        showStatus("❌ The original source message changed; regeneration was cancelled");
+        return;
+    }
+    const run = beginGeneration({
+        settings: regenerationSettings,
+        context: ctx,
+        messageSnapshots: sourceTargetSnapshot ? [sourceTargetSnapshot] : [],
+        disableGenerateButton: true,
+    });
     const s = run.settings;
     const batchCount = normalizeBatchCount(s.batchCount);
     const originalSeed = getGenerationSeedValue(s);
@@ -10634,17 +11977,29 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
         checkAborted(cancelCheckpoint);
         if (batchCount <= 1) {
             showStatus("🔄 Regenerating...");
-            const result = await generateForProvider(lastPrompt, lastNegative, s, run.signal, providerRuntimeOptions);
+            const result = await generateForProvider(lastPrompt, lastNegative, s, run.signal, {
+                ...providerRuntimeOptions,
+                batchIndex: 0,
+                batchCount: 1,
+            });
             checkAborted(cancelCheckpoint);
             hideStatus();
             if (result) {
-                const entry = await finalizeGeneratedEntry(result, lastPrompt, lastNegative, s, getGenerationFinalizationOptions(run, {
+                const entries = await finalizeGeneratedResults(result, lastPrompt, lastNegative, s, getGenerationFinalizationOptions(run, {
                     promptWasLLM: lastPromptWasLLM,
                     sourceMessageIndex: Number.isInteger(lastGenerationSourceMessageIndex) ? lastGenerationSourceMessageIndex : undefined,
+                    sourceChatId: sourceTargetSnapshot?.chatId,
+                    sourceMessageId: sourceTargetSnapshot?.messageId,
+                    sourceMessageSignature: sourceTargetSnapshot?.signature,
                 }));
-                if (entry) {
+                reportPartialBatchErrors("Regeneration", {
+                    results: entries,
+                    errors: getResultFailures(entries),
+                });
+                if (entries.length) {
                     assertGenerationCanCommit(run);
-                    displayImage(entry, false, returnFocusElement);
+                    if (entries.length > 1) displayBatchResults(entries, returnFocusElement);
+                    else displayImage(entries[0], false, returnFocusElement);
                 }
             }
         } else {
@@ -10655,11 +12010,18 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
                 showStatus(`🔄 Regenerating ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(lastPrompt);
                 const expandedNegative = expandWildcards(lastNegative);
-                const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, providerRuntimeOptions);
+                const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, {
+                    ...providerRuntimeOptions,
+                    batchIndex: i,
+                    batchCount,
+                });
                 if (result) {
-                    return await finalizeGeneratedEntry(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
+                    return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
                         promptWasLLM: lastPromptWasLLM,
                         sourceMessageIndex: Number.isInteger(lastGenerationSourceMessageIndex) ? lastGenerationSourceMessageIndex : undefined,
+                        sourceChatId: sourceTargetSnapshot?.chatId,
+                        sourceMessageId: sourceTargetSnapshot?.messageId,
+                        sourceMessageSignature: sourceTargetSnapshot?.signature,
                     }));
                 }
                 return null;
@@ -10690,11 +12052,6 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
 }
 
 // === Contextual Filters (lorebook-style prompt injection) ===
-function saveContextualFilters() {
-    safeSetStorage("qig_contextual_filters", JSON.stringify(contextualFilters), "Failed to save contextual filters. Browser storage may be full.");
-    backupToSettings("qig_contextual_filters", contextualFilters);
-}
-
 function isContextualFilterEnabledByPools(filter, enabledPoolIds = getEnabledPoolIdsForCurrentContext()) {
     const poolIds = normalizePoolIdList(filter?.poolIds);
     if (!poolIds.length) return enabledPoolIds.has(DEFAULT_FILTER_POOL_ID);
@@ -10881,7 +12238,8 @@ function getMappedPoolIdsForCopiedFilter(sourcePoolIds, { scope = FILTER_SCOPE_G
     return finalizePoolIdsForScope(mappedPoolIds, scopeInfo);
 }
 
-function addFilterPool(scope = FILTER_SCOPE_GLOBAL) {
+async function addFilterPool(scope = FILTER_SCOPE_GLOBAL) {
+    if (blockFilterStoreMutation()) return;
     const currentCharId = getCurrentCharId();
     const currentCard = getCurrentCardScopeInfo();
     const isCardScope = scope === FILTER_SCOPE_CARD;
@@ -10910,6 +12268,7 @@ function addFilterPool(scope = FILTER_SCOPE_GLOBAL) {
         toastr.warning(`Pool "${name}" already exists in this scope.`);
         return;
     }
+    const previousState = snapshotFilterPoolState();
     createFilterPoolRecord(name, {
         scope: targetScope.scope,
         charId: targetScope.charId,
@@ -10917,11 +12276,11 @@ function addFilterPool(scope = FILTER_SCOPE_GLOBAL) {
         cardLabel: targetScope.cardLabel,
         enable: true,
     });
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function renameFilterPool(poolId) {
+async function renameFilterPool(poolId) {
+    if (blockFilterStoreMutation()) return;
     const pool = filterPools.find(p => p.id === poolId);
     if (!pool) return;
     const rawName = prompt("Rename pool:", pool.name || "");
@@ -10931,13 +12290,14 @@ function renameFilterPool(poolId) {
         toastr.warning("Pool name cannot be empty.");
         return;
     }
+    const previousState = snapshotFilterPoolState();
     pool.name = name;
     pool.updatedAt = new Date().toISOString();
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function deleteFilterPool(poolId) {
+async function deleteFilterPool(poolId) {
+    if (blockFilterStoreMutation()) return;
     if (poolId === DEFAULT_FILTER_POOL_ID) {
         toastr.warning("The default pool cannot be deleted.");
         return;
@@ -10945,6 +12305,7 @@ function deleteFilterPool(poolId) {
     const pool = filterPools.find(p => p.id === poolId);
     if (!pool) return;
     if (!confirm(`Delete pool "${pool.name}"? Filters in this pool will be moved to "${DEFAULT_FILTER_POOL_NAME}" if needed.`)) return;
+    const previousState = snapshotFilterPoolState();
     filterPools = filterPools.filter(p => p.id !== poolId);
     activeFilterPoolIdsGlobal = normalizePoolIdList(activeFilterPoolIdsGlobal).filter(id => id !== poolId);
     const nextByCard = {};
@@ -10976,13 +12337,14 @@ function deleteFilterPool(poolId) {
             ? finalizePoolIdsForScope(nextPoolIds, filterScope)
             : (nextPoolIds.length ? nextPoolIds : [DEFAULT_FILTER_POOL_ID]);
     }
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function toggleFilterPool(poolId) {
+async function toggleFilterPool(poolId) {
+    if (blockFilterStoreMutation()) return;
     const pool = filterPools.find(p => p.id === poolId);
     if (!pool) return;
+    const previousState = snapshotFilterPoolState();
     const scopeInfo = getScopedRecordFromEntity(pool);
     if (scopeInfo.scope === FILTER_SCOPE_CARD && scopeInfo.cardKey) {
         const key = scopeInfo.cardKey;
@@ -11004,11 +12366,12 @@ function toggleFilterPool(poolId) {
         else ids.add(poolId);
         activeFilterPoolIdsGlobal = [...ids];
     }
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function setVisiblePoolsEnabled(enabled) {
+async function setVisiblePoolsEnabled(enabled) {
+    if (blockFilterStoreMutation()) return;
+    const previousState = snapshotFilterPoolState();
     const selectedScope = getSelectedFilterManagerScopeDescriptor();
     const { globalPools, scopedPools } = getVisibleFilterPools(selectedScope);
     if (enabled) {
@@ -11043,9 +12406,7 @@ function setVisiblePoolsEnabled(enabled) {
             else delete activeFilterPoolIdsByChar[key];
         }
     }
-    saveActiveFilterPools();
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
 function showFilterDialog(filter) {
@@ -11243,6 +12604,7 @@ function showFilterDialog(filter) {
             document.getElementById("qig-fd-save").onclick = (e) => {
                 e?.preventDefault?.();
                 e?.stopPropagation?.();
+                if (blockFilterStoreMutation()) return;
                 const name = document.getElementById("qig-fd-name").value.trim();
                 const mode = document.getElementById("qig-fd-mode").value;
                 const keywords = document.getElementById("qig-fd-keywords").value.trim();
@@ -11258,7 +12620,7 @@ function showFilterDialog(filter) {
                 }
                 const selected = [...popup.querySelectorAll(".qig-fd-pool-cb:checked")].map(cb => String(cb.value));
                 const selectedScope = getSelectedScopeInfo();
-                const poolIds = finalizePoolIdsForScope(selected, selectedScope);
+                const poolIds = normalizePoolIdList(selected);
                 if (!poolIds.length) { alert("Select at least one pool."); return; }
                 hidePopup(popup);
                 resolve({
@@ -11287,54 +12649,64 @@ function showFilterDialog(filter) {
 // CONTEXTUAL_FILTERS_CRUD_PLACEHOLDER
 
 async function addContextualFilter() {
+    if (blockFilterStoreMutation()) return;
     const result = await showFilterDialog(null);
     if (!result) return;
+    const previousState = snapshotFilterPoolState();
+    result.poolIds = finalizePoolIdsForScope(result.poolIds, result);
     result.id = generateUUID();
     result.enabled = true;
     result.poolIds = normalizePoolIdList(result.poolIds);
     result.seedOverride = normalizeSeedOverride(result.seedOverride);
     result.sortOrder = getNextContextualFilterSortOrder(result);
     contextualFilters.push(result);
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
 async function editContextualFilter(id) {
+    if (blockFilterStoreMutation()) return;
     const f = contextualFilters.find(x => x.id === id);
     if (!f) return;
     const result = await showFilterDialog(f);
     if (!result) return;
-    const previousScopeKey = getContextualFilterScopeKey(f);
-    Object.assign(f, result);
-    f.poolIds = normalizePoolIdList(f.poolIds);
-    f.seedOverride = normalizeSeedOverride(f.seedOverride);
-    f.sortOrder = previousScopeKey === getContextualFilterScopeKey(f)
-        ? normalizeContextualFilterSortOrder(f.sortOrder, getNextContextualFilterSortOrder(f, id))
-        : getNextContextualFilterSortOrder(f, id);
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    const currentFilter = contextualFilters.find(x => x.id === id);
+    if (!currentFilter) return;
+    const previousState = snapshotFilterPoolState();
+    result.poolIds = finalizePoolIdsForScope(result.poolIds, result);
+    const previousScopeKey = getContextualFilterScopeKey(currentFilter);
+    Object.assign(currentFilter, result);
+    currentFilter.poolIds = normalizePoolIdList(currentFilter.poolIds);
+    currentFilter.seedOverride = normalizeSeedOverride(currentFilter.seedOverride);
+    currentFilter.sortOrder = previousScopeKey === getContextualFilterScopeKey(currentFilter)
+        ? normalizeContextualFilterSortOrder(currentFilter.sortOrder, getNextContextualFilterSortOrder(currentFilter, id))
+        : getNextContextualFilterSortOrder(currentFilter, id);
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function deleteContextualFilter(id) {
+async function deleteContextualFilter(id) {
+    if (blockFilterStoreMutation()) return;
     const idx = contextualFilters.findIndex(x => x.id === id);
     if (idx === -1) return;
+    const previousState = snapshotFilterPoolState();
     contextualFilters.splice(idx, 1);
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function toggleContextualFilter(id) {
+async function toggleContextualFilter(id) {
+    if (blockFilterStoreMutation()) return;
     const f = contextualFilters.find(x => x.id === id);
     if (!f) return;
+    const previousState = snapshotFilterPoolState();
     f.enabled = !f.enabled;
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function clearContextualFilters() {
+async function clearContextualFilters() {
+    if (blockFilterStoreMutation()) return;
     const currentCharId = getCurrentCharId();
     const charName = getCurrentCharName();
     const currentCard = getCurrentCardScopeInfo();
+    const previousState = snapshotFilterPoolState();
     if (currentCard.cardKey || currentCharId != null) {
         const options = [
             { value: 1, label: "All filters" },
@@ -11378,8 +12750,7 @@ function clearContextualFilters() {
         if (!confirm("Clear all contextual filters?")) return;
         contextualFilters = [];
     }
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
 function buildCopiedContextualFilter(filter, { scope = FILTER_SCOPE_GLOBAL, charId = null, cardKey = null, cardLabel = null } = {}) {
@@ -11397,7 +12768,8 @@ function buildCopiedContextualFilter(filter, { scope = FILTER_SCOPE_GLOBAL, char
     };
 }
 
-function duplicateContextualFilter(id) {
+async function duplicateContextualFilter(id) {
+    if (blockFilterStoreMutation()) return;
     const f = contextualFilters.find(x => x.id === id);
     if (!f) return;
     const scopeInfo = getScopedRecordFromEntity(f);
@@ -11419,14 +12791,16 @@ function duplicateContextualFilter(id) {
     } else {
         targetScope = getNormalizedScopedRecord(FILTER_SCOPE_GLOBAL);
     }
+    const previousState = snapshotFilterPoolState();
     contextualFilters.push(buildCopiedContextualFilter(f, targetScope));
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function copyContextualFilterToScope(id, target = "global") {
+async function copyContextualFilterToScope(id, target = "global") {
+    if (blockFilterStoreMutation()) return;
     const filter = contextualFilters.find(entry => entry.id === id);
     if (!filter) return;
+    const previousState = snapshotFilterPoolState();
     if (target === "current-card" || (target === "current" && getCurrentCardKey())) {
         const currentCard = getCurrentCardScopeInfo();
         if (!currentCard.cardKey) {
@@ -11448,11 +12822,11 @@ function copyContextualFilterToScope(id, target = "global") {
     } else {
         contextualFilters.push(buildCopiedContextualFilter(filter, { scope: FILTER_SCOPE_GLOBAL }));
     }
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
-function copyFilterPoolToCurrentCard(poolId) {
+async function copyFilterPoolToCurrentCard(poolId) {
+    if (blockFilterStoreMutation()) return;
     const pool = filterPools.find(entry => entry.id === poolId);
     if (!pool) return;
     const currentCard = getCurrentCardScopeInfo();
@@ -11464,20 +12838,21 @@ function copyFilterPoolToCurrentCard(poolId) {
         scope: FILTER_SCOPE_CARD,
         cardKey: currentCard.cardKey,
     });
+    const previousState = snapshotFilterPoolState();
     ensureFilterPoolByName(pool.name, {
         scope: FILTER_SCOPE_CARD,
         cardKey: currentCard.cardKey,
         cardLabel: currentCard.cardLabel,
         enable: true,
     });
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
-    if (existing) {
+    const saved = await commitFilterPoolStateMutation(previousState);
+    if (saved && existing) {
         toastr.info(`Pool "${pool.name}" already exists for the current card.`);
     }
 }
 
-function copyFilterPoolToCurrentChar(poolId) {
+async function copyFilterPoolToCurrentChar(poolId) {
+    if (blockFilterStoreMutation()) return;
     const pool = filterPools.find(entry => entry.id === poolId);
     if (!pool) return;
     const currentCharId = getCurrentCharId();
@@ -11486,20 +12861,20 @@ function copyFilterPoolToCurrentChar(poolId) {
         return;
     }
     const existing = findFilterPoolByName(pool.name, { scope: FILTER_SCOPE_CHAR, charId: String(currentCharId) });
+    const previousState = snapshotFilterPoolState();
     ensureFilterPoolByName(pool.name, { scope: FILTER_SCOPE_CHAR, charId: String(currentCharId), enable: true });
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
-    if (existing) {
+    const saved = await commitFilterPoolStateMutation(previousState);
+    if (saved && existing) {
         toastr.info(`Pool "${pool.name}" already exists for the current character.`);
     }
 }
 
-function copyFilterPoolToCurrentScope(poolId) {
+async function copyFilterPoolToCurrentScope(poolId) {
     if (getCurrentCardKey()) {
-        copyFilterPoolToCurrentCard(poolId);
+        await copyFilterPoolToCurrentCard(poolId);
         return;
     }
-    copyFilterPoolToCurrentChar(poolId);
+    await copyFilterPoolToCurrentChar(poolId);
 }
 
 function setContextualFilterManagerScope(value) {
@@ -11521,7 +12896,8 @@ function clearContextualFilterManagerDragState() {
     filterManagerUiState.dropPosition = "after";
 }
 
-function moveContextualFilter(draggedId, targetId, position = "after") {
+async function moveContextualFilter(draggedId, targetId, position = "after") {
+    if (blockFilterStoreMutation()) return;
     if (!draggedId || !targetId || draggedId === targetId) return;
 
     const dragged = contextualFilters.find(filter => filter.id === draggedId);
@@ -11539,6 +12915,7 @@ function moveContextualFilter(draggedId, targetId, position = "after") {
         return;
     }
 
+    const previousState = snapshotFilterPoolState();
     const scopeKey = getContextualFilterScopeKey(dragged);
     const scopedFilters = contextualFilters
         .filter(filter => getContextualFilterScopeKey(filter) === scopeKey)
@@ -11556,8 +12933,7 @@ function moveContextualFilter(draggedId, targetId, position = "after") {
     });
 
     clearContextualFilterManagerDragState();
-    ensureFilterPoolsState({ persist: true });
-    renderContextualFilters();
+    await commitFilterPoolStateMutation(previousState);
 }
 
 function getContextualFiltersSummaryViewState() {
@@ -12095,12 +13471,14 @@ let charSettingsBaseState = null;
 let charSettingsBaseCharId = null;
 let charSettingsOverrideApplied = false;
 let charSettingsStateInitialized = false;
+const runLatestCharSettingsLoad = createLatestWinsAsyncRunner();
 
 function getCurrentRefImages(s) {
     if (s.provider === "proxy") return s.proxyRefImages || [];
     if (s.provider === "custom") return s.customApiRefImages || [];
     if (s.provider === "nanobanana") return s.nanobananaRefImages || [];
     if (s.provider === "nanogpt") return s.nanogptRefImages || [];
+    if (s.provider === "local") return s.localRefImage || "";
     return [];
 }
 
@@ -12115,6 +13493,7 @@ function cloneCharScopedState(s = getSettings()) {
         customApiRefImages: [...(s.customApiRefImages || [])],
         nanobananaRefImages: [...(s.nanobananaRefImages || [])],
         nanogptRefImages: [...(s.nanogptRefImages || [])],
+        localRefImage: s.localRefImage || "",
     };
 }
 
@@ -12123,12 +13502,12 @@ function rememberCharSettingsBaseState(state, s = getSettings()) {
     s._charSettingsBaseState = cloneCharScopedState(state);
 }
 
-function applyCharScopedState(state, s = getSettings()) {
+function applyCharScopedState(state, s = getSettings(), { forcePrompt = false } = {}) {
     if (!state) return;
 
     // Detect if user has manually edited the prompt field
     const promptEl = document.getElementById("qig-prompt");
-    const hasManualPromptEdit = promptEl && promptEl.value !== s.prompt;
+    const hasManualPromptEdit = !forcePrompt && promptEl && promptEl.value !== s.prompt;
 
     // Only apply character-scoped prompt if there's no manual edit
     if (!hasManualPromptEdit) {
@@ -12145,6 +13524,7 @@ function applyCharScopedState(state, s = getSettings()) {
     s.customApiRefImages = [...(state.customApiRefImages || [])];
     s.nanobananaRefImages = [...(state.nanobananaRefImages || [])];
     s.nanogptRefImages = [...(state.nanogptRefImages || [])];
+    s.localRefImage = state.localRefImage || "";
 
     const negativeEl = document.getElementById("qig-negative");
     const styleEl = document.getElementById("qig-style");
@@ -12170,6 +13550,13 @@ function applyCharScopedState(state, s = getSettings()) {
     renderCustomApiRefImages();
     renderNanobananaRefImages();
     renderNanogptRefImages();
+    const localPreview = document.getElementById("qig-local-ref-preview");
+    if (localPreview) {
+        localPreview.src = s.localRefImage || "";
+        localPreview.style.display = s.localRefImage ? "block" : "none";
+    }
+    const localClear = document.getElementById("qig-local-ref-clear");
+    if (localClear) localClear.style.display = s.localRefImage ? "block" : "none";
 }
 
 function getCurrentCharId() {
@@ -12193,26 +13580,42 @@ function getCurrentCharOverride() {
     const legacyKey = getLegacyCurrentCharStorageKey();
     const settings = charSettings[charId] || (legacyKey ? charSettings[legacyKey] : null);
     const refs = charRefImages[charId] || (legacyKey ? charRefImages[legacyKey] : null);
-    return settings || (Array.isArray(refs) && refs.length ? { refsOnly: true } : null);
+    const normalizedRefs = normalizeCharacterReferenceRecord(refs, getSettings()?.provider);
+    return settings || (Object.keys(normalizedRefs).length ? { refsOnly: true } : null);
 }
 
-function persistCharacterStores(nextSettings, nextRefs, errorMessage) {
-    try {
-        const transaction = stageStorageTransaction(localStorage, {
-            qig_char_settings: JSON.stringify(nextSettings),
-            qig_char_ref_images: JSON.stringify(nextRefs),
-        });
-        transaction.commit();
-        charSettings = nextSettings;
-        charRefImages = nextRefs;
-        backupToSettings("qig_char_settings", charSettings);
-        backupToSettings("qig_char_ref_images", charRefImages);
-        return true;
-    } catch (error) {
-        log(`Character settings storage failed: ${error.message}`);
-        toastr.error(errorMessage || "Failed to save character settings. Browser storage may be full.");
-        return false;
-    }
+async function persistCharacterStores(nextSettings, nextRefs, errorMessage) {
+    if (blockMutationDuringSettingsImport()) return false;
+    return runSynchronizedStoreMutations([
+        "qig_char_settings",
+        "qig_char_ref_images",
+    ], async () => {
+        const settings = extension_settings?.[extensionName];
+        if (!settings) return false;
+        try {
+            const result = await persistSynchronizedStores({
+                storage: localStorage,
+                settings,
+                stores: [
+                    { localKey: "qig_char_settings", backupKey: "_backupCharSettings", value: nextSettings },
+                    { localKey: "qig_char_ref_images", backupKey: "_backupCharRefImages", value: nextRefs },
+                ],
+                save: flushSettingsBackup,
+            });
+            charSettings = cloneSynchronizedValue(nextSettings);
+            charRefImages = cloneSynchronizedValue(nextRefs);
+            if (!result.cacheSaved) {
+                const failedKeys = result.cacheErrors.map(item => item.localKey).join(", ");
+                log(`Character settings local cache write failed for ${failedKeys}`);
+                toastr?.warning?.("Saved character settings to your SillyTavern account, but this browser's local cache could not be fully updated.");
+            }
+            return true;
+        } catch (error) {
+            log(`Character settings synchronization failed: ${error.message}`);
+            toastr.error(errorMessage || "Failed to synchronize character settings with SillyTavern. No changes were saved.");
+            return false;
+        }
+    });
 }
 
 function updateCharacterSettingsUI() {
@@ -12467,7 +13870,7 @@ function ensureContextualFilterManagerScopeSelection(scopeOptions = getContextua
     return filterManagerUiState.selectedScopeCharId;
 }
 
-function saveCharSettings() {
+async function saveCharSettings() {
     const charId = getCurrentCharId();
     if (charId == null) {
         toastr.info("Open an individual character chat to save a character override");
@@ -12481,21 +13884,23 @@ function saveCharSettings() {
         width: s.width,
         height: s.height
     } };
-    const nextRefs = { ...charRefImages };
+    const nextRefs = cloneSynchronizedValue(charRefImages);
     const refs = getCurrentRefImages(s);
-    if (refs.length > 0) {
-        nextRefs[charId] = [...refs];
+    const existingRefs = normalizeCharacterReferenceRecord(nextRefs[charId], s.provider);
+    const providerRefs = setCharacterProviderReferences(existingRefs, s.provider, refs);
+    if (Object.keys(providerRefs).length > 0) {
+        nextRefs[charId] = providerRefs;
     } else {
         delete nextRefs[charId];
     }
-    if (!persistCharacterStores(nextSettings, nextRefs)) return;
+    if (!await persistCharacterStores(nextSettings, nextRefs)) return;
     charSettingsOverrideApplied = true;
     updateCharacterSettingsUI();
     showStatus("💾 Saved settings for this character");
     setTimeout(hideStatus, 2000);
 }
 
-function resetCharSettings() {
+async function resetCharSettings() {
     const charId = getCurrentCharId();
     if (charId == null || !getCurrentCharOverride()) return;
     if (!confirm(`Remove the QIG override for ${getCurrentCharName() || "this character"}?`)) return;
@@ -12508,19 +13913,36 @@ function resetCharSettings() {
         delete nextSettings[legacyKey];
         delete nextRefs[legacyKey];
     }
-    if (!persistCharacterStores(nextSettings, nextRefs, "Failed to remove the character override. No changes were saved.")) return;
     const hadRecoverableBase = !!charSettingsBaseState;
-    if (hadRecoverableBase) applyCharScopedState(charSettingsBaseState);
+    const s = getSettings();
+    const previousActiveState = cloneCharScopedState(s);
+    const previousPersistedBase = cloneSynchronizedValue(s._charSettingsBaseState);
+    const previousOverrideApplied = charSettingsOverrideApplied;
+    const persisted = await applyStateBeforePersistence({
+        apply() {
+            if (hadRecoverableBase) applyCharScopedState(charSettingsBaseState, s, { forcePrompt: true });
+            charSettingsOverrideApplied = false;
+        },
+        persist: () => persistCharacterStores(nextSettings, nextRefs, "Failed to remove the character override. No changes were saved."),
+        rollback() {
+            applyCharScopedState(previousActiveState, s, { forcePrompt: true });
+            s._charSettingsBaseState = previousPersistedBase;
+            charSettingsOverrideApplied = previousOverrideApplied;
+        },
+    });
+    if (!persisted) {
+        updateCharacterSettingsUI();
+        return;
+    }
     rememberCharSettingsBaseState(getSettings());
-    charSettingsOverrideApplied = false;
-    saveSettingsDebounced();
     updateCharacterSettingsUI();
     toastr.success(hadRecoverableBase
         ? "Character override removed"
         : "Character override removed; current values are now the global settings");
 }
 
-function loadCharSettings() {
+async function performLoadCharSettings(isCurrent) {
+    if (!isCurrent()) return false;
     const s = getSettings();
     const charId = getCurrentCharId();
     if (!document.getElementById("qig-prompt")) return false;
@@ -12551,16 +13973,25 @@ function loadCharSettings() {
     const legacyKey = getLegacyCurrentCharStorageKey();
     if (!charSettings[charId] && legacyKey && charSettings[legacyKey]) {
         const nextSettings = { ...charSettings, [charId]: { ...charSettings[legacyKey] } };
-        persistCharacterStores(nextSettings, charRefImages);
+        await persistCharacterStores(nextSettings, charRefImages);
+        if (!isCurrent()) return false;
     }
-    if (!charRefImages[charId] && legacyKey && Array.isArray(charRefImages[legacyKey])) {
-        const nextRefs = { ...charRefImages, [charId]: [...charRefImages[legacyKey]] };
-        persistCharacterStores(charSettings, nextRefs);
+    const rawRefs = charRefImages[charId] ?? (legacyKey ? charRefImages[legacyKey] : null);
+    const normalizedRefRecord = normalizeCharacterReferenceRecord(rawRefs, s.provider);
+    if (rawRefs && (Array.isArray(rawRefs) || !charRefImages[charId])) {
+        const nextRefs = cloneSynchronizedValue(charRefImages);
+        if (Object.keys(normalizedRefRecord).length) nextRefs[charId] = normalizedRefRecord;
+        if (legacyKey && legacyKey !== String(charId)) delete nextRefs[legacyKey];
+        await persistCharacterStores(charSettings, nextRefs);
+        if (!isCurrent()) return false;
     }
-    const hasSettings = !!charSettings[charId];
-    const refs = Array.isArray(charRefImages[charId]) ? charRefImages[charId] : [];
-    const hasRefs = refs.length > 0;
-    const hasOverride = hasSettings || hasRefs;
+    const settingsRecord = charSettings[charId] || (legacyKey ? charSettings[legacyKey] : null);
+    const hasSettings = !!settingsRecord;
+    const refRecord = normalizeCharacterReferenceRecord(charRefImages[charId] || normalizedRefRecord, s.provider);
+    const refs = getCharacterProviderReferences(refRecord, s.provider);
+    const hasRefs = typeof refs === "string" ? !!refs : refs.length > 0;
+    const hasStoredRefs = hasCharacterReferenceOverrides(refRecord);
+    const hasOverride = hasSettings || hasStoredRefs;
     if (charSettingsBaseCharId !== charId) {
         const persistedBase = s._charSettingsBaseState;
         if (!hasOverride) {
@@ -12576,7 +14007,7 @@ function loadCharSettings() {
         }
         charSettingsBaseCharId = charId;
     }
-    if (!hasSettings && !hasRefs) {
+    if (!hasSettings && !hasStoredRefs) {
         if (charSettingsBaseState) applyCharScopedState(charSettingsBaseState, s);
         rememberCharSettingsBaseState(s, s);
         charSettingsOverrideApplied = false;
@@ -12587,7 +14018,7 @@ function loadCharSettings() {
         return false;
     }
 
-    const cs = charSettings[charId] || {};
+    const cs = settingsRecord || {};
     if (Object.prototype.hasOwnProperty.call(cs, "prompt")) {
         s.prompt = cs.prompt ?? "";
         document.getElementById("qig-prompt").value = s.prompt;
@@ -12618,6 +14049,7 @@ function loadCharSettings() {
     s.customApiRefImages = [];
     s.nanobananaRefImages = [];
     s.nanogptRefImages = [];
+    s.localRefImage = "";
     if (hasRefs) {
         if (s.provider === "proxy") {
             s.proxyRefImages = [...refs];
@@ -12627,12 +14059,21 @@ function loadCharSettings() {
             s.nanobananaRefImages = [...refs];
         } else if (s.provider === "nanogpt") {
             s.nanogptRefImages = [...refs];
+        } else if (s.provider === "local") {
+            s.localRefImage = refs;
         }
     }
     renderRefImages();
     renderCustomApiRefImages();
     renderNanobananaRefImages();
     renderNanogptRefImages();
+    const localPreview = document.getElementById("qig-local-ref-preview");
+    if (localPreview) {
+        localPreview.src = s.localRefImage || "";
+        localPreview.style.display = s.localRefImage ? "block" : "none";
+    }
+    const localClear = document.getElementById("qig-local-ref-clear");
+    if (localClear) localClear.style.display = s.localRefImage ? "block" : "none";
     charSettingsOverrideApplied = true;
     charSettingsStateInitialized = true;
     saveSettingsDebounced();
@@ -12641,7 +14082,11 @@ function loadCharSettings() {
     return true;
 }
 
-async function saveConnectionProfile() {
+function loadCharSettings() {
+    return runLatestCharSettingsLoad(performLoadCharSettings);
+}
+
+async function saveConnectionProfileNow() {
     const s = getSettings();
     const provider = s.provider;
     const rawName = prompt("Profile name:");
@@ -12653,16 +14098,21 @@ async function saveConnectionProfile() {
     }
     const keys = PROVIDER_KEYS[provider] || [];
     const profile = {};
-    keys.forEach(k => profile[k] = s[k]);
+    keys.forEach(k => profile[k] = cloneSynchronizedValue(s[k]));
     const existing = !!connectionProfiles[provider]?.[name];
     if (existing && !confirm(`Profile "${name}" already exists. Overwrite it?`)) return;
-    if (!connectionProfiles[provider]) connectionProfiles[provider] = {};
-    connectionProfiles[provider][name] = profile;
-    if (!safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to save profile. Browser storage may be full.")) return;
-    if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;
+    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
+    if (!nextProfiles[provider]) nextProfiles[provider] = {};
+    nextProfiles[provider][name] = profile;
+    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to save profile to your SillyTavern account.")) return;
+    connectionProfiles = nextProfiles;
     renderProfileSelect(name);
     showStatus(`${existing ? "♻️ Updated" : "💾 Saved"} profile: ${name}`);
     setTimeout(hideStatus, 2000);
+}
+
+function saveConnectionProfile() {
+    return runSynchronizedStoreMutation("qig_profiles", saveConnectionProfileNow);
 }
 
 function loadConnectionProfile(name) {
@@ -12670,28 +14120,39 @@ function loadConnectionProfile(name) {
     const provider = s.provider;
     const profile = connectionProfiles[provider]?.[name];
     if (!profile) return;
+    const profileSettings = provider === "local" && hasComfyConnectionProfileSignals(profile)
+        ? normalizeComfyIntegrationSettings(profile)
+        : cloneSynchronizedValue(profile);
     for (const key of PROVIDER_KEYS[provider] || []) {
-        if (profile[key] !== undefined) s[key] = profile[key];
+        if (profileSettings[key] !== undefined) s[key] = cloneSynchronizedValue(profileSettings[key]);
     }
     if (provider === "proxy") {
         s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
         normalizeProxyChatImageSettings(s, s);
     }
     saveSettingsDebounced();
-    refreshProviderInputs(provider);
+    refreshAllUI(s);
+    if (provider === "local" && s.localType === "comfyui") {
+        refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
+    }
     renderProfileSelect(name);
     syncGenerationPresetIndicators();
     showStatus(`📂 Loaded profile: ${name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function deleteConnectionProfile(name) {
+async function deleteConnectionProfileNow(name) {
     const provider = getSettings().provider;
     if (!confirm(`Delete profile "${name}"?`)) return;
-    delete connectionProfiles[provider]?.[name];
-    if (!safeSetStorage("qig_profiles", JSON.stringify(connectionProfiles), "Failed to delete profile. Browser storage may be full.")) return;
-    if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;
+    const nextProfiles = cloneSynchronizedValue(connectionProfiles);
+    delete nextProfiles[provider]?.[name];
+    if (!await saveLocalStoreBackupNow("qig_profiles", nextProfiles, "Failed to delete profile from your SillyTavern account.")) return;
+    connectionProfiles = nextProfiles;
     renderProfileSelect();
+}
+
+function deleteConnectionProfile(name) {
+    return runSynchronizedStoreMutation("qig_profiles", () => deleteConnectionProfileNow(name));
 }
 
 function renderProfileSelect(selectedName = "") {
@@ -12715,17 +14176,20 @@ function renderProfileSelect(selectedName = "") {
     if (delBtn) delBtn.onclick = () => { const dd = document.getElementById("qig-profile-dropdown"); if (dd?.value) deleteConnectionProfile(dd.value); };
 }
 
-const COMFY_WORKFLOW_KEYS = ["localModel", "comfyDenoise", "comfyClipSkip", "comfyScheduler", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyWorkflow", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"];
+const COMFY_WORKFLOW_KEYS = ["localModel", "comfyModelLoader", "comfyDenoise", "comfyClipSkip", "comfyScheduler", "comfyUpscale", "comfyUpscaleModel", "comfyLoras", "comfyOutputNodeIds", "comfyOutputImageIndex", "comfyWorkflow", "comfySkipNegativePrompt", "comfyFluxClipModel1", "comfyFluxClipModel2", "comfyFluxVaeModel", "comfyFluxClipType"];
 
 function getComfyWorkflowSnapshot(s = getSettings()) {
     return {
         localModel: s.localModel || "",
+        comfyModelLoader: normalizeComfyModelLoader(s.comfyModelLoader, s),
         comfyDenoise: s.comfyDenoise ?? 1.0,
         comfyClipSkip: s.comfyClipSkip ?? 1,
         comfyScheduler: s.comfyScheduler || "normal",
         comfyUpscale: !!s.comfyUpscale,
         comfyUpscaleModel: s.comfyUpscaleModel || "RealESRGAN_x4plus.pth",
         comfyLoras: s.comfyLoras || "",
+        comfyOutputNodeIds: s.comfyOutputNodeIds || "",
+        comfyOutputImageIndex: normalizeComfyOutputImageIndex(s.comfyOutputImageIndex),
         comfyWorkflow: s.comfyWorkflow || "",
         comfySkipNegativePrompt: !!s.comfySkipNegativePrompt,
         comfyFluxClipModel1: s.comfyFluxClipModel1 || "",
@@ -12737,8 +14201,9 @@ function getComfyWorkflowSnapshot(s = getSettings()) {
 
 function applyComfyWorkflowSnapshot(snapshot) {
     const s = getSettings();
+    const normalized = normalizeComfyIntegrationSettings(snapshot);
     COMFY_WORKFLOW_KEYS.forEach(k => {
-        if (snapshot[k] !== undefined) s[k] = snapshot[k];
+        if (normalized[k] !== undefined) s[k] = normalized[k];
     });
     s.localType = "comfyui";
 }
@@ -12747,8 +14212,10 @@ function saveComfyWorkflowStore(errorMessage = "Failed to save workflow presets.
     return saveLocalStoreBackup("qig_comfy_workflows", comfyWorkflows, errorMessage);
 }
 
-async function saveComfyWorkflowStoreNow(errorMessage = "Failed to save workflow presets. Browser storage may be full.") {
-    return saveLocalStoreBackupNow("qig_comfy_workflows", comfyWorkflows, errorMessage);
+async function commitComfyWorkflowStore(nextStore, errorMessage = "Failed to synchronize workflow presets with SillyTavern.") {
+    if (!await saveLocalStoreBackupNow("qig_comfy_workflows", nextStore, errorMessage)) return false;
+    comfyWorkflows = nextStore;
+    return true;
 }
 
 function setComfyWorkflowActionState(hasSelection) {
@@ -12789,13 +14256,14 @@ function loadSelectedComfyWorkflowPreset() {
     }
     applyComfyWorkflowSnapshot(preset);
     saveSettingsDebounced();
-    refreshProviderInputs("local");
+    refreshAllUI(getSettings());
+    refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
     renderComfyWorkflowPresets(preset.id);
     showStatus(`📂 Loaded workflow preset: ${preset.name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function saveComfyWorkflowPresetAs() {
+async function saveComfyWorkflowPresetAsNow() {
     const rawName = prompt("Workflow preset name:");
     if (rawName == null) return;
     const name = rawName.trim();
@@ -12807,64 +14275,88 @@ async function saveComfyWorkflowPresetAs() {
     const snapshot = getComfyWorkflowSnapshot();
     if (existing) {
         if (!confirm(`Workflow preset "${name}" already exists. Overwrite it?`)) return;
-        Object.assign(existing, snapshot, { updatedAt: new Date().toISOString() });
-        if (!await saveComfyWorkflowStoreNow()) return;
+        const nextStore = comfyWorkflows.map(workflow => workflow.id === existing.id
+            ? { ...workflow, ...snapshot, updatedAt: new Date().toISOString() }
+            : workflow);
+        if (!await commitComfyWorkflowStore(nextStore)) return;
         renderComfyWorkflowPresets(existing.id);
         showStatus(`♻️ Updated workflow preset: ${name}`);
         setTimeout(hideStatus, 2000);
         return;
     }
     const id = `cwf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    comfyWorkflows.push({ id, name, ...snapshot, updatedAt: new Date().toISOString() });
-    if (!await saveComfyWorkflowStoreNow()) return;
+    const nextStore = [...comfyWorkflows, { id, name, ...snapshot, updatedAt: new Date().toISOString() }];
+    if (!await commitComfyWorkflowStore(nextStore)) return;
     renderComfyWorkflowPresets(id);
     showStatus(`💾 Saved workflow preset: ${name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function updateSelectedComfyWorkflowPreset() {
+function saveComfyWorkflowPresetAs() {
+    return runSynchronizedStoreMutation("qig_comfy_workflows", saveComfyWorkflowPresetAsNow);
+}
+
+async function updateSelectedComfyWorkflowPresetNow() {
     const preset = getSelectedComfyWorkflowPreset();
     if (!preset) {
         toastr.warning("Select a workflow preset first");
         return;
     }
     if (!confirm(`Overwrite workflow preset "${preset.name}" with current Comfy settings?`)) return;
-    Object.assign(preset, getComfyWorkflowSnapshot(), { updatedAt: new Date().toISOString() });
-    if (!await saveComfyWorkflowStoreNow()) return;
+    const nextStore = comfyWorkflows.map(workflow => workflow.id === preset.id
+        ? { ...workflow, ...getComfyWorkflowSnapshot(), updatedAt: new Date().toISOString() }
+        : workflow);
+    if (!await commitComfyWorkflowStore(nextStore)) return;
     renderComfyWorkflowPresets(preset.id);
     showStatus(`♻️ Updated workflow preset: ${preset.name}`);
     setTimeout(hideStatus, 2000);
 }
 
-async function deleteSelectedComfyWorkflowPreset() {
+function updateSelectedComfyWorkflowPreset() {
+    return runSynchronizedStoreMutation("qig_comfy_workflows", updateSelectedComfyWorkflowPresetNow);
+}
+
+async function deleteSelectedComfyWorkflowPresetNow() {
     const preset = getSelectedComfyWorkflowPreset();
     if (!preset) {
         toastr.warning("Select a workflow preset first");
         return;
     }
     if (!confirm(`Delete workflow preset "${preset.name}"?`)) return;
-    comfyWorkflows = comfyWorkflows.filter(w => w.id !== preset.id);
-    if (!await saveComfyWorkflowStoreNow()) return;
+    const nextStore = comfyWorkflows.filter(w => w.id !== preset.id);
+    if (!await commitComfyWorkflowStore(nextStore)) return;
     renderComfyWorkflowPresets("");
     showStatus(`🗑️ Deleted workflow preset: ${preset.name}`);
     setTimeout(hideStatus, 2000);
 }
 
+function deleteSelectedComfyWorkflowPreset() {
+    return runSynchronizedStoreMutation("qig_comfy_workflows", deleteSelectedComfyWorkflowPresetNow);
+}
+
 // === Generation Presets ===
-const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "batchCount", "sequentialSeeds", "a1111Scheduler", "comfyScheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength"];
+const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "llmEditPrompt", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
+const PROVIDER_PRESET_KEYS = Object.freeze({
+    local: ["a1111Scheduler", "comfyScheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength"],
+    nanobanana: ["nanobananaNbpMode", "nanobananaNbpPreset", "nanobananaNbpUseNegative", "nanobananaNbpCustomDirector", "nanobananaNbpCustomPrompt", "nanobananaExtraInstructions"],
+});
 
 function getGenerationPresetKeys(presetOrSettings) {
-    if (presetOrSettings?.provider === "proxy") return [...PRESET_KEYS, ...PROXY_RECIPE_KEYS];
-    if (presetOrSettings?.provider === "custom") return [...PRESET_KEYS, ...CUSTOM_API_RECIPE_KEYS];
-    return PRESET_KEYS;
+    const provider = presetOrSettings?.provider;
+    const providerKeys = PROVIDER_PRESET_KEYS[provider] || [];
+    if (provider === "proxy") return [...PRESET_KEYS, ...providerKeys, ...PROXY_RECIPE_KEYS];
+    if (provider === "custom") return [...PRESET_KEYS, ...providerKeys, ...CUSTOM_API_RECIPE_KEYS];
+    return [...PRESET_KEYS, ...providerKeys];
 }
 
 function saveGenerationPresetStore(errorMessage = "Failed to save preset. Browser storage may be full.") {
     return saveLocalStoreBackup("qig_gen_presets", generationPresets, errorMessage);
 }
 
-async function saveGenerationPresetStoreNow(errorMessage = "Failed to save preset. Browser storage may be full.") {
-    return saveLocalStoreBackupNow("qig_gen_presets", generationPresets, errorMessage);
+async function commitGenerationPresetStore(nextStore, errorMessage = "Failed to synchronize presets with SillyTavern.") {
+    if (!await saveLocalStoreBackupNow("qig_gen_presets", nextStore, errorMessage)) return false;
+    generationPresets = nextStore;
+    return true;
 }
 
 function ensureGenerationPresetIds({ persist = false } = {}) {
@@ -12913,6 +14405,7 @@ function normalizeGenerationPresetStore(presets = generationPresets) {
     let changed = false;
     for (const preset of presets) {
         if (!preset || typeof preset !== "object") continue;
+        if (preset.provider !== "proxy") continue;
         const before = JSON.stringify([
             preset.proxyChatImageMode,
             preset.proxyChatImageAllowImagesEndpoint,
@@ -12933,6 +14426,40 @@ function normalizeGenerationPresetStore(presets = generationPresets) {
             preset.proxyEndpointMode,
         ]);
         if (before !== after) changed = true;
+    }
+    return changed;
+}
+
+function normalizeComfyConnectionProfileStore(profiles = connectionProfiles) {
+    const localProfiles = profiles?.local;
+    if (!localProfiles || typeof localProfiles !== "object") return false;
+    let changed = false;
+    for (const [name, profile] of Object.entries(localProfiles)) {
+        if (!hasComfyConnectionProfileSignals(profile)) continue;
+        const normalized = normalizeComfyIntegrationSettings(profile);
+        if (profile.comfyModelLoader !== normalized.comfyModelLoader
+            || profile.comfyFluxVaeModel !== normalized.comfyFluxVaeModel
+            || !Object.is(profile.comfyOutputImageIndex, normalized.comfyOutputImageIndex)) {
+            localProfiles[name] = normalized;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function normalizeComfyWorkflowPresetStore(workflows = comfyWorkflows) {
+    if (!Array.isArray(workflows)) return false;
+    let changed = false;
+    for (let index = 0; index < workflows.length; index++) {
+        const workflow = workflows[index];
+        if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) continue;
+        const normalized = normalizeComfyIntegrationSettings(workflow);
+        if (workflow.comfyModelLoader !== normalized.comfyModelLoader
+            || workflow.comfyFluxVaeModel !== normalized.comfyFluxVaeModel
+            || !Object.is(workflow.comfyOutputImageIndex, normalized.comfyOutputImageIndex)) {
+            workflows[index] = normalized;
+            changed = true;
+        }
     }
     return changed;
 }
@@ -12987,25 +14514,31 @@ function syncGenerationPresetIndicators() {
     });
 }
 
-async function savePreset() {
+async function savePresetNow() {
     const name = prompt("Preset name:");
     if (!name) return;
     ensureFilterPoolsState();
     const s = getSettings();
     const preset = { id: generateUUID(), name };
-    getGenerationPresetKeys(s).forEach(k => preset[k] = s[k]);
+    getGenerationPresetKeys(s).forEach(k => preset[k] = cloneSynchronizedValue(s[k]));
     // Include ST Style toggle state
     if (s.useSTStyle !== undefined) preset.useSTStyle = s.useSTStyle;
     // Include inject mode settings
-    const injectKeys = ["injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
+    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
     injectKeys.forEach(k => { if (s[k] !== undefined) preset[k] = s[k]; });
-    generationPresets.push(preset);
-    if (!await saveGenerationPresetStoreNow()) return;
-    setActiveGenerationPresetId(preset.id, { persist: false });
-    saveSettingsDebounced();
+    const previousActiveId = String(s.lastLoadedPresetId || "");
+    s.lastLoadedPresetId = preset.id;
+    if (!await commitGenerationPresetStore([...generationPresets, preset])) {
+        s.lastLoadedPresetId = previousActiveId;
+        return;
+    }
     renderPresets();
     showStatus(`💾 Saved preset: ${name}`);
     setTimeout(hideStatus, 2000);
+}
+
+function savePreset() {
+    return runSynchronizedStoreMutation("qig_gen_presets", savePresetNow);
 }
 
 function loadPreset(i) {
@@ -13013,23 +14546,31 @@ function loadPreset(i) {
     const p = generationPresets[i];
     if (!p) return;
     const s = getSettings();
-    getGenerationPresetKeys(p).forEach(k => { if (p[k] !== undefined) s[k] = p[k]; });
+    getGenerationPresetKeys(p).forEach(k => { if (p[k] !== undefined) s[k] = cloneSynchronizedValue(p[k]); });
     if (p.provider === "proxy") {
         if (p.proxySteps === undefined && p.steps !== undefined) s.proxySteps = p.steps;
         if (p.proxyCfg === undefined && p.cfgScale !== undefined) s.proxyCfg = p.cfgScale;
         if (p.proxySampler === undefined && p.sampler !== undefined) s.proxySampler = p.sampler;
         if (p.proxySeed === undefined && p.seed !== undefined) s.proxySeed = p.seed;
     }
-    normalizeProxyChatImageSettings(s, p);
-    s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
-    normalizeProxyChatImageSettings(s, s);
+    if (p.provider === "proxy") {
+        normalizeProxyChatImageSettings(s, p);
+        s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
+        normalizeProxyChatImageSettings(s, s);
+    }
     ensureFilterPoolsState();
     renderContextualFilters();
     // Restore ST Style toggle
     if (p.useSTStyle !== undefined) { s.useSTStyle = p.useSTStyle; }
     // Restore inject mode settings
-    const injectKeys = ["injectEnabled", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
+    const previousAutoGenerate = !!s.autoGenerate;
+    const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
     injectKeys.forEach(k => { if (p[k] !== undefined) s[k] = p[k]; });
+    if (s.injectEnabled && p.autoGenerate === undefined) s.autoGenerate = true;
+    if (previousAutoGenerate !== !!s.autoGenerate) {
+        _automationRevision += 1;
+        resetAutoGenerateCadence({ clearTimer: true });
+    }
     s.paletteMode = normalizePaletteMode(s.paletteMode);
     s.lastLoadedPresetId = p.id || "";
     saveSettingsDebounced();
@@ -13040,26 +14581,42 @@ function loadPreset(i) {
     setTimeout(hideStatus, 2000);
 }
 
-async function deletePreset(i) {
-    const removed = generationPresets.splice(i, 1)[0];
-    if (removed?.id && getActiveGenerationPresetId() === removed.id) {
-        setActiveGenerationPresetId("", { persist: false });
+async function deletePresetNow(i) {
+    const removed = generationPresets[i];
+    if (!removed) return;
+    const nextStore = generationPresets.filter((_, index) => index !== i);
+    const settings = getSettings();
+    const previousActiveId = String(settings.lastLoadedPresetId || "");
+    if (removed.id && previousActiveId === removed.id) settings.lastLoadedPresetId = "";
+    if (!await commitGenerationPresetStore(nextStore, "Failed to delete preset from your SillyTavern account.")) {
+        settings.lastLoadedPresetId = previousActiveId;
+        return;
     }
     syncActiveGenerationPresetSetting({ persist: false });
-    if (!await saveGenerationPresetStoreNow("Failed to delete preset. Browser storage may be full.")) return;
     closePalettePresetMenu();
     renderPresets();
 }
 
-async function clearPresets() {
+function deletePreset(i) {
+    return runSynchronizedStoreMutation("qig_gen_presets", () => deletePresetNow(i));
+}
+
+async function clearPresetsNow() {
     if (confirm("Clear all presets?")) {
-        generationPresets = [];
-        localStorage.removeItem("qig_gen_presets");
-        setActiveGenerationPresetId("", { persist: false });
-        if (!await saveBackupToSettings("qig_gen_presets", generationPresets)) return;
+        const settings = getSettings();
+        const previousActiveId = String(settings.lastLoadedPresetId || "");
+        settings.lastLoadedPresetId = "";
+        if (!await commitGenerationPresetStore([], "Failed to clear presets from your SillyTavern account.")) {
+            settings.lastLoadedPresetId = previousActiveId;
+            return;
+        }
         closePalettePresetMenu();
         renderPresets();
     }
+}
+
+function clearPresets() {
+    return runSynchronizedStoreMutation("qig_gen_presets", clearPresetsNow);
 }
 
 function seedStarterPresets() {
@@ -13238,6 +14795,7 @@ function applyInjectTagNameChange(nextTagName) {
 }
 
 function refreshAllUI(s) {
+    normalizeGenerationNumericSettings(s);
     const fields = {
         "qig-prompt": "prompt", "qig-negative": "negativePrompt", "qig-quality": "qualityTags",
         "qig-width": "width", "qig-height": "height",
@@ -13245,6 +14803,7 @@ function refreshAllUI(s) {
         "qig-llm-style": "llmPromptStyle",
         "qig-llm-prefill": "llmPrefill",
         "qig-llm-custom": "llmCustomInstruction",
+        "qig-msg-range": "messageRange",
         "qig-auto-generate-every": "autoGenerateEveryMessages",
         "qig-context-media-every": "contextMediaEveryMessages",
         "qig-context-media-confidence": "contextMediaConfidence",
@@ -13252,11 +14811,16 @@ function refreshAllUI(s) {
         "qig-two-step-instruction": "twoStepInstruction",
         "qig-background-mode": "backgroundMode",
         "qig-output-mode": "outputMode",
+        "qig-manual-insert-target": "manualInsertTarget",
         "qig-palette-mode": "paletteMode",
+        "qig-hosted-timeout": "hostedTimeout",
         "qig-inject-tag-name": "injectTagName",
         "qig-inject-prompt": "injectPrompt", "qig-inject-regex": "injectRegex",
         "qig-inject-position": "injectPosition", "qig-inject-depth": "injectDepth",
         "qig-inject-insert-mode": "injectInsertMode",
+        "qig-llm-override-profile": "llmOverrideProfileId",
+        "qig-llm-override-preset-select": "llmOverridePreset",
+        "qig-llm-override-max": "llmOverrideMaxTokens",
         "qig-proxy-chat-system": "proxyChatImageSystemPrompt",
         "qig-proxy-chat-max-tokens": "proxyChatImageMaxTokens"
     };
@@ -13270,7 +14834,14 @@ function refreshAllUI(s) {
     const checks = {
         "qig-append-quality": "appendQuality",
         "qig-use-llm": "useLLMPrompt", "qig-auto-generate": "autoGenerate",
+        "qig-paragraph-picker": "enableParagraphPicker",
+        "qig-llm-edit": "llmEditPrompt", "qig-llm-quality": "llmAddQuality",
+        "qig-llm-lighting": "llmAddLighting", "qig-llm-artist": "llmAddArtist",
         "qig-two-step-prompt": "twoStepPrompt", "qig-auto-background": "autoSetBackground",
+        "qig-auto-insert": "autoInsert", "qig-insert-hidden-reply": "insertAsHiddenReply",
+        "qig-confirm-generate": "confirmBeforeGenerate",
+        "qig-save-to-server": "saveToServer", "qig-save-to-server-meta": "saveToServerEmbedMetadata",
+        "qig-disable-palette": "disablePaletteButton", "qig-llm-override": "llmOverrideEnabled",
         "qig-seq-seeds": "sequentialSeeds",
         "qig-use-st-style": "useSTStyle",
         "qig-context-media-enabled": "contextMediaEnabled",
@@ -13287,6 +14858,39 @@ function refreshAllUI(s) {
     if (contextMediaDelay) contextMediaDelay.value = String((s.contextMediaDelayMs ?? 0) / 1000);
     syncTwoStepPromptControls(s);
     syncBackgroundControls(s);
+    const llmOptions = document.getElementById("qig-llm-options");
+    if (llmOptions) llmOptions.style.display = s.useLLMPrompt ? "block" : "none";
+    const customLlm = document.getElementById("qig-llm-custom-wrap");
+    if (customLlm) customLlm.style.display = s.llmPromptStyle === "custom" ? "block" : "none";
+    const hiddenReply = document.getElementById("qig-insert-hidden-reply");
+    if (hiddenReply) {
+        hiddenReply.disabled = !s.autoInsert;
+        const label = hiddenReply.closest("label");
+        if (label) label.style.opacity = s.autoInsert ? "1" : "0.6";
+    }
+    const saveMetadata = document.getElementById("qig-save-to-server-meta");
+    if (saveMetadata) saveMetadata.disabled = !s.saveToServer;
+    const overrideOptions = document.getElementById("qig-llm-override-options");
+    if (overrideOptions) overrideOptions.style.display = s.llmOverrideEnabled ? "block" : "none";
+    if (s.llmOverrideEnabled) {
+        populateConnectionProfiles("qig-llm-override-profile", s.llmOverrideProfileId);
+        populatePresetList("qig-llm-override-preset-select", s.llmOverridePreset);
+    }
+    const nbpOptions = document.getElementById("qig-nanobanana-nbp-options");
+    if (nbpOptions) nbpOptions.style.display = s.nanobananaNbpMode !== false ? "block" : "none";
+    const nbpCustom = document.getElementById("qig-nanobanana-custom-director-wrap");
+    if (nbpCustom) nbpCustom.style.display = normalizeNbpDirectorPreset(s.nanobananaNbpPreset) === "custom" ? "block" : "none";
+    const localRefPreview = document.getElementById("qig-local-ref-preview");
+    if (localRefPreview) {
+        localRefPreview.src = s.localRefImage || "";
+        localRefPreview.style.display = s.localRefImage ? "block" : "none";
+    }
+    const localRefClear = document.getElementById("qig-local-ref-clear");
+    if (localRefClear) localRefClear.style.display = s.localRefImage ? "block" : "none";
+    const paletteButton = document.getElementById("qig-input-btn");
+    if (paletteButton) paletteButton.style.display = s.disablePaletteButton ? "none" : "";
+    const shortcutInput = document.getElementById("qig-generate-shortcut");
+    if (shortcutInput) shortcutInput.value = formatGenerateShortcutLabel();
     syncInjectDefaultFields(s);
     updatePromptSourceUI(s);
     updateProviderUI();
@@ -13385,6 +14989,10 @@ function getSettingsImportSnapshot() {
         activeFilterPoolIdsByChar: snapshotGenerationSettings(activeFilterPoolIdsByChar),
         contextMediaLibrary: snapshotGenerationSettings(contextMediaLibrary),
         selectedComfyWorkflowId,
+        charSettingsBaseState: cloneSynchronizedValue(charSettingsBaseState),
+        charSettingsBaseCharId,
+        charSettingsOverrideApplied,
+        charSettingsStateInitialized,
     };
 }
 
@@ -13402,6 +15010,10 @@ function restoreSettingsImportSnapshot(snapshot) {
     activeFilterPoolIdsByChar = snapshot.activeFilterPoolIdsByChar;
     contextMediaLibrary = snapshot.contextMediaLibrary;
     selectedComfyWorkflowId = snapshot.selectedComfyWorkflowId;
+    charSettingsBaseState = snapshot.charSettingsBaseState;
+    charSettingsBaseCharId = snapshot.charSettingsBaseCharId;
+    charSettingsOverrideApplied = snapshot.charSettingsOverrideApplied;
+    charSettingsStateInitialized = snapshot.charSettingsStateInitialized;
 }
 
 async function commitSettingsImportNow(data) {
@@ -13409,20 +15021,38 @@ async function commitSettingsImportNow(data) {
     const currentSettings = getSettings();
     let storageTransaction = null;
     const contextMediaTouched = data.contextMedia !== undefined || data.activeSettings !== undefined;
+    const mergedPortableStores = mergeSettingsImportStores({ connectionProfiles, generationPresets }, data);
     if (contextMediaTouched) cancelContextMediaWork();
 
     try {
         if (data.activeSettings !== undefined) {
-            const imported = mergePreservingPrivateFields(currentSettings, data.activeSettings);
-            replaceObjectContents(currentSettings, { ...currentSettings, ...imported });
+            const previousAutoGenerate = !!currentSettings.autoGenerate;
+            const activeCharacterOverride = charSettingsOverrideApplied ? cloneCharScopedState(currentSettings) : null;
+            const importBase = charSettingsOverrideApplied && charSettingsBaseState
+                ? { ...currentSettings, ...cloneCharScopedState(charSettingsBaseState) }
+                : currentSettings;
+            const normalizedActiveSettings = normalizeComfyIntegrationSettings(data.activeSettings, { partial: true });
+            const imported = mergePreservingPrivateFields(importBase, normalizedActiveSettings);
+            replaceObjectContents(currentSettings, { ...importBase, ...imported });
+            if (activeCharacterOverride) {
+                rememberCharSettingsBaseState(currentSettings, currentSettings);
+                applyCharScopedState(activeCharacterOverride, currentSettings, { forcePrompt: true });
+            }
+            if (previousAutoGenerate && !currentSettings.autoGenerate) {
+                _automationRevision += 1;
+                resetAutoGenerateCadence({ clearTimer: true });
+            }
         }
         if (data.connectionProfiles !== undefined) {
-            connectionProfiles = mergePreservingPrivateFields(connectionProfiles, data.connectionProfiles);
+            connectionProfiles = mergedPortableStores.connectionProfiles;
+            normalizeComfyConnectionProfileStore(connectionProfiles);
             normalizeProxyProfileStore(connectionProfiles);
         }
-        if (data.comfyWorkflows !== undefined) comfyWorkflows = data.comfyWorkflows;
+        if (data.comfyWorkflows !== undefined) {
+            log("Skipped imported ComfyUI workflow presets because executable graphs are local trust configuration");
+        }
         if (data.generationPresets !== undefined) {
-            generationPresets = data.generationPresets;
+            generationPresets = mergedPortableStores.generationPresets;
             normalizeGenerationPresetStore(generationPresets);
         }
         if (data.charSettings !== undefined) charSettings = data.charSettings;
@@ -13454,7 +15084,6 @@ async function commitSettingsImportNow(data) {
 
         const stores = new Map();
         if (data.connectionProfiles !== undefined) stores.set("qig_profiles", connectionProfiles);
-        if (data.comfyWorkflows !== undefined) stores.set("qig_comfy_workflows", comfyWorkflows);
         if (data.generationPresets !== undefined) stores.set("qig_gen_presets", generationPresets);
         if (data.charSettings !== undefined) stores.set("qig_char_settings", charSettings);
         if (data.charRefImages !== undefined) stores.set("qig_char_ref_images", charRefImages);
@@ -13498,7 +15127,18 @@ async function commitSettingsImportNow(data) {
 }
 
 function commitSettingsImport(data) {
-    return queueContextMediaMutation(() => commitSettingsImportNow(data));
+    return runSynchronizedStoreMutations(
+        Object.keys(BACKUP_KEYS),
+        async () => {
+            settingsImportInProgress = true;
+            try {
+                return await queueContextMediaMutation(() => commitSettingsImportNow(data));
+            } finally {
+                settingsImportInProgress = false;
+            }
+        },
+        { throwIfBusy: true },
+    );
 }
 
 function importSettings() {
@@ -13517,15 +15157,27 @@ function importSettings() {
             const legacyPrivateImages = data.charRefImages !== undefined
                 ? " This legacy file includes private reference images."
                 : "";
-            if (!confirm(`Import validated settings from ${data.exportDate || "unknown date"}? Existing API keys are kept and keys in the file are ignored.${legacyPrivateImages}`)) return;
+            if (!confirm(`Import validated settings from ${data.exportDate || "unknown date"}? Existing API keys and locally trusted executable workflows are kept; credentials and executable workflow bodies in the file are ignored.${legacyPrivateImages}`)) return;
             await commitSettingsImport(data);
             const contextMediaManager = document.getElementById("qig-context-media-manager");
             if (contextMediaManager) hidePopup(contextMediaManager);
             refreshAllUI(getSettings());
+            if (data.charSettings !== undefined || data.charRefImages !== undefined) {
+                if (!charSettingsOverrideApplied) {
+                    charSettingsBaseState = null;
+                    charSettingsBaseCharId = null;
+                    charSettingsStateInitialized = false;
+                }
+                await loadCharSettings();
+            }
             renderPresets();
             renderProfileSelect();
             renderComfyWorkflowPresets();
             renderContextualFilters();
+            const settings = getSettings();
+            if (settings.provider === "local" && settings.localType === "comfyui") {
+                refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
+            }
             toastr.success("Settings imported successfully");
         } catch (err) {
             console.error("[Quick Image Gen] Import failed:", err);
@@ -13562,12 +15214,13 @@ function syncA1111VisibilityFromSettings(s) {
 
 function syncGenerationSettingsControls(settings = getSettings()) {
     const isProxy = settings.provider === "proxy";
+    const isFalSchnell = settings.provider === "fal" && /(?:^|\/)flux\/schnell(?:$|\/)/i.test(String(settings.falModel || ""));
     const samplerValue = isProxy
         ? String(settings.proxySampler || settings.sampler || "")
         : getSamplerControlValue(settings.sampler);
     const values = {
-        "qig-steps": isProxy ? settings.proxySteps : settings.steps,
-        "qig-cfg": isProxy ? settings.proxyCfg : settings.cfgScale,
+        "qig-steps": isProxy ? settings.proxySteps : (isFalSchnell ? getFalEffectiveSteps(settings.falModel, settings.steps) : settings.steps),
+        "qig-cfg": isProxy ? settings.proxyCfg : (isFalSchnell ? getFalEffectiveGuidance(settings.falModel, settings.cfgScale) : settings.cfgScale),
         "qig-sampler": samplerValue,
         "qig-seed": isProxy ? settings.proxySeed : settings.seed,
     };
@@ -13584,6 +15237,13 @@ function syncGenerationSettingsControls(settings = getSettings()) {
         }
         element.value = value ?? "";
     });
+    const stepsElement = document.getElementById("qig-steps");
+    const cfgElement = document.getElementById("qig-cfg");
+    if (stepsElement) stepsElement.max = isFalSchnell ? "12" : "150";
+    if (cfgElement) {
+        cfgElement.min = isProxy ? "0" : "1";
+        cfgElement.max = isFalSchnell ? "20" : "30";
+    }
 }
 
 function refreshProviderInputs(provider, { updateProviderVisibility = true } = {}) {
@@ -13607,12 +15267,16 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         local: [
             ["qig-local-url", "localUrl"],
             ["qig-local-type", "localType"],
+            ["qig-comfy-model-loader", "comfyModelLoader"],
             ["qig-local-model", "localModel"],
             ["qig-local-denoise", "localDenoise"],
             ["qig-comfy-denoise", "comfyDenoise"],
             ["qig-comfy-clip", "comfyClipSkip"],
             ["qig-comfy-scheduler", "comfyScheduler"],
             ["qig-comfy-timeout", "comfyTimeout"],
+            ["qig-comfy-output-nodes", "comfyOutputNodeIds"],
+            ["qig-comfy-output-index", "comfyOutputImageIndex"],
+            ["qig-comfy-legacy-interrupt", "comfyAllowLegacyInterrupt"],
             ["qig-comfy-upscale", "comfyUpscale"],
             ["qig-comfy-upscale-model", "comfyUpscaleModel"],
             ["qig-comfy-workflow", "comfyWorkflow"],
@@ -13704,7 +15368,7 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         syncLocalTypeSections(s.localType);
         syncA1111VisibilityFromSettings(s);
         const fluxOpts = document.getElementById("qig-comfy-flux-opts");
-        if (fluxOpts) fluxOpts.style.display = s.comfySkipNegativePrompt ? "block" : "none";
+        if (fluxOpts) fluxOpts.style.display = normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none";
         const upscaleOpts = document.getElementById("qig-comfy-upscale-opts");
         if (upscaleOpts) upscaleOpts.style.display = s.comfyUpscale ? "block" : "none";
         const localDenoise = document.getElementById("qig-local-denoise-val");
@@ -13784,8 +15448,13 @@ function addProxyRefImage(src, successMessage = "") {
         toastr.warning("Maximum 15 reference images reached");
         return false;
     }
-    if (normalizeProxyRefImageSetting(s.proxyRefImageMode) === "url_only" && !isHttpUrl(value)) {
-        toastr.warning("This proxy compatibility mode only accepts public image URLs for reference images.");
+    if (normalizeProxyRefImageSetting(s.proxyRefImageMode) === "url_only" && !normalizePublicHttpsImageUrl(value)) {
+        toastr.warning("URL-only mode accepts only public HTTPS image URLs without credentials.");
+        return false;
+    }
+    const inlineBytes = s.proxyRefImages.reduce((total, source) => total + getInlineImageBytes(source), 0) + getInlineImageBytes(value);
+    if (inlineBytes > MAX_IMAGE_BYTES) {
+        toastr.warning("Reference images are limited to 25 MiB total");
         return false;
     }
     s.proxyRefImages.push(value);
@@ -13818,7 +15487,7 @@ function updateProxyCompatibilityUI() {
     }
 
     const isUrlOnly = normalizeProxyRefImageSetting(s.proxyRefImageMode) === "url_only";
-    const invalidRefCount = (s.proxyRefImages || []).filter(img => typeof img === "string" && img.trim() && !isHttpUrl(img)).length;
+    const invalidRefCount = (s.proxyRefImages || []).filter(img => typeof img === "string" && img.trim() && !normalizePublicHttpsImageUrl(img)).length;
     const refBtn = getOrCacheElement("qig-proxy-ref-btn");
     const refInput = getOrCacheElement("qig-proxy-ref-input");
     const refUrl = getOrCacheElement("qig-proxy-ref-url");
@@ -13853,7 +15522,7 @@ function updateProxyCompatibilityUI() {
                 : `SSE is forced ${sseMode}.`,
         ];
         if (isUrlOnly) {
-            hintParts.push("Reference images must be public http(s) URLs. Uploaded, local, blob, and data URLs will be rejected.");
+            hintParts.push("Reference images must be public HTTPS URLs without userinfo. HTTP, private, local, uploaded, blob, and data URLs are rejected.");
         }
         if (invalidRefCount > 0) {
             hintParts.push(`${invalidRefCount} saved reference image(s) are incompatible with the current URL-only mode.`);
@@ -13945,24 +15614,30 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
         "qig-sampler": "sampler",
         "qig-seed": "seed",
     };
-    let capabilities = null;
+    let customCapabilities = null;
     if (settings.provider === "custom") {
         try {
-            capabilities = getCustomBackendCapabilities(settings.customApiRequestTemplate);
+            customCapabilities = getCustomBackendCapabilities(settings.customApiRequestTemplate);
         } catch {
             // Keep controls visible while an incomplete template is being edited.
         }
     }
+    const capabilitySettings = settings.provider === "nanogpt"
+        ? { ...settings, __qigNanoGptModelMetadata: nanoGptModelMetadataCache.get(String(settings.nanogptModel || "").trim()) || null }
+        : settings;
+    const capabilities = getProviderGenerationCapabilities(settings.provider, capabilitySettings, customCapabilities);
     for (const [id, capability] of Object.entries(capabilityById)) {
         const field = document.getElementById(id)?.closest(".qig-field");
-        if (field) field.style.display = capabilities && !capabilities[capability] ? "none" : "";
+        if (field) field.style.display = !capabilities[capability] ? "none" : "";
     }
     const sizeField = document.getElementById("qig-size-fieldset");
-    if (sizeField) sizeField.style.display = capabilities && !capabilities.size ? "none" : "";
+    if (sizeField) sizeField.style.display = customCapabilities && !customCapabilities.size ? "none" : "";
     const refsField = document.getElementById("qig-custom-reference-fields");
-    if (refsField) refsField.style.display = capabilities && !capabilities.referenceImages ? "none" : "";
+    if (refsField) refsField.style.display = customCapabilities && !customCapabilities.referenceImages ? "none" : "";
+    const nanoRefsField = document.getElementById("qig-nanogpt-reference-fields");
+    if (nanoRefsField) nanoRefsField.style.display = capabilities.referenceImages ? "" : "none";
     const seqSeeds = document.getElementById("qig-seq-seeds-wrap");
-    if (seqSeeds) seqSeeds.style.display = capabilities && !capabilities.seed
+    if (seqSeeds) seqSeeds.style.display = !capabilities.sequentialSeeds
         ? "none"
         : ((settings.batchCount || 1) > 1 ? "" : "none");
 }
@@ -13974,7 +15649,7 @@ function renderRefImages() {
     const isUrlOnly = normalizeProxyRefImageSetting(getSettings().proxyRefImageMode) === "url_only";
     renderReferenceImageList(container, imgs, removeRefImage, (wrapper, src) => {
         wrapper.title = summarizeProxyRefImage(src || "");
-        if (isUrlOnly && !isHttpUrl(src || "")) wrapper.classList.add("qig-reference-image--invalid");
+        if (isUrlOnly && !normalizePublicHttpsImageUrl(src || "")) wrapper.classList.add("qig-reference-image--invalid");
     });
 }
 
@@ -14056,6 +15731,42 @@ function removeNanogptRefImage(idx) {
     renderNanogptRefImages();
 }
 
+function readFiniteNumericControl(element, previousValue) {
+    const min = Number(element.min);
+    const max = Number(element.max);
+    const step = element.step === "any" ? null : Number(element.step || 1);
+    return readConstrainedNumber(element?.value, {
+        previousValue,
+        min: element.min !== "" && Number.isFinite(min) ? min : -Infinity,
+        max: element.max !== "" && Number.isFinite(max) ? max : Infinity,
+        step: Number.isFinite(step) ? step : null,
+        stepBase: element.min !== "" && Number.isFinite(min) ? min : 0,
+    });
+}
+
+function normalizeGenerationNumericSettings(settings) {
+    if (!settings || typeof settings !== "object") return settings;
+    const normalize = (key, fallback, min, max, step, stepBase = min) => {
+        const parsed = readConstrainedNumber(settings[key], { previousValue: fallback, min, max, step, stepBase });
+        settings[key] = parsed.valid ? parsed.value : fallback;
+    };
+    normalize("width", defaultSettings.width, SIZE_MIN, SIZE_MAX, SIZE_STEP, SIZE_MIN);
+    normalize("height", defaultSettings.height, SIZE_MIN, SIZE_MAX, SIZE_STEP, SIZE_MIN);
+    normalize("steps", defaultSettings.steps, 1, 150, 1, 1);
+    normalize("cfgScale", defaultSettings.cfgScale, 1, 30, 0.5, 1);
+    normalize("seed", defaultSettings.seed, -Infinity, Infinity, 1, 0);
+    normalize("proxySteps", defaultSettings.proxySteps, 1, 150, 1, 1);
+    normalize("proxyCfg", defaultSettings.proxyCfg, 0, 30, 0.5, 0);
+    normalize("proxySeed", defaultSettings.proxySeed, -Infinity, Infinity, 1, 0);
+    normalize("proxyTimeout", defaultSettings.proxyTimeout, 30, 1800, 1, 30);
+    normalize("proxyComfyTimeout", defaultSettings.proxyComfyTimeout, 10, 600, 1, 10);
+    normalize("proxyChatImageMaxTokens", defaultSettings.proxyChatImageMaxTokens, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN, PROXY_CHAT_IMAGE_MAX_TOKENS_MAX, 1, PROXY_CHAT_IMAGE_MAX_TOKENS_MIN);
+    normalize("llmOverrideMaxTokens", defaultSettings.llmOverrideMaxTokens, 50, 4096, 1, 50);
+    normalize("batchCount", defaultSettings.batchCount, 1, 10, 1, 1);
+    normalize("hostedTimeout", defaultSettings.hostedTimeout, 30, 1800, 1, 30);
+    return settings;
+}
+
 function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
     if (typeof isNum === "function") {
         onChange = isNum;
@@ -14067,8 +15778,11 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
     const el = getOrCacheElement(id);
     if (!el) return;
     el.oninput = (e) => {
-        const value = isCheckbox ? e.target.checked : (isNum ? parseFloat(e.target.value) : e.target.value);
-        getSettings()[key] = value;
+        const settings = getSettings();
+        const parsed = isNum ? readFiniteNumericControl(e.target, settings[key]) : null;
+        if (isNum && !parsed.valid) return;
+        const value = isCheckbox ? e.target.checked : (isNum ? parsed.value : e.target.value);
+        settings[key] = value;
         if (key === "prompt") {
             log(`[Prompt] Saved to settings: "${value.substring(0, 50)}..."`);
         }
@@ -14078,6 +15792,20 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
         syncGenerationPresetIndicators();
         syncGenerationPresetIndicators();
     };
+    if (isNum) {
+        el.onchange = (e) => {
+            const settings = getSettings();
+            const parsed = readFiniteNumericControl(e.target, settings[key]);
+            if (!parsed.valid) {
+                e.target.value = String(settings[key] ?? "");
+                return;
+            }
+            settings[key] = parsed.value;
+            e.target.value = String(parsed.value);
+            if (typeof onChange === "function") onChange(parsed.value, e);
+            saveSettingsDebounced();
+        };
+    }
 }
 
 function bindCheckbox(id, key) {
@@ -14101,6 +15829,7 @@ function associateSettingsLabels(root = document.getElementById("qig-settings"))
 function setAutoGenerateEnabled(checked) {
     const normalized = !!checked;
     const s = getSettings();
+    if (s.autoGenerate !== normalized) _automationRevision += 1;
     s.autoGenerate = normalized;
     normalizeAutoGenerateSettings(s);
     syncAutoGenerateControls(s);
@@ -14147,7 +15876,9 @@ function bindAutoGenerateNumberInput(id, key, normalizer) {
     if (!el) return;
     el.oninput = (e) => {
         const s = getSettings();
-        const next = normalizer(e.target.value);
+        const parsed = readFiniteNumericControl(e.target, s[key]);
+        if (!parsed.valid) return;
+        const next = normalizer(parsed.value);
         const changed = s[key] !== next;
         s[key] = next;
         if (changed) resetAutoGenerateCadence({ clearTimer: true });
@@ -14171,8 +15902,9 @@ function pollinationsModelInput(currentVal) {
     for (const model of POLLINATIONS_MODEL_OPTIONS) {
         if (knownIds.has(model.id)) continue;
         knownIds.add(model.id);
+        const authLabel = pollinationsModelRequiresAuth(model.id) ? " (API key required)" : "";
         const label = model.id
-            ? `${model.name} - ${model.id}`
+            ? `${model.name}${authLabel} - ${model.id}`
             : model.name;
         datalistOptions.push(`<option value="${escapeHtml(model.id)}" label="${escapeHtml(label)}"></option>`);
     }
@@ -14281,8 +16013,13 @@ function createUI() {
     const setupPanelExpanded = collapsed.setupPanel ? "false" : "true";
     const promptSourceMode = derivePromptSource(s);
     const selectedNaiResolution = getNaiResolutionOptionValue(s.width, s.height);
-    const activeSteps = s.provider === "proxy" ? (s.proxySteps ?? s.steps) : s.steps;
-    const activeCfg = s.provider === "proxy" ? (s.proxyCfg ?? s.cfgScale) : s.cfgScale;
+    const isFalSchnell = s.provider === "fal" && /(?:^|\/)flux\/schnell(?:$|\/)/i.test(String(s.falModel || ""));
+    const activeSteps = s.provider === "proxy"
+        ? (s.proxySteps ?? s.steps)
+        : (isFalSchnell ? getFalEffectiveSteps(s.falModel, s.steps) : s.steps);
+    const activeCfg = s.provider === "proxy"
+        ? (s.proxyCfg ?? s.cfgScale)
+        : (isFalSchnell ? getFalEffectiveGuidance(s.falModel, s.cfgScale) : s.cfgScale);
     const activeSampler = s.provider === "proxy" ? (s.proxySampler || s.sampler) : s.sampler;
     const activeSeed = s.provider === "proxy" ? (s.proxySeed ?? s.seed) : s.seed;
     const samplerOpts = Object.entries(SAMPLER_GROUPS).map(([group, ids]) =>
@@ -14448,7 +16185,7 @@ function createUI() {
                     <small style="opacity:0.6;font-size:10px;">Defaults to <code>gpt-image-2</code>. You can type any compatible model ID for proxies.</small>
                     <label>Proxy URL <small>(optional — leave blank to use official OpenAI API)</small></label>
                     <input id="qig-gpt-image-proxy-url" type="text" value="${esc(s.gptImageProxyUrl)}" placeholder="https://your-proxy-url/v1">
-                    <small>A URL ending in <code>/v1</code> expands to OpenAI's image route. Any other path, such as <code>/proxy/openai</code>, is used as the exact POST endpoint.</small>
+                    <small>A URL ending in <code>/v1</code> expands to OpenAI's image route. Other paths are tried exactly as entered; Comfy-style <code>/proxy/openai</code> namespaces can retry the standard image route when required.</small>
                     <label>Proxy Key <small>(optional — overrides API key above for proxy)</small></label>
                     <input id="qig-gpt-image-proxy-key" type="password" value="${esc(s.gptImageProxyKey)}" placeholder="Leave blank to use API key above">
                     <div class="qig-row">
@@ -14517,15 +16254,17 @@ function createUI() {
                     <label>NanoGPT API Key</label>
                     <input id="qig-nanogpt-key" type="password" value="${esc(s.nanogptKey)}">
                     <label>Model</label>
-                    <input id="qig-nanogpt-model" type="text" value="${esc(s.nanogptModel)}" placeholder="image-flux-schnell">
-                    <label>Strength <span id="qig-nanogpt-strength-val">${s.nanogptStrength ?? 0.75}</span></label>
-                    <input id="qig-nanogpt-strength" type="range" min="0" max="1" step="0.05" value="${s.nanogptStrength ?? 0.75}">
-                    <label>Reference Images (up to 15)</label>
-                    <div id="qig-nanogpt-refs" style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;"></div>
-                    <input type="file" id="qig-nanogpt-ref-input" accept="image/*" multiple style="display:none">
-                    <div style="display:flex;gap:4px;align-items:center;">
-                        <button id="qig-nanogpt-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
-                        <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                    <input id="qig-nanogpt-model" type="text" value="${esc(s.nanogptModel)}" placeholder="flux-schnell">
+                    <div id="qig-nanogpt-reference-fields">
+                        <label>Strength <span id="qig-nanogpt-strength-val">${s.nanogptStrength ?? 0.75}</span></label>
+                        <input id="qig-nanogpt-strength" type="range" min="0" max="1" step="0.05" value="${s.nanogptStrength ?? 0.75}">
+                        <label>Reference Images (up to 15)</label>
+                        <div id="qig-nanogpt-refs" style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;"></div>
+                        <input type="file" id="qig-nanogpt-ref-input" accept="image/*" multiple style="display:none">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <button id="qig-nanogpt-ref-btn" class="menu_button" style="padding:4px 8px;">📎 Files</button>
+                            <input id="qig-nanogpt-ref-url" type="text" placeholder="Paste image URL and press Enter" style="flex:1;font-size:11px;">
+                        </div>
                     </div>
                 </div>
                 
@@ -14547,7 +16286,6 @@ function createUI() {
                         <option value="EulerA" ${s.civitaiScheduler === "EulerA" ? "selected" : ""}>Euler A</option>
                         <option value="Euler" ${s.civitaiScheduler === "Euler" ? "selected" : ""}>Euler</option>
                         <option value="DPM++ 2M Karras" ${s.civitaiScheduler === "DPM++ 2M Karras" ? "selected" : ""}>DPM++ 2M Karras</option>
-                        <option value="DPM++ SDE Karras" ${s.civitaiScheduler === "DPM++ SDE Karras" ? "selected" : ""}>DPM++ SDE Karras</option>
                         <option value="DDIM" ${s.civitaiScheduler === "DDIM" ? "selected" : ""}>DDIM</option>
                     </select>
                     <label>LoRAs (URN:weight, comma-separated)</label>
@@ -14679,6 +16417,11 @@ function createUI() {
                         <option value="comfyui" ${s.localType === "comfyui" ? "selected" : ""}>ComfyUI</option>
                     </select>
                     <div id="qig-local-comfyui-opts" style="display:${s.localType === "comfyui" ? "block" : "none"}">
+                         <label>Model Loader</label>
+                         <select id="qig-comfy-model-loader">
+                             <option value="checkpoint" ${normalizeComfyModelLoader(s.comfyModelLoader, s) === "checkpoint" ? "selected" : ""}>Checkpoint (embedded CLIP + VAE)</option>
+                             <option value="unet" ${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "selected" : ""}>Diffusion/UNET (external CLIP + VAE)</option>
+                         </select>
                          <label>Model</label>
                          <div style="display:flex;gap:4px;align-items:center;">
                              <select id="qig-local-model" style="flex:1;">
@@ -14686,7 +16429,7 @@ function createUI() {
                              </select>
                              <button id="qig-comfy-model-refresh" class="menu_button" style="padding:4px 8px;" title="Refresh model list">🔄</button>
                          </div>
-                         <div class="form-hint">Click Refresh to load checkpoints (standard mode) or diffusion UNETs (Flux/UNET mode) from ComfyUI, or type a model manually.</div>
+                         <div class="form-hint">Click Refresh to load only models supported by the selected loader.</div>
                          <div class="qig-row">
                             <div><label>Denoise</label><input id="qig-comfy-denoise" type="number" value="${esc(s.comfyDenoise ?? 1.0)}" min="0" max="1" step="0.05"><small style="opacity:0.6;font-size:10px;">1.0 = full txt2img. For img2img: upload a Reference Image below and set Denoise &lt; 1.0</small></div>
                             <div><label>CLIP Skip</label><input id="qig-comfy-clip" type="number" value="${esc(s.comfyClipSkip || 1)}" min="1" max="12" step="1"><small style="opacity:0.6;font-size:10px;">1 for most models, 2 for anime/NAI-based</small></div>
@@ -14697,6 +16440,14 @@ function createUI() {
                          <label>Timeout (seconds)</label>
                          <input id="qig-comfy-timeout" type="number" value="${esc(s.comfyTimeout || 300)}" min="10" max="1800">
                          <small style="opacity:0.6;font-size:10px;">How long SillyTavern waits for ComfyUI to finish before giving up.</small>
+                         <div class="qig-row">
+                            <div><label>Output Node IDs</label><input id="qig-comfy-output-nodes" type="text" value="${esc(s.comfyOutputNodeIds || "")}" placeholder="9, 42"><small style="opacity:0.6;font-size:10px;">Comma-separated. Empty returns images from every output node.</small></div>
+                            <div><label>Image Index</label><input id="qig-comfy-output-index" type="number" value="${esc(s.comfyOutputImageIndex ?? -1)}" min="-1" step="1"><small style="opacity:0.6;font-size:10px;">-1 returns every image; 0 selects the first.</small></div>
+                         </div>
+                         <label style="display:flex;align-items:flex-start;gap:6px;margin:6px 0;cursor:pointer;">
+                            <input id="qig-comfy-legacy-interrupt" type="checkbox" ${s.comfyAllowLegacyInterrupt ? "checked" : ""}>
+                            <span>Allow targeted legacy interrupt<br><small style="opacity:0.6;font-size:10px;">Off is safest on shared servers. Older ComfyUI versions may treat even a targeted interrupt as global.</small></span>
+                         </label>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
                             <input id="qig-comfy-upscale" type="checkbox" ${s.comfyUpscale ? "checked" : ""}>
                             <span>Upscale Output</span>
@@ -14708,12 +16459,12 @@ function createUI() {
                              <small style="opacity:0.6;font-size:10px;">Must match filename in ComfyUI models/upscale_models/</small>
                          </div>
                          <label style="display:flex;align-items:center;gap:6px;margin:6px 0;cursor:pointer;">
-                            <input id="qig-comfy-skip-neg" type="checkbox" ${s.comfySkipNegativePrompt ? "checked" : ""}>
-                            <span>Skip Negative Prompt</span>
-                            <small style="opacity:0.6;font-size:10px;">(for Flux/UNET-only models that don't use negative conditioning)</small>
+                             <input id="qig-comfy-skip-neg" type="checkbox" ${s.comfySkipNegativePrompt ? "checked" : ""}>
+                             <span>Skip Negative Prompt</span>
+                             <small style="opacity:0.6;font-size:10px;">(reuse positive conditioning for models that do not use negatives)</small>
                          </label>
-                         <div id="qig-comfy-flux-opts" style="display:${s.comfySkipNegativePrompt ? 'block' : 'none'}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
-                            <div class="form-hint">UNET-only models need separate CLIP and VAE loaders. Leave blank if your checkpoint already includes CLIP+VAE (full Flux checkpoints).</div>
+                         <div id="qig-comfy-flux-opts" style="display:${normalizeComfyModelLoader(s.comfyModelLoader, s) === "unet" ? "block" : "none"}; margin-left:24px; border-left:2px solid rgba(255,255,255,0.1); padding-left:10px;">
+                            <div class="form-hint">Diffusion/UNET models require separate CLIP and VAE filenames before generation.</div>
                             <div class="qig-row">
                                 <div><label>CLIP Model 1</label><input id="qig-comfy-flux-clip1" type="text" value="${esc(s.comfyFluxClipModel1 || "")}" placeholder="t5xxl_fp16.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/</small></div>
                                 <div><label>CLIP Model 2</label><input id="qig-comfy-flux-clip2" type="text" value="${esc(s.comfyFluxClipModel2 || "")}" placeholder="clip_l.safetensors"><small style="opacity:0.6;font-size:10px;">From models/text_encoders/ (leave blank if single-CLIP)</small></div>
@@ -14726,7 +16477,7 @@ function createUI() {
                             <small style="opacity:0.6;font-size:10px;">From models/vae/. Required for UNET-only models.</small>
                          </div>
                          <label>LoRAs (filename:weight, comma-separated)</label>
-                         <small style="opacity:0.6;font-size:10px;">Always applied. For scene-specific LoRAs, use Contextual Filters. Filename must match your ComfyUI loras folder.</small>
+                         <small style="opacity:0.6;font-size:10px;">Applied only to the built-in workflow. Custom workflows must include their own LoRA nodes. Filename must match your ComfyUI loras folder.</small>
                          <input id="qig-comfy-loras" type="text" value="${esc(s.comfyLoras || "")}" placeholder="my_lora.safetensors:0.8, style_lora.safetensors:0.6">
                          <label>Workflow Preset</label>
                          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
@@ -14738,8 +16489,8 @@ function createUI() {
                          </div>
                          <small style="opacity:0.6;font-size:10px;">Use presets for quick graph switching (e.g., with LoRA / without LoRA). Profiles save provider settings; workflow presets focus on Comfy graph fields.</small>
                          <label>Custom Workflow JSON</label>
-                         <textarea id="qig-comfy-workflow" rows="3" placeholder='Paste workflow from ComfyUI "Save (API Format)". Use placeholders: %prompt%, %negative%, %seed%, %width%, %height%, %steps%, %cfg%, %denoise%, %clip_skip%, %sampler%, %scheduler%, %model%, %reference_image%'>${esc(s.comfyWorkflow || "")}</textarea>
-                         <div class="form-hint">Optional for standard SD1.5/SDXL checkpoints. Required for non-standard pipelines (Flux/UNET-only, dual-CLIP, custom node graphs). Export from ComfyUI: Save → API Format. Use %reference_image% in a LoadImage node to include the uploaded reference image.</div>
+                         <textarea id="qig-comfy-workflow" rows="3" placeholder='Paste workflow from ComfyUI "Save (API Format)". Tokens include %prompt%, %negative%, %seed%, %width%, %height%, %steps%, %cfg%, %denoise%, %clip_stop_at_layer%, %sampler%, %scheduler%, %model%, %reference_image%'>${esc(s.comfyWorkflow || "")}</textarea>
+                         <div class="form-hint">Optional: built-in standard and Flux/UNET workflows are available without JSON. Custom graphs use only settings represented by placeholders, and all matching output images are returned. Export from ComfyUI using Save (API Format). Executable workflow JSON is omitted from full settings exports for safety.</div>
                     </div>
                     <div id="qig-local-a1111-opts" style="display:${s.localType === "a1111" ? "block" : "none"}">
                          <label>Model</label>
@@ -15033,7 +16784,7 @@ function createUI() {
                         <div class="qig-row">
                             <div>
                                 <label>Max Tokens</label>
-                                <input id="qig-proxy-chat-max-tokens" type="number" value="${esc(getProxyChatMaxTokens(s))}" min="1" max="65536" step="256">
+                                <input id="qig-proxy-chat-max-tokens" type="number" value="${esc(getProxyChatMaxTokens(s))}" min="1" max="65536" step="1">
                                 <small>Defaults to 16k so chat-image providers can return verbose image payloads.</small>
                             </div>
                             <label class="checkbox_label qig-switch-row">
@@ -15580,10 +17331,11 @@ function createUI() {
                     </button>
                     <div class="qig-collapsible__content" id="qig-advanced-settings" ${advancedSettingsHidden}>
                     <div class="qig-control-grid qig-generation-advanced-grid">
-                        <div class="qig-field"><label for="qig-steps">Steps</label><input id="qig-steps" type="number" value="${esc(activeSteps)}" min="1" max="150"><small>Higher can improve detail but takes longer.</small></div>
-                        <div class="qig-field"><label for="qig-cfg">Guidance (CFG)</label><input id="qig-cfg" type="number" value="${esc(activeCfg)}" min="1" max="30" step="0.5"><small>Higher follows the prompt more literally.</small></div>
+                        <div class="qig-field"><label for="qig-steps">Steps</label><input id="qig-steps" type="number" value="${esc(activeSteps)}" min="1" max="${isFalSchnell ? 12 : 150}" step="1"><small>Higher can improve detail but takes longer.</small></div>
+                        <div class="qig-field"><label for="qig-cfg">Guidance (CFG)</label><input id="qig-cfg" type="number" value="${esc(activeCfg)}" min="${s.provider === "proxy" ? 0 : 1}" max="${isFalSchnell ? 20 : 30}" step="0.5"><small>Higher follows the prompt more literally.</small></div>
                         <div class="qig-field"><label for="qig-sampler">Sampler</label><select id="qig-sampler">${samplerOpts}</select><small>Generation algorithm supported by the active provider.</small></div>
                         <div class="qig-field"><label for="qig-seed">Seed</label><input id="qig-seed" type="number" value="${esc(activeSeed)}"><small>Use -1 for a random seed.</small></div>
+                        <div class="qig-field"><label for="qig-hosted-timeout">Hosted deadline (seconds)</label><input id="qig-hosted-timeout" type="number" value="${esc(s.hostedTimeout ?? 300)}" min="30" max="1800"><small>One deadline covers submission, polling, output download, and validation.</small></div>
                     </div>
                     </div>
                 </div>
@@ -15674,20 +17426,9 @@ function createUI() {
         };
     });
 
-    document.getElementById("qig-provider").onchange = (e) => {
+    document.getElementById("qig-provider").onchange = async (e) => {
         getSettings().provider = e.target.value;
-        if (charSettingsOverrideApplied) {
-            const charId = getCurrentCharId();
-            const legacyKey = getLegacyCurrentCharStorageKey();
-            const refs = charRefImages[charId] || (legacyKey ? charRefImages[legacyKey] : null) || [];
-            const refKey = {
-                proxy: "proxyRefImages",
-                custom: "customApiRefImages",
-                nanobanana: "nanobananaRefImages",
-                nanogpt: "nanogptRefImages",
-            }[getSettings().provider];
-            if (refKey) getSettings()[refKey] = [...refs];
-        }
+        if (charSettingsOverrideApplied) await loadCharSettings();
         saveSettingsDebounced();
         refreshProviderInputs(getSettings().provider);
         renderProfileSelect();
@@ -15720,7 +17461,10 @@ function createUI() {
     bind("qig-navy-key", "navyKey");
     bind("qig-navy-model", "navyModel");
     bind("qig-nanogpt-key", "nanogptKey");
-    bind("qig-nanogpt-model", "nanogptModel");
+    bind("qig-nanogpt-model", "nanogptModel", (value) => {
+        void getNanoGptModelMetadata(value).then(() => updateGenerationCapabilitiesUI());
+        updateGenerationCapabilitiesUI();
+    });
     bind("qig-nanogpt-strength", "nanogptStrength", true, false, (value) => {
         const label = document.getElementById("qig-nanogpt-strength-val");
         if (label) label.textContent = value;
@@ -15757,7 +17501,10 @@ function createUI() {
     bind("qig-replicate-key", "replicateKey");
     bind("qig-replicate-model", "replicateModel");
     bind("qig-fal-key", "falKey");
-    bind("qig-fal-model", "falModel");
+    bind("qig-fal-model", "falModel", () => {
+        syncGenerationSettingsControls();
+        updateGenerationCapabilitiesUI();
+    });
     bind("qig-together-key", "togetherKey");
     bind("qig-together-model", "togetherModel");
     bind("qig-zai-key", "zaiKey");
@@ -15770,9 +17517,15 @@ function createUI() {
     bind("qig-context-media-confidence", "contextMediaConfidence", true, false, () => normalizeContextMediaSettings(getSettings()));
     bind("qig-context-media-insert-mode", "contextMediaInsertMode", false, false, () => normalizeContextMediaSettings(getSettings()));
     document.getElementById("qig-context-media-delay").oninput = (event) => {
-        getSettings().contextMediaDelayMs = Number(event.target.value) * 1000;
-        normalizeContextMediaSettings(getSettings());
+        const s = getSettings();
+        const parsed = readFiniteNumericControl(event.target, s.contextMediaDelayMs / 1000);
+        if (!parsed.valid) return;
+        s.contextMediaDelayMs = parsed.value * 1000;
+        normalizeContextMediaSettings(s);
         saveSettingsDebounced();
+    };
+    document.getElementById("qig-context-media-delay").onchange = (event) => {
+        event.target.value = String(getSettings().contextMediaDelayMs / 1000);
     };
     bind("qig-custom-url", "customApiUrl");
     bind("qig-custom-key", "customApiKey");
@@ -15815,10 +17568,10 @@ function createUI() {
     bind("qig-local-model", "localModel");
     document.getElementById("qig-local-model").addEventListener("change", (e) => {
         const val = (e.target.value || "").toLowerCase();
-        if (/flux|unet|\.gguf/.test(val) && !getSettings().comfySkipNegativePrompt) {
+        if (/flux|unet|\.gguf/.test(val) && normalizeComfyModelLoader(getSettings().comfyModelLoader) !== "unet") {
             toastr.warning(
-                'This looks like a Flux/UNET model. Enable "Skip Negative Prompt" and set your CLIP/VAE model names for UNET-only models, or paste a custom workflow.',
-                "Flux/UNET Model Detected",
+                'This looks like a diffusion model. Select the "Diffusion/UNET" model loader and set its CLIP/VAE filenames, or paste a custom workflow.',
+                "Diffusion/UNET Model Detected",
                 { timeOut: 8000 }
             );
         }
@@ -15832,32 +17585,8 @@ function createUI() {
     document.getElementById("qig-comfy-workflow-update").onclick = updateSelectedComfyWorkflowPreset;
     document.getElementById("qig-comfy-workflow-del").onclick = deleteSelectedComfyWorkflowPreset;
     // ComfyUI model refresh
-    document.getElementById("qig-comfy-model-refresh").onclick = async () => {
-        const s = getSettings();
-        const modelSelect = document.getElementById("qig-local-model");
-        replaceSelectOptions(modelSelect, [{ value: "", label: "Loading..." }]);
-        let models;
-        try {
-            models = await fetchComfyUIModels(s.localUrl, isComfyFluxMode(s));
-        } catch (e) {
-            if (e.message?.includes("403 Forbidden")) {
-                replaceSelectOptions(modelSelect, [{ value: "", label: "-- 403 Forbidden (see error) --" }]);
-                toastr?.error?.(e.message, "ComfyUI Connection Error", { timeOut: 0, extendedTimeOut: 0, escapeHtml: true });
-                return;
-            }
-            models = [];
-        }
-        if (models.length > 0) {
-            const cur = s.localModel || "";
-            replaceSelectOptions(modelSelect, models.map(model => ({ value: model, label: model })), cur);
-            if (!cur && models.length > 0) {
-                s.localModel = models[0];
-                modelSelect.value = models[0];
-                saveSettingsDebounced();
-            }
-        } else {
-            replaceSelectOptions(modelSelect, [{ value: "", label: "-- Failed to load (check if ComfyUI running) --" }]);
-        }
+    document.getElementById("qig-comfy-model-refresh").onclick = () => {
+        refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
     };
     document.getElementById("qig-local-type").onchange = (e) => {
         getSettings().localType = e.target.value;
@@ -15868,10 +17597,25 @@ function createUI() {
         document.getElementById("qig-local-denoise-val").textContent = value;
     });
     // ComfyUI specific bindings
+    document.getElementById("qig-comfy-model-loader").onchange = (e) => {
+        const s = getSettings();
+        s.comfyModelLoader = normalizeComfyModelLoader(e.target.value);
+        s.localModel = "";
+        replaceSelectOptions(document.getElementById("qig-local-model"), [{ value: "", label: "Loading..." }]);
+        const fluxOpts = document.getElementById("qig-comfy-flux-opts");
+        if (fluxOpts) fluxOpts.style.display = s.comfyModelLoader === "unet" ? "block" : "none";
+        saveSettingsDebounced();
+        refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
+    };
     bind("qig-comfy-denoise", "comfyDenoise", true);
     bind("qig-comfy-clip", "comfyClipSkip", true);
     bind("qig-comfy-scheduler", "comfyScheduler");
     bind("qig-comfy-timeout", "comfyTimeout", true);
+    bind("qig-comfy-output-nodes", "comfyOutputNodeIds");
+    bind("qig-comfy-output-index", "comfyOutputImageIndex", true, false, value => {
+        getSettings().comfyOutputImageIndex = normalizeComfyOutputImageIndex(value);
+    });
+    bindCheckbox("qig-comfy-legacy-interrupt", "comfyAllowLegacyInterrupt");
     bindCheckbox("qig-comfy-upscale", "comfyUpscale");
     bind("qig-comfy-upscale-model", "comfyUpscaleModel");
     document.getElementById("qig-comfy-upscale").onchange = (e) => {
@@ -15884,8 +17628,6 @@ function createUI() {
     document.getElementById("qig-comfy-skip-neg").onchange = (e) => {
         getSettings().comfySkipNegativePrompt = e.target.checked;
         saveSettingsDebounced();
-        const fluxOpts = document.getElementById("qig-comfy-flux-opts");
-        if (fluxOpts) fluxOpts.style.display = e.target.checked ? "block" : "none";
     };
     bind("qig-comfy-flux-clip1", "comfyFluxClipModel1");
     bind("qig-comfy-flux-clip2", "comfyFluxClipModel2");
@@ -15912,17 +17654,10 @@ function createUI() {
     bind("qig-a1111-hires-negative", "a1111HiresNegative");
     bind("qig-a1111-hires-resize-x", "a1111HiresResizeX", true);
     bind("qig-a1111-hires-resize-y", "a1111HiresResizeY", true);
-    document.getElementById("qig-a1111-hires-scale").onchange = (e) => {
-        getSettings().a1111HiresScale = parseFloat(e.target.value);
-        saveSettingsDebounced();
-    };
-    document.getElementById("qig-a1111-hires-denoise").oninput = (e) => {
-        document.getElementById("qig-a1111-hires-denoise-val").textContent = e.target.value;
-    };
-    document.getElementById("qig-a1111-hires-denoise").onchange = (e) => {
-        getSettings().a1111HiresDenoise = parseFloat(e.target.value);
-        saveSettingsDebounced();
-    };
+    bind("qig-a1111-hires-scale", "a1111HiresScale", true);
+    bind("qig-a1111-hires-denoise", "a1111HiresDenoise", true, value => {
+        document.getElementById("qig-a1111-hires-denoise-val").textContent = value;
+    });
     document.getElementById("qig-a1111-hires").onchange = (e) => {
         getSettings().a1111HiresFix = e.target.checked;
         document.getElementById("qig-a1111-hires-opts").style.display = e.target.checked ? "block" : "none";
@@ -16005,20 +17740,20 @@ function createUI() {
         document.getElementById("qig-a1111-cn-preview").style.display = "none";
         document.getElementById("qig-a1111-cn-clear-btn").style.display = "none";
     };
-    cnUploadInput.onchange = (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            getSettings().a1111ControlNetImage = ev.target.result;
+    cnUploadInput.onchange = async (e) => {
+        try {
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, [], 1);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
+            getSettings().a1111ControlNetImage = sources[0];
             saveSettingsDebounced();
             const preview = document.getElementById("qig-a1111-cn-preview");
-            preview.src = ev.target.result;
+            preview.src = sources[0];
             preview.style.display = "block";
             document.getElementById("qig-a1111-cn-clear-btn").style.display = "block";
-        };
-        reader.readAsDataURL(file);
-        e.target.value = "";
+        } finally {
+            e.target.value = "";
+        }
     };
 
     // A1111 Model dropdown
@@ -16142,21 +17877,21 @@ function createUI() {
         localRefClear.style.display = "none";
         document.getElementById("qig-local-denoise-wrap").style.display = "none";
     };
-    localRefInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
+    localRefInput.onchange = async (e) => {
+        try {
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, [], 1);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
             const s = getSettings();
-            s.localRefImage = ev.target.result;
+            s.localRefImage = sources[0];
             saveSettingsDebounced();
             document.getElementById("qig-local-ref-preview").src = s.localRefImage;
             document.getElementById("qig-local-ref-preview").style.display = "block";
             localRefClear.style.display = "block";
             document.getElementById("qig-local-denoise-wrap").style.display = s.localType === "a1111" ? "block" : "none";
+        } finally {
             localRefInput.value = "";
-        };
-        reader.readAsDataURL(file);
+        }
     };
 
     bind("qig-proxy-url", "proxyUrl", () => updateProxyCompatibilityUI());
@@ -16174,9 +17909,9 @@ function createUI() {
     bindCheckbox("qig-proxy-facefix", "proxyFacefix");
     bind("qig-proxy-extra", "proxyExtraInstructions");
     bind("qig-proxy-chat-system", "proxyChatImageSystemPrompt");
-    bind("qig-proxy-chat-max-tokens", "proxyChatImageMaxTokens", (value) => {
+    bind("qig-proxy-chat-max-tokens", "proxyChatImageMaxTokens", true, false, (value) => {
         const s = getSettings();
-        s.proxyChatImageMaxTokens = value;
+        s.proxyChatImageMaxTokens = normalizeProxyChatImageMaxTokens(value);
         updateProxyCompatibilityUI();
     });
     const chatModeEl = getOrCacheElement("qig-proxy-chat-mode");
@@ -16219,31 +17954,23 @@ function createUI() {
     const refBtn = getOrCacheElement("qig-proxy-ref-btn");
     if (refBtn) refBtn.onclick = () => refInput.click();
     refInput.onchange = async (e) => {
-        const files = Array.from(e.target.files);
-        const s = getSettings();
-        if (normalizeProxyRefImageSetting(s.proxyRefImageMode) === "url_only") {
-            toastr.warning("This proxy compatibility mode only accepts public image URLs for reference images.");
+        try {
+            const s = getSettings();
+            if (normalizeProxyRefImageSetting(s.proxyRefImageMode) === "url_only") {
+                toastr.warning("This proxy compatibility mode only accepts public image URLs for reference images.");
+                return;
+            }
+            if (!s.proxyRefImages) s.proxyRefImages = [];
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, s.proxyRefImages, 15);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
+            s.proxyRefImages.push(...sources);
+            saveSettingsDebounced();
+            renderRefImages();
+            updateProxyCompatibilityUI();
+        } finally {
             refInput.value = "";
-            return;
         }
-        if (!s.proxyRefImages) s.proxyRefImages = [];
-        const remaining = 15 - s.proxyRefImages.length;
-        const filesToProcess = files.slice(0, remaining);
-
-        const readPromises = filesToProcess.map(file =>
-            new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (ev) => resolve(ev.target.result);
-                reader.readAsDataURL(file);
-            })
-        );
-
-        const results = await Promise.all(readPromises);
-        s.proxyRefImages.push(...results);
-        saveSettingsDebounced();
-        renderRefImages();
-        updateProxyCompatibilityUI();
-        refInput.value = "";
     };
     // URL input for proxy ref images
     const proxyRefUrl = getOrCacheElement("qig-proxy-ref-url");
@@ -16262,38 +17989,18 @@ function createUI() {
     const customRefButton = getOrCacheElement("qig-custom-ref-btn");
     if (customRefButton) customRefButton.onclick = () => customRefInput?.click();
     if (customRefInput) customRefInput.onchange = async (event) => {
-        const s = getSettings();
-        if (!s.customApiRefImages) s.customApiRefImages = [];
-        const remaining = 15 - s.customApiRefImages.length;
-        const files = Array.from(event.target.files || []).slice(0, remaining);
-        let availableBytes = MAX_IMAGE_BYTES;
-        for (const source of s.customApiRefImages) {
-            const encoded = String(source).match(/^data:[^;,]+;base64,([A-Za-z0-9+/]*={0,2})$/i)?.[1];
-            if (encoded) availableBytes -= Math.floor(encoded.length * 3 / 4);
+        try {
+            const s = getSettings();
+            if (!s.customApiRefImages) s.customApiRefImages = [];
+            const { sources, errors } = await readValidatedReferenceFiles(event.target.files, s.customApiRefImages, 15);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
+            s.customApiRefImages.push(...sources);
+            saveSettingsDebounced();
+            renderCustomApiRefImages();
+        } finally {
+            customRefInput.value = "";
         }
-        const oversized = files.filter(file => file.size > MAX_IMAGE_BYTES);
-        if (oversized.length) {
-            toastr.warning(`${oversized.length} reference image(s) exceeded the ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MiB limit and were skipped.`);
-        }
-        const accepted = [];
-        for (const file of files) {
-            if (file.size > MAX_IMAGE_BYTES || !file.type.startsWith("image/") || file.size > availableBytes) continue;
-            accepted.push(file);
-            availableBytes -= file.size;
-        }
-        if (accepted.length < files.length - oversized.length) {
-            toastr.warning("Some references were skipped because the Custom API request is limited to 25 MiB total.");
-        }
-        const results = await Promise.all(accepted.map(file => new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = () => reject(reader.error || new Error(`Failed to read ${file.name}`));
-            reader.readAsDataURL(file);
-        })));
-        s.customApiRefImages.push(...results);
-        saveSettingsDebounced();
-        renderCustomApiRefImages();
-        customRefInput.value = "";
     };
     renderCustomApiRefImages();
     updateCustomApiUI();
@@ -16303,25 +18010,18 @@ function createUI() {
     const nanoRefBtn = getOrCacheElement("qig-nanobanana-ref-btn");
     if (nanoRefBtn) nanoRefBtn.onclick = () => nanoRefInput.click();
     nanoRefInput.onchange = async (e) => {
-        const files = Array.from(e.target.files);
-        const s = getSettings();
-        if (!s.nanobananaRefImages) s.nanobananaRefImages = [];
-        const remaining = 15 - s.nanobananaRefImages.length;
-        const filesToProcess = files.slice(0, remaining);
-
-        const readPromises = filesToProcess.map(file =>
-            new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (ev) => resolve(ev.target.result);
-                reader.readAsDataURL(file);
-            })
-        );
-
-        const results = await Promise.all(readPromises);
-        s.nanobananaRefImages.push(...results);
-        saveSettingsDebounced();
-        renderNanobananaRefImages();
-        nanoRefInput.value = "";
+        try {
+            const s = getSettings();
+            if (!s.nanobananaRefImages) s.nanobananaRefImages = [];
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, s.nanobananaRefImages, 15);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
+            s.nanobananaRefImages.push(...sources);
+            saveSettingsDebounced();
+            renderNanobananaRefImages();
+        } finally {
+            nanoRefInput.value = "";
+        }
     };
     // URL input for nanobanana ref images
     const nanoRefUrl = getOrCacheElement("qig-nanobanana-ref-url");
@@ -16345,25 +18045,18 @@ function createUI() {
     const nanogptRefBtn = getOrCacheElement("qig-nanogpt-ref-btn");
     if (nanogptRefBtn) nanogptRefBtn.onclick = () => nanogptRefInput.click();
     nanogptRefInput.onchange = async (e) => {
-        const files = Array.from(e.target.files);
-        const s = getSettings();
-        if (!s.nanogptRefImages) s.nanogptRefImages = [];
-        const remaining = 15 - s.nanogptRefImages.length;
-        const filesToProcess = files.slice(0, remaining);
-
-        const readPromises = filesToProcess.map(file =>
-            new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (ev) => resolve(ev.target.result);
-                reader.readAsDataURL(file);
-            })
-        );
-
-        const results = await Promise.all(readPromises);
-        s.nanogptRefImages.push(...results);
-        saveSettingsDebounced();
-        renderNanogptRefImages();
-        nanogptRefInput.value = "";
+        try {
+            const s = getSettings();
+            if (!s.nanogptRefImages) s.nanogptRefImages = [];
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, s.nanogptRefImages, 15);
+            reportReferenceFileErrors(errors);
+            if (!sources.length) return;
+            s.nanogptRefImages.push(...sources);
+            saveSettingsDebounced();
+            renderNanogptRefImages();
+        } finally {
+            nanogptRefInput.value = "";
+        }
     };
     // URL input for nanogpt ref images
     const nanogptRefUrl = getOrCacheElement("qig-nanogpt-ref-url");
@@ -16413,7 +18106,9 @@ function createUI() {
     if (autoGenerateDelayEl) {
         autoGenerateDelayEl.oninput = (e) => {
             const s = getSettings();
-            const next = normalizeAutoGenerateDelayMs(Number(e.target.value) * 1000);
+            const parsed = readFiniteNumericControl(e.target, s.autoGenerateDelayMs / 1000);
+            if (!parsed.valid) return;
+            const next = normalizeAutoGenerateDelayMs(parsed.value * 1000);
             const changed = s.autoGenerateDelayMs !== next;
             s.autoGenerateDelayMs = next;
             if (changed) resetAutoGenerateCadence({ clearTimer: true });
@@ -16642,10 +18337,10 @@ function createUI() {
     const heightEl = document.getElementById("qig-height");
     const onSizeChange = () => {
         const s = getSettings();
-        const currentWidth = Number.isFinite(s.width) ? s.width : SIZE_DEFAULT;
-        const currentHeight = Number.isFinite(s.height) ? s.height : SIZE_DEFAULT;
-        s.width = parseIntOr(widthEl?.value, currentWidth);
-        s.height = parseIntOr(heightEl?.value, currentHeight);
+        const width = readFiniteNumericControl(widthEl, s.width);
+        const height = readFiniteNumericControl(heightEl, s.height);
+        s.width = width.valid ? width.value : s.width;
+        s.height = height.valid ? height.value : s.height;
         if (s.provider === "novelai") {
             normalizeSize(s);
             syncNaiResolutionSelect();
@@ -16665,8 +18360,8 @@ function createUI() {
         if (isNaN(w) || isNaN(h) || h === 0) return;
         if (w > h) { s.width = Math.round(base * w / h); s.height = base; }
         else { s.width = base; s.height = Math.round(base * h / w); }
+        normalizeSize(s);
         if (s.provider === "novelai") {
-            normalizeSize(s);
             syncNaiResolutionSelect();
         }
         syncSizeInputs(s.width, s.height);
@@ -16690,6 +18385,7 @@ function createUI() {
         syncGenerationPresetIndicators();
     };
     bind("qig-batch", "batchCount", true);
+    bind("qig-hosted-timeout", "hostedTimeout", true);
     document.getElementById("qig-batch").addEventListener("input", (e) => {
         const wrap = document.getElementById("qig-seq-seeds-wrap");
         if (wrap) wrap.style.display = parseInt(e.target.value) > 1 ? "" : "none";
@@ -16702,13 +18398,24 @@ function createUI() {
             const settings = getSettings();
             const key = settings.provider === "proxy" ? proxyKey : defaultKey;
             const rawValue = event.target.value;
+            const parsed = numeric ? readFiniteNumericControl(event.target, settings[key]) : null;
+            if (numeric && !parsed.valid) return;
             settings[key] = settings.provider === "proxy" && proxyKey === "proxySampler"
                 ? (SAMPLER_DISPLAY_NAMES[rawValue] || rawValue)
-                : (numeric ? Number(rawValue) : rawValue);
+                : (numeric ? parsed.value : rawValue);
             saveSettingsDebounced();
             updateQigStatusLine();
             syncGenerationPresetIndicators();
         };
+        if (numeric) {
+            element.onchange = (event) => {
+                const settings = getSettings();
+                const key = settings.provider === "proxy" ? proxyKey : defaultKey;
+                const parsed = readFiniteNumericControl(event.target, settings[key]);
+                if (!parsed.valid) event.target.value = String(settings[key] ?? "");
+                else event.target.value = String(parsed.value);
+            };
+        }
     };
     bindGenerationSetting("qig-steps", "steps", "proxySteps", true);
     bindGenerationSetting("qig-cfg", "cfgScale", "proxyCfg", true);
@@ -16990,9 +18697,9 @@ function addInputButton() {
 }
 
 async function generateImageInjectPalette() {
-    if (isGenerating) return;
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const initialSettings = getGenerationSettingsForRun();
-    if (initialSettings.confirmBeforeGenerate && !confirm("Generate image?")) return;
+    if (initialSettings.confirmBeforeGenerate && !confirm("Generate image?")) return { status: "cancelled", generated: 0, failed: 0 };
 
     const mySerial = ++_paletteInjectSerial;
     const run = beginGeneration({ settings: initialSettings, disableGenerateButton: true, clearPendingAuto: true });
@@ -17001,12 +18708,16 @@ async function generateImageInjectPalette() {
     const cancelCheckpoint = getCancelCheckpoint();
     let sourceInjectMessage = null;
     let sourceMessageIndex = null;
+    let sourceTargetSnapshot = null;
     const consumedMessagePrompts = new Set();
+    let generatedCount = 0;
+    let failedCount = 0;
 
     try {
         checkAborted(cancelCheckpoint);
         const ctx = getContext();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        rememberLastGenerationSource();
         let regexPattern = getInjectRegexPattern(s);
         let initialDetection = null;
         let matches = [];
@@ -17017,11 +18728,16 @@ async function generateImageInjectPalette() {
             matches = [...new Set(unconsumedCandidate.prompts || [])];
             sourceInjectMessage = unconsumedCandidate.message;
             sourceMessageIndex = unconsumedCandidate.index;
+            sourceTargetSnapshot = createMessageTargetSnapshot(chat, sourceMessageIndex);
+            rememberLastGenerationSource(sourceTargetSnapshot);
         } else {
             const consumedCandidate = findLastInjectCandidateMessage(chat, s, { requireMatches: true, includeConsumed: true });
             if (consumedCandidate?.detectedPrompts?.length && !hasUserMessageAfterIndex(chat, consumedCandidate.index)) {
                 initialDetection = consumedCandidate.detection;
                 matches = [...new Set(consumedCandidate.detectedPrompts)];
+                sourceMessageIndex = consumedCandidate.index;
+                sourceTargetSnapshot = createMessageTargetSnapshot(chat, sourceMessageIndex);
+                rememberLastGenerationSource(sourceTargetSnapshot);
                 log(`Palette inject: All ${matches.length} detected tag(s) were already consumed; using them for this manual run only`);
             } else if (unconsumedCandidate || consumedCandidate) {
                 log("Palette inject: Ignoring older image tag because a newer user message exists; using selected scene fallback");
@@ -17077,7 +18793,7 @@ async function generateImageInjectPalette() {
                     llmResponse,
                     instruction: fullInstruction,
                 });
-                return;
+                return { status: "failed", generated: 0, failed: 1, message: "No image tags found" };
             }
 
             sourceInjectMessage = null;
@@ -17115,6 +18831,7 @@ async function generateImageInjectPalette() {
                     matchText: [baseSceneText, extractedPrompt, prompt].filter(Boolean).join("\n\n"),
                     llmSceneText: baseSceneText || extractedPrompt,
                     signal: run.signal,
+                    settings: s,
                 });
                 checkAborted(cancelCheckpoint);
                 prompt = contextualApplied.prompt;
@@ -17134,55 +18851,59 @@ async function generateImageInjectPalette() {
                     showStatus(`🖼️ Generating palette-inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
-                    const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal);
+                    const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
                     if (result) {
-                        return await finalizeGeneratedEntry(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
+                        return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
                             promptWasLLM: lastPromptWasLLM,
                             sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
+                            sourceMessageId: sourceTargetSnapshot?.messageId,
+                            sourceMessageSignature: sourceTargetSnapshot?.signature,
+                            commitGuard: sourceTargetSnapshot ? () => assertMessageTargetSnapshot(sourceTargetSnapshot) : null,
                         }));
                     }
                     return null;
                 });
                 const { results } = outcome;
+                generatedCount += results.length;
+                failedCount += outcome.errors.length;
                 reportPartialBatchErrors("Palette inject", outcome);
 
                 if (results.length > 0) {
                     assertGenerationCanCommit(run);
+                    if (sourceTargetSnapshot) assertMessageTargetSnapshot(sourceTargetSnapshot);
                     if (sourceInjectMessage) consumedMessagePrompts.add(extractedPrompt);
                     await maybeAutoSetBackground(results, s, run);
-                    if (results.length === 1) {
-                        if (s.autoInsert) {
-                            addToGallery(results[0]);
-                            try {
-                                await autoInsertInjectImage(results[0], {
-                                    messageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
-                                    insertMode: s.insertAsHiddenReply ? "hidden" : s.injectInsertMode,
-                                    commitGuard: () => assertGenerationCanCommit(run),
-                                });
-                            } catch (err) {
-                                if (err.name === "AbortError") throw err;
-                                log(`Palette inject: Auto-insert failed: ${err.message}`);
-                                displayImage(results[0]);
-                            }
-                        } else {
-                            displayImage(results[0]);
-                        }
-                    } else {
-                        displayBatchResults(results);
-                    }
+                    await deliverInjectResults(results, {
+                        settings: s,
+                        sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
+                        targetSnapshot: sourceTargetSnapshot,
+                        run,
+                    });
                     toastr.success(`Palette inject: ${results.length} image(s) generated`);
                 }
             } finally {
                 setGenerationSeedValue(s, originalSeed);
             }
         }
+        return {
+            status: failedCount > 0 ? "partial" : "success",
+            generated: generatedCount,
+            failed: failedCount,
+        };
     } catch (e) {
         if (e.name === "AbortError") {
             log("Palette inject: Generation cancelled by user");
             toastr.info("Generation cancelled");
+            return { status: "cancelled", generated: generatedCount, failed: failedCount };
         } else {
             log(`Palette inject: Error: ${e.message}`);
             toastr.error("Palette inject failed: " + e.message, "", { timeOut: 0, extendedTimeOut: 0, closeButton: true, escapeHtml: true });
+            return {
+                status: generatedCount > 0 ? "partial" : "failed",
+                generated: generatedCount,
+                failed: Math.max(1, failedCount),
+                message: e.message,
+            };
         }
     } finally {
         if (!run.signal.aborted && sourceInjectMessage && consumedMessagePrompts.size > 0) {
@@ -17211,25 +18932,39 @@ async function generateImageFromPlainDescription() {
 
     const request = await showPlainDescriptionDialog();
     if (!request) return;
+    if (isGenerating) {
+        toastr.warning("Generation already in progress");
+        return;
+    }
     if (getSettings().confirmBeforeGenerate && !confirm("Generate image?")) return;
 
-    const baseSettings = getGenerationSettingsForRun();
-    const requestedSettings = {
-        ...baseSettings,
-        useLastMessage: false,
-        useLLMPrompt: true,
-        llmPromptStyle: request.promptStyle || baseSettings.llmPromptStyle || "tags",
-    };
-    const ctx = getContext();
-    const run = beginGeneration({ settings: requestedSettings, context: ctx, disableGenerateButton: true, clearPendingAuto: true });
-    const s = run.settings;
-    const cancelCheckpoint = getCancelCheckpoint();
-    const originalSeed = getGenerationSeedValue(s);
-    const basePrompt = request.description;
-
+    let run = null;
+    let s = null;
+    let originalSeed = null;
     try {
+        const baseSettings = getGenerationSettingsForRun();
+        const requestedSettings = {
+            ...baseSettings,
+            useLastMessage: false,
+            useLLMPrompt: true,
+            llmPromptStyle: request.promptStyle || baseSettings.llmPromptStyle || "tags",
+        };
+        const ctx = getContext();
+        const insertionIndex = requestedSettings.autoInsert ? resolveManualInsertFallbackIndex(ctx?.chat, requestedSettings) : null;
+        const insertionSnapshot = createMessageTargetSnapshot(ctx?.chat, insertionIndex);
+        run = beginGeneration({
+            settings: requestedSettings,
+            context: ctx,
+            messageSnapshots: insertionSnapshot ? [insertionSnapshot] : [],
+            disableGenerateButton: true,
+            clearPendingAuto: true,
+        });
+        s = run.settings;
+        const cancelCheckpoint = getCancelCheckpoint();
+        originalSeed = getGenerationSeedValue(s);
+        const basePrompt = request.description;
         checkAborted(cancelCheckpoint);
-        lastGenerationSourceMessageIndex = null;
+        rememberLastGenerationSource();
         lastProxyContextRefImages = [];
         log(`Plain description: Generating AI prompt from ${basePrompt.length} chars`);
         showStatus("🤖 Turning description into image prompt...");
@@ -17264,6 +18999,7 @@ async function generateImageFromPlainDescription() {
             matchText: [basePrompt, prompt].filter(Boolean).join("\n\n"),
             llmSceneText: basePrompt,
             signal: run.signal,
+            settings: s,
         });
         checkAborted(cancelCheckpoint);
         prompt = contextualApplied.prompt;
@@ -17286,10 +19022,13 @@ async function generateImageFromPlainDescription() {
             showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
             const expandedPrompt = expandWildcards(prompt);
             const expandedNegative = expandWildcards(negative);
-            const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal);
+            const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
             if (result) {
-                return await finalizeGeneratedEntry(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
+                return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
                     promptWasLLM: lastPromptWasLLM,
+                    sourceMessageIndex: insertionSnapshot?.index,
+                    sourceMessageId: insertionSnapshot?.messageId,
+                    sourceMessageSignature: insertionSnapshot?.signature,
                 }));
             }
             return null;
@@ -17303,29 +19042,28 @@ async function generateImageFromPlainDescription() {
         }
 
         if (results.length > 0 && s.autoInsert) {
-            const ctx = getContext();
-            const chat = ctx?.chat;
-            const lastCharIdx = (() => {
-                if (!chat) return undefined;
-                for (let i = chat.length - 1; i >= 0; i--) {
-                    if (!chat[i]?.is_user) return i;
-                }
-                return undefined;
-            })();
+            let insertedCount = 0;
+            const failedResults = [];
             for (const r of results) {
-                addToGallery(r);
+                void addToGallery(r);
                 try {
                     if (s.insertAsHiddenReply) {
-                        await insertImageAsHiddenReply(r, { commitGuard: () => assertGenerationCanCommit(run) });
+                        await insertImageAsHiddenReply(r, { commitGuard: () => assertGenerationCanCommit(run), outputMode: s.outputMode });
                     } else {
-                        await insertImageIntoMessage(r, lastCharIdx, { commitGuard: () => assertGenerationCanCommit(run) });
+                        await insertImageIntoMessage(r, insertionSnapshot?.index, {
+                            commitGuard: () => assertGenerationCanCommit(run),
+                            targetSnapshot: insertionSnapshot,
+                            outputMode: s.outputMode,
+                        });
                     }
+                    insertedCount++;
                 } catch (err) {
                     if (err.name === "AbortError") throw err;
                     console.error("[Quick Image Gen] Auto-insert failed:", err);
+                    failedResults.push(r);
                 }
             }
-            toastr.success(`Image${results.length > 1 ? "s" : ""} inserted into chat`);
+            reportAutoInsertOutcome(insertedCount, failedResults);
         } else if (results.length === 1) {
             displayImage(results[0]);
         } else if (results.length > 1) {
@@ -17340,26 +19078,26 @@ async function generateImageFromPlainDescription() {
             toastr.error("Plain description generation failed: " + e.message, "", { timeOut: 0, extendedTimeOut: 0, closeButton: true, escapeHtml: true });
         }
     } finally {
-        setGenerationSeedValue(s, originalSeed);
-        endGeneration(run, { disableGenerateButton: true });
+        if (s && originalSeed != null) setGenerationSeedValue(s, originalSeed);
+        if (run) endGeneration(run, { disableGenerateButton: true });
         clearStyleCache();
         log("Plain description: Cleared caches after generation");
     }
 }
 
 async function generateImage() {
-    if (isGenerating) return;
+    if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
     const usingTransientSettingsOverride = !!transientGenerationSettingsOverride;
     const initialSettings = getGenerationSettingsForRun();
-    if (initialSettings.confirmBeforeGenerate && !confirm("Generate image?")) return;
+    if (initialSettings.confirmBeforeGenerate && !confirm("Generate image?")) return { status: "cancelled", generated: 0, failed: 0 };
     const ctx = getContext();
-    const run = beginGeneration({ settings: initialSettings, context: ctx, disableGenerateButton: true, clearPendingAuto: true });
-    const s = run.settings;
-    const cancelCheckpoint = getCancelCheckpoint();
-    const originalSeed = getGenerationSeedValue(s);
     const activeMessageTarget = getTransientGenerationTarget(ctx);
-    const useChatMessageScene = shouldUseChatMessageScene(s);
-    const selectedSceneEntries = useChatMessageScene ? getSceneMessageEntries(s, ctx) : [];
+    if (activeMessageTarget?.stale) {
+        toastr.error("The selected chat message changed before generation could start");
+        return { status: "failed", generated: 0, failed: 1, message: "Selected chat message changed" };
+    }
+    const useChatMessageScene = shouldUseChatMessageScene(initialSettings, ctx);
+    const selectedSceneEntries = useChatMessageScene ? getSceneMessageEntries(initialSettings, ctx) : [];
     const sceneSelectionMessageIndex = selectedSceneEntries.length > 0 && Number.isInteger(selectedSceneEntries[selectedSceneEntries.length - 1]?.index)
         ? selectedSceneEntries[selectedSceneEntries.length - 1].index
         : null;
@@ -17367,6 +19105,28 @@ async function generateImage() {
     const sourceMessageIndexForEntries = Number.isInteger(activeMessageTarget?.messageIndex)
         ? activeMessageTarget.messageIndex
         : sceneSelectionMessageIndex;
+    const sourceTargetSnapshot = activeMessageTarget?.targetSnapshot
+        || createMessageTargetSnapshot(ctx?.chat, sourceMessageIndexForEntries)
+        || (initialSettings.autoInsert
+            ? createMessageTargetSnapshot(ctx?.chat, resolveManualInsertFallbackIndex(ctx?.chat, initialSettings))
+            : null);
+    const messageSnapshots = selectedSceneEntries
+        .map(entry => createMessageTargetSnapshot(ctx?.chat, entry.index))
+        .filter(Boolean);
+    if (sourceTargetSnapshot && !messageSnapshots.some(snapshot => snapshot.message === sourceTargetSnapshot.message)) {
+        messageSnapshots.push(sourceTargetSnapshot);
+    }
+    const run = beginGeneration({
+        settings: initialSettings,
+        context: ctx,
+        messageSnapshots,
+        conversationCheckpoint: activeMessageTarget?.conversationCheckpoint || null,
+        disableGenerateButton: true,
+        clearPendingAuto: true,
+    });
+    const s = run.settings;
+    const cancelCheckpoint = getCancelCheckpoint();
+    const originalSeed = getGenerationSeedValue(s);
 
     try {
     checkAborted(cancelCheckpoint);
@@ -17383,7 +19143,7 @@ async function generateImage() {
     let scenePrompt = "";
     let chatContextProxyRefImages = [];
 
-    lastGenerationSourceMessageIndex = Number.isInteger(sourceMessageIndexForEntries) ? sourceMessageIndexForEntries : null;
+    rememberLastGenerationSource(sourceTargetSnapshot);
 
     if (Number.isInteger(sourceMessageIndexForEntries)) {
         log(`${Number.isInteger(activeMessageTarget?.messageIndex) ? "Manual message target" : "Scene selection target"}: Generating from chat message ${sourceMessageIndexForEntries}`);
@@ -17391,22 +19151,23 @@ async function generateImage() {
 
     if (useChatMessageScene) {
         const messages = getMessages(s, ctx, { logDebug: true });
-        if (messages) {
-            scenePrompt = messages;
-            basePrompt = messages;
-            if (s.enableParagraphPicker) {
-                const filtered = await showParagraphPicker(messages, run.signal);
-                if (filtered === null) {
-                    return; // finally block handles cleanup
-                }
-                scenePrompt = filtered;
-                basePrompt = filtered;
+        if (!messages) {
+            throw new Error("The selected chat scene contains no usable text. Choose a different message range or switch to Manual prompt.");
+        }
+        scenePrompt = messages;
+        basePrompt = messages;
+        if (s.enableParagraphPicker) {
+            const filtered = await showParagraphPicker(messages, run.signal);
+            if (filtered === null) {
+                return { status: "cancelled", generated: 0, failed: 0 }; // finally block handles cleanup
             }
+            scenePrompt = filtered;
+            basePrompt = filtered;
         }
     }
 
     if (s.provider === "proxy" && useChatMessageScene) {
-        chatContextProxyRefImages = await collectChatContextProxyRefImages(s, ctx);
+        chatContextProxyRefImages = await collectChatContextProxyRefImages(s, ctx, run.signal);
         checkAborted(cancelCheckpoint);
     }
     lastProxyContextRefImages = [...chatContextProxyRefImages];
@@ -17447,7 +19208,7 @@ async function generateImage() {
         if (editedPrompt !== null) {
             prompt = editedPrompt;
         } else {
-            return; // finally block handles cleanup
+            return { status: "cancelled", generated: 0, failed: 0 }; // finally block handles cleanup
         }
     }
 
@@ -17469,6 +19230,7 @@ async function generateImage() {
         matchText: filterMatchText || prompt,
         llmSceneText,
         signal: run.signal,
+        settings: s,
     });
     checkAborted(cancelCheckpoint);
     prompt = contextualApplied.prompt;
@@ -17492,11 +19254,17 @@ async function generateImage() {
                 showStatus(`🖼️ Generating image ${i + 1}/${batchCount}...`);
                 const expandedPrompt = expandWildcards(prompt);
                 const expandedNegative = expandWildcards(negative);
-                const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, providerRuntimeOptions);
+                const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, {
+                    ...providerRuntimeOptions,
+                    batchIndex: i,
+                    batchCount,
+                });
                 if (result) {
-                    return await finalizeGeneratedEntry(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
+                    return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
                         promptWasLLM: lastPromptWasLLM,
-                        sourceMessageIndex: Number.isInteger(sourceMessageIndexForEntries) ? sourceMessageIndexForEntries : undefined,
+                        sourceMessageIndex: sourceTargetSnapshot?.index,
+                        sourceMessageId: sourceTargetSnapshot?.messageId,
+                        sourceMessageSignature: sourceTargetSnapshot?.signature,
                     }));
                 }
                 return null;
@@ -17506,46 +19274,58 @@ async function generateImage() {
             log(`Generated ${results.length} image(s) successfully`);
             assertGenerationCanCommit(run);
             await maybeAutoSetBackground(results, s, run);
-            // Find last non-user message for insertion target
-            const ctx2 = getContext();
-            const lastCharIdx = (() => {
-                const chat = ctx2.chat;
-                if (!chat) return undefined;
-                for (let i = chat.length - 1; i >= 0; i--) {
-                    if (!chat[i]?.is_user) return i;
-                }
-                return undefined;
-            })();
             if (s.autoInsert) {
-                const autoInsertTarget = Number.isInteger(sourceMessageIndexForEntries) ? sourceMessageIndexForEntries : lastCharIdx;
+                let insertedCount = 0;
+                const failedResults = [];
                 for (const r of results) {
-                    addToGallery(r);
+                    void addToGallery(r);
                     try {
                         if (s.insertAsHiddenReply) {
-                            await insertImageAsHiddenReply(r, { commitGuard: () => assertGenerationCanCommit(run) });
+                            await insertImageAsHiddenReply(r, {
+                                commitGuard: () => assertGenerationCanCommit(run),
+                                conversationCheckpoint: run.context.conversationCheckpoint,
+                                outputMode: s.outputMode,
+                            });
                         } else if (shouldAutoInsertChatImageAsAssistant(s)) {
-                            await insertImageAsNewMessage(r, { commitGuard: () => assertGenerationCanCommit(run) });
+                            await insertImageAsNewMessage(r, {
+                                commitGuard: () => assertGenerationCanCommit(run),
+                                conversationCheckpoint: run.context.conversationCheckpoint,
+                                outputMode: s.outputMode,
+                            });
                         } else {
-                            await insertImageIntoMessage(r, autoInsertTarget, { commitGuard: () => assertGenerationCanCommit(run) });
+                            await insertImageIntoMessage(r, sourceTargetSnapshot?.index, {
+                                commitGuard: () => assertGenerationCanCommit(run),
+                                targetSnapshot: sourceTargetSnapshot,
+                                outputMode: s.outputMode,
+                            });
                         }
+                        insertedCount++;
                     } catch (err) {
                         if (err.name === "AbortError") throw err;
                         console.error("[Quick Image Gen] Auto-insert failed:", err);
+                        failedResults.push(r);
                     }
                 }
-            toastr.success(`Image${results.length > 1 ? 's' : ''} inserted into chat`);
-        } else if (results.length === 1) {
-            displayImage(results[0]);
-        } else {
-            displayBatchResults(results);
-        }
+                reportAutoInsertOutcome(insertedCount, failedResults);
+            } else if (results.length === 1) {
+                displayImage(results[0]);
+            } else {
+                displayBatchResults(results);
+            }
+            return {
+                status: outcome.errors.length > 0 ? "partial" : "success",
+                generated: results.length,
+                failed: outcome.errors.length,
+            };
     } catch (e) {
         if (e.name === "AbortError") {
             log("Generation cancelled by user");
             toastr.info("Generation cancelled");
+            return { status: "cancelled", generated: 0, failed: 0 };
         } else {
             log(`Error: ${e.message}`);
             toastr.error("Generation failed: " + e.message, "", { timeOut: 0, extendedTimeOut: 0, closeButton: true, escapeHtml: true });
+            return { status: "failed", generated: 0, failed: 1, message: e.message };
         }
     } finally {
         setGenerationSeedValue(s, originalSeed);
@@ -17863,7 +19643,7 @@ function cleanInjectTagsFromMessage(message, regexPattern, promptsToRemove = nul
 }
 
 function onChatCompletionPromptReady(eventData) {
-    if (isGenerating) return; // Don't inject into our own internal LLM calls
+    if (isGenerating || _internalLlmRequestCount > 0) return; // Don't inject into our own internal LLM calls
     const s = getSettings();
     if (!s.injectEnabled || !s.autoGenerate) return;
 
@@ -17882,9 +19662,9 @@ function onChatCompletionPromptReady(eventData) {
         const injectMsg = { role: "system", content: promptText };
 
         if (position === "afterScenario") {
-            // Insert after the first system message (scenario)
-            const firstSystemEnd = prompts.findIndex((m, i) => i > 0 && m.role !== "system");
-            if (firstSystemEnd > 0) {
+            // Insert after leading system messages, or before the first non-system message.
+            const firstSystemEnd = prompts.findIndex(m => m.role !== "system");
+            if (firstSystemEnd >= 0) {
                 prompts.splice(firstSystemEnd, 0, injectMsg);
             } else {
                 prompts.push(injectMsg);
@@ -17909,24 +19689,37 @@ function onChatCompletionPromptReady(eventData) {
     }
 }
 
-async function processInjectMessage(messageText, messageIndex) {
+function isInjectJobCurrent(job) {
+    if (!job) return true;
+    if (job.revision !== _automationRevision) return false;
+    const settings = getSettings();
+    if (!settings?.autoGenerate || !settings?.injectEnabled) return false;
+    return isMessageTargetSnapshotCurrent(job.targetSnapshot)
+        && isConversationCheckpointCurrent(job.conversationCheckpoint, getContext?.()?.chat);
+}
+
+async function processInjectMessage(messageText, messageIndex, job = null) {
     const cancelCheckpoint = getCancelCheckpoint();
-    const shouldReleaseIndex = messageIndex !== undefined;
+    const dedupeKey = job?.dedupeKey ?? messageIndex;
+    const shouldReleaseIndex = dedupeKey !== undefined;
     let startedGeneration = false;
     let run = null;
     let s;
     let sourceMessage = null;
     let sourceMessageIndex = null;
+    let sourceTargetSnapshot = job?.targetSnapshot || null;
     const consumedMessagePrompts = new Set();
 
     try {
         _injectProcessingCount++;
         s = getGenerationSettingsForRun();
-        if (!s.injectEnabled) return;
+        if (!s.injectEnabled || !s.autoGenerate || !isInjectJobCurrent(job)) return;
 
         const ctx = getContext();
         const chat = ctx?.chat;
-        const resolvedTarget = resolveInjectTargetMessage(chat, messageIndex);
+        const resolvedTarget = job
+            ? { message: assertMessageTargetSnapshot(job.targetSnapshot), index: job.index }
+            : resolveInjectTargetMessage(chat, messageIndex);
         const idx = Number.isInteger(resolvedTarget?.index)
             ? resolvedTarget.index
             : (typeof messageIndex === "number" ? messageIndex : (chat ? chat.length - 1 : -1));
@@ -17934,7 +19727,8 @@ async function processInjectMessage(messageText, messageIndex) {
         if (!message) return;
         sourceMessageIndex = Number.isInteger(resolvedTarget?.index) ? resolvedTarget.index : (idx >= 0 && chat?.[idx] ? idx : null);
         sourceMessage = Number.isInteger(sourceMessageIndex) ? chat?.[sourceMessageIndex] : null;
-        lastGenerationSourceMessageIndex = Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : null;
+        sourceTargetSnapshot ||= createMessageTargetSnapshot(chat, sourceMessageIndex);
+        rememberLastGenerationSource(sourceTargetSnapshot);
 
         let detection;
         let matches;
@@ -17967,13 +19761,18 @@ async function processInjectMessage(messageText, messageIndex) {
 
         // Begin generation once for all tags
         checkAborted(cancelCheckpoint);
-        if (isGenerating) {
-            log("Inject: Waiting for current generation to finish...");
+        const injectBlockedByOtherWork = () => isGenerating || _paletteInjectActive || _internalLlmRequestCount > 0 || Date.now() < _suppressAutoGenerateUntil;
+        if (injectBlockedByOtherWork()) {
+            log("Inject: Waiting for current generation or internal request to finish...");
             await new Promise((resolve, reject) => {
                 let elapsed = 0;
                 const check = setInterval(() => {
                     elapsed += 500;
-                    if (!isGenerating) { clearInterval(check); resolve(); }
+                    if (!injectBlockedByOtherWork()) { clearInterval(check); resolve(); }
+                    else if (!isInjectJobCurrent(job)) {
+                        clearInterval(check);
+                        resolve();
+                    }
                     else if (wasCancelRequestedSince(cancelCheckpoint)) {
                         clearInterval(check);
                         reject(new DOMException("Generation cancelled by user", "AbortError"));
@@ -17982,13 +19781,19 @@ async function processInjectMessage(messageText, messageIndex) {
                 }, 500);
             });
         }
+        if (!isInjectJobCurrent(job)) return;
         checkAborted(cancelCheckpoint);
-        run = beginGeneration({ settings: s, context: ctx });
+        run = beginGeneration({
+            settings: s,
+            context: ctx,
+            messageSnapshots: sourceTargetSnapshot ? [sourceTargetSnapshot] : [],
+            conversationCheckpoint: job?.conversationCheckpoint || null,
+        });
         s = run.settings;
         startedGeneration = true;
 
         // Generate images for each extracted prompt
-        const sceneTextForFilters = getMessages() || "";
+        const sceneTextForFilters = getMessages(s, ctx) || "";
         for (const extractedPrompt of matches) {
             const originalSeed = getGenerationSeedValue(s);
             try {
@@ -18027,6 +19832,7 @@ async function processInjectMessage(messageText, messageIndex) {
                     matchText: sceneTextForFilters || prompt,
                     llmSceneText: sceneTextForFilters || extractedPrompt,
                     signal: run.signal,
+                    settings: s,
                 });
                 checkAborted(cancelCheckpoint);
                 prompt = contextualApplied.prompt;
@@ -18046,11 +19852,13 @@ async function processInjectMessage(messageText, messageIndex) {
                     showStatus(`🖼️ Generating inject image ${i + 1}/${batchCount}...`);
                     const expandedPrompt = expandWildcards(prompt);
                     const expandedNegative = expandWildcards(negative);
-                    const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal);
+                    const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
                     if (result) {
-                        return await finalizeGeneratedEntry(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
+                        return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
                             promptWasLLM: lastPromptWasLLM,
                             sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
+                            sourceMessageId: sourceTargetSnapshot?.messageId,
+                            sourceMessageSignature: sourceTargetSnapshot?.signature,
                         }));
                     }
                     return null;
@@ -18061,29 +19869,14 @@ async function processInjectMessage(messageText, messageIndex) {
 
                 if (results.length > 0) {
                     assertGenerationCanCommit(run);
-                    if (sourceMessage) consumedMessagePrompts.add(extractedPrompt);
                     await maybeAutoSetBackground(results, s, run);
-                    if (results.length === 1) {
-                        if (s.autoInsert) {
-                            addToGallery(results[0]);
-                            try {
-                                await autoInsertInjectImage(results[0], {
-                                    messageIndex: sourceMessageIndex,
-                                    insertMode: s.injectInsertMode,
-                                    commitGuard: () => assertGenerationCanCommit(run),
-                                });
-                            } catch (err) {
-                                if (err.name === "AbortError") throw err;
-                                log(`Inject: Auto-insert failed: ${err.message}`);
-                                displayImage(results[0]);
-                            }
-                        } else {
-                            displayImage(results[0]);
-                        }
-                    } else {
-                        // Always show batch picker for multiple images
-                        displayBatchResults(results);
-                    }
+                    await deliverInjectResults(results, {
+                        settings: s,
+                        sourceMessageIndex,
+                        targetSnapshot: sourceTargetSnapshot,
+                        run,
+                    });
+                    if (sourceMessage) consumedMessagePrompts.add(extractedPrompt);
                     toastr.success(`Inject mode: ${results.length} image(s) generated`);
                 }
             } catch (e) {
@@ -18098,6 +19891,11 @@ async function processInjectMessage(messageText, messageIndex) {
             } finally {
                 setGenerationSeedValue(s, originalSeed);
             }
+        }
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            log(`Inject: ${error.message}`);
+            toastr?.error?.("Inject generation failed: " + error.message, "", { escapeHtml: true });
         }
     } finally {
         if (run && !run.signal.aborted && s && sourceMessage && consumedMessagePrompts.size > 0) {
@@ -18118,7 +19916,8 @@ async function processInjectMessage(messageText, messageIndex) {
         // Expire this index after a delay so future messages at the same index can be processed,
         // even when returning early (invalid regex, no matches, disabled mode, etc).
         if (shouldReleaseIndex) {
-            setTimeout(() => _processedInjectIndices.delete(messageIndex), 120000);
+            if (!startedGeneration) _processedInjectIndices.delete(dedupeKey);
+            else setTimeout(() => _processedInjectIndices.delete(dedupeKey), 120000);
         }
     }
 }
@@ -18164,12 +19963,17 @@ async function runQigSlashGenerateCommand(args = {}, unnamedPrompt = "") {
     };
 
     try {
+        let outcome;
         if (oneOffPrompt && mode !== "inject") {
-            await withTransientGenerationSettings({ prompt: oneOffPrompt, useLastMessage: false }, runGeneration);
+            outcome = await withTransientGenerationSettings({ prompt: oneOffPrompt, useLastMessage: false }, runGeneration);
         } else {
-            await runGeneration();
+            outcome = await runGeneration();
         }
-        return "QIG: generation complete.";
+        if (outcome?.status === "busy") return "QIG: generation is already running.";
+        if (outcome?.status === "cancelled") return "QIG: generation cancelled.";
+        if (outcome?.status === "failed") return `QIG failed: ${outcome.message || "generation failed"}`;
+        if (outcome?.status === "partial") return `QIG: generated ${outcome.generated} image(s); ${outcome.failed} generation(s) failed.`;
+        return `QIG: generation complete${Number.isInteger(outcome?.generated) ? ` (${outcome.generated} image(s))` : ""}.`;
     } catch (e) {
         const message = e?.message || String(e);
         log(`Slash command generation failed: ${message}`);
@@ -18180,39 +19984,46 @@ async function runQigSlashGenerateCommand(args = {}, unnamedPrompt = "") {
 
 function runQigAutoSlashCommand(args = {}) {
     const s = getSettings();
-    let changed = false;
+    const next = {
+        autoGenerate: !!s.autoGenerate,
+        autoGenerateEveryMessages: normalizeAutoGenerateEveryMessages(s.autoGenerateEveryMessages),
+        autoGenerateDelayMs: normalizeAutoGenerateDelayMs(s.autoGenerateDelayMs),
+    };
 
     if (hasSlashNamedArgument(args, "state")) {
         const nextState = parseSlashBoolean(args.state, !!s.autoGenerate);
         if (nextState === null) return "QIG auto: state must be true, false, on, off, or toggle.";
-        if (s.autoGenerate !== nextState) changed = true;
-        setAutoGenerateEnabled(nextState);
+        next.autoGenerate = nextState;
     }
 
     if (hasSlashNamedArgument(args, "every")) {
         const rawEvery = stringifySlashCommandArgument(args.every);
+        if (!rawEvery) return "QIG auto: every must be a number.";
         const numericEvery = Number(rawEvery);
-        if (!Number.isFinite(numericEvery)) return "QIG auto: every must be a number.";
-        const nextEvery = normalizeAutoGenerateEveryMessages(numericEvery);
-        if (s.autoGenerateEveryMessages !== nextEvery) {
-            s.autoGenerateEveryMessages = nextEvery;
-            changed = true;
-            resetAutoGenerateCadence({ clearTimer: true });
+        if (!Number.isInteger(numericEvery) || numericEvery < AUTO_GENERATE_EVERY_MIN || numericEvery > AUTO_GENERATE_EVERY_MAX) {
+            return `QIG auto: every must be an integer from ${AUTO_GENERATE_EVERY_MIN} to ${AUTO_GENERATE_EVERY_MAX}.`;
         }
+        next.autoGenerateEveryMessages = normalizeAutoGenerateEveryMessages(numericEvery);
     }
 
     if (hasSlashNamedArgument(args, "delay")) {
         const rawDelay = stringifySlashCommandArgument(args.delay);
+        if (!rawDelay) return "QIG auto: delay must be a number of milliseconds.";
         const numericDelay = Number(rawDelay);
-        if (!Number.isFinite(numericDelay)) return "QIG auto: delay must be a number of milliseconds.";
-        const nextDelay = normalizeAutoGenerateDelayMs(numericDelay);
-        if (s.autoGenerateDelayMs !== nextDelay) {
-            s.autoGenerateDelayMs = nextDelay;
-            changed = true;
-            resetAutoGenerateCadence({ clearTimer: true });
+        if (!Number.isFinite(numericDelay) || numericDelay < AUTO_GENERATE_DELAY_MIN || numericDelay > AUTO_GENERATE_DELAY_MAX) {
+            return `QIG auto: delay must be from ${AUTO_GENERATE_DELAY_MIN} to ${AUTO_GENERATE_DELAY_MAX} milliseconds.`;
         }
+        next.autoGenerateDelayMs = normalizeAutoGenerateDelayMs(numericDelay);
     }
 
+    const changed = s.autoGenerate !== next.autoGenerate
+        || s.autoGenerateEveryMessages !== next.autoGenerateEveryMessages
+        || s.autoGenerateDelayMs !== next.autoGenerateDelayMs;
+    if (changed) {
+        Object.assign(s, next);
+        _automationRevision += 1;
+        resetAutoGenerateCadence({ clearTimer: true });
+    }
     normalizeAutoGenerateSettings(s);
     syncAutoGenerateControls(s);
     if (changed) saveSettingsDebounced();
@@ -18310,6 +20121,35 @@ async function registerQigSlashCommands() {
     }
 }
 
+function isDirectAutoJobCurrent(job) {
+    const settings = getSettings();
+    return !!settings?.autoGenerate
+        && !settings.injectEnabled
+        && job.revision === _automationRevision
+        && isMessageTargetSnapshotCurrent(job.targetSnapshot)
+        && isConversationCheckpointCurrent(job.conversationCheckpoint, getContext?.()?.chat);
+}
+
+function scheduleDirectAutoGeneration(job, delayMs) {
+    _autoGenTimeout = setTimeout(async () => {
+        _autoGenTimeout = null;
+        if (!isDirectAutoJobCurrent(job)) return;
+        if (isGenerating || _paletteInjectActive || _injectProcessingCount > 0 || shouldSuppressAutoGenerateFromInternalLLM(job.index)) {
+            scheduleDirectAutoGeneration(job, 250);
+            return;
+        }
+        try {
+            setTransientGenerationTarget(job.index, {
+                forceMessagePrompt: false,
+                conversationCheckpoint: job.conversationCheckpoint,
+            });
+            await withTransientGenerationSettings(job.settings, () => generateImage());
+        } finally {
+            clearTransientGenerationTarget();
+        }
+    }, delayMs);
+}
+
 
 jQuery(function () {
     // Non-blocking async initialization
@@ -18351,14 +20191,6 @@ jQuery(function () {
                 console.warn("[ImageGen] Could not import RossAscends-mods:", e.message);
             }
 
-            try {
-                const secretsModule = await import("../../secrets.js");
-                secret_state = secretsModule.secret_state;
-                rotateSecret = secretsModule.rotateSecret;
-            } catch (e) {
-                console.warn("[ImageGen] Could not import secrets module:", e.message);
-            }
-
             await loadSettings();
             galleryInitializationPromise = initializeGalleryRepository();
             installLifecycleCleanup();
@@ -18368,7 +20200,7 @@ jQuery(function () {
             bindMessageGenerateActionClicks();
             initMessageGenerateActionObserver();
             await registerQigSlashCommands();
-            loadCharSettings();
+            await loadCharSettings();
 
             // Populate LLM override dropdowns if enabled
             const initSettings = getSettings();
@@ -18385,10 +20217,9 @@ jQuery(function () {
             const { eventSource, event_types } = scriptModule;
             if (eventSource) {
                 eventSource.on(event_types.MESSAGE_RECEIVED, (messageIndex) => {
+                    if (shouldSuppressAutoGenerateFromInternalLLM(messageIndex)) return;
                     scheduleRefreshMessageGenerateActions();
                     scheduleContextMediaForMessage(messageIndex);
-                    if (shouldSuppressAutoGenerateFromInternalLLM(messageIndex)) return;
-                    if (_paletteInjectActive || _injectProcessingCount > 0) return;
                     const s = getSettings();
                     if (!s.autoGenerate) return;
                     normalizeAutoGenerateSettings(s);
@@ -18399,40 +20230,44 @@ jQuery(function () {
                     if (!Number.isInteger(idx) || idx < 0) return;
                     const msg = chat?.[idx];
                     if (!msg || msg.is_user || msg.extra?.inline_image) return;
-                    if (s.injectEnabled && _processedInjectIndices.has(idx)) return;
-                    if (!s.injectEnabled && isGenerating) return;
+                    const dedupeKey = msg;
+                    if (s.injectEnabled && _processedInjectIndices.has(dedupeKey)) return;
                     if (!shouldRunAutoGenerateForEligibleMessage(idx, s)) return;
                     const delayMs = normalizeAutoGenerateDelayMs(s.autoGenerateDelayMs);
                     // Inject mode: extract image tags from AI response/reasoning
                     // Checked first — if active, skip autoGenerate to prevent double generation
                     if (s.injectEnabled) {
-                        _processedInjectIndices.add(idx);
+                        const targetSnapshot = createMessageTargetSnapshot(chat, idx);
+                        if (!targetSnapshot) return;
+                        const job = {
+                            chat,
+                            index: idx,
+                            message: msg,
+                            targetSnapshot,
+                            conversationCheckpoint: createConversationCheckpoint(chat),
+                            dedupeKey,
+                            revision: _automationRevision,
+                        };
+                        _processedInjectIndices.add(dedupeKey);
                         const timeoutId = setTimeout(() => {
                             _autoInjectTimeouts.delete(timeoutId);
-                            processInjectMessage(msg.mes || "", idx);
+                            void processInjectMessage(msg.mes || "", idx, job);
                         }, delayMs);
-                        _autoInjectTimeouts.add(timeoutId);
+                        _autoInjectTimeouts.set(timeoutId, dedupeKey);
                         return;
                     }
                     // Auto-generate mode (debounced — only one pending timeout at a time)
                     clearPendingAutoGenerateTimer();
-                    const scheduledChat = chat;
-                    const scheduledMessage = msg;
-                    const scheduledText = msg.mes;
-                    _autoGenTimeout = setTimeout(async () => {
-                        _autoGenTimeout = null;
-                        const currentChat = getContext?.()?.chat;
-                        if (currentChat !== scheduledChat || currentChat?.[idx] !== scheduledMessage || scheduledMessage.mes !== scheduledText) {
-                            log(`Auto-generate: Discarded stale scheduled work for message ${idx}`);
-                            return;
-                        }
-                        if (isGenerating) return;
-                        try {
-                            setTransientGenerationTarget(idx);
-                            await generateImage();
-                        } finally {
-                            clearTransientGenerationTarget();
-                        }
+                    const targetSnapshot = createMessageTargetSnapshot(chat, idx);
+                    if (!targetSnapshot) return;
+                    scheduleDirectAutoGeneration({
+                        chat,
+                        index: idx,
+                        message: msg,
+                        targetSnapshot,
+                        conversationCheckpoint: createConversationCheckpoint(chat),
+                        settings: getGenerationSettingsForRun(),
+                        revision: _automationRevision,
                     }, delayMs);
                 });
                 // Inject mode: inject prompt into chat completion
@@ -18448,7 +20283,7 @@ jQuery(function () {
                     if (_injectProcessingCount <= 0) {
                         _processedInjectIndices.clear();
                     }
-                    loadCharSettings();
+                    void loadCharSettings();
                     renderContextualFilters();
                     renderContextMediaSummary();
                 });
@@ -18547,7 +20382,7 @@ function getServerSubfolder(context = getContext?.()) {
     return "QuickImageGen";
 }
 
-async function fetchImageBuffer(url, { signal } = {}) {
+async function fetchImageBuffer(url, { signal, maxBytes = MAX_IMAGE_BYTES } = {}) {
     const source = normalizeGeneratedImageSource(url);
     if (!source) throw new Error("Invalid or unsupported image source");
     const isDataLike = source.startsWith("data:") || source.startsWith("blob:");
@@ -18572,7 +20407,7 @@ async function fetchImageBuffer(url, { signal } = {}) {
         throw new Error("Image response redirected to an unsafe destination");
     }
     const contentType = res.headers.get("content-type") || "";
-    const buffer = await readResponseArrayBuffer(res, MAX_IMAGE_BYTES);
+    const buffer = await readResponseArrayBuffer(res, maxBytes);
     return { buffer, contentType };
 }
 
@@ -18602,7 +20437,10 @@ async function saveImageToServer(url, prompt, negative, settings, options = {}) 
 
     if (formatInfo.isPng && settings?.saveToServerEmbedMetadata !== false) {
         const metaText = buildMetadataString(prompt, negative, settings || {});
-        finalBuffer = embedPNGMetadata(buffer, metaText);
+        finalBuffer = embedPngMetadataBundle(buffer, {
+            parameters: metaText,
+            structured: buildStructuredMetadata(prompt, negative, settings || {}),
+        });
     }
 
     const base64 = arrayBufferToBase64(finalBuffer);
@@ -18657,13 +20495,47 @@ function buildMetadataString(prompt, negative, settings) {
     return parts.join('\n');
 }
 
-async function downloadWithMetadata(url, filename, prompt, negative, settings) {
+function buildStructuredMetadata(prompt, negative, settings) {
+    const sourceEffectiveRequest = settings?.effectiveRequest?.version === 1
+        ? settings.effectiveRequest
+        : {
+            version: 1,
+            provider: settings?.provider || "",
+            parameters: {
+                model: settings?.model,
+                width: settings?.width,
+                height: settings?.height,
+                steps: settings?.steps,
+                cfgScale: settings?.cfgScale,
+                sampler: settings?.sampler,
+                seed: settings?.seed,
+                schedule: settings?.scheduler,
+            },
+            settings,
+        };
+    const effectiveRequest = sanitizeEffectiveRequest(sourceEffectiveRequest);
+    if (effectiveRequest?.provider === "proxy" && Number(sourceEffectiveRequest?.parameters?.cfgScale) === 0) {
+        effectiveRequest.parameters.cfgScale = 0;
+    }
+    return {
+        prompt: String(prompt ?? "").slice(0, 16 * 1024),
+        negativePrompt: String(negative ?? "").slice(0, 16 * 1024),
+        effectiveRequest,
+    };
+}
+
+async function downloadWithMetadata(url, filename, prompt, negative, settings, options = {}) {
     try {
         const { buffer: arrayBuffer } = await fetchImageBuffer(url);
         const formatInfo = detectImageFormat(arrayBuffer);
         if (!formatInfo) throw new Error("Downloaded bytes are not a supported image format");
         const metaText = buildMetadataString(prompt, negative, settings || {});
-        const finalBuffer = formatInfo.isPng ? embedPNGMetadata(arrayBuffer, metaText) : arrayBuffer;
+        const finalBuffer = formatInfo.isPng
+            ? embedPngMetadataBundle(arrayBuffer, {
+                parameters: metaText,
+                structured: buildStructuredMetadata(prompt, negative, settings || {}),
+            })
+            : arrayBuffer;
         const blob = new Blob([finalBuffer], { type: formatInfo.mime });
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -18673,15 +20545,19 @@ async function downloadWithMetadata(url, filename, prompt, negative, settings) {
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        return { success: true, filename: a.download, format: formatInfo };
     } catch (err) {
         console.error("Download with metadata failed:", err);
-        toastr?.error?.("Could not download this image safely. The source may be unavailable or too large.");
+        if (options.notify !== false) {
+            toastr?.error?.("Could not download this image safely. The source may be unavailable or too large.");
+        }
+        return { success: false, error: err };
     }
 }
 
 async function readInfoFromPNG(file) {
     if (file.size > MAX_PNG_FILE_BYTES) throw new Error("PNG exceeds the 25 MB limit");
-    return readPngMetadata(await file.arrayBuffer());
+    return readPngMetadataBundle(await file.arrayBuffer());
 }
 
 async function handleMetadataDrop(e) {
@@ -18704,13 +20580,42 @@ async function handleMetadataDrop(e) {
     showStatus("🔍 Reading metadata...");
     try {
         const info = await readInfoFromPNG(file);
-        if (!info) {
+        if (info.parameters == null && info.structured == null) {
             showStatus("❌ No generation parameters found");
             setTimeout(() => showStatus(null), 2000);
             return;
         }
 
-        const params = parseGenerationParameters(info);
+        const structuredData = info.structured?.data && typeof info.structured.data === "object"
+            ? info.structured.data
+            : null;
+        const structuredRequest = structuredData?.effectiveRequest
+            ? sanitizeEffectiveRequest(structuredData.effectiveRequest)
+            : null;
+        const params = { ...(parseGenerationParameters(info.parameters) || {}) };
+        if (structuredData && Object.prototype.hasOwnProperty.call(structuredData, "prompt") && typeof structuredData.prompt === "string") {
+            params.prompt = structuredData.prompt;
+        }
+        if (structuredData && Object.prototype.hasOwnProperty.call(structuredData, "negativePrompt") && typeof structuredData.negativePrompt === "string") {
+            params.negativePrompt = structuredData.negativePrompt;
+        }
+        if (structuredRequest) {
+            const effectiveParameters = structuredRequest.parameters || {};
+            for (const key of ["model", "width", "height", "steps", "cfgScale", "sampler", "seed"]) {
+                if (Object.prototype.hasOwnProperty.call(effectiveParameters, key)) params[key] = effectiveParameters[key];
+            }
+            if (Object.prototype.hasOwnProperty.call(effectiveParameters, "schedule")) params.scheduler = effectiveParameters.schedule;
+            if (structuredRequest.provider && PROVIDERS[structuredRequest.provider]) params.provider = structuredRequest.provider;
+        }
+        const hasStructuredSettings = structuredRequest
+            && (structuredRequest.provider
+                || Object.keys(structuredRequest.parameters || {}).length
+                || Object.keys(structuredRequest.settings || {}).length);
+        if (!Object.keys(params).length && !hasStructuredSettings) {
+            showStatus("❌ No generation parameters found");
+            setTimeout(() => showStatus(null), 2000);
+            return;
+        }
         if (params) {
             const s = getSettings();
             const setValue = (id, value) => {
@@ -18728,8 +20633,10 @@ async function handleMetadataDrop(e) {
             if (explicitProvider && params.model && params.model !== currentModel) {
                 identityChanges.push(`model ${currentModel || "(default)"} → ${params.model}`);
             }
-            const importedBackend = importedProvider === "local" && params.backend
-                ? (params.backend === "comfyui" ? "comfyui" : "a1111")
+            const structuredSettings = structuredRequest?.settings || {};
+            const backendValue = structuredSettings.localType || params.backend;
+            const importedBackend = importedProvider === "local" && backendValue
+                ? (backendValue === "comfyui" ? "comfyui" : "a1111")
                 : null;
             if (importedBackend && importedBackend !== s.localType) {
                 identityChanges.push(`local backend ${s.localType || "a1111"} → ${importedBackend}`);
@@ -18747,17 +20654,30 @@ async function handleMetadataDrop(e) {
                 renderProfileSelect();
             }
 
-            if (importedProvider === "local" && params.backend) {
-                s.localType = params.backend === "comfyui" ? "comfyui" : "a1111";
+            for (const [key, value] of Object.entries(structuredSettings)) {
+                if (["provider", "model", "width", "height", "steps", "cfgScale", "sampler", "seed"].includes(key)) continue;
+                if (key === "batchCount") {
+                    s.batchCount = normalizeBatchCount(value);
+                    continue;
+                }
+                if (key === "sequentialSeeds") {
+                    s.sequentialSeeds = value === true;
+                    continue;
+                }
+                s[key] = cloneSynchronizedValue(value);
+            }
+
+            if (importedBackend) {
+                s.localType = importedBackend;
                 setValue("qig-local-type", s.localType);
                 syncLocalTypeSections(s.localType);
             }
 
-            if (params.prompt) {
+            if (Object.prototype.hasOwnProperty.call(params, "prompt")) {
                 s.prompt = params.prompt;
                 setValue("qig-prompt", s.prompt);
             }
-            if (params.negativePrompt) {
+            if (Object.prototype.hasOwnProperty.call(params, "negativePrompt")) {
                 s.negativePrompt = params.negativePrompt;
                 setValue("qig-negative", s.negativePrompt);
             }
@@ -18812,7 +20732,7 @@ async function handleMetadataDrop(e) {
                     case "together": s.togetherModel = params.model; break;
                     case "zai": s.zaiModel = params.model; break;
                     case "local":
-                        if ((params.backend || s.localType) === "comfyui") {
+                        if ((importedBackend || s.localType) === "comfyui") {
                             s.localModel = params.model;
                         } else {
                             s.a1111Model = params.model;
@@ -18846,7 +20766,8 @@ async function handleMetadataDrop(e) {
                     "UniPC": "uni_pc", "UniPC BH2": "uni_pc_bh2",
                     "LCM": "lcm", "DEIS": "deis", "Restart": "restart"
                 };
-                    const mapped = samplerMap[params.sampler];
+                    const mapped = samplerMap[params.sampler]
+                        || (Object.prototype.hasOwnProperty.call(structuredRequest?.parameters || {}, "sampler") ? params.sampler : null);
                     if (mapped) {
                         const oldSampler = s.sampler;
                         s.sampler = mapped;
@@ -18860,17 +20781,25 @@ async function handleMetadataDrop(e) {
             // Apply scheduler from metadata
             if (params.scheduler) {
                 if (importedProvider === "local") {
-                    if ((params.backend || s.localType) === "comfyui") {
+                    if ((importedBackend || s.localType) === "comfyui") {
                         s.comfyScheduler = params.scheduler;
                     } else {
                         s.a1111Scheduler = params.scheduler;
                     }
                 } else if (importedProvider === "civitai") {
-                    s.civitaiScheduler = params.scheduler;
+                    try {
+                        mapCivitaiSdcppSampler(params.scheduler);
+                        s.civitaiScheduler = params.scheduler;
+                    } catch {
+                        toastr.warning(`Unsupported CivitAI sampler in image metadata: "${params.scheduler}"`, "Quick Image Gen", { escapeHtml: true });
+                    }
                 }
             }
 
-            if (importedProvider) refreshProviderInputs(importedProvider);
+            refreshAllUI(s);
+            if (importedProvider === "local" && s.localType === "comfyui") {
+                refreshComfyModelCatalog().catch(error => log(`ComfyUI model refresh failed: ${error.message}`));
+            }
 
             saveSettingsDebounced();
             syncGenerationPresetIndicators();

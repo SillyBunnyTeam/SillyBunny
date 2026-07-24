@@ -34,7 +34,7 @@ function imageBytesToDataUrl(buffer) {
     return `data:${format.mime};base64,${arrayBufferToBase64(bytes)}`;
 }
 
-function validateInlineImage(source) {
+function validateInlineImage(source, materializeBytes = imageBytesToDataUrl) {
     const normalized = normalizeImageSource(source, {
         allowHttp: false,
         allowRelative: false,
@@ -51,7 +51,7 @@ function validateInlineImage(source) {
         throw new Error(`Provider returned malformed image base64: ${error?.message || 'decode failed'}`);
     }
     if (bytes.byteLength < 32) throw new Error('Provider returned empty or incomplete image payload');
-    return imageBytesToDataUrl(bytes);
+    return materializeBytes(bytes);
 }
 
 function getUrlPath(value) {
@@ -62,42 +62,173 @@ function getUrlPath(value) {
     }
 }
 
-function splitUrlSuffix(value) {
-    const match = String(value || '').match(/^([^?#]*)([?#].*)?$/s);
-    return { path: match?.[1] || '', suffix: match?.[2] || '' };
+function editUrlPath(value, editPath) {
+    const raw = String(value || '').trim();
+    try {
+        const absolute = new URL(raw);
+        absolute.pathname = editPath(absolute.pathname);
+        return absolute.toString();
+    } catch {
+        const match = raw.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/s);
+        const path = match?.[1] || '';
+        return `${editPath(path)}${match?.[2] || ''}${match?.[3] || ''}`;
+    }
+}
+
+function removeUrlQueryParameter(value, name) {
+    try {
+        const url = new URL(value);
+        url.searchParams.delete(name);
+        return url.toString();
+    } catch {
+        return value;
+    }
 }
 
 export function isOpenAIChatCompletionsEndpoint(value) {
     return /\/chat\/completions$/i.test(getUrlPath(value));
 }
 
+export function isNovelAICompatibleProxyUrl(value) {
+    const path = getUrlPath(value);
+    if (/\/generate$/i.test(path)) return false;
+    return /\/v1$/i.test(path) || /\/chat\/completions$/i.test(path);
+}
+
 export function getGptImageApiUrl(proxyUrl = '') {
     const endpoint = String(proxyUrl || '').trim();
     if (!endpoint) return 'https://api.openai.com/v1/images/generations';
 
-    const { path, suffix } = splitUrlSuffix(endpoint);
-    const normalizedPath = path.replace(/\/+$/, '');
-    if (/\/images\/generations$/i.test(normalizedPath)) return `${normalizedPath}${suffix}`;
-    if (/\/chat\/completions$/i.test(normalizedPath)) {
-        return `${normalizedPath.replace(/\/chat\/completions$/i, '/images/generations')}${suffix}`;
-    }
-    if (/\/images$/i.test(normalizedPath)) return `${normalizedPath}/generations${suffix}`;
-    if (/\/v1$/i.test(normalizedPath)) return `${normalizedPath}/images/generations${suffix}`;
+    const normalizedPath = getUrlPath(endpoint);
+    if (/\/images\/generations$/i.test(normalizedPath)) return endpoint;
+    if (/\/chat\/completions$/i.test(normalizedPath)) return editUrlPath(endpoint, path => path.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '/images/generations'));
+    if (/\/images$/i.test(normalizedPath)) return editUrlPath(endpoint, path => `${path.replace(/\/+$/, '')}/generations`);
+    if (/\/v1$/i.test(normalizedPath)) return editUrlPath(endpoint, path => `${path.replace(/\/+$/, '')}/images/generations`);
     return endpoint;
 }
 
+export function getOpenAICompatibleApiUrl(value, endpointMode = 'images_generations') {
+    const endpoint = String(value || '').trim();
+    if (!endpoint) return '';
+    const path = getUrlPath(endpoint);
+    if (endpointMode === 'chat_completions') {
+        if (/\/chat\/completions$/i.test(path)) return endpoint;
+        if (/\/images\/generations$/i.test(path)) return editUrlPath(endpoint, current => current.replace(/\/+$/, '').replace(/\/images\/generations$/i, '/chat/completions'));
+        if (/\/images$/i.test(path)) return editUrlPath(endpoint, current => current.replace(/\/+$/, '').replace(/\/images$/i, '/chat/completions'));
+        return editUrlPath(endpoint, current => `${current.replace(/\/+$/, '')}/chat/completions`);
+    }
+    if (/\/images\/generations$/i.test(path)) return endpoint;
+    if (/\/chat\/completions$/i.test(path)) return editUrlPath(endpoint, current => current.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '/images/generations'));
+    if (/\/images$/i.test(path)) return editUrlPath(endpoint, current => `${current.replace(/\/+$/, '')}/generations`);
+    if (/\/v1$/i.test(path)) return editUrlPath(endpoint, current => `${current.replace(/\/+$/, '')}/images/generations`);
+    return endpoint;
+}
+
+export function extractProviderErrorMessage(data) {
+    const candidates = [
+        data?.error?.message,
+        data?.error,
+        data?.detail,
+        data?.message,
+        data?.choices?.[0]?.message?.content,
+    ];
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string') continue;
+        const message = candidate.trim();
+        if (message) return message.slice(0, 1000);
+    }
+    return '';
+}
+
+export async function readProviderErrorResponse(response, maxBytes = 1024 * 1024) {
+    const text = await readResponseText(response, maxBytes);
+    let data = null;
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch {
+            data = null;
+        }
+    }
+    const message = extractProviderErrorMessage(data)
+        || text.replace(/\s+/g, ' ').trim().slice(0, 1000)
+        || response?.statusText
+        || '';
+    return { data, text, message };
+}
+
+export function getGptImageRouteRetryUrl(endpoint, responseData) {
+    const message = extractProviderErrorMessage(responseData);
+    if (!/proxy error\s*\(\s*http\s+404\s+not found\s*\)/i.test(message)
+        || !/requested proxy endpoint does not exist/i.test(message)) {
+        return '';
+    }
+
+    const value = String(endpoint || '').trim();
+    if (!value) return '';
+    const normalizedPath = getUrlPath(value);
+    if (!normalizedPath || /\/images\/generations$/i.test(normalizedPath)) return '';
+    return editUrlPath(value, path => `${path.replace(/\/+$/, '')}/images/generations`);
+}
+
+function isGptImageRequestError(result) {
+    if (!result || typeof result !== 'object') return false;
+    const status = Number(result.status);
+    return result.ok === false
+        || (Number.isFinite(status) && status >= 400)
+        || result.error != null;
+}
+
+function throwGptImageRequestError(result) {
+    if (result.error instanceof Error) throw result.error;
+
+    const status = Number(result.status);
+    const detail = extractProviderErrorMessage(result.data)
+        || (typeof result.error === 'string' ? result.error.trim().slice(0, 1000) : '');
+    const label = Number.isFinite(status) ? `GPT Image error ${status}` : 'GPT Image request failed';
+    const error = new Error(detail ? `${label}: ${detail}` : label);
+    if (Number.isFinite(status)) error.status = status;
+    error.data = result.data;
+    throw error;
+}
+
+export async function requestGptImageWithRouteRetry(endpoint, request, onRetry = () => {}) {
+    const firstResult = await request(endpoint);
+    if (firstResult?.image || firstResult?.source) return firstResult;
+    if (!isGptImageRequestError(firstResult)) return firstResult;
+
+    const retryUrl = Number(firstResult.status) === 404
+        ? getGptImageRouteRetryUrl(endpoint, firstResult.data)
+        : '';
+    if (!retryUrl) throwGptImageRequestError(firstResult);
+
+    onRetry(retryUrl);
+    const retryResult = await request(retryUrl);
+    if (retryResult?.image || retryResult?.source || !isGptImageRequestError(retryResult)) return retryResult;
+    throwGptImageRequestError(retryResult);
+}
+
 export function getNanobananaApiUrl(proxyUrl = '', model = 'gemini-3-pro-image', apiKey = '') {
-    const trimmedProxy = String(proxyUrl || '').trim().replace(/\/$/, '');
+    const trimmedProxy = String(proxyUrl || '').trim();
     if (!trimmedProxy) {
-        return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     }
     if (isOpenAIChatCompletionsEndpoint(trimmedProxy)) return trimmedProxy;
-    if (trimmedProxy.includes(':generateContent')) {
-        if (!apiKey || /[?&]key=/i.test(trimmedProxy)) return trimmedProxy;
-        return `${trimmedProxy}${trimmedProxy.includes('?') ? '&' : '?'}key=${apiKey}`;
-    }
-    const path = trimmedProxy.endsWith('/v1beta') ? trimmedProxy : `${trimmedProxy}/v1beta`;
-    return `${path}/models/${model}:generateContent${apiKey ? `?key=${apiKey}` : ''}`;
+    if (getUrlPath(trimmedProxy).includes(':generateContent')) return removeUrlQueryParameter(trimmedProxy, 'key');
+    const endpoint = editUrlPath(trimmedProxy, path => {
+        const base = path.replace(/\/+$/, '');
+        const versioned = /\/v1beta$/i.test(base) ? base : `${base}/v1beta`;
+        return `${versioned}/models/${model}:generateContent`;
+    });
+    return endpoint;
+}
+
+export function getNanobananaAuthHeaders(endpointUrl, apiKey = '') {
+    const key = String(apiKey || '');
+    if (!key) return {};
+    return isOpenAIChatCompletionsEndpoint(endpointUrl)
+        ? { Authorization: `Bearer ${key}` }
+        : { 'x-goog-api-key': key };
 }
 
 export function buildGptImagePayload({
@@ -118,7 +249,8 @@ export function buildGptImagePayload({
     };
     if (quality !== 'auto') payload.quality = quality;
     if (outputFormat !== 'png') payload.output_format = outputFormat;
-    if (background !== 'auto' && !(background === 'transparent' && outputFormat === 'jpeg')) {
+    const supportsBackground = /^gpt-image-(?:1(?:\.5)?|2)(?:$|-)/i.test(String(model || ''));
+    if (supportsBackground && background !== 'auto' && !(background === 'transparent' && outputFormat === 'jpeg')) {
         payload.background = background;
     }
     if (moderation !== 'auto') payload.moderation = moderation;
@@ -182,7 +314,15 @@ function extractImageFromString(value, defaultMime) {
 
 function extractImageValue(candidate, defaultMime) {
     if (!candidate) return null;
+    if (Array.isArray(candidate)) {
+        for (const item of candidate) {
+            const source = extractImageValue(item, defaultMime);
+            if (source) return source;
+        }
+        return null;
+    }
     if (typeof candidate === 'string') return extractImageFromString(candidate, defaultMime);
+    if (typeof candidate !== 'object') return null;
     if (typeof candidate.image_url === 'string') return candidate.image_url;
     if (candidate.image_url?.url) return candidate.image_url.url;
     if (candidate.url) return candidate.url;
@@ -198,8 +338,10 @@ function extractImageValue(candidate, defaultMime) {
 
 export function extractProviderImageSource(data, { defaultMime = 'image/png', includeGeminiCandidates = true } = {}) {
     const directCandidates = [
-        data?.data?.[0],
-        data?.output?.[0],
+        data?.data,
+        data?.output,
+        data?.images,
+        data?.artifacts,
         { url: data?.url },
         { image_url: data?.image_url },
         { url: data?.imageUrl },
@@ -276,9 +418,14 @@ export async function materializeProviderImageSource(source, {
     signal,
     fetchImpl = globalThis.fetch,
     allowBrowserFallback = true,
+    forceFetch = false,
+    allowedHostSuffixes = [],
+    credentialHostSuffixes = [],
+    credentialOrigins = [],
+    materializeBytes = imageBytesToDataUrl,
 } = {}) {
     if (typeof source !== 'string' || !source.trim()) throw new Error('Provider returned an empty or invalid image source');
-    if (source.trim().startsWith('data:')) return validateInlineImage(source.trim());
+    if (source.trim().startsWith('data:')) return validateInlineImage(source.trim(), materializeBytes);
 
     const environmentBaseUrl = globalThis.location?.href || responseUrl || 'http://localhost/';
     let request;
@@ -290,16 +437,28 @@ export async function materializeProviderImageSource(source, {
         throw new Error('Provider returned an invalid image URL');
     }
 
+    const hostMatches = (suffixes) => suffixes.some(suffix => {
+        const host = result.hostname.toLowerCase().replace(/\.$/, '');
+        const normalizedSuffix = String(suffix || '').toLowerCase().replace(/^\./, '').replace(/\.$/, '');
+        return normalizedSuffix && (host === normalizedSuffix || host.endsWith(`.${normalizedSuffix}`));
+    });
     const isTrustedOrigin = result.origin === request.origin;
+    const isAllowedOutputHost = isTrustedOrigin || hostMatches(allowedHostSuffixes);
     const normalized = normalizeImageSource(result.href, {
         allowHttp: isTrustedOrigin,
         allowRelative: false,
         blockPrivateHosts: !isTrustedOrigin,
     });
     if (!normalized) throw new Error('Provider returned an unsafe or unsupported image URL');
-    if (!isTrustedOrigin) return normalized;
-    const credentialHeaders = getCredentialHeaders(headers);
-    if (!Object.keys(credentialHeaders).length) return normalized;
+    if (forceFetch && !isAllowedOutputHost) throw new Error('Provider returned an image URL from an untrusted host');
+    if (!forceFetch && !isTrustedOrigin) return normalized;
+    const allowedCredentialOrigins = new Set(credentialOrigins.map(origin => {
+        try { return new URL(origin).origin; } catch { return ""; }
+    }).filter(Boolean));
+    const credentialHeaders = isTrustedOrigin || allowedCredentialOrigins.has(result.origin) || hostMatches(credentialHostSuffixes)
+        ? getCredentialHeaders(headers)
+        : {};
+    if (!forceFetch && !Object.keys(credentialHeaders).length) return normalized;
     if (typeof fetchImpl !== 'function') throw new Error('Image fetch is unavailable');
 
     let response;
@@ -327,5 +486,6 @@ export async function materializeProviderImageSource(source, {
         const preview = detail.replace(/\s+/g, ' ').trim().slice(0, 200);
         throw new Error(`Generated image URL returned ${contentType}${preview ? `: ${preview}` : ''}`);
     }
-    return imageBytesToDataUrl(await readResponseArrayBuffer(response, MAX_IMAGE_BYTES));
+    const buffer = await readResponseArrayBuffer(response, MAX_IMAGE_BYTES);
+    return materializeBytes(buffer);
 }

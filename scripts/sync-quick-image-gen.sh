@@ -162,8 +162,12 @@ const importRewrites = new Map([
     ['await import("../../../openai.js")', 'await import("../../openai.js")'],
     ['await import("../../../utils.js")', 'await import("../../utils.js")'],
     ['await import("../../../RossAscends-mods.js")', 'await import("../../RossAscends-mods.js")'],
-    ['await import("../../../../scripts/secrets.js")', 'await import("../../secrets.js")'],
 ]);
+
+const legacySecretsImport = 'await import("../../../../scripts/secrets.js")';
+if (source.includes(legacySecretsImport)) {
+    source = source.replaceAll(legacySecretsImport, 'await import("../../secrets.js")');
+}
 
 for (const [upstreamImport, bundledImport] of importRewrites) {
     if (!source.includes(upstreamImport)) {

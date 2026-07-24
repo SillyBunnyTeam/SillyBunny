@@ -39,15 +39,18 @@ describe('Quick Image Gen artifact persistence', () => {
         expect(durableBackupSource).toContain('await flushSettingsBackup();');
 
         const immediateLocalStoreSource = getFunctionSource('saveLocalStoreBackupNow');
-        expect(immediateLocalStoreSource).toContain('return saveBackupToSettings(localKey, data);');
-        expect(getFunctionSource('clearPresets')).toContain('if (!await saveBackupToSettings("qig_gen_presets", generationPresets)) return;');
-        expect(getFunctionSource('saveConnectionProfile')).toContain('if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;');
-        expect(getFunctionSource('deleteConnectionProfile')).toContain('if (!await saveBackupToSettings("qig_profiles", connectionProfiles)) return;');
-        expect(getFunctionSource('saveComfyWorkflowPresetAs')).toContain('await saveComfyWorkflowStoreNow()');
-        expect(getFunctionSource('updateSelectedComfyWorkflowPreset')).toContain('await saveComfyWorkflowStoreNow()');
-        expect(getFunctionSource('deleteSelectedComfyWorkflowPreset')).toContain('await saveComfyWorkflowStoreNow()');
-        expect(getFunctionSource('savePreset')).toContain('await saveGenerationPresetStoreNow()');
-        expect(getFunctionSource('deletePreset')).toContain('await saveGenerationPresetStoreNow("Failed to delete preset. Browser storage may be full.")');
+        expect(immediateLocalStoreSource).toContain('await persistSynchronizedStore({');
+        expect(immediateLocalStoreSource).toContain('save: flushSettingsBackup,');
+        expect(getFunctionSource('saveConnectionProfileNow')).toContain('await saveLocalStoreBackupNow("qig_profiles", nextProfiles');
+        expect(getFunctionSource('deleteConnectionProfileNow')).toContain('await saveLocalStoreBackupNow("qig_profiles", nextProfiles');
+        expect(getFunctionSource('commitComfyWorkflowStore')).toContain('await saveLocalStoreBackupNow("qig_comfy_workflows", nextStore, errorMessage)');
+        expect(getFunctionSource('saveComfyWorkflowPresetAsNow')).toContain('await commitComfyWorkflowStore(nextStore)');
+        expect(getFunctionSource('updateSelectedComfyWorkflowPresetNow')).toContain('await commitComfyWorkflowStore(nextStore)');
+        expect(getFunctionSource('deleteSelectedComfyWorkflowPresetNow')).toContain('await commitComfyWorkflowStore(nextStore)');
+        expect(getFunctionSource('commitGenerationPresetStore')).toContain('await saveLocalStoreBackupNow("qig_gen_presets", nextStore, errorMessage)');
+        expect(getFunctionSource('savePresetNow')).toContain('await commitGenerationPresetStore([...generationPresets, preset])');
+        expect(getFunctionSource('deletePresetNow')).toContain('await commitGenerationPresetStore(nextStore, "Failed to delete preset from your SillyTavern account.")');
+        expect(getFunctionSource('clearPresetsNow')).toContain('await commitGenerationPresetStore([], "Failed to clear presets from your SillyTavern account.")');
         expect(getFunctionSource('importSettings')).toContain('await commitSettingsImport(data);');
         expect(getFunctionSource('commitSettingsImportNow')).toContain('await flushSettingsBackup();');
     });
