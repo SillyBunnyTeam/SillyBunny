@@ -1357,14 +1357,15 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-shell-border);
 }
 
-/* Cramped desktop keeps the label off; only the Workspace|Customize boundary needs the rule,
-   because the characters rail still sits beside its own anchor there. The divider carries the
-   seam, so the lead's extra margin steps aside to keep the rule centred. */
-:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-divider-customize {
+/* Cramped desktop keeps the label off, so both boundaries carry the rule: Workspace|Customize on
+   the left half and Home|Characters on the right. The divider carries the seam, so the lead's
+   extra margin steps aside to keep the rule centred (this must follow the seam-margin rule above
+   to win on source order). */
+:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-cluster-divider {
     display: inline-block;
 }
 
-:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-divider-customize + .sb-topbar-cluster-lead {
+:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
     margin-inline-start: 0;
 }
 
@@ -1436,6 +1437,13 @@ body:not(.movingUI) .drawer-content.maximized {
    width, so neither group is ever pulled toward the centre. */
 :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {
     display: none;
+}
+
+/* display:none takes the label out of the grid entirely, and with only two items left the right
+   group would auto-place into the centre `auto` column and drift toward the middle, under the
+   left group's overflow. Collapse to two columns so each group keeps its own edge. */
+:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
 }
 
 /* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this

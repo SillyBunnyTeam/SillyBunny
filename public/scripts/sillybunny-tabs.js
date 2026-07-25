@@ -4990,12 +4990,16 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
     }
 
-    right.push('sb-home-toggle', characters.leadId);
+    right.push('sb-home-toggle');
 
     if (iconsOnly && mobile) {
+        // The characters pages ride the strip, so the divider marks where they start there;
+        // the anchor stays pinned right beside Home.
+        right.push(characters.leadId);
         left.push('sb-topbar-divider-characters', characters.railId);
     } else {
-        right.push('sb-topbar-divider-characters', characters.railId);
+        // On desktop the divider marks the Home|Characters boundary instead.
+        right.push('sb-topbar-divider-characters', characters.leadId, characters.railId);
     }
 
     return { left, right };
@@ -5107,6 +5111,11 @@ function syncTopbarBrandFit() {
 
             // Rails are scroll containers, so their laid-out width understates what they hold.
             needed += child.classList.contains('sb-topbar-pages') ? child.scrollWidth : child.offsetWidth;
+            // The cluster seams and divider centring live in margins, which offsetWidth omits.
+            // Leaving them uncounted opens a dead band where the bar overflows its grid tracks
+            // -- the groups visibly overlap -- yet the scroll verdict never trips.
+            const childStyle = getComputedStyle(child);
+            needed += (Number.parseFloat(childStyle.marginInlineStart) || 0) + (Number.parseFloat(childStyle.marginInlineEnd) || 0);
             needed += gap;
         }
     }
@@ -9495,7 +9504,7 @@ function buildTopBar() {
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
     leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton, charactersDivider, charactersRail);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 

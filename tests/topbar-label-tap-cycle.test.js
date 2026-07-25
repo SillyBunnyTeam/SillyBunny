@@ -227,7 +227,7 @@ describe('icons only top bar', () => {
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('if (iconsOnly && mobile) {');
         expect(orderSource).toContain('left.push(\'sb-topbar-divider-characters\', characters.railId);');
-        expect(orderSource).toContain('right.push(\'sb-topbar-divider-characters\', characters.railId);');
+        expect(orderSource).toContain('right.push(\'sb-topbar-divider-characters\', characters.leadId, characters.railId);');
         expect(getFunctionSource('syncTopbarGroupOrder')).toContain('mobile: isMobileViewport(),');
         expect(normalizedTabsSource).toContain('window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener(\'change\'');
     });
@@ -245,14 +245,14 @@ describe('icons only top bar', () => {
         expect(baseRule[0]).toContain('width: 1px;');
         expect(baseRule[0]).toContain('background: var(--sb-shell-border);');
 
-        // Desktop shows the Workspace|Customize rule only while the label is squeezed out; the
-        // characters divider stays desktop-hidden because that rail sits beside its own anchor.
-        expect(cssSource).toContain(':root[data-sb-topbar-brand-cramped=\'true\'] #sb-topbar-divider-customize {');
-        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\] #sb-topbar-divider-characters/);
+        // While the label is squeezed out, cramped desktop shows both rules: Workspace|Customize
+        // on the left half and Home|Characters on the right, where the divider sits between Home
+        // and the characters anchor rather than between the anchor and its own rail.
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] \.sb-topbar-cluster-divider \{/);
 
-        // Phones show both; the divider takes over the seam so it sits centred in it.
+        // Phones show both too; the divider takes over the seam so it sits centred in it.
         expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{/);
-        expect(cssSource).toContain('#sb-topbar-divider-customize + .sb-topbar-cluster-lead');
+        expect(cssSource).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
         expect(mobileCss).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
     });
 
@@ -272,7 +272,12 @@ describe('icons only top bar', () => {
         // both groups toward the brand label, which is the opposite of the requested layout.
         expect(cssSource).not.toContain('.sb-topbar-group-left {\n        justify-content: flex-end;');
         expect(cssSource).not.toContain('#sb-home-toggle {\n        margin-left: auto;');
-        expect(cssSource).not.toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] #sb-topbar-inner/);
+
+        // display:none takes the hidden label out of the grid, and with only two items left the
+        // right group would auto-place into the centre `auto` column and drift toward the middle,
+        // under the left group's overflow. Cramped mode collapses the grid to two columns.
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] #sb-topbar-inner \{\n\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, auto\);\n\}/);
+        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\][^{]*\{\n[^}]*justify-content: center/);
     });
 
     test('sizes the icons to match the labelled buttons beside them', () => {
@@ -407,6 +412,10 @@ describe('icons only top bar', () => {
         // overflow, which would hide it again, which would make it fit -- an oscillation.
         expect(fitSource).toContain('const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;');
         expect(fitSource).toContain('child.classList.contains(\'sb-topbar-pages\') ? child.scrollWidth : child.offsetWidth');
+        // Cluster seams and divider centring live in margins, which offsetWidth omits; leaving
+        // them uncounted opens a dead band where the bar overflows but scroll never trips.
+        expect(fitSource).toContain('childStyle.marginInlineStart');
+        expect(fitSource).toContain('childStyle.marginInlineEnd');
         expect(fitSource).toContain('dataset.sbTopbarBrandCramped');
         expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] \.sb-topbar-brand \{\n\s*display: none;\n\}/);
     });
