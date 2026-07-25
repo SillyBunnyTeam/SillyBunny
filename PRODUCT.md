@@ -57,7 +57,7 @@ Middle:
 
 Right:
 - Second quick access button. Default is global search.
-- Home - for accessing the program's home menu and tutorials.
+- Home - for accessing the program's home menu, launchpad guidance, and tutorials.
 - Characters - for interfacing with the character cards to be used in the program.
 
 **Layer 3:** Header tabs per sub-category with config pop-down, allowing the user to specify what in the category they want to modify.
