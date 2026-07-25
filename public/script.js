@@ -10526,7 +10526,9 @@ function getFullAvatarUrl(type, file, t = false) {
  * @param {string} rawSrc Avatar image source.
  * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string } | null}
  */
-function parseAvatarSource(rawSrc) {
+// SillyBunny: exported so sillybunny-tabs.js reuses this parser instead of keeping a divergent copy
+// that skipped the pathname decode and re-encoded file names into "%2520".
+export function parseAvatarSource(rawSrc) {
     if (!rawSrc) {
         return null;
     }
