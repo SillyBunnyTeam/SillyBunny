@@ -1311,6 +1311,48 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* Icons only top bar: a scrollable page rail takes the Quick Access position, and the
+   layer 2 anchors stay put with their labels suppressed. */
+#sb-topbar-parked {
+    display: none;
+}
+
+.sb-topbar-pages {
+    display: none;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--sb-proxy-button-gap);
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-padding-inline: var(--sb-topbar-group-gap);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
+
+.sb-topbar-pages::-webkit-scrollbar {
+    display: none;
+}
+
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {
+    display: flex;
+}
+
+
+/* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this
+   the home button keeps a label-width box with no label in it. */
+:root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
+    min-width: var(--sb-chatbar-button-size);
+}
+
+.sb-shortcut-rows.is-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 #top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
     width: 0;
     min-width: 0;

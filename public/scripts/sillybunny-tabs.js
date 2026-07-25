@@ -60,6 +60,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
+    topbarIconsOnly: 'sb-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
@@ -720,6 +721,45 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
 ]);
 
+// SillyBunny: destinations rendered by the optional icons-only top bar rail. Labels and icons are
+// resolved from SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so the rail cannot drift when a
+// page is renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because
+// those two are persisted in user settings and carry pseudo-entries this list must not inherit.
+const SB_TOPBAR_PAGE_TARGETS = Object.freeze([
+    { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
+    { value: 'left:api', shellKey: 'left', tabId: 'api' },
+    { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
+    { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+    { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
+    { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
+    { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
+    { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
+    { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+    { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
+    { value: 'right:background', shellKey: 'right', tabId: 'background' },
+    { value: 'right:server', shellKey: 'right', tabId: 'server' },
+    { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+    { value: 'action:search', shellKey: '', tabId: '' },
+]);
+
+// SillyBunny: only the configurable Quick Access slots step aside for the rail. The PRODUCT.md
+// layer 2 anchors (workspace, customize, title, home, characters) stay put and merely drop their
+// labels, so the icons-only mode remains an expansion of the quick-access region, not a rewrite.
+const SB_TOPBAR_PARKED_IDS = Object.freeze([
+    'sb-shortcut-left',
+    'sb-shortcut-right',
+    'sb-shortcut-slot3',
+    'sb-shortcut-slot4',
+    'sb-shortcut-slot5',
+    'sb-shortcut-slot6',
+]);
+const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
+    'sb-left-shell-toggle',
+    'sb-right-shell-toggle',
+    'sb-home-toggle',
+    'sb-character-toggle',
+]);
+
 const sbState = {
     initialized: false,
     initRetryTimer: 0,
@@ -734,6 +774,11 @@ const sbState = {
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
+    topbarIconsOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
+    topbarPages: {
+        syncFrame: 0,
+        groupOrder: new Map(),
+    },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
     mobileButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale)),
@@ -1443,6 +1488,7 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.topbarIconsOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), sbState.topbarIconsOnly);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
         safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
@@ -1866,6 +1912,25 @@ function setCompactMode(enabled, { persist = true } = {}) {
     }
 
     queueComposerControlPlacement();
+    updateThemePickerUi();
+}
+
+function applyTopbarIconsOnlyPreference() {
+    document.documentElement.dataset.sbTopbarIconsOnly = String(sbState.topbarIconsOnly);
+    syncTopbarIconsOnlyLayout();
+    queueTopbarPageStateSync();
+    scheduleCharacterToggleGhostSync();
+}
+
+function setTopbarIconsOnly(enabled, { persist = true } = {}) {
+    const nextEnabled = Boolean(enabled);
+    sbState.topbarIconsOnly = nextEnabled;
+    applyTopbarIconsOnlyPreference();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly, String(nextEnabled));
+    }
+
     updateThemePickerUi();
 }
 
@@ -4766,6 +4831,105 @@ function createProxyButton({ id, icon, label, title, className = '' }, onClick) 
     return button;
 }
 
+function getTopbarPageConfig(page) {
+    if (isSearchShortcutTarget(page.value)) {
+        return getShortcutConfig(page.value);
+    }
+
+    if (page.shellKey === 'characters') {
+        return getCharacterPanelTabConfig(page.tabId);
+    }
+
+    const shellConfig = getShellConfig(page.shellKey);
+
+    return [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].find(tab => tab?.id === page.tabId) ?? null;
+}
+
+function createTopbarPageButton(page) {
+    const config = getTopbarPageConfig(page);
+    const label = config?.label ?? page.tabId;
+    const button = createProxyButton(
+        {
+            id: '',
+            icon: config?.icon ?? 'fa-circle-dot',
+            label,
+            title: label,
+            className: 'sb-proxy-button-icon-only sb-topbar-page-button',
+        },
+        () => activateShortcutTarget(page.value),
+    );
+
+    button.dataset.sbTopbarPage = page.value;
+
+    if (isSearchShortcutTarget(page.value)) {
+        button.dataset.sbUniversalSearchTrigger = 'true';
+        bindSearchShortcutPreFocus(button, () => page.value);
+    }
+
+    return button;
+}
+
+function buildTopbarPageRail() {
+    const rail = createElement('div', {
+        id: 'sb-topbar-pages',
+        className: 'sb-topbar-pages',
+        attrs: { role: 'group' },
+    });
+
+    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+        rail.appendChild(createTopbarPageButton(page));
+    }
+
+    return rail;
+}
+
+// SillyBunny: remember each top bar group's full child order so parked Quick Access slots can be
+// restored by replaying that order. Restoring by remembered nextSibling is not safe here, because
+// neighbouring slots are parked too and moveElementBefore would insertBefore a detached reference.
+function rememberTopbarGroupOrder(...groups) {
+    sbState.topbarPages.groupOrder.clear();
+
+    for (const group of groups) {
+        if (group instanceof HTMLElement) {
+            sbState.topbarPages.groupOrder.set(group, [...group.children]);
+        }
+    }
+}
+
+function syncTopbarIconsOnlyLayout() {
+    const iconsOnly = sbState.topbarIconsOnly;
+    const parkedBay = document.getElementById('sb-topbar-parked');
+
+    if (parkedBay instanceof HTMLElement) {
+        if (iconsOnly) {
+            for (const buttonId of SB_TOPBAR_PARKED_IDS) {
+                const button = document.getElementById(buttonId);
+
+                if (button instanceof HTMLElement) {
+                    moveElementBefore(button, parkedBay, null);
+                }
+            }
+        } else {
+            for (const [group, children] of sbState.topbarPages.groupOrder) {
+                for (const child of children) {
+                    group.appendChild(child);
+                }
+            }
+        }
+    }
+
+    for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
+        // Layer 2 anchors are never parked; icons-only mode only drops their text labels.
+        document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
+    }
+
+    document.getElementById('sb-topbar-pages')?.toggleAttribute('inert', !iconsOnly);
+}
+
 function bindSearchShortcutPreFocus(button, targetGetter) {
     if (!(button instanceof HTMLElement) || typeof targetGetter !== 'function') {
         return;
@@ -7396,6 +7560,47 @@ function queueMobileModalStateSync() {
     });
 }
 
+function isTopbarPageActive(page) {
+    if (isSearchShortcutTarget(page.value)) {
+        return getUniversalSearchState().expanded;
+    }
+
+    return page.shellKey === 'characters'
+        ? isCharacterPanelTabOpen(page.tabId)
+        : isShellTabOpen(page.shellKey, page.tabId);
+}
+
+function syncTopbarPageButtonStates() {
+    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+        const button = document.querySelector(`[data-sb-topbar-page="${CSS.escape(page.value)}"]`);
+
+        if (!(button instanceof HTMLElement)) {
+            continue;
+        }
+
+        const isActive = isTopbarPageActive(page);
+        button.classList.toggle('is-current', isActive);
+        button.setAttribute('aria-expanded', String(isActive));
+
+        if (isActive) {
+            button.setAttribute('aria-current', 'page');
+        } else {
+            button.removeAttribute('aria-current');
+        }
+    }
+}
+
+function queueTopbarPageStateSync() {
+    if (sbState.topbarPages.syncFrame) {
+        return;
+    }
+
+    sbState.topbarPages.syncFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.syncFrame = 0;
+        syncTopbarPageButtonStates();
+    });
+}
+
 function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = null) {
     const el = typeof drawerRootOrId === 'string'
         ? document.getElementById(drawerRootOrId)
@@ -7405,6 +7610,7 @@ function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = nul
     el.classList.toggle('closedDrawer', !shouldOpen);
     syncDrawerIconState(drawerIconOrSelector, shouldOpen);
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function isShellOpen(shellKey) {
@@ -8250,6 +8456,8 @@ function syncCharacterShellTabs(activeTab = null) {
         }
     });
 
+    queueTopbarPageStateSync();
+
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
         const tabConfig = getCharacterPanelTabConfig(normalizedTab);
         document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', {
@@ -8405,6 +8613,7 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
 
     syncChatbarVisibilityState();
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function bindCharacterDrawerStateObserver() {
@@ -9060,13 +9269,23 @@ function buildTopBar() {
         <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    // SillyBunny: the page rail takes the left Quick Access position when icons-only mode is on;
+    // the parked bay holds the Quick Access slots while it does.
+    const pageRail = buildTopbarPageRail();
+    const parkedBay = createElement('div', {
+        id: 'sb-topbar-parked',
+        attrs: { 'aria-hidden': 'true' },
+    });
+
+    leftGroup.append(mobileButton, leftButton, rightButton, pageRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
     rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
-    stack.append(primaryRow, searchRow);
+    stack.append(primaryRow, searchRow, parkedBay);
     topBar.append(stack, ...preservedExtensionChildren);
+
+    rememberTopbarGroupOrder(leftGroup, rightGroup);
 
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);
@@ -9083,6 +9302,7 @@ function buildTopBar() {
     syncTopbarLayoutState();
     queueLandingPageStateSync();
     scheduleCharacterToggleGhostSync();
+    queueTopbarPageStateSync();
 }
 
 function hideHostToggles() {
@@ -12076,6 +12296,28 @@ function createTopbarLabelOption(mode, part) {
     return option;
 }
 
+function createTopbarIconsOnlySettingsGroup() {
+    const group = createElement('section', {
+        className: 'sb-theme-slider-group sb-topbar-icons-only-group',
+    });
+    const description = createElement('p', {
+        className: 'sb-theme-slider-caption',
+        text: 'Turn this toggle on to include every page icon on the top bar.',
+    });
+    const toggleChoice = createMobileNavChoice({
+        id: 'sb-topbar-icons-only-input',
+        type: 'checkbox',
+        value: 'topbar-icons-only',
+        label: 'Icons only top bar',
+        icon: 'fa-grip',
+        onChange: input => setTopbarIconsOnly(input.checked),
+    });
+
+    group.append(description, toggleChoice);
+
+    return group;
+}
+
 function createShortcutSettingsGroup() {
     const description = createElement('p', {
         className: 'sb-theme-slider-caption',
@@ -12127,7 +12369,7 @@ function createShortcutSettingsGroup() {
     return createThemeSettingsDrawer({
         id: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        content: [description, rows],
+        content: [createTopbarIconsOnlySettingsGroup(), description, rows],
     });
 }
 
@@ -12800,6 +13042,8 @@ function syncShortcutButtonActiveStates() {
         const target = getShortcutTarget(side);
         setButtonPressed(button, isSearchShortcutTarget(target) && searchExpanded);
     }
+
+    queueTopbarPageStateSync();
 }
 
 function createTopbarLabelSettingsGroup() {
@@ -13066,6 +13310,7 @@ function updateThemePickerUi() {
     const mobileButtonScaleInput = document.getElementById('sb-mobile-button-scale-input');
     const mobileButtonScaleValue = document.getElementById('sb-mobile-button-scale-value');
     const customTextInput = document.getElementById('sb-topbar-custom-text-input');
+    const topbarIconsOnlyInput = document.getElementById('sb-topbar-icons-only-input');
     const desktopNavIconOnlyInput = document.getElementById('sb-desktop-nav-icon-only-input');
     const desktopNavShowCustomizeInput = document.getElementById('sb-desktop-nav-show-customize-input');
     const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
@@ -13202,6 +13447,13 @@ function updateThemePickerUi() {
         const isChecked = input.value === sbState.mobileNav.layout;
         input.checked = isChecked;
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
+    }
+
+    if (topbarIconsOnlyInput instanceof HTMLInputElement) {
+        topbarIconsOnlyInput.checked = sbState.topbarIconsOnly;
+        topbarIconsOnlyInput.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', sbState.topbarIconsOnly);
+        // The page rail supersedes the slots below, so surface them as inactive instead of live-but-ignored.
+        document.querySelector('.sb-shortcut-rows')?.classList.toggle('is-disabled', sbState.topbarIconsOnly);
     }
 
     if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
@@ -13931,6 +14183,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     }
 
     syncMobileShellRailActionState(shellKey, tabId);
+    queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
     shellState.headerTitle.textContent = activeTab.label;
@@ -16587,6 +16840,8 @@ function initAll() {
     initChatAvatarVariables();
     syncDesktopShellSizing();
     buildTopBar();
+    // Must follow buildTopBar(): it rearranges the buttons that call creates.
+    setTopbarIconsOnly(sbState.topbarIconsOnly, { persist: false });
     bindLandingPageObserver();
     buildBottomChatBar();
     // Refresh again after the current JS task — APP_READY may have already
@@ -16702,6 +16957,9 @@ function initAll() {
         },
         setCompactMode(value) {
             setCompactMode(value);
+        },
+        setTopbarIconsOnly(value) {
+            setTopbarIconsOnly(value);
         },
         setDesktopShellSnapToChatWidth(value) {
             setDesktopShellSnapToChatWidth(value);

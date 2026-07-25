@@ -119,3 +119,97 @@ describe('topbar label tap cycle', () => {
         expect(titleRule).not.toContain('margin: -2px -6px;');
     });
 });
+
+describe('icons only top bar', () => {
+    test('parks only the configurable quick access slots', () => {
+        // PRODUCT.md layer 2 prescribes the top bar anchors; icons-only mode may drop their
+        // labels but must never remove them from the bar.
+        const parkedMatch = normalizedTabsSource.match(/const SB_TOPBAR_PARKED_IDS = Object\.freeze\(\[[\s\S]*?\]\);/);
+        expect(parkedMatch).not.toBeNull();
+
+        const parkedSource = parkedMatch[0];
+        for (const slotId of ['sb-shortcut-left', 'sb-shortcut-right', 'sb-shortcut-slot3', 'sb-shortcut-slot4', 'sb-shortcut-slot5', 'sb-shortcut-slot6']) {
+            expect(parkedSource).toContain(`'${slotId}'`);
+        }
+
+        for (const anchorId of ['sb-hamburger', 'sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-home-toggle', 'sb-character-toggle']) {
+            expect(parkedSource).not.toContain(`'${anchorId}'`);
+        }
+    });
+
+    test('keeps the centre brand label on every viewport', () => {
+        const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+        expect(cssSource).not.toMatch(/data-sb-topbar-icons-only='true'\]\s+\.sb-topbar-brand/);
+        expect(mobileCss).not.toMatch(/data-sb-topbar-icons-only='true'\]\s+\.sb-topbar-brand/);
+    });
+
+    test('keeps the character toggle measurable for anchored extension dropdowns', () => {
+        const layoutSource = getFunctionSource('syncTopbarIconsOnlyLayout');
+        expect(layoutSource).toContain('classList.toggle(\'sb-proxy-button-icon-only\', iconsOnly)');
+        expect(layoutSource).not.toContain('style.display');
+
+        const applySource = getFunctionSource('applyTopbarIconsOnlyPreference');
+        expect(applySource).toContain('scheduleCharacterToggleGhostSync();');
+    });
+
+    test('restores parked slots by replaying recorded group order', () => {
+        // Restoring via a remembered nextSibling is unsafe: neighbouring slots are parked too,
+        // so moveElementBefore would insertBefore a reference node that left the parent.
+        const layoutSource = getFunctionSource('syncTopbarIconsOnlyLayout');
+        expect(layoutSource).toContain('for (const [group, children] of sbState.topbarPages.groupOrder)');
+        expect(layoutSource).toContain('group.appendChild(child);');
+        expect(normalizedTabsSource).toContain('function rememberTopbarGroupOrder(');
+        expect(normalizedTabsSource).toContain('rememberTopbarGroupOrder(leftGroup, rightGroup);');
+    });
+
+    test('derives page labels and icons from the shell registries', () => {
+        const targetsMatch = normalizedTabsSource.match(/const SB_TOPBAR_PAGE_TARGETS = Object\.freeze\(\[[\s\S]*?\]\);/);
+        expect(targetsMatch).not.toBeNull();
+
+        const targetsSource = targetsMatch[0];
+        expect(targetsSource).toContain('\'action:search\'');
+        expect(targetsSource).not.toContain('\'none\'');
+        expect(targetsSource).not.toContain('label:');
+        expect(targetsSource).not.toContain('icon:');
+
+        const configSource = getFunctionSource('getTopbarPageConfig');
+        expect(configSource).toContain('getCharacterPanelTabConfig(page.tabId)');
+        expect(configSource).toContain('getShellConfig(page.shellKey)');
+    });
+
+    test('toggles state without rebuilding the top bar', () => {
+        const setterSource = getFunctionSource('setTopbarIconsOnly');
+        expect(setterSource).not.toContain('buildTopBar(');
+        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly, String(nextEnabled));');
+        expect(setterSource).toContain('updateThemePickerUi();');
+        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), sbState.topbarIconsOnly);');
+    });
+
+    test('stays distinct from the shell tab icon-only setting', () => {
+        expect(normalizedTabsSource).toContain('topbarIconsOnly: \'sb-topbar-icons-only\',');
+        expect(normalizedTabsSource).toContain('desktopNavIconOnly: \'sb-desktop-nav-icon-only\',');
+        expect(normalizedTabsSource).toContain('mobileNavIconOnly: \'sb-mobile-nav-icon-only\',');
+        expect(normalizedTabsSource).toContain('\'sb-topbar-icons-only-input\'');
+        expect(normalizedTabsSource).toContain('\'sb-desktop-nav-icon-only-input\'');
+    });
+
+    test('mounts the toggle in the quick access shortcuts drawer', () => {
+        const groupSource = getFunctionSource('createShortcutSettingsGroup');
+        expect(groupSource).toContain('createTopbarIconsOnlySettingsGroup()');
+        expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
+        expect(normalizedTabsSource).not.toContain('lorum ipsum');
+    });
+
+    test('scrolls the rail rather than wrapping it', () => {
+        const railRuleMatch = cssSource.match(/\.sb-topbar-pages\s*\{[^}]*\}/);
+        expect(railRuleMatch).not.toBeNull();
+
+        const railRule = railRuleMatch[0];
+        expect(railRule).toContain('overflow-x: auto;');
+        expect(railRule).toContain('flex-wrap: nowrap;');
+        expect(railRule).toContain('mask-image:');
+        expect(railRule).toContain('-webkit-mask-image:');
+        expect(cssSource).toContain('#sb-topbar-parked {\n    display: none;\n}');
+        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] #sb-home-toggle');
+    });
+});

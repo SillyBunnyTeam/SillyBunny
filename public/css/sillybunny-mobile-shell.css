@@ -1288,6 +1288,17 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 0 2px;
     }
 
+    /* Icons only top bar: hand the flexible column to the page rail so it scrolls in place
+       instead of pushing the title and the right-hand anchors off screen. */
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
+        grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
+        justify-self: stretch;
+        min-width: 0;
+    }
+
     .sb-universal-search {
         width: 100%;
     }
