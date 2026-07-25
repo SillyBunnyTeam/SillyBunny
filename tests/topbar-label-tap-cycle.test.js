@@ -121,20 +121,36 @@ describe('topbar label tap cycle', () => {
 });
 
 describe('icons only top bar', () => {
-    test('parks only the configurable quick access slots', () => {
-        // PRODUCT.md layer 2 prescribes the top bar anchors; icons-only mode may drop their
-        // labels but must never remove them from the bar.
+    test('parks only the redundant shell toggles', () => {
+        // Every page the Workspace and Customize toggles lead to has its own rail icon, so they
+        // step aside. Home, Characters, the hamburger and the Quick Access slots all stay.
         const parkedMatch = normalizedTabsSource.match(/const SB_TOPBAR_PARKED_IDS = Object\.freeze\(\[[\s\S]*?\]\);/);
         expect(parkedMatch).not.toBeNull();
 
         const parkedSource = parkedMatch[0];
-        for (const slotId of ['sb-shortcut-left', 'sb-shortcut-right', 'sb-shortcut-slot3', 'sb-shortcut-slot4', 'sb-shortcut-slot5', 'sb-shortcut-slot6']) {
-            expect(parkedSource).toContain(`'${slotId}'`);
-        }
+        expect(parkedSource).toContain('\'sb-left-shell-toggle\'');
+        expect(parkedSource).toContain('\'sb-right-shell-toggle\'');
 
-        for (const anchorId of ['sb-hamburger', 'sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-home-toggle', 'sb-character-toggle']) {
-            expect(parkedSource).not.toContain(`'${anchorId}'`);
+        for (const keptId of ['sb-hamburger', 'sb-home-toggle', 'sb-character-toggle', 'sb-shortcut-left', 'sb-shortcut-right', 'sb-shortcut-slot3']) {
+            expect(parkedSource).not.toContain(`'${keptId}'`);
         }
+    });
+
+    test('keeps shell focus on a visible control once the toggles are parked', () => {
+        // Focusing a display:none button silently drops focus to <body> when a shell closes.
+        const proxySource = getFunctionSource('getShellProxyButton');
+        expect(proxySource).toContain('isActuallyVisible(proxyButton)');
+        expect(proxySource).toContain('data-sb-topbar-page');
+    });
+
+    test('hides the brand label once the icons outgrow the bar', () => {
+        const fitSource = getFunctionSource('syncTopbarBrandFit');
+        // The verdict must not depend on the label's current state, or showing it would make it
+        // overflow, which would hide it again, which would make it fit -- an oscillation.
+        expect(fitSource).toContain('const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;');
+        expect(fitSource).toContain('child.classList.contains(\'sb-topbar-pages\') ? child.scrollWidth : child.offsetWidth');
+        expect(fitSource).toContain('dataset.sbTopbarBrandCramped');
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] \.sb-topbar-brand \{\n\s*display: none;\n\}/);
     });
 
     test('drops the centre brand label on phones only', () => {
@@ -224,12 +240,24 @@ describe('icons only top bar', () => {
     test('evens out the whitespace either side of the brand label', () => {
         // Equal side tracks already put the label on the true centre, but both groups fill from
         // the outer edge inward, so the leftover slack lands next to the label unequally and
-        // reads as off-centre. Auto margins pull each rail up against the label instead.
-        expect(cssSource).toMatch(/#sb-topbar-pages \{\n\s*margin-left: auto;\n\s*\}/);
-        expect(cssSource).toMatch(/#sb-topbar-pages-right \{\n\s*margin-right: auto;\n\s*\}/);
-        // Desktop only: phones merge the rails and hide the label entirely.
+        // reads as off-centre. Clustering each group against the label evens that out.
         const desktopBlocks = cssSource.match(/@media screen and \(min-width: 769px\) \{[\s\S]*?\n\}/g) ?? [];
-        expect(desktopBlocks.some(block => block.includes('margin-left: auto'))).toBe(true);
+        const clusterBlock = desktopBlocks.find(block => block.includes('data-sb-topbar-icons-only'));
+        expect(clusterBlock).toBeDefined();
+        expect(clusterBlock).toContain('.sb-topbar-group-left {\n        justify-content: flex-end;');
+        expect(clusterBlock).toContain('.sb-topbar-group-right {\n        justify-content: flex-start;');
+        expect(clusterBlock).toContain('#sb-home-toggle {\n        margin-left: auto;');
+    });
+
+    test('centres the whole row once the brand label is dropped', () => {
+        // Equal side tracks with no centre column strand the icons left of centre, so the grid
+        // collapses to a centred flex row. Must come after the margin-left: auto rule to win.
+        const desktopBlocks = cssSource.match(/@media screen and \(min-width: 769px\) \{[\s\S]*?\n\}/g) ?? [];
+        const clusterBlock = desktopBlocks.find(block => block.includes('data-sb-topbar-brand-cramped'));
+        expect(clusterBlock).toBeDefined();
+        expect(clusterBlock).toContain('#sb-topbar-inner {\n        display: flex;\n        justify-content: center;');
+        expect(clusterBlock).toContain('#sb-home-toggle {\n        margin-left: 0;');
+        expect(clusterBlock.indexOf('margin-left: auto')).toBeLessThan(clusterBlock.indexOf('margin-left: 0'));
     });
 
     test('scrolls the rail rather than wrapping it', () => {

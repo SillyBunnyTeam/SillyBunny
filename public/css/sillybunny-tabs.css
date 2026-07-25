@@ -1345,18 +1345,48 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* Once the label is squeezed out there is nothing left to centre on, so it yields its width to
+   the rails; the two clusters then meet in the middle on their own. */
+:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {
+    display: none;
+}
+
 /* The side tracks are equal, so the brand label already sits on the true centre. Both groups
    fill from the outer edge inward though, which leaves unequal slack next to the label and
-   reads as off-centre. Pushing each rail toward the label evens that slack out while the
-   anchors and home/characters stay pinned to the bar edges. Phones merge the rails and hide
-   the label, so this is desktop only. */
+   reads as off-centre. Clustering each group's icons against the label evens that slack out,
+   while home/characters stay pinned to the bar edge. Phones merge the rails and hide the
+   label, so this is desktop only. */
 @media screen and (min-width: 769px) {
-    :root[data-sb-topbar-icons-only='true'] #sb-topbar-pages {
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
+        justify-content: flex-end;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
+        justify-content: flex-start;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
         margin-left: auto;
     }
 
-    :root[data-sb-topbar-icons-only='true'] #sb-topbar-pages-right {
-        margin-right: auto;
+    /* With the label gone there is no centre column to balance against, so the equal side tracks
+       just strand the icons left of centre. Collapse the grid and centre the whole row as one
+       cluster instead. Must follow the rule above to win on source order. */
+    :root[data-sb-topbar-brand-cramped='true'] #sb-topbar-inner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-group-left,
+    :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-group-right {
+        justify-content: center;
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
+    :root[data-sb-topbar-brand-cramped='true'] #sb-home-toggle {
+        margin-left: 0;
     }
 }
 

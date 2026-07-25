@@ -742,23 +742,18 @@ const SB_TOPBAR_PAGE_TARGETS = Object.freeze([
     { value: 'action:search', shellKey: '', tabId: '' },
 ]);
 
-// SillyBunny: only the configurable Quick Access slots step aside for the rail. The PRODUCT.md
-// layer 2 anchors (workspace, customize, title, home, characters) stay put and merely drop their
-// labels, so the icons-only mode remains an expansion of the quick-access region, not a rewrite.
+// SillyBunny: in icons-only mode the Workspace and Customize toggles are redundant, because every
+// page they lead to has its own icon on the rail, so they step aside. Home and Characters stay and
+// merely drop their labels. The Quick Access slots stay visible alongside the rails.
 const SB_TOPBAR_PARKED_IDS = Object.freeze([
-    'sb-shortcut-left',
-    'sb-shortcut-right',
-    'sb-shortcut-slot3',
-    'sb-shortcut-slot4',
-    'sb-shortcut-slot5',
-    'sb-shortcut-slot6',
-]);
-const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-left-shell-toggle',
     'sb-right-shell-toggle',
+]);
+const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-home-toggle',
     'sb-character-toggle',
 ]);
+const SB_TOPBAR_BRAND_MIN_WIDTH = 60;
 
 const sbState = {
     initialized: false,
@@ -777,6 +772,8 @@ const sbState = {
     topbarIconsOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
     topbarPages: {
         syncFrame: 0,
+        fitFrame: 0,
+        brandWidth: 0,
         groupOrder: new Map(),
     },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
@@ -2306,6 +2303,22 @@ function prefersReducedMotion() {
 function getShellProxyButton(shellKey) {
     const shellConfig = getShellConfig(shellKey);
     const proxyButton = shellConfig?.proxyButtonId ? document.getElementById(shellConfig.proxyButtonId) : null;
+
+    if (proxyButton instanceof HTMLElement && isActuallyVisible(proxyButton)) {
+        return proxyButton;
+    }
+
+    // SillyBunny: icons-only mode parks the shell toggles, and focusing a display:none button
+    // silently drops focus to <body>. Fall back to the rail icon for the shell's active tab.
+    const activeTabId = getShellState(shellKey)?.activeTabId;
+    const pageButton = activeTabId
+        ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
+        : null;
+
+    if (pageButton instanceof HTMLElement && isActuallyVisible(pageButton)) {
+        return pageButton;
+    }
+
     return proxyButton instanceof HTMLElement ? proxyButton : null;
 }
 
@@ -4687,6 +4700,7 @@ function updateTopBarBrand() {
     title.classList.toggle('is-chat', isActiveChat);
     title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
+    queueTopbarBrandFit();
 }
 
 function scheduleTopBarBrandBindingRetry(delay = 240) {
@@ -4928,10 +4942,69 @@ function syncTopbarIconsOnlyLayout() {
     }
 
     syncTopbarRailSplit();
+    syncTopbarBrandFit();
 
     for (const railId of ['sb-topbar-pages', 'sb-topbar-pages-right']) {
         document.getElementById(railId)?.toggleAttribute('inert', !iconsOnly);
     }
+}
+
+// SillyBunny: once the icon count outgrows the bar the brand label is the least useful thing on
+// it, so it yields its width to the rails. The decision is made from the rails' full content
+// width plus a fixed label reservation, never from the label's current state, so showing and
+// hiding it cannot feed back into itself and oscillate.
+function syncTopbarBrandFit() {
+    const inner = document.getElementById('sb-topbar-inner');
+    const brand = document.querySelector('.sb-topbar-brand');
+
+    if (!(inner instanceof HTMLElement) || !(brand instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!sbState.topbarIconsOnly || isMobileViewport()) {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+        return;
+    }
+
+    if (isActuallyVisible(brand)) {
+        sbState.topbarPages.brandWidth = Math.max(brand.scrollWidth, SB_TOPBAR_BRAND_MIN_WIDTH);
+    }
+
+    const groups = [...inner.querySelectorAll(':scope > .sb-topbar-group')];
+    const gap = Number.parseFloat(getComputedStyle(inner).columnGap) || 0;
+    let needed = 0;
+
+    for (const group of groups) {
+        for (const child of group.children) {
+            if (!(child instanceof HTMLElement) || !isActuallyVisible(child)) {
+                continue;
+            }
+
+            // Rails are scroll containers, so their laid-out width understates what they hold.
+            needed += child.classList.contains('sb-topbar-pages') ? child.scrollWidth : child.offsetWidth;
+            needed += gap;
+        }
+    }
+
+    const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;
+    const cramped = needed + reservation + gap > inner.clientWidth;
+
+    if (cramped) {
+        document.documentElement.dataset.sbTopbarBrandCramped = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+    }
+}
+
+function queueTopbarBrandFit() {
+    if (sbState.topbarPages.fitFrame) {
+        return;
+    }
+
+    sbState.topbarPages.fitFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.fitFrame = 0;
+        syncTopbarBrandFit();
+    });
 }
 
 // SillyBunny: the two-rail split exists to fill the gap either side of the brand label. Phones
@@ -8757,8 +8830,10 @@ function scheduleCharacterToggleGhostSync() {
     }
 }
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
+window.addEventListener('resize', queueTopbarBrandFit, { passive: true });
 window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
     syncTopbarRailSplit();
+    queueTopbarBrandFit();
     queueTopbarPageStateSync();
 });
 
