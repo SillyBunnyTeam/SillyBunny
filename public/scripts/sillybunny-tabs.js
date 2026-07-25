@@ -739,8 +739,10 @@ const SB_TOPBAR_PAGE_TARGETS = Object.freeze([
     { value: 'right:background', shellKey: 'right', tabId: 'background' },
     { value: 'right:server', shellKey: 'right', tabId: 'server' },
     { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
-    { value: 'action:search', shellKey: '', tabId: '' },
 ]);
+
+// Search is not a page and never rides the rail: it has a fixed berth immediately left of Home.
+const SB_TOPBAR_SEARCH_TARGET = Object.freeze({ value: 'action:search', shellKey: '', tabId: '' });
 
 // SillyBunny: in icons-only mode the Workspace and Customize toggles are redundant, because every
 // page they lead to has its own icon on the rail, so they step aside. Home and Characters stay and
@@ -4941,11 +4943,87 @@ function syncTopbarIconsOnlyLayout() {
         document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
     }
 
+    if (iconsOnly) {
+        syncTopbarRightClusterOrder();
+    }
+
     syncTopbarRailSplit();
+    syncTopbarIconsOnlyDedupe();
     syncTopbarBrandFit();
 
     for (const railId of ['sb-topbar-pages', 'sb-topbar-pages-right']) {
         document.getElementById(railId)?.toggleAttribute('inert', !iconsOnly);
+    }
+}
+
+// SillyBunny: icons-only mode pins a fixed running order to the right end of the bar --
+// Quick Actions, then Search, then Home, then Characters -- so those controls never move around
+// as the rails change. Turning the mode off restores the recorded group order instead.
+function syncTopbarRightClusterOrder() {
+    const rightGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-right');
+
+    if (!(rightGroup instanceof HTMLElement)) {
+        return;
+    }
+
+    const ordered = [
+        document.getElementById('sb-topbar-pages-right'),
+        ...SB_SHORTCUT_SLOTS.map(side => document.getElementById(getShortcutButtonId(side))),
+        document.getElementById('sb-topbar-search-toggle'),
+        document.getElementById('sb-home-toggle'),
+        document.getElementById('sb-character-toggle'),
+    ];
+
+    for (const element of ordered) {
+        if (element instanceof HTMLElement) {
+            rightGroup.appendChild(element);
+        }
+    }
+}
+
+// SillyBunny: a Quick Access slot pointed at a page that already has a rail icon renders the same
+// glyph twice. Keep the rightmost copy: the rail icon yields to the slot, and a slot pointed at
+// Search yields to the dedicated Search button, which sits further right still.
+function syncTopbarIconsOnlyDedupe() {
+    const railButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
+
+    if (!sbState.topbarIconsOnly) {
+        for (const button of railButtons) {
+            button.classList.remove('sb-topbar-page-duplicate');
+        }
+
+        for (const side of SB_SHORTCUT_SLOTS) {
+            const button = document.getElementById(getShortcutButtonId(side));
+
+            if (button instanceof HTMLElement && getShortcutTarget(side) !== 'none') {
+                button.style.removeProperty('display');
+            }
+        }
+
+        return;
+    }
+
+    const claimed = new Set();
+
+    for (const side of SB_SHORTCUT_SLOTS) {
+        const button = document.getElementById(getShortcutButtonId(side));
+        const target = getShortcutTarget(side);
+
+        if (!(button instanceof HTMLElement) || target === 'none') {
+            continue;
+        }
+
+        if (isSearchShortcutTarget(target)) {
+            button.style.setProperty('display', 'none', 'important');
+            continue;
+        }
+
+        button.style.removeProperty('display');
+        claimed.add(target);
+    }
+
+    for (const button of railButtons) {
+        button.classList.toggle('sb-topbar-page-duplicate', claimed.has(button.dataset.sbTopbarPage));
     }
 }
 
@@ -7674,7 +7752,7 @@ function isTopbarPageActive(page) {
 }
 
 function syncTopbarPageButtonStates() {
-    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+    for (const page of [...SB_TOPBAR_PAGE_TARGETS, SB_TOPBAR_SEARCH_TARGET]) {
         const button = document.querySelector(`[data-sb-topbar-page="${CSS.escape(page.value)}"]`);
 
         if (!(button instanceof HTMLElement)) {
@@ -9390,8 +9468,11 @@ function buildTopBar() {
         attrs: { 'aria-hidden': 'true' },
     });
 
+    const searchButton = createTopbarPageButton(SB_TOPBAR_SEARCH_TARGET);
+    searchButton.id = 'sb-topbar-search-toggle';
+
     leftGroup.append(mobileButton, leftButton, rightButton, pageRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(customizeRail, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
+    rightGroup.append(customizeRail, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, searchButton, homeButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -13138,7 +13219,9 @@ function updateShortcutButton(side) {
     button.title = `Quick access: ${config.label}`;
     button.setAttribute('aria-label', `Quick access: ${config.label}`);
     button.dataset.sbUniversalSearchTrigger = String(isSearchShortcutTarget(target));
+    syncTopbarIconsOnlyDedupe();
     syncShortcutButtonActiveStates();
+    queueTopbarBrandFit();
 }
 
 function syncShortcutButtonActiveStates() {

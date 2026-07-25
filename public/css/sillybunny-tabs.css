@@ -1345,6 +1345,20 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* Search only exists as a top bar button in icons-only mode; elsewhere it is reachable through
+   a Quick Access slot as before. */
+#sb-topbar-search-toggle {
+    display: none;
+}
+
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-search-toggle {
+    display: inline-flex;
+}
+
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-page-duplicate {
+    display: none;
+}
+
 /* Once the label is squeezed out there is nothing left to centre on, so it yields its width to
    the rails; the two clusters then meet in the middle on their own. */
 :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {

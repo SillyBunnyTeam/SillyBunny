@@ -185,7 +185,6 @@ describe('icons only top bar', () => {
         expect(targetsMatch).not.toBeNull();
 
         const targetsSource = targetsMatch[0];
-        expect(targetsSource).toContain('\'action:search\'');
         expect(targetsSource).not.toContain('\'none\'');
         expect(targetsSource).not.toContain('label:');
         expect(targetsSource).not.toContain('icon:');
@@ -258,6 +257,44 @@ describe('icons only top bar', () => {
         expect(clusterBlock).toContain('#sb-topbar-inner {\n        display: flex;\n        justify-content: center;');
         expect(clusterBlock).toContain('#sb-home-toggle {\n        margin-left: 0;');
         expect(clusterBlock.indexOf('margin-left: auto')).toBeLessThan(clusterBlock.indexOf('margin-left: 0'));
+    });
+
+    test('pins quick actions, search, home and characters to the right in that order', () => {
+        const orderSource = getFunctionSource('syncTopbarRightClusterOrder');
+        const ids = ['sb-topbar-pages-right', 'sb-topbar-search-toggle', 'sb-home-toggle', 'sb-character-toggle'];
+        const positions = ids.map(id => orderSource.indexOf(id));
+        expect(positions.every(position => position >= 0)).toBe(true);
+        expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+        // Quick Actions sit between the rail and Search.
+        expect(orderSource.indexOf('SB_SHORTCUT_SLOTS')).toBeGreaterThan(positions[0]);
+        expect(orderSource.indexOf('SB_SHORTCUT_SLOTS')).toBeLessThan(positions[1]);
+    });
+
+    test('keeps the rightmost copy when a quick action duplicates a rail icon', () => {
+        const dedupeSource = getFunctionSource('syncTopbarIconsOnlyDedupe');
+        // The rail icon yields to the slot, and a slot pointed at Search yields to the dedicated
+        // Search button, which sits further right still.
+        expect(dedupeSource).toContain('claimed.add(target);');
+        expect(dedupeSource).toContain('button.classList.toggle(\'sb-topbar-page-duplicate\', claimed.has(button.dataset.sbTopbarPage));');
+        expect(dedupeSource).toContain('if (isSearchShortcutTarget(target)) {');
+        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-page-duplicate');
+    });
+
+    test('re-runs dedupe and refit when a quick action is reassigned', () => {
+        // The slot dropdown calls updateShortcutButton, so the top bar must settle from there
+        // rather than waiting for the next toggle or resize.
+        const updateSource = getFunctionSource('updateShortcutButton');
+        expect(updateSource).toContain('syncTopbarIconsOnlyDedupe();');
+        expect(updateSource).toContain('queueTopbarBrandFit();');
+    });
+
+    test('keeps search off the rail and gives it a fixed berth', () => {
+        const targetsMatch = normalizedTabsSource.match(/const SB_TOPBAR_PAGE_TARGETS = Object\.freeze\(\[[\s\S]*?\]\);/);
+        expect(targetsMatch[0]).not.toContain('action:search');
+        expect(normalizedTabsSource).toContain('const SB_TOPBAR_SEARCH_TARGET = Object.freeze({ value: \'action:search\'');
+        expect(normalizedTabsSource).toContain('searchButton.id = \'sb-topbar-search-toggle\';');
+        // Still reflects open/closed state alongside the page icons.
+        expect(getFunctionSource('syncTopbarPageButtonStates')).toContain('[...SB_TOPBAR_PAGE_TARGETS, SB_TOPBAR_SEARCH_TARGET]');
     });
 
     test('scrolls the rail rather than wrapping it', () => {
