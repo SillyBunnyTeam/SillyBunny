@@ -53,7 +53,7 @@ export function getUniqueConversationGroupMembers(memberAvatars) {
         (Array.isArray(memberAvatars) ? memberAvatars : [])
             .filter(avatar => typeof avatar === 'string')
             .map(avatar => avatar.trim())
-            .filter(avatar => validateConversationStoragePart(avatar, { required: true }).valid),
+            .filter(avatar => validateConversationStoragePart(avatar, { required: true, allowColon: false }).valid),
     ));
 }
 
@@ -62,7 +62,7 @@ export function getUniqueConversationGroupMembers(memberAvatars) {
  */
 export function normalizeConversationGroupRecord(group, normalizeConversationSettings) {
     const source = getObject(group);
-    const idValidation = validateConversationStoragePart(source.id, { required: true });
+    const idValidation = validateConversationStoragePart(source.id, { required: true, allowColon: false });
     const id = idValidation.valid ? idValidation.value : '';
     const personaId = getConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
     const members = getUniqueConversationGroupMembers(source.members);

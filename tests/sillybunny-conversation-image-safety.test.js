@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
     convertImageUrlsToBase64,
@@ -11,8 +14,13 @@ import {
 } from '../src/endpoints/conversation-utils.js';
 
 describe('Conversation REST image safety', () => {
+    const tempDirs = [];
+
     afterEach(() => {
         jest.restoreAllMocks();
+        for (const directory of tempDirs.splice(0)) {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
     });
 
     test('accepts bounded image data URLs and rejects other data types', async () => {
@@ -35,6 +43,37 @@ describe('Conversation REST image safety', () => {
         expect(isGlobalIPAddress('2001:db8::1')).toBe(false);
         expect(isGlobalIPAddress('64:ff9b:1::1')).toBe(false);
         expect(isGlobalIPAddress('3fff::1')).toBe(false);
+        expect(isGlobalIPAddress('fec0::1')).toBe(false);
+        expect(isGlobalIPAddress('::8.8.8.8')).toBe(false);
+        expect(isGlobalIPAddress('::192.168.1.1')).toBe(false);
+        expect(isGlobalIPAddress('fe00::1')).toBe(false);
+        expect(isGlobalIPAddress('1000::1')).toBe(false);
+        expect(isGlobalIPAddress('4000::1')).toBe(false);
+        expect(isGlobalIPAddress('2606:4700:4700::1111')).toBe(true);
+    });
+
+    test('reads only contained authenticated user image paths', async () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'conversation-user-image-'));
+        tempDirs.push(root);
+        const userImages = path.join(root, 'user', 'images');
+        const album = path.join(userImages, 'album');
+        fs.mkdirSync(album, { recursive: true });
+        fs.writeFileSync(path.join(album, 'photo.png'), Buffer.from('image'));
+        fs.writeFileSync(path.join(album, 'not-image.txt'), Buffer.from('image'));
+        const outsideImage = path.join(root, 'secret.png');
+        fs.writeFileSync(outsideImage, Buffer.from('secret'));
+        fs.symlinkSync(outsideImage, path.join(album, 'linked.png'));
+
+        const userDirectories = { root, userImages };
+        await expect(fetchImageToBase64('/user/images/album/photo.png?cache=1', { userDirectories }))
+            .resolves.toBe(`data:image/png;base64,${Buffer.from('image').toString('base64')}`);
+        await expect(fetchImageToBase64('user/images/album/photo.png', { userDirectories }))
+            .resolves.toContain('data:image/png;base64,');
+        await expect(fetchImageToBase64('/user/images/%2e%2e/secret.png', { userDirectories })).resolves.toBe('');
+        await expect(fetchImageToBase64('/user/images/album/linked.png', { userDirectories })).resolves.toBe('');
+        await expect(fetchImageToBase64('/user/images/album/not-image.txt', { userDirectories })).resolves.toBe('');
+        await expect(fetchImageToBase64('/user/images/album/photo.png', { userDirectories, maxBytes: 4 })).resolves.toBe('');
     });
 
     test('caps image count and aggregate decoded bytes in one conversion pool', async () => {

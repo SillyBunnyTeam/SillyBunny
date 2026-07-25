@@ -41,6 +41,9 @@ const GENERATION_BACKENDS = Object.freeze({
     CHAT: 'chat',
     TEXT: 'text',
 });
+const MAX_GROUP_PROMPT_PARTICIPANTS = 32;
+const MAX_GROUP_PROMPT_PARTICIPANT_CHARS = 2048;
+const GROUP_PARTICIPANT_READ_CONCURRENCY = 4;
 
 /**
  * Normalize character data from card or override
@@ -65,8 +68,8 @@ export function normalizeCharacterData(rawCharacter, avatar = '') {
 /**
  * Load character data from request body or disk
  */
-export async function getCharacterData(request, avatar) {
-    if (isObject(request.body?.character)) {
+export async function getCharacterData(request, avatar, { allowOverride = true } = {}) {
+    if (allowOverride && isObject(request.body?.character)) {
         return normalizeCharacterData(request.body.character, avatar);
     }
 
@@ -83,6 +86,63 @@ export async function getCharacterData(request, avatar) {
         console.warn('Conversation REST API: failed to read character card', error);
         return normalizeCharacterData({}, avatar);
     }
+}
+
+/**
+ * Resolve every active group member to a prompt-safe display name.
+ */
+export async function getConversationGroupParticipantNames(request, group, { avatar = '', character = null } = {}) {
+    if (!group || !Array.isArray(group.members)) {
+        return [];
+    }
+
+    const disabledMembers = new Set((Array.isArray(group.disabled_members) ? group.disabled_members : [])
+        .map(member => String(member).trim()));
+    const seenMembers = new Set();
+    const activeMembers = [];
+    for (const rawMember of group.members) {
+        const member = typeof rawMember === 'string' ? rawMember.trim() : '';
+        if (!member || disabledMembers.has(member) || seenMembers.has(member)) {
+            continue;
+        }
+        seenMembers.add(member);
+        activeMembers.push(member);
+    }
+    const currentIndex = activeMembers.indexOf(avatar);
+    if (currentIndex > 0) {
+        activeMembers.unshift(activeMembers.splice(currentIndex, 1)[0]);
+    }
+    activeMembers.splice(MAX_GROUP_PROMPT_PARTICIPANTS);
+
+    const names = new Array(activeMembers.length);
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(GROUP_PARTICIPANT_READ_CONCURRENCY, activeMembers.length) }, async () => {
+        while (nextIndex < activeMembers.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            const member = activeMembers[index];
+            const data = member === avatar && character
+                ? character
+                : await getCharacterData(request, member, { allowOverride: false });
+            names[index] = formatPromptText(data?.name || path.parse(member).name, 80);
+        }
+    });
+    await Promise.all(workers);
+
+    const uniqueNames = [];
+    const seenNames = new Set();
+    let totalCharacters = 0;
+    for (const name of names) {
+        const key = String(name || '').toLowerCase();
+        const nextLength = String(name || '').length + (uniqueNames.length ? 2 : 0);
+        if (!key || seenNames.has(key) || totalCharacters + nextLength > MAX_GROUP_PROMPT_PARTICIPANT_CHARS) {
+            continue;
+        }
+        seenNames.add(key);
+        uniqueNames.push(name);
+        totalCharacters += nextLength;
+    }
+    return uniqueNames;
 }
 
 /**
@@ -139,7 +199,12 @@ export function getContentText(content) {
 /**
  * Build conversation prompt messages (async for image conversion)
  */
-export async function buildConversationPromptMessages(messages, directive, speakerName, { groupId = '', userName = 'User', signal } = {}) {
+export async function buildConversationPromptMessages(messages, directive, speakerName, {
+    groupId = '',
+    userName = 'User',
+    signal,
+    userDirectories,
+} = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
@@ -193,7 +258,7 @@ export async function buildConversationPromptMessages(messages, directive, speak
             imageCount: selectedImageUrls.length,
         };
     });
-    const convertedImageUrls = await convertImageUrlsToBase64(imageUrls, 3, { signal });
+    const convertedImageUrls = await convertImageUrlsToBase64(imageUrls, 3, { signal, userDirectories });
     const convertedMessages = messageParts.map(message => {
         if (!message || !message.contentParts) {
             return message;
@@ -248,12 +313,15 @@ export async function buildConversationPromptMessages(messages, directive, speak
 /**
  * Build conversation system prompt
  */
-export function buildConversationSystemPrompt({ settings, character, userName, groupId, branch }) {
+export function buildConversationSystemPrompt({ settings, character, userName, groupId, branch, participantNames = [] }) {
     const charName = character.name || 'Character';
     const fields = [
         groupId
             ? `You are ${charName} in a private group direct-message conversation with ${userName}. You are one equal participant in this group DM and should reply only as ${charName}.`
             : `You are ${charName} in a private direct-message conversation with ${userName}.`,
+        groupId && participantNames.length
+            ? `Active group participants: ${participantNames.map(name => formatPromptText(name, 80)).filter(Boolean).join(', ')}.`
+            : '',
         'This Conversation Mode transcript is separate from the roleplay/story chat. Do not continue roleplay scenes unless the user explicitly asks about them.',
         'Formatting: write plain chat text. Do not start with a speaker/name label. Do not wrap words or phrases in double quotation marks or smart quotes for emphasis. If sending multiple chat bubbles, put each bubble on its own line.',
         getConversationSystemTimeContext(),
@@ -504,6 +572,14 @@ export function createCapturingResponse() {
 }
 
 /**
+ * Only client-error statuses are safe and useful to forward through this API.
+ */
+export function getSafeConversationGenerationStatus(status) {
+    const parsed = Number(status);
+    return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
+}
+
+/**
  * Run backend generation with error handling
  */
 export async function runBackendGeneration(request, backend, payload, { signal } = {}) {
@@ -561,7 +637,8 @@ export async function runBackendGeneration(request, backend, payload, { signal }
     const body = capture.body;
     if (capture.statusCode >= 400 || body?.error) {
         const error = new Error('conversation generation failed');
-        error.status = capture.statusCode >= 400 ? capture.statusCode : 502;
+        const reportedStatus = capture.statusCode >= 400 ? capture.statusCode : body?.status;
+        error.status = getSafeConversationGenerationStatus(reportedStatus);
         error.body = body;
         throw error;
     }

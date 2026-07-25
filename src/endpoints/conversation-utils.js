@@ -5,11 +5,16 @@
  */
 
 import dns from 'node:dns';
+import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import path from 'node:path';
 
 import ipaddr from 'ipaddr.js';
+import mime from 'mime-types';
+
+import { MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
 
 // Validation constants
 export const MAX_AVATAR_LENGTH = 512;
@@ -19,6 +24,10 @@ export const MAX_CONVERSATION_STRING_LENGTH = 14 * 1024 * 1024;
 export const MAX_CONVERSATION_PAYLOAD_BYTES = 24 * 1024 * 1024;
 export const MAX_CONVERSATION_NESTING_DEPTH = 12;
 export const MAX_CONVERSATION_PAYLOAD_ENTRIES = 5000;
+export const MAX_CONVERSATION_STORE_BYTES = 128 * 1024 * 1024;
+export const MAX_CONVERSATION_STORE_ENTRIES = 500000;
+export const MAX_CONVERSATION_MESSAGE_TEXT_LENGTH = 256 * 1024;
+export const MAX_CONVERSATION_MESSAGE_FIELD_LENGTH = 512;
 
 // Image fetching constants
 const IMAGE_FETCH_TIMEOUT_MS = 10000; // 10 seconds
@@ -55,6 +64,7 @@ const NON_GLOBAL_IP_RANGES = [
     '224.0.0.0/4',
     '240.0.0.0/4',
     '::/128',
+    '::/96',
     '::1/128',
     '64:ff9b::/96',
     '64:ff9b:1::/48',
@@ -66,9 +76,11 @@ const NON_GLOBAL_IP_RANGES = [
     '3fff::/20',
     '5f00::/16',
     'fc00::/7',
+    'fec0::/10',
     'fe80::/10',
     'ff00::/8',
 ].map(value => ipaddr.parseCIDR(value));
+const GLOBAL_IPV6_UNICAST_RANGE = ipaddr.parseCIDR('2000::/3');
 
 /**
  * Type guard for plain objects
@@ -261,8 +273,27 @@ export function validateGenerationPayload(generation) {
     if (!isObject(generation.payload)) {
         return { valid: false, error: 'generation_payload_required' };
     }
-    if (!generation.payload.model || typeof generation.payload.model !== 'string' || generation.payload.model.length > MAX_AVATAR_LENGTH) {
+
+    const backend = String(generation.backend || generation.type || 'chat').toLowerCase().replace(/[_ ]/g, '-');
+    const isTextBackend = ['text', 'text-completion', 'text-completions'].includes(backend);
+    const model = generation.payload.model;
+    if (model !== undefined && (typeof model !== 'string' || !model.trim() || model.length > MAX_AVATAR_LENGTH)) {
         return { valid: false, error: 'generation_model_required' };
+    }
+    if (isTextBackend) {
+        if (typeof generation.payload.api_type !== 'string' || !generation.payload.api_type.trim() || generation.payload.api_type.length > MAX_AVATAR_LENGTH) {
+            return { valid: false, error: 'generation_api_type_required' };
+        }
+        if (typeof generation.payload.api_server !== 'string' || !generation.payload.api_server.trim() || generation.payload.api_server.length > 8192) {
+            return { valid: false, error: 'generation_api_server_required' };
+        }
+        return { valid: true };
+    }
+    if (!model) {
+        return { valid: false, error: 'generation_model_required' };
+    }
+    if (typeof generation.payload.chat_completion_source !== 'string' || !generation.payload.chat_completion_source.trim()) {
+        return { valid: false, error: 'generation_source_required' };
     }
     return { valid: true };
 }
@@ -270,7 +301,11 @@ export function validateGenerationPayload(generation) {
 /**
  * Enforce bounded, prototype-safe JSON payloads below the global 500MB parser.
  */
-export function validateConversationPayload(value) {
+export function validateConversationPayload(value, {
+    maxPayloadBytes = MAX_CONVERSATION_PAYLOAD_BYTES,
+    maxEntries = MAX_CONVERSATION_PAYLOAD_ENTRIES,
+    maxStringBytes = MAX_CONVERSATION_STRING_LENGTH,
+} = {}) {
     let entries = 0;
     let payloadBytes = 0;
     const stack = [{ value, depth: 0 }];
@@ -283,11 +318,11 @@ export function validateConversationPayload(value) {
         }
         if (typeof item === 'string') {
             const byteLength = Buffer.byteLength(item);
-            if (byteLength > MAX_CONVERSATION_STRING_LENGTH) {
+            if (byteLength > maxStringBytes) {
                 return { valid: false, error: 'string_too_long' };
             }
             payloadBytes += byteLength;
-            if (payloadBytes > MAX_CONVERSATION_PAYLOAD_BYTES) {
+            if (payloadBytes > maxPayloadBytes) {
                 return { valid: false, error: 'payload_too_large' };
             }
             continue;
@@ -314,11 +349,11 @@ export function validateConversationPayload(value) {
             entries += ownEntries.length;
             for (const [key, child] of ownEntries) {
                 const keyBytes = Buffer.byteLength(key);
-                if (keyBytes > MAX_CONVERSATION_STRING_LENGTH) {
+                if (keyBytes > maxStringBytes) {
                     return { valid: false, error: 'string_too_long' };
                 }
                 payloadBytes += keyBytes;
-                if (payloadBytes > MAX_CONVERSATION_PAYLOAD_BYTES) {
+                if (payloadBytes > maxPayloadBytes) {
                     return { valid: false, error: 'payload_too_large' };
                 }
                 stack.push({ value: child, depth: current.depth + 1 });
@@ -327,7 +362,7 @@ export function validateConversationPayload(value) {
             return { valid: false, error: 'invalid_payload_value' };
         }
 
-        if (entries > MAX_CONVERSATION_PAYLOAD_ENTRIES) {
+        if (entries > maxEntries) {
             return { valid: false, error: 'payload_too_complex' };
         }
     }
@@ -378,31 +413,98 @@ export function validateConversationAttachments(extra) {
     if (!isObject(extra)) {
         return { valid: false, error: 'invalid_stored_attachment' };
     }
-    for (const field of ['media', 'files']) {
+    for (const field of ['attachments', 'media', 'files']) {
         if (extra[field] !== undefined
             && (!Array.isArray(extra[field]) || extra[field].some(attachment => !isValidStoredAttachment(attachment)))) {
             return { valid: false, error: 'invalid_stored_attachment' };
         }
     }
-    if (extra.image_url !== undefined && (typeof extra.image_url !== 'string' || !extra.image_url.trim())) {
+    if (extra.image_url !== undefined
+        && (typeof extra.image_url !== 'string' || !extra.image_url.trim() || extra.image_url.length > MAX_CONVERSATION_STRING_LENGTH)) {
         return { valid: false, error: 'invalid_stored_attachment' };
     }
     return { valid: true };
 }
 
-function validateStoredMessage(message) {
+/**
+ * Move the pre-media-schema attachment list into the current media/files fields.
+ */
+export function normalizeConversationAttachments(extra) {
+    const normalized = getOwnRecord(extra);
+    const media = [];
+    const files = [];
+    const mediaUrls = new Set();
+    const fileUrls = new Set();
+    const addUnique = (target, urls, attachment) => {
+        const url = String(attachment?.url || '').trim();
+        if (!url || urls.has(url)) {
+            return;
+        }
+        urls.add(url);
+        target.push(attachment);
+    };
+    for (const attachment of Array.isArray(normalized.media) ? normalized.media : []) {
+        addUnique(media, mediaUrls, attachment);
+    }
+    for (const attachment of Array.isArray(normalized.files) ? normalized.files : []) {
+        addUnique(files, fileUrls, attachment);
+    }
+    for (const attachment of Array.isArray(normalized.attachments) ? normalized.attachments : []) {
+        const type = String(attachment?.type || '').toLowerCase();
+        const mimeType = String(attachment?.mime || attachment?.mimeType || attachment?.contentType || '').toLowerCase();
+        if (type === 'file' || (mimeType && !/^(?:image|audio|video)\//.test(mimeType))) {
+            addUnique(files, fileUrls, attachment);
+        } else {
+            addUnique(media, mediaUrls, attachment);
+        }
+    }
+    if (normalized.media !== undefined || media.length) {
+        normalized.media = media;
+    }
+    if (normalized.files !== undefined || files.length) {
+        normalized.files = files;
+    }
+    delete normalized.attachments;
+    return normalized;
+}
+
+/**
+ * IDs are interpolated into quoted CSS attribute selectors by the browser client.
+ */
+export function isSafeConversationMessageId(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value.length <= MAX_CONVERSATION_MESSAGE_FIELD_LENGTH
+        && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value);
+}
+
+function validateStoredMessage(message, { strictMessages }) {
     if (!isObject(message)) {
         return { valid: false, error: 'invalid_stored_message' };
     }
-    for (const field of ['id', 'name', 'send_date']) {
-        if (message[field] !== undefined && typeof message[field] !== 'string') {
+    if (message.id !== undefined) {
+        const validLegacyId = typeof message.id === 'string'
+            || (typeof message.id === 'number' && Number.isFinite(message.id));
+        if (!validLegacyId) {
+            return { valid: false, error: 'invalid_stored_message' };
+        }
+        if (strictMessages && !isSafeConversationMessageId(message.id)) {
+            return { valid: false, error: 'invalid_message_id' };
+        }
+    }
+    for (const field of ['name', 'send_date']) {
+        if (message[field] !== undefined
+            && (typeof message[field] !== 'string'
+                || (strictMessages && message[field].length > MAX_CONVERSATION_MESSAGE_FIELD_LENGTH))) {
             return { valid: false, error: 'invalid_stored_message' };
         }
     }
     if (message.role !== undefined && (typeof message.role !== 'string' || !STORED_MESSAGE_ROLES.has(message.role))) {
         return { valid: false, error: 'invalid_stored_message' };
     }
-    if (message.mes !== undefined && typeof message.mes !== 'string') {
+    if (message.mes !== undefined
+        && (typeof message.mes !== 'string'
+            || (strictMessages && message.mes.length > MAX_CONVERSATION_MESSAGE_TEXT_LENGTH))) {
         return { valid: false, error: 'invalid_stored_message' };
     }
     if (message.created_at !== undefined) {
@@ -420,12 +522,13 @@ function validateStoredMessage(message) {
         String(message.mes || '').trim()
         || (Array.isArray(extra.media) && extra.media.length)
         || (Array.isArray(extra.files) && extra.files.length)
+        || (Array.isArray(extra.attachments) && extra.attachments.length)
         || (typeof extra.image_url === 'string' && extra.image_url),
     );
     return hasContent ? { valid: true } : { valid: false, error: 'invalid_stored_message' };
 }
 
-function validateStoredThread(threadStore) {
+function validateStoredThread(threadStore, { strictMessages }) {
     if (!isObject(threadStore)) {
         return { valid: false, error: 'invalid_thread' };
     }
@@ -451,10 +554,20 @@ function validateStoredThread(threadStore) {
         if (branch.messages !== undefined && !Array.isArray(branch.messages)) {
             return { valid: false, error: 'invalid_branch_messages' };
         }
+        if (strictMessages && branch.messages?.length > MAX_THREAD_MESSAGES) {
+            return { valid: false, error: 'too_many_thread_messages' };
+        }
+        const messageIds = new Set();
         for (const message of branch.messages || []) {
-            const messageValidation = validateStoredMessage(message);
+            const messageValidation = validateStoredMessage(message, { strictMessages });
             if (!messageValidation.valid) {
                 return messageValidation;
+            }
+            if (strictMessages && message.id && messageIds.has(message.id)) {
+                return { valid: false, error: 'duplicate_message_id' };
+            }
+            if (message.id) {
+                messageIds.add(message.id);
             }
         }
         for (const field of ['scheduleTriggers', 'sessionMarkers']) {
@@ -472,12 +585,16 @@ function validateStoredThread(threadStore) {
 /**
  * Validate Conversation Mode store structure without discarding future fields.
  */
-export function validateStoreStructure(store) {
+export function validateStoreStructure(store, { strictMessages = true } = {}) {
     if (!isObject(store)) {
         return { valid: false, error: 'invalid_store' };
     }
 
-    const payloadValidation = validateConversationPayload(store);
+    const payloadValidation = validateConversationPayload(store, {
+        maxPayloadBytes: MAX_CONVERSATION_STORE_BYTES,
+        maxEntries: MAX_CONVERSATION_STORE_ENTRIES,
+        maxStringBytes: strictMessages ? MAX_CONVERSATION_STRING_LENGTH : MAX_CONVERSATION_STORE_BYTES,
+    });
     if (!payloadValidation.valid) {
         return payloadValidation;
     }
@@ -542,7 +659,7 @@ export function validateStoreStructure(store) {
             return { valid: false, error: 'invalid_group_settings' };
         }
         for (const field of ['personaId', 'persona', 'personaAvatar', 'userAvatar']) {
-            if (group[field] !== undefined && !validateConversationStoragePart(group[field], { allowColon: false }).valid) {
+            if (group[field] !== undefined && !validateConversationStoragePart(group[field]).valid) {
                 return { valid: false, error: 'invalid_group_persona' };
             }
         }
@@ -561,7 +678,7 @@ export function validateStoreStructure(store) {
         if (!isSafeConversationPropertyKey(threadKey)) {
             return { valid: false, error: 'unsafe_thread_key' };
         }
-        const threadValidation = validateStoredThread(threadStore);
+        const threadValidation = validateStoredThread(threadStore, { strictMessages });
         if (!threadValidation.valid) {
             return threadValidation;
         }
@@ -597,13 +714,95 @@ export function isAvatarInGroup(avatar, groupId, store, personaId = '') {
  */
 export function isGlobalIPAddress(address) {
     try {
+        const raw = ipaddr.parse(address);
+        const source = String(address).trim();
+        if (raw.range() === 'ipv4Mapped' && source.includes('.') && !/(?:^|:)0*ffff(?=:|$)/i.test(source)) {
+            return false;
+        }
+        if (NON_GLOBAL_IP_RANGES.some(([network, prefix]) => network.kind() === raw.kind() && raw.match(network, prefix))) {
+            return false;
+        }
         const parsed = ipaddr.process(address);
+        if (parsed.kind() === 'ipv6' && !parsed.match(...GLOBAL_IPV6_UNICAST_RANGE)) {
+            return false;
+        }
         return parsed.range() === 'unicast' && !NON_GLOBAL_IP_RANGES.some(([network, prefix]) => (
             network.kind() === parsed.kind() && parsed.match(network, prefix)
         ));
     } catch {
         return false;
     }
+}
+
+function isPathInside(parentPath, childPath) {
+    const relative = path.relative(parentPath, childPath);
+    return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function getUserImageRelativePath(imageUrl) {
+    if (typeof imageUrl !== 'string' || imageUrl.startsWith('//')) {
+        return null;
+    }
+    const normalizedUrl = imageUrl.startsWith('user/images/') ? `/${imageUrl}` : imageUrl;
+    if (!normalizedUrl.startsWith('/user/images/')) {
+        return null;
+    }
+
+    const url = new URL(normalizedUrl, 'https://sillybunny.invalid');
+    if (url.origin !== 'https://sillybunny.invalid' || !url.pathname.startsWith('/user/images/')) {
+        return '';
+    }
+    const relativePath = decodeURIComponent(url.pathname.slice('/user/images/'.length));
+    const parts = relativePath.split(/[\\/]/);
+    if (!relativePath || /[\u0000-\u001F\u007F]/.test(relativePath) || parts.some(part => !part || part === '.' || part === '..')) {
+        return '';
+    }
+    return parts.join(path.sep);
+}
+
+async function readUserImage(imageUrl, userDirectories, maxBytes) {
+    const relativePath = getUserImageRelativePath(imageUrl);
+    if (relativePath === null) {
+        return null;
+    }
+    if (!relativePath || !userDirectories?.root) {
+        throw new Error('User image path is invalid');
+    }
+
+    const configuredImagesRoot = userDirectories.userImages || path.join(userDirectories.root, 'user', 'images');
+    const [userRoot, imagesRoot] = await Promise.all([
+        fs.promises.realpath(userDirectories.root),
+        fs.promises.realpath(configuredImagesRoot),
+    ]);
+    if (!isPathInside(userRoot, imagesRoot)) {
+        throw new Error('User image root is outside the authenticated user root');
+    }
+
+    const unresolvedPath = path.resolve(imagesRoot, relativePath);
+    if (!isPathInside(imagesRoot, unresolvedPath)) {
+        throw new Error('User image path escapes the image root');
+    }
+    const realPath = await fs.promises.realpath(unresolvedPath);
+    if (!isPathInside(imagesRoot, realPath)) {
+        throw new Error('User image path escapes through a symbolic link');
+    }
+
+    const contentType = String(mime.lookup(realPath) || '').toLowerCase();
+    if (!/^image\/[a-z0-9.+-]+$/.test(contentType)) {
+        throw new Error('User image has an invalid content type');
+    }
+    const stat = await fs.promises.stat(realPath);
+    if (!stat.isFile() || stat.size > maxBytes) {
+        throw new Error('User image is too large');
+    }
+    const buffer = await fs.promises.readFile(realPath);
+    if (buffer.byteLength > maxBytes) {
+        throw new Error('User image is too large');
+    }
+    return {
+        dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
+        byteLength: buffer.byteLength,
+    };
 }
 
 function createAbortError() {
@@ -810,7 +1009,12 @@ async function fetchRemoteImage(imageUrl, { signal, maxBytes, redirectsRemaining
 /**
  * Fetch image URL and convert to base64 with SSRF protection
  */
-export async function fetchImageToBase64(imageUrl, { signal, maxBytes = IMAGE_MAX_SIZE_BYTES, includeSize = false } = {}) {
+export async function fetchImageToBase64(imageUrl, {
+    signal,
+    maxBytes = IMAGE_MAX_SIZE_BYTES,
+    includeSize = false,
+    userDirectories,
+} = {}) {
     if (typeof imageUrl !== 'string' || !imageUrl) {
         return includeSize ? { dataUrl: '', byteLength: 0 } : '';
     }
@@ -824,7 +1028,8 @@ export async function fetchImageToBase64(imageUrl, { signal, maxBytes = IMAGE_MA
     }
 
     try {
-        const result = await fetchRemoteImage(imageUrl, { signal, maxBytes, redirectsRemaining: IMAGE_MAX_REDIRECTS });
+        const localResult = await readUserImage(imageUrl, userDirectories, maxBytes);
+        const result = localResult || await fetchRemoteImage(imageUrl, { signal, maxBytes, redirectsRemaining: IMAGE_MAX_REDIRECTS });
         return includeSize ? result : result.dataUrl;
     } catch (error) {
         if (signal?.aborted) {
@@ -838,7 +1043,11 @@ export async function fetchImageToBase64(imageUrl, { signal, maxBytes = IMAGE_MA
 /**
  * Convert multiple image URLs to base64 with concurrency control
  */
-export async function convertImageUrlsToBase64(imageUrls, concurrency = 3, { signal, maxAggregateBytes = IMAGE_MAX_AGGREGATE_BYTES } = {}) {
+export async function convertImageUrlsToBase64(imageUrls, concurrency = 3, {
+    signal,
+    maxAggregateBytes = IMAGE_MAX_AGGREGATE_BYTES,
+    userDirectories,
+} = {}) {
     const urls = Array.isArray(imageUrls) ? imageUrls : [];
     if (!urls.length) {
         return [];
@@ -862,7 +1071,12 @@ export async function convertImageUrlsToBase64(imageUrls, concurrency = 3, { sig
             reservedBytes += remainingBytes;
             let result;
             try {
-                result = await fetchImageToBase64(urls[index], { signal, maxBytes: remainingBytes, includeSize: true });
+                result = await fetchImageToBase64(urls[index], {
+                    signal,
+                    maxBytes: remainingBytes,
+                    includeSize: true,
+                    userDirectories,
+                });
             } finally {
                 reservedBytes -= remainingBytes;
             }

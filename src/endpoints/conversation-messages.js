@@ -10,11 +10,17 @@ import {
     getConversationAttachmentSummary,
     hasConversationMessageContent,
 } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
-import { getObject, isObject, validateConversationAttachments } from './conversation-utils.js';
+import {
+    getObject,
+    isObject,
+    isSafeConversationMessageId,
+    MAX_CONVERSATION_MESSAGE_FIELD_LENGTH,
+    MAX_CONVERSATION_MESSAGE_TEXT_LENGTH,
+    normalizeConversationAttachments,
+    validateConversationAttachments,
+} from './conversation-utils.js';
 import { getActiveConversationBranch } from './conversation-threads.js';
 
-const MAX_MESSAGE_TEXT_LENGTH = 256 * 1024;
-const MAX_MESSAGE_FIELD_LENGTH = 512;
 const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
 const ALLOWED_MESSAGE_ROLES = new Set(['user', 'character', 'assistant', 'partner', 'system']);
 
@@ -37,13 +43,19 @@ export function validateConversationMessageInput(input, { requiredRole = '' } = 
     if (typeof role !== 'string' || !ALLOWED_MESSAGE_ROLES.has(role) || (requiredRole && role !== requiredRole)) {
         return { valid: false, error: 'invalid_message_role' };
     }
-    for (const field of ['id', 'name']) {
-        if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > MAX_MESSAGE_FIELD_LENGTH)) {
-            return { valid: false, error: `invalid_message_${field}` };
-        }
+    if (input.id !== undefined && input.id !== '' && !isSafeConversationMessageId(input.id)) {
+        return { valid: false, error: 'invalid_message_id' };
+    }
+    if (input.name !== undefined
+        && (typeof input.name !== 'string' || input.name.length > MAX_CONVERSATION_MESSAGE_FIELD_LENGTH)) {
+        return { valid: false, error: 'invalid_message_name' };
+    }
+    if (input.send_date !== undefined
+        && (typeof input.send_date !== 'string' || input.send_date.length > MAX_CONVERSATION_MESSAGE_FIELD_LENGTH)) {
+        return { valid: false, error: 'invalid_message_send_date' };
     }
     const content = input.mes ?? input.text;
-    if (content !== undefined && (typeof content !== 'string' || content.length > MAX_MESSAGE_TEXT_LENGTH)) {
+    if (content !== undefined && (typeof content !== 'string' || content.length > MAX_CONVERSATION_MESSAGE_TEXT_LENGTH)) {
         return { valid: false, error: 'invalid_message_content' };
     }
     if (input.created_at !== undefined) {
@@ -128,15 +140,27 @@ export function createConversationMessage(input = {}, fallback = {}) {
     const source = getObject(input);
     const createdAt = parseConversationTimestamp(source.created_at);
     const role = ALLOWED_MESSAGE_ROLES.has(source.role) ? source.role : (ALLOWED_MESSAGE_ROLES.has(fallback.role) ? fallback.role : 'user');
+    const name = String(source.name || fallback.name || 'User').slice(0, MAX_CONVERSATION_MESSAGE_FIELD_LENGTH);
     return {
         id: typeof source.id === 'string' && source.id ? source.id : `${createdAt}-${Math.random().toString(36).slice(2)}`,
         role,
-        name: source.name || fallback.name || 'User',
+        name,
         mes: String(source.mes ?? source.text ?? fallback.mes ?? ''),
         send_date: typeof source.send_date === 'string' && source.send_date ? source.send_date : new Date(createdAt).toISOString(),
         created_at: createdAt,
-        extra: getObject(source.extra),
+        extra: normalizeConversationAttachments(source.extra),
     };
+}
+
+/**
+ * Check whether a caller-supplied message ID already exists in the active branch.
+ */
+export function hasConversationMessageId(store, avatar, messageId, { groupId = '', personaId = '' } = {}) {
+    if (!messageId) {
+        return false;
+    }
+    const branch = getActiveConversationBranch(store, avatar, groupId, { create: false, personaId });
+    return Boolean(branch?.messages.some(message => message.id === messageId));
 }
 
 /**
@@ -150,6 +174,9 @@ export function appendConversationMessage(store, avatar, messageInput, { groupId
 
     const message = createConversationMessage(messageInput, fallback);
     if (!hasConversationMessageContent(message)) {
+        return null;
+    }
+    if (branch.messages.some(existing => existing.id === message.id)) {
         return null;
     }
 

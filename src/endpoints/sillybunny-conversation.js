@@ -16,10 +16,12 @@ import {
     validateAvatar,
     validateConversationPayload,
     validateConversationScope,
-    validateConversationStoragePart,
     validateGenerationPayload,
     validateCharacterOverride,
     validateStoreStructure,
+    MAX_CONVERSATION_MESSAGE_TEXT_LENGTH,
+    MAX_CONVERSATION_STORE_BYTES,
+    MAX_CONVERSATION_STORE_ENTRIES,
 } from './conversation-utils.js';
 import {
     readUserSettingsWithStatus,
@@ -36,6 +38,7 @@ import {
     authorizeConversationGroup,
 } from './conversation-groups.js';
 import {
+    canonicalizeConversationGroupThread,
     getConversationThreadStore,
     getActiveConversationBranch,
 } from './conversation-threads.js';
@@ -44,10 +47,12 @@ import {
     getIncomingMessage,
     refreshBranchPreview,
     buildConversationMessageReplyReference,
+    hasConversationMessageId,
     validateConversationMessageInput,
 } from './conversation-messages.js';
 import {
     getCharacterData,
+    getConversationGroupParticipantNames,
     getConversationSettings,
     normalizeConversationSettings,
     getDefaultDirective,
@@ -56,16 +61,28 @@ import {
     buildGenerationRequestBody,
     runBackendGeneration,
     extractGeneratedText,
+    getSafeConversationGenerationStatus,
 } from './conversation-generation.js';
 
 const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
 const MESSAGE_SEND_RATE_LIMIT = getConfigValue('rateLimiting.conversationMessageSendPoints', 20, 'number');
 const MESSAGE_SEND_RATE_DURATION = getConfigValue('rateLimiting.conversationMessageSendDuration', 60, 'number');
 
-const messageSendLimiter = new RateLimiterMemory({
-    points: MESSAGE_SEND_RATE_LIMIT > 0 ? MESSAGE_SEND_RATE_LIMIT : Number.MAX_SAFE_INTEGER,
+const messageSendPoints = MESSAGE_SEND_RATE_LIMIT > 0 ? MESSAGE_SEND_RATE_LIMIT : Number.MAX_SAFE_INTEGER;
+const messageSendUserLimiter = new RateLimiterMemory({
+    points: messageSendPoints,
     duration: MESSAGE_SEND_RATE_DURATION,
 });
+const messageSendIpLimiter = new RateLimiterMemory({
+    points: messageSendPoints === Number.MAX_SAFE_INTEGER
+        ? Number.MAX_SAFE_INTEGER
+        : Math.min(Number.MAX_SAFE_INTEGER, messageSendPoints * 5),
+    duration: MESSAGE_SEND_RATE_DURATION,
+});
+
+const MAX_GENERATED_COMMANDS = 32;
+const MAX_GENERATED_COMMAND_LENGTH = 4096;
+const STORE_SAVE_PAYLOAD_VALIDATED = Symbol('conversationStoreSavePayloadValidated');
 
 export const router = express.Router();
 
@@ -89,7 +106,7 @@ const CONVERSATION_API_INFO = {
             },
             {
                 step: 'queue-reply',
-                file: 'public/scripts/sillybunny-conversation/send-queue.js',
+                file: 'public/scripts/sillybunny-conversation/attachments.js',
                 function: 'processSendQueue',
             },
             {
@@ -138,6 +155,36 @@ function sendRouteError(response, error) {
 function asyncRoute(handler) {
     return (request, response) => {
         Promise.resolve(handler(request, response)).catch(error => sendRouteError(response, error));
+    };
+}
+
+async function consumeMessageSendLimit(response, limiter, key) {
+    try {
+        await limiter.consume(key);
+        return true;
+    } catch (rateLimitError) {
+        retryAfter(response, rateLimitError);
+        response.status(429).send({
+            error: 'rate_limit_exceeded',
+            message: 'Too many message send requests. Please wait before trying again.',
+        });
+        return false;
+    }
+}
+
+function getBoundedConversationCommands(commandParts) {
+    const boundStrings = values => (Array.isArray(values) ? values : [])
+        .slice(0, MAX_GENERATED_COMMANDS)
+        .map(value => String(value || '').slice(0, MAX_GENERATED_COMMAND_LENGTH));
+    return {
+        selfieRequests: boundStrings(commandParts.selfieRequests),
+        scheduleUpdates: boundStrings(commandParts.scheduleUpdates),
+        reminders: (Array.isArray(commandParts.reminders) ? commandParts.reminders : [])
+            .slice(0, MAX_GENERATED_COMMANDS)
+            .map(reminder => ({
+                delay: String(reminder?.delay || '').slice(0, MAX_GENERATED_COMMAND_LENGTH),
+                memo: String(reminder?.memo || '').slice(0, MAX_GENERATED_COMMAND_LENGTH),
+            })),
     };
 }
 
@@ -192,13 +239,26 @@ function authorizeGroupTarget(request, response, store, target) {
     );
     if (authorization.error) {
         response.status(authorization.status || 500).send({ error: authorization.error });
-        return false;
+        return null;
     }
     if (!authorization.authorized) {
         response.status(400).send({ error: 'avatar_not_in_group' });
-        return false;
+        return null;
     }
-    return true;
+    return authorization;
+}
+
+function getConversationStorageTarget(store, target, authorization) {
+    if (!target.groupId || !authorization?.group) {
+        return target;
+    }
+    const canonical = canonicalizeConversationGroupThread(
+        store,
+        authorization.group,
+        target.groupId,
+        target.personaId,
+    );
+    return canonical?.avatar ? { ...target, avatar: canonical.avatar } : target;
 }
 
 function parseConversationThreadInput(input) {
@@ -216,19 +276,44 @@ function parseConversationThreadInput(input) {
         return payloadValidation;
     }
     const messages = [];
+    const messageIds = new Set();
     for (const message of parsed) {
         const validation = validateConversationMessageInput(message);
         if (!validation.valid) {
             return validation;
         }
+        if (messageIds.has(validation.message.id)) {
+            return { valid: false, error: 'duplicate_message_id' };
+        }
+        messageIds.add(validation.message.id);
         messages.push(validation.message);
     }
     return { valid: true, messages: messages.slice(-MAX_THREAD_MESSAGES) };
 }
 
 // Routes
+router.post('/store/save', (request, response, next) => {
+    if (!isObject(request.body)) {
+        return next();
+    }
+    let validation = validateConversationPayload({ ...request.body, store: null });
+    if (validation.valid) {
+        validation = validateConversationPayload(request.body.store, {
+            maxPayloadBytes: MAX_CONVERSATION_STORE_BYTES,
+            maxEntries: MAX_CONVERSATION_STORE_ENTRIES,
+        });
+    }
+    if (!validation.valid) {
+        return response.status(400).send({ error: validation.error });
+    }
+    request[STORE_SAVE_PAYLOAD_VALIDATED] = true;
+    return next();
+});
+
 router.use((request, response, next) => {
-    const validation = validateConversationPayload(request.body);
+    const validation = request[STORE_SAVE_PAYLOAD_VALIDATED]
+        ? { valid: true }
+        : validateConversationPayload(request.body);
     return validation.valid ? next() : response.status(400).send({ error: validation.error });
 });
 
@@ -242,7 +327,7 @@ router.post('/store/get', (request, response) => {
     return response.send({ store: context.store, version: getSettingsVersion(context.settings), settingsMissing: context.missing });
 });
 
-router.post('/store/save', (request, response) => {
+router.post('/store/save', asyncRoute(async (request, response) => {
     const validation = validateStoreStructure(request.body?.store);
     if (!validation.valid) {
         return response.status(400).send({ error: validation.error, details: validation.keys });
@@ -259,9 +344,9 @@ router.post('/store/save', (request, response) => {
         },
     };
     const store = ensureConversationStore(incomingSettings, normalizeGroupRecord);
-    const saveResult = saveConversationStore(request, store, request.body.version);
+    const saveResult = await saveConversationStore(request, store, request.body.version);
     return respondSaveResult(response, saveResult, { store: saveResult.store || store });
-});
+}));
 
 router.post('/group/list', (request, response) => {
     const scopeValidation = validateConversationScope('', getRequestPersonaId(request));
@@ -279,15 +364,12 @@ router.post('/group/list', (request, response) => {
     });
 });
 
-router.post('/group/create', (request, response) => {
+router.post('/group/create', asyncRoute(async (request, response) => {
     const scopeValidation = validateConversationScope('', getRequestPersonaId(request));
     if (!scopeValidation.valid) {
         return response.status(400).send({ error: scopeValidation.error });
     }
     const personaId = scopeValidation.personaId;
-    if (!validateConversationStoragePart(personaId, { allowColon: false }).valid) {
-        return response.status(400).send({ error: 'invalid_persona_id' });
-    }
     const members = request.body?.members || request.body?.memberAvatars;
     if (!Array.isArray(members) || members.some(member => !validateAvatar(member).valid)) {
         return response.status(400).send({ error: 'invalid_members' });
@@ -324,36 +406,70 @@ router.post('/group/create', (request, response) => {
     }
     context.store.groups.push(group);
 
-    const saveResult = saveConversationStore(request, context.store, request.body?.version);
+    const saveResult = await saveConversationStore(request, context.store, request.body?.version);
     return respondSaveResult(response, saveResult, { group, groups: getConversationGroups(context.store, personaId, normalizeConversationSettings) });
-});
+}));
 
-router.post('/thread/get', (request, response) => {
+router.post('/thread/get', asyncRoute(async (request, response) => {
     const target = getConversationTarget(request, response);
     if (!target) {
         return;
     }
 
-    const context = readConversationStore(request, response);
-    if (!context || !authorizeGroupTarget(request, response, context.store, target)) {
+    if (request.body?.create !== undefined && typeof request.body.create !== 'boolean') {
+        return response.status(400).send({ error: 'invalid_create' });
+    }
+    const create = request.body?.create === true;
+    const context = create
+        ? readConversationStoreMutation(request, response)
+        : readConversationStore(request, response);
+    if (!context) {
         return;
     }
-    const thread = getConversationThreadStore(context.store, target.avatar, target.groupId, {
-        create: Boolean(request.body?.create),
-        personaId: target.personaId,
+    const authorization = authorizeGroupTarget(request, response, context.store, target);
+    if (!authorization) {
+        return;
+    }
+    const storageTarget = getConversationStorageTarget(context.store, target, authorization);
+    const thread = getConversationThreadStore(context.store, storageTarget.avatar, storageTarget.groupId, {
+        create,
+        personaId: storageTarget.personaId,
     });
-    const branch = thread ? getActiveConversationBranch(context.store, target.avatar, target.groupId, { create: false, personaId: target.personaId }) : null;
+    const branch = thread
+        ? getActiveConversationBranch(context.store, storageTarget.avatar, storageTarget.groupId, { create: false, personaId: storageTarget.personaId })
+        : null;
+    if (create) {
+        const saveResult = await saveConversationStore(request, context.store, request.body.version);
+        if (!saveResult.ok) {
+            return response.status(saveResult.status || 500).send(saveResult.body || { error: 'save_failed' });
+        }
+        const savedThread = getConversationThreadStore(saveResult.store, storageTarget.avatar, storageTarget.groupId, {
+            create: false,
+            personaId: storageTarget.personaId,
+        });
+        const savedBranch = savedThread
+            ? getActiveConversationBranch(saveResult.store, storageTarget.avatar, storageTarget.groupId, { create: false, personaId: storageTarget.personaId })
+            : null;
+        return response.send({
+            threadKey: getConversationThreadKey(storageTarget.avatar, storageTarget.groupId, storageTarget.personaId),
+            thread: savedThread,
+            branch: savedBranch,
+            messages: savedBranch?.messages || [],
+            version: saveResult.version,
+            settingsMissing: context.missing,
+        });
+    }
     return response.send({
-        threadKey: getConversationThreadKey(target.avatar, target.groupId, target.personaId),
+        threadKey: getConversationThreadKey(storageTarget.avatar, storageTarget.groupId, storageTarget.personaId),
         thread,
         branch,
         messages: branch?.messages || [],
         version: getSettingsVersion(context.settings),
         settingsMissing: context.missing,
     });
-});
+}));
 
-router.post('/thread/save', (request, response) => {
+router.post('/thread/save', asyncRoute(async (request, response) => {
     const target = getConversationTarget(request, response);
     if (!target) {
         return;
@@ -367,22 +483,30 @@ router.post('/thread/save', (request, response) => {
     }
 
     const context = readConversationStoreMutation(request, response);
-    if (!context || !authorizeGroupTarget(request, response, context.store, target)) {
+    if (!context) {
         return;
     }
-    const branch = getActiveConversationBranch(context.store, target.avatar, target.groupId, { create: true, personaId: target.personaId });
+    const authorization = authorizeGroupTarget(request, response, context.store, target);
+    if (!authorization) {
+        return;
+    }
+    const storageTarget = getConversationStorageTarget(context.store, target, authorization);
+    const branch = getActiveConversationBranch(context.store, storageTarget.avatar, storageTarget.groupId, {
+        create: true,
+        personaId: storageTarget.personaId,
+    });
     branch.messages = parsedMessages.messages;
     refreshBranchPreview(branch);
 
-    const saveResult = saveConversationStore(request, context.store, request.body.version);
+    const saveResult = await saveConversationStore(request, context.store, request.body.version);
     return respondSaveResult(response, saveResult, {
-        threadKey: getConversationThreadKey(target.avatar, target.groupId, target.personaId),
+        threadKey: getConversationThreadKey(storageTarget.avatar, storageTarget.groupId, storageTarget.personaId),
         branch,
         messages: branch.messages,
     });
-});
+}));
 
-router.post('/message/append', (request, response) => {
+router.post('/message/append', asyncRoute(async (request, response) => {
     const target = getConversationTarget(request, response);
     if (!target) {
         return;
@@ -398,48 +522,46 @@ router.post('/message/append', (request, response) => {
     }
 
     const context = readConversationStoreMutation(request, response);
-    if (!context || !authorizeGroupTarget(request, response, context.store, target)) {
+    if (!context) {
         return;
     }
-    const message = appendConversationMessage(context.store, target.avatar, incomingMessage, {
-        groupId: target.groupId,
-        personaId: target.personaId,
+    const authorization = authorizeGroupTarget(request, response, context.store, target);
+    if (!authorization) {
+        return;
+    }
+    const storageTarget = getConversationStorageTarget(context.store, target, authorization);
+    if (hasConversationMessageId(context.store, storageTarget.avatar, incomingMessage.id, {
+        groupId: storageTarget.groupId,
+        personaId: storageTarget.personaId,
+    })) {
+        return response.status(400).send({ error: 'duplicate_message_id' });
+    }
+    const message = appendConversationMessage(context.store, storageTarget.avatar, incomingMessage, {
+        groupId: storageTarget.groupId,
+        personaId: storageTarget.personaId,
         fallback: { role: request.body?.role || 'user', name: fallbackName.trim() },
     });
     if (!message) {
         return response.status(400).send({ error: 'message_required' });
     }
 
-    const branch = getActiveConversationBranch(context.store, target.avatar, target.groupId, { create: false, personaId: target.personaId });
-    const saveResult = saveConversationStore(request, context.store, request.body.version);
+    const branch = getActiveConversationBranch(context.store, storageTarget.avatar, storageTarget.groupId, {
+        create: false,
+        personaId: storageTarget.personaId,
+    });
+    const saveResult = await saveConversationStore(request, context.store, request.body.version);
     return respondSaveResult(response, saveResult, {
-        threadKey: getConversationThreadKey(target.avatar, target.groupId, target.personaId),
+        threadKey: getConversationThreadKey(storageTarget.avatar, storageTarget.groupId, storageTarget.personaId),
         message,
         branch,
         messages: branch?.messages || [],
     });
-});
+}));
 
 router.post('/message/send', asyncRoute(async (request, response) => {
-    try {
-        const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
-        const rateLimit = await messageSendLimiter.get(ip);
-
-        if (rateLimit !== null && rateLimit.consumedPoints >= messageSendLimiter.points) {
-            retryAfter(response, rateLimit);
-            return response.status(429).send({
-                error: 'rate_limit_exceeded',
-                message: 'Too many message send requests. Please wait before trying again.',
-            });
-        }
-
-        await messageSendLimiter.consume(ip);
-    } catch (rateLimitError) {
-        retryAfter(response, rateLimitError);
-        return response.status(429).send({
-            error: 'rate_limit_exceeded',
-            message: 'Too many message send requests. Please wait before trying again.',
-        });
+    const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
+    if (!await consumeMessageSendLimit(response, messageSendIpLimiter, ip)) {
+        return;
     }
 
     const target = getConversationTarget(request, response);
@@ -476,7 +598,29 @@ router.post('/message/send', asyncRoute(async (request, response) => {
     }
 
     const context = readConversationStoreMutation(request, response);
-    if (!context || !authorizeGroupTarget(request, response, context.store, target)) {
+    if (!context) {
+        return;
+    }
+    const groupAuthorization = authorizeGroupTarget(request, response, context.store, target);
+    if (!groupAuthorization) {
+        return;
+    }
+    const storageTarget = getConversationStorageTarget(context.store, target, groupAuthorization);
+    if (hasConversationMessageId(context.store, storageTarget.avatar, incomingMessage.id, {
+        groupId: storageTarget.groupId,
+        personaId: storageTarget.personaId,
+    })) {
+        return response.status(400).send({ error: 'duplicate_message_id' });
+    }
+
+    const userHandle = String(
+        request.user?.profile?.handle
+        || request.user?.handle
+        || request.user?.profile?.name
+        || request.user?.directories?.root
+        || 'unknown-user',
+    );
+    if (!await consumeMessageSendLimit(response, messageSendUserLimiter, userHandle)) {
         return;
     }
 
@@ -485,9 +629,9 @@ router.post('/message/send', asyncRoute(async (request, response) => {
     if (request.aborted || request.readableAborted || response.destroyed) {
         cancellation.abort('pre-generation');
     }
-    const userMessage = appendConversationMessage(context.store, target.avatar, { ...incomingMessage, role: 'user' }, {
-        groupId: target.groupId,
-        personaId: target.personaId,
+    const userMessage = appendConversationMessage(context.store, storageTarget.avatar, { ...incomingMessage, role: 'user' }, {
+        groupId: storageTarget.groupId,
+        personaId: storageTarget.personaId,
         fallback: { role: 'user', name: userName },
     });
     if (!userMessage) {
@@ -496,16 +640,38 @@ router.post('/message/send', asyncRoute(async (request, response) => {
     }
 
     try {
-        const settings = getConversationSettings(request, context.store, target.avatar, target.groupId, request.body.settings, { personaId: target.personaId });
+        const settings = getConversationSettings(
+            request,
+            context.store,
+            storageTarget.avatar,
+            storageTarget.groupId,
+            request.body.settings,
+            { personaId: storageTarget.personaId },
+        );
         const character = await getCharacterData(request, target.avatar);
-        const branch = getActiveConversationBranch(context.store, target.avatar, target.groupId, { create: true, personaId: target.personaId });
+        const participantNames = await getConversationGroupParticipantNames(request, groupAuthorization.group, {
+            avatar: target.avatar,
+            character,
+        });
+        const branch = getActiveConversationBranch(context.store, storageTarget.avatar, storageTarget.groupId, {
+            create: true,
+            personaId: storageTarget.personaId,
+        });
         const directive = getDefaultDirective(request.body);
         const promptMessages = await buildConversationPromptMessages(branch.messages, directive, character.name || 'Character', {
             groupId: target.groupId,
             userName,
             signal: cancellationController.signal,
+            userDirectories: request.user.directories,
         });
-        const systemPrompt = buildConversationSystemPrompt({ settings, character, userName, groupId: target.groupId, branch });
+        const systemPrompt = buildConversationSystemPrompt({
+            settings,
+            character,
+            userName,
+            groupId: target.groupId,
+            branch,
+            participantNames,
+        });
         const { backend, payload } = buildGenerationRequestBody(
             request.body.generation,
             systemPrompt,
@@ -524,14 +690,21 @@ router.post('/message/send', asyncRoute(async (request, response) => {
                 ? { error: error.body.error || 'unknown', message: error.body.message }
                 : String(error.message || 'generation failed').slice(0, 500);
 
-            return response.status(error.status || 502).send({
+            return response.status(getSafeConversationGenerationStatus(error.status)).send({
                 error: 'generation_failed',
                 detail: sanitizedDetail,
             });
         }
 
         const rawReplyText = extractGeneratedText(generationResponse);
+        if (rawReplyText.length > MAX_CONVERSATION_MESSAGE_TEXT_LENGTH) {
+            return response.status(502).send({
+                error: 'generation_too_large',
+                detail: 'Model response exceeded the Conversation message limit',
+            });
+        }
         const commandParts = extractCharacterReplyCommandParts(rawReplyText, settings);
+        const conversationCommands = getBoundedConversationCommands(commandParts);
         const replyText = normalizeConversationOutputText(commandParts.text);
         if (!replyText) {
             return response.status(502).send({
@@ -544,21 +717,17 @@ router.post('/message/send', asyncRoute(async (request, response) => {
         }
 
         const userReplyReference = buildConversationMessageReplyReference(userMessage);
-        const replyMessage = appendConversationMessage(context.store, target.avatar, {
+        const replyMessage = appendConversationMessage(context.store, storageTarget.avatar, {
             role: 'character',
             name: character.name || 'Character',
             mes: replyText,
             extra: {
                 ...(userReplyReference ? { conversation_reply_to: userReplyReference } : {}),
-                conversation_commands: {
-                    selfieRequests: commandParts.selfieRequests,
-                    scheduleUpdates: commandParts.scheduleUpdates,
-                    reminders: commandParts.reminders,
-                },
+                conversation_commands: conversationCommands,
             },
         }, {
-            groupId: target.groupId,
-            personaId: target.personaId,
+            groupId: storageTarget.groupId,
+            personaId: storageTarget.personaId,
             fallback: { role: 'character', name: character.name || 'Character' },
         });
         if (!replyMessage) {
@@ -567,13 +736,16 @@ router.post('/message/send', asyncRoute(async (request, response) => {
             throw error;
         }
 
-        const saveResult = saveConversationStore(request, context.store, request.body.version);
+        const saveResult = await saveConversationStore(request, context.store, request.body.version);
         if (!saveResult.ok) {
             return response.status(saveResult.status).send(saveResult.body);
         }
-        const savedBranch = getActiveConversationBranch(saveResult.store, target.avatar, target.groupId, { create: false, personaId: target.personaId });
+        const savedBranch = getActiveConversationBranch(saveResult.store, storageTarget.avatar, storageTarget.groupId, {
+            create: false,
+            personaId: storageTarget.personaId,
+        });
         return response.send({
-            threadKey: getConversationThreadKey(target.avatar, target.groupId, target.personaId),
+            threadKey: getConversationThreadKey(storageTarget.avatar, storageTarget.groupId, storageTarget.personaId),
             userMessage,
             replyMessage,
             branch: savedBranch,

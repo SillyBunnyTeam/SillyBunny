@@ -80,7 +80,7 @@ export function readUserSettingsWithStatus(request) {
         return { ok: false, error: 'Conversation settings must contain a JSON object', missing: false };
     }
     if (isObject(result.data.extension_settings) && hasOwn(result.data.extension_settings, CONVERSATION_STORE_KEY)) {
-        const storeValidation = validateStoreStructure(result.data.extension_settings[CONVERSATION_STORE_KEY]);
+        const storeValidation = validateStoreStructure(result.data.extension_settings[CONVERSATION_STORE_KEY], { strictMessages: false });
         if (!storeValidation.valid) {
             return { ok: false, error: storeValidation.error, missing: false };
         }
@@ -155,10 +155,14 @@ export function readConversationStoreForWrite(request, expectedVersion, normaliz
  * Save Conversation Mode store to disk with version conflict detection
  * Returns { ok, version?, settings?, store?, status?, body? }
  */
-export function saveConversationStore(request, store, version) {
+export async function saveConversationStore(request, store, version) {
     const versionValidation = validateExpectedSettingsVersion(version);
     if (!versionValidation.valid) {
         return { ok: false, status: 400, body: { error: versionValidation.error } };
+    }
+    const storeValidation = validateStoreStructure(store, { strictMessages: false });
+    if (!storeValidation.valid) {
+        return { ok: false, status: 400, body: { error: storeValidation.error } };
     }
 
     const latestResult = readUserSettingsWithStatus(request);
@@ -200,6 +204,15 @@ export function saveConversationStore(request, store, version) {
     } catch (error) {
         console.error('Conversation REST API: failed to save settings', error);
         return { ok: false, status: 500, body: { error: 'settings_save_failed' } };
+    }
+    const handle = request.user?.profile?.handle;
+    if (handle) {
+        try {
+            const { triggerAutoSave } = await import('./settings.js');
+            triggerAutoSave(handle);
+        } catch (error) {
+            console.error('Conversation REST API: failed to trigger settings backup', error);
+        }
     }
     return {
         ok: true,
