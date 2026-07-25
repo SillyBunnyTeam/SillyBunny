@@ -45,7 +45,7 @@
 - If implementation requires text before the user has supplied final wording, use the exact placeholder `lorum ipsum` and clearly report every file/location that needs human replacement.
 - Code comments are allowed only when they explain non-obvious implementation details; do not use comments as hidden documentation drafts.
 - Keep agent-facing docs terse, specific, and actionable; link to existing docs instead of duplicating long explanations.
-- AGENTS.md, CONTRIBUTING.md, README.md, and PRODUCT.md may not be overwritten by LLM wording unless explicitly authorized by a contributor.
+- AGENTS.md, CONTRIBUTING.md, README.md, PRODUCT.md, and SECURITY.md may not be overwritten by LLM wording unless explicitly authorized by a contributor.
 
 ## Style Gotchas
 
