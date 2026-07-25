@@ -323,6 +323,71 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-12 PR #446 companion agents. |
 | Owner | Extension maintainer. |
 
+### `src/server-startup.js` and `src/endpoints/sillybunny-conversation.js` - Conversation REST API routing
+| Field | Value |
+| --- | --- |
+| Area | API routing and Conversation Mode integration. |
+| Divergence reason | SillyBunny exposes a fork-only Conversation Mode REST surface that must stay discoverable on both `/api/sillybunny-conversation` and `/api/sillybunny/conversation` without changing upstream SillyTavern chat/group/settings storage formats. |
+| Target seam | `src/endpoints/sillybunny-conversation.js`. |
+| Adapter shape | Keep `src/server-startup.js` limited to two `app.use(...)` registrations; keep request validation, storage normalization, and endpoint behavior inside `src/endpoints/sillybunny-conversation.js` and its companion modules. |
+| Protecting tests | `tests/sillybunny-conversation-api.test.js`, `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-key-compatibility.test.js`, `tests/sillybunny-conversation-context-migration.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sillybunny-conversation-api.test.js conversation-mode-scoped-profile.test.js sillybunny-conversation-key-compatibility.test.js sillybunny-conversation-context-migration.test.js`, `node --check src/endpoints/sillybunny-conversation.js`, `node --check src/server-startup.js`. |
+| Rollback path | Remove the router mounts from `src/server-startup.js` and revert the Conversation REST endpoint module without touching persisted `settings.json` data. |
+| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Owner | Feature maintainer. |
+
+### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
+| Field | Value |
+| --- | --- |
+| Area | Generation lifecycle and backend adapter reuse. |
+| Divergence reason | SillyBunny Conversation REST needs non-streaming access to the existing backend generation handlers without forking prompt assembly or provider-specific request code into a second implementation. |
+| Target seam | `src/endpoints/conversation-generation.js`. |
+| Adapter shape | Keep upstream-origin backend files limited to exported `handleChatCompletionsGenerate()` and `handleTextCompletionsGenerate()` adapters while preserving the existing `/generate` route contract. |
+| Protecting tests | `tests/sillybunny-conversation-api.test.js`, `tests/sillybunny-conversation-generation-utils.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sillybunny-conversation-api.test.js sillybunny-conversation-generation-utils.test.js conversation-mode-scoped-profile.test.js`, `node --check src/endpoints/backends/chat-completions.js`, `node --check src/endpoints/backends/text-completions.js`, focused REST smoke against `/message/send` with chat and text backends. |
+| Rollback path | Revert the exported handler seams and restore Conversation REST generation to a separate adapter only if handler reuse regresses the existing `/generate` routes. |
+| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Owner | Feature maintainer. |
+
+### `src/endpoints/speech.js`, `public/scripts/extensions/tts/index.js`, and `public/scripts/extensions/tts/pollinations.js` - Conversation TTS bridge and Pollinations audio path
+| Field | Value |
+| --- | --- |
+| Area | Speech, extension runtime, and TTS provider integration. |
+| Divergence reason | SillyBunny Conversation Mode can narrate DM messages through the existing TTS extension, and Pollinations speech must use the provider's literal audio endpoint instead of the chat-completions wrapper so generated speech matches the requested text. |
+| Target seam | `public/scripts/sillybunny-conversation/tts.js` for Conversation integration; existing TTS provider modules for backend specifics. |
+| Adapter shape | Keep `narrateTtsMessage()` and provider-load helpers in the extension module, keep Pollinations request-shape changes minimal, and keep `src/endpoints/speech.js` as a thin relay to the provider audio endpoint. |
+| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-notification-routing.test.js` when Conversation narration paths evolve. |
+| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js`, `node --check public/scripts/extensions/tts/index.js`, `node --check public/scripts/extensions/tts/pollinations.js`, `node --check src/endpoints/speech.js`, manual Pollinations TTS smoke. |
+| Rollback path | Revert the Conversation TTS bridge export and Pollinations endpoint changes independently if narration or provider compatibility regresses. |
+| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Owner | Extension maintainer. |
+
+### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard
+| Field | Value |
+| --- | --- |
+| Area | Extension boot and image-generation integration. |
+| Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. |
+| Target seam | `public/scripts/sillybunny-conversation/media.js`. |
+| Adapter shape | Keep QIG changes limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. |
+| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js sillybunny-conversation-image-safety.test.js`, `node --check public/scripts/extensions/quick-image-gen/index.js`. |
+| Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. |
+| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Owner | Extension maintainer. |
+
+### `public/scripts/extensions/in-chat-agents/companion/companion-panel.js` and `public/scripts/welcome-screen.js` - Conversation UI coexistence guards
+| Field | Value |
+| --- | --- |
+| Area | Mobile shell, welcome flow, and extension UI coexistence. |
+| Divergence reason | SillyBunny Conversation Mode uses a different workspace surface than roleplay chat, so companion handles and welcome-screen recent-chat transitions must stay hidden or visually suppressed while Conversation Mode takes over the shell. |
+| Target seam | `public/scripts/sillybunny-conversation/` owns the Conversation workspace state; upstream-origin files stay as DOM adapters. |
+| Adapter shape | Keep the companion panel file limited to `data-sb-conversation-mode` visibility guards and a mutation observer; keep the welcome screen file limited to temporary visibility suppression around `openConversationWorkspaceForAvatar()`. |
+| Protecting tests | `tests/in-chat-agents-companion-panel.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agents-companion-panel.test.js conversation-mode-scoped-profile.test.js`, `node --check public/scripts/extensions/in-chat-agents/companion/companion-panel.js`, `node --check public/scripts/welcome-screen.js`, mobile/desktop browser smoke opening recent Conversation chats. |
+| Rollback path | Revert the DOM visibility guards and restore prior companion/welcome behavior if shell transitions regress, without touching Conversation store data. |
+| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Owner | UI maintainer. |
+
 ## Candidate Entries To Add Later
 | File or area | Add entry when |
 | --- | --- |
