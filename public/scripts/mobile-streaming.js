@@ -4,6 +4,14 @@ export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
 export const ANDROID_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const ANDROID_REASONING_RENDER_INTERVAL_MS = 1500;
+export const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({
+    android_conservative_streaming: true,
+    android_reduce_streaming_work: true,
+    android_disable_smooth_streaming: true,
+    android_disable_stream_fade_in: true,
+    android_streaming_basic_markdown: false,
+});
+export const ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY = 'android_streaming_settings_initialized';
 const STREAMING_PREVIEW_ESCAPE_MAP = Object.freeze({
     '&': '&amp;',
     '<': '&lt;',
@@ -37,11 +45,7 @@ export function isReducedStreamingDomWorkPlatform(navigatorRef = globalThis.navi
     return isIOSWebKitPlatform(navigatorRef) || isAndroidStreamingPlatform(navigatorRef);
 }
 
-function shouldUsePlatformStreamingReduction(navigatorRef, { enabled = undefined, iosEnabled = true, androidEnabled = true } = {}) {
-    if (enabled !== undefined) {
-        return Boolean(enabled) && isReducedStreamingDomWorkPlatform(navigatorRef);
-    }
-
+function shouldUsePlatformStreamingReduction(navigatorRef, { enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
     if (isIOSWebKitPlatform(navigatorRef)) {
         return Boolean(iosEnabled);
     }
@@ -51,6 +55,28 @@ function shouldUsePlatformStreamingReduction(navigatorRef, { enabled = undefined
     }
 
     return false;
+}
+
+/**
+ * Initializes newly added Android settings without replacing values saved by earlier releases.
+ * @param {Record<string, any>} target Loaded power-user settings
+ * @param {Record<string, any> | undefined} savedSettings Persisted power-user settings
+ * @returns {boolean} Whether the initialization marker was added
+ */
+export function initializeAndroidStreamingSettings(target, savedSettings) {
+    const saved = savedSettings && typeof savedSettings === 'object' ? savedSettings : {};
+    if (Object.hasOwn(saved, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY)) {
+        return false;
+    }
+
+    for (const [key, value] of Object.entries(ANDROID_STREAMING_SETTING_DEFAULTS)) {
+        if (!Object.hasOwn(saved, key)) {
+            target[key] = value;
+        }
+    }
+
+    target[ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY] = true;
+    return true;
 }
 
 function getStreamingUpdateIntervalFloor(navigatorRef = globalThis.navigator) {
@@ -79,6 +105,7 @@ export function getStreamingReasoningRenderInterval(navigatorRef = globalThis.na
  * @param {object} options Options
  * @param {boolean} [options.isFinal] Whether this is the final streamed render
  * @param {boolean} [options.isReducedDomWork] Whether reduced mobile DOM work is active
+ * @param {boolean} [options.isAndroidPlatform] Whether the current browser is Android
  * @param {boolean} [options.isImpersonate] Whether the stream writes to the user input box
  * @param {boolean} [options.useBasicMarkdown] Whether to use basic markdown (middle ground)
  * @returns {boolean}
@@ -86,10 +113,11 @@ export function getStreamingReasoningRenderInterval(navigatorRef = globalThis.na
 export function shouldUsePlainTextStreamingPreview({
     isFinal = false,
     isReducedDomWork = false,
+    isAndroidPlatform = false,
     isImpersonate = false,
     useBasicMarkdown = false,
 } = {}) {
-    return Boolean(isReducedDomWork) && !isFinal && !isImpersonate && !useBasicMarkdown;
+    return Boolean(isReducedDomWork) && Boolean(isAndroidPlatform) && !isFinal && !isImpersonate && !useBasicMarkdown;
 }
 
 /**
@@ -136,19 +164,19 @@ export function formatPlainTextStreamingPreview(text = '') {
 }
 
 /**
- * Formats streaming preview with basic markdown but skips the full sanitizer pipeline.
- * This is a middle ground between plain text and full formatting for better mobile performance.
+ * Formats streaming preview with basic markdown and the production message sanitizer.
  * @param {string} text Raw streamed message text
  * @param {object} context Context object with converter
  * @param {import('showdown').Converter} context.converter Showdown converter instance
+ * @param {(html: string) => string} context.sanitizeHtml Production message sanitizer
  * @returns {string} Basic markdown HTML
  */
-export function formatBasicMarkdownStreamingPreview(text = '', { converter = null } = {}) {
+export function formatBasicMarkdownStreamingPreview(text = '', { converter = null, sanitizeHtml = null } = {}) {
     if (!text) {
         return '';
     }
 
-    if (!converter || typeof converter.makeHtml !== 'function') {
+    if (!converter || typeof converter.makeHtml !== 'function' || typeof sanitizeHtml !== 'function') {
         return formatPlainTextStreamingPreview(text);
     }
 
@@ -178,7 +206,7 @@ export function formatBasicMarkdownStreamingPreview(text = '', { converter = nul
         });
         mes = mes.replace(/\u0000/g, '\n');
 
-        return mes.trim();
+        return String(sanitizeHtml(mes)).trim();
     } catch (error) {
         console.warn('[Mobile Streaming] Basic markdown formatting failed:', error);
         return formatPlainTextStreamingPreview(text);
@@ -252,7 +280,7 @@ export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator
  * @param {boolean} [options.androidEnabled] Whether Android floor is enabled
  * @returns {number}
  */
-export function getStreamingUpdateInterval(baseIntervalMs, { navigatorRef = globalThis.navigator, enabled = undefined, iosEnabled = true, androidEnabled = true } = {}) {
+export function getStreamingUpdateInterval(baseIntervalMs, { navigatorRef = globalThis.navigator, enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
     const interval = Number(baseIntervalMs);
     const normalizedInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
 

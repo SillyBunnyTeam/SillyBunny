@@ -1,4 +1,4 @@
-const REPORT_SCHEMA_VERSION = 1;
+const REPORT_SCHEMA_VERSION = 2;
 const DEFAULT_RESOURCE_TIMING_BUFFER_SIZE = 2000;
 const DEFAULT_LOG_LIMIT = 400;
 const DEFAULT_RENDER_MESSAGE_COUNT = 96;
@@ -12,10 +12,11 @@ let activeLogger = null;
 let lastReport = null;
 let panel = null;
 let extensionActive = false;
-let activeDiagnosticsRun = false;
-let diagnosticsRunId = 0;
-let activeDiagnosticsLogger = null;
-const SENSITIVE_DIAGNOSTIC_KEY_PATTERN = /(?:api[_-]?key|access[_-]?token|token|secret|password)/i;
+let initialized = false;
+let activeDiagnosticsRun = null;
+const SENSITIVE_DIAGNOSTIC_KEY_PATTERN = /(?:api[_-]?key|access[_-]?token|token|secret|password|authorization|cookie|credential|session)/i;
+const PRIVATE_DIAGNOSTIC_KEY_PATTERN = /^(?:host(?:[_-]?name)?|origin|path(?:[_-]?name)?|file(?:[_-]?name)?|avatar(?:[_-]?(?:id|name))?|media(?:[_-]?(?:id|name))?|user(?:[_-]?(?:id|name))?)$/i;
+const SENSITIVE_STRING_KEY_SOURCE = '(?:[a-z0-9_-]{0,64}(?:api[_-]?key|access[_-]?token|token|secret|password|cookie|credential|session)[a-z0-9_-]{0,64}|authorization|proxy[_-]?authorization)';
 
 function getNow() {
     return performance.now();
@@ -27,10 +28,6 @@ function getTimestamp() {
 
 function getLocationHref() {
     return globalThis.location?.href ?? 'http://localhost/';
-}
-
-function getLocationOrigin() {
-    return globalThis.location?.origin ?? new URL(getLocationHref()).origin;
 }
 
 function setResourceTimingBufferSize(size = DEFAULT_RESOURCE_TIMING_BUFFER_SIZE) {
@@ -55,9 +52,9 @@ export function serializeDiagnosticValue(value, { depth = 0, seen = new WeakSet(
 
     if (value instanceof Error) {
         return {
-            name: value.name,
-            message: redactDiagnosticString(value.message),
-            stack: typeof value.stack === 'string' ? redactDiagnosticString(value.stack).slice(0, 1500) : '',
+            name: redactDiagnosticString(readErrorProperty(value, 'name', 'Error')),
+            message: redactDiagnosticString(readErrorProperty(value, 'message', '')),
+            stack: redactDiagnosticString(readErrorProperty(value, 'stack', '')).slice(0, 1500),
         };
     }
 
@@ -70,38 +67,148 @@ export function serializeDiagnosticValue(value, { depth = 0, seen = new WeakSet(
     }
 
     if (depth >= 2) {
-        return Object.prototype.toString.call(value);
+        try {
+            return Object.prototype.toString.call(value);
+        } catch (error) {
+            return `[unserializable: ${redactDiagnosticString(getErrorMessage(error))}]`;
+        }
     }
 
     seen.add(value);
 
     if (Array.isArray(value)) {
-        return value.slice(0, 10).map(item => serializeDiagnosticValue(item, { depth: depth + 1, seen }));
+        const result = [];
+        for (let index = 0; index < Math.min(value.length, 10); index++) {
+            try {
+                result.push(serializeDiagnosticValue(value[index], { depth: depth + 1, seen }));
+            } catch (error) {
+                result.push(`[unserializable: ${redactDiagnosticString(getErrorMessage(error))}]`);
+            }
+        }
+        return result;
     }
 
     const result = {};
-    for (const key of Object.keys(value).slice(0, 12)) {
+    let keys;
+    try {
+        keys = Object.keys(value).slice(0, 12);
+    } catch (error) {
+        return `[unserializable: ${redactDiagnosticString(getErrorMessage(error))}]`;
+    }
+
+    for (const key of keys) {
+        const sanitizedKeyBase = redactDiagnosticString(key).slice(0, 100);
+        let sanitizedKey = sanitizedKeyBase;
+        let duplicateIndex = 2;
+        while (Object.hasOwn(result, sanitizedKey)) {
+            sanitizedKey = `${sanitizedKeyBase}-${duplicateIndex++}`;
+        }
         try {
-            result[key] = SENSITIVE_DIAGNOSTIC_KEY_PATTERN.test(key)
+            result[sanitizedKey] = SENSITIVE_DIAGNOSTIC_KEY_PATTERN.test(key) || PRIVATE_DIAGNOSTIC_KEY_PATTERN.test(key)
                 ? '[redacted]'
                 : serializeDiagnosticValue(value[key], { depth: depth + 1, seen });
         } catch (error) {
-            result[key] = `[unserializable: ${error?.message ?? error}]`;
+            result[sanitizedKey] = `[unserializable: ${redactDiagnosticString(getErrorMessage(error))}]`;
         }
     }
 
     return result;
 }
 
-function redactDiagnosticString(value) {
+function getErrorMessage(error) {
+    try {
+        return String(error?.message ?? error);
+    } catch {
+        return 'unavailable';
+    }
+}
+
+function readErrorProperty(error, key, fallback) {
+    try {
+        const value = error?.[key];
+        return value === undefined || value === null ? fallback : String(value);
+    } catch (getterError) {
+        return `[unreadable: ${redactDiagnosticString(getErrorMessage(getterError))}]`;
+    }
+}
+
+function decodePercentEncodedDiagnosticString(value) {
+    let result = String(value);
+
+    for (let pass = 0; pass < 2; pass++) {
+        const decoded = result.replace(/(?:%[0-9a-f]{2})+/gi, sequence => {
+            try {
+                return decodeURIComponent(sequence);
+            } catch {
+                return sequence;
+            }
+        });
+        if (decoded === result) {
+            break;
+        }
+        result = decoded;
+    }
+
+    return result;
+}
+
+function formatEmbeddedUrlForReport(rawUrl) {
+    const metadata = sanitizeUrlForReport(rawUrl);
+    const queryMetadata = metadata.queryParameterCount > 0 ? `:query-count(${metadata.queryParameterCount})` : '';
+    return `[url:${metadata.origin}:${metadata.protocol || 'unknown'}:${metadata.category}:${metadata.extension || 'none'}${queryMetadata}]`;
+}
+
+function redactEmbeddedUrls(value, replaceUrl) {
     return String(value)
-        .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]')
-        .replace(/\b(api[_-]?key|access[_-]?token|token|secret|password)=([^\s&]+)/gi, '$1=[redacted]')
-        .replace(/([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^\s&]+/gi, '$1[redacted]');
+        .replace(/\b[a-z][a-z0-9+.-]*(?::|%3a)(?:(?:\/|%2f){2})[^\s<>"']+/gi, match => replaceUrl(decodePercentEncodedDiagnosticString(match)))
+        .replace(/\b(?:blob|data)(?::|%3a)[^\s<>"']+/gi, match => replaceUrl(decodePercentEncodedDiagnosticString(match)))
+        .replace(/(^|[\s("'=])((?:%2f){1,2}[^\s<>"']+)/gim, (_, prefix, url) => `${prefix}${replaceUrl(decodePercentEncodedDiagnosticString(url))}`)
+        .replace(/(^|[\s("'=])(\/{1,2}[^\s<>"']+)/gm, (_, prefix, url) => `${prefix}${replaceUrl(url)}`);
+}
+
+function redactDiagnosticString(value) {
+    const quotedDoubleValuePattern = new RegExp(`((?:"?${SENSITIVE_STRING_KEY_SOURCE}"?)\\s*:\\s*)"(?:\\\\.|[^"\\\\])*"`, 'gi');
+    const quotedSingleValuePattern = new RegExp(`((?:'?${SENSITIVE_STRING_KEY_SOURCE}'?)\\s*:\\s*)'(?:\\\\.|[^'\\\\])*'`, 'gi');
+    const unquotedValuePattern = new RegExp(`\\b(${SENSITIVE_STRING_KEY_SOURCE})(\\s*[:=]\\s*)([^,\\r\\n;&}#]+)`, 'gi');
+    const urls = [];
+    const replaceUrl = (rawUrl) => {
+        const index = urls.push(formatEmbeddedUrlForReport(rawUrl)) - 1;
+        return `__SB_DIAGNOSTIC_URL_${index}__`;
+    };
+    let result = redactEmbeddedUrls(value, replaceUrl);
+    result = decodePercentEncodedDiagnosticString(result);
+    result = redactEmbeddedUrls(result, replaceUrl);
+
+    result = result
+        .replace(quotedDoubleValuePattern, '$1"[redacted]"')
+        .replace(quotedSingleValuePattern, '$1\'[redacted]\'')
+        .replace(/\b((?:authorization|proxy-authorization)\s*:\s*)(?:basic|bearer)\s+[^\s,;]+/gi, '$1[redacted]')
+        .replace(/\b((?:basic|bearer)\s+)[A-Za-z0-9._~+/=-]+/gi, '$1[redacted]')
+        .replace(/\b((?:set-cookie|cookie)\s*:\s*)[^\r\n]+/gi, '$1[redacted]')
+        .replace(unquotedValuePattern, '$1$2[redacted]')
+        .replace(/([?&][^=?&#\s]+)=([^&#\s]*)/g, '$1=[redacted]')
+        .replace(/\b((?:host|origin|referer)\s*:\s*)[^\s,;]+/gi, '$1[redacted]')
+        .replace(/\b[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/g, '[path]')
+        .replace(/(^|[\s("'=])((?:\.{0,2}[\\/])?(?:[a-z0-9_@.-]+[\\/])+[a-z0-9_@.-]+(?::\d+){0,2})/gim, '$1[path]')
+        .replace(/\[[0-9a-f:]+\](?::\d{1,5})?/gi, '[host]')
+        .replace(/\b(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})(?::\d{1,5})?\b/gi, '[host]');
+
+    return result.replace(/__SB_DIAGNOSTIC_URL_(\d+)__/g, (_, index) => urls[Number(index)] ?? '[url]');
 }
 
 function serializeError(error) {
-    const value = error?.error ?? error?.reason ?? error;
+    let value = error;
+    for (const key of ['error', 'reason']) {
+        try {
+            if (error?.[key] !== undefined && error[key] !== null) {
+                value = error[key];
+                break;
+            }
+        } catch (getterError) {
+            value = new Error(readErrorProperty(getterError, 'message', ''));
+            break;
+        }
+    }
     const serialized = serializeDiagnosticValue(value);
     if (typeof serialized === 'object' && serialized !== null) {
         return serialized;
@@ -115,13 +222,18 @@ function serializeError(error) {
 
 export function sanitizeLocation(locationObject = globalThis.location ?? new URL(getLocationHref())) {
     const params = new URLSearchParams(locationObject.search || '');
-    const hash = String(locationObject.hash || '').replace(/^#/, '');
+    let protocol = String(locationObject.protocol || '');
+    if (!protocol) {
+        try {
+            protocol = new URL(locationObject.href || getLocationHref()).protocol;
+        } catch {
+            protocol = '';
+        }
+    }
 
     return {
-        origin: locationObject.origin,
-        pathname: locationObject.pathname,
-        queryKeys: Array.from(params.keys()).sort(),
-        hashFlags: hash ? hash.split(/[&/]/).map(value => redactDiagnosticString(value.trim())).filter(Boolean).sort() : [],
+        protocol,
+        queryParameterCount: Array.from(params.keys()).length,
     };
 }
 
@@ -130,8 +242,8 @@ function summarizeConsoleArgs(args) {
         if (arg instanceof Error) {
             return {
                 type: 'error',
-                name: arg.name,
-                message: redactDiagnosticString(arg.message),
+                name: redactDiagnosticString(readErrorProperty(arg, 'name', 'Error')),
+                message: redactDiagnosticString(readErrorProperty(arg, 'message', '')),
             };
         }
 
@@ -149,9 +261,15 @@ function summarizeConsoleArgs(args) {
         }
 
         if (typeof arg === 'object') {
+            let keys = [];
+            try {
+                keys = Object.keys(arg).slice(0, 8).map(key => redactDiagnosticString(key).slice(0, 100));
+            } catch {
+                keys = ['[unavailable]'];
+            }
             return {
                 type: Array.isArray(arg) ? 'array' : 'object',
-                keys: Object.keys(arg).slice(0, 8),
+                keys,
             };
         }
 
@@ -161,31 +279,34 @@ function summarizeConsoleArgs(args) {
     });
 }
 
-export function sanitizeUrlForReport(rawUrl, baseUrl = getLocationHref()) {
+export function sanitizeUrlForReport(rawUrl, baseUrl = getLocationHref(), initiatorType = '') {
     try {
-        const url = new URL(String(rawUrl), baseUrl);
-        const queryKeys = Array.from(url.searchParams.keys()).sort();
+        const base = new URL(baseUrl, getLocationHref());
+        const url = new URL(String(rawUrl), base);
+        const extensionMatch = url.pathname.match(/\.([a-z0-9]{1,12})$/i);
+        const extension = extensionMatch?.[1]?.toLowerCase() ?? '';
 
         return {
-            origin: url.origin === getLocationOrigin() ? 'same-origin' : 'cross-origin',
+            origin: url.origin === base.origin ? 'same-origin' : 'cross-origin',
             protocol: url.protocol,
-            pathname: url.pathname,
-            queryKeys,
+            category: getResourceCategory(extension, initiatorType),
+            extension,
+            queryParameterCount: Array.from(url.searchParams.keys()).length,
         };
     } catch {
         return {
             origin: 'unknown',
             protocol: '',
-            pathname: '[unparseable-url]',
-            queryKeys: [],
+            category: 'other',
+            extension: '',
+            queryParameterCount: 0,
         };
     }
 }
 
 function clonePerformanceEntry(entry) {
-    const sanitizedUrl = sanitizeUrlForReport(entry.name);
+    const sanitizedUrl = sanitizeUrlForReport(entry.name, getLocationHref(), entry.initiatorType);
     const result = {
-        name: sanitizedUrl.pathname,
         url: sanitizedUrl,
         entryType: entry.entryType,
         startTime: entry.startTime,
@@ -201,6 +322,77 @@ function clonePerformanceEntry(entry) {
     return result;
 }
 
+function getResourceCategory(extension, initiatorType = '') {
+    if (['js', 'mjs', 'cjs'].includes(extension)) {
+        return 'script';
+    }
+    if (extension === 'css') {
+        return 'style';
+    }
+    if (['woff', 'woff2', 'ttf', 'otf', 'eot'].includes(extension)) {
+        return 'font';
+    }
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico', 'avif'].includes(extension)) {
+        return 'image';
+    }
+    if (['mp3', 'wav', 'ogg', 'm4a', 'mp4', 'webm'].includes(extension)) {
+        return 'media';
+    }
+    if (['html', 'htm'].includes(extension)) {
+        return 'document';
+    }
+    if (['json', 'xml'].includes(extension)) {
+        return 'data';
+    }
+    if (extension) {
+        return 'other';
+    }
+
+    switch (String(initiatorType).toLowerCase()) {
+        case 'script':
+            return 'script';
+        case 'css':
+        case 'link':
+            return 'style';
+        case 'font':
+            return 'font';
+        case 'image':
+        case 'img':
+            return 'image';
+        case 'audio':
+        case 'video':
+            return 'media';
+        case 'document':
+        case 'iframe':
+        case 'navigation':
+            return 'document';
+        case 'beacon':
+        case 'fetch':
+        case 'xmlhttprequest':
+            return 'data';
+        default:
+            return 'other';
+    }
+}
+
+function getResourceAssetType(entry) {
+    const category = entry.url?.category
+        ?? sanitizeUrlForReport(entry.name, getLocationHref(), entry.initiatorType).category;
+
+    switch (category) {
+        case 'script':
+            return 'js';
+        case 'style':
+            return 'css';
+        case 'font':
+            return 'font';
+        case 'image':
+            return 'image';
+        default:
+            return 'other';
+    }
+}
+
 function summarizeByAssetType(entries, byteKey) {
     const totals = {
         count: entries.length,
@@ -213,18 +405,7 @@ function summarizeByAssetType(entries, byteKey) {
 
     for (const entry of entries) {
         const bytes = Number(entry[byteKey]) || 0;
-        const url = String(entry.name || entry.url?.pathname || '');
-        if (/\.m?js(?:\?|$)/i.test(url)) {
-            totals.js += bytes;
-        } else if (/\.css(?:\?|$)/i.test(url)) {
-            totals.css += bytes;
-        } else if (/\.(?:woff2?|ttf)(?:\?|$)/i.test(url)) {
-            totals.font += bytes;
-        } else if (/\.(?:png|jpe?g|webp|gif|svg|ico)(?:\?|$)/i.test(url)) {
-            totals.image += bytes;
-        } else {
-            totals.other += bytes;
-        }
+        totals[getResourceAssetType(entry)] += bytes;
     }
 
     return totals;
@@ -330,8 +511,7 @@ function getResourceSnapshot() {
     const resources = performance.getEntriesByType('resource').map(clonePerformanceEntry);
     const navigation = performance.getEntriesByType('navigation')[0];
     const documentEntry = navigation ? [{
-        name: sanitizeUrlForReport(getLocationHref()).pathname,
-        url: sanitizeUrlForReport(getLocationHref()),
+        url: sanitizeUrlForReport(getLocationHref(), getLocationHref(), 'document'),
         entryType: 'navigation',
         initiatorType: 'document',
         transferSize: navigation.transferSize || 0,
@@ -375,6 +555,10 @@ function createLogger({ captureConsole = false, maxEntries = DEFAULT_LOG_LIMIT }
     let isStopped = false;
 
     const push = (type, data = {}) => {
+        if (isStopped) {
+            return;
+        }
+
         entries.push({
             type,
             at: getNow(),
@@ -467,9 +651,9 @@ function createLogger({ captureConsole = false, maxEntries = DEFAULT_LOG_LIMIT }
             return;
         }
 
-        isStopped = true;
         stoppedAt = getTimestamp();
         push('logger-stopped');
+        isStopped = true;
         for (const observer of observers) {
             observer.disconnect();
         }
@@ -493,31 +677,90 @@ function createLogger({ captureConsole = false, maxEntries = DEFAULT_LOG_LIMIT }
     return { start, stop, mark, getReport };
 }
 
-function isDiagnosticsRunCurrent(runId) {
-    return extensionActive && runId === diagnosticsRunId;
+function createDiagnosticsCancelledError() {
+    const error = new Error('Performance diagnostics cancelled.');
+    error.name = 'AbortError';
+    return error;
 }
 
-function assertDiagnosticsRunCurrent(runId) {
-    if (!isDiagnosticsRunCurrent(runId)) {
-        throw new Error('Performance diagnostics cancelled.');
+function throwIfDiagnosticsAborted(signal) {
+    if (signal?.aborted) {
+        throw createDiagnosticsCancelledError();
     }
 }
 
-function waitForNextFrame() {
-    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+function isDiagnosticsRunCurrent(run) {
+    return extensionActive && activeDiagnosticsRun === run && !run.controller.signal.aborted;
 }
 
-async function waitForAppReady({ timeoutMs = 60000 } = {}) {
+function assertDiagnosticsRunCurrent(run) {
+    if (!isDiagnosticsRunCurrent(run)) {
+        throw createDiagnosticsCancelledError();
+    }
+}
+
+function waitForDelay(delayMs, signal) {
+    return new Promise((resolve, reject) => {
+        throwIfDiagnosticsAborted(signal);
+        let timeoutId;
+        const onAbort = () => {
+            clearTimeout(timeoutId);
+            signal?.removeEventListener?.('abort', onAbort);
+            reject(createDiagnosticsCancelledError());
+        };
+        timeoutId = setTimeout(() => {
+            signal?.removeEventListener?.('abort', onAbort);
+            resolve();
+        }, delayMs);
+        signal?.addEventListener?.('abort', onAbort, { once: true });
+    });
+}
+
+function waitForNextFrame(signal) {
+    return new Promise((resolve, reject) => {
+        throwIfDiagnosticsAborted(signal);
+        let settled = false;
+        let firstFrame;
+        let secondFrame;
+
+        const cleanup = () => signal?.removeEventListener?.('abort', onAbort);
+        const finish = (callback, value) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+        const onAbort = () => {
+            globalThis.cancelAnimationFrame?.(firstFrame);
+            globalThis.cancelAnimationFrame?.(secondFrame);
+            finish(reject, createDiagnosticsCancelledError());
+        };
+
+        signal?.addEventListener?.('abort', onAbort, { once: true });
+        firstFrame = requestAnimationFrame(() => {
+            if (signal?.aborted) {
+                onAbort();
+                return;
+            }
+            secondFrame = requestAnimationFrame(() => finish(resolve));
+        });
+    });
+}
+
+async function waitForAppReady({ timeoutMs = 60000, signal } = {}) {
     const started = getNow();
 
     while (getNow() - started < timeoutMs) {
+        throwIfDiagnosticsAborted(signal);
         const preloaderGone = document.getElementById('preloader') === null;
         const context = getContext();
         const chatElement = document.getElementById('chat');
         if (preloaderGone && context && chatElement instanceof HTMLElement) {
             return { context, chatElement };
         }
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await waitForDelay(100, signal);
     }
 
     throw new Error('Performance diagnostics timed out waiting for the app to finish loading.');
@@ -575,44 +818,91 @@ function createHiddenHost() {
     return host;
 }
 
-async function measureScrollFps({ durationMs = 1000, stepPx = 24, shouldContinue = () => true } = {}) {
+export async function measureScrollFps({ durationMs = 1000, stepPx = 24, signal } = {}) {
+    throwIfDiagnosticsAborted(signal);
     const scroller = document.getElementById('chat') || document.scrollingElement;
     if (!scroller) {
-        return { available: false, reason: 'chat-scroller-unavailable' };
+        return { available: false, reason: 'chat-scroller-unavailable', scrollRange: 0, movedPixels: 0 };
     }
 
-    const previousScrollTop = scroller.scrollTop;
+    const measuredScrollRange = Number(scroller.scrollHeight) - Number(scroller.clientHeight);
+    const scrollRange = Number.isFinite(measuredScrollRange) ? Math.max(0, measuredScrollRange) : 0;
+    if (scrollRange <= 0) {
+        return { available: false, reason: 'not-scrollable', scrollRange, movedPixels: 0 };
+    }
+
+    const previousScrollTop = Number(scroller.scrollTop) || 0;
+    const startScrollTop = Math.min(scrollRange, Math.max(0, previousScrollTop));
+    const downwardRange = scrollRange - startScrollTop;
+    const upwardRange = startScrollTop;
+    let direction = downwardRange >= upwardRange ? 1 : -1;
+    const initialDirection = direction > 0 ? 'down' : 'up';
+    const scrollStep = Math.max(1, Math.abs(Number(stepPx) || 24));
     const frameTimes = [];
+    let movedPixels = 0;
     let previous = getNow();
     const start = previous;
 
     try {
-        return await new Promise(resolve => {
+        return await new Promise((resolve, reject) => {
+            let frameId;
+            let settled = false;
+            const finish = (callback, value) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                signal?.removeEventListener?.('abort', onAbort);
+                callback(value);
+            };
+            const onAbort = () => {
+                globalThis.cancelAnimationFrame?.(frameId);
+                finish(reject, createDiagnosticsCancelledError());
+            };
+
             function step(now) {
-                if (!shouldContinue()) {
-                    resolve({ available: false, reason: 'cancelled' });
+                if (signal?.aborted) {
+                    onAbort();
                     return;
                 }
 
                 frameTimes.push(now - previous);
                 previous = now;
-                scroller.scrollTop += stepPx;
+                const before = Number(scroller.scrollTop) || 0;
+                let next = Math.min(scrollRange, Math.max(0, before + (direction * scrollStep)));
+                if (next === before) {
+                    direction *= -1;
+                    next = Math.min(scrollRange, Math.max(0, before + (direction * scrollStep)));
+                }
+                scroller.scrollTop = next;
+                const after = Number(scroller.scrollTop) || 0;
+                movedPixels += Math.abs(after - before);
 
                 if (now - start >= durationMs) {
                     const averageFrame = frameTimes.reduce((total, frame) => total + frame, 0) / Math.max(1, frameTimes.length);
-                    resolve({
-                        available: true,
+                    const result = {
+                        available: movedPixels > 0,
                         frames: frameTimes.length,
                         averageFrame,
                         estimatedFps: averageFrame ? 1000 / averageFrame : 0,
-                    });
+                        scrollRange,
+                        direction: initialDirection,
+                        startScrollTop,
+                        endScrollTop: after,
+                        movedPixels,
+                    };
+                    if (movedPixels <= 0) {
+                        result.reason = 'no-scroll-movement';
+                    }
+                    finish(resolve, result);
                     return;
                 }
 
-                requestAnimationFrame(step);
+                frameId = requestAnimationFrame(step);
             }
 
-            requestAnimationFrame(step);
+            signal?.addEventListener?.('abort', onAbort, { once: true });
+            frameId = requestAnimationFrame(step);
         });
     } finally {
         scroller.scrollTop = previousScrollTop;
@@ -624,7 +914,8 @@ async function measureDetachedLongChatRender(context, options = {}) {
         return { available: false, reason: 'message-formatting-unavailable' };
     }
 
-    const shouldContinue = typeof options.shouldContinue === 'function' ? options.shouldContinue : () => true;
+    const signal = options.signal;
+    throwIfDiagnosticsAborted(signal);
     const visibleCount = Number(options.visibleCount) || DEFAULT_RENDER_VISIBLE_COUNT;
     const messages = createLongChatMessages(options).slice(-visibleCount);
     const host = createHiddenHost();
@@ -632,9 +923,7 @@ async function measureDetachedLongChatRender(context, options = {}) {
     try {
         const start = getNow();
         for (const message of messages) {
-            if (!shouldContinue()) {
-                return { available: false, reason: 'cancelled' };
-            }
+            throwIfDiagnosticsAborted(signal);
 
             const messageElement = document.createElement('div');
             messageElement.className = 'mes';
@@ -644,7 +933,7 @@ async function measureDetachedLongChatRender(context, options = {}) {
             messageElement.appendChild(textElement);
             host.appendChild(messageElement);
         }
-        await waitForNextFrame();
+        await waitForNextFrame(signal);
         const durationMs = getNow() - start;
 
         return {
@@ -670,7 +959,8 @@ async function measureDetachedStreamingRender(context, options = {}) {
         return { available: false, reason: 'message-formatting-unavailable' };
     }
 
-    const shouldContinue = typeof options.shouldContinue === 'function' ? options.shouldContinue : () => true;
+    const signal = options.signal;
+    throwIfDiagnosticsAborted(signal);
     const { steps } = createStreamingSteps(options);
     const host = createHiddenHost();
     const target = document.createElement('div');
@@ -684,9 +974,7 @@ async function measureDetachedStreamingRender(context, options = {}) {
         const start = getNow();
 
         for (const step of steps) {
-            if (!shouldContinue()) {
-                return { available: false, reason: 'cancelled' };
-            }
+            throwIfDiagnosticsAborted(signal);
 
             const stepStart = getNow();
             const formatStart = getNow();
@@ -698,7 +986,7 @@ async function measureDetachedStreamingRender(context, options = {}) {
             maxStepMs = Math.max(maxStepMs, getNow() - stepStart);
         }
 
-        await waitForNextFrame();
+        await waitForNextFrame(signal);
         const totalMs = getNow() - start;
 
         return {
@@ -782,12 +1070,29 @@ export function downloadPerformanceReport(report = lastReport) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function copyPerformanceReport(report = lastReport) {
+export async function copyPerformanceReport(report = lastReport) {
     if (!report) {
         throw new Error('No performance diagnostics report is available to copy.');
     }
 
-    await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    const text = JSON.stringify(report, null, 2);
+    if (globalThis.navigator?.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'readonly');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    try {
+        textarea.select();
+        document.execCommand('copy');
+    } finally {
+        textarea.remove();
+    }
 }
 
 function ensurePanel() {
@@ -838,7 +1143,7 @@ function updatePanel(status, report = null) {
 }
 
 export function startPerformanceLogging(options = {}) {
-    if (!extensionActive) {
+    if (!extensionActive || activeDiagnosticsRun) {
         return null;
     }
 
@@ -905,8 +1210,21 @@ export async function runPerformanceDiagnostics(options = {}) {
         };
     }
 
-    activeDiagnosticsRun = true;
-    const runId = ++diagnosticsRunId;
+    if (activeLogger) {
+        return {
+            ...createReportBase(options),
+            error: {
+                name: 'InvalidStateError',
+                message: 'performance-logging-active',
+            },
+        };
+    }
+
+    const run = {
+        controller: new AbortController(),
+        logger: null,
+    };
+    activeDiagnosticsRun = run;
     const resolvedOptions = {
         showPanel: true,
         autoDownload: false,
@@ -920,49 +1238,52 @@ export async function runPerformanceDiagnostics(options = {}) {
     }
 
     const logger = createLogger(resolvedOptions);
-    activeDiagnosticsLogger = logger;
+    run.logger = logger;
     logger.start();
     logger.mark('self-test-started');
 
     const report = createReportBase(resolvedOptions);
     try {
-        assertDiagnosticsRunCurrent(runId);
-        const { context } = await waitForAppReady(resolvedOptions);
-        assertDiagnosticsRunCurrent(runId);
+        assertDiagnosticsRunCurrent(run);
+        const { context } = await waitForAppReady({
+            ...resolvedOptions,
+            signal: run.controller.signal,
+        });
+        assertDiagnosticsRunCurrent(run);
         report.snapshots = {
             before: createSnapshot('before'),
         };
         report.measurements = {
             scrollFps: await measureScrollFps({
                 ...resolvedOptions.scroll,
-                shouldContinue: () => isDiagnosticsRunCurrent(runId),
+                signal: run.controller.signal,
             }),
         };
-        assertDiagnosticsRunCurrent(runId);
+        assertDiagnosticsRunCurrent(run);
         report.measurements.longChatRender = await measureDetachedLongChatRender(context, {
             ...resolvedOptions.longChat,
-            shouldContinue: () => isDiagnosticsRunCurrent(runId),
+            signal: run.controller.signal,
         });
-        assertDiagnosticsRunCurrent(runId);
+        assertDiagnosticsRunCurrent(run);
         report.measurements.streamingRender = await measureDetachedStreamingRender(context, {
             ...resolvedOptions.streaming,
-            shouldContinue: () => isDiagnosticsRunCurrent(runId),
+            signal: run.controller.signal,
         });
-        assertDiagnosticsRunCurrent(runId);
+        assertDiagnosticsRunCurrent(run);
         report.snapshots.after = createSnapshot('after');
         logger.mark('self-test-finished');
     } catch (error) {
         report.error = serializeError(error);
         logger.mark('self-test-failed', report.error);
     } finally {
-        if (activeDiagnosticsLogger === logger) {
-            activeDiagnosticsLogger = null;
-        }
         logger.stop();
-        activeDiagnosticsRun = false;
+        report.log = logger.getReport();
+        const ownsRun = activeDiagnosticsRun === run;
+        if (ownsRun) {
+            activeDiagnosticsRun = null;
+        }
 
-        if (extensionActive && runId === diagnosticsRunId) {
-            report.log = logger.getReport();
+        if (extensionActive && ownsRun && !run.controller.signal.aborted) {
             lastReport = report;
             if (resolvedOptions.showPanel) {
                 updatePanel('Diagnostics report ready.', report);
@@ -1108,8 +1429,10 @@ function bindExtensionPanel(root) {
         setExtensionSummary(root, await runPerformanceDiagnostics(getPanelOptions(root)));
     });
     root.querySelector('[data-sb-performance-diagnostics-start]')?.addEventListener('click', () => {
-        startPerformanceLogging(getPanelOptions(root));
-        setExtensionSummary(root, { kind: 'sillybunny-performance-log-active', createdAt: getTimestamp() });
+        const report = startPerformanceLogging(getPanelOptions(root));
+        if (report) {
+            setExtensionSummary(root, { kind: 'sillybunny-performance-log-active', createdAt: getTimestamp() });
+        }
     });
     root.querySelector('[data-sb-performance-diagnostics-stop]')?.addEventListener('click', () => {
         setExtensionSummary(root, stopPerformanceLogging(getPanelOptions(root)) ?? getLastPerformanceReport());
@@ -1139,15 +1462,19 @@ async function handleLocationTriggers() {
         return;
     }
 
-    if (triggerOptions.startLogging) {
-        startPerformanceLogging(triggerOptions);
-    }
     if (triggerOptions.runDiagnostics) {
         await runPerformanceDiagnostics(triggerOptions);
+    } else if (triggerOptions.startLogging) {
+        startPerformanceLogging(triggerOptions);
     }
 }
 
 export function init() {
+    if (initialized) {
+        return;
+    }
+
+    initialized = true;
     extensionActive = true;
     exposeDiagnosticsApi();
     const root = ensureExtensionPanel();
@@ -1157,11 +1484,12 @@ export function init() {
 }
 
 export function disable() {
+    initialized = false;
     extensionActive = false;
-    diagnosticsRunId++;
-    activeDiagnosticsRun = false;
-    activeDiagnosticsLogger?.stop();
-    activeDiagnosticsLogger = null;
+    const diagnosticsRun = activeDiagnosticsRun;
+    activeDiagnosticsRun = null;
+    diagnosticsRun?.controller.abort();
+    diagnosticsRun?.logger?.stop();
     if (activeLogger) {
         stopPerformanceLogging({ showPanel: false });
     }

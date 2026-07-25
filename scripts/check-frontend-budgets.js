@@ -8,7 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const indexPath = path.join(repoRoot, 'public', 'index.html');
 const publicRoot = path.join(repoRoot, 'public');
-const distManifestPath = path.join(repoRoot, 'dist', 'frontend', 'asset-manifest.json');
 
 const budgets = Object.freeze({
     blockingStylesheetCount: 16,
@@ -126,18 +125,4 @@ for (const asset of largeExtensionAssets) {
     if (size > budgets.extensionLargeAssetBytes) {
         fail(`${asset} is ${formatBytes(size)}, above budget ${formatBytes(budgets.extensionLargeAssetBytes)}.`);
     }
-}
-
-if (fs.existsSync(distManifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(distManifestPath, 'utf8'));
-    const builtAssets = Object.values(manifest.assets ?? {});
-    const builtAssetBytes = builtAssets.reduce((total, asset) => total + (Number(asset.bytes) || 0), 0);
-    const builtLibBytes = Number(manifest.assets?.['lib.js']?.bytes) || 0;
-
-    console.log(`Built frontend assets: ${builtAssets.length}, ${formatBytes(builtAssetBytes)}`);
-    if (builtLibBytes > 0) {
-        console.log(`Built lib.js: ${formatBytes(builtLibBytes)}`);
-    }
-} else {
-    console.log('Built frontend assets: manifest not found; run npm run build:frontend for built output sizes.');
 }

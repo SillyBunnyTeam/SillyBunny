@@ -6,6 +6,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 const powerUserSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'power-user.js'), 'utf8');
+const mobileStreamingSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'mobile-streaming.js'), 'utf8');
 const settingsTabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-settings-tabs.js'), 'utf8');
 
 const androidSettingIds = [
@@ -13,6 +14,7 @@ const androidSettingIds = [
     'android_reduce_streaming_work',
     'android_disable_smooth_streaming',
     'android_disable_stream_fade_in',
+    'android_streaming_basic_markdown',
 ];
 
 describe('Android streaming settings UI', () => {
@@ -26,11 +28,11 @@ describe('Android streaming settings UI', () => {
     });
 
     test('backs Android streaming controls with saved power-user settings', () => {
-        expect(powerUserSource).toContain('const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({');
-        expect(powerUserSource).toContain('shouldInitializeAndroidStreamingSettings');
+        expect(mobileStreamingSource).toContain('export const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({');
+        expect(powerUserSource).toContain('initializeAndroidStreamingSettings(power_user, savedPowerUserSettings)');
 
         for (const settingId of androidSettingIds) {
-            expect(powerUserSource).toContain(`${settingId}: true`);
+            expect(mobileStreamingSource).toContain(`${settingId}: ${settingId === 'android_streaming_basic_markdown' ? 'false' : 'true'}`);
             expect(powerUserSource).toContain(`$('#${settingId}').prop('checked', power_user.${settingId});`);
             expect(powerUserSource).toContain(`power_user.${settingId} = !!$(this).prop('checked');`);
         }
@@ -44,6 +46,8 @@ describe('Android streaming settings UI', () => {
 
     test('routes reduced Android stream ticks through the plain-text preview path', () => {
         expect(scriptSource).toContain('shouldUsePlainTextStreamingPreview({');
-        expect(scriptSource).toContain('formatPlainTextStreamingPreview(processedText)');
+        expect(scriptSource).toContain('isAndroidPlatform: isAndroidStreamingPreview');
+        expect(scriptSource).toContain('formatPlainTextStreamingPreview(previewText)');
+        expect(scriptSource).toContain('sanitizeHtml: sanitizeMessageHtml');
     });
 });

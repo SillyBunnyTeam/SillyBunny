@@ -19,6 +19,7 @@ export const USER_DIRECTORY_TEMPLATE = Object.freeze({
     thumbnailsBg: 'thumbnails/bg',
     thumbnailsAvatar: 'thumbnails/avatar',
     thumbnailsPersona: 'thumbnails/persona',
+    thumbnailsBgMobile: 'thumbnails/bg/mobile',
     thumbnailsAvatarMobile: 'thumbnails/avatar/mobile',
     thumbnailsPersonaMobile: 'thumbnails/persona/mobile',
     worlds: 'worlds',

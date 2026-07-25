@@ -289,7 +289,14 @@ function clearDirectoryContents(directory) {
 function clearThumbnailCacheForUser(directories) {
     const userRoot = path.resolve(directories.root);
     const thumbnailRoot = path.resolve(directories.thumbnails);
-    const thumbnailSubdirectories = [directories.thumbnailsBg, directories.thumbnailsAvatar, directories.thumbnailsPersona, directories.thumbnailsAvatarMobile, directories.thumbnailsPersonaMobile]
+    const thumbnailSubdirectories = [
+        directories.thumbnailsBg,
+        directories.thumbnailsAvatar,
+        directories.thumbnailsPersona,
+        directories.thumbnailsBgMobile,
+        directories.thumbnailsAvatarMobile,
+        directories.thumbnailsPersonaMobile,
+    ]
         .map(directory => path.resolve(directory));
 
     if (thumbnailRoot === userRoot || !isPathUnderParent(userRoot, thumbnailRoot)) {

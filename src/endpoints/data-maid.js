@@ -438,10 +438,12 @@ export class DataMaidService {
                     knownBackgrounds.add(file.name);
                 }
             }
-            const backgroundThumbnails = await fs.promises.readdir(this.directories.thumbnailsBg, { withFileTypes: true });
-            for (const file of backgroundThumbnails) {
-                if (file.isFile() && !knownBackgrounds.has(file.name)) {
-                    result.push(path.join(this.directories.thumbnailsBg, file.name));
+            for (const thumbnailDirectory of [this.directories.thumbnailsBg, this.directories.thumbnailsBgMobile]) {
+                const backgroundThumbnails = await fs.promises.readdir(thumbnailDirectory, { withFileTypes: true });
+                for (const file of backgroundThumbnails) {
+                    if (file.isFile() && !knownBackgrounds.has(file.name)) {
+                        result.push(path.join(thumbnailDirectory, file.name));
+                    }
                 }
             }
         } catch (error) {

@@ -78,6 +78,7 @@ import { persona_description_positions as _persona_description_positions } from 
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
+import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -168,14 +169,6 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
 const SB_ACCENT_PROFILE_SEED_VERSION = 2;
 const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
 const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
-const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({
-    android_conservative_streaming: true,
-    android_reduce_streaming_work: true,
-    android_disable_smooth_streaming: true,
-    android_disable_stream_fade_in: true,
-    android_streaming_basic_markdown: false,
-});
-const ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY = 'android_streaming_settings_initialized';
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
     { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
     { name: 'Story Moss', quote_text_color: 'rgba(114, 192, 144, 1)', underline_text_color: 'rgba(161, 209, 172, 1)' },
@@ -2317,8 +2310,7 @@ function getExampleMessagesBehavior() {
 export async function loadPowerUserSettings(settings, data) {
     const defaultStscript = JSON.parse(JSON.stringify(power_user.stscript));
     const hasAccentProfileSeedVersion = settings.power_user !== undefined && Object.hasOwn(settings.power_user, 'sb_accent_profiles_seed_version');
-    const shouldInitializeAndroidStreamingSettings = settings.power_user === undefined
-        || !Object.hasOwn(settings.power_user, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY);
+    const savedPowerUserSettings = settings.power_user && typeof settings.power_user === 'object' ? settings.power_user : {};
     customThemeStyleEntries = settings.extension_settings?.CTSI?.entries && typeof settings.extension_settings.CTSI.entries === 'object'
         ? { ...settings.extension_settings.CTSI.entries }
         : {};
@@ -2343,9 +2335,7 @@ export async function loadPowerUserSettings(settings, data) {
         saveSettingsDebounced();
     }
 
-    if (shouldInitializeAndroidStreamingSettings) {
-        Object.assign(power_user, ANDROID_STREAMING_SETTING_DEFAULTS);
-        power_user[ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY] = true;
+    if (initializeAndroidStreamingSettings(power_user, savedPowerUserSettings)) {
         saveSettingsDebounced();
     }
 

@@ -1,4 +1,8 @@
+import showdown from 'showdown';
+
 import {
+    ANDROID_STREAMING_SETTING_DEFAULTS,
+    ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY,
     ANDROID_REASONING_RENDER_INTERVAL_MS,
     ANDROID_STREAMING_UPDATE_INTERVAL_MS,
     formatPlainTextStreamingPreview,
@@ -7,6 +11,7 @@ import {
     getMobileStreamingBottomPinBehavior,
     getStreamingReasoningRenderInterval,
     getStreamingUpdateInterval,
+    initializeAndroidStreamingSettings,
     IOS_REASONING_RENDER_INTERVAL_MS,
     IOS_STREAMING_UPDATE_INTERVAL_MS,
     isSmoothStreamingEffectivelyEnabled,
@@ -86,6 +91,7 @@ describe('mobile streaming helpers', () => {
     test('applies a conservative Android floor to streaming updates', () => {
         expect(getStreamingUpdateInterval(33, {
             navigatorRef: androidNavigator,
+            androidEnabled: true,
         })).toBe(ANDROID_STREAMING_UPDATE_INTERVAL_MS);
     });
 
@@ -109,40 +115,53 @@ describe('mobile streaming helpers', () => {
         })).toBe(33);
     });
 
-    test('uses Android reduced DOM work by default', () => {
-        expect(shouldReduceStreamingDomWork(androidNavigator)).toBe(true);
+    test('keeps the legacy enabled option scoped to iOS', () => {
+        expect(shouldReduceStreamingDomWork(androidNavigator, { enabled: true })).toBe(false);
+        expect(shouldReduceStreamingDomWork(androidNavigator, { enabled: false, androidEnabled: true })).toBe(true);
     });
 
     test('uses plain text streaming previews only for reduced non-final mobile ticks', () => {
         expect(shouldUsePlainTextStreamingPreview({
             isFinal: false,
             isReducedDomWork: true,
+            isAndroidPlatform: true,
             isImpersonate: false,
         })).toBe(true);
 
         expect(shouldUsePlainTextStreamingPreview({
             isFinal: true,
             isReducedDomWork: true,
+            isAndroidPlatform: true,
             isImpersonate: false,
         })).toBe(false);
 
         expect(shouldUsePlainTextStreamingPreview({
             isFinal: false,
             isReducedDomWork: false,
+            isAndroidPlatform: true,
             isImpersonate: false,
         })).toBe(false);
 
         expect(shouldUsePlainTextStreamingPreview({
             isFinal: false,
             isReducedDomWork: true,
+            isAndroidPlatform: true,
             isImpersonate: true,
         })).toBe(false);
 
         expect(shouldUsePlainTextStreamingPreview({
             isFinal: false,
             isReducedDomWork: true,
+            isAndroidPlatform: true,
             isImpersonate: false,
             useBasicMarkdown: true,
+        })).toBe(false);
+
+        expect(shouldUsePlainTextStreamingPreview({
+            isFinal: false,
+            isReducedDomWork: true,
+            isAndroidPlatform: false,
+            isImpersonate: false,
         })).toBe(false);
     });
 
@@ -156,14 +175,57 @@ describe('mobile streaming helpers', () => {
             makeHtml: (text) => text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
         };
 
-        expect(formatBasicMarkdownStreamingPreview('**bold** text', { converter: mockConverter }))
+        expect(formatBasicMarkdownStreamingPreview('**bold** text', { converter: mockConverter, sanitizeHtml: html => html }))
             .toBe('<strong>bold</strong> text');
 
-        expect(formatBasicMarkdownStreamingPreview('<script>alert("xss")</script>', { converter: mockConverter }))
+        expect(formatBasicMarkdownStreamingPreview('<script>alert("xss")</script>', { converter: mockConverter, sanitizeHtml: html => html }))
             .toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
 
         expect(formatBasicMarkdownStreamingPreview('test', { converter: null }))
             .toBe('test');
+    });
+
+    test('always sanitizes converter-created links and external media', () => {
+        const converter = new showdown.Converter();
+        let sanitizerInput = '';
+        const sanitizeHtml = (html) => {
+            sanitizerInput = html;
+            return html
+                .replace(/<img[^>]*>/gi, '')
+                .replace(/\s+href="(?:javascript:|data:)[^"]*"/gi, '');
+        };
+
+        const preview = formatBasicMarkdownStreamingPreview('[click](javascript:alert(1)) ![track](https://private.example/track.png) [data](data:text/html,test)', { converter, sanitizeHtml });
+
+        expect(sanitizerInput).toContain('javascript:');
+        expect(preview).not.toContain('javascript:');
+        expect(preview).not.toContain('data:text/html');
+        expect(preview).not.toContain('<img');
+    });
+
+    test('initializes only Android settings absent from persisted preferences', () => {
+        const saved = {
+            android_conservative_streaming: false,
+            android_disable_stream_fade_in: false,
+        };
+        const target = { ...ANDROID_STREAMING_SETTING_DEFAULTS, ...saved };
+
+        expect(initializeAndroidStreamingSettings(target, saved)).toBe(true);
+        expect(target.android_conservative_streaming).toBe(false);
+        expect(target.android_disable_stream_fade_in).toBe(false);
+        expect(target.android_reduce_streaming_work).toBe(true);
+        expect(target[ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY]).toBe(true);
+    });
+
+    test('does not rerun Android setting migration after its marker exists', () => {
+        const saved = {
+            [ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY]: true,
+            android_reduce_streaming_work: false,
+        };
+        const target = { ...saved };
+
+        expect(initializeAndroidStreamingSettings(target, saved)).toBe(false);
+        expect(target).toEqual(saved);
     });
 
     test('reports effective Smooth Streaming after platform-specific bypasses', () => {

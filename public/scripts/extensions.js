@@ -85,6 +85,11 @@ const ignoredExtensionSettingsSelector = ignoredExtensionSettingsSelectors.join(
 const LEGACY_MOONLIT_ECHOES_SETTINGS_KEY = 'SillyTavernMoonlitEchoesTheme';
 const SILLYBUNNY_MOONLIT_ECHOES_EXTENSION_NAME = 'third-party/SillyBunny-MoonlitEchoesTheme';
 const MOONLIT_ECHOES_NOTICE_STORAGE_KEY = 'moonlit_echoes_moved_notice_v1';
+const LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS = [
+    'sillytavern-character-colors',
+    'sillytavern-image-gen',
+    'sillytavern-moonlitechoestheme',
+];
 const genericExtensionSettingsClasses = new Set([
     'alignitemscenter',
     'alignitemsbaseline',
@@ -106,6 +111,7 @@ const genericExtensionSettingsClasses = new Set([
 
 let extensionSettingsDedupeObserver = null;
 let extensionSettingsDedupeScheduled = false;
+let bundledOptInSettingsLoaded = false;
 
 const getApiUrl = () => extension_settings.apiUrl;
 const sortManifestsByOrder = (a, b) => parseInt(a.loading_order) - parseInt(b.loading_order) || String(a.display_name).localeCompare(String(b.display_name));
@@ -303,6 +309,7 @@ export const extension_settings = {
     autoConnect: false,
     notifyUpdates: false,
     bundledOptInDefaultsApplied: false,
+    bundledOptInProcessedExtensions: [],
     disabledExtensions: [],
     expressionOverrides: [],
     memory: {},
@@ -387,29 +394,67 @@ export const extension_settings = {
     },
 };
 
-function applyBundledOptInDefaults() {
-    if (extension_settings.bundledOptInDefaultsApplied) {
-        return false;
-    }
-
+function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedIds = false } = {}) {
     const bundledOptInExtensions = Object.entries(manifests)
         .filter(([, manifest]) => manifest?.bundled_opt_in === true)
         .map(([name]) => name);
 
-    if (bundledOptInExtensions.length === 0) {
-        return false;
-    }
+    const storedProcessedIds = Array.isArray(extension_settings.bundledOptInProcessedExtensions)
+        ? extension_settings.bundledOptInProcessedExtensions
+        : [];
+    const processedIds = [];
+    const processedKeys = new Set();
+    let changed = initializeProcessedIds || !Array.isArray(extension_settings.bundledOptInProcessedExtensions);
 
-    let changed = false;
+    for (const id of storedProcessedIds) {
+        const key = getExtensionDedupKey(id);
+        if (!key || processedKeys.has(key)) {
+            changed = true;
+            continue;
+        }
 
-    for (const extensionName of bundledOptInExtensions) {
-        if (!extension_settings.disabledExtensions.includes(extensionName)) {
-            extension_settings.disabledExtensions.push(extensionName);
+        processedKeys.add(key);
+        processedIds.push(key);
+        if (id !== key) {
             changed = true;
         }
     }
 
-    extension_settings.bundledOptInDefaultsApplied = true;
+    // SillyBunny: the legacy global bit covered older opt-ins, but diagnostics was added later.
+    if (migrateLegacy && extension_settings.bundledOptInDefaultsApplied) {
+        for (const id of LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS) {
+            const key = getExtensionDedupKey(id);
+            if (processedKeys.has(key)) {
+                continue;
+            }
+
+            processedKeys.add(key);
+            processedIds.push(key);
+            changed = true;
+        }
+    }
+
+    for (const extensionName of bundledOptInExtensions) {
+        const key = getExtensionDedupKey(extensionName);
+        if (processedKeys.has(key)) {
+            continue;
+        }
+
+        if (!extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, extensionName))) {
+            extension_settings.disabledExtensions.push(extensionName);
+        }
+
+        processedKeys.add(key);
+        processedIds.push(key);
+        changed = true;
+    }
+
+    extension_settings.bundledOptInProcessedExtensions = processedIds;
+    if (bundledOptInExtensions.length > 0 && !extension_settings.bundledOptInDefaultsApplied) {
+        extension_settings.bundledOptInDefaultsApplied = true;
+        changed = true;
+    }
+
     return changed;
 }
 
@@ -2192,6 +2237,10 @@ export async function installExtension(url, global, branch = '') {
  * @param {boolean} enableAutoUpdate Enable auto-update
  */
 export async function loadExtensionSettings(settings, versionChanged, enableAutoUpdate) {
+    const persistedExtensionSettings = settings.extension_settings;
+    const hasPersistedProcessedIds = Array.isArray(persistedExtensionSettings?.bundledOptInProcessedExtensions);
+    const shouldInitializeProcessedIds = !bundledOptInSettingsLoaded && !hasPersistedProcessedIds;
+
     if (settings.extension_settings) {
         Object.assign(extension_settings, settings.extension_settings);
     }
@@ -2219,11 +2268,15 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     });
     const removedCount = originalDisabledCount - extension_settings.disabledExtensions.length;
 
-    if (applyBundledOptInDefaults()) {
+    if (applyBundledOptInDefaults({
+        migrateLegacy: shouldInitializeProcessedIds,
+        initializeProcessedIds: shouldInitializeProcessedIds,
+    })) {
         saveSettingsDebounced();
     } else if (removedCount > 0) {
         saveSettingsDebounced();
     }
+    bundledOptInSettingsLoaded = true;
 
     scheduleExtensionAssetPrefetch();
 

@@ -4,12 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { USER_DIRECTORY_TEMPLATE } from '../src/constants.js';
 import { setConfigFilePath } from '../src/util.js';
 import zlib from 'node:zlib';
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 
-const { Jimp } = await import('../src/jimp.js');
 const {
     getThumbnailDimensions,
     getThumbnailMobileDimensions,
@@ -43,6 +43,7 @@ describe('mobile thumbnail preset', () => {
             thumbnailsAvatarMobile: 'thumbnails/avatar/mobile',
             thumbnailsPersonaMobile: 'thumbnails/persona/mobile',
             thumbnailsBg: 'thumbnails/bg',
+            thumbnailsBgMobile: 'thumbnails/bg/mobile',
         });
 
         test('routes desktop avatars to the desktop folder', () => {
@@ -55,9 +56,10 @@ describe('mobile thumbnail preset', () => {
             expect(getThumbnailFolder(directories, 'persona', 'mobile')).toBe('thumbnails/persona/mobile');
         });
 
-        test('backgrounds share a single folder across presets', () => {
+        test('routes mobile backgrounds to a separate mobile subfolder', () => {
+            expect(USER_DIRECTORY_TEMPLATE.thumbnailsBgMobile).toBe('thumbnails/bg/mobile');
             expect(getThumbnailFolder(directories, 'bg', 'desktop')).toBe('thumbnails/bg');
-            expect(getThumbnailFolder(directories, 'bg', 'mobile')).toBe('thumbnails/bg');
+            expect(getThumbnailFolder(directories, 'bg', 'mobile')).toBe('thumbnails/bg/mobile');
         });
     });
 
@@ -72,6 +74,8 @@ describe('mobile thumbnail preset', () => {
                 thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar', 'mobile'),
                 thumbnailsPersona: path.join(tempRoot, 'thumbnails', 'persona'),
                 thumbnailsPersonaMobile: path.join(tempRoot, 'thumbnails', 'persona', 'mobile'),
+                thumbnailsBg: path.join(tempRoot, 'thumbnails', 'bg'),
+                thumbnailsBgMobile: path.join(tempRoot, 'thumbnails', 'bg', 'mobile'),
             };
 
             for (const folder of Object.values(directories)) {
@@ -89,6 +93,18 @@ describe('mobile thumbnail preset', () => {
             expect(fs.existsSync(mobilePath)).toBe(true);
 
             invalidateThumbnail(directories, 'avatar', 'test.png');
+
+            expect(fs.existsSync(desktopPath)).toBe(false);
+            expect(fs.existsSync(mobilePath)).toBe(false);
+        });
+
+        test('invalidateThumbnail removes both background cached copies', () => {
+            const desktopPath = path.join(directories.thumbnailsBg, 'test.png');
+            const mobilePath = path.join(directories.thumbnailsBgMobile, 'test.png');
+            fs.writeFileSync(desktopPath, 'desktop');
+            fs.writeFileSync(mobilePath, 'mobile');
+
+            invalidateThumbnail(directories, 'bg', 'test.png');
 
             expect(fs.existsSync(desktopPath)).toBe(false);
             expect(fs.existsSync(mobilePath)).toBe(false);

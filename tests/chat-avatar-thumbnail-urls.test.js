@@ -36,18 +36,20 @@ function getFunctionSource(source, name) {
  * Rebuilds the avatar URL pipeline that updateChatAvatarVariables runs in the browser, using the
  * shipped function bodies. Neither module can be imported under Jest, so the sources are evaluated
  * with the handful of globals they close over.
- * @returns {{ getThumbnailUrl: Function, parseAvatarSource: Function, getChatAvatarSources: Function }}
+ * @returns {{ getThumbnailUrl: Function, parseAvatarSource: Function, getAvatarRenderSources: Function, getChatAvatarSources: Function }}
  */
 function loadAvatarPipeline() {
     const body = [
         getFunctionSource(scriptSource, 'getThumbnailUrl'),
+        getFunctionSource(scriptSource, 'getMobileThumbnailUrl'),
         getFunctionSource(scriptSource, 'getFullAvatarUrl'),
+        getFunctionSource(scriptSource, 'getAvatarRenderSources'),
         getFunctionSource(scriptSource, 'parseAvatarSource'),
         getFunctionSource(tabsSource, 'stripAvatarOrigin'),
         getFunctionSource(tabsSource, 'isAbsoluteAvatarUrl'),
         getFunctionSource(tabsSource, 'ensureAvatarPath'),
         getFunctionSource(tabsSource, 'getChatAvatarSources'),
-        'return { getThumbnailUrl, parseAvatarSource, getChatAvatarSources };',
+        'return { getThumbnailUrl, parseAvatarSource, getAvatarRenderSources, getChatAvatarSources };',
     ].join('\n\n');
 
     const factory = new Function('window', 'isDataURL', 'default_avatar', body);
@@ -125,10 +127,40 @@ describe('chat avatar thumbnail urls', () => {
     });
 
     test('leaves sources without a known avatar folder untouched', () => {
-        const { getChatAvatarSources } = loadAvatarPipeline();
+        const { getAvatarRenderSources, getChatAvatarSources, parseAvatarSource } = loadAvatarPipeline();
 
         expect(getChatAvatarSources('').thumb).toBe('');
         expect(getChatAvatarSources('/img/ai4.png').thumb).toBe('/img/ai4.png');
         expect(getChatAvatarSources('data:image/png;base64,AAAA').thumb).toBe('data:image/png;base64,AAAA');
+        expect(parseAvatarSource('https://example.test/characters/Remote.png').type).toBeNull();
+        expect(getAvatarRenderSources('https://example.test/characters/Remote.png')).toEqual({
+            desktop: 'https://example.test/characters/Remote.png',
+            mobile: 'https://example.test/characters/Remote.png',
+            original: 'https://example.test/characters/Remote.png',
+        });
+    });
+
+    test('derives desktop, mobile, and original sources for forced local avatars', () => {
+        const { getAvatarRenderSources } = loadAvatarPipeline();
+
+        expect(getAvatarRenderSources('/characters/Group%20Member.gif')).toEqual({
+            desktop: '/thumbnail?type=avatar&file=Group%20Member.gif',
+            mobile: '/thumbnail?type=avatar&file=Group%20Member.gif&preset=mobile',
+            original: '/characters/Group%20Member.gif',
+        });
+        expect(getAvatarRenderSources('/thumbnail?type=persona&file=Me%20Myself.png')).toEqual({
+            desktop: '/thumbnail?type=persona&file=Me%20Myself.png',
+            mobile: '/thumbnail?type=persona&file=Me%20Myself.png&preset=mobile',
+            original: '/User%20Avatars/Me%20Myself.png',
+        });
+        expect(getAvatarRenderSources('data:image/png;base64,AAAA').mobile).toBe('data:image/png;base64,AAAA');
+    });
+
+    test('keeps literal percent persona names decoded exactly once for zoom lookup', () => {
+        const { parseAvatarSource } = loadAvatarPipeline();
+
+        expect(parseAvatarSource('/User%20Avatars/50%25%20Off.png').file).toBe('50% Off.png');
+        expect(scriptSource).toContain('const isValidPersona = targetAvatarImg in power_user.personas;');
+        expect(scriptSource).not.toContain('decodeURIComponent(targetAvatarImg) in power_user.personas');
     });
 });

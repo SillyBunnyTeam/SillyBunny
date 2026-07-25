@@ -80,7 +80,7 @@ export function getThumbnailFolder(directories, type, preset = 'desktop') {
 
     switch (type) {
         case 'bg':
-            thumbnailFolder = directories.thumbnailsBg;
+            thumbnailFolder = isMobile ? directories.thumbnailsBgMobile : directories.thumbnailsBg;
             break;
         case 'avatar':
             thumbnailFolder = isMobile ? directories.thumbnailsAvatarMobile : directories.thumbnailsAvatar;
@@ -160,17 +160,6 @@ function resolveOriginalFileName(directories, type, file) {
  * @param {string} file Name of the file
  */
 export function invalidateThumbnail(directories, type, file) {
-    if (type === 'bg') {
-        const folder = getThumbnailFolder(directories, type);
-        if (folder === undefined) throw new Error('Invalid thumbnail type');
-
-        const pathToThumbnail = path.join(folder, sanitize(file));
-        if (fs.existsSync(pathToThumbnail)) {
-            fs.unlinkSync(pathToThumbnail);
-        }
-        return;
-    }
-
     for (const preset of ['desktop', 'mobile']) {
         const folder = getThumbnailFolder(directories, type, preset);
         if (folder === undefined) throw new Error('Invalid thumbnail type');

@@ -39,6 +39,7 @@ export const LONG_CHAT_RENDER_FILLER_REPEAT = 36;
 export const STREAM_RENDER_STEP_COUNT = 32;
 export const STREAM_RENDER_FILLER_REPEAT = 48;
 export const STREAM_RENDER_CODE_REPEAT = 12;
+const LONG_CHAT_SCROLL_SETTLE_MS = 2500;
 
 export const PERFORMANCE_PROFILES = Object.freeze({
     mobile: Object.freeze({
@@ -258,8 +259,10 @@ export async function measureLongChatRender(page, fixture = createLongChatRender
     };
 }
 
-export async function measureStreamingRender(page, fixture = createStreamingRenderFixture()) {
-    const renderResult = await page.evaluate(async ({ steps, stepCount, fillerRepeat, codeRepeat }) => {
+export async function measureStreamingRender(page, fixture = createStreamingRenderFixture(), {
+    plainPreviewModuleUrl = '/scripts/mobile-streaming.js',
+} = {}) {
+    const renderResult = await page.evaluate(async ({ steps, stepCount, fillerRepeat, codeRepeat, plainPreviewModuleUrl }) => {
         const browserGlobal = globalThis;
         const context = browserGlobal.SillyTavern?.getContext?.();
         const chatElement = browserGlobal.document.querySelector('#chat');
@@ -316,13 +319,14 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
                 writeTotalMs += browserGlobal.performance.now() - writeStart;
                 maxStepMs = Math.max(maxStepMs, browserGlobal.performance.now() - stepStart);
             }
+            const totalMs = browserGlobal.performance.now() - start;
 
             let plainPreview = {
                 available: false,
                 reason: 'plain-preview-module-unavailable',
             };
             try {
-                const { formatPlainTextStreamingPreview } = await import('/scripts/mobile-streaming.js');
+                const { formatPlainTextStreamingPreview } = await import(plainPreviewModuleUrl);
                 const previewTarget = browserGlobal.document.createElement('div');
                 previewTarget.className = 'mes_text';
                 host.appendChild(previewTarget);
@@ -343,13 +347,14 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
                     previewWriteTotalMs += browserGlobal.performance.now() - writeStart;
                     previewMaxStepMs = Math.max(previewMaxStepMs, browserGlobal.performance.now() - stepStart);
                 }
+                const previewTotalMs = browserGlobal.performance.now() - previewStart;
 
                 plainPreview = {
                     available: true,
-                    totalMs: browserGlobal.performance.now() - previewStart,
+                    totalMs: previewTotalMs,
                     formatTotalMs: previewFormatTotalMs,
                     writeTotalMs: previewWriteTotalMs,
-                    averageStepMs: (browserGlobal.performance.now() - previewStart) / Math.max(1, steps.length),
+                    averageStepMs: previewTotalMs / Math.max(1, steps.length),
                     maxStepMs: previewMaxStepMs,
                     finalHtmlBytes: new TextEncoder().encode(previewTarget.innerHTML).length,
                     domNodeCount: previewTarget.querySelectorAll('*').length,
@@ -362,7 +367,6 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
             }
 
             await new Promise(resolve => browserGlobal.requestAnimationFrame(() => browserGlobal.requestAnimationFrame(resolve)));
-            const totalMs = browserGlobal.performance.now() - start;
 
             return {
                 available: true,
@@ -383,7 +387,10 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
             host.remove();
             context.chat.splice(0, context.chat.length, ...previousChat);
         }
-    }, fixture);
+    }, {
+        ...fixture,
+        plainPreviewModuleUrl,
+    });
 
     return {
         fixture: {
@@ -393,6 +400,101 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
         },
         ...renderResult,
     };
+}
+
+export async function measureScrollFps(page) {
+    return await page.evaluate(async () => {
+        const browserGlobal = globalThis;
+        const browserDocument = browserGlobal.document;
+        const scroller = browserDocument.getElementById('chat') || browserDocument.scrollingElement;
+        if (!scroller) {
+            return {
+                available: false,
+                reason: 'scroll-container-unavailable',
+                scrollRange: 0,
+                movedPixels: 0,
+            };
+        }
+
+        const measuredScrollRange = Number(scroller.scrollHeight) - Number(scroller.clientHeight);
+        const scrollRange = Number.isFinite(measuredScrollRange) ? Math.max(0, measuredScrollRange) : 0;
+        if (scrollRange <= 0) {
+            return {
+                available: false,
+                reason: 'not-scrollable',
+                scrollRange,
+                movedPixels: 0,
+            };
+        }
+
+        const originalScrollTop = Number(scroller.scrollTop) || 0;
+        const startScrollTop = Math.min(scrollRange, Math.max(0, originalScrollTop));
+        const downwardRange = scrollRange - startScrollTop;
+        const upwardRange = startScrollTop;
+        let direction = downwardRange >= upwardRange ? 1 : -1;
+        const directionName = direction > 0 ? 'down' : 'up';
+        const frameTimes = [];
+        let movedPixels = 0;
+        let previous = browserGlobal.performance.now();
+        const start = previous;
+
+        return new Promise(resolve => {
+            function finish() {
+                const averageFrame = frameTimes.reduce((total, frame) => total + frame, 0) / Math.max(1, frameTimes.length);
+                const endScrollTop = Number(scroller.scrollTop) || 0;
+                const result = {
+                    available: movedPixels > 0,
+                    frames: frameTimes.length,
+                    averageFrame,
+                    estimatedFps: averageFrame ? 1000 / averageFrame : 0,
+                    scrollRange,
+                    direction: directionName,
+                    startScrollTop,
+                    endScrollTop,
+                    movedPixels,
+                };
+
+                scroller.scrollTop = originalScrollTop;
+                if (movedPixels <= 0) {
+                    result.reason = 'no-scroll-movement';
+                }
+
+                resolve(result);
+            }
+
+            function step(now) {
+                frameTimes.push(now - previous);
+                previous = now;
+
+                const before = Number(scroller.scrollTop) || 0;
+                let next = Math.min(scrollRange, Math.max(0, before + (direction * 24)));
+                if (next === before) {
+                    direction *= -1;
+                    next = Math.min(scrollRange, Math.max(0, before + (direction * 24)));
+                }
+                scroller.scrollTop = next;
+                const after = Number(scroller.scrollTop) || 0;
+                movedPixels += Math.abs(after - before);
+
+                if (now - start >= 1000) {
+                    finish();
+                    return;
+                }
+
+                browserGlobal.requestAnimationFrame(step);
+            }
+
+            browserGlobal.requestAnimationFrame(step);
+        });
+    });
+}
+
+async function settlePage(page, delayMs = 0) {
+    await page.evaluate(async (delay) => {
+        const browserGlobal = globalThis;
+        await new Promise(resolve => browserGlobal.setTimeout(resolve, delay));
+        await new Promise(resolve => browserGlobal.requestAnimationFrame(() => browserGlobal.requestAnimationFrame(resolve)));
+    }, delayMs);
 }
 
 async function captureInstrumentationSnapshot(page) {
@@ -433,45 +535,13 @@ async function measurePage(page) {
     });
     const instrumentationAtReady = await captureInstrumentationSnapshot(page);
 
-    const scrollFps = await page.evaluate(async () => {
-        const browserGlobal = globalThis;
-        const browserDocument = browserGlobal.document;
-        const scroller = browserDocument.getElementById('chat') || browserDocument.scrollingElement;
-        if (!scroller) {
-            return null;
-        }
-
-        const frameTimes = [];
-        let previous = browserGlobal.performance.now();
-        const start = previous;
-
-        return new Promise(resolve => {
-            function step(now) {
-                frameTimes.push(now - previous);
-                previous = now;
-                scroller.scrollTop += 24;
-
-                if (now - start >= 1000) {
-                    const averageFrame = frameTimes.reduce((total, frame) => total + frame, 0) / Math.max(1, frameTimes.length);
-                    resolve({
-                        frames: frameTimes.length,
-                        averageFrame,
-                        estimatedFps: averageFrame ? 1000 / averageFrame : 0,
-                    });
-                    return;
-                }
-
-                browserGlobal.requestAnimationFrame(step);
-            }
-
-            browserGlobal.requestAnimationFrame(step);
-        });
-    });
-
-    const chatRender = {
-        longChat: await measureLongChatRender(page),
-        streaming: await measureStreamingRender(page),
-    };
+    const streaming = await measureStreamingRender(page);
+    await settlePage(page);
+    const longChat = await measureLongChatRender(page);
+    await settlePage(page, LONG_CHAT_SCROLL_SETTLE_MS);
+    const scrollFps = await measureScrollFps(page);
+    await settlePage(page);
+    const chatRender = { streaming, longChat };
     const instrumentationAfterSynthetic = await captureInstrumentationSnapshot(page);
 
     return {
@@ -645,21 +715,21 @@ function serializeError(error) {
     };
 }
 
-async function measureProfile(browser, profile, { url, serviceWorkers, instrumentation }) {
+export async function measureProfile(browser, profile, { url, serviceWorkers, instrumentation }) {
     const context = await browser.newContext({
         ...profile.contextOptions,
         serviceWorkers,
     });
 
-    await context.addInitScript(installResourceTimingBuffer, resourceTimingBufferSize);
-
-    if (instrumentation) {
-        await context.addInitScript(installPerformanceInstrumentation);
-    }
-
-    const page = await context.newPage();
-
     try {
+        await context.addInitScript(installResourceTimingBuffer, resourceTimingBufferSize);
+
+        if (instrumentation) {
+            await context.addInitScript(installPerformanceInstrumentation);
+        }
+
+        const page = await context.newPage();
+
         const cold = await measureNavigation(page, () => page.goto(url, { waitUntil: 'networkidle' }));
         const warm = await measureNavigation(page, () => page.reload({ waitUntil: 'networkidle' }));
 

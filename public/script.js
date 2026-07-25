@@ -3565,25 +3565,7 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
-/**
- * Formats the message text into an HTML string using Markdown and other formatting.
- * @param {string} mes Message text
- * @param {string} ch_name Character name
- * @param {boolean} isSystem If the message was sent by the system
- * @param {boolean} isUser If the message was sent by the user
- * @param {number} messageId Message index in chat array
- * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
- * @param {boolean} [isReasoning] If the message is reasoning output
- * @returns {string} HTML string
- */
-export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
-    if (!mes) {
-        return '';
-    }
-
-    const originalMessageHtml = mes;
-    const oocBlocks = [];
-
+function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning = false) {
     const resolvedMessageId = messageId !== null && messageId !== undefined && messageId !== ''
         ? Number(messageId)
         : NaN;
@@ -3597,7 +3579,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         }
     }
 
-    mesForShowdownParse = mes;
+    const showdownSource = mes;
 
     // Force isSystem = false on comment messages so they get formatted properly
     if (ch_name === COMMENT_NAME_DEFAULT && isSystem && !isUser) {
@@ -3655,6 +3637,59 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
             depth: depth,
         });
     }
+
+    return { mes, isSystem, showdownSource };
+}
+
+function balanceStreamingMarkdown(text) {
+    let balancedText = text;
+    for (const char of ['*', '"', '```', '~~~']) {
+        if (isOdd(countOccurrences(balancedText, char))) {
+            const separator = char.length > 1 ? '\n' : '';
+            balancedText = balancedText.trimEnd() + separator + char;
+        }
+    }
+    return balancedText;
+}
+
+function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
+    /** @type {DOMPurify.Config} */
+    const config = {
+        RETURN_DOM: false,
+        RETURN_DOM_FRAGMENT: false,
+        RETURN_TRUSTED_TYPE: false,
+        MESSAGE_SANITIZE: true,
+        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
+        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
+        ...sanitizerOverrides,
+    };
+    mes = encodeStyleTags(mes);
+    mes = DOMPurify.sanitize(mes, config);
+    return decodeStyleTags(mes, { prefix: '.mes_text ' });
+}
+
+/**
+ * Formats the message text into an HTML string using Markdown and other formatting.
+ * @param {string} mes Message text
+ * @param {string} ch_name Character name
+ * @param {boolean} isSystem If the message was sent by the system
+ * @param {boolean} isUser If the message was sent by the user
+ * @param {number} messageId Message index in chat array
+ * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
+ * @param {boolean} [isReasoning] If the message is reasoning output
+ * @returns {string} HTML string
+ */
+export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
+    if (!mes) {
+        return '';
+    }
+
+    const originalMessageHtml = mes;
+    const oocBlocks = [];
+    const preparedMessage = prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning);
+    mes = preparedMessage.mes;
+    isSystem = preparedMessage.isSystem;
+    mesForShowdownParse = preparedMessage.showdownSource;
 
     if (power_user.auto_fix_generated_markdown) {
         mes = fixMarkdown(mes, true);
@@ -3742,24 +3777,10 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replace(new RegExp(`(^|\n)${escapeRegex(ch_name)}:`, 'g'), '$1');
     }
 
-    /** @type {DOMPurify.Config} */
-    const config = {
-        RETURN_DOM: false,
-        RETURN_DOM_FRAGMENT: false,
-        RETURN_TRUSTED_TYPE: false,
-        MESSAGE_SANITIZE: true,
-        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
-        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
-        ...sanitizerOverrides,
-    };
     mes = restoreOocBlocksForDisplay(mes, oocBlocks);
     // SillyBunny: card script detection - see #94.
     mes = markCardScriptHtml(mes, messageId, originalMessageHtml);
-    mes = encodeStyleTags(mes);
-    mes = DOMPurify.sanitize(mes, config);
-    mes = decodeStyleTags(mes, { prefix: '.mes_text ' });
-
-    return mes;
+    return sanitizeMessageHtml(mes, sanitizerOverrides);
 }
 
 function notifyCardScriptStripped(messageElement, messageId) {
@@ -4606,9 +4627,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     //for non-user messages
     if (!mes.is_user) {
         if (mes.force_avatar) {
-            avatarImg = mes.force_avatar;
-            mobileAvatarImg = mes.force_avatar;
-            originalAvatarImg = mes.force_avatar;
+            ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
         } else if (this_chid === undefined) {
             avatarImg = system_avatar;
             mobileAvatarImg = system_avatar;
@@ -4628,9 +4647,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         //characterName = mes.is_system || mes.force_avatar ? mes.name : name2;
     } else if (mes.is_user && mes.force_avatar) {
         // Special case for persona images.
-        avatarImg = mes.force_avatar;
-        mobileAvatarImg = mes.force_avatar;
-        originalAvatarImg = mes.force_avatar;
+        ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
     }
     const momentDate = timestampToMoment(mes.send_date);
     const timestamp = momentDate.isValid() ? momentDate.format('LL LT') : '';
@@ -4657,9 +4674,11 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
 
     if (messageElement[0] instanceof HTMLElement) {
         const avatarCssUrl = `url("${String(viewportAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const thumbnailAvatarCssUrl = `url("${String(viewportThumbnailSrc).replace(/(["\\])/g, '\\$1')}")`;
         const originalAvatarCssUrl = `url("${String(originalAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         messageElement[0].style.setProperty('--sb-message-avatar', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement[0].style.setProperty('--mes-avatar-thumb-url', thumbnailAvatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
@@ -5972,14 +5991,6 @@ class StreamingProcessor {
             stoppingStrings: this.stoppingStrings,
         });
 
-        const charsToBalance = ['*', '"', '```', '~~~'];
-        for (const char of charsToBalance) {
-            if (!isFinal && isOdd(countOccurrences(processedText, char))) {
-                const separator = char.length > 1 ? '\n' : '';
-                processedText = processedText.trimEnd() + separator + char;
-            }
-        }
-
         if (isImpersonate) {
             this.sendTextarea.value = processedText;
             this.sendTextarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -6031,10 +6042,12 @@ class StreamingProcessor {
                 }
             }
 
-            const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPlatform(globalThis.navigator);
+            const isAndroidStreamingPreview = isAndroidStreamingPlatform(globalThis.navigator);
+            const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPreview;
             const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({
                 isFinal,
                 isReducedDomWork: shouldReduceIntermediateStreamingWork,
+                isAndroidPlatform: isAndroidStreamingPreview,
                 isImpersonate,
                 useBasicMarkdown: shouldUseAndroidBasicMarkdown,
             });
@@ -6043,12 +6056,24 @@ class StreamingProcessor {
                 && !isImpersonate
                 && shouldUseAndroidBasicMarkdown;
 
+            const previewText = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                ? prepareMessageDisplayText(
+                    processedText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    false,
+                ).mes
+                : processedText;
+            const markdownText = isFinal ? processedText : balanceStreamingMarkdown(processedText);
+
             const formattedText = shouldUsePlainTextPreview
-                ? formatPlainTextStreamingPreview(processedText)
+                ? formatPlainTextStreamingPreview(previewText)
                 : shouldUseBasicMarkdown
-                    ? formatBasicMarkdownStreamingPreview(processedText, { converter })
+                    ? formatBasicMarkdownStreamingPreview(balanceStreamingMarkdown(previewText), { converter, sanitizeHtml: sanitizeMessageHtml })
                     : messageFormatting(
-                        processedText,
+                        markdownText,
                         chat[messageId].name,
                         chat[messageId].is_system,
                         chat[messageId].is_user,
@@ -10583,10 +10608,23 @@ function getFullAvatarUrl(type, file, t = false) {
     return `${basePath}${encodeURIComponent(file)}${t ? `?t=${Date.now()}` : ''}`;
 }
 
+function getAvatarRenderSources(rawSrc) {
+    const avatar = parseAvatarSource(rawSrc);
+    if (avatar?.type && avatar.file) {
+        return {
+            desktop: getThumbnailUrl(avatar.type, avatar.file),
+            mobile: getMobileThumbnailUrl(avatar.type, avatar.file),
+            original: avatar.original,
+        };
+    }
+
+    return { desktop: rawSrc, mobile: rawSrc, original: rawSrc };
+}
+
 /**
  * Parses an avatar URL from either the thumbnail endpoint or the full avatar path.
  * @param {string} rawSrc Avatar image source.
- * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string } | null}
+ * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string, preset?: string | null } | null}
  */
 // SillyBunny: exported so sillybunny-tabs.js reuses this parser instead of keeping a divergent copy
 // that skipped the pathname decode and re-encoded file names into "%2520".
@@ -10601,6 +10639,9 @@ export function parseAvatarSource(rawSrc) {
 
     try {
         const parsed = new URL(rawSrc, window.location.origin);
+        if (parsed.origin !== window.location.origin) {
+            return { type: null, file: rawSrc, original: rawSrc };
+        }
         const pathName = decodeURIComponent(parsed.pathname);
 
         if (pathName === '/thumbnail') {
@@ -17288,7 +17329,8 @@ jQuery(async function () {
     $(document).on('click', '.mes .avatar', function () {
         const messageElement = $(this).closest('.mes');
         const avatarImage = $(this).children('img');
-        const fullAvatarURL = avatarImage.attr('data-original-src') || avatarImage.attr('src');
+        const originalAvatarURL = avatarImage.attr('data-original-src');
+        const fullAvatarURL = originalAvatarURL || avatarImage.attr('src');
         const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
@@ -17326,9 +17368,9 @@ jQuery(async function () {
             const zoomedAvatarImgElement = $(`.zoomed_avatar[forChar="${charname}"] img`);
             if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
                 //handle user and system avatars
-                const isValidPersona = decodeURIComponent(targetAvatarImg) in power_user.personas;
+                const isValidPersona = targetAvatarImg in power_user.personas;
                 if (isValidPersona) {
-                    const personaSrc = getUserAvatar(targetAvatarImg);
+                    const personaSrc = originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg);
                     zoomedAvatarImgElement.attr('src', personaSrc);
                     zoomedAvatarImgElement.attr('data-izoomify-url', personaSrc);
                 } else {

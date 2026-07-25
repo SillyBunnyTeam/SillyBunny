@@ -43,8 +43,10 @@ describe('Android avatar resource budget', () => {
             'document.addEventListener(\'click\', function (e) {',
         );
 
-        expect(zoomClickHandler).toContain('avatarImage.attr(\'data-original-src\') || avatarImage.attr(\'src\')');
+        expect(zoomClickHandler).toContain('const originalAvatarURL = avatarImage.attr(\'data-original-src\');');
+        expect(zoomClickHandler).toContain('const fullAvatarURL = originalAvatarURL || avatarImage.attr(\'src\');');
         expect(zoomClickHandler).toContain('avatarImage.attr(\'data-thumbnail-src\') || avatarImage.attr(\'src\') || fullAvatarURL');
+        expect(zoomClickHandler).toContain('originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg)');
     });
 
     test('avatar refresh cache busts both desktop and mobile thumbnail sources', () => {

@@ -921,6 +921,7 @@ const sbState = {
         observer: null,
         debounceTimer: 0,
         retryTimer: 0,
+        sourceCache: new WeakMap(),
     },
     bottomChatBar: {
         chatSelect: null,
@@ -3851,18 +3852,20 @@ function ensureAvatarPath(path) {
 }
 
 function getChatAvatarSources(rawSrc) {
-    // Reuses script.js's parser so the thumbnail URL is built from a file name decoded exactly once.
-    const avatarInfo = parseAvatarSource(stripAvatarOrigin(rawSrc));
+    const source = ensureAvatarPath(stripAvatarOrigin(rawSrc));
+    const avatarInfo = parseAvatarSource(source);
     if (!avatarInfo) {
-        return { thumb: '', original: '' };
+        return { display: '', thumb: '', original: '' };
     }
 
     const { type, file, original } = avatarInfo;
+    const isThumbnail = Object.prototype.hasOwnProperty.call(avatarInfo, 'preset');
     const thumb = type === 'avatar' || type === 'persona'
-        ? getThumbnailUrl(type, file)
+        ? (isThumbnail ? source : getThumbnailUrl(type, file))
         : ensureAvatarPath(file);
 
     return {
+        display: source || thumb,
         thumb: stripAvatarOrigin(thumb),
         original: stripAvatarOrigin(ensureAvatarPath(original)),
     };
@@ -3888,20 +3891,32 @@ function updateChatAvatarVariables(root = document) {
             continue;
         }
 
-        const srcCandidate = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
-        const { thumb, original } = getChatAvatarSources(srcCandidate);
-
-        if (!thumb && !original) {
+        const src = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
+        const thumbnailSrc = avatarImg.getAttribute('data-thumbnail-src');
+        const originalSrc = avatarImg.getAttribute('data-original-src');
+        const cachedSources = sbState.chatAvatars.sourceCache.get(message);
+        if (cachedSources?.src === src
+            && cachedSources.thumbnailSrc === thumbnailSrc
+            && cachedSources.originalSrc === originalSrc) {
             continue;
         }
+        sbState.chatAvatars.sourceCache.set(message, { src, thumbnailSrc, originalSrc });
 
-        const thumbUrl = thumb || original;
-        const originalUrl = original || thumbUrl;
-        const displayUrl = originalUrl || thumbUrl;
+        const srcSources = getChatAvatarSources(src);
+        const thumbnailSources = getChatAvatarSources(thumbnailSrc);
+        const originalSources = getChatAvatarSources(originalSrc);
+        const displayUrl = srcSources.display || thumbnailSources.display || originalSources.display;
+        const thumbUrl = thumbnailSources.display || srcSources.thumb || displayUrl;
+        const originalUrl = originalSources.display || srcSources.original || thumbnailSources.original || displayUrl;
+
+        if (!displayUrl && !thumbUrl && !originalUrl) {
+            continue;
+        }
 
         message.dataset.avatarThumb = thumbUrl;
         message.dataset.avatarOriginal = originalUrl;
         message.dataset.avatar = displayUrl;
+        message.style.setProperty('--sb-message-avatar', formatAvatarCssUrl(displayUrl));
         message.style.setProperty('--mes-avatar-thumb-url', formatAvatarCssUrl(thumbUrl));
         message.style.setProperty('--mes-avatar-original-url', formatAvatarCssUrl(originalUrl));
         message.style.setProperty('--mes-avatar-url', formatAvatarCssUrl(displayUrl));
@@ -3943,7 +3958,7 @@ function initChatAvatarVariables() {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['src', 'data-src'],
+        attributeFilter: ['src', 'data-src', 'data-thumbnail-src', 'data-original-src'],
     });
 
     sbState.chatAvatars.observer = observer;

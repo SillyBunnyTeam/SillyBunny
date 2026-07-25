@@ -9,6 +9,8 @@ import {
     LONG_CHAT_RENDER_MESSAGE_COUNT,
     LONG_CHAT_RENDER_VISIBLE_COUNT,
     measureLongChatRender,
+    measureProfile,
+    measureScrollFps,
     measureStreamingRender,
     parseProfileNames,
     STREAM_RENDER_CODE_REPEAT,
@@ -17,6 +19,37 @@ import {
     summarizeRequestByteFields,
     summarizeRequests,
 } from '../scripts/measure-frontend-performance.js';
+
+function createScrollMeasurementPage(scroller) {
+    return {
+        evaluate: async (callback) => {
+            const previousDocument = globalThis.document;
+            const previousPerformance = globalThis.performance;
+            const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+            let frameTime = 0;
+
+            try {
+                globalThis.document = {
+                    getElementById: () => scroller,
+                    scrollingElement: null,
+                };
+                globalThis.performance = {
+                    now: () => 0,
+                };
+                globalThis.requestAnimationFrame = callbackRef => {
+                    frameTime += 500;
+                    callbackRef(frameTime);
+                };
+
+                return await callback();
+            } finally {
+                globalThis.document = previousDocument;
+                globalThis.performance = previousPerformance;
+                globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+            }
+        },
+    };
+}
 
 describe('frontend performance measurement helpers', () => {
     test('records the long-chat render fixture size used for baseline measurements', () => {
@@ -231,6 +264,7 @@ describe('frontend performance measurement helpers', () => {
     });
 
     test('measures synthetic streaming render work through the browser page contract', async () => {
+        const plainPreviewModuleUrl = `data:text/javascript,${encodeURIComponent('export const formatPlainTextStreamingPreview = text => text;')}`;
         const page = {
             evaluate: async (callback, fixture) => {
                 const previousGlobal = globalThis.SillyTavern;
@@ -255,6 +289,7 @@ describe('frontend performance measurement helpers', () => {
                     chat: [],
                     messageFormatting: text => `<p>${text}</p><pre><code>sample</code></pre>`,
                 };
+                let now = 100;
 
                 try {
                     globalThis.document = {
@@ -266,15 +301,15 @@ describe('frontend performance measurement helpers', () => {
                         getContext: () => context,
                     };
                     globalThis.performance = {
-                        now: (() => {
-                            let now = 100;
-                            return () => {
-                                now += 5;
-                                return now;
-                            };
-                        })(),
+                        now: () => {
+                            now += 5;
+                            return now;
+                        },
                     };
-                    globalThis.requestAnimationFrame = callbackRef => callbackRef();
+                    globalThis.requestAnimationFrame = callbackRef => {
+                        now += 100;
+                        callbackRef(now);
+                    };
 
                     return await callback(fixture);
                 } finally {
@@ -290,10 +325,12 @@ describe('frontend performance measurement helpers', () => {
             stepCount: 2,
             fillerRepeat: 1,
             codeRepeat: 1,
-        }));
+        }), { plainPreviewModuleUrl });
 
         expect(result).toEqual(expect.objectContaining({
             available: true,
+            totalMs: 65,
+            averageStepMs: 32.5,
             stepCount: 2,
             fillerRepeat: 1,
             codeRepeat: 1,
@@ -303,10 +340,131 @@ describe('frontend performance measurement helpers', () => {
         expect(result.formatTotalMs).toBeGreaterThan(0);
         expect(result.writeTotalMs).toBeGreaterThan(0);
         expect(result.finalHtmlBytes).toBeGreaterThan(0);
+        expect(result.plainPreview).toEqual(expect.objectContaining({
+            available: true,
+            totalMs: 65,
+            averageStepMs: 32.5,
+        }));
         expect(result.fixture).toEqual({
             stepCount: 2,
             fillerRepeat: 1,
             codeRepeat: 1,
         });
+    });
+
+    test('measures scroll FPS upward from the bottom and records actual movement', async () => {
+        let scrollTop = 100;
+        const scroller = {
+            scrollHeight: 200,
+            clientHeight: 100,
+            get scrollTop() {
+                return scrollTop;
+            },
+            set scrollTop(value) {
+                scrollTop = Math.min(100, Math.max(0, value));
+            },
+        };
+
+        const result = await measureScrollFps(createScrollMeasurementPage(scroller));
+
+        expect(result).toEqual(expect.objectContaining({
+            available: true,
+            direction: 'up',
+            scrollRange: 100,
+            startScrollTop: 100,
+            endScrollTop: 52,
+            movedPixels: 48,
+        }));
+        expect(scrollTop).toBe(100);
+    });
+
+    test('reports scroll FPS unavailable without a usable scroll range or movement', async () => {
+        const notScrollable = await measureScrollFps(createScrollMeasurementPage({
+            scrollHeight: 100,
+            clientHeight: 100,
+            scrollTop: 0,
+        }));
+        const lockedScroller = {
+            scrollHeight: 200,
+            clientHeight: 100,
+            get scrollTop() {
+                return 0;
+            },
+            set scrollTop(value) {
+                void value;
+            },
+        };
+        const noMovement = await measureScrollFps(createScrollMeasurementPage(lockedScroller));
+
+        expect(notScrollable).toEqual({
+            available: false,
+            reason: 'not-scrollable',
+            scrollRange: 0,
+            movedPixels: 0,
+        });
+        expect(noMovement).toEqual(expect.objectContaining({
+            available: false,
+            reason: 'no-scroll-movement',
+            scrollRange: 100,
+            movedPixels: 0,
+        }));
+    });
+
+    test('closes the browser context when init-script setup fails', async () => {
+        const profile = {
+            name: 'test',
+            label: 'Test',
+            contextOptions: {},
+        };
+        let closeCount = 0;
+        const context = {
+            addInitScript: async () => {
+                throw new Error('init failed');
+            },
+            newPage: async () => {
+                throw new Error('newPage should not be called');
+            },
+            close: async () => {
+                closeCount++;
+            },
+        };
+        const browser = {
+            newContext: async () => context,
+        };
+
+        await expect(measureProfile(browser, profile, {
+            url: 'http://example.test',
+            serviceWorkers: 'block',
+            instrumentation: false,
+        })).rejects.toThrow('init failed');
+        expect(closeCount).toBe(1);
+    });
+
+    test('closes the browser context when page creation fails', async () => {
+        const profile = {
+            name: 'test',
+            label: 'Test',
+            contextOptions: {},
+        };
+        let closeCount = 0;
+        const context = {
+            addInitScript: async () => undefined,
+            newPage: async () => {
+                throw new Error('page failed');
+            },
+            close: async () => {
+                closeCount++;
+            },
+        };
+        const browser = {
+            newContext: async () => context,
+        };
+
+        await expect(measureProfile(browser, profile, {
+            url: 'http://example.test',
+            serviceWorkers: 'block',
+            instrumentation: false,
+        })).rejects.toThrow('page failed');
+        expect(closeCount).toBe(1);
     });
 });
