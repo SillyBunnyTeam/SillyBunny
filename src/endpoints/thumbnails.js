@@ -118,6 +118,42 @@ function getOriginalFolder(directories, type) {
 }
 
 /**
+ * Resolves a requested file name to the name that actually exists in the original images folder.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {ThumbnailType} type Thumbnail type
+ * @param {string} file Requested file name
+ * @returns {string} File name to use for thumbnail lookups
+ */
+// SillyBunny: diverges from upstream. Clients can send a `file` that was percent-encoded twice
+// ("Mara%2520Rodriguez.png"); Express decodes it once, leaving a literal "%20" that never matches
+// the file on disk. The name as sent always wins, so real '%' characters keep working.
+function resolveOriginalFileName(directories, type, file) {
+    if (!file.includes('%')) {
+        return file;
+    }
+
+    const originalFolder = getOriginalFolder(directories, type);
+    if (originalFolder === undefined || fs.existsSync(path.join(originalFolder, file))) {
+        return file;
+    }
+
+    let decodedFile;
+    try {
+        decodedFile = decodeURIComponent(file);
+    } catch {
+        // A '%' that is not a valid escape sequence is a legal file name character.
+        return file;
+    }
+
+    // Re-run the sanitizer so a decoded name can never escape the folder.
+    if (!decodedFile || decodedFile === file || decodedFile !== sanitize(decodedFile)) {
+        return file;
+    }
+
+    return fs.existsSync(path.join(originalFolder, decodedFile)) ? decodedFile : file;
+}
+
+/**
  * Removes the generated thumbnail from the disk.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {ThumbnailType} type Type of the thumbnail
@@ -186,6 +222,8 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
     const thumbnailFolder = getThumbnailFolder(directories, type, preset);
     const originalFolder = getOriginalFolder(directories, type);
     if (thumbnailFolder === undefined || originalFolder === undefined) throw new Error('Invalid thumbnail type');
+    // SillyBunny: tolerate a double percent-encoded name (see resolveOriginalFileName).
+    file = resolveOriginalFileName(directories, type, file);
     const pathToCachedFile = path.join(thumbnailFolder, file);
 
     try {
@@ -335,8 +373,11 @@ publicRouter.get('/', async function (request, response) {
             return response.sendStatus(400);
         }
 
-        const file = sanitize(rawFile);
-        if (file !== rawFile) return response.sendStatus(403);
+        const sanitizedFile = sanitize(rawFile);
+        if (sanitizedFile !== rawFile) return response.sendStatus(403);
+
+        // SillyBunny: tolerate a double percent-encoded `file` param (see resolveOriginalFileName).
+        const file = resolveOriginalFileName(request.user.directories, type, sanitizedFile);
 
         const requestedPreset = rawPreset === 'mobile' ? 'mobile' : 'desktop';
 

@@ -1256,8 +1256,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: none;
     }
 
-    :root[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
-    :root[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
         display: inline-flex;
     }
 
@@ -1288,6 +1288,60 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 0 2px;
     }
 
+    /* Icons only top bar: phones have no room for both the rail and the centre brand, so drop
+       the label here and hand its column to the rail. Desktop keeps the label. */
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-brand {
+        display: none;
+    }
+
+    /* One spacing rhythm for the whole bar: the clusters and the groups both sit at the 3-4px
+       group gap, and the grid seam would otherwise add a third width. Identical square buttons a
+       few px apart at three different distances is what reads as awkward, so the seam keys off
+       the group gap too. */
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
+        grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+        gap: var(--sb-topbar-group-gap);
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
+        min-width: 0;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
+        justify-self: stretch;
+        min-width: 0;
+    }
+
+    /* One target size for the whole bar. The page icons and Quick Access slots used to sit at the
+       26px chatbar size next to 40px anchors, which made them noticeably harder to hit
+       (Geechan review, #685). Home needs naming explicitly: its id-level min-width in
+       sillybunny-tabs.css outranks a class selector. */
+    :root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only,
+    :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
+        min-width: var(--sb-mobile-toggle-size);
+        width: var(--sb-mobile-toggle-size);
+        height: var(--sb-mobile-toggle-size);
+        min-height: var(--sb-mobile-toggle-size);
+    }
+
+    /* Visibility and seam handling live in sillybunny-tabs.css; the phone bar only shortens
+       the rule to match its smaller squares. */
+    .sb-topbar-cluster-divider {
+        height: calc(var(--sb-mobile-toggle-size) * 0.5);
+    }
+
+    /* The Home|Characters boundary keeps its rule on phones in every mode, so the bar reads the
+       same whether or not the icons-only option is on. */
+    #sb-topbar-divider-home {
+        display: inline-block;
+    }
+
+    /* The strip's characters-pages boundary; equal specificity to the desktop hide in
+       sillybunny-tabs.css, so this sheet's later load order re-enables it on phones. */
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
+        display: inline-block;
+    }
+
     .sb-universal-search {
         width: 100%;
     }
@@ -1312,6 +1366,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #sb-left-shell-toggle,
     #sb-right-shell-toggle,
     #sb-character-toggle,
+    .sb-topbar-page-button,
     #sb-chatbar-visibility-toggle {
         min-width: var(--sb-mobile-toggle-size);
         width: var(--sb-mobile-toggle-size);
@@ -1327,6 +1382,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #sb-left-shell-toggle span,
     #sb-right-shell-toggle span,
     #sb-character-toggle span,
+    .sb-topbar-page-button span,
     #sb-chatbar-visibility-toggle span {
         display: none;
     }
@@ -1337,6 +1393,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #sb-left-shell-toggle::after,
     #sb-right-shell-toggle::after,
     #sb-character-toggle::after,
+    .sb-topbar-page-button::after,
     #sb-chatbar-visibility-toggle::after {
         left: var(--sb-proxy-underline-inset);
         right: var(--sb-proxy-underline-inset);
@@ -1349,6 +1406,7 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #sb-left-shell-toggle i,
     #sb-right-shell-toggle i,
     #sb-character-toggle i,
+    .sb-topbar-page-button i,
     #sb-chatbar-visibility-toggle i {
         font-size: var(--sb-topbar-compact-icon-size);
     }
