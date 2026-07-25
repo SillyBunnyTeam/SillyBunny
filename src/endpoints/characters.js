@@ -854,6 +854,7 @@ function convertWorldInfoToCharacterBook(name, entries) {
                 match_creator_notes: entry.matchCreatorNotes ?? false,
                 triggers: entry.triggers ?? [],
                 ignore_budget: entry.ignoreBudget ?? false,
+                agent_blacklisted: entry.agentBlacklisted ?? false,
             },
         };
 

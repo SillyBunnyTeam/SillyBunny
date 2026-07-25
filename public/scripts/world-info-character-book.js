@@ -150,3 +150,71 @@ export function serializeCharacterBookKeys(primaryKeys = [], secondaryKeys = [])
         useRegex,
     };
 }
+
+/**
+ * Serializes a native World Info entry into a CharacterBook-format record.
+ *
+ * Mirrors the per-entry output of the server-side character book converter
+ * (src/endpoints/characters.js, convertWorldInfoToCharacterBook) so records
+ * appended to a book's originalData are complete rather than lossy. Legacy
+ * positions (e.g. the string '0') are normalized before choosing the
+ * before_char/after_char label; anything that does not normalize to
+ * `positions.before` serializes as 'after_char', matching server semantics.
+ *
+ * @param {object} entry Native World Info entry
+ * @param {{ before: number, after: number, ANTop: number, ANBottom: number, atDepth: number, EMTop: number, EMBottom: number, outlet: number }} positions World Info position enum
+ * @returns {object} CharacterBook-format entry record
+ */
+export function serializeWorldInfoEntry(entry, positions) {
+    const { keys, secondaryKeys, useRegex } = serializeCharacterBookKeys(entry.key ?? [], entry.keysecondary ?? []);
+    const normalizedPosition = normalizeWorldInfoPosition(entry.position, positions);
+    return {
+        id: entry.uid,
+        keys,
+        secondary_keys: secondaryKeys,
+        comment: entry.comment ?? '',
+        content: entry.content ?? '',
+        constant: entry.constant ?? false,
+        selective: entry.selective ?? false,
+        insertion_order: entry.order ?? 100,
+        enabled: !entry.disable,
+        position: normalizedPosition === positions.before ? 'before_char' : 'after_char',
+        use_regex: useRegex,
+        case_sensitive: entry.caseSensitive ?? null,
+        extensions: {
+            ...entry.extensions,
+            position: normalizedPosition ?? entry.position,
+            exclude_recursion: entry.excludeRecursion ?? false,
+            display_index: entry.displayIndex,
+            probability: entry.probability ?? null,
+            useProbability: entry.useProbability ?? false,
+            depth: entry.depth ?? 4,
+            selectiveLogic: entry.selectiveLogic ?? 0,
+            outlet_name: entry.outletName ?? '',
+            group: entry.group ?? '',
+            group_override: entry.groupOverride ?? false,
+            group_weight: entry.groupWeight ?? null,
+            prevent_recursion: entry.preventRecursion ?? false,
+            delay_until_recursion: entry.delayUntilRecursion ?? false,
+            scan_depth: entry.scanDepth ?? null,
+            match_whole_words: entry.matchWholeWords ?? null,
+            use_group_scoring: entry.useGroupScoring ?? false,
+            case_sensitive: entry.caseSensitive ?? null,
+            automation_id: entry.automationId ?? '',
+            role: entry.role ?? 0,
+            vectorized: entry.vectorized ?? false,
+            sticky: entry.sticky ?? null,
+            cooldown: entry.cooldown ?? null,
+            delay: entry.delay ?? null,
+            match_persona_description: entry.matchPersonaDescription ?? false,
+            match_character_description: entry.matchCharacterDescription ?? false,
+            match_character_personality: entry.matchCharacterPersonality ?? false,
+            match_character_depth_prompt: entry.matchCharacterDepthPrompt ?? false,
+            match_scenario: entry.matchScenario ?? false,
+            match_creator_notes: entry.matchCreatorNotes ?? false,
+            triggers: entry.triggers ?? [],
+            ignore_budget: entry.ignoreBudget ?? false,
+            agent_blacklisted: entry.agentBlacklisted ?? false,
+        },
+    };
+}

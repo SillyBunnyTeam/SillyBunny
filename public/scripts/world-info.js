@@ -23,9 +23,9 @@ import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
-import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys } from './world-info-character-book.js';
+import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
 import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
-import { getWorldInfoEntryKey, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
+import { getTimedEffectWindow, getWorldInfoEntryKey, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -625,10 +625,11 @@ class WorldInfoTimedEffects {
      * @returns {WITimedEffect} Timed effect for the entry
      */
     #getEntryTimedEffect(type, entry, isProtected) {
+        const { start, end } = getTimedEffectWindow(this.#chat.length, Number(entry[type]), isProtected);
         return {
             hash: this.#getEntryHash(entry),
-            start: this.#chat.length,
-            end: this.#chat.length + Number(entry[type]) + (isProtected ? 0 : 1),
+            start,
+            end,
             protected: !!isProtected,
         };
     }
@@ -4367,9 +4368,15 @@ export function duplicateWorldInfoEntry(data, uid) {
     const entry = createWorldInfoEntry(data.name, data);
     Object.assign(entry, originalData);
     const targetOriginalIndex = data.originalDataUidMap?.[entry.uid];
-    if (sourceOriginalEntry && Number.isInteger(targetOriginalIndex)) {
-        sourceOriginalEntry.id = entry.uid;
-        data.originalData.entries[targetOriginalIndex] = sourceOriginalEntry;
+    if (Number.isInteger(targetOriginalIndex)) {
+        if (sourceOriginalEntry) {
+            sourceOriginalEntry.id = entry.uid;
+            data.originalData.entries[targetOriginalIndex] = sourceOriginalEntry;
+        } else {
+            // No source record to carry over: replace the blank-template record
+            // appended by createWorldInfoEntry with the fully copied entry.
+            data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position));
+        }
     }
 
     return entry;
@@ -4500,25 +4507,9 @@ function appendWIOriginalDataEntry(data, entry) {
 
     data.originalDataUidMap ??= {};
     data.originalDataUidMap[entry.uid] = data.originalData.entries.length;
-    data.originalData.entries.push({
-        id: entry.uid,
-        keys: structuredClone(entry.key ?? []),
-        secondary_keys: structuredClone(entry.keysecondary ?? []),
-        comment: entry.comment ?? '',
-        content: entry.content ?? '',
-        constant: entry.constant ?? false,
-        selective: entry.selective ?? false,
-        insertion_order: entry.order ?? 100,
-        enabled: !entry.disable,
-        position: entry.position === world_info_position.before ? 'before_char' : 'after_char',
-        use_regex: false,
-        extensions: {
-            ...entry.extensions,
-            position: entry.position,
-            probability: entry.probability ?? 100,
-            useProbability: entry.useProbability ?? true,
-        },
-    });
+    // Clone: the serialized record aliases live entry objects (extensions, triggers)
+    // and must not track later editor mutations.
+    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position)));
 }
 
 async function _save(name, data) {
@@ -5323,8 +5314,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             };
 
             // Already processed, considered and then skipped entries should still be skipped
-            const entryKey = getWorldInfoEntryKey(entry);
-            if (failedProbabilityChecks.has(entryKey) || allActivatedEntries.has(entryKey)) {
+            if (failedProbabilityChecks.has(entry) || allActivatedEntries.has(getWorldInfoEntryKey(entry))) {
                 continue;
             }
 
@@ -5519,18 +5509,19 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
         console.debug(`[WI] Search done. Found ${activatedNow.size} possible entries.`);
 
         // Sort the entries for the probability and the budget limit checks
-        const entryOrder = new Map(sortedEntries.map((entry, index) => [getWorldInfoEntryKey(entry), index]));
-        const newEntries = [...activatedNow]
-            .sort((a, b) => {
-                const isASticky = timedEffects.isEffectActive('sticky', a) ? 1 : 0;
-                const isBSticky = timedEffects.isEffectActive('sticky', b) ? 1 : 0;
-                const isAConstant = a.constant ? 1 : 0;
-                const isBConstant = b.constant ? 1 : 0;
-                return isBSticky - isASticky
-                    || isBConstant - isAConstant
-                    || (entryOrder.get(getWorldInfoEntryKey(a)) ?? Number.MAX_SAFE_INTEGER) - (entryOrder.get(getWorldInfoEntryKey(b)) ?? Number.MAX_SAFE_INTEGER);
-            });
-
+        let newEntries;
+        if (activatedNow.size > 1) {
+            const sortedEntriesIndex = new Map(sortedEntries.map((entry, index) => [entry, index]));
+            newEntries = [...activatedNow]
+                .sort((a, b) => {
+                    const isASticky = timedEffects.isEffectActive('sticky', a) ? 1 : 0;
+                    const isBSticky = timedEffects.isEffectActive('sticky', b) ? 1 : 0;
+                    return isBSticky - isASticky
+                        || (sortedEntriesIndex.get(a) ?? -1) - (sortedEntriesIndex.get(b) ?? -1);
+                });
+        } else {
+            newEntries = [...activatedNow];
+        }
 
         let acceptedContent = '';
         const successfulNewEntries = [];
@@ -5559,7 +5550,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                     return true;
                 }
 
-                failedProbabilityChecks.add(getWorldInfoEntryKey(entry));
+                failedProbabilityChecks.add(entry);
                 return false;
             };
 

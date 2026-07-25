@@ -220,26 +220,22 @@ router.post('/import', (request, response) => {
         const filename = getExistingWorldInfoFilename(request.user.directories, requestedName)
             ?? getWorldInfoFilename(requestedName);
         if (!filename) {
-            throw new Error('World file must have a name');
-        }
-        const fileContents = request.body.convertedData ?? fs.readFileSync(pathToUpload, 'utf8');
-        const worldContent = JSON.parse(fileContents);
-        if (!isValidWorldInfoData(worldContent)) {
-            throw new Error('File must contain a world info entries list');
-        }
-
-        const pathToNewFile = path.join(request.user.directories.worlds, filename);
-        const worldName = path.parse(pathToNewFile).name;
-
-        if (!worldName) {
             return response.status(400).send('World file must have a name');
         }
 
+        const fileContents = request.body.convertedData ?? fs.readFileSync(pathToUpload, 'utf8');
+        const worldContent = tryParse(fileContents);
+        if (!isValidWorldInfoData(worldContent)) {
+            console.warn(`World Info import rejected: '${requestedName}' is not a valid world info file`);
+            return response.status(400).send('Is not a valid world info file');
+        }
+
+        const pathToNewFile = path.join(request.user.directories.worlds, filename);
         writeWorldInfoFile(pathToNewFile, fileContents);
-        return response.send({ name: worldName });
+        return response.send({ name: path.parse(pathToNewFile).name });
     } catch (err) {
-        console.warn('World Info import failed:', err);
-        return response.status(400).send('Is not a valid world info file');
+        console.error('World Info import failed:', err);
+        return response.sendStatus(500);
     } finally {
         fs.rmSync(pathToUpload, { force: true });
     }
