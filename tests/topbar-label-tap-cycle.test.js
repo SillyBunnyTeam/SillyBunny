@@ -226,10 +226,34 @@ describe('icons only top bar', () => {
         // four-icon right cluster would starve the scrolling left strip.
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('if (iconsOnly && mobile) {');
-        expect(orderSource).toContain('left.push(characters.railId);');
-        expect(orderSource).toContain('right.push(characters.railId);');
+        expect(orderSource).toContain('left.push(\'sb-topbar-divider-characters\', characters.railId);');
+        expect(orderSource).toContain('right.push(\'sb-topbar-divider-characters\', characters.railId);');
         expect(getFunctionSource('syncTopbarGroupOrder')).toContain('mobile: isMobileViewport(),');
         expect(normalizedTabsSource).toContain('window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener(\'change\'');
+    });
+
+    test('marks the cluster boundaries once the brand label is out of sight', () => {
+        // With the centre label hidden the seams alone are a few px of gap between identical
+        // squares, so a 1px theme-derived rule marks where one cluster ends and the next begins.
+        expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
+        const orderSource = getFunctionSource('getTopbarGroupOrder');
+        expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
+
+        const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
+        expect(baseRule).not.toBeNull();
+        expect(baseRule[0]).toContain('display: none;');
+        expect(baseRule[0]).toContain('width: 1px;');
+        expect(baseRule[0]).toContain('background: var(--sb-shell-border);');
+
+        // Desktop shows the Workspace|Customize rule only while the label is squeezed out; the
+        // characters divider stays desktop-hidden because that rail sits beside its own anchor.
+        expect(cssSource).toContain(':root[data-sb-topbar-brand-cramped=\'true\'] #sb-topbar-divider-customize {');
+        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\] #sb-topbar-divider-characters/);
+
+        // Phones show both; the divider takes over the seam so it sits centred in it.
+        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{/);
+        expect(cssSource).toContain('#sb-topbar-divider-customize + .sb-topbar-cluster-lead');
+        expect(mobileCss).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
     });
 
     test('separates the clusters with a wider seam than the icons inside one', () => {
@@ -304,7 +328,7 @@ describe('icons only top bar', () => {
         const navSource = getFunctionSource('createNavigationSettingsGroup');
         expect(navSource).toContain('id: `sb-${modePrefix}-topbar-icons-only-input`');
         expect(navSource).toContain('label: \'Icons only top bar\',');
-        expect(navSource).toContain('onChange: input => setTopbarIconsOnly(input.checked),');
+        expect(navSource).toContain('onChange: input => setTopbarIconsOnly(modePrefix, input.checked),');
         expect(navSource).toContain('topbarIconsOnlyChoice,');
 
         expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
@@ -313,12 +337,35 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
     });
 
-    test('mirrors the one global setting across both navigation groups', () => {
-        // Same shape as Compact Mode: one storage key, two checkboxes, one sync loop.
+    test('stores the toggle per device and applies only the active viewport\'s setting', () => {
+        // The Desktop Navigation copy governs desktop viewports and the Mobile Navigation copy
+        // governs phones, so turning the dense bar on for a phone does not restyle the desktop.
+        expect(normalizedTabsSource).toContain('desktopTopbarIconsOnly: \'sb-desktop-topbar-icons-only\',');
+        expect(normalizedTabsSource).toContain('mobileTopbarIconsOnly: \'sb-mobile-topbar-icons-only\',');
+        expect(normalizedTabsSource).toContain('function setTopbarIconsOnly(mode, enabled');
+
+        const activeSource = getFunctionSource('isTopbarIconsOnlyActive');
+        expect(activeSource).toContain('isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop');
+
+        // Crossing the breakpoint can change which device's setting is in force.
+        const listenerMatch = normalizedTabsSource.match(/window\.matchMedia\(SB_MOBILE_MEDIA_QUERY\)\.addEventListener\('change', \(\) => \{[\s\S]*?\}\);/);
+        expect(listenerMatch).not.toBeNull();
+        expect(listenerMatch[0]).toContain('applyTopbarIconsOnlyPreference();');
+
+        // Each checkbox reflects its own device's stored value, not the viewport-active state.
         expect(normalizedTabsSource).toContain('topbarIconsOnlyChoice.querySelector(\'input\')?.setAttribute(\'data-sb-topbar-icons-only-input\', modePrefix);');
-        expect(normalizedTabsSource).toContain('for (const input of document.querySelectorAll(\'[data-sb-topbar-icons-only-input]\')) {');
-        expect(normalizedTabsSource).toContain('input.checked = sbState.topbarIconsOnly;');
+        expect(normalizedTabsSource).toContain('input.getAttribute(\'data-sb-topbar-icons-only-input\') === \'desktop\'');
         expect(normalizedTabsSource).not.toContain('getElementById(\'sb-topbar-icons-only-input\')');
+    });
+
+    test('seeds both devices from the legacy single toggle key', () => {
+        // The pre-split key stays as a read-only fallback so an existing choice carries over.
+        const readSource = getFunctionSource('readTopbarIconsOnlySetting');
+        expect(readSource).toContain('safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly)');
+        expect(normalizedTabsSource).toContain('desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),');
+        expect(normalizedTabsSource).toContain('mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),');
+        // But nothing writes it back; the per-device keys are the live state.
+        expect(normalizedTabsSource).not.toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly,');
     });
 
     test('stays distinct from the shell tab icon-only setting', () => {
@@ -331,9 +378,10 @@ describe('icons only top bar', () => {
     test('toggles state without rebuilding the top bar', () => {
         const setterSource = getFunctionSource('setTopbarIconsOnly');
         expect(setterSource).not.toContain('buildTopBar(');
-        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly, String(nextEnabled));');
+        expect(setterSource).toContain('isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly');
         expect(setterSource).toContain('updateThemePickerUi();');
-        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), sbState.topbarIconsOnly);');
+        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);');
+        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);');
     });
 
     test('keeps shell focus on a visible control', () => {

@@ -1324,6 +1324,18 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-height: var(--sb-mobile-toggle-size);
     }
 
+    /* Phones never show the brand label, and the characters pages ride the strip without their
+       anchor, so both cluster boundaries carry the divider rule here. The rule takes over the
+       seam, so the lead's extra margin steps aside to keep it centred. */
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider {
+        display: inline-block;
+        height: calc(var(--sb-mobile-toggle-size) * 0.5);
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
+        margin-inline-start: 0;
+    }
+
     .sb-universal-search {
         width: 100%;
     }

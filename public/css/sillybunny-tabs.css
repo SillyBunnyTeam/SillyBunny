@@ -1343,6 +1343,31 @@ body:not(.movingUI) .drawer-content.maximized {
     margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
 }
 
+/* Boundary rule between clusters. While the brand label is visible it breaks the bar in half and
+   the seams carry the rest; once it is hidden the seams alone are a few px of gap between
+   identical squares, so a 1px theme-derived rule marks where one cluster ends. The symmetric
+   margins reproduce the cluster seam around the rule. */
+.sb-topbar-cluster-divider {
+    display: none;
+    flex: 0 0 auto;
+    width: 1px;
+    height: calc(var(--sb-proxy-button-height) * 0.55);
+    border-radius: 999px;
+    margin-inline: calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2);
+    background: var(--sb-shell-border);
+}
+
+/* Cramped desktop keeps the label off; only the Workspace|Customize boundary needs the rule,
+   because the characters rail still sits beside its own anchor there. The divider carries the
+   seam, so the lead's extra margin steps aside to keep the rule centred. */
+:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-divider-customize {
+    display: inline-block;
+}
+
+:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-divider-customize + .sb-topbar-cluster-lead {
+    margin-inline-start: 0;
+}
+
 /* Overflow state: the leading group scrolls and the trailing controls sit beside it, so Quick
    Actions, Home and Characters stay reachable however far the icons are scrolled.
    The icons deliberately scroll beside the trailing group rather than under it. Scrolling them

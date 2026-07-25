@@ -60,7 +60,11 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
+    // Legacy single-key form of the per-device pair below; kept as a read-only seed so a bar
+    // configured before the split keeps its look on both devices.
     topbarIconsOnly: 'sb-topbar-icons-only',
+    desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
+    mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
@@ -775,6 +779,15 @@ const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
 ]);
 const SB_TOPBAR_BRAND_MIN_WIDTH = 60;
 
+// The per-device key wins; the legacy single key seeds both sides of the split so a bar
+// configured before it keeps its look everywhere until a device is set on its own.
+function readTopbarIconsOnlySetting(storageKey) {
+    return normalizeStoredBoolean(
+        safeGetItem(storageKey),
+        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
+    );
+}
+
 const sbState = {
     initialized: false,
     initRetryTimer: 0,
@@ -789,7 +802,10 @@ const sbState = {
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
-    topbarIconsOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
+    topbarIconsOnly: {
+        desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
+        mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),
+    },
     topbarPages: {
         syncFrame: 0,
         fitFrame: 0,
@@ -1504,7 +1520,8 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
-    sbState.topbarIconsOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), sbState.topbarIconsOnly);
+    sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
+    sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
         safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
@@ -1931,20 +1948,35 @@ function setCompactMode(enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
+// SillyBunny: the icons-only top bar is stored per device -- the Desktop Navigation copy governs
+// desktop viewports and the Mobile Navigation copy governs phones -- so turning the dense bar on
+// for a phone does not also restyle the desktop, and vice versa. Only the viewport's own setting
+// is ever in force.
+function isTopbarIconsOnlyActive() {
+    return isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop;
+}
+
 function applyTopbarIconsOnlyPreference() {
-    document.documentElement.dataset.sbTopbarIconsOnly = String(sbState.topbarIconsOnly);
+    document.documentElement.dataset.sbTopbarIconsOnly = String(isTopbarIconsOnlyActive());
     syncTopbarIconsOnlyLayout();
     queueTopbarPageStateSync();
     scheduleCharacterToggleGhostSync();
 }
 
-function setTopbarIconsOnly(enabled, { persist = true } = {}) {
+function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
+    const isDesktop = mode === 'desktop';
     const nextEnabled = Boolean(enabled);
-    sbState.topbarIconsOnly = nextEnabled;
+
+    if (isDesktop) {
+        sbState.topbarIconsOnly.desktop = nextEnabled;
+    } else {
+        sbState.topbarIconsOnly.mobile = nextEnabled;
+    }
+
     applyTopbarIconsOnlyPreference();
 
     if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly, String(nextEnabled));
+        safeSetItem(isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly, String(nextEnabled));
     }
 
     updateThemePickerUi();
@@ -4917,6 +4949,17 @@ function buildTopbarPageRail(railId, pages) {
     return rail;
 }
 
+// SillyBunny: a 1px rule between two clusters. While the brand label is visible it breaks the bar
+// in half and the seams carry the rest, so CSS keeps these hidden until the label is out of sight
+// (phones always; cramped desktop) and the seams alone would read as plain gaps.
+function createTopbarClusterDivider(id) {
+    return createElement('span', {
+        id,
+        className: 'sb-topbar-cluster-divider',
+        attrs: { 'aria-hidden': 'true' },
+    });
+}
+
 // SillyBunny: the whole bar has one canonical child order per group per mode, and the layout is
 // applied by replaying that order rather than by moving individual buttons and remembering where
 // each came from. appendChild on a node the group already holds is a move, so replaying is
@@ -4929,10 +4972,12 @@ function buildTopbarPageRail(railId, pages) {
 function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const [workspace, customize, characters] = SB_TOPBAR_CLUSTERS;
     const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
+    // The divider spans ride the order too; CSS decides when they are visible.
     const left = [
         'sb-hamburger',
         workspace.leadId,
         workspace.railId,
+        'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
     ];
@@ -4948,9 +4993,9 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     right.push('sb-home-toggle', characters.leadId);
 
     if (iconsOnly && mobile) {
-        left.push(characters.railId);
+        left.push('sb-topbar-divider-characters', characters.railId);
     } else {
-        right.push(characters.railId);
+        right.push('sb-topbar-divider-characters', characters.railId);
     }
 
     return { left, right };
@@ -4965,7 +5010,7 @@ function syncTopbarGroupOrder() {
     }
 
     const order = getTopbarGroupOrder({
-        iconsOnly: sbState.topbarIconsOnly,
+        iconsOnly: isTopbarIconsOnlyActive(),
         mobile: isMobileViewport(),
     });
 
@@ -4981,7 +5026,7 @@ function syncTopbarGroupOrder() {
 }
 
 function syncTopbarIconsOnlyLayout() {
-    const iconsOnly = sbState.topbarIconsOnly;
+    const iconsOnly = isTopbarIconsOnlyActive();
 
     for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
         // Layer 2 anchors always stay on the bar; icons-only mode only drops their text labels.
@@ -5002,7 +5047,7 @@ function syncTopbarIconsOnlyLayout() {
 function syncTopbarIconsOnlyDedupe() {
     const clusterButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
 
-    if (!sbState.topbarIconsOnly) {
+    if (!isTopbarIconsOnlyActive()) {
         for (const button of clusterButtons) {
             button.classList.remove('sb-topbar-page-duplicate');
         }
@@ -5037,7 +5082,7 @@ function syncTopbarBrandFit() {
         return;
     }
 
-    if (!sbState.topbarIconsOnly) {
+    if (!isTopbarIconsOnlyActive()) {
         delete document.documentElement.dataset.sbTopbarBrandCramped;
         delete document.documentElement.dataset.sbTopbarScroll;
         return;
@@ -8891,9 +8936,10 @@ function scheduleCharacterToggleGhostSync() {
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
 window.addEventListener('resize', queueTopbarBrandFit, { passive: true });
 window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
-    syncTopbarGroupOrder();
+    // Crossing the breakpoint can change which device's icons-only setting is in force, so the
+    // whole preference re-applies rather than just the group order.
+    applyTopbarIconsOnlyPreference();
     queueTopbarBrandFit();
-    queueTopbarPageStateSync();
 });
 
 document.addEventListener('click', (e) => {
@@ -9445,9 +9491,11 @@ function buildTopBar() {
     const workspaceRail = buildTopbarPageRail(workspaceCluster.railId, workspaceCluster.pages);
     const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
+    const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton, charactersRail);
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton, charactersDivider, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -12947,17 +12995,17 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-icons',
         onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
     });
-    // SillyBunny: one global setting rendered in both the Desktop and Mobile Navigation groups,
-    // mirrored the way Compact Mode already is -- it belongs with navigation rather than nested
-    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle above also
-    // keeps the two similarly named options readable side by side.
+    // SillyBunny: stored per device -- this group's copy governs its own viewport only, exactly
+    // like the shell-tab toggle above it -- and it belongs with navigation rather than nested
+    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle also keeps
+    // the two similarly named options readable side by side.
     const topbarIconsOnlyChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-topbar-icons-only-input`,
         type: 'checkbox',
         value: 'topbar-icons-only',
         label: 'Icons only top bar',
         icon: 'fa-grip',
-        onChange: input => setTopbarIconsOnly(input.checked),
+        onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
     });
     topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
     const showCustomizeChoice = createMobileNavChoice({
@@ -13614,16 +13662,19 @@ function updateThemePickerUi() {
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
-    // One global setting with a checkbox in both the Desktop and Mobile Navigation groups, so
-    // flipping either one has to settle the other. Quick Access stays fully live in icons-only
-    // mode -- the slots are part of the right-hand cluster now, not superseded by it.
+    // Each Navigation group's checkbox reflects its own device's stored value, not the state in
+    // force on this viewport. Quick Access stays fully live in icons-only mode -- the slots are
+    // part of the right-hand cluster now, not superseded by it.
     for (const input of document.querySelectorAll('[data-sb-topbar-icons-only-input]')) {
         if (!(input instanceof HTMLInputElement)) {
             continue;
         }
 
-        input.checked = sbState.topbarIconsOnly;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', sbState.topbarIconsOnly);
+        const isChecked = input.getAttribute('data-sb-topbar-icons-only-input') === 'desktop'
+            ? sbState.topbarIconsOnly.desktop
+            : sbState.topbarIconsOnly.mobile;
+        input.checked = isChecked;
+        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
     if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
@@ -17011,7 +17062,7 @@ function initAll() {
     syncDesktopShellSizing();
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
-    setTopbarIconsOnly(sbState.topbarIconsOnly, { persist: false });
+    applyTopbarIconsOnlyPreference();
     bindLandingPageObserver();
     buildBottomChatBar();
     // Refresh again after the current JS task — APP_READY may have already
@@ -17128,8 +17179,8 @@ function initAll() {
         setCompactMode(value) {
             setCompactMode(value);
         },
-        setTopbarIconsOnly(value) {
-            setTopbarIconsOnly(value);
+        setTopbarIconsOnly(mode, value) {
+            setTopbarIconsOnly(mode, value);
         },
         setDesktopShellSnapToChatWidth(value) {
             setDesktopShellSnapToChatWidth(value);
