@@ -1328,9 +1328,10 @@ body:not(.movingUI) .drawer-content.maximized {
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    /* No edge-fade mask here: it dimmed whichever icon sat on the rail boundary even when
+       nothing was scrolled out of view, which reads as a disabled button rather than as a
+       scroll hint. Clipping at the container edge is the honest affordance. */
     scroll-padding-inline: var(--sb-topbar-group-gap);
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
-    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
 }
 
 .sb-topbar-pages::-webkit-scrollbar {

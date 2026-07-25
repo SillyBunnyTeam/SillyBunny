@@ -304,8 +304,9 @@ describe('icons only top bar', () => {
         const railRule = railRuleMatch[0];
         expect(railRule).toContain('overflow-x: auto;');
         expect(railRule).toContain('flex-wrap: nowrap;');
-        expect(railRule).toContain('mask-image:');
-        expect(railRule).toContain('-webkit-mask-image:');
+        // An edge-fade mask dimmed the boundary icon even with nothing scrolled out of view,
+        // making a live button look disabled. Clipping at the container edge instead.
+        expect(railRule).not.toContain('mask-image:');
         expect(cssSource).toContain('#sb-topbar-parked {\n    display: none;\n}');
         expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] #sb-home-toggle');
     });
