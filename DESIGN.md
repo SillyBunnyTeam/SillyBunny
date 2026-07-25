@@ -1,6 +1,6 @@
 ---
 name: SillyBunny
-description: Expressive creative roleplay workspace with a tactile, mobile-safe shell UI.
+description: A quiet, malleable roleplay workspace that keeps the character and conversation in front.
 colors:
   warm-signal: "#c9c6a8"
   warm-signal-soft: "#a6a493"
@@ -19,43 +19,42 @@ typography:
     fontFamily: "Figtree, Noto Sans, sans-serif"
     fontSize: "calc(var(--mainFontSize) * 1.72)"
     fontWeight: 700
-    lineHeight: 1.08
-    letterSpacing: "0"
+    lineHeight: 1.12
+    letterSpacing: "-0.02em"
   headline:
     fontFamily: "Figtree, Noto Sans, sans-serif"
     fontSize: "calc(var(--mainFontSize) * 1.45)"
     fontWeight: 700
-    lineHeight: 1.08
-    letterSpacing: "0"
+    lineHeight: 1.16
+    letterSpacing: "-0.015em"
   title:
     fontFamily: "Figtree, Noto Sans, sans-serif"
     fontSize: "calc(var(--mainFontSize) * 0.92)"
     fontWeight: 700
-    lineHeight: 1.25
+    lineHeight: 1.3
     letterSpacing: "0"
   body:
     fontFamily: "Figtree, Noto Sans, sans-serif"
     fontSize: "var(--mainFontSize)"
     fontWeight: 400
-    lineHeight: 1.6
+    lineHeight: 1.55
     letterSpacing: "0"
   label:
     fontFamily: "Figtree, Noto Sans, sans-serif"
     fontSize: "calc(var(--mainFontSize) * 0.72)"
     fontWeight: 700
     lineHeight: 1.35
-    letterSpacing: "0.08em"
+    letterSpacing: "0.04em"
   mono:
     fontFamily: "Noto Sans Mono, Courier New, Consolas, monospace"
     fontSize: "calc(var(--mainFontSize) * 0.84)"
     fontWeight: 400
     lineHeight: 1.45
 rounded:
-  icon: "10px"
-  button: "14px"
-  md: "16px"
-  lg: "22px"
-  xl: "28px"
+  sm: "10px"
+  md: "14px"
+  lg: "16px"
+  xl: "20px"
   pill: "999px"
 spacing:
   xs: "4px"
@@ -66,233 +65,193 @@ spacing:
   "2xl": "24px"
   "3xl": "32px"
   "4xl": "40px"
-breakpoints:
-  compact-desktop-max: "1000px"
-  mobile-max: "768px"
-  narrow-mobile-max: "620px"
-  small-mobile-max: "420px"
 components:
   button-primary:
     backgroundColor: "{colors.warm-signal}"
     textColor: "{colors.shadow-ink}"
-    rounded: "{rounded.button}"
+    rounded: "{rounded.md}"
     padding: "10px 14px"
     height: "38px"
   button-ghost:
     backgroundColor: "{colors.ink-panel}"
     textColor: "{colors.linen-text}"
-    rounded: "{rounded.button}"
+    rounded: "{rounded.md}"
     padding: "10px 14px"
     height: "38px"
   input-field:
     backgroundColor: "{colors.ink-panel}"
     textColor: "{colors.linen-text}"
-    rounded: "{rounded.button}"
+    rounded: "{rounded.md}"
     padding: "12px"
     height: "46px"
   shell-tab-active:
     backgroundColor: "{colors.panel-raised}"
     textColor: "{colors.linen-text}"
-    rounded: "{rounded.button}"
+    rounded: "{rounded.md}"
     padding: "8px 14px"
     height: "44px"
   card-surface:
     backgroundColor: "{colors.panel-raised}"
     textColor: "{colors.linen-text}"
     rounded: "{rounded.lg}"
-    padding: "18px"
+    padding: "16px"
   chip-enabled:
     backgroundColor: "{colors.panel-hover}"
     textColor: "{colors.linen-text}"
-    rounded: "{rounded.button}"
-    padding: "6px"
+    rounded: "{rounded.md}"
+    padding: "6px 8px"
 ---
 
 # Design System: SillyBunny
 
 ## 1. Overview
 
-**Creative North Star: "The Storyteller's Control Room"**
+**"Simple by default, powerful when needed"**
 
-SillyBunny should feel like a creative control room for roleplay and storytelling: expressive enough to invite imagination, structured enough to keep the writer in flow, and practical enough to carry the full SillyTavern surface without making the first screen feel like a cockpit. The system uses warm signals against charcoal panels, rounded tactile controls, and atmospheric depth that helps separate chat, shell, onboarding, and agent work.
+Picture a person writing at night with one conversation open, the rest of the desk cleared away, and a small set of tools within reach when needed. SillyBunny is a product UI, not a showcase surface: the character, messages, and composer own the visual priority. The shell is deliberately quiet so it can recede during active roleplay and become useful on demand.
 
-The product must preserve the PRODUCT.md line: "Express personality through usefulness." Personality belongs in onboarding, assistant surfaces, launchpad cards, and creative workflow affordances. Settings, API setup, presets, sampling, and server tools stay familiar, predictable, and compact.
+The system carries personality through helpful wording, tactile feedback, and a warm signal accent rather than decoration. It makes complexity available without making it ambient: configuration belongs behind the header, sub-category tabs reveal the next layer, and each view has one primary action. The default charcoal theme is only the starting point; every visual token must remain compatible with user themes and SillyTavern data, presets, extensions, and settings.
 
-This document is agent-facing design guidance, not release copy. Keep it aligned with README.md and PRODUCT.md, but do not use it to announce features or draft marketing language.
-
-This system rejects needless complexity, generic SaaS polish, sterile upstream-clone blandness, hover-only discovery, tiny touch targets, and browser behavior that breaks on iOS WebKit.
+The physical scene is a focused writing session on a dim screen, where the user needs comfortable contrast, predictable touch targets, and no panel competing with the conversation. This system rejects UI creep, nested menu spirals, configuration sprawl, bottom bar bloat, mystery meat navigation, desktop-only assumptions, and generic SaaS polish.
 
 **Key Characteristics:**
-- Creative product UI, not a marketing surface.
-- Dark charcoal default with warm signal accents and user-adjustable themes.
-- Layered atmospheric panels: tonal surfaces first, restrained shadows second.
-- Tactile and clear controls with stable dimensions and mobile-safe hit areas.
-- Progressive complexity through shell panels, global search, compact mode, and launchpad guidance.
+- Content-first chat viewport with no unsolicited permanent configuration panels.
+- Restrained charcoal, linen, and warm-signal palette with user-theme aliases.
+- Familiar controls that disclose depth through deliberate input, not visual noise.
+- Stable desktop and mobile interaction vocabulary, including WebKit-safe shell behavior.
+- Personality expressed through usefulness, especially in Home, agents, onboarding, and helper states.
 
 ## 2. Colors
 
-The palette is a Soft Console: charcoal surfaces, linen text, and a warm signal accent that reads like invitation, selection, and confidence rather than decoration.
+The palette is a restrained dark neutral system: warm signal is scarce and meaningful, while charcoal layers separate working surfaces without pretending to be decoration.
 
 ### Primary
-
-- **Warm Signal** (`warm-signal`): The primary accent for selected states, primary actions, active shell cues, range thumbs, focus rings, and important agent state. It should appear sparingly.
-- **Soft Signal** (`warm-signal-soft`): A quieter accent for secondary glow, badges, helper chips, and background atmosphere.
+- **Warm Signal** (`#c9c6a8`): Primary action, current selection, focus confirmation, active tab cue, range thumb, and important agent state. Use it as a signal, never as ambient ornament.
+- **Soft Signal** (`#a6a493`): Secondary accent for quiet helper states, badges, and low-emphasis selected backgrounds.
 
 ### Secondary
-
-- **Success Gold** (`success`): Success and positive status. Use as feedback, not as a competing brand color.
-- **Danger Rose** (`danger`): Destructive actions, errors, and warnings that need stronger attention.
-- **Warning Amber** (`warning`): Caution states and transient operational warnings.
+- **Success Gold** (`#f3c985`): Positive completion and healthy connection feedback. It must not compete with Warm Signal for primary actions.
+- **Danger Rose** (`#fb7185`): Destructive actions and errors that require attention.
+- **Warning Amber** (`#facc15`): Caution and transient operational warnings.
 
 ### Neutral
-
-- **Charcoal Canvas** (`charcoal-canvas`): The application background and deep page foundation.
-- **Ink Panel** (`ink-panel`): Default panel, chat, composer, and shell surface base.
-- **Raised Panel** (`panel-raised`): Elevated setting groups, inline drawers, cards, and control clusters.
-- **Hover Panel** (`panel-hover`): Hover and active surface response.
-- **Linen Text** (`linen-text`): Primary readable text.
-- **Muted Linen** (`muted-linen`): Helper text, descriptions, metadata, placeholders, and disabled-adjacent labels.
-- **Shadow Ink** (`shadow-ink`): Shadow and on-accent ink. New work should tint deep neutrals instead of adding pure black.
+- **Charcoal Canvas** (`#1b1f26`): Deep application foundation and the lowest visual layer.
+- **Ink Panel** (`#1d2128`): Chat, composer, field, and default shell surface.
+- **Raised Panel** (`#2f3238`): Explicitly opened shell panels, setting groups, tabs, and selectable surfaces.
+- **Hover Panel** (`#393d41`): Hover and active response for controls; never an inactive background flood.
+- **Linen Text** (`#cfcfc5`): Primary text and readable control labels.
+- **Muted Linen** (`#999992`): Supporting text only when contrast remains accessible; never the sole carrier of meaning.
+- **Shadow Ink** (`#050607`): Shadow tint and text on Warm Signal. Do not introduce new pure black or pure white surfaces.
 
 ### Named Rules
+**The Signal Scarcity Rule.** Warm Signal appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.
 
-**The Warm Signal Rule.** Warm Signal is for action, current selection, focus, and meaningful state. If it is being used as decoration, remove it.
+**The Theme Alias Rule.** New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes.
 
-**The Theme-Compatible Rule.** SillyBunny themes use `SmartTheme*` and `sb-*` CSS variables. New colors must flow through those variables or documented semantic aliases, not hard-coded one-off values.
-
-**The Accent Profile Rule.** Custom accent profiles and theme settings are user state. Do not reset, rename, or reinterpret saved accent values without a compatibility path.
-
-**The No Pure Extremes Rule.** Do not introduce new pure black or pure white surfaces. Tint darks toward the charcoal system and lights toward the linen system.
+**The Contrast Rule.** Body and placeholder text target at least 4.5:1 contrast; large text targets at least 3:1. Muted text can be quiet, but never illegible.
 
 ## 3. Typography
 
-**Display Font:** Figtree, with Noto Sans fallback.
-**Body Font:** Figtree, with Noto Sans fallback.
-**Label/Mono Font:** Noto Sans Mono for code, prompt fragments, logs, counters, and technical diagnostics.
+**Display Font:** Figtree (with Noto Sans fallback)
 
-**Character:** Figtree keeps SillyBunny warm and modern without becoming decorative. The same family carries headings, labels, buttons, and dense controls so the interface feels coherent while users move between chat and setup.
+**Body Font:** Figtree (with Noto Sans fallback)
+
+**Label/Mono Font:** Noto Sans Mono for logs, prompt fragments, regex, token diagnostics, and structured output.
+
+**Character:** One dependable sans keeps chat, shell navigation, settings, and onboarding in the same voice. Weight and spacing create hierarchy; the interface does not need a decorative display face.
 
 ### Hierarchy
-
-- **Display** (700, `calc(var(--mainFontSize) * 1.72)`, 1.08): Welcome hero titles and first-run surfaces only.
-- **Headline** (700, `calc(var(--mainFontSize) * 1.45)`, 1.08): Shell titles, major panel headings, and onboarding section titles.
-- **Title** (700, `calc(var(--mainFontSize) * 0.92)`, 1.25): Cards, action rows, setting groups, agent chips, and compact headings.
-- **Body** (400, `var(--mainFontSize)`, 1.6): Chat-adjacent prose, setting descriptions, tutorials, and explanatory copy. Keep prose around 65 to 75 characters when the layout allows.
-- **Label** (700, `calc(var(--mainFontSize) * 0.72)`, 0.08em where uppercase): Eyebrows, metadata, counters, and compact status labels.
-- **Mono** (400, `calc(var(--mainFontSize) * 0.84)`, 1.45): Logs, regex, prompt snippets, token diagnostics, and structured technical output.
+- **Display** (700, `calc(var(--mainFontSize) * 1.72)`, 1.12, `-0.02em`): Home and first-run welcome titles only; never a control label.
+- **Headline** (700, `calc(var(--mainFontSize) * 1.45)`, 1.16, `-0.015em`): Shell titles and major opened-panel headings.
+- **Title** (700, `calc(var(--mainFontSize) * 0.92)`, 1.3): Setting groups, action rows, cards, and compact headings.
+- **Body** (400, `var(--mainFontSize)`, 1.55): Chat-adjacent explanation, tutorials, and settings prose. Keep prose near 65-75ch where the surface permits.
+- **Label** (700, `calc(var(--mainFontSize) * 0.72)`, 1.35, `0.04em`): Compact metadata and state labels; avoid making every section an uppercase eyebrow.
+- **Mono** (400, `calc(var(--mainFontSize) * 0.84)`, 1.45): Technical content where alignment and literal text matter.
 
 ### Named Rules
+**The Interface Sans Rule.** Use Figtree or its fallback stack for controls, tabs, labels, and dense settings. Decorative type must never make repeated work harder.
 
-**The Interface Sans Rule.** Do not introduce display fonts for controls, labels, tabs, or dense setting surfaces. The tool should stay readable under pressure.
+**The User Scale Rule.** Product type follows `--mainFontSize` and existing user preferences. Do not add viewport-driven type or a parallel density system.
 
-**The No Viewport Type Rule.** Product UI type should scale from `--mainFontSize` and user settings, not from viewport width.
-
-**The User Preference Rule.** New spacing, line-height, font-size, and density controls must compose with existing user settings instead of hardcoding a separate visual scale.
+**The Wrap Safety Rule.** Headings use balanced wrapping where supported, and all labels must tolerate long translations, zoom, and narrow mobile widths without overflow.
 
 ## 4. Elevation
 
-SillyBunny uses layered atmospheric elevation: surfaces are separated first by tonal layers, borders, opacity, and background mixes; shadows add softness only where a panel, popup, card, or selected option needs to sit above the canvas. Mobile and iOS WebKit reliability take priority over decorative blur.
+SillyBunny uses tonal layering first and restrained shadows second. The main chat surface stays visually calm. A shadow is reserved for an opened shell, an overlay that must sit above the conversation, or a selected surface that needs clear separation. Borders and shadows are not paired as generic card decoration; choose the one that communicates the state.
 
 ### Shadow Vocabulary
-
-- **Shell Shadow** (`0 32px 90px color-mix(in srgb, var(--SmartThemeShadowColor) 34%, transparent)`): Large shell panels and major overlay surfaces.
-- **Welcome Panel Shadow** (`0 30px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent)`): Home and onboarding panels.
-- **Card Lift** (`0 14px 28px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent)`): Welcome action cards, selected theme options, and medium interactive cards.
-- **Control Glow** (`inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 18%, transparent)`): Hover and focus confirmation on buttons, icon controls, and active utility controls.
+- **Shell Shadow** (`0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent)`): Open configuration shell or fixed overlay that must separate from chat.
+- **Panel Lift** (`0 4px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent)`): Selected theme option or explicitly elevated welcome action; not every container.
+- **Focus Ring** (`inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 70%, transparent)`): Keyboard and focus-visible confirmation for controls.
 
 ### Named Rules
+**The Layer Before Shadow Rule.** Establish a tonal surface before adding elevation. If a shadow is doing all the work, the surface token is wrong.
 
-**The Layer Before Shadow Rule.** Add tonal separation before adding a stronger shadow. If a shadow is doing all the work, the surface token is wrong.
+**The State-Only Motion Rule.** Use the existing 180ms and 240ms ease-out transitions for hover, focus, active, reveal, loading, and feedback. No decorative choreography, bounce, or motion that delays a task. Every transition has a reduced-motion path.
 
-**The WebKit Reliability Rule.** On mobile and Safari surfaces, prefer solid or near-solid layers over fragile blur stacks. Depth must never break scrolling, focus, safe areas, or fixed positioning.
+**The WebKit Reliability Rule.** Prefer solid or near-solid surfaces on mobile. Fixed layers must respect safe areas, keyboard resizing, scrolling, and focus behavior in Safari/WebKit.
 
 ## 5. Components
 
 ### Buttons
-
-Buttons are tactile and clear. They should look clickable without becoming glossy, oversized, or ornamental.
-
-- **Shape:** Rounded rectangle for text/action buttons (`14px`), icon controls use a tighter radius (`10px`) or circles for close/utility controls.
-- **Primary:** Warm Signal fill with dark ink text, typically `38px` minimum height and compact horizontal padding.
-- **Hover / Focus:** Hover changes background and adds an inset accent confirmation. Focus uses a visible inset ring through `--sb-focus-ring`.
-- **Secondary / Ghost:** Tonal panel backgrounds, linen text, and subtle borders. Do not invent new button families when existing `.menu_button`, `.menu_button_icon`, and shell controls fit.
+- **Shape:** Rounded rectangle at `14px`; icon-only controls use `10px`. Full pills are reserved for chips and status tags.
+- **Primary:** Warm Signal background, Shadow Ink text, `38px` minimum height, and `10px 14px` padding. It is the single primary action in a view.
+- **Hover / Focus:** Adjust tonal value and use a visible inset focus ring. Do not combine a 1px border with a wide shadow.
+- **Secondary / Ghost:** Ink Panel background, Linen Text, one-pixel theme border, same height and padding as the primary family.
+- **States:** Default, hover, focus-visible, active, disabled, loading, and error are explicit. Labels describe the action; icons alone are not enough for essential controls.
 
 ### Chips
-
-Chips show selected states, agent enablement, quick actions, badges, and compact metadata.
-
-- **Style:** Pill or rounded chip containers with tonal backgrounds, thin borders, and restrained accent tint.
-- **State:** Enabled and selected states use Warm Signal through border, background mix, or icon color. Inactive chips stay muted and readable.
+- **Style:** Compact rounded controls at `14px`, `6px 8px` padding, readable text, and a tonal background.
+- **State:** Enabled or selected chips use a restrained Warm Signal tint and status icon. Inactive chips remain legible and low emphasis.
+- **Use:** In-chat agent controls and metadata only; do not turn the bottom bar into a chip collection.
 
 ### Cards / Containers
-
-Containers are working surfaces, not decorative cards.
-
-- **Corner Style:** Medium shell cards use `16px`; welcome and chat surfaces may reach `20px` to `28px` when they frame a distinct experience.
-- **Background:** Ink Panel and Raised Panel tokens, often with subtle gradients or theme-derived mixes.
-- **Shadow Strategy:** Use Card Lift only for selected or truly elevated surfaces.
-- **Border:** One-pixel theme-derived borders. No thick side-stripe accents.
-- **Internal Padding:** Use `12px`, `14px`, `16px`, or `18px` according to density. Compact mode tightens these values.
+- **Corner Style:** `16px` for working containers, `20px` for a distinct welcome surface, and no larger radius for a card or section.
+- **Background:** Ink Panel for default content and Raised Panel for an explicitly opened or selected layer.
+- **Shadow Strategy:** Flat or bordered at rest; Panel Lift only for selection or necessary separation.
+- **Border:** One-pixel theme-derived border when it improves grouping. Never use a colored side stripe.
+- **Internal Padding:** `12px`, `14px`, `16px`, or `18px` according to density; compact mode reduces padding without changing hierarchy.
+- **Content Rule:** Cards are working surfaces, not a repeated icon-heading-text grid. Prefer an open list, tab row, or inline section when that is clearer.
 
 ### Inputs / Fields
-
-Inputs should feel stable on desktop and mobile.
-
-- **Style:** Tonal field background, one-pixel border, `14px` radius, `46px` default height, and `12px` inline padding.
-- **Focus:** Border shifts toward Warm Signal and adds an inset focus ring. Outline must remain visible and keyboard-reachable.
-- **Error / Disabled:** Error uses Danger Rose tints. Disabled states reduce opacity but keep shape, layout, and label context intact.
+- **Style:** Ink Panel background, one-pixel theme border, `14px` radius, `46px` default height, and `12px` inline padding.
+- **Focus:** Border shifts toward Warm Signal and receives the visible inset focus ring.
+- **Error / Disabled:** Danger Rose uses a readable tint and explicit text; disabled fields preserve label and layout context rather than disappearing.
+- **Mobile:** Controls meet the `44px` touch target contract on coarse pointers and remain usable with the software keyboard open.
 
 ### Navigation
+- **Layer 1:** The main chat window is the primary surface with a bottom bar for direct conversation actions.
+- **Layer 2:** An always-visible top bar holds Workspace, Customize, the customisable title, two quick-access positions, Home, and Characters. Essential main-content controls stay labelled and visible.
+- **Layer 3:** Opened categories expose a single header-tab row and a configuration pop-down.
+- **Layer 4:** Sub-category content contains the options for that category and at most one collapsible section.
+- **Active State:** Use Raised Panel, a thin theme border, and a restrained bottom accent. Never use a thick left or right stripe.
+- **Mobile:** Preserve the same destinations and ordering. Use fixed drawers only when requested, safe-area-aware sizing, touch targets, and no hover-only discovery.
 
-The shell is the signature product component. It turns upstream drawers into Workspace, Customize, Characters, Home, Search, and mobile tool surfaces.
-
-- **Desktop:** Top bar and shell panels use layered surfaces, horizontal tab rows, direct icon/text labels, and global search.
-- **Mobile:** Navigation uses stable `dvh`/safe-area-aware sizing, visible buttons, touch-friendly controls, and `-webkit-overflow-scrolling: touch` where scroll containers need momentum.
-- **Active State:** Active tabs use a tonal accent background, thin border, and an inset bottom accent, not a thick side stripe.
-
-### Breakpoints
-
-Canonical responsive breakpoints are **1000 / 768 / 620 / 420**.
-
-| Breakpoint | Contract |
-| --- | --- |
-| `1000px` | Compact desktop ceiling. Upstream `style.css` 1000px blocks may apply. |
-| `768px` | Mobile shell ceiling. Fork mobile chrome and mobile stylesheet gates stop here. |
-| `620px` | Narrow mobile tuning for dense phone layouts. |
-| `420px` | Small mobile tuning for the tightest phone layouts. |
-
-Compact desktop is `769px` through `1000px`: no fork mobile chrome. The 820x1180 smoke checkpoint pins this contract.
-
-### Signature Components
-
-**Welcome Action Cards** are onboarding shortcuts. They use centered icon plus text, `20px` radius, a medium shadow, and restrained accent icon color.
-
-**Theme Options** are compact selectable cards. Selected state uses the active shell background and shadow rather than loud color flooding.
-
-**In-Chat Agent Chips** are modular control chips. Enabled states use accent tints and status icons while keeping the chip layout compact enough for dense agent lists.
-
-**Companion Agent Panels** are sidecar workspaces, not modals. They must preserve chat visibility, make source-message context reachable, and keep regenerate, edit, copy, delete, and manual-run controls touch-safe.
-
-**Conversation Mode Surfaces** should read like focused character DMs while preserving SillyTavern chat data expectations. Keep coalesced messages, persona context, and group handoff behavior visually clear.
+### Signature Surfaces
+- **Composer:** The bottom bar stays available for writing, keeps the textarea central, and scales to keyboard and safe-area changes without covering chat.
+- **Welcome Actions:** Home and first-run shortcuts may use a centered icon and text, but they remain sparse, labelled, and helpful rather than decorative.
+- **Companion Agent Panel:** A sidecar workspace preserves chat visibility and exposes source context plus regenerate, edit, copy, delete, and manual-run actions without nested modal chains.
 
 ## 6. Do's and Don'ts
 
 ### Do:
-
-- **Do** keep the default path simple first and powerful nearby.
-- **Do** use Warm Signal for current selection, focus, meaningful state, and primary action only.
-- **Do** preserve creative flow between chat, characters, presets, world info, personas, and agents.
-- **Do** test mobile layouts with iOS WebKit constraints in mind: safe areas, fixed layers, focus behavior, scroll containers, and touch targets.
-- **Do** route new visual work through existing `SmartTheme*`, `sb-*`, `color-*`, spacing, and radius tokens.
-- **Do** keep controls tactile and clear, with default, hover, focus, active, disabled, and loading or empty states where relevant.
+- **Do** keep main content uninterrupted and let configuration appear only after deliberate input.
+- **Do** give every view one primary action, then place powerful options behind learnable progressive disclosure.
+- **Do** preserve SillyTavern-compatible settings, character data, chats, presets, extensions, and migration paths.
+- **Do** use `SmartTheme*`, `sb-*`, `color-*`, spacing, and radius tokens so user themes continue to work.
+- **Do** keep desktop and mobile gestures, ordering, labels, and action vocabulary consistent.
+- **Do** provide visible focus, semantic labels, comfortable touch targets, resilient wrapping, and reduced-motion behavior.
+- **Do** use tonal surfaces before shadows and verify text contrast before shipping.
 
 ### Don't:
-
-- **Don't** make the interface feel complex for its own sake.
-- **Don't** ship dense control walls on default surfaces, gratuitous advanced settings, or novelty interactions that slow repeated chat work.
-- **Don't** create generic SaaS polish, sterile upstream-clone blandness, or showcase-style visual treatments.
-- **Don't** hide essential writing controls behind mystery meat navigation.
-- **Don't** rely on desktop-only assumptions, hover-only discovery, tiny touch targets, or browser behavior that breaks on iOS WebKit.
-- **Don't** use border-left or border-right greater than `1px` as a colored accent on cards, list items, callouts, or alerts.
-- **Don't** add gradient text, decorative glassmorphism, identical repeated card grids, or modal-first flows.
-- **Don't** introduce pure black or pure white as new surface colors. Use tinted charcoal and linen neutrals.
+- **Don't** ship UI creep: persistent panels, sidebars, or toolbars in the active primary viewport.
+- **Don't** create a nested menu spiral or more than one collapsible section at layer 4.
+- **Don't** present configuration sprawl, bottom bar bloat, or a dense control wall by default.
+- **Don't** interrupt active conversation with a modal for non-critical configuration; try inline or progressive alternatives first.
+- **Don't** rely on mystery meat navigation, hover-only discovery, desktop-only assumptions, tiny touch targets, or fragile iOS WebKit behavior.
+- **Don't** use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose.
+- **Don't** use gradient text, decorative glassmorphism, repeating stripe or grid backgrounds, identical repeated card grids, or sketchy illustrations.
+- **Don't** use `border-left` or `border-right` greater than `1px` as a colored accent.
+- **Don't** pair a `1px` border with a shadow of `16px` blur or more; choose tonal separation, a border, or a restrained shadow.
+- **Don't** use card or section radii above `20px`, or let long labels and headings overflow narrow viewports.
+- **Don't** introduce new pure black or pure white surfaces, or silently overwrite compatible user configuration.

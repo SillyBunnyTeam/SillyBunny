@@ -1,7 +1,7 @@
 <!---
 Thank you for contributing to SillyBunny!
 
-Please [read the Contributor's Guide](https://github.com/platberlitz/SillyBunny/blob/main/CONTRIBUTING.md) before submitting a pull request. **All PR descriptions must be human-written.**
+Please [read the Contributor's Guide](https://github.com/SillyBunnyTeam/SillyBunny/blob/main/CONTRIBUTING.md) before submitting a pull request. **All PR descriptions must be human-written.**
 
 In this project we follow [Conventional Commits][2] as title prefixes to describe features and fixes.
 

@@ -587,6 +587,7 @@ function convertToV2(char, directories) {
         depth_prompt_prompt: char.depth_prompt_prompt,
         depth_prompt_depth: char.depth_prompt_depth,
         depth_prompt_role: char.depth_prompt_role,
+        world: char.world ?? char.data?.extensions?.world,
     }, directories);
 
     result.chat = char.chat ?? `${char.name} - ${humanizedDateTime()}`;
@@ -733,12 +734,12 @@ function charaFormatData(data, directories) {
             const file = readWorldInfoFile(directories, data.world, false);
 
             // File was imported - save it to the character book
-            if (file && file.originalData) {
-                _.set(char, 'data.character_book', file.originalData);
-            }
-
-            // File was not imported - convert the world info to the character book
-            if (file && file.entries) {
+            if (file?.originalData && Array.isArray(file.originalData.entries)) {
+                const originalData = structuredClone(file.originalData);
+                originalData.extensions ??= {};
+                _.set(char, 'data.character_book', originalData);
+            } else if (file && file.entries) {
+                // File was not imported - convert the world info to the character book
                 _.set(char, 'data.character_book', convertWorldInfoToCharacterBook(data.world, file.entries));
             }
         } catch {
@@ -764,16 +765,53 @@ function charaFormatData(data, directories) {
  * @param {object} entries Entries object
  */
 function convertWorldInfoToCharacterBook(name, entries) {
-    /** @type {{ entries: object[]; name: string }} */
-    const result = { entries: [], name };
+    /** @type {{ entries: object[]; name: string; extensions: object }} */
+    const result = { entries: [], name, extensions: {} };
+    const sortedEntries = Object.values(entries).sort((a, b) => (a.displayIndex ?? a.uid ?? 0) - (b.displayIndex ?? b.uid ?? 0));
 
-    for (const index in entries) {
-        const entry = entries[index];
+    for (const entry of sortedEntries) {
+        const allKeys = [...(entry.key ?? []), ...(entry.keysecondary ?? [])];
+        const parseRegexKey = key => {
+            const match = String(key).match(/^\/([\s\S]+)\/([gimsuy]*)$/);
+            if (!match) {
+                return null;
+            }
+            for (let index = 0; index < match[1].length; index++) {
+                if (match[1][index] !== '/') {
+                    continue;
+                }
+                let backslashes = 0;
+                for (let cursor = index - 1; cursor >= 0 && match[1][cursor] === '\\'; cursor--) {
+                    backslashes++;
+                }
+                if (backslashes % 2 === 0) {
+                    return null;
+                }
+            }
+            try {
+                RegExp(match[1], match[2]);
+                return match;
+            } catch {
+                return null;
+            }
+        };
+        const parsedKeys = allKeys.map(parseRegexKey);
+        const useRegex = allKeys.length > 0 && parsedKeys.every(Boolean);
+        const serializeKey = key => {
+            if (!useRegex) {
+                return key;
+            }
+            const match = parseRegexKey(key);
+            if (match?.[2]) {
+                return key;
+            }
+            return match?.[1]?.replace(/(\\*)\//g, (_slash, backslashes) => `${backslashes.slice(0, -1)}/`) ?? key;
+        };
 
         const originalEntry = {
             id: entry.uid,
-            keys: entry.key,
-            secondary_keys: entry.keysecondary,
+            keys: (entry.key ?? []).map(serializeKey),
+            secondary_keys: (entry.keysecondary ?? []).map(serializeKey),
             comment: entry.comment,
             content: entry.content,
             constant: entry.constant,
@@ -781,7 +819,8 @@ function convertWorldInfoToCharacterBook(name, entries) {
             insertion_order: entry.order,
             enabled: !entry.disable,
             position: entry.position == 0 ? 'before_char' : 'after_char',
-            use_regex: true, // ST keys are always regex
+            use_regex: useRegex,
+            case_sensitive: entry.caseSensitive ?? null,
             extensions: {
                 ...entry.extensions,
                 position: entry.position,
@@ -815,6 +854,7 @@ function convertWorldInfoToCharacterBook(name, entries) {
                 match_creator_notes: entry.matchCreatorNotes ?? false,
                 triggers: entry.triggers ?? [],
                 ignore_budget: entry.ignoreBudget ?? false,
+                agent_blacklisted: entry.agentBlacklisted ?? false,
             },
         };
 
