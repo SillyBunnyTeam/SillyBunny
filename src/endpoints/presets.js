@@ -10,7 +10,6 @@ import {
     findDefaultPreset,
     getDefaultPresetFile,
     getDefaultPresets,
-    isDefaultPresetDeleted,
     recordDefaultPresetDeletion,
     restoreDefaultPresetFiles,
 } from './content-manager.js';
@@ -83,21 +82,16 @@ router.post('/save', function (request, response) {
 
     const fullpath = path.join(settings.folder, filename);
     const defaultPreset = findDefaultPreset(request.user.directories, { folder: settings.folder, name });
-    const explicitDefaultRestore = Boolean(request.body.restoreDefault);
 
-    if (defaultPreset && isDefaultPresetDeleted(request.user.directories, defaultPreset) && !explicitDefaultRestore) {
-        return response.status(409).send({
-            error: 'This bundled default preset was deleted by the user and will not be recreated unless defaults are explicitly restored.',
-            isDeletedDefault: true,
-            name,
-        });
-    }
+    tryWriteFileSync(fullpath, JSON.stringify(request.body.preset, null, 4));
 
-    if (defaultPreset && explicitDefaultRestore) {
+    // A save request is always user-initiated (save, save as, rename, import, or restore), so it may
+    // claim a deleted bundled default's name. The tombstone only exists to stop the content seeder
+    // from recreating the file, and a file now exists at that path, so it is retired here.
+    if (defaultPreset) {
         clearDefaultPresetDeletion(request.user.directories, defaultPreset);
     }
 
-    tryWriteFileSync(fullpath, JSON.stringify(request.body.preset, null, 4));
     return response.send({ name });
 });
 
