@@ -4949,9 +4949,8 @@ function buildTopbarPageRail(railId, pages) {
     return rail;
 }
 
-// SillyBunny: a 1px rule between two clusters. While the brand label is visible it breaks the bar
-// in half and the seams carry the rest, so CSS keeps these hidden until the label is out of sight
-// (phones always; cramped desktop) and the seams alone would read as plain gaps.
+// SillyBunny: a 1px rule between two clusters, visible at every size while icons-only mode is on
+// so the boundaries read the same with or without the brand label between them.
 function createTopbarClusterDivider(id) {
     return createElement('span', {
         id,

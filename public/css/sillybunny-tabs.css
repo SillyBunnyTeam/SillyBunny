@@ -1343,10 +1343,9 @@ body:not(.movingUI) .drawer-content.maximized {
     margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
 }
 
-/* Boundary rule between clusters. While the brand label is visible it breaks the bar in half and
-   the seams carry the rest; once it is hidden the seams alone are a few px of gap between
-   identical squares, so a 1px theme-derived rule marks where one cluster ends. The symmetric
-   margins reproduce the cluster seam around the rule. */
+/* Boundary rule between clusters: a 1px theme-derived rule marks where one cluster ends and the
+   next begins -- Workspace|Customize on the left half, Home|Characters on the right -- at every
+   size while the mode is on. The symmetric margins reproduce the cluster seam around the rule. */
 .sb-topbar-cluster-divider {
     display: none;
     flex: 0 0 auto;
@@ -1357,15 +1356,13 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-shell-border);
 }
 
-/* Cramped desktop keeps the label off, so both boundaries carry the rule: Workspace|Customize on
-   the left half and Home|Characters on the right. The divider carries the seam, so the lead's
-   extra margin steps aside to keep the rule centred (this must follow the seam-margin rule above
-   to win on source order). */
-:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-cluster-divider {
+/* The divider carries the seam, so the lead's extra margin steps aside to keep the rule centred
+   (this must follow the seam-margin rule above to win on source order). */
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider {
     display: inline-block;
 }
 
-:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
     margin-inline-start: 0;
 }
 

@@ -232,9 +232,10 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).toContain('window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener(\'change\'');
     });
 
-    test('marks the cluster boundaries once the brand label is out of sight', () => {
-        // With the centre label hidden the seams alone are a few px of gap between identical
-        // squares, so a 1px theme-derived rule marks where one cluster ends and the next begins.
+    test('marks the cluster boundaries at every size while the mode is on', () => {
+        // A 1px theme-derived rule marks where one cluster ends and the next begins --
+        // Workspace|Customize on the left half, Home|Characters on the right -- with or without
+        // the brand label between them.
         expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
@@ -245,15 +246,13 @@ describe('icons only top bar', () => {
         expect(baseRule[0]).toContain('width: 1px;');
         expect(baseRule[0]).toContain('background: var(--sb-shell-border);');
 
-        // While the label is squeezed out, cramped desktop shows both rules: Workspace|Customize
-        // on the left half and Home|Characters on the right, where the divider sits between Home
-        // and the characters anchor rather than between the anchor and its own rail.
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] \.sb-topbar-cluster-divider \{/);
+        // Gated on the mode itself, not on the label being squeezed out.
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*display: inline-block;\n\}/);
+        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\] [^{]*\.sb-topbar-cluster-divider/);
 
-        // Phones show both too; the divider takes over the seam so it sits centred in it.
-        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{/);
+        // The divider takes over the seam so it sits centred in it; phones only shorten the rule.
         expect(cssSource).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
-        expect(mobileCss).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
+        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
     });
 
     test('separates the clusters with a wider seam than the icons inside one', () => {
