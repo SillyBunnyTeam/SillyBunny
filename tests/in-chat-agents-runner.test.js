@@ -203,9 +203,15 @@ describe('in-chat agent post-processing runner', () => {
             extension_prompts: extensionPrompts,
             eventSource,
             event_types: eventTypes,
-            setExtensionPrompt: jest.fn((key, value, _position, _depth, _scan, _role, _filter = null, name = null) => {
+            setExtensionPrompt: jest.fn((key, value, position, depth, scan, role, _filter = null, name = null) => {
                 const promptName = typeof name === 'string' ? name.trim() : '';
                 extensionPrompts[key] = { value, ...(promptName && { name: promptName }) };
+                Object.defineProperties(extensionPrompts[key], {
+                    position: { value, enumerable: false },
+                    depth: { value: depth, enumerable: false },
+                    scan: { value: scan, enumerable: false },
+                    role: { value: role, enumerable: false },
+                });
             }),
             substituteParams: jest.fn((value, options = {}) => String(value ?? '')
                 .replaceAll('{{user}}', 'Traveler')
@@ -354,6 +360,10 @@ describe('in-chat agent post-processing runner', () => {
                 includeAuthorsNote: Boolean(agent?.companion?.includeAuthorsNote),
                 includeSystemPrompt: Boolean(agent?.companion?.includeSystemPrompt),
                 includeHistory: Boolean(agent?.companion?.includeHistory),
+                includeInChatHistory: Boolean(agent?.companion?.includeInChatHistory),
+                chatHistoryDepth: Number(agent?.companion?.chatHistoryDepth) || 1,
+                includeAllChatHistory: agent?.companion?.includeAllChatHistory !== false,
+                keepInChatHistoryWhenHostHidden: Boolean(agent?.companion?.keepInChatHistoryWhenHostHidden),
                 historyDepth: Number(agent?.companion?.historyDepth) || 3,
                 feedback: {
                     enabled: Boolean(agent?.companion?.feedback?.enabled),
@@ -698,7 +708,7 @@ describe('in-chat agent post-processing runner', () => {
             postProcess: {
                 enabled: true,
                 type: 'extract',
-                extractPattern: '\\[STATUS\\|[^\\]]*\\]',
+                extractPattern: '\\[STATUS\\|[^\\]]*\\][\\s\\S]*?\\[\\/STATUS\\]',
                 extractVariable: 'status_data',
                 promptTransformEnabled: false,
             },
@@ -784,6 +794,19 @@ describe('in-chat agent post-processing runner', () => {
         }
     }
 
+    // Deferred post-processing wakes up on a 50ms retry timer, so a single fixed sleep
+    // leaves almost no headroom on a loaded runner. Poll against a deadline instead.
+    async function waitForDeferredFlush(condition, timeoutMs = 2000) {
+        const deadline = Date.now() + timeoutMs;
+        while (!condition()) {
+            if (Date.now() >= deadline) {
+                return;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    }
+
     function emitDocumentEvent(eventName) {
         for (const handler of documentListeners.get(eventName) ?? []) {
             handler();
@@ -862,7 +885,7 @@ describe('in-chat agent post-processing runner', () => {
 
         await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
 
-        expect(injectCompanionFeedbackPrompts).toHaveBeenCalledWith([companionAgent]);
+        expect(injectCompanionFeedbackPrompts).toHaveBeenCalledWith([companionAgent], { excludeMessage: null });
         expect(extensionPrompts[`inchat_agent_${companionAgent.id}`]).toBeUndefined();
     });
 
@@ -978,7 +1001,7 @@ describe('in-chat agent post-processing runner', () => {
     });
 
     test('persists companion notes per swipe and restores them on swipe back', async () => {
-        const companionAgent = createCompanionAgent();
+        const companionAgent = createCompanionAgent({ companion: { includeInChatHistory: true } });
         enabledAgents = [companionAgent];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
@@ -999,10 +1022,18 @@ describe('in-chat agent post-processing runner', () => {
         expect(message.extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
             status: 'done',
             content: 'note A',
+            includeInChatHistory: true,
+            chatHistoryDepth: 1,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: false,
         }));
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults[companionAgent.id]).toEqual(expect.objectContaining({
             status: 'done',
             content: 'note A',
+            includeInChatHistory: true,
+            chatHistoryDepth: 1,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: false,
         }));
 
         // Swipe to a fresh second swipe: the active extra no longer carries the note.
@@ -1027,6 +1058,367 @@ describe('in-chat agent post-processing runner', () => {
         expect(companionRunner.getCompanionResults(message)).toEqual({});
         expect(message.extra.inChatAgentCompanionResults).toBeUndefined();
         expect(message.swipe_info[0].extra.inChatAgentCompanionResults).toBeUndefined();
+    });
+
+    test('projects only completed opted-in companion results from the active swipe', async () => {
+        const { projectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const message = {
+            mes: 'The door opened.',
+            name: 'Mira',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    stale: { status: 'done', content: 'Wrong swipe', includeInChatHistory: true },
+                },
+            },
+            swipe_id: 1,
+            swipe_info: [
+                { extra: {} },
+                {
+                    extra: {
+                        inChatAgentCompanionResults: {
+                            retained: { status: 'done', content: '\\{\\{char\\}\\} remembers &#123;&#123;original&#125;&#125;', includeInChatHistory: true },
+                            normal: { status: 'done', content: 'Not retained', includeInChatHistory: false },
+                            pending: { status: 'pending', content: 'Not finished', includeInChatHistory: true },
+                            empty: { status: 'done', content: '   ', includeInChatHistory: true },
+                        },
+                    },
+                },
+            ],
+        };
+        const originalMessage = structuredClone(message);
+
+        const projected = projectCompanionChatHistory(message, content => content
+            .replaceAll('{{char}}', message.name)
+            .replaceAll('{{original}}', message.mes));
+
+        expect(projected).toBe('The door opened.\n\nMira remembers The door opened.');
+        expect(message).toEqual(originalMessage);
+        expect(projected).not.toContain('Wrong swipe');
+        expect(projected).not.toContain('Not retained');
+        expect(projected).not.toContain('Not finished');
+    });
+
+    test('does not project retained companion results on user messages', async () => {
+        const { projectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const message = {
+            mes: 'Open the door.',
+            name: 'Traveler',
+            is_user: true,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    retained: { status: 'done', content: 'Should remain separate', includeInChatHistory: true },
+                },
+            },
+        };
+
+        expect(projectCompanionChatHistory(message)).toBe('Open the door.');
+    });
+
+    test('selects the latest retained notes per companion or all current notes', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (contentA, contentB = '') => ({
+            mes: contentA,
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    agentA: {
+                        status: 'done',
+                        content: `A: ${contentA}`,
+                        includeInChatHistory: true,
+                        chatHistoryDepth: 2,
+                        includeAllChatHistory: false,
+                    },
+                    ...(contentB ? {
+                        agentB: {
+                            status: 'done',
+                            content: `B: ${contentB}`,
+                            includeInChatHistory: true,
+                            includeAllChatHistory: true,
+                        },
+                    } : {}),
+                },
+            },
+        });
+        const oldest = createMessage('oldest', 'oldest');
+        const middle = createMessage('middle');
+        const latest = createMessage('latest', 'latest');
+
+        const selected = selectCompanionChatHistory([oldest, middle, latest]);
+
+        expect(selected.get(oldest)).toEqual(new Set(['agentB']));
+        expect(selected.get(middle)).toEqual(new Set(['agentA']));
+        expect(selected.get(latest)).toEqual(new Set(['agentA', 'agentB']));
+    });
+
+    test('consolidates selected retained notes onto the newest selected host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (host, results) => ({
+            mes: host,
+            name: host,
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: results },
+        });
+        const result = (agentName, content) => ({
+            agentName,
+            status: 'done',
+            content,
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+        });
+        const oldest = createMessage('Oldest host', {
+            tracker: result('Tracker', 'Oldest note from {{original}}'),
+        });
+        const middle = createMessage('Middle host', {
+            tracker: result('Tracker', 'Middle note from {{original}}'),
+            details: result('Details', 'Middle details'),
+        });
+        const latest = createMessage('Latest host', {
+            tracker: result('Tracker', 'Latest note from {{original}}'),
+        });
+        const messages = [oldest, middle, latest];
+        const selections = selectCompanionChatHistory(messages);
+
+        const consolidated = consolidateCompanionChatHistory(messages, selections, message => content => content.replaceAll('{{original}}', message.mes));
+
+        expect(consolidated.host).toBe(latest);
+        expect(consolidated.entries.map(item => item.contribution.content)).toEqual([
+            'Oldest note from Oldest host',
+            'Middle note from Middle host',
+            'Middle details',
+            'Latest note from Latest host',
+        ]);
+        expect(consolidated.entries.map(item => item.message)).toEqual([oldest, middle, middle, latest]);
+        expect(oldest.mes).toBe('Oldest host');
+        expect(middle.mes).toBe('Middle host');
+        expect(latest.mes).toBe('Latest host');
+    });
+
+    test('avoids consolidating retained notes onto a tool-call host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (host, toolCall = false) => ({
+            mes: host,
+            is_user: false,
+            is_system: false,
+            extra: {
+                ...(toolCall && { tool_invocations: [{ id: 'tool-call' }] }),
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        agentName: 'Tracker',
+                        status: 'done',
+                        content: `${host} note`,
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                    },
+                },
+            },
+        });
+        const ordinaryHost = createMessage('Ordinary host');
+        const toolHost = createMessage('Tool host', true);
+        const messages = [ordinaryHost, toolHost];
+
+        const consolidated = consolidateCompanionChatHistory(
+            messages,
+            selectCompanionChatHistory(messages),
+            () => content => content,
+            message => !Array.isArray(message.extra?.tool_invocations),
+        );
+
+        expect(consolidated.host).toBe(ordinaryHost);
+        expect(consolidated.entries.map(item => item.contribution.content)).toEqual(['Ordinary host note', 'Tool host note']);
+    });
+
+    test('does not fall back to an excluded rewrite target as the consolidated host', async () => {
+        const {
+            consolidateCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const toolHost = {
+            mes: 'Tool host',
+            is_user: false,
+            is_system: false,
+            extra: {
+                tool_invocations: [{ id: 'tool-call' }],
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content: 'Retained note',
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                    },
+                },
+            },
+        };
+        const rewriteTarget = { mes: 'Rewrite target', is_user: false, is_system: false, extra: {} };
+        const candidates = [toolHost];
+
+        const consolidated = consolidateCompanionChatHistory(
+            candidates,
+            selectCompanionChatHistory(candidates, { policyMessages: [toolHost, rewriteTarget] }),
+            () => content => content,
+            message => !Array.isArray(message.extra?.tool_invocations),
+        );
+
+        expect(consolidated.host).toBeNull();
+        expect(consolidated.entries).toHaveLength(1);
+    });
+
+    test('updates existing Companion cards when history retention settings change', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const companion = createCompanionAgent({
+            id: 'history-companion',
+            companion: {
+                includeInChatHistory: true,
+                includeAllChatHistory: false,
+                chatHistoryDepth: 1,
+            },
+        });
+        chat.push(
+            { mes: 'First reply', is_user: false, is_system: false, extra: {} },
+            { mes: 'Second reply', is_user: false, is_system: false, extra: {} },
+            { mes: 'Third reply', is_user: false, is_system: false, extra: {} },
+        );
+        chat.forEach((message, index) => {
+            companionRunner.setCompanionResult(message, companion, { status: 'done', content: `Note ${index + 1}` });
+        });
+
+        expect(selectCompanionChatHistory(chat).size).toBe(1);
+
+        companion.companion.includeAllChatHistory = true;
+        expect(await companionRunner.syncCompanionChatHistoryConfig(companion)).toBe(3);
+
+        const selected = selectCompanionChatHistory(chat);
+        expect(selected.get(chat[0])).toEqual(new Set([companion.id]));
+        expect(selected.get(chat[1])).toEqual(new Set([companion.id]));
+        expect(selected.get(chat[2])).toEqual(new Set([companion.id]));
+    });
+
+    test('uses excluded and hidden results for policy without selecting them as context', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createResult = (content, overrides = {}) => ({
+            status: 'done',
+            content,
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+            ...overrides,
+        });
+        const oldest = {
+            mes: 'Oldest visible host',
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: { agentA: createResult('Oldest A') } },
+        };
+        const latestCandidate = {
+            mes: 'Latest visible host',
+            is_user: false,
+            is_system: false,
+            extra: { inChatAgentCompanionResults: { agentA: createResult('Latest A') } },
+        };
+        const hiddenPolicy = {
+            mes: 'Hidden host',
+            is_user: false,
+            is_system: true,
+            extra: {
+                inChatAgentCompanionResults: {
+                    agentA: createResult('Hidden A', {
+                        chatHistoryDepth: 1,
+                        includeAllChatHistory: false,
+                        keepInChatHistoryWhenHostHidden: false,
+                    }),
+                    agentB: createResult('Hidden B', {
+                        keepInChatHistoryWhenHostHidden: true,
+                    }),
+                },
+            },
+        };
+
+        const selected = selectCompanionChatHistory([oldest, latestCandidate, hiddenPolicy], {
+            policyMessages: [oldest, latestCandidate, hiddenPolicy],
+        });
+
+        expect(selected.has(oldest)).toBe(false);
+        expect(selected.get(latestCandidate)).toEqual(new Set(['agentA']));
+        expect(selected.get(hiddenPolicy)).toEqual(new Set(['agentB']));
+    });
+
+    test('uses a rewrite target policy without selecting the target result', async () => {
+        const { selectCompanionChatHistory } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const createMessage = (content, includeAllChatHistory) => ({
+            mes: `${content} host`,
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content,
+                        includeInChatHistory: true,
+                        chatHistoryDepth: 1,
+                        includeAllChatHistory,
+                    },
+                },
+            },
+        });
+        const oldest = createMessage('Oldest note', true);
+        const latestCandidate = createMessage('Latest candidate note', true);
+        const rewriteTarget = createMessage('Rewrite target note', false);
+
+        const selected = selectCompanionChatHistory([oldest, latestCandidate], {
+            policyMessages: [oldest, latestCandidate, rewriteTarget],
+        });
+
+        expect(selected.has(oldest)).toBe(false);
+        expect(selected.get(latestCandidate)).toEqual(new Set(['tracker']));
+        expect(selected.has(rewriteTarget)).toBe(false);
+    });
+
+    test('keeps selected Companion output as standalone context for hidden host messages', async () => {
+        const {
+            hasCompanionChatHistoryForHiddenHost,
+            projectCompanionChatHistory,
+            selectCompanionChatHistory,
+        } = await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const hiddenKept = {
+            mes: 'Hidden assistant reply',
+            is_user: false,
+            is_system: true,
+            extra: {
+                inChatAgentCompanionResults: {
+                    tracker: {
+                        status: 'done',
+                        content: 'Retained tracker state',
+                        includeInChatHistory: true,
+                        includeAllChatHistory: true,
+                        keepInChatHistoryWhenHostHidden: true,
+                    },
+                },
+            },
+        };
+        const hiddenDropped = structuredClone(hiddenKept);
+        hiddenDropped.extra.inChatAgentCompanionResults.tracker.content = 'Dropped tracker state';
+        hiddenDropped.extra.inChatAgentCompanionResults.tracker.keepInChatHistoryWhenHostHidden = false;
+
+        const selected = selectCompanionChatHistory([hiddenKept, hiddenDropped]);
+
+        expect(hasCompanionChatHistoryForHiddenHost(hiddenKept)).toBe(true);
+        expect(hasCompanionChatHistoryForHiddenHost(hiddenDropped)).toBe(false);
+        expect(selected.get(hiddenKept)).toEqual(new Set(['tracker']));
+        expect(selected.has(hiddenDropped)).toBe(false);
+        expect(projectCompanionChatHistory(hiddenKept, content => content, {
+            agentIds: selected.get(hiddenKept),
+            includeOriginal: false,
+        })).toBe('Retained tracker state');
     });
 
     test('sends raw-prompt companion prompts verbatim without extra instructions', async () => {
@@ -1345,8 +1737,8 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.setCompanionResult(earlierReply, feedbackCompanion, { status: 'done', content: 'State one' });
         companionRunner.setCompanionResult(tailReply, feedbackCompanion, { status: 'done', content: 'Stale swipe state' });
 
-        // Assistant tail = swipe/regenerate of that message: its own state must not feed back.
-        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+        // Explicit swipe/regenerate target: its own state must not feed back.
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion], { excludeMessage: tailReply });
         const injected = extensionPrompts['inchat_agent_companion_feedback-companion'];
         expect(injected.name).toBe('Companion');
         expect(injected.value).toContain('State one');
@@ -1356,6 +1748,48 @@ describe('in-chat agent post-processing runner', () => {
         chat.push({ mes: 'And then?', name: 'User', is_user: true, is_system: false, extra: {} });
         companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
         expect(extensionPrompts['inchat_agent_companion_feedback-companion'].value).toContain('Stale swipe state');
+    });
+
+    test('includes an assistant tail in normal dry-run feedback previews', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'preview-feedback-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const tailReply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(tailReply);
+        companionRunner.setCompanionResult(tailReply, feedbackCompanion, { status: 'done', content: 'Latest preview note' });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+
+        expect(extensionPrompts['inchat_agent_companion_preview-feedback-companion'].value).toContain('Latest preview note');
+    });
+
+    test('excludes chat-history companion results from feedback prompts', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'retained-feedback-companion',
+            companion: {
+                includeInChatHistory: true,
+                feedback: { enabled: true, depth: 2 },
+            },
+        });
+        enabledAgents = [feedbackCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const earlierReply = { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const laterReply = { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(earlierReply, laterReply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(earlierReply, feedbackCompanion, { status: 'done', content: 'Older feedback-only note' });
+        companionRunner.updateCompanionResult(earlierReply, feedbackCompanion.id, { includeInChatHistory: false });
+        companionRunner.setCompanionResult(laterReply, feedbackCompanion, { status: 'done', content: 'Retained note' });
+
+        companionRunner.injectCompanionFeedbackPrompts([feedbackCompanion]);
+
+        const injected = extensionPrompts['inchat_agent_companion_retained-feedback-companion'].value;
+        expect(injected).toContain('Older feedback-only note');
+        expect(injected).not.toContain('Retained note');
     });
 
     test('skips hidden companions when injecting feedback prompts', async () => {
@@ -1410,33 +1844,165 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).not.toContain('{{user}}');
     });
 
-    test('prepends an anti-echo guard when feedback body contains tracker-format blocks', async () => {
-        const trackerCompanion = createCompanionAgent({
-            id: 'tracker-companion',
+    test('prepends one delimiter-specific anti-echo guard to tracker feedback', async () => {
+        const reputationCompanion = createCompanionAgent({
+            id: 'reputation-companion',
             companion: { feedback: { enabled: true, depth: 2 } },
         });
-        enabledAgents = [trackerCompanion];
+        const eventCompanion = createCompanionAgent({
+            id: 'event-companion',
+            companion: { feedback: { enabled: true, depth: 2 } },
+        });
+        enabledAgents = [reputationCompanion, eventCompanion];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
 
         const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
         chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
-        companionRunner.setCompanionResult(reply, trackerCompanion, {
+        companionRunner.setCompanionResult(reply, reputationCompanion, {
             status: 'done',
-            content: '[REP|Guild|Warm|Trusted]\nFaction warmed to the party.\n[/REP]\n\n[EVENT|Plot|Ambush at the gate|Tonight]\nGuards spotted.\n[/EVENT]',
+            content: '[REP|Guild|Warm|Trusted]\nFaction warmed to the party.\n[/REP]',
+        });
+        companionRunner.setCompanionResult(reply, eventCompanion, {
+            status: 'done',
+            content: '[EVENT|Plot|Ambush at the gate|Tonight]\nGuards spotted.\n[/EVENT]',
         });
 
-        companionRunner.injectCompanionFeedbackPrompts([trackerCompanion]);
-        const injected = extensionPrompts['inchat_agent_companion_tracker-companion'].value;
+        companionRunner.injectCompanionFeedbackPrompts([reputationCompanion, eventCompanion]);
+        const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
+        const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
 
-        // The guard must call out the exact tracker tags detected in the body, including closers.
-        expect(injected).toContain('[REP|...]');
-        expect(injected).toContain('[/REP]');
-        expect(injected).toContain('[EVENT|...]');
-        expect(injected).toContain('[/EVENT]');
-        // Guard wording forbids echoing the bracket format.
-        expect(injected.toLowerCase()).toContain('do not emit');
-        // The original tracker body still reaches the model as reference.
-        expect(injected).toContain('[REP|Guild|Warm|Trusted]');
+        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.');
+        expect(eventPrompt).not.toContain('HARD STOP');
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
+        expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
+        expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
+    });
+
+    test('does not guard tracker tags owned by active inline trackers', async () => {
+        usePreExtractTracker();
+        const inlineTracker = enabledAgents[0];
+        const statusCompanion = createCompanionAgent({
+            id: 'status-companion',
+            category: 'tracker',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [inlineTracker, statusCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, statusCompanion, {
+            status: 'done',
+            content: '[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts(enabledAgents);
+        const injected = extensionPrompts['inchat_agent_companion_status-companion'].value;
+
+        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
+        expect(injected).not.toContain('HARD STOP for your reply');
+        expect(injected).not.toContain('[STATUS|...]');
+    });
+
+    test('removes complete auxiliary tracker echoes while preserving unrelated blocks', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = [
+            'The scene continues normally.',
+            '[Parallel Off-Screen - auxiliary notes]',
+            '[PARALLEL|District|Complication]',
+            '- Echoed tracker content',
+            '[/PARALLEL]',
+            '[CHOICES]',
+            '- Keep this unrelated block',
+            '[/CHOICES]',
+        ].join('\n\n');
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['PARALLEL'])).toBe([
+            'The scene continues normally.',
+            '[CHOICES]',
+            '- Keep this unrelated block',
+            '[/CHOICES]',
+        ].join('\n\n'));
+    });
+
+    test('preserves auxiliary tracker tags owned by active inline trackers', async () => {
+        usePreExtractTracker();
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story before.\n\n[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['STATUS'], enabledAgents)).toBe(response);
+    });
+
+    test('leaves malformed auxiliary echoes intact to avoid deleting adjacent prose', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story before.\n\n[PARALLEL|District|Complication]\nUnclosed tracker\nStory after.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['PARALLEL'])).toBe(response);
+    });
+
+    test('removes echoed retained Companion trackers before post-processing the reply', async () => {
+        const tracker = createCompanionAgent({
+            id: 'parallel-tracker',
+            companion: { includeInChatHistory: true },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ stripAuxiliaryTrackerEchoes: companionRunner.stripAuxiliaryTrackerEchoes });
+        initAgentRunner();
+        const priorReply = { mes: 'Prior reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const generatedReply = {
+            mes: 'Narrative reply.\n\n[PARALLEL|District|Complication]\nEchoed state.\n[/PARALLEL]',
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(priorReply, generatedReply);
+        companionRunner.setCompanionResult(priorReply, tracker, {
+            status: 'done',
+            content: '[PARALLEL|District|Complication]\nSource state.\n[/PARALLEL]',
+        });
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(generatedReply.mes)).toBe('Narrative reply.');
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(generatedReply.mes).toBe('Narrative reply.');
+        expect(saveChatDebounced).toHaveBeenCalled();
+    });
+
+    test('preserves active inline tracker output for post-processing', async () => {
+        usePreExtractTracker();
+        const inlineTracker = enabledAgents[0];
+        const retainedTracker = createCompanionAgent({
+            id: 'retained-status-tracker',
+            category: 'tracker',
+            companion: { includeInChatHistory: true },
+        });
+        enabledAgents = [inlineTracker, retainedTracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ stripAuxiliaryTrackerEchoes: companionRunner.stripAuxiliaryTrackerEchoes });
+        initAgentRunner();
+        const priorReply = { mes: 'Prior reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const trackerBlock = '[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]';
+        const generatedReply = {
+            mes: `Narrative reply.\n\n${trackerBlock}`,
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(priorReply, generatedReply);
+        companionRunner.setCompanionResult(priorReply, retainedTracker, {
+            status: 'done',
+            content: '[STATUS|Hero|Tired|Moderate]\nResting.\n[/STATUS]',
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(generatedReply.mes).toBe(`Narrative reply.\n\n${trackerBlock}`);
+        expect(chatMetadata.agent_status_data).toBe(trackerBlock);
     });
 
     test('leaves non-tracker feedback verbatim with no anti-echo guard', async () => {
@@ -1457,16 +2023,13 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([proseCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_prose-companion'].value;
 
-        // No tracker tags => no guard text injected.
-        expect(injected.toLowerCase()).not.toContain('do not emit');
-        expect(injected).not.toContain('[|...]');
+        // No tracker tags => no shared guard prompt injected.
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         // Prose note passes through unchanged.
         expect(injected).toContain('The scene has a tense, hushed tone.');
     });
 
-    test('does not forbid inline-only tracker tags absent from the feedback body', async () => {
-        // A SCENE tracker lives inline (author's note), NOT in the companion feedback body.
-        // Only REP/STATUS come from companions here, so only those must be forbidden.
+    test('ignores inline-only tracker tags absent from the feedback body', async () => {
         const mixedCompanion = createCompanionAgent({
             id: 'mixed-companion',
             companion: { feedback: { enabled: true, depth: 2 } },
@@ -1484,11 +2047,10 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.injectCompanionFeedbackPrompts([mixedCompanion]);
         const injected = extensionPrompts['inchat_agent_companion_mixed-companion'].value;
 
-        // Companion-sourced tags are forbidden...
-        expect(injected).toContain('[REP|...]');
-        expect(injected).toContain('[STATUS|...]');
-        // ...but SCENE (kept inline) is never mentioned, so the main reply may keep producing it.
-        expect(injected).not.toContain('[SCENE');
+        expect(injected).toContain('[REP|Thieves Guild|+10|Liked]');
+        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
+        expect(injected).toContain('Specifically, do not emit any of: [REP|...], [/REP], [STATUS|...], [/STATUS]');
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
     });
 
     test('gates auto companions behind their context token threshold', async () => {
@@ -1599,6 +2161,358 @@ describe('in-chat agent post-processing runner', () => {
 
         const normalMessages = await companionRunner.buildCompanionPromptMessages(fixCompanion, 1);
         expect(normalMessages[0].content).not.toContain('Repair mode: produce the requested result');
+    });
+
+    test('normalizes a valid tracker companion without calling the model', async () => {
+        const tracker = createCompanionAgent({
+            id: 'valid-tracker-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'error',
+            content: 'prefix\n[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]\nsuffix',
+            error: 'Old error',
+        });
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]',
+            error: '',
+        }));
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+        expect(saveChatDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('fixes a single malformed tracker Companion card without calling the model', async () => {
+        const tracker = createCompanionAgent({
+            id: 'malformed-tracker-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n/WORLD]',
+        });
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: Bells mark closing time.\n[/WORLD]',
+        }));
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+    });
+
+    test('restores the complete prior tracker companion result after invalid repair output', async () => {
+        const tracker = createCompanionAgent({
+            id: 'invalid-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockResolvedValueOnce('This is not tracker output.');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+            profileId: 'profile-a',
+            tokenUsage: { inputTokens: 12, outputTokens: 4 },
+        });
+        const previousResult = structuredClone(chat[0].extra.inChatAgentCompanionResults[tracker.id]);
+
+        const result = await companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+
+        expect(result).toEqual(previousResult);
+        expect(chat[0].extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    test('restores the prior tracker companion result when repair is cancelled', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'cancelled-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+        });
+        const previousResult = structuredClone(chat[0].extra.inChatAgentCompanionResults[tracker.id]);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual(previousResult);
+        expect(chat[0].extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+    });
+
+    test('removes a first tracker companion result when repair is cancelled', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'cancelled-first-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toBeUndefined();
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+    });
+
+    test('does not apply tracker companion repair after switching chats', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'chat-switch-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+        companionRunner.setCompanionResult(originalMessage, tracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+        });
+        const previousResult = structuredClone(originalMessage.extra.inChatAgentCompanionResults[tracker.id]);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual(previousResult);
+        expect(chat[0].mes).toBe('Different chat reply');
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults[tracker.id]).toEqual(previousResult);
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('removes a first tracker companion pending result after switching chats', async () => {
+        let resolveRepair;
+        const tracker = createCompanionAgent({
+            id: 'chat-switch-first-repair-companion',
+            category: 'tracker',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        enabledAgents = [tracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+
+        const running = companionRunner.runCompanionAgentOnMessage(tracker.id, 0, { repair: true });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('stops a tracker companion batch after switching chats', async () => {
+        let resolveRepair;
+        const makeTracker = id => createCompanionAgent({
+            id,
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: `${id}_world_data`,
+            },
+        });
+        const firstTracker = makeTracker('first-chat-switch-tracker');
+        const secondTracker = makeTracker('second-chat-switch-tracker');
+        enabledAgents = [firstTracker, secondTracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const originalMessage = { mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(originalMessage);
+        for (const tracker of enabledAgents) {
+            companionRunner.setCompanionResult(originalMessage, tracker, {
+                status: 'done',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+            });
+        }
+        const previousResults = structuredClone(originalMessage.extra.inChatAgentCompanionResults);
+
+        const running = companionRunner.runTrackerCompanionsOnMessage(0);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { mes: 'Different chat reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual([]);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults).toBeUndefined();
+        expect(originalMessage.extra.inChatAgentCompanionResults).toEqual(previousResults);
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('repairs only runnable tracker companions', async () => {
+        const runnableTracker = createCompanionAgent({
+            id: 'runnable-tracker-companion',
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: 'world_data',
+            },
+        });
+        const nonRunnableTracker = createCompanionAgent({
+            id: 'non-runnable-tracker-companion',
+            category: 'tracker',
+            phase: 'post',
+            prompt: '',
+            postProcess: { enabled: false },
+        });
+        enabledAgents = [runnableTracker, nonRunnableTracker];
+        generateQuietPrompt.mockResolvedValueOnce('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(chat[0], runnableTracker, {
+            status: 'done',
+            content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+        });
+        companionRunner.setCompanionResult(chat[0], nonRunnableTracker, {
+            status: 'done',
+            content: 'Unchanged custom state.',
+        });
+        const previousNonRunnable = structuredClone(chat[0].extra.inChatAgentCompanionResults[nonRunnableTracker.id]);
+
+        const results = await companionRunner.runTrackerCompanionsOnMessage(0);
+
+        expect(results).toHaveLength(1);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults[runnableTracker.id]).toEqual(expect.objectContaining({
+            status: 'done',
+            content: '[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]',
+        }));
+        expect(chat[0].extra.inChatAgentCompanionResults[nonRunnableTracker.id]).toEqual(previousNonRunnable);
+    });
+
+    test('stops tracker companion repair after cancellation', async () => {
+        let resolveFirstRepair;
+        const makeTracker = id => createCompanionAgent({
+            id,
+            category: 'tracker',
+            phase: 'pre',
+            postProcess: {
+                enabled: true,
+                type: 'extract',
+                extractPattern: '\\[WORLD\\|[^\\]]*\\][\\s\\S]*?\\[\\/WORLD\\]',
+                extractVariable: `${id}_world_data`,
+            },
+        });
+        const firstTracker = makeTracker('first-cancelled-tracker');
+        const secondTracker = makeTracker('second-cancelled-tracker');
+        enabledAgents = [firstTracker, secondTracker];
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveFirstRepair = resolve;
+        }));
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { cancelAgentGeneration, getAgentGenerationCancelRevision } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({ mes: 'Assistant reply', name: 'Assistant', is_user: false, is_system: false, extra: {} });
+        for (const tracker of enabledAgents) {
+            companionRunner.setCompanionResult(chat[0], tracker, {
+                status: 'done',
+                content: '[WORLD|Culture|Market]\nbroken detail without closer\n[WORLD|Duplicate|Broken]',
+            });
+        }
+        const previousFirst = structuredClone(chat[0].extra.inChatAgentCompanionResults[firstTracker.id]);
+        const previousSecond = structuredClone(chat[0].extra.inChatAgentCompanionResults[secondTracker.id]);
+        const cancelRevision = getAgentGenerationCancelRevision();
+
+        const running = companionRunner.runTrackerCompanionsOnMessage(0, { cancelRevision });
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        cancelAgentGeneration();
+        resolveFirstRepair('[WORLD|Culture|Market]\ndetail: repaired\n[/WORLD]');
+
+        await expect(running).resolves.toEqual([previousFirst]);
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].extra.inChatAgentCompanionResults[firstTracker.id]).toEqual(previousFirst);
+        expect(chat[0].extra.inChatAgentCompanionResults[secondTracker.id]).toEqual(previousSecond);
     });
 
     test('feeds a companion its previous states when history is enabled', async () => {
@@ -3541,7 +4455,7 @@ describe('in-chat agent post-processing runner', () => {
         const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         chat.push({
             name: 'Assistant',
-            mes: 'Fresh reply\n[STATUS|Alice|Tired|Moderate]',
+            mes: 'Fresh reply\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]',
             is_user: false,
             is_system: false,
             extra: {},
@@ -3549,14 +4463,15 @@ describe('in-chat agent post-processing runner', () => {
 
         await runTrackerFixOnMessage(0);
 
-        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
         expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
     });
 
     test('manual tracker fix regenerates missing extract tracker blocks', async () => {
         usePreExtractTracker();
-        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Alice|Tired|Moderate]');
+        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
 
         const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         chat.push({
@@ -3569,11 +4484,174 @@ describe('in-chat agent post-processing runner', () => {
 
         await runTrackerFixOnMessage(0);
 
-        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]');
-        expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
+        expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.\n\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
         expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers fixed');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix preserves prepend placement for scene trackers', async () => {
+        usePreExtractTracker();
+        Object.assign(enabledAgents[0], {
+            id: 'agent-scene-tracker',
+            sourceTemplateId: 'tpl-scene-tracker',
+            prompt: 'Track the current scene.',
+        });
+        Object.assign(enabledAgents[0].postProcess, {
+            extractPattern: '\\[SCENE\\|[^\\]]*\\][\\s\\S]*?\\[\\/SCENE\\]',
+            extractVariable: 'scene_data',
+        });
+        generateQuietPrompt.mockResolvedValueOnce('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]');
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without a scene tracker.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toBe('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]\n\nFresh reply without a scene tracker.');
+        expect(chatMetadata.agent_scene_data).toBe('[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix cancellation prevents later tracker requests', async () => {
+        usePreExtractTracker();
+        enabledAgents.push({
+            ...structuredClone(enabledAgents[0]),
+            id: 'agent-second-extract-tracker',
+            name: 'Second Extract Tracker',
+            postProcess: {
+                ...enabledAgents[0].postProcess,
+                extractVariable: 'second_status_data',
+            },
+        });
+
+        const { cancelAgentGeneration, runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        generateQuietPrompt.mockImplementationOnce(async () => {
+            cancelAgentGeneration();
+            return '[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]';
+        });
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without tracker blocks.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(chat[0].mes).toBe('Fresh reply without tracker blocks.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(chatMetadata.agent_second_status_data).toBeUndefined();
+    });
+
+    test('manual tracker fix does not mutate a newly selected chat', async () => {
+        usePreExtractTracker();
+        let resolveRepair;
+        generateQuietPrompt.mockImplementationOnce(async () => await new Promise(resolve => {
+            resolveRepair = resolve;
+        }));
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const originalMessage = {
+            name: 'Assistant',
+            mes: 'Fresh reply without tracker blocks.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(originalMessage);
+
+        const running = runTrackerFixOnMessage(0);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        currentChatId = 'chat-b';
+        chat[0] = { name: 'Assistant', mes: 'Different chat reply.', is_user: false, is_system: false, extra: {} };
+        resolveRepair('[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]');
+
+        await running;
+        expect(chat[0].mes).toBe('Different chat reply.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+
+    test('manual tracker fix rejects invalid generated blocks atomically', async () => {
+        usePreExtractTracker();
+        generateQuietPrompt.mockResolvedValueOnce('No tracker block was produced.');
+        chatMetadata.agent_status_data = '[STATUS|Stale|Value|Old]\nstale\n[/STATUS]';
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply without a tracker.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toBe('Fresh reply without a tracker.');
+        expect(chatMetadata.agent_status_data).toBeUndefined();
+        expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers fixed');
+    });
+
+    test('manual tracker fix keeps metadata from the newest valid tracker state', async () => {
+        usePreExtractTracker();
+        generateQuietPrompt.mockResolvedValueOnce('[STATUS|Older|Recovered|Mild]\nrepaired\n[/STATUS]');
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push(
+            { name: 'Assistant', mes: 'Older reply without a tracker.', is_user: false, is_system: false, extra: {} },
+            { name: 'User', mes: 'Continue.', is_user: true, is_system: false, extra: {} },
+            { name: 'Assistant', mes: 'Newest reply\n[STATUS|Newest|Current|Severe]\ncurrent\n[/STATUS]', is_user: false, is_system: false, extra: {} },
+        );
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].mes).toContain('[STATUS|Older|Recovered|Mild]');
+        expect(chatMetadata.agent_status_data).toBe('[STATUS|Newest|Current|Severe]\ncurrent\n[/STATUS]');
+
+        await new Promise(resolve => setTimeout(resolve, 5));
+    });
+
+    test('manual tracker fix preserves unrelated regex snapshot references', async () => {
+        usePreExtractTracker();
+        const tracker = enabledAgents[0];
+        useRegexOnlyAgent();
+        enabledAgents = [tracker, enabledAgents[0]];
+
+        const { runTrackerFixOnMessage } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        chat.push({
+            name: 'Assistant',
+            mes: 'Fresh reply\n[STATUS|Alice|Ready|Mild]\nstable\n[/STATUS]',
+            is_user: false,
+            is_system: false,
+            extra: {
+                inChatAgents: {
+                    activeAgentIds: ['agent-regex-only'],
+                    generationType: 'normal',
+                    regexScriptRefs: [{ agentId: 'agent-regex-only', scriptId: 'regex-script-1', revision: 'existing-revision' }],
+                    edited: false,
+                },
+            },
+        });
+
+        await runTrackerFixOnMessage(0);
+
+        expect(chat[0].extra.inChatAgents.regexScriptRefs).toEqual([
+            expect.objectContaining({ agentId: 'agent-regex-only', scriptId: 'regex-script-1' }),
+        ]);
     });
 
     test('snapshots regex-only agents on streamed tokens before final message events', async () => {
@@ -3718,7 +4796,8 @@ describe('in-chat agent post-processing runner', () => {
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Exact mobile order\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Exact mobile order\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -3750,8 +4829,9 @@ describe('in-chat agent post-processing runner', () => {
         expect(generateQuietPrompt).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
-        await waitFor(() => chat[0].mes === 'Mobile transform rewrite');
+        await waitForDeferredFlush(() => generateQuietPrompt.mock.calls.length === 1
+            && chat[0].mes === 'Mobile transform rewrite'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile transform rewrite');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4286,7 +5366,8 @@ Helper context.`;
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4331,7 +5412,8 @@ Helper context.`;
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Mobile processed once\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile processed once\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4376,7 +5458,8 @@ Helper context.`;
             extra: {},
         });
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Late mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Late mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4436,7 +5519,8 @@ Helper context.`;
             extra: {},
         });
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Late reply without after commands\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Late reply without after commands\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4572,7 +5656,8 @@ Helper context.`;
 
         delete document.body.dataset.generating;
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Replaced mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Replaced mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);

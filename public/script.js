@@ -253,6 +253,8 @@ import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
+import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
@@ -5501,9 +5503,10 @@ export function getExtensionPromptMaxDepth() {
  * @param {string} [separator] Separator for joining multiple prompts
  * @param {number} [role] Role of the prompt
  * @param {boolean} [wrap] Wrap start and end with a separator
+ * @param {(entry: {key: string, prompt: object, value: string}) => void} [resolvedPromptCallback] Receives source prompts from the same macro expansion pass
  * @returns {Promise<string>} Extension prompt
  */
-export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true) {
+export async function getExtensionPrompt(position = extension_prompt_types.IN_PROMPT, depth = undefined, separator = '\n', role = undefined, wrap = true, resolvedPromptCallback = null) {
     const filterByFunction = async (prompt) => {
         const hasFilter = typeof prompt.filter === 'function';
         if (hasFilter && !await prompt.filter()) {
@@ -5520,7 +5523,18 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
         .filter(filterByFunction);
     const prompts = await Promise.all(promptPromises);
 
-    let values = prompts.map(x => x.value.trim()).join(separator);
+    const promptKeyByValue = new Map(Object.keys(extension_prompts).map(key => [extension_prompts[key], key]));
+    const promptSegments = prompts.map((prompt, index) => ({
+        prompt,
+        key: promptKeyByValue.get(prompt) ?? '',
+        start: `\uE000ICA${index}S\uE001`,
+        end: `\uE000ICA${index}E\uE001`,
+    }));
+    const collectResolvedPrompts = typeof resolvedPromptCallback === 'function';
+    const collectedSegments = promptSegments.filter(segment => collectResolvedPrompts && segment.key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX));
+    let values = promptSegments.map(segment => collectedSegments.includes(segment)
+        ? instrumentInChatAgentPromptValue(segment.prompt.value, segment.start, segment.end)
+        : segment.prompt.value.trim()).join(separator);
     if (wrap && values.length && !values.startsWith(separator)) {
         values = separator + values;
     }
@@ -5529,6 +5543,20 @@ export async function getExtensionPrompt(position = extension_prompt_types.IN_PR
     }
     if (values.length) {
         values = substituteParams(values);
+    }
+    if (collectResolvedPrompts) {
+        for (const segment of collectedSegments) {
+            const start = values.indexOf(segment.start);
+            const end = start >= 0 ? values.indexOf(segment.end, start + segment.start.length) : -1;
+            if (start >= 0 && end >= 0) {
+                resolvedPromptCallback({
+                    key: segment.key,
+                    prompt: segment.prompt,
+                    value: values.slice(start + segment.start.length, end),
+                });
+            }
+            values = values.replace(segment.start, '').replace(segment.end, '');
+        }
     }
     return values;
 }
@@ -6721,6 +6749,7 @@ function removeLastMessage(messageId = null) {
  * @property {boolean} [suppressUserMessage] Whether the visible user message was already rendered by a caller.
  * @property {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
  * @property {boolean} [preserveLastMessage] Whether regeneration should retain the last assistant message as context.
+ * @property {ChatMessage} [companionHistoryTarget] Rewrite target whose Companion output must stay excluded during recursive tool calls.
  */
 
 /**
@@ -6765,7 +6794,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false) {
     console.log('Generate entered');
     setGenerationProgress(0);
     generation_started = new Date();
@@ -6858,7 +6887,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // Occurs only if the generation is not aborted due to slash commands execution
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage }, dryRun);
+    const companionFeedbackTarget = companionHistoryTarget
+        ?? (type === 'continue' || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget }, dryRun);
 
     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
@@ -6881,7 +6912,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     if (selected_group && !is_group_generating) {
         if (!dryRun) {
             // Returns the promise that generateGroupWrapper returns; resolves when generation is done
-            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage });
+            return generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget });
         }
 
         const characterIndexMap = new Map(characters.map((char, index) => [char.avatar, index]));
@@ -6996,13 +7027,71 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Collect messages with usable content
     const canUseTools = ToolManager.isToolCallingSupported();
     const canPerformToolCalls = !dryRun && ToolManager.canPerformToolCalls(type) && depth < ToolManager.RECURSE_LIMIT;
-    let coreChat = chat.filter(x => !x.is_system || (canUseTools && Array.isArray(x.extra?.tool_invocations)));
+    let coreChat = chat.filter(x => !x.is_system
+        || (canUseTools && Array.isArray(x.extra?.tool_invocations))
+        || hasCompanionChatHistoryForHiddenHost(x));
     if (generationChatFilter) {
         coreChat = coreChat.filter((message, index) => generationChatFilter(message, index, coreChat));
     }
     if (type === 'swipe') {
         coreChat.pop();
     }
+    const companionRewriteTarget = companionHistoryTarget
+        ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
+    const companionCandidateMessages = coreChat.filter(message =>
+        message !== companionRewriteTarget
+        && !message.extra?.[IGNORE_SYMBOL],
+    );
+    const companionPolicyMessages = (companionRewriteTarget && !chat.includes(companionRewriteTarget)
+        ? [...chat, companionRewriteTarget]
+        : chat
+    ).filter(message => !message.extra?.[IGNORE_SYMBOL]);
+    const companionChatHistory = selectCompanionChatHistory(companionCandidateMessages, {
+        policyMessages: companionPolicyMessages,
+    });
+    const {
+        host: consolidatedCompanionHistoryHost,
+        entries: consolidatedRetainedEntries,
+    } = consolidateCompanionChatHistory(companionCandidateMessages, companionChatHistory, sourceMessage => content => substituteParams(content, {
+        name2Override: String(sourceMessage.name ?? '').trim() || undefined,
+        original: sourceMessage.is_system ? '' : sourceMessage.mes,
+    }), message => !Array.isArray(message?.extra?.tool_invocations));
+    const consolidatedRetainedContributions = consolidatedRetainedEntries.map(({ message: sourceMessage, contribution }) => {
+        const sourceIndex = coreChat.indexOf(sourceMessage);
+        const regexType = sourceMessage.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+        const options = { isPrompt: true, depth: (coreChat.length - sourceIndex - (isContinue ? 2 : 1)) };
+        const agentRegexScripts = resolveRegexScriptsForSnapshot(sourceMessage?.extra?.inChatAgents);
+        let promptContent = contribution.content;
+        if (agentRegexScripts.length > 0) {
+            const agentPlacement = sourceMessage.is_user ? AGENT_REGEX_PLACEMENT.USER_INPUT : AGENT_REGEX_PLACEMENT.AI_OUTPUT;
+            promptContent = applyRegexScriptList(promptContent, agentRegexScripts, agentPlacement, {
+                ...options,
+                characterOverride: name2,
+                substituteParamsFn: substituteParams,
+                substituteParamsExtendedFn: substituteParamsExtended,
+            });
+        }
+        const worldInfoContent = promptContent === contribution.content
+            ? undefined
+            : getRegexedString(contribution.content, regexType, options);
+        promptContent = getRegexedString(promptContent, regexType, options);
+        const contextDepth = Math.max(0, coreChat.length - sourceIndex - 1);
+        const retainOoc = shouldRetainContextAtDepth(contextDepth, power_user.ooc_context_depth);
+        const retainHtml = shouldRetainContextAtDepth(contextDepth, power_user.html_context_depth);
+
+        return {
+            contribution: {
+                ...contribution,
+                content: stripHtmlTagsFromContext(stripOocBlocksFromContext(promptContent, retainOoc), retainHtml),
+            },
+            worldInfoContent: worldInfoContent === undefined
+                ? undefined
+                : stripHtmlTagsFromContext(stripOocBlocksFromContext(worldInfoContent, retainOoc), retainHtml),
+        };
+    });
+    coreChat = coreChat.filter(chatItem => !chatItem.is_system
+        || (canUseTools && Array.isArray(chatItem.extra?.tool_invocations))
+        || chatItem === consolidatedCompanionHistoryHost);
 
     const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
@@ -7010,7 +7099,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const worldInfoSourceMessage = chatItem === firstChatMessage && firstMessageVariants !== undefined
             ? firstMessageVariants.worldInfo
             : originalMessage;
-        let message = originalMessage;
+        const isConsolidatedCompanionHost = chatItem === consolidatedCompanionHistoryHost;
+        const hiddenCompanionHistory = chatItem.is_system && isConsolidatedCompanionHost;
+        // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
+        const retainedContributions = isConsolidatedCompanionHost
+            ? consolidatedRetainedContributions.map(item => item.contribution).filter(contribution => contribution.content)
+            : [];
+        const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage;
+        const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage;
+        let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
 
@@ -7027,18 +7124,18 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         let regexedMessage = getRegexedString(message, regexType, options);
-        let worldInfoRegexedMessage = message === worldInfoSourceMessage ? undefined : getRegexedString(worldInfoSourceMessage, regexType, options);
-        const fileContent = await appendFileContent(chatItem, '');
+        let worldInfoRegexedMessage = message === worldInfoContextSourceMessage ? undefined : getRegexedString(worldInfoContextSourceMessage, regexType, options);
+        const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
         regexedMessage = fileContent + regexedMessage;
         if (worldInfoRegexedMessage !== undefined) {
             worldInfoRegexedMessage = fileContent + worldInfoRegexedMessage;
         }
 
         const titles = [];
-        if (chatItem?.extra?.append_title && chatItem?.extra?.title) {
+        if (!hiddenCompanionHistory && chatItem?.extra?.append_title && chatItem?.extra?.title) {
             titles.push(chatItem.extra.title);
         }
-        if (Array.isArray(chatItem?.extra?.media)) {
+        if (!hiddenCompanionHistory && Array.isArray(chatItem?.extra?.media)) {
             for (const mediaItem of chatItem.extra.media) {
                 if (mediaItem?.title && mediaItem?.append_title) {
                     titles.push(mediaItem.title);
@@ -7060,18 +7157,37 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             stripOocBlocksFromContext(regexedMessage, retainOoc),
             retainHtml,
         );
+        const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]
+            .filter(Boolean)
+            .join('\n\n');
+        const agentContributions = retainedContributions
+            .filter(contribution => contribution.content && consolidatedContextMessage.includes(contribution.content));
 
+        let worldInfoContextMessage = contextMessage;
         if (worldInfoRegexedMessage !== undefined) {
-            const worldInfoContextMessage = stripHtmlTagsFromContext(
+            worldInfoContextMessage = stripHtmlTagsFromContext(
                 stripOocBlocksFromContext(worldInfoRegexedMessage, retainOoc),
                 retainHtml,
             );
-            worldInfoMessageVariants.set(index, { prompt: contextMessage, worldInfo: worldInfoContextMessage });
+        }
+        if (isConsolidatedCompanionHost) {
+            const worldInfoRetainedContent = consolidatedRetainedContributions
+                .map(item => item.worldInfoContent ?? item.contribution.content)
+                .filter(Boolean);
+            worldInfoContextMessage = [worldInfoContextMessage, ...worldInfoRetainedContent]
+                .filter(Boolean)
+                .join('\n\n');
+        }
+        if (worldInfoContextMessage !== consolidatedContextMessage) {
+            worldInfoMessageVariants.set(index, { prompt: consolidatedContextMessage, worldInfo: worldInfoContextMessage });
         }
 
         return {
             ...chatItem,
-            mes: contextMessage,
+            mes: consolidatedContextMessage,
+            extra: hiddenCompanionHistory ? {} : chatItem.extra,
+            is_system: hiddenCompanionHistory ? false : chatItem.is_system,
+            ...(agentContributions.length > 0 && { agentContributions }),
             index,
         };
     }));
@@ -7335,6 +7451,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     let chat2 = [];
+    let chat2AgentContributions = [];
     let continue_mag = '';
     let userMessageIndices = [];
     const lastUserMessageIndex = coreChat.findLastIndex(x => x.is_user);
@@ -7350,6 +7467,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         chat2[i] = formatMessageHistoryItem(coreChat[j], isInstruct, false);
+        chat2AgentContributions[i] = Array.isArray(coreChat[j].agentContributions)
+            ? structuredClone(coreChat[j].agentContributions)
+            : [];
 
         if (j === 0 && isInstruct) {
             // Reformat with the first output sequence (if any)
@@ -7435,6 +7555,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     // Only add the chat in context if past the greeting message
     if (isContinue && (chat2.length > 1 || main_api === 'openai')) {
         cyclePrompt = chat2.shift();
+        chat2AgentContributions.shift();
         // Adjust indices to account for the shift
         injectedIndices = injectedIndices.map(shiftDownByOne).filter(x => x >= 0);
         userMessageIndices = userMessageIndices.map(shiftDownByOne).filter(x => x >= 0);
@@ -7480,13 +7601,22 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             continue;
         }
 
-        const item = chat2[i];
+        let item = chat2[i];
 
         if (typeof item !== 'string') {
             continue;
         }
 
-        tokenCount += await getTokenCountAsync(item.replace(/\r/gm, ''));
+        let itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+        while (tokenCount + itemTokens >= this_max_context && chat2AgentContributions[i].length > 0) {
+            const trimmed = trimOldestRetainedContribution(item, chat2AgentContributions[i]);
+            if (!trimmed.changed) break;
+            item = trimmed.content;
+            chat2[i] = item;
+            chat2AgentContributions[i] = trimmed.contributions;
+            itemTokens = await getTokenCountAsync(item.replace(/\r/gm, ''));
+        }
+        tokenCount += itemTokens;
         if (tokenCount < this_max_context) {
             chatString = chatString + item;
             arrMes[i] = item;
@@ -8011,7 +8141,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         depth = depth + 1;
                         await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
                         startedSuccessorGeneration = true;
-                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                        return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
                     }
                 }
 
@@ -8218,7 +8348,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                 depth = depth + 1;
                 await ToolManager.saveFunctionToolInvocations(invocationResult.invocations);
-                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage }, dryRun);
+                return Generate('normal', { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, depth, suppressUserMessage, companionHistoryTarget: companionRewriteTarget }, dryRun);
             }
         }
 

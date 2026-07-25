@@ -203,8 +203,17 @@
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAuthorsNote" /><span>Include Author's Note</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeSystemPrompt" /><span>Include System Prompt</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeHistory" /><span>Include prior notes</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeInChatHistory" /><span>Keep this agent in Chat History</span></label>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-feedbackEnabled" /><span>Feed recent notes into future generations</span></label>
             <label class="checkbox_label" title="Send the agent prompt exactly as written, without appending format instructions. Recommended for trackers that define their own output format."><input type="checkbox" id="ica--editor-companion-rawPrompt" /><span>Use agent prompt as-is (no added instructions)</span></label>
+        </div>
+        <div class="ica--editor-row" id="ica--companion-chat-history-row">
+            <label>Notes to keep
+                <input type="number" id="ica--editor-companion-chatHistoryDepth" class="text_pole" min="1" max="50" value="1" />
+            </label>
+            <div class="ica--regex-note">Keeps this agent's most recent notes in the AI's context. Only notes that finished generating are counted.</div>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAllChatHistory" /><span>Keep all notes instead</span></label>
+            <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-keepInChatHistoryWhenHostHidden" /><span>Keep notes in context even when their message is hidden</span></label>
         </div>
         <div class="ica--editor-row" id="ica--companion-feedback-depth-row">
             <label>Feedback Depth

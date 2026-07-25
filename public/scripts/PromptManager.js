@@ -4,7 +4,7 @@ import { DOMPurify } from '../lib.js';
 
 import { event_types, eventSource, is_send_press, main_api, saveSettingsDebounced, substituteParams } from '../script.js';
 import { is_group_generating } from './group-chats.js';
-import { getCurrentOpenAIPresetPromptOrder, Message, MessageCollection, TokenHandler } from './openai.js';
+import { getCurrentOpenAIPresetPromptOrder, Message, TokenHandler } from './openai.js';
 import { power_user } from './power-user.js';
 import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
 import { debounce_timeout } from './constants.js';
@@ -16,6 +16,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
+import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
     resolvePromptManagerRenderState,
     resolvePromptManagerScrollRestore,
@@ -39,8 +40,6 @@ function debouncePromise(func, delay) {
 const DEFAULT_DEPTH = 4;
 const DEFAULT_ORDER = 100;
 const PROMPT_MANAGER_DESKTOP_SPLIT_QUERY = '(min-width: 961px)';
-// SillyBunny In-Chat Agents reserve this extension prompt key prefix.
-const IN_CHAT_AGENT_PROMPT_KEY_PREFIX = 'inchat_agent_';
 
 /**
  * @enum {number}
@@ -371,6 +370,9 @@ class PromptManager {
 
         // Message collection of the most recent chatcompletion
         this.messages = null;
+
+        // Detached, inspection-only In-Chat Agent messages from the latest prompt assembly.
+        this.runtimeAgentMessages = null;
 
         // The current token handler instance
         this.tokenHandler = null;
@@ -751,8 +753,10 @@ class PromptManager {
             this.clearInspectForm();
 
             const promptID = event.target.closest('.' + this.configuration.prefix + 'prompt_manager_prompt').dataset.pmIdentifier;
-            if (true === this.messages.hasItemWithIdentifier(promptID)) {
-                const messages = this.messages.getItemByIdentifier(promptID);
+            const messages = promptID === RUNTIME_AGENTS_IDENTIFIER
+                ? this.runtimeAgentMessages
+                : this.messages.getItemByIdentifier(promptID);
+            if (messages) {
                 this.selectedPromptId = promptID;
                 this.activePopupArea = 'inspect';
 
@@ -760,6 +764,15 @@ class PromptManager {
 
                 this.showPopup('inspect');
             }
+        };
+
+        // Inspect actions are anchors without href, so they need explicit key activation.
+        this.handleInspectKeydown = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            this.handleInspect(event);
         };
 
         // Detach selected prompt from list form and close edit form
@@ -2052,6 +2065,14 @@ class PromptManager {
         const messages = chatCompletion.getMessages();
 
         this.setMessages(messages);
+        this.runtimeAgentMessages = chatCompletion.getRuntimeAgentMessages();
+        if (this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect') {
+            const messageList = document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_inspect_list');
+            if (messageList) {
+                messageList.innerHTML = '';
+                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);
+            }
+        }
         this.populateTokenCounts(messages);
         this.overriddenPrompts = chatCompletion.getOverriddenPrompts();
     }
@@ -2087,14 +2108,7 @@ class PromptManager {
     }
 
     getInChatAgentTokenUsage() {
-        return Object.entries(this.getActivePromptTokenCounts() ?? {}).reduce((total, [identifier, tokens]) => {
-            if (!identifier.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX)) {
-                return total;
-            }
-
-            const tokenCount = Number(tokens);
-            return total + (Number.isFinite(tokenCount) ? tokenCount : 0);
-        }, 0);
+        return resolveInChatAgentTokenUsage(this.runtimeAgentMessages, this.getActivePromptTokenCounts());
     }
 
     async populateSourcePromptTokenCounts() {
@@ -2167,7 +2181,7 @@ class PromptManager {
             }
         }
 
-        if (this.selectedPromptId && !this.getPromptById(this.selectedPromptId)) {
+        if (this.selectedPromptId && this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)) {
             this.hidePopup();
             this.clearEditForm();
             this.clearInspectForm();
@@ -2336,7 +2350,7 @@ class PromptManager {
                         ${isImportantPrompt ? '<span class="fa-fw fa-solid fa-star" title="Important Prompt"></span>' : ''}
                         ${isUserPrompt ? '<span class="fa-fw fa-solid fa-asterisk" title="Preset Prompt"></span>' : ''}
                         ${isInjectionPrompt ? '<span class="fa-fw fa-solid fa-syringe" title="In-Chat Injection"></span>' : ''}
-                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
+                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
                         ${roleIcon ? `<span data-role="${escapeHtml(prompt.role)}" class="fa-xs fa-solid ${roleIcon}" title="${roleTitle}"></span>` : ''}
                         ${isInjectionPrompt ? `<small class="prompt-manager-injection-depth">@ ${escapeHtml(prompt.injection_depth.toString())}</small>` : ''}
                         ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
@@ -2355,6 +2369,20 @@ class PromptManager {
             `;
         });
 
+        const runtimeAgentTokens = this.getInChatAgentTokenUsage();
+        const runtimeSelectedClass = this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea
+            ? `${prefix}prompt_manager_prompt_selected`
+            : '';
+        listItemHtml += `
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
+                <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
+                    <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
+                    <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+                </span>
+                <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+            </li>
+        `;
+
         if (!this.#isRenderCurrent(renderRequestId) || promptManagerList !== this.listElement) {
             return false;
         }
@@ -2369,6 +2397,7 @@ class PromptManager {
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-inspect-action')).forEach(el => {
             el.addEventListener('click', this.handleInspect);
+            el.addEventListener('keydown', this.handleInspectKeydown);
         });
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-edit-action')).forEach(el => {

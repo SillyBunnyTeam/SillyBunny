@@ -10,7 +10,7 @@
         "npcs",
         "world"
     ],
-    "version": 2,
+    "version": 3,
     "author": "Purachina",
     "prompt": "### Parallel Off-Screen Tracker\nThe world moves off-screen. Track absent characters, world motion, rumor flow, shifting relationships, and subplot pressure that will later intersect with {{user}}.\n\nUse this exact format every scene:\n\n[PARALLEL|Scope|Relevance]\n- Character 1: brief development\n- Character 2: brief development\n- World/NPCs: brief development\n[/PARALLEL]\n\nRules:\n- Exactly 3 bullet points.\n- Focus on absent characters and off-screen developments; in group scenes, prioritize characters not currently present.\n- Scope = specific location, \"Multiple locations,\" or \"Background.\"\n- Relevance = short tag: \"rising tension,\" \"opportunity,\" \"complication,\" \"threat,\" or \"alliance forming.\"\n- Keep each bullet brief, plot-relevant, and directional: plans, rumors, delays, discussions, attempts, discoveries, or shifting loyalties.\n- Off-screen developments begin below the current scene's intensity, then build over time until they intersect with the main story.",
     "phase": "both",
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\\\[PARALLEL\\\\|[^\\\\]]*\\\\]",
+        "extractPattern": "\\[PARALLEL\\|[^\\]\\r\\n]*\\](?:(?!\\[PARALLEL(?=[:|\\]]))[\\s\\S])*?\\[/PARALLEL\\]",
         "extractVariable": "parallel_data"
     },
     "enabled": false,

@@ -305,7 +305,7 @@ function applyVersions(versionTargets, dryRun) {
     }
 
     if (indexChanged) {
-        writeJsonFile(indexPath, indexEntries, 2);
+        writeJsonFile(indexPath, indexEntries, 4);
     }
 }
 

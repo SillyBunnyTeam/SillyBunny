@@ -188,6 +188,16 @@ describe('companion card ui', () => {
         expect(sanitize).toHaveBeenCalled();
     });
 
+    // DESIGN.md limits inline companion cards to regenerate, edit, copy, delete, and manual-run.
+    // Hiding an agent lives in the companion panel; agent settings live behind Workspace.
+    test('keeps inline card actions within the documented vocabulary', () => {
+        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', import.meta.url), 'utf8');
+
+        expect(source).not.toContain('data-action="hide"');
+        expect(source).not.toContain('data-action="settings"');
+        expect(source).not.toContain('configureCompanionCardUi');
+    });
+
     test('beautifies Chat Only transcript speaker turns before markdown conversion', async () => {
         const chatOnlyTemplate = readTemplate('chat-only-companion.json');
         agents.push({

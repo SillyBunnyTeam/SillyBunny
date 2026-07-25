@@ -243,7 +243,8 @@
 
 .ica--quick-chip-main,
 .ica--quick-chip-pin,
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     border: none;
     color: inherit;
     -webkit-appearance: none;
@@ -266,7 +267,8 @@
 
 .ica--quick-chip-main:hover,
 .ica--quick-chip-pin:hover,
-.ica--quick-chip-apply:hover {
+.ica--quick-chip-apply:hover,
+.ica--quick-chip-apply-target:hover {
     background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 18%, transparent);
 }
 
@@ -327,7 +329,8 @@
     flex: 0 0 auto;
 }
 
-.ica--quick-chip-apply {
+.ica--quick-chip-apply,
+.ica--quick-chip-apply-target {
     width: 38px;
     min-width: 38px;
     display: inline-flex;
@@ -345,7 +348,9 @@
 }
 
 .ica--quick-chip-apply:hover,
-.ica--quick-chip-apply:focus-visible {
+.ica--quick-chip-apply:focus-visible,
+.ica--quick-chip-apply-target:hover,
+.ica--quick-chip-apply-target:focus-visible {
     opacity: 1;
     color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 78%, var(--SmartThemeBodyColor, #ddd) 22%);
 }
@@ -759,7 +764,8 @@ button.ica--card-pill--version-update {
     }
 
     .ica--quick-chip-pin,
-    .ica--quick-chip-apply {
+    .ica--quick-chip-apply,
+    .ica--quick-chip-apply-target {
         width: 30px;
         min-width: 30px;
     }
@@ -2567,6 +2573,29 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 }
 
 @media (max-width: 720px) {
+    .popup:has(#ica--editor).wide_dialogue_popup {
+        width: calc(100vw - 20px);
+        width: calc(100dvw - 20px);
+        min-width: 0;
+        max-width: calc(100vw - 20px);
+        max-width: calc(100dvw - 20px);
+    }
+
+    .popup:has(#ica--editor) .popup-body,
+    .popup:has(#ica--editor) .popup-content,
+    #ica--editor,
+    #ica--editor .ica--editor-section {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    #ica--editor :is(input, select, textarea) {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
     .ica--templates-callout {
         position: relative;
         flex-direction: column;
@@ -2798,6 +2827,24 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
         content: '';
         position: absolute;
         inset: -14px -10px;
+    }
+
+    .ica--quick-chip-apply-target {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    /* Companion card actions are transparent at rest, so growing them to the 44px touch
+       contract is visually identical on touch while keeping hit areas from overlapping. */
+    .ica--companion-action,
+    #chat .ica--companion-actions .ica--companion-action {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        height: 44px;
+        min-height: 44px;
     }
 }
 

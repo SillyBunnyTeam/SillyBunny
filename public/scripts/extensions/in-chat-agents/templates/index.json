@@ -10,7 +10,7 @@
             "achievements",
             "milestones"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Achievements\nTrack notable firsts, milestones, and memorable moments. Award only when something genuinely significant or entertaining happens. Use this EXACT format:\n\n[ACH|Title|Rarity|Description]\nunlocked: MANDATORY; explain what triggered it; NEVER leave empty\n[/ACH]\n\nRarity options: ★ COMMON | ★★ UNCOMMON | ★★★ RARE | ★★★★ EPIC | ★★★★★ LEGENDARY | 💀 SECRET\n\nRules:\n- Achievements appear AFTER narrative content\n- MAXIMUM one achievement per scene; most scenes have none\n- Achievements must feel earned, never automatic\n- NEVER output an empty unlocked line",
         "phase": "both",
@@ -28,7 +28,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[ACH\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[ACH\\|[^\\]\\r\\n]*\\](?:(?!\\[ACH(?=[:|\\]]))[\\s\\S])*?\\[/ACH\\]",
             "extractVariable": "achievement_data"
         },
         "enabled": false,
@@ -270,7 +270,7 @@
             "choices",
             "plot"
         ],
-        "version": 1,
+        "version": 2,
         "author": "Purachina",
         "prompt": "### Direction Menu\nAdd exactly 4 plot-direction prompts after the scene reply. When this runs as a repair task, the direction menu is the full result.\n\nThese are dramatic pivots, not safe continuations. Each option names a distinct, compelling way the next development could escalate, rupture, complicate, or transform the scene.\n\nStructure:\n- A and B are grounded pivots. They develop naturally from the current scene but must still create meaningful stakes, change, or revelation. Each one introduces a new problem, power shift, uncomfortable truth, forced decision, or irreversible development.\n- C and D are wildcard pivots. These are the options that make {{user}} most tempted to pick them: dangerous, funny, volatile, bizarre, dramatically ironic, or genuinely unexpected, while still rooted in current context. Worst timing, strangest coincidence, most embarrassing outcome, sharpest reversal, or most disruptive intrusion.\n\nEvery option changes the scene in a way that cannot be easily walked back. Prefer options that force characters into new positions, expose something hidden, break something that was working, introduce an absent element, or create lasting fallout.\n\nRules:\n- Exactly 4 options labeled A, B, C, and D.\n- Every option is plot-directional, not action-by-action.\n- Every option promises a meaningfully different scene than the others.\n- C and D are bolder, stranger, and more dramatically charged than A and B.\n- C and D are tempting enough that choosing A or B feels cautious.\n- All 4 options stay concise: 1 sentence each, max 22 words.\n\nOutput format:\n[DIRECTIONS]\nA. Grounded pivot with a meaningful new complication\nB. Grounded pivot with a different meaningful new complication\nC. Wildcard pivot: dangerous, funny, volatile, or ironic\nD. Wildcard pivot: stranger, sharper, or more disruptive\n[/DIRECTIONS]",
         "phase": "post",
@@ -288,7 +288,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[DIRECTIONS\\][\\s\\S]*?\\[/DIRECTIONS\\]",
+            "extractPattern": "\\[DIRECTIONS\\](?:(?!\\[DIRECTIONS\\])[\\s\\S])*?\\[/DIRECTIONS\\]",
             "extractVariable": "direction_data",
             "promptTransformEnabled": true,
             "promptTransformShowNotifications": true,
@@ -361,7 +361,7 @@
             "deadlines",
             "quests"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Pending Events\nTrack upcoming events, deadlines, promises, and unresolved threads. Update when events are added, resolved, or failed. Use this EXACT format:\n\n[EVENT|Type|Summary|Deadline]\ncontext: MANDATORY; explain the stakes or origin\n[/EVENT]\n\nType options: 🎯 QUEST | 💬 PROMISE | ⏰ DEADLINE | ⚠️ THREAT | 🎉 SOCIAL | 💡 OPPORTUNITY | ❌ FAILED | ✅ RESOLVED\n\nRules:\n- Events appear AFTER narrative content\n- Only show events that were ADDED, UPDATED, or RESOLVED this scene\n- Mark resolved/failed events once, then remove them\n- Deadline can be specific (Friday 3 PM) or vague (soon, eventually)\n- Track only important events; low-stakes events are to be completely ignored (e.g. cooking steps).",
         "phase": "both",
@@ -379,7 +379,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[EVENT\\|[^\\]]*\\]",
+            "extractPattern": "\\[EVENT\\|[^\\]\\r\\n]*\\](?:(?!\\[EVENT(?=[:|\\]]))[\\s\\S])*?\\[/EVENT\\]",
             "extractVariable": "event_data"
         },
         "enabled": false,
@@ -720,7 +720,7 @@
             "items",
             "objects"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Inventory\nTrack items {{user}} acquires, loses, or uses that have narrative significance. Do not list mundane carried items unless plot-relevant. Use this EXACT format:\n\n[ITEM|Action|Name|Detail]\nnote: MANDATORY; explain origin or significance\n[/ITEM]\n\nAction options: ➕ GAINED | ➖ LOST | 🔄 USED | 💔 BROKEN | 🎁 GIVEN\n\nRules:\n- Items appear AFTER narrative content when inventory changes\n- Only show items that CHANGED this scene\n- Do not track currency, consumables, or mundane objects unless plot-relevant",
         "phase": "both",
@@ -738,7 +738,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[ITEM\\|[^\\]]*\\]",
+            "extractPattern": "\\[ITEM\\|[^\\]\\r\\n]*\\](?:(?!\\[ITEM(?=[:|\\]]))[\\s\\S])*?\\[/ITEM\\]",
             "extractVariable": "item_data"
         },
         "enabled": false,
@@ -765,9 +765,9 @@
             "characters",
             "profiles"
         ],
-        "version": 1,
+        "version": 2,
         "author": "Purachina",
-        "prompt": "### NPC Introduction\nWhen introducing a new named NPC for the first time, append a character sheet immediately after their narrative introduction using the appropriate tier, using this EXACT format with no additional formatting:\n\nMAJOR - Recurring characters, antagonists, love interests, plot-critical figures\n[NPC:MAJOR|Name]\nb: Full Name | Age | Gender/Pronouns | Occupation\na: Height/Build | Hair | Eyes | Skin | Distinguishing Marks | Current Attire\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nSUPPORT - Secondary recurring characters, faction members, scene-specific important figures\n[NPC:SUPPORT|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\np: Demeanor | Speech | Key Traits\nh: Relevant History | Motivation\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nMINOR - One-scene characters, background figures, service roles\n[NPC:MINOR|Name]\nb: Name | Age/Range | Role\na: Quick Physical Description\np: One-line Personality Summary\n[/NPC]\n\nNPC Sheet Rules:\n- Sheets appear ONCE per NPC at first significant appearance\n- Place sheet AFTER narrative introduction, BEFORE continuing action\n- Use pipe | separators between data points\n- Never forget the opening and closing tags\n- If NPC tier upgrades (Minor→Support→Major), use: [NPC:UP|Name|NEW_TIER] with new fields [/NPC]\n\nFor returning NPCs in busy scenes, use quick reference:\n[NPC:REF|Name|visual cue|current mood]\n\nFor relationship changes mid-story:\n[NPC:REL|Name|change description]",
+        "prompt": "### NPC Introduction\nWhen introducing a new named NPC for the first time, append a character sheet immediately after their narrative introduction using the appropriate tier, using this EXACT format with no additional formatting:\n\nMAJOR - Recurring characters, antagonists, love interests, plot-critical figures\n[NPC:MAJOR|Name]\nb: Full Name | Age | Gender/Pronouns | Occupation\na: Height/Build | Hair | Eyes | Skin | Distinguishing Marks | Current Attire\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nSUPPORT - Secondary recurring characters, faction members, scene-specific important figures\n[NPC:SUPPORT|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\np: Demeanor | Speech | Key Traits\nh: Relevant History | Motivation\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nMINOR - One-scene characters, background figures, service roles\n[NPC:MINOR|Name]\nb: Name | Age/Range | Role\na: Quick Physical Description\np: One-line Personality Summary\n[/NPC]\n\nNPC Sheet Rules:\n- Sheets appear ONCE per NPC at first significant appearance\n- Place sheet AFTER narrative introduction, BEFORE continuing action\n- Use pipe | separators between data points\n- Never forget the opening and closing tags\n- If NPC tier upgrades (Minor→Support→Major), use: [NPC:UP|Name|NEW_TIER] with new fields [/NPC]\n\nFor returning NPCs in busy scenes, use quick reference:\n[NPC:REF|Name|visual cue|current mood][/NPC]\n\nFor relationship changes mid-story:\n[NPC:REL|Name|change description][/NPC]",
         "phase": "pre",
         "injection": {
             "position": 0,
@@ -783,7 +783,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[NPC\\|[^\\]]+\\]",
+            "extractPattern": "\\[NPC(?::(?:MAJOR|SUPPORT|MINOR|UP|REF|REL))?\\|[^\\]\\r\\n]+\\](?:(?!\\[NPC(?=[:|\\]]))[\\s\\S])*?\\[/NPC\\]",
             "extractVariable": "npc_profiles"
         },
         "enabled": false,
@@ -885,7 +885,7 @@
             "npcs",
             "world"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Parallel Off-Screen Tracker\nThe world moves off-screen. Track absent characters, world motion, rumor flow, shifting relationships, and subplot pressure that will later intersect with {{user}}.\n\nUse this exact format every scene:\n\n[PARALLEL|Scope|Relevance]\n- Character 1: brief development\n- Character 2: brief development\n- World/NPCs: brief development\n[/PARALLEL]\n\nRules:\n- Exactly 3 bullet points.\n- Focus on absent characters and off-screen developments; in group scenes, prioritize characters not currently present.\n- Scope = specific location, \"Multiple locations,\" or \"Background.\"\n- Relevance = short tag: \"rising tension,\" \"opportunity,\" \"complication,\" \"threat,\" or \"alliance forming.\"\n- Keep each bullet brief, plot-relevant, and directional: plans, rumors, delays, discussions, attempts, discoveries, or shifting loyalties.\n- Off-screen developments begin below the current scene's intensity, then build over time until they intersect with the main story.",
         "phase": "both",
@@ -903,7 +903,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[PARALLEL\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[PARALLEL\\|[^\\]\\r\\n]*\\](?:(?!\\[PARALLEL(?=[:|\\]]))[\\s\\S])*?\\[/PARALLEL\\]",
             "extractVariable": "parallel_data"
         },
         "enabled": false,
@@ -930,7 +930,7 @@
             "npc",
             "meter"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Relationship Meters\nTrack affection and trust for recurring NPCs with significant interactions. Update only when meaningful shifts occur. If nothing changed, omit entirely. Use this EXACT format:\n\n[METER|Name|X/10|X/10|Status|Condition]\nbrief reason for change\n[/METER]\n\nStatus options (positive): Stranger → Acquaintance → Friendly → Close → Intimate → Devoted\nStatus options (negative): Wary → Hostile → Nemesis\nStatus options (complex): Complicated | Codependent | Estranged | Rivals | Frenemies\n\nCondition options: 💚 STABLE | 💛 SHIFTING | 💔 HEARTBROKEN | 🖤 BETRAYED | 💢RESENTFUL |🔥 PASSIONATE |❄️ COLD | 🫧 INFATUATED | 💀 SEVERED | 🩹 MENDING | ⛓️ OBSESSED | 😶 NUMB | 🌧️ GRIEVING | 🤝 RECONCILING | ⚡ VOLATILE\n\nRules:\n- Meters appear ONCE per NPC at first significant appearance, then only when changed\n- Place meter AFTER narrative content\n- Only show meters that CHANGED this scene\n- Use pipe | separators between data points\n- Affection and Trust are independent axes (high affection + low trust = infatuation/obsession; low affection + high trust = respect)\n- Shifts of more than 2 points in one scene require extreme justification\n- Condition reflects the EMOTIONAL STATE of the relationship, not just the numbers\n- Condition can change independently of scores (e.g., Trust stays at 7 but Condition shifts from STABLE to VOLATILE after a fight)\n- Contradictory signals are valid (high affection + BETRAYED, low trust + PASSIONATE)\n- SEVERED means the relationship has ended; retire the meter after one final showing\n- Relationships may stagnate or lower; slow down relationship development",
         "phase": "both",
@@ -948,7 +948,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[METER\\|[^\\]]*\\]",
+            "extractPattern": "\\[METER\\|[^\\]\\r\\n]*\\](?:(?!\\[METER(?=[:|\\]]))[\\s\\S])*?\\[/METER\\]",
             "extractVariable": "relationship_data"
         },
         "enabled": false,
@@ -975,7 +975,7 @@
             "rumors",
             "perception"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Rumors & Reputation\nTrack how <user> is perceived by groups and factions. Update when public perception shifts due to witnessed actions, gossip, or deliberate manipulation. Use this EXACT format:\n\n[REP|Source|Perception|Direction]\ncause: MANDATORY; explain what triggered this reputation shift\n[/REP]\n\nDirection options: 📈 RISING | 📉 FALLING | 🔄 MIXED | 🆕 NEW\n\nRules:\n- Reputation appears AFTER narrative content when public perception changes\n- Source can be a named NPC, a group (e.g., \"Freshmen,\" \"Faculty\"), or a location (e.g., \"The dorm floor\")\n- Perception is what they think; a short phrase, not necessarily accurate\n- Only show reputations that CHANGED or were ESTABLISHED this scene\n- Contradictory reputations across different sources are encouraged and allowed",
         "phase": "both",
@@ -993,7 +993,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[REP\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[REP\\|[^\\]\\r\\n]*\\](?:(?!\\[REP(?=[:|\\]]))[\\s\\S])*?\\[/REP\\]",
             "extractVariable": "reputation_data"
         },
         "enabled": false,
@@ -1102,7 +1102,7 @@
             "location",
             "time"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Scene Tracker\nMark scene transitions, time shifts, and location changes. Use this EXACT format at the BEGINNING of the response when scene context changes:\n\n[SCENE|Location|Time|Weather/Atmosphere]\ndetail: MANDATORY; one-line sensory detail that informs the current environment\n[/SCENE]\n\nRules:\n- Appears at the TOP of responses where setting shifts\n- Never repeat if location/time has not changed\n- Time can be specific (3:47 PM) or atmospheric (late afternoon, the golden hour before dusk)\n- Weather/Atmosphere is a brief mood descriptor (humid, tense, festive)",
         "phase": "both",
@@ -1120,7 +1120,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[SCENE\\|[^\\]]*\\]",
+            "extractPattern": "\\[SCENE\\|[^\\]\\r\\n]*\\](?:(?!\\[SCENE(?=[:|\\]]))[\\s\\S])*?\\[/SCENE\\]",
             "extractVariable": "scene_data"
         },
         "enabled": false,
@@ -1148,7 +1148,7 @@
             "lies",
             "information"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Secrets & Information Asymmetry\nTrack significant secrets, lies, hidden knowledge, and information gaps between characters. Use this EXACT format:\n\n[SECRET|Owner|What They Know or Hide|Who Else Knows]\ncontext: MANDATORY; explain the stakes or origin\n[/SECRET]\n\nRules:\n- Secrets appear AFTER narrative content when new information asymmetry is established or knowledge spreads\n- Owner is the character who holds or hides the information\n- \"Who Else Knows\" can be \"No one,\" a list of names, or \"Public\"\n- Only show secrets that were ESTABLISHED, REVEALED, or SPREAD this scene",
         "phase": "both",
@@ -1166,7 +1166,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[SECRET\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[SECRET\\|[^\\]\\r\\n]*\\](?:(?!\\[SECRET(?=[:|\\]]))[\\s\\S])*?\\[/SECRET\\]",
             "extractVariable": "secret_data"
         },
         "enabled": false,
@@ -1193,7 +1193,7 @@
             "conditions",
             "health"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Status & Conditions\nTrack active physical, mental, or behavioral states when they meaningfully change. Never list baseline states. Use this EXACT format:\n\n[STATUS|Character|Condition|Severity]\nnote: MANDATORY; explain the cause or context\n[/STATUS]\n\nSeverity options: 🟢 MILD | 🟡 MODERATE | 🔴 SEVERE | ⚫ CRITICAL | ✅ CLEARED\n\nRules:\n- Status appears AFTER narrative content when a condition is gained, worsened, improved, or cleared\n- Only show statuses that CHANGED this scene\n- Character can be {{user}} or any NPC\n- Condition is the specific state (e.g., \"Exhausted,\" \"Drunk,\" \"Paranoid,\" \"Bleeding\")\n",
         "phase": "both",
@@ -1211,7 +1211,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[STATUS\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[STATUS\\|[^\\]\\r\\n]*\\](?:(?!\\[STATUS(?=[:|\\]]))[\\s\\S])*?\\[/STATUS\\]",
             "extractVariable": "status_data"
         },
         "enabled": false,
@@ -1238,7 +1238,7 @@
             "day",
             "clock"
         ],
-        "version": 2,
+        "version": 3,
         "author": "Purachina",
         "prompt": "### Time Tracker\nMaintain a running timestamp when time advances meaningfully: scene jumps, hours passing, sleeping, or deadline-relevant progression. Use this EXACT format:\n\n[TIME|Day X|Day of Week|Approximate Hour]\nnote: MANDATORY; explain the time context\n[/TIME]\n\nRules:\n- Time appears at the TOP of responses when time shifts without a location change\n- If both location and time change, use Scene Tracker and Time Tracker together\n- Day format: \"Day 1,\" \"Day 47,\" etc.\n- Day of week: Monday, Tuesday, etc., or \"Unknown\" if not established\n- Hour can be specific (3:47 PM) or general (early morning, late afternoon)\n- Multiple Time Trackers per scene are allowed",
         "phase": "both",
@@ -1256,7 +1256,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[TIME\\|[^\\]]*\\]",
+            "extractPattern": "\\[TIME\\|[^\\]\\r\\n]*\\](?:(?!\\[TIME(?=[:|\\]]))[\\s\\S])*?\\[/TIME\\]",
             "extractVariable": "time_data"
         },
         "enabled": false,
@@ -1284,7 +1284,7 @@
             "lore",
             "detail"
         ],
-        "version": 1,
+        "version": 2,
         "author": "Purachina",
         "prompt": "### World Detail\nAdd 1 small world detail per scene that may later matter to {{user}} as setup, constraint, opportunity, or complication.\n\nUse this exact format at the end of the response:\n\n[WORLD|Category|Location or Context]\ndetail: (max 50 words)\n[/WORLD]\n\nCategory: 🏛 CULTURE | 🗣 OVERHEARD | 📜 HISTORY | 🌿 ENVIRONMENT | 🔧 HOW IT WORKS | 👥 DAILY LIFE | 🪧 SIGNAGE | 📖 FOLKLORE | 💰 ECONOMY | ⚙️ INFRASTRUCTURE\n\nRules:\n- Exactly 1 detail per scene, max 50 words.\n- Concrete, setting-native, and passively noticeable in the moment.\n- Use customs, overheard lines, hazards, systems, resources, architecture, or social realities.\n- Must become useful, revealing, or constraining later.\n- Expand the world in a new direction; support future plot development.",
         "phase": "both",
@@ -1302,7 +1302,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\\\[WORLD\\\\|[^\\\\]]*\\\\]",
+            "extractPattern": "\\[WORLD\\|[^\\]\\r\\n]*\\](?:(?!\\[WORLD(?=[:|\\]]))[\\s\\S])*?\\[/WORLD\\]",
             "extractVariable": "world_data"
         },
         "enabled": false,
@@ -2644,9 +2644,9 @@
         "category": "tracker",
         "execution": "inline",
         "tags": [],
-        "version": 1,
+        "version": 2,
         "author": "Purachina",
-        "prompt": "## CYOA Choices with Skill Checks\n\nMaintain a setting-specific CYOA choice tracker from {{user}}'s perspective. When meaningful player agency is needed, output this block at the very end of the response:\n\n[CHOICES]\n1. **[Skill 0/100]** Action description\n2. **[Skill 0/100]** Action description\n3. **[Skill 0/100]** Action description\n[/CHOICES]\n\nRules:\n- Output 3\u20137 choices only.\n- The [CHOICES] block must be the final part of every response.\n- Write each choice as something {{user}} can do, say, inspect, threaten, negotiate, fight, sneak, craft, repair, analyze, decode, heal, or otherwise attempt.\n- Each choice must begin with a tag and target value: [Skill/Perk/Stat/Reputation/Item/Condition 0/100].\n- Examples: [Speech 42/100], [Stealth 80/100], [Medicine 25/100], [Analysis 70/100], [Strength 60/100], [Local Reputation 50/100], [Has Lockpick 30/100], [Injured 15/100].\n- Target values should match the current difficulty, danger, pressure, or advantage.\n- Choices should be concise, tactical, reactive, and genre-appropriate.\n\n## CYOA Skill Check Resolution\n\nFor this response, the hidden d100 roll is: {{roll:1d100}}.\n\nWhen {{user}} chooses or clearly attempts one of the previous [CHOICES], resolve it using the hidden d100 roll and the choice\u2019s target value.\n\nResolution:\n- Natural 1: critical success.\n- Margin = target number - d100 roll.\n- Margin 10 or higher: clean success.\n- Margin 9 to -10: mixed, partial, or success-with-complication.\n- Margin -11 or lower: failure.\n- Natural 100: critical failure.\n\nIf user choice is completely different or deviates, base the check on the appropriate stat.\n\nNarrate the outcome naturally. Do not explain the mechanics or reveal the roll unless instructed. The choice must meaningfully affect the next scene. Failure still moves the story forward with consequences.",
+        "prompt": "## CYOA Choices with Skill Checks\n\nMaintain a setting-specific CYOA choice tracker from {{user}}'s perspective. When meaningful player agency is needed, output this block at the very end of the response:\n\n[CHOICES]\n1. **[Skill 0/100]** Action description\n2. **[Skill 0/100]** Action description\n3. **[Skill 0/100]** Action description\n[/CHOICES]\n\nRules:\n- Output 3–7 choices only.\n- The [CHOICES] block must be the final part of every response.\n- Write each choice as something {{user}} can do, say, inspect, threaten, negotiate, fight, sneak, craft, repair, analyze, decode, heal, or otherwise attempt.\n- Each choice must begin with a tag and target value: [Skill/Perk/Stat/Reputation/Item/Condition 0/100].\n- Examples: [Speech 42/100], [Stealth 80/100], [Medicine 25/100], [Analysis 70/100], [Strength 60/100], [Local Reputation 50/100], [Has Lockpick 30/100], [Injured 15/100].\n- Target values should match the current difficulty, danger, pressure, or advantage.\n- Choices should be concise, tactical, reactive, and genre-appropriate.\n\n## CYOA Skill Check Resolution\n\nFor this response, the hidden d100 roll is: {{roll:1d100}}.\n\nWhen {{user}} chooses or clearly attempts one of the previous [CHOICES], resolve it using the hidden d100 roll and the choice’s target value.\n\nResolution:\n- Natural 1: critical success.\n- Margin = target number - d100 roll.\n- Margin 10 or higher: clean success.\n- Margin 9 to -10: mixed, partial, or success-with-complication.\n- Margin -11 or lower: failure.\n- Natural 100: critical failure.\n\nIf user choice is completely different or deviates, base the check on the appropriate stat.\n\nNarrate the outcome naturally. Do not explain the mechanics or reveal the roll unless instructed. The choice must meaningfully affect the next scene. Failure still moves the story forward with consequences.",
         "phase": "pre",
         "connectionProfile": "",
         "modelOverride": "",
@@ -2699,7 +2699,7 @@
             "regexReplace": "",
             "regexFlags": "g",
             "appendText": "",
-            "extractPattern": "\\[CHOICES\\][\\s\\S]*?\\[/CHOICES\\]",
+            "extractPattern": "\\[CHOICES\\](?:(?!\\[CHOICES\\])[\\s\\S])*?\\[/CHOICES\\]",
             "extractVariable": "fallout_choices",
             "promptTransformEnabled": false,
             "promptTransformShowNotifications": true,
@@ -2711,7 +2711,7 @@
                 "id": "07b32b4e-0752-4422-a078-8641c4962063",
                 "scriptName": "Render Fallout CYOA Choices",
                 "findRegex": "/\\[CHOICES\\]\\s*([\\s\\S]*?)\\s*\\[\\/CHOICES\\]/g",
-                "replaceString": "<details open class=\"term-choices\">\n  <summary>\n    <span class=\"term-window-dots\">\n      <span class=\"term-dot red\"></span>\n      <span class=\"term-dot yellow\"></span>\n      <span class=\"term-dot green\"></span>\n    </span>\n    <span class=\"term-title\">CHOICES.exe</span>\n    <span class=\"term-status\">awaiting input</span>\n  </summary>\n\n  <div class=\"term-choice-body\">\n    <div class=\"term-prompt\">{{user}}@st:~$ select_next_action</div>\n    <div class=\"term-choice-output\">\n$1\n    </div>\n    <div class=\"term-prompt term-cursor\">{{user}}@st:~$ </div>\n  </div>\n</details>\n\n<style>\n@keyframes termChoiceGlow {\n  from {\n    box-shadow:\n      0 0 8px rgba(115,255,155,.16),\n      inset 0 0 16px rgba(115,255,155,.025);\n  }\n  to {\n    box-shadow:\n      0 0 16px rgba(115,255,155,.30),\n      0 0 28px rgba(47,191,99,.10),\n      inset 0 0 22px rgba(115,255,155,.055);\n  }\n}\n\n@keyframes termChoiceBlink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n\n.term-choices {\n  --term-bg: #050807;\n  --term-panel: #07100b;\n  --term-green: #73ff9b;\n  --term-green-soft: #b8ffce;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115,255,155,.36);\n  --term-border-soft: rgba(115,255,155,.18);\n  --term-glow: rgba(115,255,155,.20);\n\n  margin: 10px 0;\n  padding: 0;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,.024) 50%, rgba(0,0,0,.035) 50%),\n    radial-gradient(circle at top left, rgba(115,255,155,.09), transparent 35%),\n    radial-gradient(circle at bottom right, rgba(47,191,99,.07), transparent 32%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  font-size: 10px;\n  overflow: hidden;\n  text-align: left;\n  animation: termChoiceGlow 3s ease-in-out infinite alternate;\n}\n\n.term-choices summary {\n  cursor: pointer;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.10), rgba(47,191,99,.045), rgba(0,0,0,.12)),\n    #07100b;\n  border-bottom: 1px solid var(--term-border-soft);\n  color: var(--term-green);\n  font-weight: 800;\n  letter-spacing: .035em;\n  text-shadow: 0 0 7px rgba(115,255,155,.42);\n  user-select: none;\n}\n\n.term-choices summary::-webkit-details-marker {\n  display: none;\n}\n\n.term-window-dots {\n  display: inline-flex;\n  gap: 6px;\n  align-items: center;\n  flex: 0 0 auto;\n}\n\n.term-dot {\n  width: .72em;\n  height: .72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: .95;\n}\n\n.term-dot.red { background: #ff5f56; }\n.term-dot.yellow { background: #ffbd2e; }\n.term-dot.green { background: #27c93f; }\n\n.term-title {\n  color: var(--term-green);\n  font-weight: 900;\n}\n\n.term-status {\n  margin-left: auto;\n  color: var(--term-muted);\n  font-weight: 500;\n  letter-spacing: 0;\n}\n\n.term-choices:not([open]) .term-status::before {\n  content: \"[closed] \";\n}\n\n.term-choices[open] .term-status::before {\n  content: \"[open] \";\n}\n\n.term-choice-body {\n  padding: 11px 14px 13px 15px;\n  border-left: 4px solid rgba(115,255,155,.42);\n  background:\n    radial-gradient(circle at top left, rgba(115,255,155,.075), transparent 36%),\n    repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0, rgba(255,255,255,.022) 1px, transparent 1px, transparent 24px),\n    rgba(0,0,0,.18);\n  line-height: 1.42;\n  word-break: break-word;\n}\n\n.term-prompt {\n  color: var(--term-green);\n  margin: 0 0 9px 0;\n  text-shadow: 0 0 7px rgba(115,255,155,.35);\n  font-weight: 700;\n}\n\n.term-cursor {\n  margin: 10px 0 0 0;\n}\n\n.term-cursor::after {\n  content: \"\u2588\";\n  display: inline-block;\n  margin-left: 2px;\n  color: var(--term-green);\n  animation: termChoiceBlink 1s steps(2, start) infinite;\n}\n\n.term-choice-output {\n  color: var(--term-text);\n  white-space: pre-wrap;\n}\n\n.term-choice-output ol {\n  margin: 0;\n  padding-left: 2.25em;\n  list-style-position: outside;\n  white-space: normal;\n}\n\n.term-choice-output li {\n  margin: 0 0 .72em 0;\n  padding: .52em .7em .62em .75em;\n  color: var(--term-text);\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.105), rgba(115,255,155,.035)),\n    rgba(0,0,0,.16);\n  border: 1px solid rgba(115,255,155,.16);\n  border-radius: 8px;\n  text-shadow: 0 0 3px rgba(115,255,155,.10);\n}\n\n.term-choice-output li:last-child {\n  margin-bottom: 0;\n}\n\n.term-choice-output li::marker {\n  color: var(--term-green);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.35);\n}\n\n.term-choice-output li:nth-child(1) {\n  background: linear-gradient(90deg, rgba(115,255,155,.14), rgba(115,255,155,.035)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(2) {\n  background: linear-gradient(90deg, rgba(93,242,135,.12), rgba(93,242,135,.03)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(3) {\n  background: linear-gradient(90deg, rgba(184,255,206,.105), rgba(184,255,206,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(4) {\n  background: linear-gradient(90deg, rgba(115,220,255,.10), rgba(115,220,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(5) {\n  background: linear-gradient(90deg, rgba(190,160,255,.10), rgba(190,160,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(6) {\n  background: linear-gradient(90deg, rgba(255,224,130,.10), rgba(255,224,130,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(7) {\n  background: linear-gradient(90deg, rgba(255,145,145,.10), rgba(255,145,145,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output strong,\n.term-choice-output b {\n  color: var(--term-green-soft);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.38);\n}\n\n.term-choice-output a {\n  color: #a7ffbf;\n  text-shadow: 0 0 5px rgba(115,255,155,.25);\n}\n\n.term-choice-output::selection,\n.term-choice-output *::selection {\n  background: rgba(115,255,155,.25);\n  color: #ffffff;\n}\n\n.term-choices:not([open]) .term-choice-body {\n  display: none !important;\n}\n</style>",
+                "replaceString": "<details open class=\"term-choices\">\n  <summary>\n    <span class=\"term-window-dots\">\n      <span class=\"term-dot red\"></span>\n      <span class=\"term-dot yellow\"></span>\n      <span class=\"term-dot green\"></span>\n    </span>\n    <span class=\"term-title\">CHOICES.exe</span>\n    <span class=\"term-status\">awaiting input</span>\n  </summary>\n\n  <div class=\"term-choice-body\">\n    <div class=\"term-prompt\">{{user}}@st:~$ select_next_action</div>\n    <div class=\"term-choice-output\">\n$1\n    </div>\n    <div class=\"term-prompt term-cursor\">{{user}}@st:~$ </div>\n  </div>\n</details>\n\n<style>\n@keyframes termChoiceGlow {\n  from {\n    box-shadow:\n      0 0 8px rgba(115,255,155,.16),\n      inset 0 0 16px rgba(115,255,155,.025);\n  }\n  to {\n    box-shadow:\n      0 0 16px rgba(115,255,155,.30),\n      0 0 28px rgba(47,191,99,.10),\n      inset 0 0 22px rgba(115,255,155,.055);\n  }\n}\n\n@keyframes termChoiceBlink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n\n.term-choices {\n  --term-bg: #050807;\n  --term-panel: #07100b;\n  --term-green: #73ff9b;\n  --term-green-soft: #b8ffce;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115,255,155,.36);\n  --term-border-soft: rgba(115,255,155,.18);\n  --term-glow: rgba(115,255,155,.20);\n\n  margin: 10px 0;\n  padding: 0;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,.024) 50%, rgba(0,0,0,.035) 50%),\n    radial-gradient(circle at top left, rgba(115,255,155,.09), transparent 35%),\n    radial-gradient(circle at bottom right, rgba(47,191,99,.07), transparent 32%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  font-size: 10px;\n  overflow: hidden;\n  text-align: left;\n  animation: termChoiceGlow 3s ease-in-out infinite alternate;\n}\n\n.term-choices summary {\n  cursor: pointer;\n  list-style: none;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 12px;\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.10), rgba(47,191,99,.045), rgba(0,0,0,.12)),\n    #07100b;\n  border-bottom: 1px solid var(--term-border-soft);\n  color: var(--term-green);\n  font-weight: 800;\n  letter-spacing: .035em;\n  text-shadow: 0 0 7px rgba(115,255,155,.42);\n  user-select: none;\n}\n\n.term-choices summary::-webkit-details-marker {\n  display: none;\n}\n\n.term-window-dots {\n  display: inline-flex;\n  gap: 6px;\n  align-items: center;\n  flex: 0 0 auto;\n}\n\n.term-dot {\n  width: .72em;\n  height: .72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: .95;\n}\n\n.term-dot.red { background: #ff5f56; }\n.term-dot.yellow { background: #ffbd2e; }\n.term-dot.green { background: #27c93f; }\n\n.term-title {\n  color: var(--term-green);\n  font-weight: 900;\n}\n\n.term-status {\n  margin-left: auto;\n  color: var(--term-muted);\n  font-weight: 500;\n  letter-spacing: 0;\n}\n\n.term-choices:not([open]) .term-status::before {\n  content: \"[closed] \";\n}\n\n.term-choices[open] .term-status::before {\n  content: \"[open] \";\n}\n\n.term-choice-body {\n  padding: 11px 14px 13px 15px;\n  border-left: 4px solid rgba(115,255,155,.42);\n  background:\n    radial-gradient(circle at top left, rgba(115,255,155,.075), transparent 36%),\n    repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0, rgba(255,255,255,.022) 1px, transparent 1px, transparent 24px),\n    rgba(0,0,0,.18);\n  line-height: 1.42;\n  word-break: break-word;\n}\n\n.term-prompt {\n  color: var(--term-green);\n  margin: 0 0 9px 0;\n  text-shadow: 0 0 7px rgba(115,255,155,.35);\n  font-weight: 700;\n}\n\n.term-cursor {\n  margin: 10px 0 0 0;\n}\n\n.term-cursor::after {\n  content: \"█\";\n  display: inline-block;\n  margin-left: 2px;\n  color: var(--term-green);\n  animation: termChoiceBlink 1s steps(2, start) infinite;\n}\n\n.term-choice-output {\n  color: var(--term-text);\n  white-space: pre-wrap;\n}\n\n.term-choice-output ol {\n  margin: 0;\n  padding-left: 2.25em;\n  list-style-position: outside;\n  white-space: normal;\n}\n\n.term-choice-output li {\n  margin: 0 0 .72em 0;\n  padding: .52em .7em .62em .75em;\n  color: var(--term-text);\n  background:\n    linear-gradient(90deg, rgba(115,255,155,.105), rgba(115,255,155,.035)),\n    rgba(0,0,0,.16);\n  border: 1px solid rgba(115,255,155,.16);\n  border-radius: 8px;\n  text-shadow: 0 0 3px rgba(115,255,155,.10);\n}\n\n.term-choice-output li:last-child {\n  margin-bottom: 0;\n}\n\n.term-choice-output li::marker {\n  color: var(--term-green);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.35);\n}\n\n.term-choice-output li:nth-child(1) {\n  background: linear-gradient(90deg, rgba(115,255,155,.14), rgba(115,255,155,.035)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(2) {\n  background: linear-gradient(90deg, rgba(93,242,135,.12), rgba(93,242,135,.03)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(3) {\n  background: linear-gradient(90deg, rgba(184,255,206,.105), rgba(184,255,206,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(4) {\n  background: linear-gradient(90deg, rgba(115,220,255,.10), rgba(115,220,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(5) {\n  background: linear-gradient(90deg, rgba(190,160,255,.10), rgba(190,160,255,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(6) {\n  background: linear-gradient(90deg, rgba(255,224,130,.10), rgba(255,224,130,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output li:nth-child(7) {\n  background: linear-gradient(90deg, rgba(255,145,145,.10), rgba(255,145,145,.025)), rgba(0,0,0,.16);\n}\n\n.term-choice-output strong,\n.term-choice-output b {\n  color: var(--term-green-soft);\n  font-weight: 900;\n  text-shadow: 0 0 6px rgba(115,255,155,.38);\n}\n\n.term-choice-output a {\n  color: #a7ffbf;\n  text-shadow: 0 0 5px rgba(115,255,155,.25);\n}\n\n.term-choice-output::selection,\n.term-choice-output *::selection {\n  background: rgba(115,255,155,.25);\n  color: #ffffff;\n}\n\n.term-choices:not([open]) .term-choice-body {\n  display: none !important;\n}\n</style>",
                 "trimStrings": [],
                 "placement": [
                     2
@@ -2727,7 +2727,7 @@
             {
                 "id": "43535115-b766-4e19-8f94-d1cb440048f4",
                 "scriptName": "Trim Choices",
-                "findRegex": "/(?s)\\[CHOICES\\].*?\\[/CHOICES\\]/g",
+                "findRegex": "/\\[CHOICES\\][\\s\\S]*?\\[\\/CHOICES\\]/g",
                 "replaceString": "",
                 "trimStrings": [],
                 "placement": [
@@ -2857,7 +2857,7 @@
                 "id": "44e5eba0-bf45-4b2a-81d1-6f39e0db4157",
                 "scriptName": "Replace Level Up",
                 "findRegex": "/\\[LEVEL_UP\\]\\s*([\\s\\S]*?)\\s*\\[\\/LEVEL_UP\\]/g",
-                "replaceString": "<style>\n.levelup-terminal {\n  --term-bg: #050807;\n  --term-green: #73ff9b;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115, 255, 155, 0.35);\n  --term-glow: rgba(115, 255, 155, 0.18);\n  --term-gold: #ffe082;\n\n  max-width: 760px;\n  margin: 1em auto;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,0.025) 50%, rgba(0,0,0,0.035) 50%),\n    radial-gradient(circle at top left, rgba(255,224,130,0.10), transparent 34%),\n    radial-gradient(circle at bottom right, rgba(115,255,155,0.08), transparent 36%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  box-shadow:\n    0 0 22px var(--term-glow),\n    inset 0 0 30px rgba(0,0,0,0.55);\n  overflow: hidden;\n}\n\n.levelup-terminal-header {\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  padding: 0.65em 0.85em;\n  background: #07100b;\n  border-bottom: 1px solid var(--term-border);\n  color: var(--term-green);\n  text-shadow: 0 0 8px var(--term-glow);\n  letter-spacing: 0.04em;\n  font-weight: 700;\n}\n\n.levelup-dot {\n  width: 0.72em;\n  height: 0.72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: 0.9;\n}\n\n.levelup-dot.red { background: #ff5f56; }\n.levelup-dot.yellow { background: #ffbd2e; }\n.levelup-dot.green { background: #27c93f; }\n\n.levelup-title {\n  margin-left: 0.35em;\n}\n\n.levelup-terminal-body {\n  padding: 0.9em;\n}\n\n.levelup-terminal details {\n  border: 1px solid rgba(115,255,155,0.22);\n  background: rgba(3, 10, 7, 0.72);\n  border-radius: 8px;\n  margin: 0.65em 0;\n  overflow: hidden;\n}\n\n.levelup-terminal details[open] {\n  border-color: rgba(255,224,130,0.45);\n  box-shadow:\n    inset 0 0 18px rgba(115,255,155,0.045),\n    0 0 18px rgba(255,224,130,0.08);\n}\n\n.levelup-terminal summary {\n  cursor: pointer;\n  list-style: none;\n  padding: 0.65em 0.75em;\n  color: var(--term-gold);\n  background: rgba(255,224,130,0.055);\n  border-bottom: 1px solid rgba(255,224,130,0.16);\n  font-weight: 700;\n  text-shadow: 0 0 8px rgba(255,224,130,0.22);\n  user-select: none;\n}\n\n.levelup-terminal summary::-webkit-details-marker {\n  display: none;\n}\n\n.levelup-terminal summary::before {\n  content: \"> \";\n  color: var(--term-green-dim);\n}\n\n.levelup-terminal details:not([open]) summary::after {\n  content: \" [closed]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-terminal details[open] summary::after {\n  content: \" [open]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-output {\n  margin: 0;\n  padding: 0.85em;\n  white-space: pre-wrap;\n  word-break: break-word;\n  color: var(--term-text);\n  line-height: 1.45;\n  font-size: 0.94em;\n  font-family: \"Courier New\", Courier, monospace;\n}\n\n.levelup-output strong,\n.levelup-output b {\n  color: #b8ffce;\n  font-weight: 900;\n  text-shadow: 0 0 7px rgba(115,255,155,0.25);\n}\n\n.levelup-prompt {\n  color: var(--term-green);\n  text-shadow: 0 0 8px rgba(115,255,155,0.22);\n}\n\n.levelup-badge {\n  display: inline-block;\n  color: var(--term-gold);\n  text-shadow: 0 0 8px rgba(255,224,130,0.25);\n}\n\n.levelup-cursor::after {\n  content: \"\u2588\";\n  display: inline-block;\n  color: var(--term-green);\n  animation: levelup-blink 1s steps(2, start) infinite;\n}\n\n@keyframes levelup-blink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n</style>\n\n<div class=\"levelup-terminal\">\n  <div class=\"levelup-terminal-header\">\n    <span class=\"levelup-dot red\"></span>\n    <span class=\"levelup-dot yellow\"></span>\n    <span class=\"levelup-dot green\"></span>\n    <span class=\"levelup-title\">LEVEL_UP.exe</span>\n  </div>\n\n  <div class=\"levelup-terminal-body\">\n    <details open>\n      <summary>LEVEL UP REPORT</summary>\n      <div class=\"levelup-output\"><span class=\"levelup-prompt\">{{user}}@st:~$ run LEVEL_UP.report</span>\n<span class=\"levelup-badge\">[ LEVEL UP CONFIRMED ]</span>\n\n$1\n\n<span class=\"levelup-prompt levelup-cursor\">{{user}}@st:~$ </span></div>\n    </details>\n  </div>\n</div>",
+                "replaceString": "<style>\n.levelup-terminal {\n  --term-bg: #050807;\n  --term-green: #73ff9b;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115, 255, 155, 0.35);\n  --term-glow: rgba(115, 255, 155, 0.18);\n  --term-gold: #ffe082;\n\n  max-width: 760px;\n  margin: 1em auto;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,0.025) 50%, rgba(0,0,0,0.035) 50%),\n    radial-gradient(circle at top left, rgba(255,224,130,0.10), transparent 34%),\n    radial-gradient(circle at bottom right, rgba(115,255,155,0.08), transparent 36%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  box-shadow:\n    0 0 22px var(--term-glow),\n    inset 0 0 30px rgba(0,0,0,0.55);\n  overflow: hidden;\n}\n\n.levelup-terminal-header {\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  padding: 0.65em 0.85em;\n  background: #07100b;\n  border-bottom: 1px solid var(--term-border);\n  color: var(--term-green);\n  text-shadow: 0 0 8px var(--term-glow);\n  letter-spacing: 0.04em;\n  font-weight: 700;\n}\n\n.levelup-dot {\n  width: 0.72em;\n  height: 0.72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: 0.9;\n}\n\n.levelup-dot.red { background: #ff5f56; }\n.levelup-dot.yellow { background: #ffbd2e; }\n.levelup-dot.green { background: #27c93f; }\n\n.levelup-title {\n  margin-left: 0.35em;\n}\n\n.levelup-terminal-body {\n  padding: 0.9em;\n}\n\n.levelup-terminal details {\n  border: 1px solid rgba(115,255,155,0.22);\n  background: rgba(3, 10, 7, 0.72);\n  border-radius: 8px;\n  margin: 0.65em 0;\n  overflow: hidden;\n}\n\n.levelup-terminal details[open] {\n  border-color: rgba(255,224,130,0.45);\n  box-shadow:\n    inset 0 0 18px rgba(115,255,155,0.045),\n    0 0 18px rgba(255,224,130,0.08);\n}\n\n.levelup-terminal summary {\n  cursor: pointer;\n  list-style: none;\n  padding: 0.65em 0.75em;\n  color: var(--term-gold);\n  background: rgba(255,224,130,0.055);\n  border-bottom: 1px solid rgba(255,224,130,0.16);\n  font-weight: 700;\n  text-shadow: 0 0 8px rgba(255,224,130,0.22);\n  user-select: none;\n}\n\n.levelup-terminal summary::-webkit-details-marker {\n  display: none;\n}\n\n.levelup-terminal summary::before {\n  content: \"> \";\n  color: var(--term-green-dim);\n}\n\n.levelup-terminal details:not([open]) summary::after {\n  content: \" [closed]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-terminal details[open] summary::after {\n  content: \" [open]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.levelup-output {\n  margin: 0;\n  padding: 0.85em;\n  white-space: pre-wrap;\n  word-break: break-word;\n  color: var(--term-text);\n  line-height: 1.45;\n  font-size: 0.94em;\n  font-family: \"Courier New\", Courier, monospace;\n}\n\n.levelup-output strong,\n.levelup-output b {\n  color: #b8ffce;\n  font-weight: 900;\n  text-shadow: 0 0 7px rgba(115,255,155,0.25);\n}\n\n.levelup-prompt {\n  color: var(--term-green);\n  text-shadow: 0 0 8px rgba(115,255,155,0.22);\n}\n\n.levelup-badge {\n  display: inline-block;\n  color: var(--term-gold);\n  text-shadow: 0 0 8px rgba(255,224,130,0.25);\n}\n\n.levelup-cursor::after {\n  content: \"█\";\n  display: inline-block;\n  color: var(--term-green);\n  animation: levelup-blink 1s steps(2, start) infinite;\n}\n\n@keyframes levelup-blink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n</style>\n\n<div class=\"levelup-terminal\">\n  <div class=\"levelup-terminal-header\">\n    <span class=\"levelup-dot red\"></span>\n    <span class=\"levelup-dot yellow\"></span>\n    <span class=\"levelup-dot green\"></span>\n    <span class=\"levelup-title\">LEVEL_UP.exe</span>\n  </div>\n\n  <div class=\"levelup-terminal-body\">\n    <details open>\n      <summary>LEVEL UP REPORT</summary>\n      <div class=\"levelup-output\"><span class=\"levelup-prompt\">{{user}}@st:~$ run LEVEL_UP.report</span>\n<span class=\"levelup-badge\">[ LEVEL UP CONFIRMED ]</span>\n\n$1\n\n<span class=\"levelup-prompt levelup-cursor\">{{user}}@st:~$ </span></div>\n    </details>\n  </div>\n</div>",
                 "trimStrings": [],
                 "placement": [
                     2
@@ -2989,7 +2989,7 @@
                 "id": "08ba9895-ef4e-4f95-943c-09f67cfc3efa",
                 "scriptName": "Replace User Stats",
                 "findRegex": "/\\[USER_STATS\\]\\s*([\\s\\S]*?)\\s*\\[\\/USER_STATS\\]/g",
-                "replaceString": "<style>\n.terminal-stats {\n  --term-bg: #050807;\n  --term-panel: #09110d;\n  --term-green: #73ff9b;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115, 255, 155, 0.35);\n  --term-glow: rgba(115, 255, 155, 0.18);\n\n  max-width: 760px;\n  margin: 1em auto;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,0.025) 50%, rgba(0,0,0,0.035) 50%),\n    radial-gradient(circle at top left, rgba(115,255,155,0.08), transparent 36%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  box-shadow:\n    0 0 22px var(--term-glow),\n    inset 0 0 30px rgba(0,0,0,0.55);\n  overflow: hidden;\n}\n\n.terminal-stats-header {\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  padding: 0.65em 0.85em;\n  background: #07100b;\n  border-bottom: 1px solid var(--term-border);\n  color: var(--term-green);\n  text-shadow: 0 0 8px var(--term-glow);\n  letter-spacing: 0.04em;\n  font-weight: 700;\n}\n\n.terminal-dot {\n  width: 0.72em;\n  height: 0.72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: 0.9;\n}\n\n.terminal-dot.red { background: #ff5f56; }\n.terminal-dot.yellow { background: #ffbd2e; }\n.terminal-dot.green { background: #27c93f; }\n\n.terminal-title {\n  margin-left: 0.35em;\n}\n\n.terminal-stats-body {\n  padding: 0.9em;\n}\n\n.terminal-stats details {\n  border: 1px solid rgba(115,255,155,0.22);\n  background: rgba(3, 10, 7, 0.72);\n  border-radius: 8px;\n  margin: 0.65em 0;\n  overflow: hidden;\n}\n\n.terminal-stats details[open] {\n  border-color: rgba(115,255,155,0.45);\n  box-shadow: inset 0 0 18px rgba(115,255,155,0.045);\n}\n\n.terminal-stats summary {\n  cursor: pointer;\n  list-style: none;\n  padding: 0.65em 0.75em;\n  color: var(--term-green);\n  background: rgba(115,255,155,0.045);\n  border-bottom: 1px solid rgba(115,255,155,0.12);\n  font-weight: 700;\n  text-shadow: 0 0 8px rgba(115,255,155,0.2);\n  user-select: none;\n}\n\n.terminal-stats summary::-webkit-details-marker {\n  display: none;\n}\n\n.terminal-stats summary::before {\n  content: \"> \";\n  color: var(--term-green-dim);\n}\n\n.terminal-stats details:not([open]) summary::after {\n  content: \" [closed]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.terminal-stats details[open] summary::after {\n  content: \" [open]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.terminal-output {\n  margin: 0;\n  padding: 0.85em;\n  white-space: pre-wrap;\n  word-break: break-word;\n  color: var(--term-text);\n  line-height: 1.45;\n  font-size: 0.94em;\n  font-family: \"Courier New\", Courier, monospace;\n}\n\n.terminal-output strong,\n.terminal-output b {\n  color: #b8ffce;\n  font-weight: 900;\n  text-shadow: 0 0 7px rgba(115,255,155,0.25);\n}\n\n.terminal-prompt {\n  color: var(--term-green);\n  text-shadow: 0 0 8px rgba(115,255,155,0.22);\n}\n\n.terminal-cursor::after {\n  content: \"\u2588\";\n  display: inline-block;\n  color: var(--term-green);\n  animation: terminal-blink 1s steps(2, start) infinite;\n}\n\n@keyframes terminal-blink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n</style>\n\n<div class=\"terminal-stats\">\n  <div class=\"terminal-stats-header\">\n    <span class=\"terminal-dot red\"></span>\n    <span class=\"terminal-dot yellow\"></span>\n    <span class=\"terminal-dot green\"></span>\n    <span class=\"terminal-title\">USER_STATS.exe</span>\n  </div>\n\n  <div class=\"terminal-stats-body\">\n    <details open>\n      <summary>FULL STAT BLOCK</summary>\n      <div class=\"terminal-output\"><span class=\"terminal-prompt\">{{user}}@st:~$ cat USER_STATS.log</span>\n\n$1\n\n<span class=\"terminal-prompt terminal-cursor\">{{user}}@st:~$ </span></div>\n    </details>\n  </div>\n</div>",
+                "replaceString": "<style>\n.terminal-stats {\n  --term-bg: #050807;\n  --term-panel: #09110d;\n  --term-green: #73ff9b;\n  --term-green-dim: #2fbf63;\n  --term-text: #d8ffe4;\n  --term-muted: #7fa88c;\n  --term-border: rgba(115, 255, 155, 0.35);\n  --term-glow: rgba(115, 255, 155, 0.18);\n\n  max-width: 760px;\n  margin: 1em auto;\n  border: 1px solid var(--term-border);\n  border-radius: 12px;\n  background:\n    linear-gradient(rgba(255,255,255,0.025) 50%, rgba(0,0,0,0.035) 50%),\n    radial-gradient(circle at top left, rgba(115,255,155,0.08), transparent 36%),\n    var(--term-bg);\n  background-size: 100% 4px, 100% 100%, 100% 100%;\n  color: var(--term-text);\n  font-family: \"Courier New\", Courier, monospace;\n  box-shadow:\n    0 0 22px var(--term-glow),\n    inset 0 0 30px rgba(0,0,0,0.55);\n  overflow: hidden;\n}\n\n.terminal-stats-header {\n  display: flex;\n  align-items: center;\n  gap: 0.5em;\n  padding: 0.65em 0.85em;\n  background: #07100b;\n  border-bottom: 1px solid var(--term-border);\n  color: var(--term-green);\n  text-shadow: 0 0 8px var(--term-glow);\n  letter-spacing: 0.04em;\n  font-weight: 700;\n}\n\n.terminal-dot {\n  width: 0.72em;\n  height: 0.72em;\n  border-radius: 50%;\n  display: inline-block;\n  opacity: 0.9;\n}\n\n.terminal-dot.red { background: #ff5f56; }\n.terminal-dot.yellow { background: #ffbd2e; }\n.terminal-dot.green { background: #27c93f; }\n\n.terminal-title {\n  margin-left: 0.35em;\n}\n\n.terminal-stats-body {\n  padding: 0.9em;\n}\n\n.terminal-stats details {\n  border: 1px solid rgba(115,255,155,0.22);\n  background: rgba(3, 10, 7, 0.72);\n  border-radius: 8px;\n  margin: 0.65em 0;\n  overflow: hidden;\n}\n\n.terminal-stats details[open] {\n  border-color: rgba(115,255,155,0.45);\n  box-shadow: inset 0 0 18px rgba(115,255,155,0.045);\n}\n\n.terminal-stats summary {\n  cursor: pointer;\n  list-style: none;\n  padding: 0.65em 0.75em;\n  color: var(--term-green);\n  background: rgba(115,255,155,0.045);\n  border-bottom: 1px solid rgba(115,255,155,0.12);\n  font-weight: 700;\n  text-shadow: 0 0 8px rgba(115,255,155,0.2);\n  user-select: none;\n}\n\n.terminal-stats summary::-webkit-details-marker {\n  display: none;\n}\n\n.terminal-stats summary::before {\n  content: \"> \";\n  color: var(--term-green-dim);\n}\n\n.terminal-stats details:not([open]) summary::after {\n  content: \" [closed]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.terminal-stats details[open] summary::after {\n  content: \" [open]\";\n  color: var(--term-muted);\n  font-weight: 400;\n}\n\n.terminal-output {\n  margin: 0;\n  padding: 0.85em;\n  white-space: pre-wrap;\n  word-break: break-word;\n  color: var(--term-text);\n  line-height: 1.45;\n  font-size: 0.94em;\n  font-family: \"Courier New\", Courier, monospace;\n}\n\n.terminal-output strong,\n.terminal-output b {\n  color: #b8ffce;\n  font-weight: 900;\n  text-shadow: 0 0 7px rgba(115,255,155,0.25);\n}\n\n.terminal-prompt {\n  color: var(--term-green);\n  text-shadow: 0 0 8px rgba(115,255,155,0.22);\n}\n\n.terminal-cursor::after {\n  content: \"█\";\n  display: inline-block;\n  color: var(--term-green);\n  animation: terminal-blink 1s steps(2, start) infinite;\n}\n\n@keyframes terminal-blink {\n  0%, 45% { opacity: 1; }\n  46%, 100% { opacity: 0; }\n}\n</style>\n\n<div class=\"terminal-stats\">\n  <div class=\"terminal-stats-header\">\n    <span class=\"terminal-dot red\"></span>\n    <span class=\"terminal-dot yellow\"></span>\n    <span class=\"terminal-dot green\"></span>\n    <span class=\"terminal-title\">USER_STATS.exe</span>\n  </div>\n\n  <div class=\"terminal-stats-body\">\n    <details open>\n      <summary>FULL STAT BLOCK</summary>\n      <div class=\"terminal-output\"><span class=\"terminal-prompt\">{{user}}@st:~$ cat USER_STATS.log</span>\n\n$1\n\n<span class=\"terminal-prompt terminal-cursor\">{{user}}@st:~$ </span></div>\n    </details>\n  </div>\n</div>",
                 "trimStrings": [],
                 "placement": [
                     2

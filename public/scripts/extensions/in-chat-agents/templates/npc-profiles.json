@@ -10,9 +10,9 @@
         "characters",
         "profiles"
     ],
-    "version": 1,
+    "version": 2,
     "author": "Purachina",
-    "prompt": "### NPC Introduction\nWhen introducing a new named NPC for the first time, append a character sheet immediately after their narrative introduction using the appropriate tier, using this EXACT format with no additional formatting:\n\nMAJOR - Recurring characters, antagonists, love interests, plot-critical figures\n[NPC:MAJOR|Name]\nb: Full Name | Age | Gender/Pronouns | Occupation\na: Height/Build | Hair | Eyes | Skin | Distinguishing Marks | Current Attire\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nSUPPORT - Secondary recurring characters, faction members, scene-specific important figures\n[NPC:SUPPORT|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\np: Demeanor | Speech | Key Traits\nh: Relevant History | Motivation\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nMINOR - One-scene characters, background figures, service roles\n[NPC:MINOR|Name]\nb: Name | Age/Range | Role\na: Quick Physical Description\np: One-line Personality Summary\n[/NPC]\n\nNPC Sheet Rules:\n- Sheets appear ONCE per NPC at first significant appearance\n- Place sheet AFTER narrative introduction, BEFORE continuing action\n- Use pipe | separators between data points\n- Never forget the opening and closing tags\n- If NPC tier upgrades (Minor→Support→Major), use: [NPC:UP|Name|NEW_TIER] with new fields [/NPC]\n\nFor returning NPCs in busy scenes, use quick reference:\n[NPC:REF|Name|visual cue|current mood]\n\nFor relationship changes mid-story:\n[NPC:REL|Name|change description]",
+    "prompt": "### NPC Introduction\nWhen introducing a new named NPC for the first time, append a character sheet immediately after their narrative introduction using the appropriate tier, using this EXACT format with no additional formatting:\n\nMAJOR - Recurring characters, antagonists, love interests, plot-critical figures\n[NPC:MAJOR|Name]\nb: Full Name | Age | Gender/Pronouns | Occupation\na: Height/Build | Hair | Eyes | Skin | Distinguishing Marks | Current Attire\np: Demeanor | Speech Pattern | Core Traits (3-5) | Quirks/Tells\nh: Relevant History | Motivations | Secrets\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nSUPPORT - Secondary recurring characters, faction members, scene-specific important figures\n[NPC:SUPPORT|Name]\nb: Name | Age | Gender | Role\na: Build | Notable Features | Attire\np: Demeanor | Speech | Key Traits\nh: Relevant History | Motivation\nr: Connection to Protagonist | Other Ties\n[/NPC]\n\nMINOR - One-scene characters, background figures, service roles\n[NPC:MINOR|Name]\nb: Name | Age/Range | Role\na: Quick Physical Description\np: One-line Personality Summary\n[/NPC]\n\nNPC Sheet Rules:\n- Sheets appear ONCE per NPC at first significant appearance\n- Place sheet AFTER narrative introduction, BEFORE continuing action\n- Use pipe | separators between data points\n- Never forget the opening and closing tags\n- If NPC tier upgrades (Minor→Support→Major), use: [NPC:UP|Name|NEW_TIER] with new fields [/NPC]\n\nFor returning NPCs in busy scenes, use quick reference:\n[NPC:REF|Name|visual cue|current mood][/NPC]\n\nFor relationship changes mid-story:\n[NPC:REL|Name|change description][/NPC]",
     "phase": "pre",
     "injection": {
         "position": 0,
@@ -28,7 +28,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\[NPC\\|[^\\]]+\\]",
+        "extractPattern": "\\[NPC(?::(?:MAJOR|SUPPORT|MINOR|UP|REF|REL))?\\|[^\\]\\r\\n]+\\](?:(?!\\[NPC(?=[:|\\]]))[\\s\\S])*?\\[/NPC\\]",
         "extractVariable": "npc_profiles"
     },
     "enabled": false,

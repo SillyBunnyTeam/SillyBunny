@@ -22,14 +22,25 @@ const sourceFilenames = [
     'chat-only-companion.json',
     'chatroom-companion.json',
     'continuity-companion.json',
+    'cyoa-choices-skill-checks.json',
     'directors-commentary-companion.json',
+    'event-tracker.json',
+    'item-tracker.json',
     'lorebook-scout-companion.json',
     'memory-shard-companion.json',
     'message-inbox-companion.json',
     'npc-motivator.json',
+    'npc-profiles.json',
+    'parallel-tracker.json',
     'plot-compass-companion.json',
     'relationship-lens-companion.json',
+    'relationship-tracker.json',
+    'reputation-tracker.json',
     'scene-tracker.json',
+    'secrets-tracker.json',
+    'status-tracker.json',
+    'time-tracker.json',
+    'world-detail.json',
 ];
 
 function readTemplate(filename) {
@@ -146,6 +157,40 @@ describe('in-chat agent bundled templates', () => {
             const catalogTemplate = catalog.find(template => template.id === source.id);
             expect(catalogTemplate).toEqual(source);
         }
+    });
+
+    test('tracker extractors compile and retain complete canonical blocks', () => {
+        const examples = new Map([
+            ['tpl-achievements-tracker', '[ACH|First Step|COMMON|Started]\nunlocked: began\n[/ACH]'],
+            ['tpl-direction-menu', '[DIRECTIONS]\n1. Continue\n[/DIRECTIONS]'],
+            ['tpl-event-tracker', '[EVENT|QUEST|Find it|Soon]\ncontext: stakes\n[/EVENT]'],
+            ['tpl-item-tracker', '[ITEM|GAINED|Key|Brass]\nnote: found\n[/ITEM]'],
+            ['tpl-npc-profiles', '[NPC:REF|Ava|red scarf|wary][/NPC]'],
+            ['tpl-parallel-tracker', '[PARALLEL|Background|threat]\n- A\n- B\n- C\n[/PARALLEL]'],
+            ['tpl-relationship-tracker', '[METER|Ava|5/10|6/10|Friendly|STABLE]\nreason\n[/METER]'],
+            ['tpl-reputation-tracker', '[REP|Town|Helpful|RISING]\ncause: rescue\n[/REP]'],
+            ['tpl-scene-tracker', '[SCENE|Harbor|Dusk|Foggy]\ndetail: bells\n[/SCENE]'],
+            ['tpl-secrets-tracker', '[SECRET|Ava|Map|No one]\ncontext: hidden\n[/SECRET]'],
+            ['tpl-status-tracker', '[STATUS|Ava|Tired|MILD]\nnote: travel\n[/STATUS]'],
+            ['tpl-time-tracker', '[TIME|Day 2|Tuesday|Dusk]\nnote: later\n[/TIME]'],
+            ['tpl-world-detail', '[WORLD|CULTURE|Harbor]\ndetail: bells\n[/WORLD]'],
+            ['tpl-cyoa-choices-skill-checks', '[CHOICES]\n1. Continue\n[/CHOICES]'],
+        ]);
+        const catalog = readTemplate('index.json');
+
+        for (const [templateId, example] of examples) {
+            const template = findCatalogTemplate(catalog, templateId);
+            const pattern = new RegExp(template.postProcess.extractPattern, 'g');
+            expect(example.match(pattern)).toEqual([example]);
+
+            const closingTag = example.match(/\[\/([A-Z]+)\]$/)?.[0];
+            const malformedThenComplete = `${example.slice(0, -closingTag.length)}\n${example}`;
+            expect(malformedThenComplete.match(pattern)).toEqual([example]);
+        }
+
+        const skillChecks = findCatalogTemplate(catalog, 'tpl-cyoa-choices-skill-checks');
+        const trimScript = skillChecks.regexScripts.find(script => script.scriptName === 'Trim Choices');
+        expect(() => new RegExp(trimScript.findRegex.slice(1, trimScript.findRegex.lastIndexOf('/')), 'g')).not.toThrow();
     });
 
     test('keeps Level Up and User-based Stats connected by default', () => {
