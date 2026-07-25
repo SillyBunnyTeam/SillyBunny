@@ -60,6 +60,11 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
+    // Legacy single-key form of the per-device pair below; kept as a read-only seed so a bar
+    // configured before the split keeps its look on both devices.
+    topbarIconsOnly: 'sb-topbar-icons-only',
+    desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
+    mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
     characterEditorSubTab: 'sb-character-editor-sub-tab',
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
@@ -720,6 +725,69 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
 ]);
 
+// SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
+// each section in place into that section's own pages, so the bar keeps the skeleton PRODUCT.md
+// prescribes and each cluster stays readable as its own zone. Labels and icons resolve from
+// SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a cluster cannot drift when a page is
+// renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because those two
+// are persisted in user settings and carry pseudo-entries these lists must not inherit.
+const SB_TOPBAR_CLUSTERS = Object.freeze([
+    {
+        key: 'workspace',
+        leadId: 'sb-left-shell-toggle',
+        railId: 'sb-topbar-cluster-workspace',
+        pages: Object.freeze([
+            { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
+            { value: 'left:api', shellKey: 'left', tabId: 'api' },
+            { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
+            { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+            { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
+        ]),
+    },
+    {
+        key: 'customize',
+        leadId: 'sb-right-shell-toggle',
+        railId: 'sb-topbar-cluster-customize',
+        pages: Object.freeze([
+            { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+            { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
+            { value: 'right:background', shellKey: 'right', tabId: 'background' },
+            { value: 'right:server', shellKey: 'right', tabId: 'server' },
+            { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+        ]),
+    },
+    {
+        key: 'characters',
+        leadId: 'sb-character-toggle',
+        railId: 'sb-topbar-cluster-characters',
+        pages: Object.freeze([
+            { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
+            { value: 'characters:editor', shellKey: 'characters', tabId: 'editor' },
+            { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
+            { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
+            { value: 'characters:import', shellKey: 'characters', tabId: 'import' },
+        ]),
+    },
+]);
+const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
+
+// SillyBunny: Home and Characters remain as Layer 2 anchors. Workspace and Customize are redundant
+// once all of their pages are shown, so CSS hides those two only while icons-only mode is active.
+const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
+    'sb-home-toggle',
+    'sb-character-toggle',
+]);
+const SB_TOPBAR_BRAND_MIN_WIDTH = 60;
+
+// The per-device key wins; the legacy single key seeds both sides of the split so a bar
+// configured before it keeps its look everywhere until a device is set on its own.
+function readTopbarIconsOnlySetting(storageKey) {
+    return normalizeStoredBoolean(
+        safeGetItem(storageKey),
+        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly), false),
+    );
+}
+
 const sbState = {
     initialized: false,
     initRetryTimer: 0,
@@ -734,6 +802,15 @@ const sbState = {
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
+    topbarIconsOnly: {
+        desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
+        mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),
+    },
+    topbarPages: {
+        syncFrame: 0,
+        fitFrame: 0,
+        brandWidth: 0,
+    },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
     mobileButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale)),
@@ -1443,6 +1520,8 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
+    sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
     sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
         safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
@@ -1869,6 +1948,40 @@ function setCompactMode(enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
+// SillyBunny: the icons-only top bar is stored per device -- the Desktop Navigation copy governs
+// desktop viewports and the Mobile Navigation copy governs phones -- so turning the dense bar on
+// for a phone does not also restyle the desktop, and vice versa. Only the viewport's own setting
+// is ever in force.
+function isTopbarIconsOnlyActive() {
+    return isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop;
+}
+
+function applyTopbarIconsOnlyPreference() {
+    document.documentElement.dataset.sbTopbarIconsOnly = String(isTopbarIconsOnlyActive());
+    syncTopbarIconsOnlyLayout();
+    queueTopbarPageStateSync();
+    scheduleCharacterToggleGhostSync();
+}
+
+function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
+    const isDesktop = mode === 'desktop';
+    const nextEnabled = Boolean(enabled);
+
+    if (isDesktop) {
+        sbState.topbarIconsOnly.desktop = nextEnabled;
+    } else {
+        sbState.topbarIconsOnly.mobile = nextEnabled;
+    }
+
+    applyTopbarIconsOnlyPreference();
+
+    if (persist) {
+        safeSetItem(isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly, String(nextEnabled));
+    }
+
+    updateThemePickerUi();
+}
+
 function setDesktopShellSnapToChatWidth(enabled, { persist = true } = {}) {
     const nextEnabled = Boolean(enabled);
     sbState.shellSizing.snapToChatWidth = nextEnabled;
@@ -2241,6 +2354,22 @@ function prefersReducedMotion() {
 function getShellProxyButton(shellKey) {
     const shellConfig = getShellConfig(shellKey);
     const proxyButton = shellConfig?.proxyButtonId ? document.getElementById(shellConfig.proxyButtonId) : null;
+
+    if (proxyButton instanceof HTMLElement && isActuallyVisible(proxyButton)) {
+        return proxyButton;
+    }
+
+    // SillyBunny: Workspace and Customize are hidden in icons-only mode, and Workspace is also
+    // hidden on phones. Fall back to the cluster icon so focus does not silently drop to <body>.
+    const activeTabId = getShellState(shellKey)?.activeTabId;
+    const pageButton = activeTabId
+        ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
+        : null;
+
+    if (pageButton instanceof HTMLElement && isActuallyVisible(pageButton)) {
+        return pageButton;
+    }
+
     return proxyButton instanceof HTMLElement ? proxyButton : null;
 }
 
@@ -4577,6 +4706,7 @@ function updateTopBarBrand() {
     title.classList.toggle('is-chat', isActiveChat);
     title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
+    queueTopbarBrandFit();
 }
 
 function scheduleTopBarBrandBindingRetry(delay = 240) {
@@ -4698,7 +4828,9 @@ function stopProxyPointerPropagation(element) {
 
     element.addEventListener('mousedown', stop);
     element.addEventListener('pointerdown', stop);
-    element.addEventListener('touchstart', stop);
+    // Passive: the handler never calls preventDefault, and a non-passive touchstart on every
+    // button pulls WebKit off its compositor scrolling path, which stalls the icons-only rail.
+    element.addEventListener('touchstart', stop, { passive: true });
 }
 
 function createProxyButton({ id, icon, label, title, className = '' }, onClick) {
@@ -4719,6 +4851,249 @@ function createProxyButton({ id, icon, label, title, className = '' }, onClick) 
     button.addEventListener('click', debounceAction(onClick));
 
     return button;
+}
+
+function getTopbarPageConfig(page) {
+    if (isSearchShortcutTarget(page.value)) {
+        return getShortcutConfig(page.value);
+    }
+
+    if (page.shellKey === 'characters') {
+        return getCharacterPanelTabConfig(page.tabId);
+    }
+
+    const shellConfig = getShellConfig(page.shellKey);
+
+    return [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].find(tab => tab?.id === page.tabId) ?? null;
+}
+
+function createTopbarPageButton(page) {
+    const config = getTopbarPageConfig(page);
+    const label = config?.label ?? page.tabId;
+    const button = createProxyButton(
+        {
+            id: '',
+            icon: config?.icon ?? 'fa-circle-dot',
+            label,
+            title: label,
+            className: 'sb-proxy-button-icon-only sb-topbar-page-button',
+        },
+        () => activateShortcutTarget(page.value),
+    );
+
+    button.dataset.sbTopbarPage = page.value;
+
+    return button;
+}
+
+function buildTopbarPageRail(railId, pages) {
+    const rail = createElement('div', {
+        id: railId,
+        className: 'sb-topbar-pages',
+        attrs: { role: 'group' },
+    });
+
+    for (const page of pages) {
+        rail.appendChild(createTopbarPageButton(page));
+    }
+
+    return rail;
+}
+
+// SillyBunny: a 1px rule between two clusters, visible at every size while icons-only mode is on
+// so the boundaries read the same with or without the brand label between them.
+function createTopbarClusterDivider(id) {
+    return createElement('span', {
+        id,
+        className: 'sb-topbar-cluster-divider',
+        attrs: { 'aria-hidden': 'true' },
+    });
+}
+
+// SillyBunny: the whole bar has one canonical child order per group per mode, and the layout is
+// applied by replaying that order rather than by moving individual buttons and remembering where
+// each came from. appendChild on a node the group already holds is a move, so replaying is
+// idempotent and no remembered reference node can go stale.
+//
+// The cluster rails are display:none while the mode is off, so the "off" order renders exactly as
+// the bar always has: the button sequence never changes between modes, only labels and the added
+// clusters do. Phones fold the Characters pages into the single scrolling left strip, because the
+// right group is pinned at its natural width there and would otherwise starve the strip.
+function getTopbarGroupOrder({ iconsOnly, mobile }) {
+    const [workspace, customize, characters] = SB_TOPBAR_CLUSTERS;
+    const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
+    // The divider spans ride the order too; CSS decides when they are visible.
+    const left = [
+        'sb-hamburger',
+        workspace.leadId,
+        workspace.railId,
+        'sb-topbar-divider-customize',
+        customize.leadId,
+        customize.railId,
+    ];
+    const right = [];
+
+    if (iconsOnly) {
+        right.push(...quickAccessIds);
+    } else {
+        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+    }
+
+    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
+    right.push('sb-home-toggle', 'sb-topbar-divider-home');
+
+    if (iconsOnly && mobile) {
+        // The characters pages ride the strip, so the divider marks where they start there;
+        // the anchor stays pinned right beside Home.
+        right.push(characters.leadId);
+        left.push('sb-topbar-divider-characters', characters.railId);
+    } else {
+        // The characters divider rides along hidden here; the home divider above carries the
+        // Home|Characters boundary on desktop.
+        right.push('sb-topbar-divider-characters', characters.leadId, characters.railId);
+    }
+
+    return { left, right };
+}
+
+function syncTopbarGroupOrder() {
+    const leftGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-left');
+    const rightGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-right');
+
+    if (!(leftGroup instanceof HTMLElement) || !(rightGroup instanceof HTMLElement)) {
+        return;
+    }
+
+    const order = getTopbarGroupOrder({
+        iconsOnly: isTopbarIconsOnlyActive(),
+        mobile: isMobileViewport(),
+    });
+
+    for (const [group, ids] of [[leftGroup, order.left], [rightGroup, order.right]]) {
+        for (const id of ids) {
+            const element = document.getElementById(id);
+
+            if (element instanceof HTMLElement) {
+                group.appendChild(element);
+            }
+        }
+    }
+}
+
+function syncTopbarIconsOnlyLayout() {
+    const iconsOnly = isTopbarIconsOnlyActive();
+
+    for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
+        document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
+    }
+
+    syncTopbarGroupOrder();
+    syncTopbarIconsOnlyDedupe();
+    syncTopbarBrandFit();
+
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.railId)?.toggleAttribute('inert', !iconsOnly);
+    }
+}
+
+// SillyBunny: the complete clusters keep their canonical positions. A Quick Access slot pointed at
+// one of those pages yields in icons-only mode; non-cluster actions such as Search remain visible.
+function syncTopbarIconsOnlyDedupe() {
+    const clusterButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
+    const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));
+    const iconsOnly = isTopbarIconsOnlyActive();
+
+    for (const side of SB_SHORTCUT_SLOTS) {
+        const button = document.getElementById(getShortcutButtonId(side));
+
+        if (button instanceof HTMLElement) {
+            button.classList.toggle(
+                'sb-topbar-shortcut-duplicate',
+                iconsOnly && claimedByClusters.has(getShortcutTarget(side)),
+            );
+        }
+    }
+}
+
+// SillyBunny: once the icon count outgrows the bar the brand label is the least useful thing on
+// it, so it yields its width to the rails. The decision is made from the rails' full content
+// width plus a fixed label reservation, never from the label's current state, so showing and
+// hiding it cannot feed back into itself and oscillate.
+function syncTopbarBrandFit() {
+    const inner = document.getElementById('sb-topbar-inner');
+    const brand = document.querySelector('.sb-topbar-brand');
+
+    if (!(inner instanceof HTMLElement) || !(brand instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!isTopbarIconsOnlyActive()) {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+        delete document.documentElement.dataset.sbTopbarScroll;
+        return;
+    }
+
+    // Phones drop the label unconditionally, so only the overflow verdict matters there.
+    const labelCanFit = !isMobileViewport();
+
+    if (isActuallyVisible(brand)) {
+        sbState.topbarPages.brandWidth = Math.max(brand.scrollWidth, SB_TOPBAR_BRAND_MIN_WIDTH);
+    }
+
+    const groups = [...inner.querySelectorAll(':scope > .sb-topbar-group')];
+    const gap = Number.parseFloat(getComputedStyle(inner).columnGap) || 0;
+    let needed = 0;
+
+    for (const group of groups) {
+        for (const child of group.children) {
+            if (!(child instanceof HTMLElement) || !isActuallyVisible(child)) {
+                continue;
+            }
+
+            // Rails are scroll containers, so their laid-out width understates what they hold.
+            needed += child.classList.contains('sb-topbar-pages') ? child.scrollWidth : child.offsetWidth;
+            // The cluster seams and divider centring live in margins, which offsetWidth omits.
+            // Leaving them uncounted opens a dead band where the bar overflows its grid tracks
+            // -- the groups visibly overlap -- yet the scroll verdict never trips.
+            const childStyle = getComputedStyle(child);
+            needed += (Number.parseFloat(childStyle.marginInlineStart) || 0) + (Number.parseFloat(childStyle.marginInlineEnd) || 0);
+            needed += gap;
+        }
+    }
+
+    const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;
+    const available = inner.clientWidth;
+
+    if (labelCanFit && needed + reservation + gap > available) {
+        document.documentElement.dataset.sbTopbarBrandCramped = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarBrandCramped;
+    }
+
+    // Even with the label gone the icons can outrun the bar. Rather than let a rail clip a
+    // button to an unreadable sliver, hand the whole bar one scroll axis and pin the trailing
+    // controls so Quick Actions, Search, Home and Characters stay reachable at any width.
+    if (needed > available) {
+        document.documentElement.dataset.sbTopbarScroll = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarScroll;
+    }
+}
+
+function queueTopbarBrandFit() {
+    if (sbState.topbarPages.fitFrame) {
+        return;
+    }
+
+    sbState.topbarPages.fitFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.fitFrame = 0;
+        syncTopbarBrandFit();
+    });
 }
 
 function bindSearchShortcutPreFocus(button, targetGetter) {
@@ -7351,6 +7726,45 @@ function queueMobileModalStateSync() {
     });
 }
 
+function isTopbarPageActive(page) {
+    return page.shellKey === 'characters'
+        ? isCharacterPanelTabOpen(page.tabId)
+        : isShellTabOpen(page.shellKey, page.tabId);
+}
+
+function syncTopbarPageButtonStates() {
+    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+        const button = document.querySelector(`[data-sb-topbar-page="${CSS.escape(page.value)}"]`);
+
+        if (!(button instanceof HTMLElement)) {
+            continue;
+        }
+
+        const isActive = isTopbarPageActive(page);
+        button.classList.toggle('is-current', isActive);
+        button.setAttribute('aria-expanded', String(isActive));
+
+        if (isActive) {
+            button.setAttribute('aria-current', 'page');
+        } else {
+            button.removeAttribute('aria-current');
+        }
+    }
+
+    syncCharacterTopbarButtonState();
+}
+
+function queueTopbarPageStateSync() {
+    if (sbState.topbarPages.syncFrame) {
+        return;
+    }
+
+    sbState.topbarPages.syncFrame = window.requestAnimationFrame(() => {
+        sbState.topbarPages.syncFrame = 0;
+        syncTopbarPageButtonStates();
+    });
+}
+
 function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = null) {
     const el = typeof drawerRootOrId === 'string'
         ? document.getElementById(drawerRootOrId)
@@ -7360,6 +7774,7 @@ function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = nul
     el.classList.toggle('closedDrawer', !shouldOpen);
     syncDrawerIconState(drawerIconOrSelector, shouldOpen);
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function isShellOpen(shellKey) {
@@ -8205,6 +8620,8 @@ function syncCharacterShellTabs(activeTab = null) {
         }
     });
 
+    queueTopbarPageStateSync();
+
     if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
         const tabConfig = getCharacterPanelTabConfig(normalizedTab);
         document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', {
@@ -8360,6 +8777,7 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
 
     syncChatbarVisibilityState();
     queueMobileModalStateSync();
+    queueTopbarPageStateSync();
 }
 
 function bindCharacterDrawerStateObserver() {
@@ -8473,6 +8891,13 @@ function scheduleCharacterToggleGhostSync() {
     }
 }
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
+window.addEventListener('resize', queueTopbarBrandFit, { passive: true });
+window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
+    // Crossing the breakpoint can change which device's icons-only setting is in force, so the
+    // whole preference re-applies rather than just the group order.
+    applyTopbarIconsOnlyPreference();
+    queueTopbarBrandFit();
+});
 
 document.addEventListener('click', (e) => {
     if (characterToggleDispatchGuard) return;
@@ -8737,10 +9162,37 @@ function syncProxyButtonState(proxyButton, sourceIcon) {
 
     const isOpen = sourceIcon.classList.contains('openIcon');
     const isPinned = sourceIcon.classList.contains('drawerPinnedOpen');
+    const isCharacterButton = proxyButton.id === 'sb-character-toggle';
+
+    if (isCharacterButton && isTopbarIconsOnlyActive()) {
+        const isCurrent = isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        proxyButton.classList.remove('is-open', 'is-pinned');
+        proxyButton.classList.toggle('is-current', isCurrent);
+        proxyButton.setAttribute('aria-expanded', String(isCurrent));
+
+        if (isCurrent) {
+            proxyButton.setAttribute('aria-current', 'page');
+        } else {
+            proxyButton.removeAttribute('aria-current');
+        }
+        return;
+    }
 
     proxyButton.classList.toggle('is-open', isOpen);
     proxyButton.classList.toggle('is-pinned', isPinned);
     proxyButton.setAttribute('aria-expanded', String(isOpen));
+
+    if (isCharacterButton) {
+        proxyButton.classList.remove('is-current');
+        proxyButton.removeAttribute('aria-current');
+    }
+}
+
+function syncCharacterTopbarButtonState() {
+    syncProxyButtonState(
+        document.getElementById('sb-character-toggle'),
+        document.querySelector('#rightNavDrawerIcon'),
+    );
 }
 
 function observeProxyButton(buttonId, iconSelector) {
@@ -8755,9 +9207,21 @@ function observeProxyButton(buttonId, iconSelector) {
 
     const observer = new MutationObserver(() => {
         syncProxyButtonState(proxyButton, sourceIcon);
+        if (isTopbarIconsOnlyActive()) {
+            queueTopbarPageStateSync();
+        }
     });
 
     observer.observe(sourceIcon, { attributes: true, attributeFilter: ['class'] });
+}
+
+function activateCharacterTopbarButton() {
+    if (isTopbarIconsOnlyActive()) {
+        openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        return;
+    }
+
+    toggleCharacterPanel();
 }
 
 function wasShellJustOpened(shellKey) {
@@ -8965,7 +9429,7 @@ function buildTopBar() {
             label: 'Characters',
             title: 'Open character management',
         },
-        () => toggleCharacterPanel(),
+        activateCharacterTopbarButton,
     );
 
     const leftShortcutConfig = getShortcutConfig(getShortcutTarget('left'));
@@ -9015,13 +9479,30 @@ function buildTopBar() {
         <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    leftGroup.append(mobileButton, leftButton, rightButton, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
+    // SillyBunny: each cluster rail is built beside the Layer 2 anchor it belongs to and stays
+    // display:none until icons-only mode is on, so one static child order serves both modes and the
+    // button sequence never shifts when the option is toggled. Search gets no dedicated button: it
+    // rides a Quick Access slot here exactly as it does with the option off.
+    const [workspaceCluster, customizeCluster, charactersCluster] = SB_TOPBAR_CLUSTERS;
+    const workspaceRail = buildTopbarPageRail(workspaceCluster.railId, workspaceCluster.pages);
+    const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
+    const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
+    const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
+    const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
+
+    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
     stack.append(primaryRow, searchRow);
     topBar.append(stack, ...preservedExtensionChildren);
+
+    // The anchor that leads a cluster carries the wider seam that separates the clusters.
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.leadId)?.classList.add('sb-topbar-cluster-lead');
+    }
 
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);
@@ -9038,6 +9519,7 @@ function buildTopBar() {
     syncTopbarLayoutState();
     queueLandingPageStateSync();
     scheduleCharacterToggleGhostSync();
+    queueTopbarPageStateSync();
 }
 
 function hideHostToggles() {
@@ -12510,6 +12992,19 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-icons',
         onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
     });
+    // SillyBunny: stored per device -- this group's copy governs its own viewport only, exactly
+    // like the shell-tab toggle above it -- and it belongs with navigation rather than nested
+    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle also keeps
+    // the two similarly named options readable side by side.
+    const topbarIconsOnlyChoice = createMobileNavChoice({
+        id: `sb-${modePrefix}-topbar-icons-only-input`,
+        type: 'checkbox',
+        value: 'topbar-icons-only',
+        label: 'Icons only top bar',
+        icon: 'fa-grip',
+        onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
+    });
+    topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
     const showCustomizeChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-nav-show-customize-input`,
         type: 'checkbox',
@@ -12591,6 +13086,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         header,
         layoutGrid,
         iconOnlyChoice,
+        topbarIconsOnlyChoice,
         createMobileNavDivider(),
         showCustomizeChoice,
         showQuickActionsChoice,
@@ -12738,7 +13234,9 @@ function updateShortcutButton(side) {
     button.title = `Quick access: ${config.label}`;
     button.setAttribute('aria-label', `Quick access: ${config.label}`);
     button.dataset.sbUniversalSearchTrigger = String(isSearchShortcutTarget(target));
+    syncTopbarIconsOnlyDedupe();
     syncShortcutButtonActiveStates();
+    queueTopbarBrandFit();
 }
 
 function syncShortcutButtonActiveStates() {
@@ -12755,6 +13253,8 @@ function syncShortcutButtonActiveStates() {
         const target = getShortcutTarget(side);
         setButtonPressed(button, isSearchShortcutTarget(target) && searchExpanded);
     }
+
+    queueTopbarPageStateSync();
 }
 
 function createTopbarLabelSettingsGroup() {
@@ -13155,6 +13655,21 @@ function updateThemePickerUi() {
         }
 
         const isChecked = input.value === sbState.mobileNav.layout;
+        input.checked = isChecked;
+        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
+    }
+
+    // Each Navigation group's checkbox reflects its own device's stored value, not the state in
+    // force on this viewport. Quick Access stays fully live in icons-only mode -- the slots are
+    // part of the right-hand cluster now, not superseded by it.
+    for (const input of document.querySelectorAll('[data-sb-topbar-icons-only-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        const isChecked = input.getAttribute('data-sb-topbar-icons-only-input') === 'desktop'
+            ? sbState.topbarIconsOnly.desktop
+            : sbState.topbarIconsOnly.mobile;
         input.checked = isChecked;
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
@@ -13886,6 +14401,7 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
     }
 
     syncMobileShellRailActionState(shellKey, tabId);
+    queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
     shellState.headerTitle.textContent = activeTab.label;
@@ -16542,6 +17058,8 @@ function initAll() {
     initChatAvatarVariables();
     syncDesktopShellSizing();
     buildTopBar();
+    // Must follow buildTopBar(): it rearranges the buttons that call creates.
+    applyTopbarIconsOnlyPreference();
     bindLandingPageObserver();
     buildBottomChatBar();
     // Refresh again after the current JS task — APP_READY may have already
@@ -16657,6 +17175,9 @@ function initAll() {
         },
         setCompactMode(value) {
             setCompactMode(value);
+        },
+        setTopbarIconsOnly(mode, value) {
+            setTopbarIconsOnly(mode, value);
         },
         setDesktopShellSnapToChatWidth(value) {
             setDesktopShellSnapToChatWidth(value);

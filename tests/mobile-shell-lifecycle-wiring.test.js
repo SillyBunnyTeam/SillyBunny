@@ -408,6 +408,7 @@ describe('mobile shell lifecycle wiring', () => {
             ['#left-nav-panel', '.ica--agent-tabs'],
             ['.popup', '.ica--template-pill-row'],
             ['#user-settings-block', '.sb-settings-tabs-nav'],
+            ['#top-bar', '.sb-topbar-group-left'],
             ['#sheld', '.sb-conversation-channel-tabs'],
             ['#sheld', '.sb-conversation-quick-actions'],
             ['#right-nav-panel', '.sb-character-create-bar'],
