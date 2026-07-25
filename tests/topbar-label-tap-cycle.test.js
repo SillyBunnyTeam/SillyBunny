@@ -307,6 +307,19 @@ describe('icons only top bar', () => {
         // An edge-fade mask dimmed the boundary icon even with nothing scrolled out of view,
         // making a live button look disabled. Clipping at the container edge instead.
         expect(railRule).not.toContain('mask-image:');
+        // Resting mid-icon reads as a random wider gap, so swipes settle on whole icons.
+        expect(railRule).toContain('scroll-snap-type: x proximity;');
+        expect(cssSource).toMatch(/\.sb-topbar-page-button \{\n\s*scroll-snap-align: start;\n\}/);
+    });
+
+    test('keeps one spacing rhythm across the mobile bar', () => {
+        // Rail gap, group gap and the grid seam were three different widths between identical
+        // square buttons, which is what read as awkward spacing. All key off the group gap.
+        const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-pages \{\n\s*gap: var\(--sb-topbar-group-gap\);\n\s*\}/);
+        const innerRule = mobileCss.match(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-inner \{[^}]*\}/);
+        expect(innerRule).not.toBeNull();
+        expect(innerRule[0]).toContain('gap: var(--sb-topbar-group-gap);');
         expect(cssSource).toContain('#sb-topbar-parked {\n    display: none;\n}');
         expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] #sb-home-toggle');
     });

@@ -1294,8 +1294,17 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: none;
     }
 
+    /* One spacing rhythm for the whole bar: the rail inherits its own 8px token while the
+       groups sit at the 3-4px group gap, and the grid seam adds a third width. Identical
+       square buttons a few px apart at three different distances is what reads as awkward,
+       so everything keys off the group gap here. */
     :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
         grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+        gap: var(--sb-topbar-group-gap);
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {
+        gap: var(--sb-topbar-group-gap);
     }
 
     :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
