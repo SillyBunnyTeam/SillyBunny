@@ -9,7 +9,7 @@ import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import { conversationState } from './sillybunny-conversation/state.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
-import { flushCharacterSaveDebounced, getOneCharacter, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
+import { flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -3708,47 +3708,6 @@ function stripAvatarOrigin(url) {
         : normalizedUrl;
 }
 
-function safeDecodeUriComponent(value) {
-    try {
-        return decodeURIComponent(value);
-    } catch {
-        return value;
-    }
-}
-
-function parseChatAvatarSource(rawSrc) {
-    const normalizedSrc = stripAvatarOrigin(rawSrc);
-    if (!normalizedSrc) {
-        return null;
-    }
-
-    const trimmedSrc = normalizedSrc.startsWith('/') ? normalizedSrc.slice(1) : normalizedSrc;
-
-    try {
-        const parsedUrl = new URL(normalizedSrc, window.location.origin);
-        if (parsedUrl.pathname.endsWith('thumbnail')) {
-            const type = parsedUrl.searchParams.get('type');
-            const file = parsedUrl.searchParams.get('file');
-
-            if (type && file) {
-                return { type, file: safeDecodeUriComponent(file) };
-            }
-        }
-    } catch {
-        // Fall back to direct path inspection below.
-    }
-
-    if (trimmedSrc.startsWith('characters/')) {
-        return { type: 'avatar', file: trimmedSrc.replace(/^characters\//, '') };
-    }
-
-    if (trimmedSrc.startsWith('User Avatars/')) {
-        return { type: 'persona', file: trimmedSrc.replace(/^User Avatars\//, '') };
-    }
-
-    return { type: null, file: normalizedSrc };
-}
-
 function isAbsoluteAvatarUrl(path) {
     return /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(String(path ?? ''));
 }
@@ -3763,24 +3722,20 @@ function ensureAvatarPath(path) {
 }
 
 function getChatAvatarSources(rawSrc) {
-    const avatarInfo = parseChatAvatarSource(rawSrc);
+    // Reuses script.js's parser so the thumbnail URL is built from a file name decoded exactly once.
+    const avatarInfo = parseAvatarSource(stripAvatarOrigin(rawSrc));
     if (!avatarInfo) {
         return { thumb: '', original: '' };
     }
 
-    const { type, file } = avatarInfo;
+    const { type, file, original } = avatarInfo;
     const thumb = type === 'avatar' || type === 'persona'
-        ? `/thumbnail?type=${type}&file=${encodeURIComponent(file)}`
+        ? getThumbnailUrl(type, file)
         : ensureAvatarPath(file);
-    const original = type === 'avatar'
-        ? ensureAvatarPath(`characters/${file}`)
-        : type === 'persona'
-            ? ensureAvatarPath(`User Avatars/${file}`)
-            : ensureAvatarPath(file);
 
     return {
         thumb: stripAvatarOrigin(thumb),
-        original: stripAvatarOrigin(original),
+        original: stripAvatarOrigin(ensureAvatarPath(original)),
     };
 }
 

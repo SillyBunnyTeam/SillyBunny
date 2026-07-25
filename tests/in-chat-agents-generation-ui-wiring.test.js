@@ -170,11 +170,12 @@ describe('in-chat agents generation UI wiring', () => {
         expect(coreScriptSource).toContain('chatItem === consolidatedCompanionHistoryHost');
         expect(coreScriptSource).toContain("original: sourceMessage.is_system ? '' : sourceMessage.mes");
         expect(coreScriptSource).toContain("const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage");
+        expect(coreScriptSource).toContain("const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage");
         expect(coreScriptSource).toContain('const consolidatedContextMessage = [contextMessage, ...retainedContributions.map(contribution => contribution.content)]');
         expect(coreScriptSource).toContain("const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');");
         expect(coreScriptSource).toContain('extra: hiddenCompanionHistory ? {} : chatItem.extra');
         expect(coreScriptSource).toContain('is_system: hiddenCompanionHistory ? false : chatItem.is_system');
-        expect(coreScriptSource).toContain('getRegexedString(contextSourceMessage, regexType, options)');
+        expect(coreScriptSource).toContain('getRegexedString(worldInfoContextSourceMessage, regexType, options)');
         expect(indexSource).toContain('includeInChatHistory: currentCompanion.includeInChatHistory');
         expect(indexSource).toContain('chatHistoryDepth: currentCompanion.chatHistoryDepth');
         expect(indexSource).toContain('includeAllChatHistory: currentCompanion.includeAllChatHistory');

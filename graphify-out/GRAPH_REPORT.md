@@ -1027,7 +1027,7 @@ Nodes (13): require, defaultConfig, repoRoot, { chromium, devices }, measurePage
 
 ### Community 174 - "Community 174"
 Cohesion: 0.08
-Nodes (25): At a glance, Bun-first runtime, Bundled Goodies & Tutorials, Changes vs. SillyTavern, code:bash (git clone https://github.com/platberlitz/SillyBunny.git), code:bash (bun run start:mobile   # lower-memory (--smol)), code:bash (pkg update && pkg upgrade -y), Contributors (+17 more)
+Nodes (25): At a glance, Bun-first runtime, Bundled Goodies & Tutorials, Changes vs. SillyTavern, code:bash (git clone https://github.com/SillyBunnyTeam/SillyBunny.git), code:bash (bun run start:mobile   # lower-memory (--smol)), code:bash (pkg update && pkg upgrade -y), Contributors (+17 more)
 
 ### Community 176 - "Community 176"
 Cohesion: 0.08

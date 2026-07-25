@@ -59,7 +59,7 @@ import {
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
 } from './scripts/world-info.js';
-import { buildWorldInfoScanChat } from './scripts/world-info-scan-chat.js';
+import { buildWorldInfoScanChat, substituteWorldInfoGreeting } from './scripts/world-info-scan-chat.js';
 
 import {
     groups,
@@ -7016,9 +7016,13 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
     }
 
     // First message in fresh 1-on-1 chat reacts to user/character settings changes
-    if (chat.length) {
-        chat[0].mes = substituteParams(chat[0].mes);
-    }
+    const firstChatMessage = chat[0];
+    const firstMessageVariants = !world_info_include_names && firstChatMessage
+        ? substituteWorldInfoGreeting(firstChatMessage.mes, substituteParams, { char: name2, user: name1 })
+        : undefined;
+    const firstPromptMessage = firstChatMessage
+        ? (firstMessageVariants?.prompt ?? substituteParams(firstChatMessage.mes))
+        : undefined;
 
     // Collect messages with usable content
     const canUseTools = ToolManager.isToolCallingSupported();
@@ -7091,7 +7095,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
     const worldInfoMessageVariants = new Map();
     coreChat = await Promise.all(coreChat.map(async (/** @type {ChatMessage} */ chatItem, index) => {
-        const originalMessage = chatItem.mes;
+        const originalMessage = chatItem === firstChatMessage ? firstPromptMessage : chatItem.mes;
+        const worldInfoSourceMessage = chatItem === firstChatMessage && firstMessageVariants !== undefined
+            ? firstMessageVariants.worldInfo
+            : originalMessage;
         const isConsolidatedCompanionHost = chatItem === consolidatedCompanionHistoryHost;
         const hiddenCompanionHistory = chatItem.is_system && isConsolidatedCompanionHost;
         // SillyBunny: project opted-in companion notes into prompt history without changing stored chat text.
@@ -7099,6 +7106,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             ? consolidatedRetainedContributions.map(item => item.contribution).filter(contribution => contribution.content)
             : [];
         const contextSourceMessage = hiddenCompanionHistory ? '' : originalMessage;
+        const worldInfoContextSourceMessage = hiddenCompanionHistory ? '' : worldInfoSourceMessage;
         let message = contextSourceMessage;
         let regexType = chatItem.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
         let options = { isPrompt: true, depth: (coreChat.length - index - (isContinue ? 2 : 1)) };
@@ -7116,7 +7124,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
 
         let regexedMessage = getRegexedString(message, regexType, options);
-        let worldInfoRegexedMessage = message === contextSourceMessage ? undefined : getRegexedString(contextSourceMessage, regexType, options);
+        let worldInfoRegexedMessage = message === worldInfoContextSourceMessage ? undefined : getRegexedString(worldInfoContextSourceMessage, regexType, options);
         const fileContent = hiddenCompanionHistory ? '' : await appendFileContent(chatItem, '');
         regexedMessage = fileContent + regexedMessage;
         if (worldInfoRegexedMessage !== undefined) {
@@ -10655,7 +10663,9 @@ function getFullAvatarUrl(type, file, t = false) {
  * @param {string} rawSrc Avatar image source.
  * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string } | null}
  */
-function parseAvatarSource(rawSrc) {
+// SillyBunny: exported so sillybunny-tabs.js reuses this parser instead of keeping a divergent copy
+// that skipped the pathname decode and re-encoded file names into "%2520".
+export function parseAvatarSource(rawSrc) {
     if (!rawSrc) {
         return null;
     }

@@ -1,6 +1,16 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { detectEmbeddedLorebookCandidates, getLinkedAuxBooks, isEmbeddedBookLinked } from '../public/scripts/world-info-batch-helpers.js';
+import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from '../public/scripts/world-info-batch-helpers.js';
+
+describe('findMatchingLorebookName', () => {
+    test('prefers an exact name over an earlier equivalent spelling', () => {
+        expect(findMatchingLorebookName(['Lore', 'Lóre'], 'Lóre')).toBe('Lóre');
+    });
+
+    test('falls back to case-insensitive and accent-insensitive matching', () => {
+        expect(findMatchingLorebookName(['Lóre'], 'LORE')).toBe('Lóre');
+    });
+});
 
 describe('detectEmbeddedLorebookCandidates', () => {
     test('returns empty array when no characters have embedded lorebooks', () => {
@@ -43,6 +53,29 @@ describe('detectEmbeddedLorebookCandidates', () => {
         expect(result[1].collision).toBe(false);
     });
 
+    test('detects canonical and intra-batch collisions', () => {
+        const charList = [
+            { chid: 0, character: { name: 'Alice', data: { character_book: { name: 'A/B', entries: [] } } } },
+            { chid: 1, character: { name: 'Bob', data: { character_book: { name: 'AB', entries: [] } } } },
+        ];
+        const canonicalNames = new Map([[0, 'AB'], [1, 'AB']]);
+        const result = detectEmbeddedLorebookCandidates(charList, [], canonicalNames);
+
+        expect(result[0]).toMatchObject({ bookName: 'AB', collision: false });
+        expect(result[1]).toMatchObject({ bookName: 'AB', collision: true });
+    });
+
+    test('detects case-insensitive and accent-insensitive collisions', () => {
+        const charList = [
+            { chid: 0, character: { name: 'Alice', data: { character_book: { name: 'Lóre', entries: [] } } } },
+            { chid: 1, character: { name: 'Bob', data: { character_book: { name: 'LORE', entries: [] } } } },
+        ];
+        const result = detectEmbeddedLorebookCandidates(charList, ['lore']);
+
+        expect(result[0].collision).toBe(true);
+        expect(result[1].collision).toBe(true);
+    });
+
     test('skips characters with undefined character_book', () => {
         const charList = [
             { chid: 0, character: { name: 'Alice', data: {} } },
@@ -56,6 +89,14 @@ describe('detectEmbeddedLorebookCandidates', () => {
 
     test('handles empty charList', () => {
         const result = detectEmbeddedLorebookCandidates([], ['Existing']);
+        expect(result).toEqual([]);
+    });
+
+    test('skips candidates with empty canonical names', () => {
+        const charList = [
+            { chid: 0, character: { name: 'Alice', data: { character_book: { name: '/', entries: [] } } } },
+        ];
+        const result = detectEmbeddedLorebookCandidates(charList, [], new Map([[0, '']]));
         expect(result).toEqual([]);
     });
 });
