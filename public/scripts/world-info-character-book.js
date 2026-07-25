@@ -154,7 +154,7 @@ export function serializeCharacterBookKeys(primaryKeys = [], secondaryKeys = [])
 /**
  * Serializes a native World Info entry into a CharacterBook-format record.
  *
- * Mirrors the per-entry output of the server-side character book converter
+ * Uses the per-entry layout of the server-side character book converter
  * (src/endpoints/characters.js, convertWorldInfoToCharacterBook) so records
  * appended to a book's originalData are complete rather than lossy. Legacy
  * positions (e.g. the string '0') are normalized before choosing the
@@ -163,12 +163,14 @@ export function serializeCharacterBookKeys(primaryKeys = [], secondaryKeys = [])
  *
  * @param {object} entry Native World Info entry
  * @param {{ before: number, after: number, ANTop: number, ANBottom: number, atDepth: number, EMTop: number, EMBottom: number, outlet: number }} positions World Info position enum
+ * @param {object} [originalEntry={}] Existing CharacterBook record whose unknown metadata should be preserved
  * @returns {object} CharacterBook-format entry record
  */
-export function serializeWorldInfoEntry(entry, positions) {
+export function serializeWorldInfoEntry(entry, positions, originalEntry = {}) {
     const { keys, secondaryKeys, useRegex } = serializeCharacterBookKeys(entry.key ?? [], entry.keysecondary ?? []);
     const normalizedPosition = normalizeWorldInfoPosition(entry.position, positions);
-    return {
+    const serializedEntry = {
+        ...originalEntry,
         id: entry.uid,
         keys,
         secondary_keys: secondaryKeys,
@@ -182,6 +184,7 @@ export function serializeWorldInfoEntry(entry, positions) {
         use_regex: useRegex,
         case_sensitive: entry.caseSensitive ?? null,
         extensions: {
+            ...originalEntry.extensions,
             ...entry.extensions,
             position: normalizedPosition ?? entry.position,
             exclude_recursion: entry.excludeRecursion ?? false,
@@ -217,4 +220,12 @@ export function serializeWorldInfoEntry(entry, positions) {
             agent_blacklisted: entry.agentBlacklisted ?? false,
         },
     };
+
+    if (entry.characterFilter === undefined) {
+        delete serializedEntry.character_filter;
+    } else {
+        serializedEntry.character_filter = entry.characterFilter;
+    }
+
+    return serializedEntry;
 }

@@ -203,6 +203,11 @@ describe('serializeWorldInfoEntry', () => {
             triggers: ['normal'],
             ignoreBudget: true,
             agentBlacklisted: true,
+            characterFilter: {
+                isExclude: true,
+                names: ['alice.png'],
+                tags: ['tag-1'],
+            },
             extensions: { foreign_field: 'kept' },
         };
 
@@ -219,6 +224,11 @@ describe('serializeWorldInfoEntry', () => {
             position: 'after_char',
             use_regex: true,
             case_sensitive: true,
+            character_filter: {
+                isExclude: true,
+                names: ['alice.png'],
+                tags: ['tag-1'],
+            },
             extensions: {
                 foreign_field: 'kept',
                 position: positions.atDepth,
@@ -268,6 +278,43 @@ describe('serializeWorldInfoEntry', () => {
         expect(record.keys).toEqual(['alpha']);
         expect(record.secondary_keys).toEqual(['beta']);
         expect(record.use_regex).toBe(false);
+    });
+
+    test('preserves unknown source metadata while replacing stale native fields', () => {
+        const originalEntry = {
+            id: 2,
+            comment: 'Stale comment',
+            character_filter: { isExclude: true, names: ['stale.png'], tags: [] },
+            foreign_top_level: 'kept',
+            extensions: {
+                display_index: 1,
+                foreign_extension: 'kept',
+            },
+        };
+        const entry = {
+            uid: 9,
+            comment: 'Current comment',
+            displayIndex: 12,
+            characterFilter: { isExclude: false, names: ['current.png'], tags: ['tag-2'] },
+        };
+
+        expect(serializeWorldInfoEntry(entry, positions, originalEntry)).toMatchObject({
+            id: 9,
+            comment: 'Current comment',
+            character_filter: entry.characterFilter,
+            foreign_top_level: 'kept',
+            extensions: {
+                display_index: 12,
+                foreign_extension: 'kept',
+            },
+        });
+    });
+
+    test('does not restore a stale character filter when the native entry has none', () => {
+        const record = serializeWorldInfoEntry({ uid: 7 }, positions, {
+            character_filter: { isExclude: true, names: ['stale.png'], tags: [] },
+        });
+        expect(record).not.toHaveProperty('character_filter');
     });
 
     test('applies server-parity defaults for absent fields', () => {

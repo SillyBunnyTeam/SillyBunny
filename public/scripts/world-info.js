@@ -25,7 +25,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
 import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
 import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
-import { getTimedEffectWindow, getWorldInfoEntryKey, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
+import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
 
 export const world_info_insertion_strategy = {
     evenly: 0,
@@ -625,7 +625,7 @@ class WorldInfoTimedEffects {
      * @returns {WITimedEffect} Timed effect for the entry
      */
     #getEntryTimedEffect(type, entry, isProtected) {
-        const { start, end } = getTimedEffectWindow(this.#chat.length, Number(entry[type]), isProtected);
+        const { start, end } = getTimedEffectWindow(this.#chat.length, Number(entry[type]));
         return {
             hash: this.#getEntryHash(entry),
             start,
@@ -4369,14 +4369,7 @@ export function duplicateWorldInfoEntry(data, uid) {
     Object.assign(entry, originalData);
     const targetOriginalIndex = data.originalDataUidMap?.[entry.uid];
     if (Number.isInteger(targetOriginalIndex)) {
-        if (sourceOriginalEntry) {
-            sourceOriginalEntry.id = entry.uid;
-            data.originalData.entries[targetOriginalIndex] = sourceOriginalEntry;
-        } else {
-            // No source record to carry over: replace the blank-template record
-            // appended by createWorldInfoEntry with the fully copied entry.
-            data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position));
-        }
+        data.originalData.entries[targetOriginalIndex] = structuredClone(serializeWorldInfoEntry(entry, world_info_position, sourceOriginalEntry ?? undefined));
     }
 
     return entry;
@@ -4500,7 +4493,7 @@ export function createWorldInfoEntry(_name, data) {
     return newEntry;
 }
 
-function appendWIOriginalDataEntry(data, entry) {
+function appendWIOriginalDataEntry(data, entry, originalEntry = undefined) {
     if (!data.originalData || !Array.isArray(data.originalData.entries)) {
         return;
     }
@@ -4509,7 +4502,7 @@ function appendWIOriginalDataEntry(data, entry) {
     data.originalDataUidMap[entry.uid] = data.originalData.entries.length;
     // Clone: the serialized record aliases live entry objects (extensions, triggers)
     // and must not track later editor mutations.
-    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position)));
+    data.originalData.entries.push(structuredClone(serializeWorldInfoEntry(entry, world_info_position, originalEntry)));
 }
 
 async function _save(name, data) {
@@ -5249,7 +5242,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     let scanState = scan_state.INITIAL;
     let token_budget_overflowed = false;
     let count = 0;
-    let allActivatedEntries = new Map();
+    let allActivatedEntries = new Set();
     let failedProbabilityChecks = new Set();
     let allActivatedText = '';
 
@@ -5314,7 +5307,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             };
 
             // Already processed, considered and then skipped entries should still be skipped
-            if (failedProbabilityChecks.has(entry) || allActivatedEntries.has(getWorldInfoEntryKey(entry))) {
+            if (failedProbabilityChecks.has(entry) || allActivatedEntries.has(entry)) {
                 continue;
             }
 
@@ -5580,7 +5573,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
             acceptedContent = nextContent;
             successfulNewEntries.push(entry);
-            allActivatedEntries.set(getWorldInfoEntryKey(entry), entry);
+            allActivatedEntries.add(entry);
             console.debug(`[WI] Entry ${entry.uid} activation successful, adding to prompt`, entry);
         }
 
@@ -5889,7 +5882,7 @@ function filterGroupsByTimedEffects(groups, timedEffects, removeEntry) {
 /**
  * Filters entries by inclusion groups.
  * @param {object[]} newEntries Entries activated on current recursion level
- * @param {Map<string, object>} allActivatedEntries Map of all activated entries
+ * @param {Set<object>} allActivatedEntries Set of all activated entries
  * @param {WorldInfoBuffer} buffer The buffer to use for scanning
  * @param {number} scanState The current scan state
  * @param {WorldInfoTimedEffects} timedEffects The timed effects currently active
@@ -6812,12 +6805,7 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
         entryToMove.displayIndex = maxDisplayIndex + 1;
 
         targetData.entries[newUid] = entryToMove;
-        appendWIOriginalDataEntry(targetData, entryToMove);
-        const targetOriginalIndex = targetData.originalDataUidMap?.[newUid];
-        if (sourceOriginalEntry && Number.isInteger(targetOriginalIndex)) {
-            sourceOriginalEntry.id = newUid;
-            targetData.originalData.entries[targetOriginalIndex] = sourceOriginalEntry;
-        }
+        appendWIOriginalDataEntry(targetData, entryToMove, sourceOriginalEntry ?? undefined);
 
         if (deleteOriginal) {
             delete sourceData.entries[entryUidString];
