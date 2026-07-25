@@ -92,14 +92,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `public/scripts/sillybunny-tabs.js` - shell chat controls
 | Field | Value |
 | --- | --- |
-| Area | Mobile shell, chat navigation, and preset/API sync. |
-| Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, search shortcut focus, viewport-reset dispatches, and mirrored connection-profile controls that interact with chat and API state. |
+| Area | Mobile shell, top-bar layout, chat navigation, and preset/API sync. |
+| Divergence reason | SillyBunny shell owns top/bottom navigation, chat controls, drawers, mobile actions, search shortcut focus, viewport-reset dispatches, and mirrored connection-profile controls that interact with chat and API state. Its per-device icons-only top bar adds canonical Workspace, Customize, and Characters page clusters, hides redundant shell anchors, deduplicates Quick Access targets, and keeps trailing controls fixed while the page rail pans. |
 | Target seam | `public/scripts/chat-render-lifecycle/` for chat scroll requests; `public/scripts/mobile-shell-lifecycle/` for drawer/nav/viewport behavior; `public/scripts/preset-api-sync-lifecycle/` for active API and connection-profile mirror decisions. |
-| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for drawer bounds, viewport sync order, drawer-bound scheduling, overlay exclusivity, rail quick-action normalization and visibility, inline drawer auto-close and persistence keys, nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, connection-profile source binding, connection-profile source mutation rebind decisions, connection-profile mirror state, connection-profile mirror updates, connection-profile status text, and connection-strip open state. |
-| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-drawer-bounds.test.js`, `tests/mobile-shell-lifecycle-viewport-sync.test.js`, `tests/mobile-shell-lifecycle-overlay-exclusion.test.js`, `tests/mobile-shell-lifecycle-rail-model.test.js`, `tests/mobile-shell-lifecycle-inline-drawers.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
-| Validation | `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json mobile-shell-lifecycle-drawer-bounds.test.js mobile-shell-lifecycle-viewport-sync.test.js mobile-shell-lifecycle-overlay-exclusion.test.js mobile-shell-lifecycle-rail-model.test.js mobile-shell-lifecycle-inline-drawers.test.js mobile-shell-lifecycle-wiring.test.js mobile-shell-lifecycle.test.js` from `tests/`, full `node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json` from `tests/`, `npm run check:frontend-budgets`, `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4567 npm run test:e2e -- mobile-shell-smoke.e2e.js` from `tests/`. |
+| Adapter shape | Shell code keeps DOM wiring and requests lifecycle decisions for drawer bounds, viewport sync order, drawer-bound scheduling, overlay exclusivity, rail quick-action normalization and visibility, inline drawer auto-close and persistence keys, nav drag, page scroll, overlay open/close, auto-close, modal inert policy, search shortcut pre-focus, viewport reset timing, active API connect-button lookup, connection-profile source binding, connection-profile source mutation rebind decisions, connection-profile mirror state, connection-profile mirror updates, connection-profile status text, and connection-strip open state. Keep icons-only behavior in the new top-bar helpers and the narrow integration points in `buildTopBar()`, `getShellProxyButton()`, `stopProxyPointerPropagation()`, `forceDrawerState()`, `syncCharacterShellTabs()`, `syncCharacterDrawerStateFromDom()`, `setActiveTab()`, `updateTopBarBrand()`, `updateShortcutButton()`, and `initAll()`. |
+| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-drawer-bounds.test.js`, `tests/mobile-shell-lifecycle-viewport-sync.test.js`, `tests/mobile-shell-lifecycle-overlay-exclusion.test.js`, `tests/mobile-shell-lifecycle-rail-model.test.js`, `tests/mobile-shell-lifecycle-inline-drawers.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/topbar-label-tap-cycle.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-api-sync-lifecycle-wiring.test.js`, future shell smoke checks for drawer/tab/preset/chat-scroll behavior. |
+| Validation | `node --check public/scripts/sillybunny-tabs.js`, `npm run lint`, `npm run test:unit --prefix tests -- topbar-label-tap-cycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run check:frontend-budgets`, desktop/mobile icons-only browser smoke, plus the existing shell lifecycle unit and e2e packs. |
 | Rollback path | Keep shell calls narrow so a bad adapter route can be reverted without removing shell UI. |
-| Last reviewed | 2026-06-13 connection-profile source mutation seam. |
+| Last reviewed | 2026-07-25 PR #685 icons-only top bar. |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/scripts/browser-fixes.js` - mobile viewport reset guard
@@ -236,13 +236,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Mobile shell and character menu. |
-| Divergence reason | SillyBunny keeps horizontal labeled menu rails as the default, supports vertical rail mode without mixing Workspace and Customize shortcuts, and routes Character Menu controls through the canonical drawer when duplicate runtime nodes exist. |
+| Divergence reason | SillyBunny keeps horizontal labeled menu rails as the default, supports vertical rail mode without mixing Workspace and Customize shortcuts, and routes Character Menu controls through the canonical drawer when duplicate runtime nodes exist. In icons-only mode, complete character page controls replace the generic drawer-only interaction, and the Characters anchor explicitly opens and highlights only the base Characters page. |
 | Target seam | `public/scripts/mobile-shell-lifecycle/` for drawer/nav state; no separate seam yet for Character Menu tab copy and canonical DOM targeting. |
-| Adapter shape | Keep shell state updates and DOM routing in `sillybunny-tabs.js`; delegate only viewport/nav open-state decisions to lifecycle helpers where they already exist. |
-| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, focused browser smoke for horizontal labels, vertical rail separation, and Character Menu drawer tabs. |
-| Validation | `node --check public/scripts/sillybunny-tabs.js`, `git diff --check`, mobile/desktop browser smoke on Character Menu horizontal labels, vertical rail behavior, and canonical drawer targeting. |
+| Adapter shape | Keep shell state updates and DOM routing in `sillybunny-tabs.js`; delegate only viewport/nav open-state decisions to lifecycle helpers where they already exist. Keep the icons-only character state isolated through the top-bar page helpers and the narrow hooks in `buildTopBar()`, `getShellProxyButton()`, `forceDrawerState()`, `syncCharacterShellTabs()`, `syncCharacterDrawerStateFromDom()`, and `setActiveTab()` so the labeled layout retains its existing drawer toggle behavior. |
+| Protecting tests | `tests/mobile-shell-lifecycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, `tests/topbar-label-tap-cycle.test.js`, focused browser smoke for horizontal labels, vertical rail separation, icons-only character pages, and Character Menu drawer tabs. |
+| Validation | `node --check public/scripts/sillybunny-tabs.js`, `git diff --check`, `npm run test:unit --prefix tests -- topbar-label-tap-cycle.test.js mobile-shell-lifecycle-wiring.test.js`, and mobile/desktop browser smoke on both icons-only and labeled Character Menu behavior. |
 | Rollback path | Revert the nav default/rail action filtering and Character panel helper calls independently from the shell lifecycle helpers. |
-| Last reviewed | 2026-06-02 PR #315 menu layout polish. |
+| Last reviewed | 2026-07-25 PR #685 icons-only top bar. |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/scripts/openai.js` and `public/scripts/textgen-models.js` - mobile OpenRouter selects
@@ -275,13 +275,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Mobile shell, settings, cache, and frontend boot. |
-| Divergence reason | SillyBunny UI polish needs responsive Character Menu rail sizing, mobile inline picker styling, Select2 z-layer fixes, welcome card text wrapping, and cache-busted asset references for the updated shell files. |
+| Divergence reason | SillyBunny UI polish needs responsive Character Menu rail sizing, mobile inline picker styling, Select2 z-layer fixes, welcome card text wrapping, and cache-busted asset references for the updated shell files. The icons-only top bar adds grouped page rails, mode-scoped shell-anchor hiding, mobile horizontal overflow handling, and guards that prevent mobile rules from restoring hidden Workspace controls. |
 | Target seam | CSS remains declarative; frontend asset/cache references stay in the existing boot files. |
-| Adapter shape | Keep CSS changes scoped to SillyBunny shell/select/menu classes and update only the affected boot/cache version strings. |
-| Protecting tests | `tests/frontend-assets.test.js`, frontend asset budget check, focused browser smoke for mobile/desktop menu layout and dropdown layering. |
-| Validation | `git diff --check`, frontend asset check in CI, browser smoke for mobile Character Menu, desktop Character Menu, and OpenRouter dropdown layering. |
+| Adapter shape | Keep CSS changes scoped to SillyBunny shell/select/menu classes and mode attributes; update only the affected stylesheet cache version strings in `public/index.html`. |
+| Protecting tests | `tests/frontend-assets.test.js`, `tests/topbar-label-tap-cycle.test.js`, `tests/mobile-shell-lifecycle-wiring.test.js`, frontend asset budget check, focused browser smoke for mobile/desktop menu layout and dropdown layering. |
+| Validation | `git diff --check`, `npm run test:unit --prefix tests -- topbar-label-tap-cycle.test.js mobile-shell-lifecycle-wiring.test.js`, `npm run check:frontend-budgets`, frontend asset check in CI, and browser smoke for wide, cramped, and mobile icons-only layouts. |
 | Rollback path | Revert the cache-bust strings and scoped CSS blocks together if stale assets, menu layout, or dropdown layering regress. |
-| Last reviewed | 2026-06-02 PR #315 menu/layout polish. |
+| Last reviewed | 2026-07-25 PR #685 icons-only top bar. |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/scripts/PromptManager.js` - prompt manager lifecycle
