@@ -1317,32 +1317,64 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* The rails do not scroll on their own. A nested scroll region ended mid-button and left an
+   unreadable sliver of an icon at its boundary; the whole bar scrolls as one axis instead. */
 .sb-topbar-pages {
     display: none;
     align-items: center;
     flex-wrap: nowrap;
     gap: var(--sb-proxy-button-gap);
+}
+
+
+/* Overflow state: one scroll axis across the bar, with the trailing controls pinned so Quick
+   Actions, Search, Home and Characters stay reachable however far the icons are scrolled. */
+:root[data-sb-topbar-scroll='true'] #sb-topbar-inner {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    /* Without this the nowrap content sets a min-content floor and the bar grows past the
+       viewport instead of scrolling inside it. */
     min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    /* No edge-fade mask here: it dimmed whichever icon sat on the rail boundary even when
-       nothing was scrolled out of view, which reads as a disabled button rather than as a
-       scroll hint. Clipping at the container edge is the honest affordance. */
-    scroll-padding-inline: var(--sb-topbar-group-gap);
-    scroll-snap-type: x proximity;
+    /* No scroll snapping: the first snap point is the leading page icon, so the browser pulled
+       the bar past the hamburger on load and hid it. */
+    scroll-padding-inline-end: var(--sb-topbar-group-gap);
 }
 
-/* Resting mid-icon makes the clipped remainder read as a random wider gap, so snap the rail
-   to whole icons whenever a swipe ends near one. */
-.sb-topbar-page-button {
-    scroll-snap-align: start;
-}
-
-.sb-topbar-pages::-webkit-scrollbar {
+:root[data-sb-topbar-scroll='true'] #sb-topbar-inner::-webkit-scrollbar {
     display: none;
+}
+
+/* The min-content floor propagates up through every flex/grid ancestor, so each one has to be
+   told it may shrink or the whole bar widens past the viewport instead of scrolling. */
+:root[data-sb-topbar-scroll='true'] #sb-topbar-stack,
+:root[data-sb-topbar-scroll='true'] #sb-topbar-primary {
+    min-width: 0;
+}
+
+:root[data-sb-topbar-scroll='true'] #sb-topbar-inner > .sb-topbar-group {
+    flex: 0 0 auto;
+    min-width: auto;
+}
+
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-right {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    padding-left: var(--sb-topbar-group-gap);
+    /* Reuses the bar's own glass language rather than repainting its themeable, translucent
+       background, which would double-darken and show as a seam. */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--sb-topbar-group-gap));
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--sb-topbar-group-gap));
 }
 
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {

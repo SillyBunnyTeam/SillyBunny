@@ -297,19 +297,41 @@ describe('icons only top bar', () => {
         expect(getFunctionSource('syncTopbarPageButtonStates')).toContain('[...SB_TOPBAR_PAGE_TARGETS, SB_TOPBAR_SEARCH_TARGET]');
     });
 
-    test('scrolls the rail rather than wrapping it', () => {
+    test('scrolls the whole bar rather than each rail', () => {
+        // A nested scroll region ended mid-button and left an unreadable sliver of an icon at
+        // its boundary, so the rails no longer scroll on their own.
         const railRuleMatch = cssSource.match(/\.sb-topbar-pages\s*\{[^}]*\}/);
         expect(railRuleMatch).not.toBeNull();
+        expect(railRuleMatch[0]).not.toContain('overflow-x: auto;');
+        expect(railRuleMatch[0]).toContain('flex-wrap: nowrap;');
 
-        const railRule = railRuleMatch[0];
-        expect(railRule).toContain('overflow-x: auto;');
-        expect(railRule).toContain('flex-wrap: nowrap;');
-        // An edge-fade mask dimmed the boundary icon even with nothing scrolled out of view,
-        // making a live button look disabled. Clipping at the container edge instead.
-        expect(railRule).not.toContain('mask-image:');
-        // Resting mid-icon reads as a random wider gap, so swipes settle on whole icons.
-        expect(railRule).toContain('scroll-snap-type: x proximity;');
-        expect(cssSource).toMatch(/\.sb-topbar-page-button \{\n\s*scroll-snap-align: start;\n\}/);
+        const innerRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-inner \{[^}]*\}/);
+        expect(innerRule).not.toBeNull();
+        expect(innerRule[0]).toContain('overflow-x: auto;');
+        // The min-content floor propagates through every flex/grid ancestor.
+        expect(innerRule[0]).toContain('min-width: 0;');
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-stack,\n:root\[data-sb-topbar-scroll='true'\] #sb-topbar-primary \{\n\s*min-width: 0;\n\}/);
+        // Snapping pulled the bar past the hamburger on load, because the first snap point is
+        // the leading page icon rather than the start of the bar.
+        expect(innerRule[0]).not.toContain('scroll-snap-type');
+        expect(cssSource).not.toContain('scroll-snap-align: start;');
+    });
+
+    test('pins the trailing controls while the icons scroll under them', () => {
+        const stickyRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-right \{[^}]*\}/);
+        expect(stickyRule).not.toBeNull();
+        expect(stickyRule[0]).toContain('position: sticky;');
+        expect(stickyRule[0]).toContain('right: 0;');
+        // Repainting the bar's themeable translucent background would double-darken and seam,
+        // so the pinned cluster reuses the bar's own glass treatment instead.
+        expect(stickyRule[0]).toContain('backdrop-filter: blur(12px);');
+        expect(stickyRule[0]).toContain('-webkit-backdrop-filter: blur(12px);');
+        expect(stickyRule[0]).toContain('-webkit-mask-image:');
+
+        // Only engages when the icons actually outrun the bar.
+        const fitSource = getFunctionSource('syncTopbarBrandFit');
+        expect(fitSource).toContain('if (needed > available) {');
+        expect(fitSource).toContain('dataset.sbTopbarScroll');
     });
 
     test('keeps one spacing rhythm across the mobile bar', () => {

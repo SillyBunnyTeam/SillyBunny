@@ -5039,10 +5039,14 @@ function syncTopbarBrandFit() {
         return;
     }
 
-    if (!sbState.topbarIconsOnly || isMobileViewport()) {
+    if (!sbState.topbarIconsOnly) {
         delete document.documentElement.dataset.sbTopbarBrandCramped;
+        delete document.documentElement.dataset.sbTopbarScroll;
         return;
     }
+
+    // Phones drop the label unconditionally, so only the overflow verdict matters there.
+    const labelCanFit = !isMobileViewport();
 
     if (isActuallyVisible(brand)) {
         sbState.topbarPages.brandWidth = Math.max(brand.scrollWidth, SB_TOPBAR_BRAND_MIN_WIDTH);
@@ -5065,12 +5069,21 @@ function syncTopbarBrandFit() {
     }
 
     const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;
-    const cramped = needed + reservation + gap > inner.clientWidth;
+    const available = inner.clientWidth;
 
-    if (cramped) {
+    if (labelCanFit && needed + reservation + gap > available) {
         document.documentElement.dataset.sbTopbarBrandCramped = 'true';
     } else {
         delete document.documentElement.dataset.sbTopbarBrandCramped;
+    }
+
+    // Even with the label gone the icons can outrun the bar. Rather than let a rail clip a
+    // button to an unreadable sliver, hand the whole bar one scroll axis and pin the trailing
+    // controls so Quick Actions, Search, Home and Characters stay reachable at any width.
+    if (needed > available) {
+        document.documentElement.dataset.sbTopbarScroll = 'true';
+    } else {
+        delete document.documentElement.dataset.sbTopbarScroll;
     }
 }
 
