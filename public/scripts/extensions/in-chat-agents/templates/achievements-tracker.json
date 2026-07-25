@@ -9,7 +9,7 @@
         "achievements",
         "milestones"
     ],
-    "version": 2,
+    "version": 3,
     "author": "Purachina",
     "prompt": "### Achievements\nTrack notable firsts, milestones, and memorable moments. Award only when something genuinely significant or entertaining happens. Use this EXACT format:\n\n[ACH|Title|Rarity|Description]\nunlocked: MANDATORY; explain what triggered it; NEVER leave empty\n[/ACH]\n\nRarity options: ★ COMMON | ★★ UNCOMMON | ★★★ RARE | ★★★★ EPIC | ★★★★★ LEGENDARY | 💀 SECRET\n\nRules:\n- Achievements appear AFTER narrative content\n- MAXIMUM one achievement per scene; most scenes have none\n- Achievements must feel earned, never automatic\n- NEVER output an empty unlocked line",
     "phase": "both",
@@ -27,7 +27,7 @@
         "regexReplace": "",
         "regexFlags": "g",
         "appendText": "",
-        "extractPattern": "\\\\[ACH\\\\|[^\\\\]]*\\\\]",
+        "extractPattern": "\\[ACH\\|[^\\]\\r\\n]*\\](?:(?!\\[ACH(?=[:|\\]]))[\\s\\S])*?\\[/ACH\\]",
         "extractVariable": "achievement_data"
     },
     "enabled": false,

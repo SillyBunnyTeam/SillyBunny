@@ -101,6 +101,7 @@ import {
 import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
 
 export {
     openai_messages_count,
@@ -843,6 +844,14 @@ function setOpenAIMessages(chat) {
         const isSameModel = originApi === currentApi && originModel === currentModel;
         const signature = isSameModel ? chat[j]?.extra?.reasoning_signature : null;
         const reasoning = isSameModel ? String(chat[j]?.extra?.reasoning ?? '') : '';
+        const agentContributions = Array.isArray(chat[j].agentContributions)
+            ? structuredClone(chat[j].agentContributions).map(contribution => ({
+                ...contribution,
+                content: typeof contribution.content === 'string'
+                    ? contribution.content.replace(/\r/gm, '')
+                    : contribution.content,
+            }))
+            : null;
 
         // Remove reasoning metadata from invocations if the API/model don't match
         if (Array.isArray(invocations) && invocations.length > 0) {
@@ -856,7 +865,18 @@ function setOpenAIMessages(chat) {
             });
         }
 
-        const message = { 'role': role, 'content': content, name: name, 'media': media, 'mediaDisplay': mediaDisplay, 'mediaIndex': mediaIndex, 'invocations': invocations, 'signature': signature, 'reasoning': reasoning };
+        const message = {
+            'role': role,
+            'content': content,
+            name: name,
+            'media': media,
+            'mediaDisplay': mediaDisplay,
+            'mediaIndex': mediaIndex,
+            'invocations': invocations,
+            'signature': signature,
+            'reasoning': reasoning,
+            ...(agentContributions && { agentContributions }),
+        };
         if (hasPromptPayload(message)) {
             messages[i] = message;
         }
@@ -1080,13 +1100,39 @@ async function populationInjectionPrompts(prompts, messages) {
                     .join(separator);
 
                 // Get extension prompt
+                const extensionContributions = [];
                 const extensionPrompt = order === extensionPromptsOrder
-                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap)
+                    ? await getExtensionPrompt(extension_prompt_types.IN_CHAT, i, separator, roleTypes[role], wrap, ({ key, prompt, value }) => {
+                        if (!key.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX) || !value.trim()) return;
+                        extensionContributions.push({
+                            identifier: key.replace(/\W/g, '_'),
+                            name: String(prompt.name ?? '').trim() || key,
+                            role,
+                            content: value.trim(),
+                            kind: getInChatAgentContributionKind(key),
+                        });
+                    })
                     : '';
                 const jointPrompt = [rolePrompts, extensionPrompt].filter(x => x).map(x => x.trim()).join(separator);
 
+                const promptContributions = orderPrompts
+                    .filter(prompt => prompt.role === role && isInChatAgentPromptIdentifier(prompt.identifier) && prompt.content)
+                    .map(prompt => ({
+                        identifier: prompt.identifier,
+                        name: String(prompt.name ?? '').trim() || prompt.identifier,
+                        role,
+                        content: String(prompt.content).trim(),
+                        kind: getInChatAgentContributionKind(prompt.identifier),
+                    }));
+                const agentContributions = [...promptContributions, ...extensionContributions];
+
                 if (jointPrompt && jointPrompt.length) {
-                    roleMessages.push({ 'role': role, 'content': jointPrompt, injected: true });
+                    roleMessages.push({
+                        'role': role,
+                        'content': jointPrompt,
+                        injected: true,
+                        ...(agentContributions.length > 0 && { agentContributions }),
+                    });
                 }
             }
         }
@@ -1180,18 +1226,16 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
         // We do not want to mutate the prompt
         const prompt = new Prompt(chatPrompt);
         prompt.identifier = `chatHistory-${messages.length - index}`;
-        const chatMessage = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
-
-        if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
-            const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
-            await chatMessage.setName(messageName);
-        }
+        let survivingContributions = Array.isArray(chatPrompt.agentContributions)
+            ? structuredClone(chatPrompt.agentContributions)
+            : [];
 
         /**
          * Inline a media attachment into the chat message.
          * @param {MediaAttachment} media - The media attachment to inline.
+         * @param {Message} message - The message receiving the attachment.
          */
-        const inlineMediaAttachment = async (media) => {
+        const inlineMediaAttachment = async (media, message) => {
             if (!media || !media.url) {
                 return;
             }
@@ -1199,26 +1243,46 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
                 media.type = MEDIA_TYPE.IMAGE;
             }
             if (imageInlining && media.type === MEDIA_TYPE.IMAGE) {
-                await chatMessage.addImage(media.url);
+                await message.addImage(media.url);
             }
             if (videoInlining && media.type === MEDIA_TYPE.VIDEO) {
-                await chatMessage.addVideo(media.url);
+                await message.addVideo(media.url);
             }
             if (audioInlining && media.type === MEDIA_TYPE.AUDIO) {
-                await chatMessage.addAudio(media.url);
+                await message.addAudio(media.url);
             }
         };
 
-        if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
-                for (const media of chatPrompt.media) {
-                    await inlineMediaAttachment(media);
+        const buildChatMessage = async () => {
+            const message = await Message.fromPromptAsync(promptManager.preparePrompt(prompt));
+            if (survivingContributions.length > 0) {
+                message.agentContributions = survivingContributions;
+            }
+            if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
+                const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
+                await message.setName(messageName);
+            }
+            if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
+                    for (const media of chatPrompt.media) {
+                        await inlineMediaAttachment(media, message);
+                    }
+                }
+                if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
+                    const media = chatPrompt.media[chatPrompt.mediaIndex];
+                    await inlineMediaAttachment(media, message);
                 }
             }
-            if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
-                const media = chatPrompt.media[chatPrompt.mediaIndex];
-                await inlineMediaAttachment(media);
-            }
+            return message;
+        };
+
+        let chatMessage = await buildChatMessage();
+        while (!chatCompletion.canAfford(chatMessage) && survivingContributions.length > 0 && typeof prompt.content === 'string') {
+            const trimmed = trimOldestRetainedContribution(prompt.content, survivingContributions);
+            if (!trimmed.changed) break;
+            prompt.content = trimmed.content;
+            survivingContributions = trimmed.contributions;
+            chatMessage = await buildChatMessage();
         }
 
         if (canUseTools && Array.isArray(chatPrompt.invocations)) {
@@ -1834,6 +1898,7 @@ export async function prepareOpenAIMessages({
             chatCompletion.log('----------------------------------------------------');
         }
     } finally {
+        await chatCompletion.buildRuntimeAgentMessages();
         // Pass chat completion to prompt manager for inspection
         promptManager.setChatCompletion(chatCompletion);
 
@@ -5952,6 +6017,8 @@ class Message {
     signature = null;
     /** @type {string?} */
     reasoning = null;
+    /** @type {object[]|null} */
+    agentContributions = null;
 
     /**
      * @constructor
@@ -6390,6 +6457,7 @@ export class ChatCompletion {
     constructor() {
         this.tokenBudget = 0;
         this.messages = new MessageCollection('root');
+        this.runtimeAgentMessages = null;
         this.loggingEnabled = false;
         this.overriddenPrompts = [];
     }
@@ -6401,6 +6469,27 @@ export class ChatCompletion {
      */
     getMessages() {
         return this.messages;
+    }
+
+    getRuntimeAgentMessages() {
+        return this.runtimeAgentMessages;
+    }
+
+    async buildRuntimeAgentMessages() {
+        this.runtimeAgentMessages = null;
+        const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
+
+        try {
+            for (const record of collectInChatAgentInspectionRecords(this.messages.flatten())) {
+                const message = await Message.createAsync(record.role, record.content, record.identifier);
+                message.displayName = record.name;
+                message.kind = record.kind;
+                runtimeMessages.add(message);
+            }
+            this.runtimeAgentMessages = runtimeMessages;
+        } catch (error) {
+            console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
+        }
     }
 
     /**

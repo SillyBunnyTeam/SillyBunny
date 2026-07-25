@@ -5,12 +5,13 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+const groupChatsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'group-chats.js'), 'utf8');
 const correctionSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'guided-generations', 'scripts', 'guidedCorrection.js'), 'utf8');
 
 describe('Guided Correction generation wiring', () => {
     test('retains correction targets without changing ordinary regeneration', () => {
         expect(scriptSource).toContain('@property {boolean} [preserveLastMessage]');
-        expect(scriptSource).toContain('preserveLastMessage = false } = {}, dryRun = false)');
+        expect(scriptSource).toContain('preserveLastMessage = false, companionHistoryTarget = null } = {}, dryRun = false)');
         expect(scriptSource).toContain('!(type === \'regenerate\' && preserveLastMessage)');
         expect(scriptSource).toContain('setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage)');
         expect(scriptSource).toContain('(type === \'regenerate\' && !preserveLastMessage)');
@@ -24,5 +25,11 @@ describe('Guided Correction generation wiring', () => {
         expect(correctionSource).toContain('textarea.value = \'\';');
         expect(correctionSource.indexOf('textarea.value = \'\';'))
             .toBeLessThan(correctionSource.indexOf('await generateCorrection(target);'));
+    });
+
+    test('carries the companion rewrite target through group generation only', () => {
+        expect(scriptSource).toContain('generateGroupWrapper(false, type, { quiet_prompt, force_chid, signal: abortController.signal, quietImage, jsonSchema, cacheScope: resolvedCacheScope, preserveLastMessage, companionHistoryTarget: companionFeedbackTarget })');
+        expect(groupChatsSource).toContain("Generate(generateType, { automatic_trigger: byAutoMode, ...mergedParams })");
+        expect(groupChatsSource).toContain("Generate('continue', { automatic_trigger: byAutoMode, ...mergedParams, companionHistoryTarget: undefined })");
     });
 });

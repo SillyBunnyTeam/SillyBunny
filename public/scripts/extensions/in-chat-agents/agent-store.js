@@ -37,6 +37,10 @@ import {
  * @property {boolean} includePersona
  * @property {boolean} includeWorldInfo
  * @property {boolean} includeHistory
+ * @property {boolean} includeInChatHistory
+ * @property {number} chatHistoryDepth
+ * @property {boolean} includeAllChatHistory
+ * @property {boolean} keepInChatHistoryWhenHostHidden
  * @property {number} historyDepth
  * @property {AgentCompanionFeedback} feedback
  * @property {boolean} batch
@@ -949,6 +953,10 @@ export function createDefaultCompanionConfig() {
         includeAuthorsNote: true,
         includeSystemPrompt: true,
         includeHistory: true,
+        includeInChatHistory: false,
+        chatHistoryDepth: 1,
+        includeAllChatHistory: true,
+        keepInChatHistoryWhenHostHidden: false,
         historyDepth: 3,
         feedback: {
             enabled: false,
@@ -997,6 +1005,10 @@ export function normalizeCompanionConfig(raw = {}) {
         includeAuthorsNote: rawConfig.includeAuthorsNote === undefined ? defaults.includeAuthorsNote : Boolean(rawConfig.includeAuthorsNote),
         includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
         includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
+        includeInChatHistory: Boolean(rawConfig.includeInChatHistory),
+        chatHistoryDepth: clampNumber(rawConfig.chatHistoryDepth, defaults.chatHistoryDepth, 1, 50),
+        includeAllChatHistory: rawConfig.includeAllChatHistory === undefined ? defaults.includeAllChatHistory : Boolean(rawConfig.includeAllChatHistory),
+        keepInChatHistoryWhenHostHidden: Boolean(rawConfig.keepInChatHistoryWhenHostHidden),
         historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),
         feedback: {
             enabled: Boolean(rawFeedback.enabled),

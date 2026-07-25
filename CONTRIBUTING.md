@@ -54,7 +54,7 @@ All PRs must have their descriptions *manually* written, without AI assistance. 
 1) Better describes the actual intention behind a PR, instead of having a model interpret it, leaving less room for error.
 2) Reduces model verbosity that clutters up PR tracking and introduces completely unnecessary information.
 3) Makes it easier to backtrack on a PR and pinpoint exactly what causes a regression.
-4) Ensures PRs are understood by submitters, regardless of AI assistance.
+4) Ensures PRs and their code are understood by submitters, regardless of AI assistance.
 
 Project maintainers will test and can change your code before merging. To keep our workflow smooth, please ensure the following:
 - The "Allow edits from maintainers" option is checked.

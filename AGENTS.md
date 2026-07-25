@@ -5,8 +5,8 @@
 
 ## Project Priorities
 
+- Treat PRODUCT.md as the source of truth for product direction; DESIGN.md and DESIGN.json as the source of truth for visual and interaction guidance; README.md and CONTRIBUTING.md as the source of truth for user-facing setup, PR conventions, and release hygiene; and SECURITY.md as a source of truth for vigiliant cybersecurity practices and implementation. Update this file only with enforceable agent operating rules.
 - SillyBunny is a fork of SillyTavern; keep compatibility with upstream data, settings, characters, chats, presets, and extensions unless a task explicitly changes that.
-- Treat PRODUCT.md as the source of truth for product direction, DESIGN.md and DESIGN.json as the source of truth for visual and interaction guidance, and README.md and CONTRIBUTING.md as the source of truth for user-facing setup, PR conventions, and release hygiene; update this file only with enforceable agent operating rules.
 - Prefer self-contained SillyBunny additions over edits to base SillyTavern files; when a base file must diverge, leave a short inline comment explaining where and why for future upstream merges.
 - Bun is the primary runtime, but Node.js parity is required for structural/backend changes; do not use Bun-only APIs without a Node-compatible fallback.
 - New UI/features must work on both desktop and mobile. Safari/WebKit 16.4+ is acceptable, but shipped WebKit properties such as `backdrop-filter`, `appearance`, `user-select`, and `position: sticky` still need prefixed companions.
@@ -45,7 +45,7 @@
 - If implementation requires text before the user has supplied final wording, use the exact placeholder `lorum ipsum` and clearly report every file/location that needs human replacement.
 - Code comments are allowed only when they explain non-obvious implementation details; do not use comments as hidden documentation drafts.
 - Keep agent-facing docs terse, specific, and actionable; link to existing docs instead of duplicating long explanations.
-- AGENTS.md, CONTRIBUTING.md, README.md, and PRODUCT.md may not be overwritten by LLM wording unless explicitly authorized by a contributor.
+- AGENTS.md, CONTRIBUTING.md, README.md, PRODUCT.md, and SECURITY.md may not be overwritten by LLM wording unless explicitly authorized by a contributor.
 
 ## Style Gotchas
 

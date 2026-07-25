@@ -52,10 +52,12 @@ beforeAll(async () => {
         activateSendButtons: jest.fn(),
         chat: [],
         deactivateSendButtons: jest.fn(),
+        getCurrentChatId: jest.fn(() => 'chat-a'),
         getRequestHeaders: jest.fn(() => ({})),
         generateQuietPrompt: jest.fn(),
         is_send_press: false,
         normalizeContentText: jest.fn(value => String(value ?? '')),
+        saveChatDebounced: jest.fn(),
         saveSettingsDebounced: jest.fn(),
         substituteParams: jest.fn(value => String(value ?? '')),
     }));
@@ -148,6 +150,7 @@ beforeAll(async () => {
         buildPromptDynamicMacros: jest.fn(() => ({})),
         deactivatePathfinderRuntime: jest.fn(),
         initAgentRunner: jest.fn(),
+        getAgentGenerationCancelRevision: jest.fn(() => 0),
         isAgentGenerationActive: jest.fn(() => false),
         onAgentGenerationStateChanged: jest.fn(),
         getPreGenerationInterceptHistoryForMessage: jest.fn(() => []),
@@ -201,6 +204,8 @@ beforeAll(async () => {
         hasConnectedCompanionAgents: jest.fn(() => false),
         initCompanionRunner: jest.fn(),
         runConnectedCompanionsOnMessage: jest.fn(async () => []),
+        runTrackerCompanionsOnMessage: jest.fn(async () => []),
+        syncCompanionChatHistoryConfig: jest.fn(() => 0),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({

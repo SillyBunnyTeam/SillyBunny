@@ -2,7 +2,7 @@ import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
 import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../../utils.js';
-import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveSettingsDebounced, substituteParams } from '../../../script.js';
+import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getCurrentChatId, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveChatDebounced, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
 import { is_group_generating } from '../../group-chats.js';
 import {
@@ -64,6 +64,7 @@ import {
     isAgentGenerationActive,
     onAgentGenerationStateChanged,
     getPreGenerationInterceptHistoryForMessage,
+    getAgentGenerationCancelRevision,
     getPromptTransformHistoryForMessage,
     refreshRegexSnapshotsForAgent,
     runAgentOnMessage,
@@ -90,7 +91,7 @@ import {
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
-import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, hasConnectedCompanionAgents, hasConnectedCompanionAgentCandidates, runConnectedCompanionsOnMessage, getLatestValidCompanionMessageIndex } from './companion/companion-runner.js';
+import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage, syncCompanionChatHistoryConfig } from './companion/companion-runner.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
@@ -626,20 +627,25 @@ function hasTrackerFixAgents() {
     return getAgents().some(isTrackerFixAgent);
 }
 
-function hasRunnableTrackerAgents() {
+function hasRunnableInlineTrackerAgents() {
     if (!areAgentsGloballyEnabled()) return false;
-    return getEnabledAgents().some(isTrackerFixAgent);
+    return getEnabledAgents().some(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
+}
+
+function hasRunnableCompanionTrackerAgents() {
+    if (!areAgentsGloballyEnabled()) return false;
+    return getEnabledAgents().some(agent => isCompanionAgent(agent) && isTrackerFixAgent(agent));
 }
 
 function hasAnyFixableAgents() {
-    return hasRunnableTrackerAgents() || hasConnectedCompanionAgents();
+    return hasRunnableInlineTrackerAgents() || hasRunnableCompanionTrackerAgents();
 }
 
 function getFixTrackersUnavailableMessage() {
     if (!areAgentsGloballyEnabled()) {
         return 'In-Chat Agents are disabled.';
     }
-    if (!hasTrackerFixAgents() && !hasConnectedCompanionAgentCandidates()) {
+    if (!hasTrackerFixAgents()) {
         return 'No tracker or connected companion agents are installed. Add one from Templates first.';
     }
     if (!hasAnyFixableAgents()) {
@@ -2147,17 +2153,17 @@ async function applyBulkEdit() {
 }
 
 function updateFixTrackersButtonVisibility() {
-    const hasTrackerCandidates = hasTrackerFixAgents();
-    const hasConnectedCandidates = hasConnectedCompanionAgentCandidates();
-    const hasInstalledFixables = hasTrackerCandidates || hasConnectedCandidates;
+    const hasInlineCandidates = getAgents().some(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
+    const hasCompanionCandidates = getAgents().some(agent => isCompanionAgent(agent) && isTrackerFixAgent(agent));
+    const hasInstalledFixables = hasInlineCandidates || hasCompanionCandidates;
     const shouldShowMessageButtons = areAgentsGloballyEnabled() && hasInstalledFixables;
     $('.mes_fix_trackers').each(function () {
         const $message = $(this).closest('.mes');
         const isNonSystemMessage = $message.attr('is_system') !== 'true';
         const isAssistantMessage = isNonSystemMessage && $message.attr('is_user') !== 'true';
         $(this).toggle(shouldShowMessageButtons && (
-            (hasTrackerCandidates && isAssistantMessage) ||
-            (hasConnectedCandidates && isNonSystemMessage)
+            (hasInlineCandidates && isAssistantMessage) ||
+            (hasCompanionCandidates && isNonSystemMessage)
         ));
     });
 
@@ -2170,32 +2176,38 @@ function updateFixTrackersButtonVisibility() {
     $agentsButton.attr('title', unavailableMessage || 'Re-run enabled tracker and connected companion agents on the last message');
 }
 
-async function runTrackerFixFromButton(messageIndex, button) {
+async function runTrackerFixFromButton(messageIndex, button, { inlineMessageIndex = messageIndex, companionMessageIndex = messageIndex } = {}) {
     if (fixTrackersRunning) return;
     fixTrackersRunning = true;
     const $button = $(button);
     $button.prop('disabled', true).addClass('mes_fix_trackers--running');
     updateFixTrackersButtonVisibility();
     try {
-        const hasTrackers = hasRunnableTrackerAgents();
-        const hasConnected = hasConnectedCompanionAgents();
-        if (!hasTrackers && !hasConnected) {
+        const cancelRevision = getAgentGenerationCancelRevision();
+        const hasInlineTrackers = hasRunnableInlineTrackerAgents();
+        const hasCompanionTrackers = hasRunnableCompanionTrackerAgents();
+        if (!hasInlineTrackers && !hasCompanionTrackers) {
             toastr.info('No enabled tracker or connected companion agents found.');
             return;
         }
 
-        const message = chat[messageIndex];
-        const canRunTrackersOnMessage = message && !message.is_user && !message.is_system;
-        const canRunConnectedOnMessage = message && !message.is_system;
+        const inlineMessage = chat[inlineMessageIndex];
+        const companionMessage = chat[companionMessageIndex];
+        const fixChatId = getCurrentChatId();
+        const isFixContextCurrent = () => getCurrentChatId() === fixChatId
+            && chat[inlineMessageIndex] === inlineMessage
+            && chat[companionMessageIndex] === companionMessage;
+        const canRunInlineTrackers = inlineMessage && !inlineMessage.is_user && !inlineMessage.is_system;
+        const canRunCompanionTrackers = companionMessage && !companionMessage.is_system;
 
-        if (hasTrackers && canRunTrackersOnMessage) {
-            await runTrackerFixOnMessage(messageIndex);
-        } else if (hasTrackers && !hasConnected) {
+        if (hasInlineTrackers && canRunInlineTrackers) {
+            await runTrackerFixOnMessage(inlineMessageIndex, { cancelRevision });
+        } else if (hasInlineTrackers) {
             toastr.warning('No assistant reply selected to fix trackers on.');
         }
-        if (hasConnected && canRunConnectedOnMessage) {
-            await runConnectedCompanionsOnMessage(messageIndex);
-        } else if (hasConnected && !hasTrackers) {
+        if (hasCompanionTrackers && canRunCompanionTrackers && isFixContextCurrent()) {
+            await runTrackerCompanionsOnMessage(companionMessageIndex, { cancelRevision });
+        } else if (hasCompanionTrackers && isFixContextCurrent()) {
             toastr.warning('No message selected to run connected companions on.');
         }
     } finally {
@@ -2334,6 +2346,7 @@ function renderAgentList() {
                 const executionLabel = companionExecution ? 'Companion' : phaseLabel;
                 const orderLabel = `Order ${getAgentOrderValue(agent)}`;
                 const canApplyToLastReply = !isPathfinderAgent(agent);
+                const canApplyToChosenTarget = !isPathfinderAgent(agent) && !companionExecution;
                 const applyTitle = companionExecution ? 'Run Companion on Last Reply' : 'Apply to Last Reply';
                 const applyIcon = companionExecution ? 'fa-user-astronaut' : 'fa-robot';
                 const quickItem = $(`
@@ -2353,6 +2366,7 @@ function renderAgentList() {
                                     <i class="fa-solid ${applyIcon}"></i>
                                 </button>
                             ` : ''}
+                            ${canApplyToChosenTarget ? '<button type="button" class="ica--quick-chip-apply-target" title="Apply this agent to a chosen target: the last reply, the composer text, or a companion note" aria-label="Apply to Target"><i class="fa-solid fa-crosshairs"></i></button>' : ''}
                             <button type="button" class="ica--quick-chip-pin is-active" title="Remove from Quick Toggles">
                                 <i class="fa-solid fa-star"></i>
                             </button>
@@ -2373,6 +2387,15 @@ function renderAgentList() {
                         return;
                     }
                     await runAgentOnMessage(agent.id, lastCharMessageIndex);
+                });
+
+                quickItem.find('.ica--quick-chip-apply-target').on('click', async event => {
+                    stopEvent(event);
+                    const targets = await pickManualAgentRunTargets(agent);
+                    if (!targets) {
+                        return;
+                    }
+                    await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
                 });
 
                 quickItem.find('.ica--quick-chip-pin').on('click', async event => {
@@ -2846,6 +2869,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', companion.includeAuthorsNote);
     editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', companion.includeSystemPrompt);
     editorEl.find('#ica--editor-companion-includeHistory').prop('checked', companion.includeHistory);
+    editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);
+    editorEl.find('#ica--editor-companion-chatHistoryDepth').val(companion.chatHistoryDepth);
+    editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', companion.includeAllChatHistory);
+    editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', companion.keepInChatHistoryWhenHostHidden);
     editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
     editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
     editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
@@ -3171,6 +3198,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
 
         executionSelect.prop('disabled', category === 'companion');
         editorEl.find('#ica--companion-section').toggle(companionExecution);
+        const showChatHistoryOptions = companionExecution && editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked');
+        editorEl.find('#ica--companion-chat-history-row').toggle(showChatHistoryOptions);
+        editorEl.find('#ica--editor-companion-chatHistoryDepth').prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'));
         editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
         editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
         editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
@@ -3215,6 +3245,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
             includeAuthorsNote: root.find('#ica--editor-companion-includeAuthorsNote').prop('checked'),
             includeSystemPrompt: root.find('#ica--editor-companion-includeSystemPrompt').prop('checked'),
             includeHistory: root.find('#ica--editor-companion-includeHistory').prop('checked'),
+            includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked'),
+            chatHistoryDepth: Number(root.find('#ica--editor-companion-chatHistoryDepth').val()) || current.chatHistoryDepth,
+            includeAllChatHistory: root.find('#ica--editor-companion-includeAllChatHistory').prop('checked'),
+            keepInChatHistoryWhenHostHidden: root.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked'),
             historyDepth: Number(root.find('#ica--editor-companion-historyDepth').val()) || current.historyDepth,
             feedback: {
                 ...current.feedback,
@@ -3246,6 +3280,10 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', nextCompanion.includeAuthorsNote);
         editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', nextCompanion.includeSystemPrompt);
         editorEl.find('#ica--editor-companion-includeHistory').prop('checked', nextCompanion.includeHistory);
+        editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);
+        editorEl.find('#ica--editor-companion-chatHistoryDepth').val(nextCompanion.chatHistoryDepth);
+        editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);
+        editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);
         editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
         editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
         editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
@@ -3262,7 +3300,7 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         updateTrackerBuilderVisibility();
         updateCompanionEditorVisibility();
     });
-    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
+    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-companion-includeInChatHistory, #ica--editor-companion-includeAllChatHistory, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
     editorEl.find('#ica--editor-companion-batch').on('change', () => {
         updateCompanionBatchAgentOptions();
         updateCompanionEditorVisibility();
@@ -3531,7 +3569,14 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         editorEl.find('#ica--editor-execution').val('companion').trigger('change');
         editorEl.find('#ica--editor-phase').val('post').trigger('change');
         editorEl.find('#ica--editor-prompt').val(generatedKit.prompt);
-        writeCompanionConfigToEditor(generatedKit.companion);
+        const currentCompanion = readCompanionConfigFromEditor(editorEl);
+        writeCompanionConfigToEditor({
+            ...generatedKit.companion,
+            includeInChatHistory: currentCompanion.includeInChatHistory,
+            chatHistoryDepth: currentCompanion.chatHistoryDepth,
+            includeAllChatHistory: currentCompanion.includeAllChatHistory,
+            keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden,
+        });
         toastr.success('Applied generated companion. Review and save when ready.');
     });
 
@@ -3773,6 +3818,9 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
     }
 
     await saveAgent(agent);
+    if (isCompanionAgent(agent) && await syncCompanionChatHistoryConfig(agent) > 0) {
+        saveChatDebounced({ deferBackup: false });
+    }
     refreshRegexSnapshotsForAgent(agent.id);
     renderAgentList();
     updateCompanionButtonVisibility();
@@ -5733,14 +5781,14 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             updateFixTrackersButtonVisibility();
             return;
         }
-        const messageIndex = hasConnectedCompanionAgents()
-            ? getLatestValidCompanionMessageIndex()
-            : getLastAssistantMessageIndex();
+        const inlineMessageIndex = getLastAssistantMessageIndex();
+        const companionMessageIndex = getLatestValidCompanionMessageIndex();
+        const messageIndex = Math.max(inlineMessageIndex, companionMessageIndex);
         if (messageIndex < 0) {
             toastr.warning('No assistant reply yet to fix trackers on.');
             return;
         }
-        await runTrackerFixFromButton(messageIndex, this);
+        await runTrackerFixFromButton(messageIndex, this, { inlineMessageIndex, companionMessageIndex });
     });
     $('#ica--templatesCallout').on('click', openTemplateBrowser);
     $('#ica--templatesCalloutDismiss').on('click', (event) => {
