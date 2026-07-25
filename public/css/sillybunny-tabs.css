@@ -76,6 +76,9 @@
     --sb-topbar-search-row-height: calc(var(--sb-topbar-search-row-height-base) * var(--sb-topbar-scale-active));
     --sb-topbar-search-panel-gap: calc(var(--sb-topbar-search-panel-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-group-gap: calc(var(--sb-topbar-group-gap-base) * var(--sb-topbar-scale-active));
+    /* Seam between icons-only clusters. A multiple of the group gap rather than a fixed value, so
+       it tracks the user's top bar scale and compact mode instead of fighting them. */
+    --sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);
     --sb-chatbar-height: calc(var(--sb-chatbar-height-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-gap: calc(var(--sb-chatbar-gap-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-cluster-gap: calc(var(--sb-chatbar-cluster-gap-base) * var(--sb-chatbar-scale-active));
@@ -1311,10 +1314,17 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-/* Icons only top bar: a scrollable page rail takes the Quick Access position, and the
-   layer 2 anchors stay put with their labels suppressed. */
-#sb-topbar-parked {
-    display: none;
+/* Icons only top bar: each Layer 2 anchor grows a cluster of its own page icons beside it, and the
+   anchors stay put with their labels suppressed.
+
+   Square hit boxes at the labelled buttons' own height. The icons used to be 30px wide inside a
+   36px-tall bar, which read as a smaller, harder-to-hit control than the anchors beside them
+   (Geechan review, #685). Placed after .sb-proxy-button-icon-only so equal specificity resolves
+   here by source order. */
+.sb-topbar-page-button,
+:root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only {
+    width: var(--sb-proxy-button-height);
+    min-width: var(--sb-proxy-button-height);
 }
 
 /* The rails do not scroll on their own. A nested scroll region ended mid-button and left an
@@ -1323,12 +1333,18 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
     align-items: center;
     flex-wrap: nowrap;
-    gap: var(--sb-proxy-button-gap);
+    gap: var(--sb-topbar-group-gap);
 }
 
+/* A cluster's anchor sits tight against its own page icons; each new anchor opens the wider seam
+   that separates the clusters, so Workspace, Customize and Characters read as three zones rather
+   than one strip. Derived from the group gap so it follows the user's top bar scale. */
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-lead:not(:first-child) {
+    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
+}
 
 /* Overflow state: the leading group scrolls and the trailing controls sit beside it, so Quick
-   Actions, Search, Home and Characters stay reachable however far the icons are scrolled.
+   Actions, Home and Characters stay reachable however far the icons are scrolled.
    The icons deliberately scroll beside the trailing group rather than under it. Scrolling them
    under would need the pinned group to paint over them, and its only theme-correct backing is
    the bar's own translucent background: repainting that double-darkens, and backdrop-filter
@@ -1385,79 +1401,22 @@ body:not(.movingUI) .drawer-content.maximized {
     display: flex;
 }
 
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-pages-empty {
-    display: none;
-}
-
-/* Search only exists as a top bar button in icons-only mode; elsewhere it is reachable through
-   a Quick Access slot as before. */
-#sb-topbar-search-toggle {
-    display: none;
-}
-
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-search-toggle {
-    display: inline-flex;
-}
-
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-page-duplicate {
     display: none;
 }
 
 /* Once the label is squeezed out there is nothing left to centre on, so it yields its width to
-   the rails; the two clusters then meet in the middle on their own. */
+   the clusters, which keep hugging their own edge of the bar. The clusters are positioned by
+   meaning here, not by balance: Workspace stays hard left and Characters hard right at every
+   width, so neither group is ever pulled toward the centre. */
 :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {
     display: none;
 }
 
-/* The side tracks are equal, so the brand label already sits on the true centre. Both groups
-   fill from the outer edge inward though, which leaves unequal slack next to the label and
-   reads as off-centre. Clustering each group's icons against the label evens that slack out,
-   while home/characters stay pinned to the bar edge. Phones merge the rails and hide the
-   label, so this is desktop only. */
-@media screen and (min-width: 769px) {
-    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
-        justify-content: flex-end;
-    }
-
-    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
-        justify-content: flex-start;
-    }
-
-    :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
-        margin-left: auto;
-    }
-
-    /* With the label gone there is no centre column to balance against, so the equal side tracks
-       just strand the icons left of centre. Collapse the grid and centre the whole row as one
-       cluster instead. Must follow the rule above to win on source order. */
-    :root[data-sb-topbar-brand-cramped='true'] #sb-topbar-inner {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-group-left,
-    :root[data-sb-topbar-brand-cramped='true'] .sb-topbar-group-right {
-        justify-content: center;
-        flex: 0 1 auto;
-        min-width: 0;
-    }
-
-    :root[data-sb-topbar-brand-cramped='true'] #sb-home-toggle {
-        margin-left: 0;
-    }
-}
-
-
 /* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this
    the home button keeps a label-width box with no label in it. */
 :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
-    min-width: var(--sb-chatbar-button-size);
-}
-
-.sb-shortcut-rows.is-disabled {
-    opacity: 0.5;
-    pointer-events: none;
+    min-width: var(--sb-proxy-button-height);
 }
 
 #top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {

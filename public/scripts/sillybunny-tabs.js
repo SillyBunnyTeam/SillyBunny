@@ -721,37 +721,55 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
     { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
 ]);
 
-// SillyBunny: destinations rendered by the optional icons-only top bar rail. Labels and icons are
-// resolved from SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so the rail cannot drift when a
-// page is renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because
-// those two are persisted in user settings and carry pseudo-entries this list must not inherit.
-const SB_TOPBAR_PAGE_TARGETS = Object.freeze([
-    { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
-    { value: 'left:api', shellKey: 'left', tabId: 'api' },
-    { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
-    { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
-    { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
-    { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
-    { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
-    { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
-    { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
-    { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
-    { value: 'right:background', shellKey: 'right', tabId: 'background' },
-    { value: 'right:server', shellKey: 'right', tabId: 'server' },
-    { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+// SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
+// each Layer 2 anchor in place into that anchor's own Layer 3 pages, so the bar keeps the skeleton
+// PRODUCT.md prescribes -- Workspace, Customize, title, quick access, Home, Characters -- and each
+// cluster stays readable as its own zone. Deliberately capped at three pages per cluster: the
+// anchor toggle still opens the full page list, so a page left off the bar is demoted a layer, not
+// removed. Labels and icons resolve from SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a
+// cluster cannot drift when a page is renamed. Kept separate from SB_SHORTCUT_TARGETS and
+// SB_MOBILE_NAV_PAGE_TARGETS because those two are persisted in user settings and carry
+// pseudo-entries these lists must not inherit.
+const SB_TOPBAR_CLUSTERS = Object.freeze([
+    {
+        key: 'workspace',
+        leadId: 'sb-left-shell-toggle',
+        railId: 'sb-topbar-cluster-workspace',
+        pages: Object.freeze([
+            { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
+            { value: 'left:api', shellKey: 'left', tabId: 'api' },
+            { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
+        ]),
+    },
+    {
+        key: 'customize',
+        leadId: 'sb-right-shell-toggle',
+        railId: 'sb-topbar-cluster-customize',
+        pages: Object.freeze([
+            { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+            { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
+            { value: 'right:background', shellKey: 'right', tabId: 'background' },
+        ]),
+    },
+    {
+        key: 'characters',
+        leadId: 'sb-character-toggle',
+        railId: 'sb-topbar-cluster-characters',
+        pages: Object.freeze([
+            { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
+            { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
+            { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
+        ]),
+    },
 ]);
+const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
 
-// Search is not a page and never rides the rail: it has a fixed berth immediately left of Home.
-const SB_TOPBAR_SEARCH_TARGET = Object.freeze({ value: 'action:search', shellKey: '', tabId: '' });
-
-// SillyBunny: in icons-only mode the Workspace and Customize toggles are redundant, because every
-// page they lead to has its own icon on the rail, so they step aside. Home and Characters stay and
-// merely drop their labels. The Quick Access slots stay visible alongside the rails.
-const SB_TOPBAR_PARKED_IDS = Object.freeze([
+// SillyBunny: every Layer 2 anchor stays on the bar in icons-only mode and only drops its text
+// label. Nothing is parked: the clusters are capped, so an anchor is the only way back to the pages
+// its cluster left off, and removing it would bury them.
+const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-left-shell-toggle',
     'sb-right-shell-toggle',
-]);
-const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-home-toggle',
     'sb-character-toggle',
 ]);
@@ -776,7 +794,6 @@ const sbState = {
         syncFrame: 0,
         fitFrame: 0,
         brandWidth: 0,
-        groupOrder: new Map(),
     },
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
@@ -2310,8 +2327,8 @@ function getShellProxyButton(shellKey) {
         return proxyButton;
     }
 
-    // SillyBunny: icons-only mode parks the shell toggles, and focusing a display:none button
-    // silently drops focus to <body>. Fall back to the rail icon for the shell's active tab.
+    // SillyBunny: the Workspace toggle is display:none on phones, and focusing a display:none
+    // button silently drops focus to <body>. Fall back to the cluster icon for the active tab.
     const activeTabId = getShellState(shellKey)?.activeTabId;
     const pageButton = activeTabId
         ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
@@ -4883,11 +4900,6 @@ function createTopbarPageButton(page) {
 
     button.dataset.sbTopbarPage = page.value;
 
-    if (isSearchShortcutTarget(page.value)) {
-        button.dataset.sbUniversalSearchTrigger = 'true';
-        bindSearchShortcutPreFocus(button, () => page.value);
-    }
-
     return button;
 }
 
@@ -4905,139 +4917,110 @@ function buildTopbarPageRail(railId, pages) {
     return rail;
 }
 
-// SillyBunny: remember each top bar group's full child order so parked Quick Access slots can be
-// restored by replaying that order. Restoring by remembered nextSibling is not safe here, because
-// neighbouring slots are parked too and moveElementBefore would insertBefore a detached reference.
-function rememberTopbarGroupOrder(...groups) {
-    sbState.topbarPages.groupOrder.clear();
+// SillyBunny: the whole bar has one canonical child order per group per mode, and the layout is
+// applied by replaying that order rather than by moving individual buttons and remembering where
+// each came from. appendChild on a node the group already holds is a move, so replaying is
+// idempotent and no remembered reference node can go stale.
+//
+// The cluster rails are display:none while the mode is off, so the "off" order renders exactly as
+// the bar always has: the button sequence never changes between modes, only labels and the added
+// clusters do. Phones fold the Characters pages into the single scrolling left strip, because the
+// right group is pinned at its natural width there and would otherwise starve the strip.
+function getTopbarGroupOrder({ iconsOnly, mobile }) {
+    const [workspace, customize, characters] = SB_TOPBAR_CLUSTERS;
+    const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
+    const left = [
+        'sb-hamburger',
+        workspace.leadId,
+        workspace.railId,
+        customize.leadId,
+        customize.railId,
+    ];
+    const right = [];
 
-    for (const group of groups) {
-        if (group instanceof HTMLElement) {
-            sbState.topbarPages.groupOrder.set(group, [...group.children]);
+    if (iconsOnly) {
+        right.push(...quickAccessIds);
+    } else {
+        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+    }
+
+    right.push('sb-home-toggle', characters.leadId);
+
+    if (iconsOnly && mobile) {
+        left.push(characters.railId);
+    } else {
+        right.push(characters.railId);
+    }
+
+    return { left, right };
+}
+
+function syncTopbarGroupOrder() {
+    const leftGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-left');
+    const rightGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-right');
+
+    if (!(leftGroup instanceof HTMLElement) || !(rightGroup instanceof HTMLElement)) {
+        return;
+    }
+
+    const order = getTopbarGroupOrder({
+        iconsOnly: sbState.topbarIconsOnly,
+        mobile: isMobileViewport(),
+    });
+
+    for (const [group, ids] of [[leftGroup, order.left], [rightGroup, order.right]]) {
+        for (const id of ids) {
+            const element = document.getElementById(id);
+
+            if (element instanceof HTMLElement) {
+                group.appendChild(element);
+            }
         }
     }
 }
 
 function syncTopbarIconsOnlyLayout() {
     const iconsOnly = sbState.topbarIconsOnly;
-    const parkedBay = document.getElementById('sb-topbar-parked');
-
-    if (parkedBay instanceof HTMLElement) {
-        if (iconsOnly) {
-            for (const buttonId of SB_TOPBAR_PARKED_IDS) {
-                const button = document.getElementById(buttonId);
-
-                if (button instanceof HTMLElement) {
-                    moveElementBefore(button, parkedBay, null);
-                }
-            }
-        } else {
-            for (const [group, children] of sbState.topbarPages.groupOrder) {
-                for (const child of children) {
-                    group.appendChild(child);
-                }
-            }
-        }
-    }
 
     for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
-        // Layer 2 anchors are never parked; icons-only mode only drops their text labels.
+        // Layer 2 anchors always stay on the bar; icons-only mode only drops their text labels.
         document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
     }
 
-    if (iconsOnly) {
-        syncTopbarRightClusterOrder();
-    }
-
-    syncTopbarRailSplit();
+    syncTopbarGroupOrder();
     syncTopbarIconsOnlyDedupe();
     syncTopbarBrandFit();
 
-    for (const railId of ['sb-topbar-pages', 'sb-topbar-pages-right']) {
-        document.getElementById(railId)?.toggleAttribute('inert', !iconsOnly);
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.railId)?.toggleAttribute('inert', !iconsOnly);
     }
 }
 
-// SillyBunny: icons-only mode pins a fixed running order to the right end of the bar --
-// Quick Actions, then Search, then Home, then Characters -- so those controls never move around
-// as the rails change. Turning the mode off restores the recorded group order instead.
-function syncTopbarRightClusterOrder() {
-    const rightGroup = document.querySelector('#sb-topbar-inner > .sb-topbar-group-right');
-
-    if (!(rightGroup instanceof HTMLElement)) {
-        return;
-    }
-
-    const ordered = [
-        document.getElementById('sb-topbar-pages-right'),
-        ...SB_SHORTCUT_SLOTS.map(side => document.getElementById(getShortcutButtonId(side))),
-        document.getElementById('sb-topbar-search-toggle'),
-        document.getElementById('sb-home-toggle'),
-        document.getElementById('sb-character-toggle'),
-    ];
-
-    for (const element of ordered) {
-        if (element instanceof HTMLElement) {
-            rightGroup.appendChild(element);
-        }
-    }
-}
-
-// SillyBunny: a Quick Access slot pointed at a page that already has a rail icon renders the same
-// glyph twice. Keep the rightmost copy: the rail icon yields to the slot, and a slot pointed at
-// Search yields to the dedicated Search button, which sits further right still.
+// SillyBunny: a Quick Access slot pointed at a page that also has a cluster icon renders the same
+// glyph twice. The slot wins, because the user picked it deliberately, and the cluster copy hides.
 function syncTopbarIconsOnlyDedupe() {
-    const railButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
+    const clusterButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
 
     if (!sbState.topbarIconsOnly) {
-        for (const button of railButtons) {
+        for (const button of clusterButtons) {
             button.classList.remove('sb-topbar-page-duplicate');
         }
 
-        for (const side of SB_SHORTCUT_SLOTS) {
-            const button = document.getElementById(getShortcutButtonId(side));
-
-            if (button instanceof HTMLElement && getShortcutTarget(side) !== 'none') {
-                button.style.removeProperty('display');
-            }
-        }
-
         return;
-    }
-
-    const railByTarget = new Map();
-
-    for (const button of railButtons) {
-        railByTarget.set(button.dataset.sbTopbarPage, button);
     }
 
     const claimed = new Set();
 
     for (const side of SB_SHORTCUT_SLOTS) {
-        const button = document.getElementById(getShortcutButtonId(side));
         const target = getShortcutTarget(side);
 
-        if (!(button instanceof HTMLElement) || target === 'none') {
-            continue;
+        if (target !== 'none') {
+            claimed.add(target);
         }
-
-        if (isSearchShortcutTarget(target)) {
-            button.style.setProperty('display', 'none', 'important');
-            continue;
-        }
-
-        // Workspace pages keep their berth on the left, so the slot yields to the rail icon.
-        // Anything else -- Customize pages, character pages -- resolves to the right instead.
-        if (target.startsWith('left:') && railByTarget.has(target)) {
-            button.style.setProperty('display', 'none', 'important');
-            continue;
-        }
-
-        button.style.removeProperty('display');
-        claimed.add(target);
     }
 
-    for (const button of railButtons) {
+    for (const button of clusterButtons) {
         button.classList.toggle('sb-topbar-page-duplicate', claimed.has(button.dataset.sbTopbarPage));
     }
 }
@@ -5111,32 +5094,6 @@ function queueTopbarBrandFit() {
         sbState.topbarPages.fitFrame = 0;
         syncTopbarBrandFit();
     });
-}
-
-// SillyBunny: the two-rail split exists to fill the gap either side of the brand label. Phones
-// hide that label and have no width to spare, so the Customize pages fold back into the single
-// left rail there — otherwise the right group's fixed buttons squeeze the left rail to nothing.
-function syncTopbarRailSplit() {
-    const leftRail = document.getElementById('sb-topbar-pages');
-    const rightRail = document.getElementById('sb-topbar-pages-right');
-
-    if (!(leftRail instanceof HTMLElement) || !(rightRail instanceof HTMLElement)) {
-        return;
-    }
-
-    const shouldMerge = isMobileViewport();
-    const customizeButtons = [...leftRail.children, ...rightRail.children]
-        .filter(button => button instanceof HTMLElement && button.dataset.sbTopbarPage?.startsWith('right:'));
-
-    for (const button of customizeButtons) {
-        if (shouldMerge) {
-            leftRail.appendChild(button);
-        } else {
-            rightRail.appendChild(button);
-        }
-    }
-
-    rightRail.classList.toggle('sb-topbar-pages-empty', shouldMerge);
 }
 
 function bindSearchShortcutPreFocus(button, targetGetter) {
@@ -7770,17 +7727,13 @@ function queueMobileModalStateSync() {
 }
 
 function isTopbarPageActive(page) {
-    if (isSearchShortcutTarget(page.value)) {
-        return getUniversalSearchState().expanded;
-    }
-
     return page.shellKey === 'characters'
         ? isCharacterPanelTabOpen(page.tabId)
         : isShellTabOpen(page.shellKey, page.tabId);
 }
 
 function syncTopbarPageButtonStates() {
-    for (const page of [...SB_TOPBAR_PAGE_TARGETS, SB_TOPBAR_SEARCH_TARGET]) {
+    for (const page of SB_TOPBAR_PAGE_TARGETS) {
         const button = document.querySelector(`[data-sb-topbar-page="${CSS.escape(page.value)}"]`);
 
         if (!(button instanceof HTMLElement)) {
@@ -8938,7 +8891,7 @@ function scheduleCharacterToggleGhostSync() {
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
 window.addEventListener('resize', queueTopbarBrandFit, { passive: true });
 window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
-    syncTopbarRailSplit();
+    syncTopbarGroupOrder();
     queueTopbarBrandFit();
     queueTopbarPageStateSync();
 });
@@ -9484,30 +9437,27 @@ function buildTopBar() {
         <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    // SillyBunny: the page rails take the Quick Access positions when icons-only mode is on, and
-    // the parked bay holds the Quick Access slots while they do. Customize pages ride the right
-    // rail so the space beside the brand label is used instead of scrolling one long strip.
-    const leftPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey !== 'right');
-    const rightPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey === 'right');
-    const pageRail = buildTopbarPageRail('sb-topbar-pages', leftPages);
-    const customizeRail = buildTopbarPageRail('sb-topbar-pages-right', rightPages);
-    const parkedBay = createElement('div', {
-        id: 'sb-topbar-parked',
-        attrs: { 'aria-hidden': 'true' },
-    });
+    // SillyBunny: each cluster rail is built beside the Layer 2 anchor it belongs to and stays
+    // display:none until icons-only mode is on, so one static child order serves both modes and the
+    // button sequence never shifts when the option is toggled. Search gets no dedicated button: it
+    // rides a Quick Access slot here exactly as it does with the option off.
+    const [workspaceCluster, customizeCluster, charactersCluster] = SB_TOPBAR_CLUSTERS;
+    const workspaceRail = buildTopbarPageRail(workspaceCluster.railId, workspaceCluster.pages);
+    const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
+    const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
 
-    const searchButton = createTopbarPageButton(SB_TOPBAR_SEARCH_TARGET);
-    searchButton.id = 'sb-topbar-search-toggle';
-
-    leftGroup.append(mobileButton, leftButton, rightButton, pageRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(customizeRail, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, searchButton, homeButton, charactersButton);
+    leftGroup.append(mobileButton, leftButton, workspaceRail, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
-    stack.append(primaryRow, searchRow, parkedBay);
+    stack.append(primaryRow, searchRow);
     topBar.append(stack, ...preservedExtensionChildren);
 
-    rememberTopbarGroupOrder(leftGroup, rightGroup);
+    // The anchor that leads a cluster carries the wider seam that separates the clusters.
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        document.getElementById(cluster.leadId)?.classList.add('sb-topbar-cluster-lead');
+    }
 
     observeProxyButton('sb-left-shell-toggle', getShellConfig('left').hostIconSelector);
     observeProxyButton('sb-right-shell-toggle', getShellConfig('right').hostIconSelector);
@@ -12518,28 +12468,6 @@ function createTopbarLabelOption(mode, part) {
     return option;
 }
 
-function createTopbarIconsOnlySettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-topbar-icons-only-group',
-    });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Turn this toggle on to include every page icon on the top bar.',
-    });
-    const toggleChoice = createMobileNavChoice({
-        id: 'sb-topbar-icons-only-input',
-        type: 'checkbox',
-        value: 'topbar-icons-only',
-        label: 'Icons only top bar',
-        icon: 'fa-grip',
-        onChange: input => setTopbarIconsOnly(input.checked),
-    });
-
-    group.append(description, toggleChoice);
-
-    return group;
-}
-
 function createShortcutSettingsGroup() {
     const description = createElement('p', {
         className: 'sb-theme-slider-caption',
@@ -12591,7 +12519,7 @@ function createShortcutSettingsGroup() {
     return createThemeSettingsDrawer({
         id: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        content: [createTopbarIconsOnlySettingsGroup(), description, rows],
+        content: [description, rows],
     });
 }
 
@@ -13019,6 +12947,19 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         icon: 'fa-icons',
         onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
     });
+    // SillyBunny: one global setting rendered in both the Desktop and Mobile Navigation groups,
+    // mirrored the way Compact Mode already is -- it belongs with navigation rather than nested
+    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle above also
+    // keeps the two similarly named options readable side by side.
+    const topbarIconsOnlyChoice = createMobileNavChoice({
+        id: `sb-${modePrefix}-topbar-icons-only-input`,
+        type: 'checkbox',
+        value: 'topbar-icons-only',
+        label: 'Icons only top bar',
+        icon: 'fa-grip',
+        onChange: input => setTopbarIconsOnly(input.checked),
+    });
+    topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
     const showCustomizeChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-nav-show-customize-input`,
         type: 'checkbox',
@@ -13100,6 +13041,7 @@ function createNavigationSettingsGroup(mode = 'mobile') {
         header,
         layoutGrid,
         iconOnlyChoice,
+        topbarIconsOnlyChoice,
         createMobileNavDivider(),
         showCustomizeChoice,
         showQuickActionsChoice,
@@ -13534,7 +13476,6 @@ function updateThemePickerUi() {
     const mobileButtonScaleInput = document.getElementById('sb-mobile-button-scale-input');
     const mobileButtonScaleValue = document.getElementById('sb-mobile-button-scale-value');
     const customTextInput = document.getElementById('sb-topbar-custom-text-input');
-    const topbarIconsOnlyInput = document.getElementById('sb-topbar-icons-only-input');
     const desktopNavIconOnlyInput = document.getElementById('sb-desktop-nav-icon-only-input');
     const desktopNavShowCustomizeInput = document.getElementById('sb-desktop-nav-show-customize-input');
     const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
@@ -13673,11 +13614,16 @@ function updateThemePickerUi() {
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
-    if (topbarIconsOnlyInput instanceof HTMLInputElement) {
-        topbarIconsOnlyInput.checked = sbState.topbarIconsOnly;
-        topbarIconsOnlyInput.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', sbState.topbarIconsOnly);
-        // The page rail supersedes the slots below, so surface them as inactive instead of live-but-ignored.
-        document.querySelector('.sb-shortcut-rows')?.classList.toggle('is-disabled', sbState.topbarIconsOnly);
+    // One global setting with a checkbox in both the Desktop and Mobile Navigation groups, so
+    // flipping either one has to settle the other. Quick Access stays fully live in icons-only
+    // mode -- the slots are part of the right-hand cluster now, not superseded by it.
+    for (const input of document.querySelectorAll('[data-sb-topbar-icons-only-input]')) {
+        if (!(input instanceof HTMLInputElement)) {
+            continue;
+        }
+
+        input.checked = sbState.topbarIconsOnly;
+        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', sbState.topbarIconsOnly);
     }
 
     if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
