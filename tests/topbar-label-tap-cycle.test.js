@@ -221,6 +221,17 @@ describe('icons only top bar', () => {
         expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-pages-empty');
     });
 
+    test('evens out the whitespace either side of the brand label', () => {
+        // Equal side tracks already put the label on the true centre, but both groups fill from
+        // the outer edge inward, so the leftover slack lands next to the label unequally and
+        // reads as off-centre. Auto margins pull each rail up against the label instead.
+        expect(cssSource).toMatch(/#sb-topbar-pages \{\n\s*margin-left: auto;\n\s*\}/);
+        expect(cssSource).toMatch(/#sb-topbar-pages-right \{\n\s*margin-right: auto;\n\s*\}/);
+        // Desktop only: phones merge the rails and hide the label entirely.
+        const desktopBlocks = cssSource.match(/@media screen and \(min-width: 769px\) \{[\s\S]*?\n\}/g) ?? [];
+        expect(desktopBlocks.some(block => block.includes('margin-left: auto'))).toBe(true);
+    });
+
     test('scrolls the rail rather than wrapping it', () => {
         const railRuleMatch = cssSource.match(/\.sb-topbar-pages\s*\{[^}]*\}/);
         expect(railRuleMatch).not.toBeNull();

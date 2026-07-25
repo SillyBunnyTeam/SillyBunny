@@ -1345,6 +1345,21 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
+/* The side tracks are equal, so the brand label already sits on the true centre. Both groups
+   fill from the outer edge inward though, which leaves unequal slack next to the label and
+   reads as off-centre. Pushing each rail toward the label evens that slack out while the
+   anchors and home/characters stay pinned to the bar edges. Phones merge the rails and hide
+   the label, so this is desktop only. */
+@media screen and (min-width: 769px) {
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-pages {
+        margin-left: auto;
+    }
+
+    :root[data-sb-topbar-icons-only='true'] #sb-topbar-pages-right {
+        margin-right: auto;
+    }
+}
+
 
 /* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this
    the home button keeps a label-width box with no label in it. */
