@@ -277,6 +277,8 @@ describe('icons only top bar', () => {
         expect(dedupeSource).toContain('claimed.add(target);');
         expect(dedupeSource).toContain('button.classList.toggle(\'sb-topbar-page-duplicate\', claimed.has(button.dataset.sbTopbarPage));');
         expect(dedupeSource).toContain('if (isSearchShortcutTarget(target)) {');
+        // Workspace pages are the exception: they keep the left rail berth and the slot yields.
+        expect(dedupeSource).toContain('if (target.startsWith(\'left:\') && railByTarget.has(target)) {');
         expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-page-duplicate');
     });
 
@@ -308,9 +310,12 @@ describe('icons only top bar', () => {
         const innerRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-inner \{[^}]*\}/);
         expect(innerRule).not.toBeNull();
         expect(innerRule[0]).toContain('overflow-x: auto;');
-        // The min-content floor propagates through every flex/grid ancestor.
-        expect(innerRule[0]).toContain('min-width: 0;');
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-stack,\n:root\[data-sb-topbar-scroll='true'\] #sb-topbar-primary \{\n\s*min-width: 0;\n\}/);
+        // The min-content floor propagates through every flex/grid ancestor, and the shrink
+        // permission must be gated on icons-only rather than on the scroll state: the overflow
+        // verdict is read from the inner's client width, so gating it on the verdict lets the
+        // bar inflate to fit its own content and a small overflow is never detected.
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-stack,\n:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-primary,\n:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-inner \{\n\s*min-width: 0;\n\}/);
+        expect(cssSource).not.toMatch(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-stack/);
         // Snapping pulled the bar past the hamburger on load, because the first snap point is
         // the leading page icon rather than the start of the bar.
         expect(innerRule[0]).not.toContain('scroll-snap-type');

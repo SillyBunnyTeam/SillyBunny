@@ -1353,9 +1353,13 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 /* The min-content floor propagates up through every flex/grid ancestor, so each one has to be
-   told it may shrink or the whole bar widens past the viewport instead of scrolling. */
-:root[data-sb-topbar-scroll='true'] #sb-topbar-stack,
-:root[data-sb-topbar-scroll='true'] #sb-topbar-primary {
+   told it may shrink or the whole bar widens past the viewport instead of scrolling.
+   Gated on icons-only rather than on the scroll state itself: the overflow verdict is measured
+   from #sb-topbar-inner's client width, and leaving these unset lets the bar inflate to fit its
+   own content, so a small overflow would never be detected and could never be scrolled. */
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-stack,
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-primary,
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
     min-width: 0;
 }
 

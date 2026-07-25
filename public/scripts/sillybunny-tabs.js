@@ -5003,6 +5003,12 @@ function syncTopbarIconsOnlyDedupe() {
         return;
     }
 
+    const railByTarget = new Map();
+
+    for (const button of railButtons) {
+        railByTarget.set(button.dataset.sbTopbarPage, button);
+    }
+
     const claimed = new Set();
 
     for (const side of SB_SHORTCUT_SLOTS) {
@@ -5014,6 +5020,13 @@ function syncTopbarIconsOnlyDedupe() {
         }
 
         if (isSearchShortcutTarget(target)) {
+            button.style.setProperty('display', 'none', 'important');
+            continue;
+        }
+
+        // Workspace pages keep their berth on the left, so the slot yields to the rail icon.
+        // Anything else -- Customize pages, character pages -- resolves to the right instead.
+        if (target.startsWith('left:') && railByTarget.has(target)) {
             button.style.setProperty('display', 'none', 'important');
             continue;
         }
