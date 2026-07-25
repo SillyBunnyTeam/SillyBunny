@@ -4824,7 +4824,9 @@ function stopProxyPointerPropagation(element) {
 
     element.addEventListener('mousedown', stop);
     element.addEventListener('pointerdown', stop);
-    element.addEventListener('touchstart', stop);
+    // Passive: the handler never calls preventDefault, and a non-passive touchstart on every
+    // button pulls WebKit off its compositor scrolling path, which stalls the icons-only rail.
+    element.addEventListener('touchstart', stop, { passive: true });
 }
 
 function createProxyButton({ id, icon, label, title, className = '' }, onClick) {

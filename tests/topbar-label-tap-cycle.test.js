@@ -307,9 +307,10 @@ describe('icons only top bar', () => {
         expect(railRuleMatch[0]).not.toContain('overflow-x: auto;');
         expect(railRuleMatch[0]).toContain('flex-wrap: nowrap;');
 
-        const innerRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-inner \{[^}]*\}/);
-        expect(innerRule).not.toBeNull();
-        expect(innerRule[0]).toContain('overflow-x: auto;');
+        // The leading group is the scroll region; the inner row itself only lays it out.
+        const scrollerRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-left \{[^}]*\}/);
+        expect(scrollerRule).not.toBeNull();
+        expect(scrollerRule[0]).toContain('overflow-x: auto;');
         // The min-content floor propagates through every flex/grid ancestor, and the shrink
         // permission must be gated on icons-only rather than on the scroll state: the overflow
         // verdict is read from the inner's client width, so gating it on the verdict lets the
@@ -318,25 +319,40 @@ describe('icons only top bar', () => {
         expect(cssSource).not.toMatch(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-stack/);
         // Snapping pulled the bar past the hamburger on load, because the first snap point is
         // the leading page icon rather than the start of the bar.
-        expect(innerRule[0]).not.toContain('scroll-snap-type');
+        expect(scrollerRule[0]).not.toContain('scroll-snap-type');
         expect(cssSource).not.toContain('scroll-snap-align: start;');
     });
 
-    test('pins the trailing controls while the icons scroll under them', () => {
-        const stickyRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-right \{[^}]*\}/);
-        expect(stickyRule).not.toBeNull();
-        expect(stickyRule[0]).toContain('position: sticky;');
-        expect(stickyRule[0]).toContain('right: 0;');
-        // Repainting the bar's themeable translucent background would double-darken and seam,
-        // so the pinned cluster reuses the bar's own glass treatment instead.
-        expect(stickyRule[0]).toContain('backdrop-filter: blur(12px);');
-        expect(stickyRule[0]).toContain('-webkit-backdrop-filter: blur(12px);');
-        expect(stickyRule[0]).toContain('-webkit-mask-image:');
+    test('keeps the trailing controls beside the scrolling icons, never under them', () => {
+        // Scrolling icons *under* the trailing group needs that group to paint over them, and
+        // its only theme-correct backing is the bar's own translucent background: repainting
+        // double-darkens, and backdrop-filter silently no-ops in WebKit when nested inside
+        // another backdrop-filtered element, leaving icons showing through it on iOS.
+        const rightRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-right \{[^}]*\}/);
+        expect(rightRule).not.toBeNull();
+        expect(rightRule[0]).toContain('flex: 0 0 auto;');
+        expect(rightRule[0]).not.toContain('position: sticky;');
+        expect(rightRule[0]).not.toContain('backdrop-filter');
+
+        const leftRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-left \{[^}]*\}/);
+        expect(leftRule).not.toBeNull();
+        expect(leftRule[0]).toContain('overflow-x: auto;');
+        // WebKit needs the pan axis declared or the buttons swallow the gesture.
+        expect(leftRule[0]).toContain('touch-action: pan-x;');
+        expect(leftRule[0]).toContain('-webkit-overflow-scrolling: touch;');
 
         // Only engages when the icons actually outrun the bar.
         const fitSource = getFunctionSource('syncTopbarBrandFit');
         expect(fitSource).toContain('if (needed > available) {');
         expect(fitSource).toContain('dataset.sbTopbarScroll');
+    });
+
+    test('keeps button touch handlers off WebKit slow path', () => {
+        // A non-passive touchstart on every button pulls WebKit off compositor scrolling, which
+        // stalls the rail on iOS. The handler only stops propagation, so passive is correct.
+        const propagationSource = getFunctionSource('stopProxyPointerPropagation');
+        expect(propagationSource).toContain('element.addEventListener(\'touchstart\', stop, { passive: true });');
+        expect(propagationSource).toContain('stopPropagation');
     });
 
     test('keeps one spacing rhythm across the mobile bar', () => {

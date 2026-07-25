@@ -1327,8 +1327,13 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 
-/* Overflow state: one scroll axis across the bar, with the trailing controls pinned so Quick
-   Actions, Search, Home and Characters stay reachable however far the icons are scrolled. */
+/* Overflow state: the leading group scrolls and the trailing controls sit beside it, so Quick
+   Actions, Search, Home and Characters stay reachable however far the icons are scrolled.
+   The icons deliberately scroll beside the trailing group rather than under it. Scrolling them
+   under would need the pinned group to paint over them, and its only theme-correct backing is
+   the bar's own translucent background: repainting that double-darkens, and backdrop-filter
+   silently no-ops in WebKit when nested inside another backdrop-filtered element (#top-bar),
+   leaving the group transparent with the icons showing straight through it on iOS. */
 :root[data-sb-topbar-scroll='true'] #sb-topbar-inner {
     display: flex;
     align-items: center;
@@ -1338,17 +1343,24 @@ body:not(.movingUI) .drawer-content.maximized {
        viewport instead of scrolling inside it. */
     min-width: 0;
     max-width: 100%;
+}
+
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left {
+    flex: 1 1 auto;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    /* Tell WebKit this axis is a pan target; without it the buttons swallow the gesture. */
+    touch-action: pan-x;
     /* No scroll snapping: the first snap point is the leading page icon, so the browser pulled
        the bar past the hamburger on load and hid it. */
     scroll-padding-inline-end: var(--sb-topbar-group-gap);
 }
 
-:root[data-sb-topbar-scroll='true'] #sb-topbar-inner::-webkit-scrollbar {
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left::-webkit-scrollbar {
     display: none;
 }
 
@@ -1363,22 +1375,10 @@ body:not(.movingUI) .drawer-content.maximized {
     min-width: 0;
 }
 
-:root[data-sb-topbar-scroll='true'] #sb-topbar-inner > .sb-topbar-group {
+:root[data-sb-topbar-scroll='true'] .sb-topbar-group-right {
     flex: 0 0 auto;
     min-width: auto;
-}
-
-:root[data-sb-topbar-scroll='true'] .sb-topbar-group-right {
-    position: sticky;
-    right: 0;
-    z-index: 1;
     padding-left: var(--sb-topbar-group-gap);
-    /* Reuses the bar's own glass language rather than repainting its themeable, translucent
-       background, which would double-darken and show as a seam. */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--sb-topbar-group-gap));
-    mask-image: linear-gradient(to right, transparent 0, #000 var(--sb-topbar-group-gap));
 }
 
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {
