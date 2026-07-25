@@ -14,9 +14,11 @@ import {
 import {
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
+    getRawConversationThreadKey,
     getConversationStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
+    isAvatarInConversationGroup,
     persistConversationStore,
 } from './context.js';
 import { updateUserFooter } from './pickers.js';
@@ -98,7 +100,31 @@ export function getConversationPersonaName(personaId, fallback = 'User') {
 }
 
 export function getConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return String(getConversationThreadKey(avatar, groupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
+    return String(getConversationThreadKey(avatar, targetGroupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function getLegacyConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
+    return String(getRawConversationThreadKey(avatar, targetGroupId, '') || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+}
+
+function normalizeConversationPersonaAppendixSelections(descriptor) {
+    const source = descriptor?.[PERSONA_APPENDICES_SELECTIONS_KEY];
+    if (Array.isArray(source)) {
+        const selections = { [PERSONA_APPENDICES_DEFAULT_SCOPE_KEY]: [...source] };
+        descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = selections;
+        return { selections, changed: true };
+    }
+    if (source && typeof source === 'object') {
+        return { selections: source, changed: false };
+    }
+
+    const selections = {};
+    if (descriptor) {
+        descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = selections;
+    }
+    return { selections, changed: Boolean(descriptor && typeof source !== 'undefined') };
 }
 
 export function getConversationPersonaAppendices(avatarId) {
@@ -122,11 +148,22 @@ export function getActiveConversationPersonaAppendixIds(avatarId, options = {}) 
     const descriptor = power_user?.persona_descriptions?.[avatarId];
     const appendices = getConversationPersonaAppendices(avatarId);
     const appendixIds = new Set(appendices.map(appendix => appendix.id));
-    const selections = descriptor?.[PERSONA_APPENDICES_SELECTIONS_KEY];
+    const normalized = normalizeConversationPersonaAppendixSelections(descriptor);
+    const selections = normalized.selections;
     const scopeKey = getConversationPersonaAppendixScopeKey(options);
-    const activeIds = selections && typeof selections === 'object' && !Array.isArray(selections)
-        ? selections[scopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY] ?? []
-        : [];
+    const legacyScopeKey = getLegacyConversationPersonaAppendixScopeKey(options);
+    let changed = normalized.changed;
+    if (!Object.prototype.hasOwnProperty.call(selections, scopeKey)) {
+        const legacyIds = selections[legacyScopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY];
+        if (Array.isArray(legacyIds)) {
+            selections[scopeKey] = [...legacyIds];
+            changed = true;
+        }
+    }
+    if (changed) {
+        saveSettingsDebounced();
+    }
+    const activeIds = selections[scopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY] ?? [];
     return Array.isArray(activeIds)
         ? activeIds.map(String).filter((id, index, array) => appendixIds.has(id) && array.indexOf(id) === index)
         : [];
@@ -163,11 +200,7 @@ export function setActiveConversationPersonaAppendixIds(avatarId, ids, options =
 
     const availableIds = new Set(getConversationPersonaAppendices(avatarId).map(appendix => appendix.id));
     const cleanIds = ids.map(String).filter((id, index, array) => availableIds.has(id) && array.indexOf(id) === index);
-    const selections = descriptor[PERSONA_APPENDICES_SELECTIONS_KEY]
-        && typeof descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] === 'object'
-        && !Array.isArray(descriptor[PERSONA_APPENDICES_SELECTIONS_KEY])
-        ? descriptor[PERSONA_APPENDICES_SELECTIONS_KEY]
-        : {};
+    const selections = normalizeConversationPersonaAppendixSelections(descriptor).selections;
     selections[getConversationPersonaAppendixScopeKey(options)] = cleanIds;
     descriptor[PERSONA_APPENDICES_SELECTIONS_KEY] = selections;
 

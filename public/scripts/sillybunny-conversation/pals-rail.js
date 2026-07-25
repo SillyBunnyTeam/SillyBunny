@@ -11,8 +11,10 @@ import { DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, GROUP_ASIDE_CONTEXT_LIMIT } from '
 import {
     getActiveConversationBranch,
     getConversationGroupById,
+    getConversationGroupThreadAnchor,
     getConversationGroupIdForAvatar,
     getConversationGroups,
+    getConversationPersonaId,
     getConversationStore,
     getConversationThreadKey,
     getCurrentCharAvatar,
@@ -29,35 +31,32 @@ import { conversationState } from './state.js';
 import { getConversationSeenAt, getConversationThread } from './thread-store.js';
 import { stripPreviewText } from './typing.js';
 
-export function getConversationSettingsForCharacter(character, { groupId = getConversationGroupIdForAvatar(character?.avatar) } = {}) {
-    return character?.avatar ? getSettings(character.avatar, { groupId }) : { ...DEFAULT_SETTINGS };
+export function getConversationSettingsForCharacter(character, { groupId = getConversationGroupIdForAvatar(character?.avatar), personaId = getConversationPersonaId() } = {}) {
+    return character?.avatar ? getSettings(character.avatar, { groupId, personaId }) : { ...DEFAULT_SETTINGS };
 }
 
-export function getConversationPals() {
+export function getConversationPals({ personaId = getConversationPersonaId() } = {}) {
     if (!Array.isArray(characters)) {
         return [];
     }
 
     return characters
-        .map((character, index) => ({ character, index, settings: getConversationSettingsForCharacter(character, { groupId: '' }) }))
+        .map((character, index) => ({ character, index, settings: getConversationSettingsForCharacter(character, { groupId: '', personaId }) }))
         .filter(item => item.character?.avatar && item.settings.enabled);
 }
 
-export function getConversationRailItems() {
+export function getConversationRailItems({ personaId = getConversationPersonaId() } = {}) {
     const items = [];
     const seen = new Set();
     const seenGroupIds = new Set();
-    const activeKey = getActiveConversationThreadKey();
-    const getGroupDisplayCharacter = group => (group?.members || [])
-        .map(avatar => getCharacterForAvatar(avatar))
-        .find(character => character?.avatar) || null;
+    const activeKey = personaId === getConversationPersonaId() ? getActiveConversationThreadKey() : '';
     const addItem = ({ character, index, settings, groupId = '', group = null, threadStore = null }) => {
         const avatar = character?.avatar;
         if (!avatar || (!groupId && !settings?.enabled)) {
             return;
         }
 
-        const key = getConversationThreadKey(avatar, groupId || '');
+        const key = getConversationThreadKey(avatar, groupId || '', { personaId });
         if (!key || seen.has(key) || (groupId && seenGroupIds.has(String(groupId)))) {
             return;
         }
@@ -78,28 +77,29 @@ export function getConversationRailItems() {
         items.push({ character, index, settings, groupId: groupId || '', group, key });
     };
 
-    getConversationPals().forEach(pal => addItem({ ...pal, groupId: '' }));
+    getConversationPals({ personaId }).forEach(pal => addItem({ ...pal, groupId: '' }));
 
-    getConversationGroups().forEach((group) => {
-        const character = getGroupDisplayCharacter(group);
+    getConversationGroups({ personaId }).forEach((group) => {
+        const anchor = getConversationGroupThreadAnchor(group, { personaId });
+        const character = anchor?.character;
         if (!character?.avatar) {
             return;
         }
 
         const groupId = String(group.id || '');
-        const settings = getConversationSettingsForCharacter(character, { groupId });
+        const settings = getConversationSettingsForCharacter(character, { groupId, personaId });
         addItem({
             character,
             index: getCharacterIndexForAvatar(character.avatar),
             settings,
             groupId,
             group,
-            threadStore: getConversationStore().characters?.[getConversationThreadKey(character.avatar, groupId)] || null,
+            threadStore: anchor.threadStore,
         });
     });
 
-    Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
-        if (!isConversationThreadKeyForPersona(storeKey)) {
+    Object.entries(getConversationStore().characters || {}).forEach(([storeKey]) => {
+        if (!isConversationThreadKeyForPersona(storeKey, personaId)) {
             return;
         }
 
@@ -108,13 +108,14 @@ export function getConversationRailItems() {
             return;
         }
 
-        const character = getCharacterForAvatar(parsed.avatar);
-        const group = getConversationGroupById(parsed.groupId);
+        const group = getConversationGroupById(parsed.groupId, { personaId });
+        const anchor = getConversationGroupThreadAnchor(group, { personaId });
+        const character = anchor?.character;
         if (!character || !group) {
             return;
         }
 
-        const settings = getConversationSettingsForCharacter(character, { groupId: parsed.groupId });
+        const settings = getConversationSettingsForCharacter(character, { groupId: parsed.groupId, personaId });
 
         addItem({
             character,
@@ -122,15 +123,15 @@ export function getConversationRailItems() {
             settings,
             groupId: parsed.groupId,
             group,
-            threadStore,
+            threadStore: anchor.threadStore,
         });
     });
 
     return items.sort((first, second) => {
         if (first.key === activeKey) return -1;
         if (second.key === activeKey) return 1;
-        const firstBranch = getActiveConversationBranch(first.character.avatar, { create: false, groupId: first.groupId });
-        const secondBranch = getActiveConversationBranch(second.character.avatar, { create: false, groupId: second.groupId });
+        const firstBranch = getActiveConversationBranch(first.character.avatar, { create: false, groupId: first.groupId, personaId });
+        const secondBranch = getActiveConversationBranch(second.character.avatar, { create: false, groupId: second.groupId, personaId });
         return Number(secondBranch?.updatedAt || 0) - Number(firstBranch?.updatedAt || 0);
     });
 }
@@ -139,18 +140,18 @@ export function getSelectedConversationGroup() {
     return getConversationGroupById(conversationState.conversationWorkspaceOpen ? conversationState.conversationSelectedGroupId : selected_group);
 }
 
-export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false, groupId = null, requireEnabled = true } = {}) {
-    const group = groupId ? getConversationGroupById(groupId) : getSelectedConversationGroup();
-    if (!group || !Array.isArray(group.members)) {
+export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false, groupId = null, group = null, requireEnabled = true } = {}) {
+    const resolvedGroup = group || (groupId ? getConversationGroupById(groupId) : getSelectedConversationGroup());
+    if (!resolvedGroup || !Array.isArray(resolvedGroup.members)) {
         return [];
     }
 
-    return group.members
-        .filter(avatar => avatar && !group.disabled_members?.includes(avatar))
+    return resolvedGroup.members
+        .filter(avatar => avatar && !resolvedGroup.disabled_members?.includes(avatar))
         .map((avatar) => {
             const character = getCharacterForAvatar(avatar);
             const index = getCharacterIndexForAvatar(avatar);
-            const settings = getConversationSettingsForCharacter(character, { groupId: String(group.id || '') });
+            const settings = getConversationSettingsForCharacter(character, { groupId: String(resolvedGroup.id || '') });
             return { character, index, settings };
         })
         .filter(item => item.character?.avatar && (!requireEnabled || item.settings.enabled))
@@ -210,8 +211,8 @@ export function buildGroupChatContext(limit = GROUP_ASIDE_CONTEXT_LIMIT) {
     return lines.join('\n');
 }
 
-export function getGroupAsideKey(avatar, groupId = selected_group) {
-    return `${groupId || 'group'}:${avatar || 'unknown'}`;
+export function getGroupAsideKey(avatar, groupId = selected_group, personaId = getConversationPersonaId()) {
+    return `${personaId || 'persona'}:${groupId || 'group'}:${avatar || 'unknown'}`;
 }
 
 export function getConversationMessageAvatar(message, avatar = getCurrentCharAvatar()) {
@@ -235,18 +236,18 @@ export function getConversationMessageAvatar(message, avatar = getCurrentCharAva
     return default_user_avatar;
 }
 
-export function getConversationMessageReceipt(message, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export function getConversationMessageReceipt(message, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!message || message.role !== 'user') {
         return '';
     }
 
-    const thread = getConversationThread(avatar, { groupId });
+    const thread = getConversationThread(avatar, { groupId, personaId });
     const messageIndex = thread.findIndex(item => item.id === message.id);
     if (messageIndex >= 0 && thread.slice(messageIndex + 1).some(item => !['user', 'system'].includes(item.role))) {
         return 'Seen';
     }
 
-    const seenAt = getConversationSeenAt(avatar, { groupId });
+    const seenAt = getConversationSeenAt(avatar, { groupId, personaId });
     const createdAt = parsePositiveInt(message.created_at, 0, 0);
     return seenAt > 0 && createdAt > 0 && seenAt >= createdAt ? 'Seen' : 'Delivered';
 }

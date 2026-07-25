@@ -1,4 +1,5 @@
 import { name1 } from '../../script.js';
+import { getExtensionCapability } from './extension-capabilities.js';
 import { getConversationAttachmentSummary } from './thread-store-utils.js';
 
 function getConversationTtsText(message) {
@@ -35,7 +36,7 @@ function getConversationTtsMessage(message) {
     };
 }
 
-export async function narrateConversationMessage(message, { manual = false, force = false } = {}) {
+export async function narrateConversationMessage(message, { isStillVisible = null, manual = false, force = false } = {}) {
     const ttsMessage = getConversationTtsMessage(message);
     if (!ttsMessage) {
         return false;
@@ -48,15 +49,17 @@ export async function narrateConversationMessage(message, { manual = false, forc
         return false;
     }
 
-    try {
-        const ttsModule = await import('../extensions/tts/index.js');
-        if (typeof ttsModule.narrateTtsMessage !== 'function') {
-            throw new Error('TTS extension narrate API is unavailable.');
-        }
+    const tts = getExtensionCapability('tts');
+    if (!tts) {
+        return false;
+    }
 
-        return await ttsModule.narrateTtsMessage(ttsMessage, {
+    try {
+        return await tts.narrateTtsMessage(ttsMessage, {
             manual,
             force,
+            isStillVisible,
+            propagateErrors: true,
             unrestrictedVoiceMap: true,
         });
     } catch (error) {

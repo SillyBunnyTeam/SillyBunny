@@ -2,7 +2,7 @@ import { animation_duration, characters } from '../../script.js';
 import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
-import { getUserAvatar, setUserAvatar } from '../personas.js';
+import { getUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
@@ -38,6 +38,7 @@ import {
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
 import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
     addWeeklyScheduleRow,
@@ -90,7 +91,7 @@ import {
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260618h';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260725a';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
@@ -357,11 +358,8 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
         return false;
     }
 
-    if (personaId && personaId !== getConversationPersonaId()) {
-        await setUserAvatar(personaId, { toastPersonaNameChange: false });
-        if (personaId !== getConversationPersonaId()) {
-            return false;
-        }
+    if (personaId && !await switchConversationPersona(personaId)) {
+        return false;
     }
 
     const normalizedGroupId = groupId ? String(groupId) : '';
@@ -795,9 +793,10 @@ export function bindConversationChromeControls(sheld) {
             case 'pick-persona': {
                 const avatarId = target.dataset.personaAvatar;
                 if (avatarId) {
-                    await setUserAvatar(avatarId, { toastPersonaNameChange: false });
+                    if (!await switchConversationPersona(avatarId)) {
+                        break;
+                    }
                     updateUserFooter();
-                    saveCurrentPanelSettings();
                     const picker = document.getElementById(CHROME_IDS.personaPicker);
                     if (picker instanceof HTMLElement) {
                         renderConversationPersonaPicker(picker);
@@ -817,25 +816,28 @@ export function bindConversationChromeControls(sheld) {
                 }
                 conversationState.scheduleGenerationBusy = true;
                 const genBtn = target;
+                const personaId = getConversationPersonaId();
                 genBtn.setAttribute('disabled', '');
                 toastr.info(`Generating schedule for ${character.name}…`);
                 try {
                     const groupId = getConversationGroupIdForAvatar(genAvatar);
-                    const schedule = await generateCharacterSchedule(character, { groupId });
+                    const schedule = await generateCharacterSchedule(character, { groupId, personaId });
                     if (schedule) {
-                        saveStoredSchedule(genAvatar, schedule);
-                        const genSettings = getSettings(genAvatar, { groupId });
+                        saveStoredSchedule(genAvatar, schedule, { personaId });
+                        const genSettings = getSettings(genAvatar, { groupId, personaId });
                         genSettings.auto_schedule = JSON.stringify(schedule);
                         genSettings.talkativeness = schedule.talkativeness;
                         genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
                         genSettings.schedule_generated_at = Date.now();
                         if (groupId) {
-                            saveGroupConversationSettings(groupId, genSettings);
+                            saveGroupConversationSettings(groupId, genSettings, { personaId });
                         }
-                        saveSettings(genAvatar, genSettings, { groupId });
-                        applySettingsToPanel(genSettings);
-                        renderScheduleDisplay();
-                        updateConversationChrome(genSettings);
+                        saveSettings(genAvatar, genSettings, { groupId, personaId });
+                        if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
+                            applySettingsToPanel(genSettings);
+                            renderScheduleDisplay();
+                            updateConversationChrome(genSettings);
+                        }
                         toastr.success(`Schedule generated for ${character.name}.`);
                     } else {
                         toastr.warning('Schedule generation returned no data. Try again.');
@@ -994,7 +996,12 @@ export function bindConversationChromeControls(sheld) {
             const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
                 .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
                 .map(input => input.value);
-            setActiveConversationPersonaAppendixIds(avatarId, selectedIds);
+            const threadAvatar = getCurrentCharAvatar();
+            setActiveConversationPersonaAppendixIds(avatarId, selectedIds, {
+                avatar: threadAvatar,
+                groupId: getConversationGroupIdForAvatar(threadAvatar),
+                personaId: avatarId,
+            });
             renderConversationPersonaPicker(personaPicker);
             updateUserFooter();
         });
@@ -1028,6 +1035,7 @@ function emitConversationWorkspaceStateChange() {
 }
 
 export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
+    closeConversationSettings();
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
@@ -1090,6 +1098,10 @@ export function openConversationWorkspaceFromWelcome() {
 }
 
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
+    const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    closeConversationSettings({ avatar, groupId, personaId });
     conversationState.conversationWorkspaceOpen = false;
     conversationState.conversationSelectedAvatar = null;
     conversationState.conversationSelectedGroupId = null;

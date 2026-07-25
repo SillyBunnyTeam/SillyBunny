@@ -40,6 +40,10 @@ export function getRoleplayCurrentCharacter() {
     return characters[this_chid] ?? null;
 }
 
+export function getRoleplayGroupById(groupId) {
+    return Array.isArray(groups) ? groups.find(group => String(group?.id || '') === String(groupId || '')) || null : null;
+}
+
 export function getCurrentCharacter() {
     if (conversationState.conversationWorkspaceOpen && conversationState.conversationSelectedAvatar) {
         const selected = getCharacterForAvatar(conversationState.conversationSelectedAvatar);
@@ -158,6 +162,146 @@ export function getConversationGroupById(groupId, { personaId = getConversationP
     }
 
     return groups.find(group => String(group?.id) === String(groupId)) || null;
+}
+
+function getConversationThreadAnchorRank(threadStore) {
+    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? Object.values(threadStore.branches) : [];
+    const messageCount = branches.reduce((total, branch) => total + (Array.isArray(branch?.messages) ? branch.messages.length : 0), 0);
+    const unread = branches.reduce((total, branch) => total + parsePositiveInt(branch?.unread, 0, 0), 0);
+    const hasHistory = messageCount > 0 || unread > 0 || branches.some(branch => branch?.preview && branch.preview !== 'Conversation ready');
+    const updatedAt = branches.reduce((latest, branch) => Math.max(latest, Number(branch?.updatedAt || branch?.createdAt || 0)), 0);
+    return { hasHistory, messageCount, unread, updatedAt };
+}
+
+function compareConversationThreadAnchors(left, right) {
+    return Number(right.rank.hasHistory) - Number(left.rank.hasHistory)
+        || right.rank.messageCount - left.rank.messageCount
+        || right.rank.unread - left.rank.unread
+        || right.rank.updatedAt - left.rank.updatedAt
+        || left.memberIndex - right.memberIndex
+        || left.storeKey.localeCompare(right.storeKey);
+}
+
+function mergeConversationThreadAliasStore(target, source) {
+    const targetBranches = target?.branches && typeof target.branches === 'object' ? target.branches : {};
+    const sourceBranches = source?.branches && typeof source.branches === 'object' ? source.branches : {};
+    const targetState = new Map(Object.entries(targetBranches).map(([branchId, branch]) => [branchId, {
+        memoryUpdatedAt: Number(branch?.memoryUpdatedAt || branch?.updatedAt || 0),
+        unread: parsePositiveInt(branch?.unread, 0, 0),
+        updatedAt: Number(branch?.updatedAt || 0),
+    }]));
+    const sourceState = new Map(Object.entries(sourceBranches).map(([branchId, branch]) => [branchId, {
+        memoryUpdatedAt: Number(branch?.memoryUpdatedAt || branch?.updatedAt || 0),
+        unread: parsePositiveInt(branch?.unread, 0, 0),
+        updatedAt: Number(branch?.updatedAt || 0),
+    }]));
+    const targetMemoryUpdatedAt = Number(target?.memoryUpdatedAt || 0);
+    const sourceMemoryUpdatedAt = Number(source?.memoryUpdatedAt || 0);
+
+    mergeLegacyConversationThreadStore(target, source);
+    target.branches = target.branches && typeof target.branches === 'object' ? target.branches : {};
+    for (const [branchId, sourceBranch] of Object.entries(sourceBranches)) {
+        const targetBranch = target.branches[branchId];
+        if (!targetBranch) {
+            continue;
+        }
+
+        const previous = targetState.get(branchId);
+        const incoming = sourceState.get(branchId);
+        targetBranch.unread = (previous?.unread || 0) + (incoming?.unread || 0);
+        targetBranch.lastActivity = Math.max(Number(targetBranch.lastActivity || 0), Number(sourceBranch?.lastActivity || 0));
+        targetBranch.lastAutoMessageAt = Math.max(Number(targetBranch.lastAutoMessageAt || 0), Number(sourceBranch?.lastAutoMessageAt || 0));
+        targetBranch.scheduleTriggers = { ...(sourceBranch?.scheduleTriggers || {}), ...(targetBranch.scheduleTriggers || {}) };
+        targetBranch.sessionMarkers = { ...(sourceBranch?.sessionMarkers || {}), ...(targetBranch.sessionMarkers || {}) };
+        if (incoming?.updatedAt > (previous?.updatedAt || 0)) {
+            targetBranch.preview = sourceBranch.preview || targetBranch.preview;
+            targetBranch.updatedAt = sourceBranch.updatedAt;
+        }
+        if (sourceBranch?.memorySummary && incoming?.memoryUpdatedAt > (previous?.memoryUpdatedAt || 0)) {
+            targetBranch.memorySummary = sourceBranch.memorySummary;
+            targetBranch.memoryMessageCount = sourceBranch.memoryMessageCount;
+            targetBranch.memoryUpdatedAt = sourceBranch.memoryUpdatedAt;
+        }
+    }
+
+    if (source?.memorySummary && sourceMemoryUpdatedAt > targetMemoryUpdatedAt) {
+        target.memorySummary = source.memorySummary;
+        target.memoryMessageCount = source.memoryMessageCount;
+        target.memoryUpdatedAt = source.memoryUpdatedAt;
+    }
+    if (!target.branches[target.activeBranchId]) {
+        target.activeBranchId = source?.activeBranchId && target.branches[source.activeBranchId]
+            ? source.activeBranchId
+            : Object.keys(target.branches)[0] || DEFAULT_BRANCH_ID;
+    }
+}
+
+export function getConversationGroupThreadAnchor(group, { personaId = getConversationPersonaId() } = {}) {
+    const groupId = String(group?.id || '').trim();
+    const eligibleAvatars = (Array.isArray(group?.members) ? group.members : [])
+        .filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
+    if (!groupId || !eligibleAvatars.length) {
+        return null;
+    }
+
+    const eligibleSet = new Set(eligibleAvatars);
+    const memberIndexes = new Map(eligibleAvatars.map((avatar, index) => [avatar, index]));
+    const store = getConversationStore();
+    const aliases = Object.entries(store.characters || {})
+        .filter(([storeKey]) => isConversationThreadKeyForPersona(storeKey, personaId))
+        .map(([storeKey, threadStore]) => ({ storeKey, threadStore, parsed: parseConversationThreadKey(storeKey) }))
+        .filter(item => item.parsed.groupId === groupId)
+        .map(item => ({
+            ...item,
+            memberIndex: memberIndexes.get(item.parsed.avatar) ?? Number.MAX_SAFE_INTEGER,
+            rank: getConversationThreadAnchorRank(item.threadStore),
+        }))
+        .sort(compareConversationThreadAnchors);
+    const persisted = aliases.filter(item => eligibleSet.has(item.parsed.avatar))[0];
+    const avatar = persisted?.parsed.avatar || eligibleAvatars[0];
+    const character = getCharacterForAvatar(avatar);
+    if (!character) {
+        return null;
+    }
+
+    if (!aliases.length) {
+        return {
+            avatar,
+            character,
+            key: getConversationThreadKey(avatar, groupId, { personaId }),
+            threadStore: null,
+        };
+    }
+
+    const targetKey = getConversationThreadKey(avatar, groupId, { personaId });
+    const seed = persisted || aliases[0];
+    const targetStore = seed.threadStore;
+    let changed = false;
+    if (seed.storeKey !== targetKey) {
+        store.characters[targetKey] = targetStore;
+        delete store.characters[seed.storeKey];
+        changed = true;
+    }
+    for (const alias of aliases) {
+        if (alias.threadStore === targetStore) {
+            continue;
+        }
+        mergeConversationThreadAliasStore(targetStore, alias.threadStore);
+        delete store.characters[alias.storeKey];
+        changed = true;
+    }
+    targetStore.threadAvatar = avatar;
+    targetStore.groupId = groupId;
+    if (changed) {
+        persistConversationStore();
+    }
+
+    return {
+        avatar,
+        character,
+        key: targetKey,
+        threadStore: targetStore,
+    };
 }
 
 export function isConversationOwnedGroup(groupId, { personaId = getConversationPersonaId() } = {}) {
@@ -384,7 +528,21 @@ export function pickConversationSettings(settings, keys) {
 }
 
 export function normalizeGroupConversationSettings(settings = {}) {
-    return pickConversationSettings(safeParseSettings(settings), GROUP_CONVERSATION_SETTINGS_KEYS);
+    let parsedSource = {};
+    try {
+        const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings;
+        parsedSource = parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        parsedSource = {};
+    }
+    const normalized = safeParseSettings(settings);
+    if (!Object.prototype.hasOwnProperty.call(parsedSource, 'multi_char')) {
+        normalized.multi_char = true;
+    }
+    if (!Object.prototype.hasOwnProperty.call(parsedSource, 'auto_character_chat')) {
+        normalized.auto_character_chat = true;
+    }
+    return pickConversationSettings(normalized, GROUP_CONVERSATION_SETTINGS_KEYS);
 }
 
 export function getDefaultGroupConversationSettings() {
@@ -835,15 +993,26 @@ export function renameConversationBranch(avatar, branchId, name, { groupId = get
     persistConversationStore();
 }
 
-export function deleteConversationBranch(avatar, branchId, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationThreadStore(avatar, { create: false, groupId });
+function createConversationResetBranch(characterStore, name, branchId) {
+    const branch = createConversationBranch(name, branchId);
+    const memorySummary = String(characterStore?.memorySummary || '').trim();
+    if (memorySummary) {
+        branch.memorySummary = memorySummary;
+        branch.memoryMessageCount = 0;
+        branch.memoryUpdatedAt = parsePositiveInt(characterStore?.memoryUpdatedAt, Date.now(), 0);
+    }
+    return branch;
+}
+
+export function deleteConversationBranch(avatar, branchId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const characterStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
     if (!characterStore?.branches?.[branchId]) {
         return false;
     }
 
     const branchIds = Object.keys(characterStore.branches);
     if (branchIds.length <= 1) {
-        characterStore.branches[branchId] = createConversationBranch('Main', branchId);
+        characterStore.branches[branchId] = createConversationResetBranch(characterStore, 'Main', branchId);
         characterStore.activeBranchId = branchId;
     } else {
         delete characterStore.branches[branchId];
@@ -855,15 +1024,15 @@ export function deleteConversationBranch(avatar, branchId, { groupId = getConver
     return true;
 }
 
-export function resetCharacterConversationBranches(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationThreadStore(avatar, { groupId });
+export function resetCharacterConversationBranches(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const characterStore = getConversationThreadStore(avatar, { groupId, personaId });
     if (!characterStore) {
         return;
     }
 
     characterStore.activeBranchId = DEFAULT_BRANCH_ID;
     characterStore.branches = {
-        [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID),
+        [DEFAULT_BRANCH_ID]: createConversationResetBranch(characterStore, 'Main', DEFAULT_BRANCH_ID),
     };
     persistConversationStore();
 }

@@ -18,10 +18,10 @@ import { getConversationSessionMarker, getLastUserActivity, setConversationSessi
 import { activeTypingParticipants } from './state.js';
 import { appendConversationThreadMessage, getConversationMessagePreviewText, getConversationThread, hasConversationMessageContent } from './thread-store.js';
 
-export function getConversationActivityContext(settings, avatar, now = new Date()) {
-    const schedule = getStoredSchedule(avatar);
+export function getConversationActivityContext(settings, avatar, now = new Date(), { personaId = getConversationPersonaId() } = {}) {
+    const schedule = getStoredSchedule(avatar, { personaId });
     if (schedule) {
-        return getCurrentActivityFromSchedule(schedule, avatar, now);
+        return getCurrentActivityFromSchedule(schedule, avatar, now, { personaId });
     }
 
     const status = settings?.availability || DEFAULT_SETTINGS.availability;
@@ -29,13 +29,13 @@ export function getConversationActivityContext(settings, avatar, now = new Date(
     return { status, activity: copy.detail.replace(/\.$/, '').toLowerCase(), source: 'manual' };
 }
 
-export function getReplyDelayMs(messageText, settings, avatar) {
+export function getReplyDelayMs(messageText, settings, avatar, { personaId = getConversationPersonaId() } = {}) {
     const multiplier = clamp(parsePositiveInt(settings?.reply_delay_multiplier, DEFAULT_REPLY_DELAY_MULTIPLIER, 0), 0, 300) / 100;
     if (multiplier <= 0) {
         return 0;
     }
 
-    const current = getConversationActivityContext(settings, avatar);
+    const current = getConversationActivityContext(settings, avatar, new Date(), { personaId });
     const status = current.status || 'online';
     const baseMs = { online: 450, idle: 900, dnd: 1600, offline: 2200 }[status] ?? 450;
     const perCharMs = { online: 18, idle: 32, dnd: 52, offline: 68 }[status] ?? 18;
@@ -46,7 +46,7 @@ export function getReplyDelayMs(messageText, settings, avatar) {
 }
 
 export async function waitForReplyDelay(messageText, settings, avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const delay = getReplyDelayMs(messageText, settings, avatar);
+    const delay = getReplyDelayMs(messageText, settings, avatar, { personaId });
     if (delay <= 0) {
         return;
     }
@@ -79,13 +79,13 @@ export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { branc
     return participantMap || null;
 }
 
-export function getActiveTypingParticipants(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const participantMap = getTypingParticipantMap(avatar, { groupId });
+export function getActiveTypingParticipants(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const participantMap = getTypingParticipantMap(avatar, { branchId, groupId, personaId });
     return participantMap ? Array.from(participantMap.values()).filter(participant => participant?.avatar) : [];
 }
 
-export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const participants = getActiveTypingParticipants(avatar, { groupId });
+export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const participants = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
     return participants.length ? participants[participants.length - 1] : null;
 }
 
@@ -118,14 +118,14 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
                 activeTypingParticipants.delete(threadKey);
             }
         }
-        if (isThreadActive) {
+        if (isConversationActiveThread(threadAvatar, groupId, { branchId, personaId })) {
             scheduleInterfaceRefresh({ syncControls: false });
         }
     }
 }
 
 export function maybePostDelayedReplyNotice(avatar, settings, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), statusAvatar = avatar } = {}) {
-    const current = getConversationActivityContext(settings, statusAvatar);
+    const current = getConversationActivityContext(settings, statusAvatar, new Date(), { personaId });
     if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
         return;
     }
@@ -182,8 +182,8 @@ export function setLastConversationPreview(avatar, messageText, { branchId = '',
     }
 }
 
-export function getLastConversationPreview(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return getActiveConversationBranch(avatar, { create: false, groupId })?.preview || 'Conversation ready';
+export function getLastConversationPreview(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return getActiveConversationBranch(avatar, { create: false, groupId, personaId })?.preview || 'Conversation ready';
 }
 
 export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {

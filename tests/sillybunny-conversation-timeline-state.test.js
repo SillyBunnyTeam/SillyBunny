@@ -7,6 +7,7 @@ const stores = new Map();
 const extractCharacterReplyCommands = jest.fn(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
 const generateConversationRaw = jest.fn();
 const saveConversationThread = jest.fn();
+const commitCharacterReplyCommands = jest.fn();
 
 function storeKey(personaId, avatar, groupId = '') {
     return [personaId, avatar, groupId].join('|');
@@ -41,9 +42,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     persistConversationStore: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
+    commitCharacterReplyCommands,
     extractCharacterReplyCommands,
     generateConversationRaw,
     generateSelfieFromContext: jest.fn(),
+    getCharacterReplyCommandMetadata: parts => parts?.selfieRequests?.length ? { selfieRequests: parts.selfieRequests } : null,
     normalizeConversationOutputText: value => String(value || '').trim(),
     reportConversationGenerationError: jest.fn(),
 }));
@@ -118,6 +121,7 @@ const stateModule = await import('../public/scripts/sillybunny-conversation/stat
 const {
     getActiveConversationReplyTarget,
     regenerateConversationMessage,
+    renderConversationTimeline,
 } = await import('../public/scripts/sillybunny-conversation/timeline-render.js');
 
 function makeMessage(id, mes = `message ${id}`) {
@@ -158,6 +162,7 @@ describe('conversation timeline operation identity', () => {
         generateConversationRaw.mockReset();
         extractCharacterReplyCommands.mockReset().mockImplementation(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
         saveConversationThread.mockClear();
+        commitCharacterReplyCommands.mockClear();
         stateModule.regenerationBusyKeys.clear();
         stateModule.activeConversationGenerationOperations.clear();
         stateModule.activeConversationReplyOperations.clear();
@@ -287,5 +292,52 @@ describe('conversation timeline operation identity', () => {
         await regenerateConversationMessage('message-1');
 
         expect(message.extra.conversation_commands).toBeUndefined();
+    });
+
+    test('changes the rendered thread identity when only the persona changes', () => {
+        class FakeElement {
+            constructor() {
+                this.children = [];
+                this.clientHeight = 400;
+                this.dataset = {};
+                this.innerHTML = '';
+                this.isConnected = false;
+                this.scrollHeight = 400;
+                this.scrollTop = 0;
+                this.textContent = '';
+            }
+
+            appendChild(child) {
+                this.children.push(child);
+                return child;
+            }
+
+            querySelectorAll() {
+                return [];
+            }
+        }
+
+        globalThis.HTMLElement = FakeElement;
+        globalThis.HTMLInputElement = class HTMLInputElement extends FakeElement {};
+        const timeline = new FakeElement();
+        const elements = new Map([['sb_conversation_timeline', timeline]]);
+        globalThis.document = {
+            createElement: () => new FakeElement(),
+            getElementById: id => elements.get(id),
+        };
+        stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages = [];
+        stores.get(storeKey('persona-b.png', 'char.png')).branches['branch-b'].messages = [];
+        stateModule.conversationState.lastRenderedThreadKey = '';
+        stateModule.conversationState.lastRenderedMessageCount = 0;
+        stateModule.conversationState.lastTimelineFingerprint = '';
+
+        renderConversationTimeline();
+        const personaAThreadKey = stateModule.conversationState.lastRenderedThreadKey;
+        currentPersonaId = 'persona-b.png';
+        renderConversationTimeline();
+
+        expect(personaAThreadKey).toContain('persona-a.png');
+        expect(stateModule.conversationState.lastRenderedThreadKey).toContain('persona-b.png');
+        expect(stateModule.conversationState.lastRenderedThreadKey).not.toBe(personaAThreadKey);
     });
 });

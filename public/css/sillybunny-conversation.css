@@ -2319,6 +2319,21 @@
     }
 }
 
+/* Touch-target sizing must cover coarse pointers and the project mobile
+   breakpoint (<=1000px), not only phone-width layouts. */
+@media (pointer: coarse), (max-width: 1000px) {
+    .sb-conversation-selfie-action {
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sb-conversation-reply-cancel {
+        inline-size: var(--sb-mobile-touch-target, 44px);
+        block-size: var(--sb-mobile-touch-target, 44px);
+        min-inline-size: var(--sb-mobile-touch-target, 44px);
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
 @media (max-width: 768px) {
     #sheld[data-sb-conversation-mode='on'] {
         grid-template-columns: minmax(0, 1fr);

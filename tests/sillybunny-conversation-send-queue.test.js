@@ -3,11 +3,14 @@ import { describe, expect, test, jest, beforeEach, afterEach } from '@jest/globa
 import {
     coalesceConversationQueueItems,
     createConversationMessageRevisionEntries,
+    createConversationQueueReplyTarget,
     createForcedConversationQueueItem,
     drainSameThreadItems,
     getLastConversationQueueUserMessage,
     isSameConversationQueueThread,
     mergeConversationQueueItems,
+    requeueConversationQueueItem,
+    resolveConversationQueueReplyTargetSpeaker,
     resolveConversationQueueTriggerMessages,
 } from '../public/scripts/sillybunny-conversation/send-queue-utils.js';
 
@@ -72,6 +75,72 @@ describe('sillybunny conversation send-queue utils', () => {
         });
         attachedUser.extra.files[0].url = 'edited.txt';
         expect(resolveConversationQueueTriggerMessages(attachmentItem, [attachedUser])).toBeNull();
+    });
+
+    test('ignores display-only pin and reaction changes but invalidates prompt-relevant edits', () => {
+        const message = {
+            id: 'captured-user',
+            role: 'user',
+            mes: 'hello',
+            extra: {
+                files: [{ name: 'notes.txt', url: '/files/notes.txt' }],
+            },
+        };
+        const queueItem = makeItem('hello', {
+            messageIds: [message.id],
+            messageRevisions: createConversationMessageRevisionEntries([message]),
+        });
+
+        message.extra.conversation_pinned = true;
+        message.extra.conversation_reactions = { heart: 1 };
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
+
+        message.extra.files[0].url = '/files/revised.txt';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
+        message.extra.files[0].url = '/files/notes.txt';
+        message.mes = 'edited';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
+    });
+
+    test('resolves the speaker targeted by explicit reply metadata', () => {
+        const partnerMessage = {
+            id: 'partner-message',
+            role: 'partner',
+            mes: 'Want to go?',
+            extra: { partner_avatar: 'partner.png' },
+        };
+        const userMessage = {
+            id: 'captured-user',
+            role: 'user',
+            mes: 'Yes',
+            extra: { conversation_reply_to: { messageId: partnerMessage.id } },
+        };
+        const makeReplyItem = () => makeItem('Yes', {
+            messageIds: [userMessage.id],
+            messageRevisions: createConversationMessageRevisionEntries([userMessage]),
+            replyTarget: createConversationQueueReplyTarget([userMessage], [partnerMessage, userMessage]),
+        });
+
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('partner.png');
+
+        // A target edited after capture no longer matches its captured revision.
+        const staleItem = makeReplyItem();
+        partnerMessage.mes = 'Want to go? (edited)';
+        expect(resolveConversationQueueReplyTargetSpeaker(staleItem, [partnerMessage, userMessage], 'host.png')).toBe('');
+
+        // A host-character target resolves to the thread avatar.
+        partnerMessage.role = 'character';
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('host.png');
+    });
+
+    test('requeues a blocked item once without duplicating it', () => {
+        const item = makeItem('queued reply');
+        const queue = [makeItem('later')];
+
+        expect(requeueConversationQueueItem(queue, item)).toBe(true);
+        expect(queue[0]).toBe(item);
+        expect(requeueConversationQueueItem(queue, item)).toBe(false);
+        expect(queue.filter(candidate => candidate === item)).toHaveLength(1);
     });
 
     describe('isSameConversationQueueThread', () => {

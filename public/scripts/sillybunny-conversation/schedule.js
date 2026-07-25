@@ -8,6 +8,7 @@ import {
 import {
     getCharacterConversationStore,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getCurrentCharAvatar,
     parsePositiveInt,
     persistConversationStore,
@@ -45,30 +46,34 @@ export function getScheduleStorageKey(avatar) {
     return `${SCHEDULE_PREFIX}${avatar}`;
 }
 
-export function getCurrentActivityFromSchedule(schedule, avatar = getCurrentCharAvatar(), now = new Date()) {
-    return getCurrentActivityFromScheduleBase(schedule, avatar, now, runtimeStatusOverrides);
+export function getConversationRuntimeStatusKey(avatar, personaId = getConversationPersonaId()) {
+    return `${getConversationPersonaId(personaId)}\u001f${String(avatar || '').trim()}`;
 }
 
-export function getStoredSchedule(avatar = getCurrentCharAvatar()) {
+export function getCurrentActivityFromSchedule(schedule, avatar = getCurrentCharAvatar(), now = new Date(), { personaId = getConversationPersonaId() } = {}) {
+    return getCurrentActivityFromScheduleBase(schedule, getConversationRuntimeStatusKey(avatar, personaId), now, runtimeStatusOverrides);
+}
+
+export function getStoredSchedule(avatar = getCurrentCharAvatar(), { personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return null;
     }
 
-    const schedule = getCharacterConversationStore(avatar, { create: false })?.schedule;
+    const schedule = getCharacterConversationStore(avatar, { create: false, personaId })?.schedule;
     return schedule && typeof schedule === 'object' ? schedule : null;
 }
 
-export function saveStoredSchedule(avatar, schedule) {
+export function saveStoredSchedule(avatar, schedule, { personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const characterStore = getCharacterConversationStore(avatar);
+    const characterStore = getCharacterConversationStore(avatar, { personaId });
     characterStore.schedule = schedule && typeof schedule === 'object' ? schedule : null;
     persistConversationStore();
 }
 
-export async function generateCharacterSchedule(character, { groupId = getConversationGroupIdForAvatar(character?.avatar) } = {}) {
+export async function generateCharacterSchedule(character, { groupId = getConversationGroupIdForAvatar(character?.avatar), personaId = getConversationPersonaId() } = {}) {
     if (!character) {
         return null;
     }
@@ -100,7 +105,7 @@ export async function generateCharacterSchedule(character, { groupId = getConver
     }
     promptParts.push('Generate the weekly schedule JSON now.');
 
-    const settings = getSettings(character.avatar, { groupId });
+    const settings = getSettings(character.avatar, { groupId, personaId });
     const response = await generateConversationRaw({
         prompt: promptParts.join('\n\n'),
         systemPrompt,

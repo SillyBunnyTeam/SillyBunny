@@ -23,6 +23,8 @@ import {
     getConversationThreadStore,
     getCurrentCharAvatar,
     getCurrentCharName,
+    getRoleplayCurrentCharacter,
+    getRoleplayGroupById,
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
@@ -35,7 +37,6 @@ import {
     getConversationRailItems,
     getCurrentGroupConversationMembers,
     getGroupAsideKey,
-    getSelectedConversationGroup,
 } from './pals-rail.js';
 import {
     chooseConversationPartner,
@@ -121,7 +122,7 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
         'a spontaneous selfie in the current DM conversation',
         avatar,
     );
-    const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+    const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '', { avatar, character });
     if (imageUrl) {
         markImageGenerated(avatar, Date.now(), { branchId, groupId, personaId });
         await appendConversationMessage('Snapped something for you.', {
@@ -431,8 +432,8 @@ export async function checkProactiveMessaging(avatar, settings, now, { branchId 
         return false;
     }
 
-    const schedule = getStoredSchedule(avatar);
-    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now));
+    const schedule = getStoredSchedule(avatar, { personaId });
+    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now), { personaId });
 
     // The character never initiates while offline.
     if (current.status === 'offline') {
@@ -537,7 +538,7 @@ export async function triggerConversationPartnerChime(partner, settings, avatar 
     try {
         const partnerName = partner.name || 'A friend';
         const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId, personaId });
-        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar, new Date(), { personaId });
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
         const userName = getConversationPersonaName(personaId, 'User');
@@ -630,7 +631,7 @@ export async function triggerAutoCharacterChat(avatar, settings, { branchId = ''
     try {
         const partnerName = partner.name || 'A friend';
         const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId, personaId });
-        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar, new Date(), { personaId });
         if (partnerContext.status === 'offline') {
             return false;
         }
@@ -692,6 +693,81 @@ export async function checkAutoCharacterChat(avatar, settings, now, { branchId =
     return triggered;
 }
 
+export function getRoleplaySourceMessageRevision(message) {
+    return JSON.stringify({
+        id: message?.id ?? '',
+        is_user: Boolean(message?.is_user),
+        mes: message?.mes || '',
+        name: message?.name || '',
+        original_avatar: message?.original_avatar || message?.extra?.original_avatar || message?.extra?.avatar || '',
+        role: message?.role || '',
+    });
+}
+
+function getRoleplayGroupRevision(group) {
+    return JSON.stringify({
+        disabled_members: Array.isArray(group?.disabled_members) ? group.disabled_members : [],
+        id: group?.id || '',
+        members: Array.isArray(group?.members) ? group.members : [],
+    });
+}
+
+function isCapturedRoleplaySourceValid({ avatar = '', sourceGroupId = '', sourceGroupRevision = '', sourceMessageId = null, sourceMessageRevision = '' } = {}) {
+    if (sourceMessageId !== null && typeof sourceMessageId !== 'undefined') {
+        const currentMessage = chat[sourceMessageId];
+        if (!currentMessage || getRoleplaySourceMessageRevision(currentMessage) !== sourceMessageRevision) {
+            return false;
+        }
+    }
+    if (sourceGroupId) {
+        const currentGroup = getRoleplayGroupById(sourceGroupId);
+        return String(selected_group || '') === sourceGroupId
+            && Boolean(currentGroup)
+            && getRoleplayGroupRevision(currentGroup) === sourceGroupRevision;
+    }
+
+    return !selected_group && (!avatar || getRoleplayCurrentCharacter()?.avatar === avatar);
+}
+
+export function captureGroupAsideRequest(character, { personaId = getConversationPersonaId(), reason = 'random', sourceGroup = null, sourceGroupId = String(selected_group || ''), sourceMessageId = null } = {}) {
+    const group = sourceGroup || getRoleplayGroupById(sourceGroupId);
+    const sourceMessage = sourceMessageId !== null && typeof sourceMessageId !== 'undefined' ? chat[sourceMessageId] : null;
+    const branchId = getConversationThreadStore(character?.avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
+    const groupContext = buildGroupChatContext();
+    if (!group || !character?.avatar || !branchId || !groupContext || (sourceMessageId !== null && !sourceMessage)) {
+        return null;
+    }
+
+    return {
+        branchId,
+        groupContext,
+        personaId,
+        reason,
+        sourceGroupId: String(group.id || sourceGroupId || ''),
+        sourceGroupRevision: getRoleplayGroupRevision(group),
+        sourceMessageId,
+        sourceMessageRevision: sourceMessage ? getRoleplaySourceMessageRevision(sourceMessage) : '',
+    };
+}
+
+export function captureRoleplayDMRequest({ avatar = getCurrentCharAvatar(), personaId = getConversationPersonaId(), roleplayContext = '', sourceMessageId = null } = {}) {
+    const sourceMessage = sourceMessageId !== null && typeof sourceMessageId !== 'undefined' ? chat[sourceMessageId] : null;
+    const branchId = getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
+    const capturedContext = String(roleplayContext || buildConversationRoleplayContext(chat, sourceMessageId)).trim();
+    if (!avatar || !branchId || !capturedContext || (sourceMessageId !== null && !sourceMessage)) {
+        return null;
+    }
+
+    return {
+        avatar,
+        branchId,
+        personaId,
+        roleplayContext: capturedContext,
+        sourceMessageId,
+        sourceMessageRevision: sourceMessage ? getRoleplaySourceMessageRevision(sourceMessage) : '',
+    };
+}
+
 export async function checkGroupChatMention(messageId) {
     if (!selected_group) {
         return;
@@ -702,40 +778,54 @@ export async function checkGroupChatMention(messageId) {
         return;
     }
 
-    const members = getCurrentGroupConversationMembers({ requireRoleplayReactions: true });
+    const personaId = getConversationPersonaId();
+    const sourceGroupId = String(selected_group || '');
+    const roleplayGroup = getRoleplayGroupById(sourceGroupId);
+    const members = getCurrentGroupConversationMembers({ group: roleplayGroup, requireRoleplayReactions: true });
     const memberCharacters = members.map(item => item.character).filter(Boolean);
     const mentionedMembers = members.filter(({ character }) => isCharacterMentionedInText(character, message.mes, memberCharacters));
     if (!mentionedMembers.length) {
         return;
     }
 
-    const personaId = getConversationPersonaId();
-    const sourceGroupId = String(selected_group || '');
-    setConversationTimeout(() => {
-        for (const { character } of mentionedMembers) {
-            void triggerGroupAsideDM(character, { personaId, reason: 'mention', sourceGroupId, sourceMessageId: messageId });
-        }
-    }, 900);
+    const requests = mentionedMembers
+        .map(({ character }) => ({
+            character,
+            request: captureGroupAsideRequest(character, { personaId, reason: 'mention', sourceGroup: roleplayGroup, sourceGroupId, sourceMessageId: messageId }),
+        }))
+        .filter(item => item.request);
+    if (requests.length) {
+        setConversationTimeout(() => {
+            for (const { character, request } of requests) {
+                void triggerGroupAsideDM(character, request);
+            }
+        }, 900);
+    }
 }
 
-export async function triggerGroupAsideDM(character, { personaId = getConversationPersonaId(), reason = 'random', sourceGroupId = '', sourceMessageId = null } = {}) {
-    const group = getSelectedConversationGroup();
-    if (!group || (sourceGroupId && String(group.id || '') !== sourceGroupId) || !character?.avatar || !group.members?.includes(character.avatar) || group.disabled_members?.includes(character.avatar)) {
+export async function triggerGroupAsideDM(character, options = {}) {
+    const captured = options.branchId ? options : captureGroupAsideRequest(character, options);
+    if (!captured || !isCapturedRoleplaySourceValid({ ...captured, avatar: character?.avatar })) {
+        return false;
+    }
+    const { branchId, groupContext, personaId, reason, sourceGroupId, sourceMessageId } = captured;
+    const groupId = String(sourceGroupId || '');
+    const group = getRoleplayGroupById(groupId);
+    if (!group || !character?.avatar || !group.members?.includes(character.avatar) || group.disabled_members?.includes(character.avatar)) {
         return false;
     }
 
-    const groupId = String(group.id || '');
     const settings = getSettings(character.avatar, { groupId, personaId });
     if (!settings.enabled || !settings.roleplay_reactions) {
         return false;
     }
 
-    const current = getConversationActivityContext(settings, character.avatar);
+    const current = getConversationActivityContext(settings, character.avatar, new Date(), { personaId });
     if (current.status === 'offline') {
         return false;
     }
 
-    const key = getGroupAsideKey(character.avatar, group.id);
+    const key = getGroupAsideKey(character.avatar, group.id, personaId);
     if (groupAsideBusyKeys.has(key)) {
         return false;
     }
@@ -746,14 +836,14 @@ export async function triggerGroupAsideDM(character, { personaId = getConversati
         return false;
     }
 
-    const groupContext = buildGroupChatContext();
-    if (!groupContext) {
+    const threadStore = getConversationThreadStore(character.avatar, { create: false, groupId: '', personaId });
+    if (!threadStore?.branches?.[branchId]) {
         return false;
     }
-    const branchId = getConversationThreadStore(character.avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
-    if (!branchId) {
-        return false;
-    }
+    const validateTarget = () => Boolean(
+        getConversationThreadStore(character.avatar, { create: false, groupId: '', personaId })?.branches?.[branchId]
+        && isCapturedRoleplaySourceValid({ ...captured, avatar: character.avatar }),
+    );
 
     groupAsideBusyKeys.add(key);
     try {
@@ -772,7 +862,7 @@ export async function triggerGroupAsideDM(character, { personaId = getConversati
             personaId,
         });
 
-        if (response?.trim()) {
+        if (response?.trim() && validateTarget()) {
             const extra = {
                 conversation_mode_group_aside: true,
                 conversation_mode_gossip: true,
@@ -784,14 +874,17 @@ export async function triggerGroupAsideDM(character, { personaId = getConversati
                 extra.source_group_message_id = sourceMessageId;
             }
 
-            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
+            const postedText = await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
                 extra,
                 branchId,
                 groupId: null,
                 personaId,
+                validateTarget,
             }, character.avatar), character.avatar, { branchId, groupId: null, personaId });
-            groupAsideLastSent.set(key, Date.now());
-            return true;
+            if (postedText) {
+                groupAsideLastSent.set(key, Date.now());
+                return true;
+            }
         }
     } catch (err) {
         reportConversationGenerationError('group aside DM', err, { toast: false });
@@ -802,21 +895,28 @@ export async function triggerGroupAsideDM(character, { personaId = getConversati
     return false;
 }
 
-export async function triggerRoleplayDM({ avatar = getCurrentCharAvatar(), personaId = getConversationPersonaId(), roleplayContext = '' } = {}) {
+export async function triggerRoleplayDM(options = {}) {
+    const captured = options.branchId ? options : captureRoleplayDMRequest(options);
+    if (!captured || !isCapturedRoleplaySourceValid(captured)) return false;
+    const { avatar, branchId, personaId, roleplayContext } = captured;
     const character = getCharacterForAvatar(avatar);
-    if (!character || !avatar) return;
+    if (!character || !avatar) return false;
 
-    const branchId = getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
-    if (!branchId) return;
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId: '', personaId });
+    if (!threadStore?.branches?.[branchId]) return false;
 
     const settings = getSettings(avatar, { groupId: '', personaId });
     const sheld = document.getElementById('sheld');
     if (!settings.enabled || (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on')) {
-        return;
+        return false;
     }
 
-    const chatText = String(roleplayContext || buildConversationRoleplayContext(chat)).trim();
-    if (!chatText) return;
+    const chatText = String(roleplayContext).trim();
+    if (!chatText) return false;
+    const validateTarget = () => Boolean(
+        getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.branches?.[branchId]
+        && isCapturedRoleplaySourceValid(captured),
+    );
     const directive = `[System directive: You are sending a private direct message (DM) to {{user}} to comment on the ongoing roleplay/story scene. Step out of the main scene and send a short, private, personal DM sharing your inner thoughts, a side-comment, or a private reaction to what just happened. Keep it short, casual, and completely in-character. Do not continue the roleplay scene; write a private side-message.\n\nRoleplay context:\n${chatText}]`;
 
     try {
@@ -830,17 +930,20 @@ export async function triggerRoleplayDM({ avatar = getCurrentCharAvatar(), perso
             personaId,
         });
 
-        if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
+        if (response?.trim() && validateTarget()) {
+            const postedText = await postCharacterReply(response.trim(), settings, {
                 extra: { conversation_mode_gossip: true, gossip_source_roleplay: true },
                 branchId,
                 groupId: '',
                 personaId,
+                validateTarget,
             }, avatar);
+            return Boolean(postedText);
         }
     } catch (err) {
         reportConversationGenerationError('roleplay side DM', err, { toast: false });
     }
+    return false;
 }
 
 export async function checkConversationReminders(now) {
@@ -939,7 +1042,7 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         return;
     }
 
-    const railItems = getConversationRailItems();
+    const railItems = getConversationRailItems({ personaId });
     const lastAutoMessageTimes = new Map();
     const getTickLastAutoMessageTime = (avatar, groupId, branchId) => {
         const key = `${personaId}:${groupId || ''}:${avatar || ''}:${branchId}`;

@@ -229,10 +229,13 @@ export function appendConversationThreadMessage(avatar, messageInput, { branchId
     }
     branch.updatedAt = Date.now();
     persistConversationStore();
-    if (isConversationActiveThread(avatar, groupId, { branchId: branch.id, personaId })) {
+    const isStillVisible = () => isConversationActiveThread(avatar, groupId, { branchId: branch.id, personaId });
+    if (isStillVisible()) {
         scheduleTimelineRender();
+        // TTS readiness can await provider/network work; the capability rechecks
+        // this exact thread identity immediately before enqueueing audio.
+        void narrateConversationMessage(message, { isStillVisible });
     }
-    void narrateConversationMessage(message);
     return message;
 }
 

@@ -28,6 +28,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     }),
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
+    getRoleplayCurrentCharacter: () => ({ avatar: 'char.png' }),
+    getRoleplayGroupById: () => null,
     parsePositiveInt: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
     persistConversationStore,
 }));

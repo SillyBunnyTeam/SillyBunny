@@ -12,6 +12,7 @@ import {
     getActiveConversationBranch,
     getCharacterConversationStore,
     getConversationGroupById,
+    getConversationGroupThreadAnchor,
     getConversationGroupIdForAvatar,
     getConversationGroups,
     getConversationPersonaId,
@@ -28,7 +29,6 @@ import {
     pickConversationSettings,
     safeParseSettings,
 } from './context.js';
-import { getCharacterForAvatar } from './media.js';
 import { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary } from './memory-utils.js';
 import { renderConversationMemoryPanel } from './settings-panel.js';
 import { getConversationMessagePreviewText } from './thread-store.js';
@@ -171,9 +171,6 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
     const chats = [];
     const pushedKeys = new Set();
     const pushedGroupIds = new Set();
-    const getGroupDisplayCharacter = group => (group?.members || [])
-        .map(avatar => getCharacterForAvatar(avatar))
-        .find(character => character?.avatar) || null;
     const pushConversationChat = (character, threadStore, group = null) => {
         const avatar = character?.avatar;
         const groupId = group?.id ? String(group.id) : '';
@@ -239,15 +236,15 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
     });
 
     getConversationGroups().forEach((group) => {
-        const character = getGroupDisplayCharacter(group);
-        if (!character?.avatar) {
+        const anchor = getConversationGroupThreadAnchor(group);
+        if (!anchor?.character?.avatar) {
             return;
         }
 
-        pushConversationChat(character, getConversationThreadStore(character.avatar, { create: false, groupId: String(group.id || '') }), group);
+        pushConversationChat(anchor.character, anchor.threadStore, group);
     });
 
-    Object.entries(getConversationStore().characters || {}).forEach(([storeKey, threadStore]) => {
+    Object.entries(getConversationStore().characters || {}).forEach(([storeKey]) => {
         if (!isConversationThreadKeyForPersona(storeKey)) {
             return;
         }
@@ -257,13 +254,13 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
             return;
         }
 
-        const character = getCharacterForAvatar(parsed.avatar);
         const group = getConversationGroupById(parsed.groupId);
-        if (!character || !group) {
+        const anchor = getConversationGroupThreadAnchor(group);
+        if (!anchor?.character || !group) {
             return;
         }
 
-        pushConversationChat(character, threadStore, group);
+        pushConversationChat(anchor.character, anchor.threadStore, group);
     });
 
     return chats
@@ -356,7 +353,7 @@ export function getAutoCharacterChatCooldownMs(settings) {
 export function getConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
     const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
-    return String((branchId ? branch?.memorySummary : threadStore?.memorySummary) || branch?.memorySummary || '').trim();
+    return String((branchId ? branch?.memorySummary : threadStore?.memorySummary) || branch?.memorySummary || threadStore?.memorySummary || '').trim();
 }
 
 export function getConversationGroupMemorySummaries(avatar = getCurrentCharAvatar(), { excludeGroupId = '', max = 4, personaId = getConversationPersonaId() } = {}) {

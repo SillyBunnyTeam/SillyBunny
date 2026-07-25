@@ -20,9 +20,11 @@ await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'active.png' : value || ''),
+    getRawConversationThreadKey: () => '',
     getConversationStore: () => ({}),
     getConversationThreadKey: () => '',
     getCurrentCharAvatar: () => '',
+    isAvatarInConversationGroup: () => false,
     persistConversationStore: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pickers.js', () => ({ updateUserFooter: jest.fn() }));

@@ -12,6 +12,7 @@ import {
     createConversationBranch,
     createConversationGroupRecord,
     getConversationGroupById,
+    getConversationGroupIdForAvatar,
     getConversationThreadStore,
     getCurrentCharAvatar,
     getDefaultGroupConversationSettings,
@@ -171,6 +172,8 @@ export function toggleUserStatusPicker() {
 export function renderConversationPersonaPicker(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
+    const threadAvatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(threadAvatar);
     if (!personas.length) {
         picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
         return;
@@ -202,7 +205,11 @@ export function renderConversationPersonaPicker(picker) {
 
         const appendices = getConversationPersonaAppendices(avatarId);
         if (appendices.length) {
-            const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
+            const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId, {
+                avatar: threadAvatar,
+                groupId,
+                personaId: avatarId,
+            }));
             const notes = document.createElement('div');
             notes.className = 'sb-conversation-persona-notes';
 

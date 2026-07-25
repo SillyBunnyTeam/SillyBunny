@@ -10,6 +10,7 @@ import {
     getCurrentCharName,
 } from './context.js';
 import { parseAvatarList } from './partners.js';
+import { getExtensionCapability } from './extension-capabilities.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
@@ -17,7 +18,16 @@ import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationThread } from './thread-store.js';
 
-export async function generateConversationImage(prompt, negative = '', { notify = false } = {}) {
+function isAbortError(error, signal) {
+    return signal?.aborted || error?.name === 'AbortError';
+}
+
+export async function generateConversationImage(prompt, negative = '', { avatar = '', character = null, notify = false } = {}) {
+    const runAvatar = String(avatar || character?.avatar || '').trim();
+    if (!runAvatar && !character) {
+        return null;
+    }
+
     if (conversationState.imageGenerationActive) {
         if (notify) {
             globalThis.toastr?.warning?.('Image generation is already running.');
@@ -25,19 +35,28 @@ export async function generateConversationImage(prompt, negative = '', { notify 
         return null;
     }
 
+    const qig = getExtensionCapability('quick-image-gen');
+    if (!qig) {
+        return null;
+    }
+
+    const runContext = {
+        avatar: runAvatar,
+        character: character || getCharacterForAvatar(runAvatar),
+    };
+    const controller = new AbortController();
     conversationState.imageGenerationActive = true;
-    conversationState.imageGenerationAbortController = new AbortController();
+    conversationState.imageGenerationAbortController = controller;
     scheduleTimelineRender();
     try {
-        const qig = await import('../extensions/quick-image-gen/index.js');
-        if (typeof qig.ensureQuickImageGenReady === 'function') {
-            await qig.ensureQuickImageGenReady();
+        await qig.ensureReady();
+        if (controller.signal.aborted) {
+            throw controller.signal.reason || new DOMException('Aborted', 'AbortError');
         }
 
-        const entry = await qig.withTransientGenerationSettings({}, async () => {
-            const settings = qig.getGenerationSettingsForRun();
-            const raw = await qig.generateForProvider(prompt, negative, settings, conversationState.imageGenerationAbortController.signal, {});
-            return raw ? qig.finalizeGeneratedEntry(raw, prompt, negative, settings, {}) : null;
+        const entry = await qig.generateScopedImage(prompt, negative, {
+            ...runContext,
+            signal: controller.signal,
         });
 
         if (!entry?.url && notify) {
@@ -45,15 +64,19 @@ export async function generateConversationImage(prompt, negative = '', { notify 
         }
         return entry?.url ?? null;
     } catch (error) {
-        console.warn('Conversation Mode: QIG not available or generation failed', error);
-        if (notify) {
-            globalThis.toastr?.warning?.(`Quick Image Gen failed: ${error?.message || 'check Image Gen settings'}`);
+        if (!isAbortError(error, controller.signal)) {
+            console.warn('Conversation Mode: QIG not available or generation failed', error);
+            if (notify) {
+                globalThis.toastr?.warning?.(`Quick Image Gen failed: ${error?.message || 'check Image Gen settings'}`);
+            }
         }
         return null;
     } finally {
-        conversationState.imageGenerationActive = false;
-        conversationState.imageGenerationAbortController = null;
-        scheduleTimelineRender();
+        if (conversationState.imageGenerationAbortController === controller) {
+            conversationState.imageGenerationActive = false;
+            conversationState.imageGenerationAbortController = null;
+            scheduleTimelineRender();
+        }
     }
 }
 
@@ -260,12 +283,8 @@ export function buildCharacterImagePrompt(template, scene = 'the current DM conv
         .replace(/\{\{scene\}\}/g, scene)
         .replace(/\{\{appearance\}\}/g, details || `${charName}'s established appearance`);
 
-    if (!details) {
-        return basePrompt;
-    }
-
-    return [
+    return details ? [
         basePrompt,
         `Depict ${charName} specifically, not a generic person. Use these character-card details: ${details}`,
-    ].join('\n');
+    ].join('\n') : basePrompt;
 }

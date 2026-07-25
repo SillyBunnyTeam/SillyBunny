@@ -29,7 +29,11 @@ import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
 
 export function getUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
+    if (branchId) {
+        return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
+    }
+
+    return getConversationThreadUnreadCount(getConversationThreadStore(avatar, { create: false, groupId, personaId }));
 }
 
 export function setUnreadCount(avatar, count, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -53,7 +57,8 @@ export function incrementUnreadCount(avatar, { branchId = '', groupId = getConve
         return;
     }
 
-    setUnreadCount(avatar, getUnreadCount(avatar, { branchId, groupId, personaId }) + 1, { branchId, groupId, personaId });
+    const currentUnread = parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
+    setUnreadCount(avatar, currentUnread + 1, { branchId, groupId, personaId });
 }
 
 function isUnreadThreadCountable(avatar, groupId) {

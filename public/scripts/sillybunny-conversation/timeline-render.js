@@ -27,7 +27,7 @@ import {
     getCurrentCharName,
     persistConversationStore,
 } from './context.js';
-import { extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, reportConversationGenerationError } from './generation.js';
+import { commitCharacterReplyCommands, extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, getCharacterReplyCommandMetadata, reportConversationGenerationError } from './generation.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
@@ -67,17 +67,17 @@ export {
     quickConversationSummarize,
 } from './timeline-slash-commands.js';
 
-function getConversationRenderBranchId(avatar, groupId) {
-    const store = getConversationThreadStore(avatar, { create: false, groupId });
-    return String(store?.activeBranchId || getActiveConversationBranch(avatar, { create: false, groupId })?.id || '');
+function getConversationRenderBranchId(avatar, groupId, personaId) {
+    const store = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    return String(store?.activeBranchId || getActiveConversationBranch(avatar, { create: false, groupId, personaId })?.id || '');
 }
 
-function buildConversationRenderThreadKey(avatar, groupId, branchId) {
-    return [avatar || '', groupId || '', branchId || ''].join('\u001f');
+function buildConversationRenderThreadKey(avatar, groupId, branchId, personaId) {
+    return [personaId || '', avatar || '', groupId || '', branchId || ''].join('\u001f');
 }
 
-function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMessages, messages }) {
-    const activeTyping = getActiveTypingParticipants(avatar, { groupId });
+function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settings, allMessages, messages }) {
+    const activeTyping = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
     const statusAvatars = new Set([avatar]);
     for (const participant of activeTyping) {
         if (participant?.avatar) {
@@ -107,7 +107,7 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMess
         .join(',');
     const statusPart = Array.from(statusAvatars)
         .filter(Boolean)
-        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar, getSettings(statusAvatar, { groupId }))}`)
+        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar, getSettings(statusAvatar, { groupId, personaId }))}`)
         .join(',');
     const settingsPart = [
         settings?.editable_messages ? '1' : '0',
@@ -115,6 +115,7 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMess
     ].join(':');
 
     return hashConversationRenderFingerprint([
+        personaId || '',
         avatar || '',
         groupId || '',
         branchId || '',
@@ -124,7 +125,7 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMess
         messages.length,
         conversationState.generationActive ? '1' : '0',
         conversationState.imageGenerationActive ? '1' : '0',
-        getConversationSeenAt(avatar, { groupId }),
+        getConversationSeenAt(avatar, { groupId, personaId }),
         settingsPart,
         typingPart,
         statusPart,
@@ -132,10 +133,10 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMess
     ].join('\u001d'));
 }
 
-function buildConversationMessageFingerprint(message, { avatar, groupId, settings, index }) {
+function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index }) {
     const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
     const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
-        ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId }))
+        ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId, personaId }))
         : '';
 
     return hashConversationRenderFingerprint([
@@ -145,8 +146,9 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, setting
         message?.send_date || '',
         message?.created_at || '',
         message?.mes || '',
+        personaId || '',
         getConversationMessageExtraFingerprint(message),
-        getConversationMessageReceipt(message, avatar, { groupId }),
+        getConversationMessageReceipt(message, avatar, { groupId, personaId }),
         getConversationMessageAvatar(message, avatar),
         settings?.editable_messages ? '1' : '0',
         settings?.prose_polisher ? '1' : '0',
@@ -534,7 +536,7 @@ function anchorConversationTimelineToBottom(timeline, renderThreadKey) {
     setTimeout(applyScroll, 250);
 }
 
-function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings }) {
+function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
         if (node instanceof HTMLElement && !node.classList.contains('sb-conversation-typing-indicator') && !node.classList.contains('sb-conversation-image-pending')) {
@@ -544,7 +546,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
 
     messages.forEach((message, index) => {
         const messageId = String(message?.id || '');
-        const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, settings, index });
+        const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index });
         const currentNode = existingNodes.get(messageId) || null;
         let nextNode = currentNode;
         if (!nextNode || nextNode.dataset.sbConversationMessageFingerprint !== fingerprint) {
@@ -567,6 +569,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
 export function renderConversationTimeline() {
     const timeline = document.getElementById(CHROME_IDS.timeline);
     const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
     if (!(timeline instanceof HTMLElement)) {
         return;
     }
@@ -580,7 +583,7 @@ export function renderConversationTimeline() {
         const unavailableGroup = conversationState.conversationUnavailableGroupId
             ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
             : null;
-        const fingerprint = unavailableGroup ? `no-avatar:${unavailableGroup.id}` : 'no-avatar';
+        const fingerprint = unavailableGroup ? `no-avatar:${personaId}:${unavailableGroup.id}` : `no-avatar:${personaId}`;
         if (fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
             updateConversationToolsState();
             return;
@@ -608,16 +611,16 @@ export function renderConversationTimeline() {
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
-    const allMessages = getConversationThread(avatar, { groupId });
+    const settings = getSettings(avatar, { groupId, personaId });
+    const allMessages = getConversationThread(avatar, { groupId, personaId });
     const messages = getConversationTimelineMessages(allMessages);
-    const branchId = getConversationRenderBranchId(avatar, groupId);
-    const renderThreadKey = buildConversationRenderThreadKey(avatar, groupId, branchId);
+    const branchId = getConversationRenderBranchId(avatar, groupId, personaId);
+    const renderThreadKey = buildConversationRenderThreadKey(avatar, groupId, branchId, personaId);
     const contextChanged = previousThreadKey !== renderThreadKey;
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
     const needsBottomScroll = Boolean(conversationState.timelineBottomScrollPending);
-    const fingerprint = buildTimelineFingerprint({ avatar, groupId, branchId, settings, allMessages, messages });
+    const fingerprint = buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settings, allMessages, messages });
     if (!contextChanged && fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
         updateConversationToolsState();
         if (needsBottomScroll) {
@@ -680,9 +683,9 @@ export function renderConversationTimeline() {
         return;
     }
 
-    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, settings });
+    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings });
 
-    const typingParticipants = getActiveTypingParticipants(avatar, { groupId });
+    const typingParticipants = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
     if (typingParticipants.length > 2) {
         const typingItem = document.createElement('div');
         typingItem.className = 'sb-conversation-message sb-conversation-typing-indicator';
@@ -741,7 +744,7 @@ export function renderConversationTimeline() {
     }
 
     if (conversationState.imageGenerationActive) {
-        const pendingParticipant = getPrimaryTypingParticipant(avatar, { groupId });
+        const pendingParticipant = getPrimaryTypingParticipant(avatar, { branchId, groupId, personaId });
         const pendingAvatar = pendingParticipant?.avatar || getCurrentCharAvatar();
         const imageItem = document.createElement('div');
         imageItem.className = 'sb-conversation-message sb-conversation-image-pending';
@@ -1063,24 +1066,26 @@ export async function regenerateConversationMessage(messageId) {
             return;
         }
 
-        const { text, selfieRequests } = extractCharacterReplyCommands(response, settings, speakerAvatar, {
-            branchId: context.branchId,
-            groupId: context.groupId,
-            personaId: context.personaId,
-            reminderAvatar: context.avatar,
-        });
-        if (!text) {
+        const commandParts = extractCharacterReplyCommands(response, settings);
+        if (!commandParts.text) {
             globalThis.toastr?.warning?.('Regenerate returned no message.');
             return;
         }
         const extra = { ...targetContext.message.extra };
         delete extra.conversation_commands;
-        if (selfieRequests.length) {
-            extra.conversation_commands = { selfieRequests };
+        const commandMetadata = getCharacterReplyCommandMetadata(commandParts);
+        if (commandMetadata) {
+            extra.conversation_commands = commandMetadata;
         }
-        targetContext.message.mes = text;
+        targetContext.message.mes = commandParts.text;
         targetContext.message.extra = { ...extra, regenerated_at: Date.now() };
         saveConversationMessageThread(targetContext);
+        commitCharacterReplyCommands(commandParts, speakerAvatar, {
+            branchId: context.branchId,
+            groupId: context.groupId,
+            personaId: context.personaId,
+            reminderAvatar: context.avatar,
+        });
         globalThis.toastr?.success?.('Message regenerated.');
     } catch (error) {
         reportConversationGenerationError('regenerate', error, { level: 'warning' });
