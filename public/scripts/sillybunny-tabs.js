@@ -4989,7 +4989,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
     }
 
-    right.push('sb-home-toggle');
+    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
+    right.push('sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -4997,7 +4998,8 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
         right.push(characters.leadId);
         left.push('sb-topbar-divider-characters', characters.railId);
     } else {
-        // On desktop the divider marks the Home|Characters boundary instead.
+        // The characters divider rides along hidden here; the home divider above carries the
+        // Home|Characters boundary on desktop.
         right.push('sb-topbar-divider-characters', characters.leadId, characters.railId);
     }
 
@@ -9500,10 +9502,11 @@ function buildTopBar() {
     const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
     const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
 
     leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersDivider, charactersButton, charactersRail);
+    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 

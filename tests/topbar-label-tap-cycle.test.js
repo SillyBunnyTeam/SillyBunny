@@ -239,6 +239,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
         const orderSource = getFunctionSource('getTopbarGroupOrder');
         expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
+        expect(orderSource).toContain('right.push(\'sb-home-toggle\', \'sb-topbar-divider-home\');');
 
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
@@ -250,9 +251,16 @@ describe('icons only top bar', () => {
         expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*display: inline-block;\n\}/);
         expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\] [^{]*\.sb-topbar-cluster-divider/);
 
-        // The divider takes over the seam so it sits centred in it; phones only shorten the rule.
+        // The home divider owns Home|Characters everywhere; the characters divider is the phone
+        // strip's marker, so desktop hides it or the boundary would carry a double rule.
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-divider-characters \{\n\s*display: none;\n\}/);
+        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-divider-characters \{\n\s*display: inline-block;\n\s*\}/);
+
+        // The divider takes over the seam so it sits centred in it; phones shorten the rule to
+        // their smaller squares and keep the Home|Characters boundary marked in every mode.
         expect(cssSource).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
-        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
+        expect(mobileCss).toMatch(/\.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
+        expect(mobileCss).toMatch(/#sb-topbar-divider-home \{\n\s*display: inline-block;\n\s*\}/);
     });
 
     test('separates the clusters with a wider seam than the icons inside one', () => {

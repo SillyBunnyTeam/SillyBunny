@@ -1362,6 +1362,13 @@ body:not(.movingUI) .drawer-content.maximized {
     display: inline-block;
 }
 
+/* The characters divider is the phone strip's boundary marker; on desktop the home divider
+   already carries Home|Characters, so showing both would double the rule. The phone sheet
+   re-enables it at equal specificity and wins on load order. */
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
+    display: none;
+}
+
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
     margin-inline-start: 0;
 }
