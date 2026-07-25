@@ -77,7 +77,7 @@ export function normalizeWorldInfoPosition(position, positions) {
 export function normalizeCharacterBookPosition(extensionPosition, entryPosition, positions) {
     return normalizeWorldInfoPosition(extensionPosition, positions)
         ?? normalizeWorldInfoPosition(entryPosition, positions)
-        ?? positions.before;
+        ?? positions.after;
 }
 
 /**

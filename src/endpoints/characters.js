@@ -818,7 +818,7 @@ function convertWorldInfoToCharacterBook(name, entries) {
             selective: entry.selective,
             insertion_order: entry.order,
             enabled: !entry.disable,
-            position: entry.position === 1 ? 'after_char' : 'before_char',
+            position: entry.position == 0 ? 'before_char' : 'after_char',
             use_regex: useRegex,
             case_sensitive: entry.caseSensitive ?? null,
             extensions: {

@@ -1469,7 +1469,7 @@ function registerWorldInfoSlashCommands() {
                     setWIOriginalDataValue(data, uid, 'enabled', !entry.disable);
                 } else if (field === 'position') {
                     setWIOriginalDataValue(data, uid, 'extensions.position', entry.position);
-                    setWIOriginalDataValue(data, uid, 'position', entry.position === world_info_position.after ? 'after_char' : 'before_char');
+                    setWIOriginalDataValue(data, uid, 'position', entry.position == 0 ? 'before_char' : 'after_char');
                 } else if (originalWIDataKeyMap[field]) {
                     setWIOriginalDataValue(data, uid, originalWIDataKeyMap[field], entry[field]);
                 }

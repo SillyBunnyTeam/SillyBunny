@@ -100,12 +100,12 @@ describe('normalizeCharacterBookPosition', () => {
         expect(normalizeCharacterBookPosition('0', 'after_char', positions)).toBe(positions.before);
     });
 
-    test('falls back to before when no known position exists', () => {
-        expect(normalizeCharacterBookPosition('unknown', undefined, positions)).toBe(positions.before);
+    test('falls back to after when no known position exists', () => {
+        expect(normalizeCharacterBookPosition('unknown', undefined, positions)).toBe(positions.after);
     });
 
-    test('falls back to before for out-of-enum integer positions', () => {
-        expect(normalizeCharacterBookPosition(99, 12, positions)).toBe(positions.before);
+    test('falls back to after for out-of-enum integer positions', () => {
+        expect(normalizeCharacterBookPosition(99, 12, positions)).toBe(positions.after);
     });
 });
 
