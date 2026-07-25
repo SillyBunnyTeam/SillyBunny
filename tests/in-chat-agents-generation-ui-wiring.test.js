@@ -113,11 +113,12 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorTemplateSource).toContain('ica--editor-companion-waitForDependencies');
         expect(editorTemplateSource).toContain('Delay until selected companions finish');
         expect(editorTemplateSource).toContain('<span>Keep this agent in Chat History</span>');
-        expect(editorTemplateSource).toContain('Retain (N) agent content in context');
-        expect(editorTemplateSource).toContain('Only visible and existing agent cards that have been generated count.');
-        expect(editorTemplateSource).toContain('<span>Include all notes in context</span>');
-        expect(editorTemplateSource).toContain('Cannot be turned on with Retain (N) agent at the same time');
-        expect(editorTemplateSource).toContain('<span>Keep the agent outputs in context even when messages are hidden</span>');
+        expect(editorTemplateSource).toContain('Notes to keep');
+        expect(editorTemplateSource).toContain('Keeps this agent\'s most recent notes in the AI\'s context. Only notes that finished generating are counted.');
+        expect(editorTemplateSource).toContain('<span>Keep all notes instead</span>');
+        expect(editorTemplateSource).toContain('<span>Keep notes in context even when their message is hidden</span>');
+        // The depth input disables itself when "keep all" is on, so no prose warning is needed.
+        expect(editorTemplateSource).not.toContain('Cannot be turned on with');
         expect(editorTemplateSource).not.toContain('Batch with compatible companions');
     });
 
@@ -307,9 +308,11 @@ describe('in-chat agents generation UI wiring', () => {
         expect(quickHandlerSource).toContain('await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));');
     });
 
-    test('wires inline Companion card settings to the shared editor', () => {
-        expect(indexSource).toContain("import { configureCompanionCardUi, initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';");
-        expect(indexSource).toContain('configureCompanionCardUi({\n        openEditor: agentId => openEditor(agentId),\n    });');
+    // Inline cards deliberately have no editor hook: opening agent settings from a chat message
+    // would be a Layer 1 config entry point and a nested modal chain.
+    test('does not wire inline Companion cards to the shared editor', () => {
+        expect(indexSource).toContain("import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';");
+        expect(indexSource).not.toContain('configureCompanionCardUi');
     });
 
     test('allows the manual reply target to expand to an assistant message range', () => {

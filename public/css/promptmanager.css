@@ -377,6 +377,13 @@
     text-decoration: underline;
 }
 
+#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+    border-radius: 4px;
+    text-decoration: underline;
+}
+
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name,
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name .prompt-manager-inspect-action {
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);

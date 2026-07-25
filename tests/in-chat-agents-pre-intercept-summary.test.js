@@ -209,7 +209,6 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', () => ({
-        configureCompanionCardUi: jest.fn(),
         initCompanionCardUi: jest.fn(),
         updateCompanionButtonVisibility: jest.fn(),
     }));

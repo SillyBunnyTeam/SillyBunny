@@ -2828,6 +2828,17 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
         position: absolute;
         inset: -14px -10px;
     }
+
+    /* Companion card actions are transparent at rest, so growing them to the 44px touch
+       contract is visually identical on touch while keeping hit areas from overlapping. */
+    .ica--companion-action,
+    #chat .ica--companion-actions .ica--companion-action {
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
 }
 
 .mes_fix_trackers--running {

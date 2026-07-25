@@ -766,6 +766,15 @@ class PromptManager {
             }
         };
 
+        // Inspect actions are anchors without href, so they need explicit key activation.
+        this.handleInspectKeydown = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            this.handleInspect(event);
+        };
+
         // Detach selected prompt from list form and close edit form
         this.handleDetach = (event) => {
             if (null === this.activeCharacter) return;
@@ -2352,7 +2361,7 @@ class PromptManager {
                         ${isImportantPrompt ? '<span class="fa-fw fa-solid fa-star" title="Important Prompt"></span>' : ''}
                         ${isUserPrompt ? '<span class="fa-fw fa-solid fa-asterisk" title="Preset Prompt"></span>' : ''}
                         ${isInjectionPrompt ? '<span class="fa-fw fa-solid fa-syringe" title="In-Chat Injection"></span>' : ''}
-                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
+                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
                         ${roleIcon ? `<span data-role="${escapeHtml(prompt.role)}" class="fa-xs fa-solid ${roleIcon}" title="${roleTitle}"></span>` : ''}
                         ${isInjectionPrompt ? `<small class="prompt-manager-injection-depth">@ ${escapeHtml(prompt.injection_depth.toString())}</small>` : ''}
                         ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
@@ -2379,7 +2388,7 @@ class PromptManager {
             <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
                 <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
                     <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
-                    <a title="Agents" class="prompt-manager-inspect-action">Agents</a>
+                    <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
                 </span>
                 <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
             </li>
@@ -2399,6 +2408,7 @@ class PromptManager {
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-inspect-action')).forEach(el => {
             el.addEventListener('click', this.handleInspect);
+            el.addEventListener('keydown', this.handleInspectKeydown);
         });
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-edit-action')).forEach(el => {

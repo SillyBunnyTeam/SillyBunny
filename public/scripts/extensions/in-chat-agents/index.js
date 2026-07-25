@@ -93,7 +93,7 @@ import {
 } from './profile-utils.js';
 import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage, syncCompanionChatHistoryConfig } from './companion/companion-runner.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
-import { configureCompanionCardUi, initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
+import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 import { attachTextareaFullscreen, closeActiveTextareaFullscreen } from './textarea-fullscreen.js';
@@ -5715,9 +5715,6 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
     // Render the panel
     renderAgentList();
-    configureCompanionCardUi({
-        openEditor: agentId => openEditor(agentId),
-    });
     initCompanionCardUi();
     configureCompanionDashboard({
         openEditor: agentId => openEditor(agentId),
