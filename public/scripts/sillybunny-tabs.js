@@ -4873,14 +4873,14 @@ function createTopbarPageButton(page) {
     return button;
 }
 
-function buildTopbarPageRail() {
+function buildTopbarPageRail(railId, pages) {
     const rail = createElement('div', {
-        id: 'sb-topbar-pages',
+        id: railId,
         className: 'sb-topbar-pages',
         attrs: { role: 'group' },
     });
 
-    for (const page of SB_TOPBAR_PAGE_TARGETS) {
+    for (const page of pages) {
         rail.appendChild(createTopbarPageButton(page));
     }
 
@@ -4927,7 +4927,37 @@ function syncTopbarIconsOnlyLayout() {
         document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
     }
 
-    document.getElementById('sb-topbar-pages')?.toggleAttribute('inert', !iconsOnly);
+    syncTopbarRailSplit();
+
+    for (const railId of ['sb-topbar-pages', 'sb-topbar-pages-right']) {
+        document.getElementById(railId)?.toggleAttribute('inert', !iconsOnly);
+    }
+}
+
+// SillyBunny: the two-rail split exists to fill the gap either side of the brand label. Phones
+// hide that label and have no width to spare, so the Customize pages fold back into the single
+// left rail there — otherwise the right group's fixed buttons squeeze the left rail to nothing.
+function syncTopbarRailSplit() {
+    const leftRail = document.getElementById('sb-topbar-pages');
+    const rightRail = document.getElementById('sb-topbar-pages-right');
+
+    if (!(leftRail instanceof HTMLElement) || !(rightRail instanceof HTMLElement)) {
+        return;
+    }
+
+    const shouldMerge = isMobileViewport();
+    const customizeButtons = [...leftRail.children, ...rightRail.children]
+        .filter(button => button instanceof HTMLElement && button.dataset.sbTopbarPage?.startsWith('right:'));
+
+    for (const button of customizeButtons) {
+        if (shouldMerge) {
+            leftRail.appendChild(button);
+        } else {
+            rightRail.appendChild(button);
+        }
+    }
+
+    rightRail.classList.toggle('sb-topbar-pages-empty', shouldMerge);
 }
 
 function bindSearchShortcutPreFocus(button, targetGetter) {
@@ -8727,6 +8757,10 @@ function scheduleCharacterToggleGhostSync() {
     }
 }
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
+window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
+    syncTopbarRailSplit();
+    queueTopbarPageStateSync();
+});
 
 document.addEventListener('click', (e) => {
     if (characterToggleDispatchGuard) return;
@@ -9269,16 +9303,20 @@ function buildTopBar() {
         <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
-    // SillyBunny: the page rail takes the left Quick Access position when icons-only mode is on;
-    // the parked bay holds the Quick Access slots while it does.
-    const pageRail = buildTopbarPageRail();
+    // SillyBunny: the page rails take the Quick Access positions when icons-only mode is on, and
+    // the parked bay holds the Quick Access slots while they do. Customize pages ride the right
+    // rail so the space beside the brand label is used instead of scrolling one long strip.
+    const leftPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey !== 'right');
+    const rightPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey === 'right');
+    const pageRail = buildTopbarPageRail('sb-topbar-pages', leftPages);
+    const customizeRail = buildTopbarPageRail('sb-topbar-pages-right', rightPages);
     const parkedBay = createElement('div', {
         id: 'sb-topbar-parked',
         attrs: { 'aria-hidden': 'true' },
     });
 
     leftGroup.append(mobileButton, leftButton, rightButton, pageRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
+    rightGroup.append(customizeRail, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, charactersButton);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 

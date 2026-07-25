@@ -1288,10 +1288,18 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         padding: 0 2px;
     }
 
-    /* Icons only top bar: hand the flexible column to the page rail so it scrolls in place
-       instead of pushing the title and the right-hand anchors off screen. */
+    /* Icons only top bar: phones have no room for both the rail and the centre brand, so drop
+       the label here and hand its column to the rail. Desktop keeps the label. */
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-brand {
+        display: none;
+    }
+
     :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
-        grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+        grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    }
+
+    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
+        min-width: 0;
     }
 
     :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {

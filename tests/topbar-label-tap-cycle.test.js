@@ -137,10 +137,12 @@ describe('icons only top bar', () => {
         }
     });
 
-    test('keeps the centre brand label on every viewport', () => {
+    test('drops the centre brand label on phones only', () => {
+        // Desktop has room for the label, so the hide lives in the phone-gated sheet alone.
+        // (0,3,0) outranks the plain .sb-topbar-brand rules in both fork sheets, no !important.
         const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-brand \{\n\s*display: none;\n\s*\}/);
         expect(cssSource).not.toMatch(/data-sb-topbar-icons-only='true'\]\s+\.sb-topbar-brand/);
-        expect(mobileCss).not.toMatch(/data-sb-topbar-icons-only='true'\]\s+\.sb-topbar-brand/);
     });
 
     test('keeps the character toggle measurable for anchored extension dropdowns', () => {
@@ -198,6 +200,25 @@ describe('icons only top bar', () => {
         expect(groupSource).toContain('createTopbarIconsOnlySettingsGroup()');
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
         expect(normalizedTabsSource).not.toContain('lorum ipsum');
+    });
+
+    test('splits customize pages onto a second rail beside the brand label', () => {
+        expect(normalizedTabsSource).toContain('const leftPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey !== \'right\');');
+        expect(normalizedTabsSource).toContain('const rightPages = SB_TOPBAR_PAGE_TARGETS.filter(page => page.shellKey === \'right\');');
+        expect(normalizedTabsSource).toContain('buildTopbarPageRail(\'sb-topbar-pages-right\', rightPages);');
+        expect(normalizedTabsSource).toContain('rightGroup.append(customizeRail,');
+    });
+
+    test('folds both rails back together on phones', () => {
+        // The split fills the gap either side of the brand label; phones hide that label and
+        // have no width to spare, so the right group's fixed buttons would starve the left rail.
+        const splitSource = getFunctionSource('syncTopbarRailSplit');
+        expect(splitSource).toContain('const shouldMerge = isMobileViewport();');
+        expect(splitSource).toContain('leftRail.appendChild(button);');
+        expect(splitSource).toContain('rightRail.appendChild(button);');
+        expect(splitSource).toContain('classList.toggle(\'sb-topbar-pages-empty\', shouldMerge);');
+        expect(normalizedTabsSource).toContain('window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener(\'change\'');
+        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-pages-empty');
     });
 
     test('scrolls the rail rather than wrapping it', () => {
