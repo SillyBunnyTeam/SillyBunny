@@ -197,6 +197,28 @@ describe('icons only top bar', () => {
         expect(cssSource).not.toContain('#sb-topbar-parked');
     });
 
+    test('uses the Characters anchor as a page only in icons-only mode', () => {
+        const activationSource = getFunctionSource('activateCharacterTopbarButton');
+        expect(activationSource).toContain('if (isTopbarIconsOnlyActive())');
+        expect(activationSource).toContain('openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);');
+        expect(activationSource).toContain('toggleCharacterPanel();');
+
+        const buildSource = getFunctionSource('buildTopBar');
+        expect(buildSource).toContain('activateCharacterTopbarButton,');
+
+        const proxyStateSource = getFunctionSource('syncProxyButtonState');
+        expect(proxyStateSource).toContain("const isCharacterButton = proxyButton.id === 'sb-character-toggle';");
+        expect(proxyStateSource).toContain('if (isCharacterButton && isTopbarIconsOnlyActive())');
+        expect(proxyStateSource).toContain('isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB)');
+        expect(proxyStateSource).toContain("proxyButton.classList.remove('is-open', 'is-pinned');");
+        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-current', isCurrent);");
+        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-open', isOpen);");
+        expect(proxyStateSource).toContain("proxyButton.classList.toggle('is-pinned', isPinned);");
+
+        const pageStateSource = getFunctionSource('syncTopbarPageButtonStates');
+        expect(pageStateSource).toContain('syncCharacterTopbarButtonState();');
+    });
+
     test('keeps one canonical button order per mode instead of moving buttons around', () => {
         // appendChild on a node the group already holds is a move, so replaying a whole order is
         // idempotent -- unlike remembering a nextSibling that a neighbouring move can detach.

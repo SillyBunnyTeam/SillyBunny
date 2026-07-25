@@ -7795,6 +7795,8 @@ function syncTopbarPageButtonStates() {
             button.removeAttribute('aria-current');
         }
     }
+
+    syncCharacterTopbarButtonState();
 }
 
 function queueTopbarPageStateSync() {
@@ -9205,10 +9207,37 @@ function syncProxyButtonState(proxyButton, sourceIcon) {
 
     const isOpen = sourceIcon.classList.contains('openIcon');
     const isPinned = sourceIcon.classList.contains('drawerPinnedOpen');
+    const isCharacterButton = proxyButton.id === 'sb-character-toggle';
+
+    if (isCharacterButton && isTopbarIconsOnlyActive()) {
+        const isCurrent = isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        proxyButton.classList.remove('is-open', 'is-pinned');
+        proxyButton.classList.toggle('is-current', isCurrent);
+        proxyButton.setAttribute('aria-expanded', String(isCurrent));
+
+        if (isCurrent) {
+            proxyButton.setAttribute('aria-current', 'page');
+        } else {
+            proxyButton.removeAttribute('aria-current');
+        }
+        return;
+    }
 
     proxyButton.classList.toggle('is-open', isOpen);
     proxyButton.classList.toggle('is-pinned', isPinned);
     proxyButton.setAttribute('aria-expanded', String(isOpen));
+
+    if (isCharacterButton) {
+        proxyButton.classList.remove('is-current');
+        proxyButton.removeAttribute('aria-current');
+    }
+}
+
+function syncCharacterTopbarButtonState() {
+    syncProxyButtonState(
+        document.getElementById('sb-character-toggle'),
+        document.querySelector('#rightNavDrawerIcon'),
+    );
 }
 
 function observeProxyButton(buttonId, iconSelector) {
@@ -9226,6 +9255,15 @@ function observeProxyButton(buttonId, iconSelector) {
     });
 
     observer.observe(sourceIcon, { attributes: true, attributeFilter: ['class'] });
+}
+
+function activateCharacterTopbarButton() {
+    if (isTopbarIconsOnlyActive()) {
+        openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);
+        return;
+    }
+
+    toggleCharacterPanel();
 }
 
 function wasShellJustOpened(shellKey) {
@@ -9433,7 +9471,7 @@ function buildTopBar() {
             label: 'Characters',
             title: 'Open character management',
         },
-        () => toggleCharacterPanel(),
+        activateCharacterTopbarButton,
     );
 
     const leftShortcutConfig = getShortcutConfig(getShortcutTarget('left'));
