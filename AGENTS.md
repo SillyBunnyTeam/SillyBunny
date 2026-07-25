@@ -6,7 +6,7 @@
 ## Project Priorities
 
 - SillyBunny is a fork of SillyTavern; keep compatibility with upstream data, settings, characters, chats, presets, and extensions unless a task explicitly changes that.
-- Treat README.md, CONTRIBUTING.md, and PRODUCT.md as the source of truth for user-facing goals, setup, PR conventions, and release hygiene; update this file only with enforceable agent operating rules.
+- Treat PRODUCT.md as the source of truth for product direction, DESIGN.md and DESIGN.json as the source of truth for visual and interaction guidance, and README.md and CONTRIBUTING.md as the source of truth for user-facing setup, PR conventions, and release hygiene; update this file only with enforceable agent operating rules.
 - Prefer self-contained SillyBunny additions over edits to base SillyTavern files; when a base file must diverge, leave a short inline comment explaining where and why for future upstream merges.
 - Bun is the primary runtime, but Node.js parity is required for structural/backend changes; do not use Bun-only APIs without a Node-compatible fallback.
 - New UI/features must work on both desktop and mobile. Safari/WebKit 16.4+ is acceptable, but shipped WebKit properties such as `backdrop-filter`, `appearance`, `user-select`, and `position: sticky` still need prefixed companions.
@@ -32,7 +32,7 @@
 ## Workflow Notes
 
 - PR targets must go to `staging` by default; `main` is only for documentation, GitHub Actions, or critical hotfixes that must be backported to staging.
-- Prefer purposeful larger PRs that address a complete problem over tiny micro PRs, except for hotfixes or critical bug fixes.
+- Prefer complete, focused PRs: use small PRs for isolated bug fixes and one cohesive larger PR for a feature or design decision; avoid tiny micro PRs that do not close a problem end to end.
 - Do not write PR descriptions for the user. PR descriptions must be manually written without AI assistance; you may prepare branches, commits, and a ready-to-open PR link, but ask the end user to provide the PR title/body before submission.
 - Keep upstream SillyTavern syncs separate from feature/fix work. Use `docs/upstream-sync.md` before preparing or reviewing an upstream sync.
 - `changelog.md` may receive mechanical PR ledgers via `npm run changelog:merged-prs`; release summaries, README changelog copy, and Discord copy must be provided by the end user before running `bash scripts/sync-readme-mirror.sh`.
