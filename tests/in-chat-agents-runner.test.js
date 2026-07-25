@@ -794,6 +794,19 @@ describe('in-chat agent post-processing runner', () => {
         }
     }
 
+    // Deferred post-processing wakes up on a 50ms retry timer, so a single fixed sleep
+    // leaves almost no headroom on a loaded runner. Poll against a deadline instead.
+    async function waitForDeferredFlush(condition, timeoutMs = 2000) {
+        const deadline = Date.now() + timeoutMs;
+        while (!condition()) {
+            if (Date.now() >= deadline) {
+                return;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    }
+
     function emitDocumentEvent(eventName) {
         for (const handler of documentListeners.get(eventName) ?? []) {
             handler();
@@ -4715,7 +4728,8 @@ describe('in-chat agent post-processing runner', () => {
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Exact mobile order\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Exact mobile order\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -4747,8 +4761,9 @@ describe('in-chat agent post-processing runner', () => {
         expect(generateQuietPrompt).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
-        await waitFor(() => chat[0].mes === 'Mobile transform rewrite');
+        await waitForDeferredFlush(() => generateQuietPrompt.mock.calls.length === 1
+            && chat[0].mes === 'Mobile transform rewrite'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile transform rewrite');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -5283,7 +5298,8 @@ Helper context.`;
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -5328,7 +5344,8 @@ Helper context.`;
         expect(saveChatDebounced).not.toHaveBeenCalled();
 
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Mobile processed once\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Mobile processed once\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -5373,7 +5390,8 @@ Helper context.`;
             extra: {},
         });
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Late mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Late mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -5433,7 +5451,8 @@ Helper context.`;
             extra: {},
         });
         delete document.body.dataset.generating;
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Late reply without after commands\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Late reply without after commands\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
@@ -5569,7 +5588,8 @@ Helper context.`;
 
         delete document.body.dataset.generating;
         await eventSource.emit(eventTypes.GENERATION_ENDED, chat.length);
-        await new Promise(resolve => setTimeout(resolve, 75));
+        await waitForDeferredFlush(() => chat[0].mes === 'Replaced mobile reply\n[post processed]'
+            && saveChatDebounced.mock.calls.length >= 1);
 
         expect(chat[0].mes).toBe('Replaced mobile reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
