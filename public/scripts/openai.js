@@ -6457,7 +6457,7 @@ export class ChatCompletion {
     constructor() {
         this.tokenBudget = 0;
         this.messages = new MessageCollection('root');
-        this.runtimeAgentMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
+        this.runtimeAgentMessages = null;
         this.loggingEnabled = false;
         this.overriddenPrompts = [];
     }
@@ -6476,6 +6476,7 @@ export class ChatCompletion {
     }
 
     async buildRuntimeAgentMessages() {
+        this.runtimeAgentMessages = null;
         const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
 
         try {
@@ -6485,11 +6486,10 @@ export class ChatCompletion {
                 message.kind = record.kind;
                 runtimeMessages.add(message);
             }
+            this.runtimeAgentMessages = runtimeMessages;
         } catch (error) {
             console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
         }
-
-        this.runtimeAgentMessages = runtimeMessages;
     }
 
     /**

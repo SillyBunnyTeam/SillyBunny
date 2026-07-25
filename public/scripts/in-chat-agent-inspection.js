@@ -58,6 +58,21 @@ export function collectInChatAgentInspectionRecords(messages = []) {
     return records;
 }
 
+export function resolveInChatAgentTokenUsage(runtimeAgentMessages, promptTokenCounts = {}) {
+    if (runtimeAgentMessages !== null && runtimeAgentMessages !== undefined) {
+        return runtimeAgentMessages.getTokens();
+    }
+
+    return Object.entries(promptTokenCounts ?? {}).reduce((total, [identifier, tokens]) => {
+        if (!isInChatAgentPromptIdentifier(identifier)) {
+            return total;
+        }
+
+        const tokenCount = Number(tokens);
+        return total + (Number.isFinite(tokenCount) ? tokenCount : 0);
+    }, 0);
+}
+
 export function trimOldestRetainedContribution(content, contributions = []) {
     const retained = contributions
         .map((contribution, index) => ({ contribution, index }))

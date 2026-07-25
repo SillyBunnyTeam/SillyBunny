@@ -2829,6 +2829,13 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
         inset: -14px -10px;
     }
 
+    .ica--quick-chip-apply-target {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
     /* Companion card actions are transparent at rest, so growing them to the 44px touch
        contract is visually identical on touch while keeping hit areas from overlapping. */
     .ica--companion-action,

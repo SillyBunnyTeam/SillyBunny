@@ -297,6 +297,32 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-05-28 prompt manager lifecycle wiring. |
 | Owner | Refactor integrator and prompt manager owner. |
 
+### `public/script.js`, `public/scripts/openai.js`, and `public/scripts/group-chats.js` - Companion retained prompt context
+| Field | Value |
+| --- | --- |
+| Area | Generation lifecycle, prompt context, and In-Chat Agents. |
+| Divergence reason | Opted-in Companion results must remain prompt-only assistant history across text and chat-completion providers without changing stored chat text. Rewritten targets, hidden hosts, groups, tool recursion, prompt transforms, and token limits must use the same selected retained context. |
+| Target seam | `public/scripts/extensions/in-chat-agents/companion/companion-shared.js` owns selection and consolidation; `public/scripts/in-chat-agent-inspection.js` owns contribution trimming. Core projection orchestration has no narrower seam yet. |
+| Adapter shape | `Generate()` selects retained contributions and carries ephemeral provenance; provider assembly transports that provenance and trims oldest retained contributions first; group generation only resets the explicit rewrite target for automatic continuation. |
+| Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-store.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, `tests/guided-generations-correction-wiring.test.js`, and retained-contribution cases in `tests/in-chat-agent-inspection.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agents-runner.test.js in-chat-agents-generation-ui-wiring.test.js in-chat-agent-inspection.test.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
+| Rollback path | Remove retained-context projection, provenance transport, trim loops, and rewrite-target plumbing. Stored Companion settings and results remain compatible and can be ignored without migration. |
+| Last reviewed | 2026-07-25 PR #681. |
+| Owner | In-Chat Agents maintainer and generation/provider owner. |
+
+### `public/script.js`, `public/scripts/openai.js`, `public/scripts/PromptManager.js`, and `public/css/promptmanager.css` - runtime In-Chat Agent prompt inspection
+| Field | Value |
+| --- | --- |
+| Area | Prompt Manager and generation inspection. |
+| Divergence reason | Upstream Prompt Manager cannot identify exact post-macro In-Chat Agent prompts and retained notes after they merge into runtime messages. SillyBunny needs an inspection-only Agents row with roles and token counts that never enters presets or outbound API payloads. |
+| Target seam | `public/scripts/in-chat-agent-inspection.js`; Prompt Manager remains the DOM adapter and `ChatCompletion` remains the detached token-counting adapter. |
+| Adapter shape | Instrument In-Chat Agent extension prompts through an optional callback, attach ephemeral contribution metadata during provider assembly, publish a detached collection only after complete token counting, and render one non-editable, non-draggable inspection row. |
+| Protecting tests | `tests/in-chat-agent-inspection.test.js`, `tests/prompt-display-names.test.js`, and `tests/prompt-manager-lifecycle-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agent-inspection.test.js prompt-display-names.test.js prompt-manager-lifecycle-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
+| Rollback path | Remove callback instrumentation, ephemeral annotations, detached collection, synthetic row, and scoped row styling. Normal prompt assembly and outbound serialization remain unchanged; no persisted data cleanup is required. |
+| Last reviewed | 2026-07-25 PR #681. |
+| Owner | In-Chat Agents maintainer and prompt manager owner. |
+
 ### `src/endpoints/backends/chat-completions.js`, `public/scripts/openai.js`, and `public/index.html` - claude-fable-5 request compatibility
 | Field | Value |
 | --- | --- |

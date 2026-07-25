@@ -1878,6 +1878,32 @@ describe('in-chat agent post-processing runner', () => {
         expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
     });
 
+    test('does not guard tracker tags owned by active inline trackers', async () => {
+        usePreExtractTracker();
+        const inlineTracker = enabledAgents[0];
+        const statusCompanion = createCompanionAgent({
+            id: 'status-companion',
+            category: 'tracker',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [inlineTracker, statusCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, statusCompanion, {
+            status: 'done',
+            content: '[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts(enabledAgents);
+        const injected = extensionPrompts['inchat_agent_companion_status-companion'].value;
+
+        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
+        expect(injected).not.toContain('HARD STOP for your reply');
+        expect(injected).not.toContain('[STATUS|...]');
+    });
+
     test('removes complete auxiliary tracker echoes while preserving unrelated blocks', async () => {
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
         const response = [
@@ -1897,6 +1923,14 @@ describe('in-chat agent post-processing runner', () => {
             '- Keep this unrelated block',
             '[/CHOICES]',
         ].join('\n\n'));
+    });
+
+    test('preserves auxiliary tracker tags owned by active inline trackers', async () => {
+        usePreExtractTracker();
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story before.\n\n[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['STATUS'], enabledAgents)).toBe(response);
     });
 
     test('leaves malformed auxiliary echoes intact to avoid deleting adjacent prose', async () => {
@@ -1935,6 +1969,40 @@ describe('in-chat agent post-processing runner', () => {
 
         expect(generatedReply.mes).toBe('Narrative reply.');
         expect(saveChatDebounced).toHaveBeenCalled();
+    });
+
+    test('preserves active inline tracker output for post-processing', async () => {
+        usePreExtractTracker();
+        const inlineTracker = enabledAgents[0];
+        const retainedTracker = createCompanionAgent({
+            id: 'retained-status-tracker',
+            category: 'tracker',
+            companion: { includeInChatHistory: true },
+        });
+        enabledAgents = [inlineTracker, retainedTracker];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        registerCompanionRuntime({ stripAuxiliaryTrackerEchoes: companionRunner.stripAuxiliaryTrackerEchoes });
+        initAgentRunner();
+        const priorReply = { mes: 'Prior reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const trackerBlock = '[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]';
+        const generatedReply = {
+            mes: `Narrative reply.\n\n${trackerBlock}`,
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        };
+        chat.push(priorReply, generatedReply);
+        companionRunner.setCompanionResult(priorReply, retainedTracker, {
+            status: 'done',
+            content: '[STATUS|Hero|Tired|Moderate]\nResting.\n[/STATUS]',
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_RECEIVED, 1, 'normal');
+
+        expect(generatedReply.mes).toBe(`Narrative reply.\n\n${trackerBlock}`);
+        expect(chatMetadata.agent_status_data).toBe(trackerBlock);
     });
 
     test('leaves non-tracker feedback verbatim with no anti-echo guard', async () => {

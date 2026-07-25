@@ -7,6 +7,7 @@ import {
     collectInChatAgentInspectionRecords,
     getInChatAgentContributionKind,
     instrumentInChatAgentPromptValue,
+    resolveInChatAgentTokenUsage,
     trimOldestRetainedContribution,
 } from '../public/scripts/in-chat-agent-inspection.js';
 
@@ -126,6 +127,27 @@ describe('In-Chat Agent prompt inspection', () => {
         });
     });
 
+    test('falls back to source counts while the runtime snapshot is unavailable', () => {
+        expect(resolveInChatAgentTokenUsage(null, {
+            main: 100,
+            inchat_agent_style: 12,
+            inchat_agent_companion_world: 8,
+            inchat_agent_invalid: 'unknown',
+        })).toBe(20);
+    });
+
+    test('treats an empty runtime snapshot as a valid zero-token result', () => {
+        const runtimeMessages = { getTokens: () => 0 };
+
+        expect(resolveInChatAgentTokenUsage(runtimeMessages, { inchat_agent_style: 12 })).toBe(0);
+    });
+
+    test('uses a complete runtime snapshot instead of source counts', () => {
+        const runtimeMessages = { getTokens: () => 27 };
+
+        expect(resolveInChatAgentTokenUsage(runtimeMessages, { inchat_agent_style: 12 })).toBe(27);
+    });
+
     test('keeps the synthetic Agents row out of presets and the outbound root', () => {
         const promptManagerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'PromptManager.js'), 'utf8');
         const openaiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
@@ -134,6 +156,9 @@ describe('In-Chat Agent prompt inspection', () => {
         const rowStart = promptManagerSource.indexOf('const runtimeAgentTokens');
         const rowEnd = promptManagerSource.indexOf('if (!this.#isRenderCurrent', rowStart);
         const rowSource = promptManagerSource.slice(rowStart, rowEnd);
+        const buildStart = openaiSource.indexOf('async buildRuntimeAgentMessages()');
+        const buildEnd = openaiSource.indexOf('\n    /**', buildStart);
+        const buildSource = openaiSource.slice(buildStart, buildEnd);
 
         expect(RUNTIME_AGENTS_IDENTIFIER).toBe('sillybunnyRuntimeAgents');
         expect(rowSource).toContain('>Agents</a>');
@@ -148,7 +173,11 @@ describe('In-Chat Agent prompt inspection', () => {
         expect(promptManagerSource).toContain("this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)");
         expect(promptManagerSource).toContain("this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect'");
         expect(promptManagerSource).toContain("messageList.innerHTML = '';\n                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);");
-        expect(openaiSource).toContain('this.runtimeAgentMessages = runtimeMessages;');
+        expect(promptManagerSource).toContain('this.runtimeAgentMessages = null;');
+        expect(rowSource).toContain('const runtimeAgentTokens = this.getInChatAgentTokenUsage();');
+        expect(buildSource).toContain('this.runtimeAgentMessages = null;');
+        expect(buildSource.match(/this\.runtimeAgentMessages = runtimeMessages;/g)).toHaveLength(1);
+        expect(buildSource.indexOf('this.runtimeAgentMessages = runtimeMessages;')).toBeLessThan(buildSource.indexOf('} catch (error)'));
         expect(openaiSource).toContain("console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:'");
         expect(openaiSource).not.toContain('this.messages.add(runtimeMessages)');
         expect(settingsSource).not.toContain(RUNTIME_AGENTS_IDENTIFIER);

@@ -3817,7 +3817,7 @@ async function processReceivedMessage(messageIndex, generationType, activationSn
         let chatStateChanged = false;
         let messageDisplayChanged = false;
 
-        const cleanedAuxiliaryEchoes = companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes);
+        const cleanedAuxiliaryEchoes = companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes, undefined, activeAgents);
         if (typeof cleanedAuxiliaryEchoes === 'string' && cleanedAuxiliaryEchoes !== normalizeContentText(message.mes)) {
             message.mes = cleanedAuxiliaryEchoes;
             await syncPromptTransformMessageStateAsync(message, messageIndex);

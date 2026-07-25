@@ -4,7 +4,7 @@ import { DOMPurify } from '../lib.js';
 
 import { event_types, eventSource, is_send_press, main_api, saveSettingsDebounced, substituteParams } from '../script.js';
 import { is_group_generating } from './group-chats.js';
-import { getCurrentOpenAIPresetPromptOrder, Message, MessageCollection, TokenHandler } from './openai.js';
+import { getCurrentOpenAIPresetPromptOrder, Message, TokenHandler } from './openai.js';
 import { power_user } from './power-user.js';
 import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
 import { debounce_timeout } from './constants.js';
@@ -16,7 +16,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { getPromptDisplayTokenCounts, getPromptSourceTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
-import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER } from './in-chat-agent-inspection.js';
+import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
     resolvePromptManagerRenderState,
     resolvePromptManagerScrollRestore,
@@ -372,7 +372,7 @@ class PromptManager {
         this.messages = null;
 
         // Detached, inspection-only In-Chat Agent messages from the latest prompt assembly.
-        this.runtimeAgentMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
+        this.runtimeAgentMessages = null;
 
         // The current token handler instance
         this.tokenHandler = null;
@@ -2108,18 +2108,7 @@ class PromptManager {
     }
 
     getInChatAgentTokenUsage() {
-        if (this.runtimeAgentMessages) {
-            return this.runtimeAgentMessages.getTokens();
-        }
-
-        return Object.entries(this.getActivePromptTokenCounts() ?? {}).reduce((total, [identifier, tokens]) => {
-            if (!identifier.startsWith(IN_CHAT_AGENT_PROMPT_KEY_PREFIX)) {
-                return total;
-            }
-
-            const tokenCount = Number(tokens);
-            return total + (Number.isFinite(tokenCount) ? tokenCount : 0);
-        }, 0);
+        return resolveInChatAgentTokenUsage(this.runtimeAgentMessages, this.getActivePromptTokenCounts());
     }
 
     async populateSourcePromptTokenCounts() {
@@ -2380,7 +2369,7 @@ class PromptManager {
             `;
         });
 
-        const runtimeAgentTokens = this.runtimeAgentMessages?.getTokens() ?? 0;
+        const runtimeAgentTokens = this.getInChatAgentTokenUsage();
         const runtimeSelectedClass = this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea
             ? `${prefix}prompt_manager_prompt_selected`
             : '';

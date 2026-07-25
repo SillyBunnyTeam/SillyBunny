@@ -155,7 +155,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(coreScriptSource).toContain('const companionRewriteTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('const companionFeedbackTarget = companionHistoryTarget');
         expect(coreScriptSource).toContain('companionHistoryTarget: companionFeedbackTarget');
-        expect(agentRunnerSource).toContain('companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes)');
+        expect(agentRunnerSource).toContain('companionRuntime?.stripAuxiliaryTrackerEchoes?.(message.mes, undefined, activeAgents)');
         expect(agentRunnerSource).toContain('await refreshMessageAfterMutation(messageIndex, message, { deferBackup: true });');
         expect(coreScriptSource).toContain("isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null");
         expect(coreScriptSource).toContain('message !== companionRewriteTarget');
@@ -182,6 +182,20 @@ describe('in-chat agents generation UI wiring', () => {
         expect(indexSource).toContain('keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden');
         expect(extensionStyleSource).toContain('.popup:has(#ica--editor).wide_dialogue_popup');
         expect(extensionStyleSource).toContain('width: calc(100dvw - 20px);');
+    });
+
+    test('keeps the quick-chip target action touch-sized on coarse pointers', () => {
+        const coarsePointerStart = extensionStyleSource.indexOf('@media (pointer: coarse), (any-pointer: coarse)');
+        const coarsePointerEnd = extensionStyleSource.indexOf('.mes_fix_trackers--running', coarsePointerStart);
+        const coarsePointerStyles = extensionStyleSource.slice(coarsePointerStart, coarsePointerEnd);
+
+        expect(coarsePointerStart).toBeGreaterThanOrEqual(0);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-apply-target {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }`);
     });
 
     test('lists all enabled side companions in batch selector regardless of compatibility', () => {

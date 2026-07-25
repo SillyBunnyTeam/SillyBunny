@@ -50,7 +50,7 @@ import {
     normalizePlotCompassObjective,
 } from './companion-shared.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
-import { findTrackerBlocks, normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
+import { findTrackerBlocks, inspectTrackerState, normalizeCompanionTrackerRepairPayload, TRACKER_REPAIR_INSTRUCTION } from '../tracker-state.js';
 
 export { COMPANION_RESULTS_EXTRA_KEY };
 export const COMPANION_RESULTS_UPDATED_EVENT = 'in_chat_agent_companion_results_updated';
@@ -829,6 +829,26 @@ function extractTrackerTags(text) {
     return [...tags];
 }
 
+function getActiveInlineTrackerTags(activeAgents = []) {
+    const tags = new Set();
+
+    for (const agent of activeAgents) {
+        if (agent?.category !== 'tracker' || isCompanionAgent(agent)) {
+            continue;
+        }
+
+        const tag = inspectTrackerState(agent).tag;
+        if (tag) {
+            tags.add(tag.toUpperCase());
+            continue;
+        }
+
+        extractTrackerTags(agent.prompt).forEach(promptTag => tags.add(promptTag));
+    }
+
+    return tags;
+}
+
 function buildTrackerEchoGuard(tags) {
     const examples = tags.flatMap(tag => [`[${tag}|...]`, `[/${tag}]`]).join(', ');
     return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: ' + examples + ' (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.';
@@ -852,14 +872,21 @@ function getAuxiliaryTrackerTags() {
  * Unclosed blocks remain intact rather than risking removal of adjacent story prose.
  * @param {string} text
  * @param {Iterable<string>} tags
+ * @param {object[]} activeAgents
  * @returns {string}
  */
-export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags()) {
+export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags(), activeAgents = []) {
     const source = String(text ?? '').replaceAll(/\r\n?/g, '\n');
     const ranges = [];
+    const inlineTrackerTags = getActiveInlineTrackerTags(activeAgents);
 
     for (const tag of tags) {
-        for (const block of findTrackerBlocks(source, String(tag ?? '').trim())) {
+        const normalizedTag = String(tag ?? '').trim().toUpperCase();
+        if (!normalizedTag || inlineTrackerTags.has(normalizedTag)) {
+            continue;
+        }
+
+        for (const block of findTrackerBlocks(source, normalizedTag)) {
             if (block.complete) {
                 ranges.push({ start: block.start, end: block.end });
             }
@@ -1723,6 +1750,7 @@ export async function runCompanionStage({ messageIndex, message, generationType 
 export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessage = null } = {}) {
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
+    const inlineTrackerTags = getActiveInlineTrackerTags(activeAgents);
     const feedbackTrackerTags = new Set();
     const feedbackPrompts = [];
     activeFeedbackTrackerTags = feedbackTrackerTags;
@@ -1754,7 +1782,7 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        const trackerTags = extractTrackerTags(body);
+        const trackerTags = extractTrackerTags(body).filter(tag => !inlineTrackerTags.has(tag));
         trackerTags.forEach(tag => feedbackTrackerTags.add(tag));
         feedbackPrompts.push({ agent, body, trackerTags });
     }
