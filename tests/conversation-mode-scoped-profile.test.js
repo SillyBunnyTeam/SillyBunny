@@ -133,26 +133,26 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('Intl.DateTimeFormat().resolvedOptions().timeZone');
         expect(promptSource).toContain('weekday: \'long\'');
         expect(promptSource).toContain('computer/phone time');
-        expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now)');
+        expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now, { personaId })');
     });
 
     test('adds compact editable Grounded Dialogue Rules as an optional global prompt block', () => {
         expect(constantsSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled: false');
-        expect(constantsSource).toContain("{ id: 'sb_conv_grounded_dialogue_rules_enabled', key: 'grounded_dialogue_rules_enabled', prop: 'checked' }");
-        expect(constantsSource).toContain("{ id: 'sb_conv_grounded_dialogue_rules', key: 'grounded_dialogue_rules', prop: 'value' }");
+        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules_enabled\', key: \'grounded_dialogue_rules_enabled\', prop: \'checked\' }');
+        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules\', key: \'grounded_dialogue_rules\', prop: \'value\' }');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
         expect(constantsSource).toContain('grounded_dialogue_rules');
         expect(timelineSource).toContain('data-sb-conversation-action="edit-grounded-dialogue-rules"');
         expect(timelineSource).toContain('<textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>');
         expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
-        expect(chromeSource).toContain("case 'edit-grounded-dialogue-rules':");
+        expect(chromeSource).toContain('case \'edit-grounded-dialogue-rules\':');
         expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
-        expect(promptSource).toContain("from './shared-helpers.js'");
+        expect(promptSource).toContain('from \'./shared-helpers.js\'');
         expect(promptSource).toContain('fields.push(groundedRules)');
         // Server endpoint now imports from conversation-generation.js which imports from shared-helpers.js
-        expect(serverEndpointSource).toContain("from './conversation-generation.js'");
+        expect(serverEndpointSource).toContain('from \'./conversation-generation.js\'');
         // normalizeConversationSettings is now in conversation-generation.js
         expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
     });
@@ -161,10 +161,12 @@ describe('conversation mode scoped connection profile', () => {
         expect(settingsStoreSource).toContain('const hasConversationGroups');
         expect(settingsStoreSource).toContain('getConversationGroups().forEach');
         expect(settingsStoreSource).toContain('!group.is_conversation_group');
-        expect(palsRailSource).toContain('getConversationGroups().forEach');
+        expect(palsRailSource).toContain('getConversationGroups({ personaId }).forEach');
         expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
+        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeGreaterThanOrEqual(0);
+        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeGreaterThanOrEqual(0);
         expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeLessThan(settingsStoreSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(palsRailSource.indexOf('getConversationGroups().forEach')).toBeLessThan(palsRailSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
+        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeLessThan(palsRailSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
         expect(contextSource).toContain('group.updatedAt = Date.now();');
         expect(timelineSource).toContain('group.updatedAt = Date.now();');
     });
@@ -184,7 +186,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(contextSource).toContain('migrateLegacyConversationStoreToPersona');
         expect(contextSource).toContain('personaId: getConversationPersonaId(personaId)');
         expect(settingsStoreSource).toContain('isConversationThreadKeyForPersona(storeKey)');
-        expect(palsRailSource).toContain('isConversationThreadKeyForPersona(storeKey)');
+        expect(palsRailSource).toContain('isConversationThreadKeyForPersona(storeKey, personaId)');
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
     });
 
@@ -192,8 +194,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(stateSource).toContain('conversationReplyTarget');
         expect(timelineSource).toContain('renderConversationComposerReplyPreview');
         expect(timelineSource).toContain('conversationReplyTarget = {');
-        expect(timelineSource).toContain("!String(reference.messageId || '').trim()");
-        expect(timelineSource).not.toContain("reference?.text || reference?.attachmentSummary || 'Message'");
+        expect(timelineSource).toContain('!String(reference.messageId || \'\').trim()');
+        expect(timelineSource).not.toContain('reference?.text || reference?.attachmentSummary || \'Message\'');
         expect(timelineSource).not.toContain('quoteBlock');
         expect(timelineSource).not.toContain('> **${speakerName}');
         expect(attachmentsSource).toContain('conversation_reply_to');
@@ -211,7 +213,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(generationSource).toContain('getGeneratedReplyReference');
         expect(generationSource).toContain('buildConversationMessageReplyReference(message)');
         expect(generationSource).toContain('resolvedExtra.conversation_reply_to = replyReference');
-        expect(generationSource).toContain('attachReplyReference = false');
+        expect(generationSource).toContain('const attachReplyReference = !replyReferenceSpeakers.has(speakerAvatar)');
+        expect(generationSource).toContain('replyReferenceSpeakers.add(speakerAvatar)');
 
         const replyRefFuncStart = generationSource.indexOf('function getGeneratedReplyReference(');
         const nextFuncStart = generationSource.indexOf('function getResolvedReplyExtra(', replyRefFuncStart);
@@ -234,7 +237,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(generationSource).toContain('notify = false');
         expect(generationSource).toContain('!force && (!resolvedSettings.image_gen_enabled');
         expect(mediaSource).toContain('Quick Image Gen failed');
-        expect(mediaSource).toContain('../extensions/quick-image-gen/index.js');
+        expect(mediaSource).toContain('getExtensionCapability(\'quick-image-gen\')');
+        expect(mediaSource).not.toContain('../extensions/quick-image-gen/index.js');
     });
 
     test('suppresses the welcome recent-chat surface while Conversation Mode opens', () => {
@@ -246,35 +250,36 @@ describe('conversation mode scoped connection profile', () => {
     });
 
     test('exposes Conversation REST discovery on both supported API base paths', () => {
-        expect(serverStartupSource).toContain("app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter)");
-        expect(serverStartupSource).toContain("app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter)");
+        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny-conversation\', sillyBunnyConversationRouter)');
+        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny/conversation\', sillyBunnyConversationRouter)');
     });
 
     test('connects Conversation messages to the existing TTS extension', () => {
         expect(extensionTtsSource).toContain('export async function narrateTtsMessage');
         expect(extensionTtsSource).toContain('async function ensureTtsProviderLoaded');
         expect(extensionTtsSource).toContain('await ensureTtsProviderLoaded()');
-        expect(extensionTtsSource.indexOf('await ensureTtsProviderLoaded()')).toBeLessThan(extensionTtsSource.indexOf('await initVoiceMap(Boolean(unrestrictedVoiceMap))'));
-        expect(extensionTtsSource).toContain('await initVoiceMap(Boolean(unrestrictedVoiceMap))');
+        expect(extensionTtsSource.indexOf('await ensureTtsProviderLoaded()')).toBeLessThan(extensionTtsSource.indexOf('await initVoiceMap(Boolean(unrestrictedVoiceMap), [speaker])'));
+        expect(extensionTtsSource).toContain('await initVoiceMap(Boolean(unrestrictedVoiceMap), [speaker])');
         expect(extensionTtsSource).toContain('await wrapper.update()');
         expect(extensionTtsSource).toContain('await processTtsQueue()');
-        expect(extensionTtsSource).toContain('setTimeout(() => wrapper.update(), 0)');
-        expect(extensionTtsSource).toContain('processAndQueueTtsMessage(message, messageId, { manual: isManual })');
-        expect(conversationTtsSource).toContain('../extensions/tts/index.js');
+        expect(extensionTtsSource).toContain('setTimeout(() => void wrapper.update(), 0)');
+        expect(extensionTtsSource).toContain('processAndQueueTtsMessage({ ...message, name: speaker }, messageId, { manual: isManual })');
+        expect(conversationTtsSource).toContain('getExtensionCapability(\'tts\')');
+        expect(conversationTtsSource).not.toContain('../extensions/tts/index.js');
         expect(conversationTtsSource).toContain('narrateTtsMessage(ttsMessage');
-        expect(threadStoreSource).toContain('void narrateConversationMessage(message)');
-        expect(timelineSource).toContain("action: 'speak-message'");
+        expect(threadStoreSource).toContain('void narrateConversationMessage(message, { isStillVisible })');
+        expect(timelineSource).toContain('action: \'speak-message\'');
         expect(timelineSource).toContain('speakConversationMessage');
-        expect(chromeSource).toContain("case 'speak-message':");
+        expect(chromeSource).toContain('case \'speak-message\':');
     });
 
     test('sends Pollinations TTS text as literal speech input', () => {
         expect(pollinationsTtsSource).toContain('text: chunk');
         expect(pollinationsTtsSource).not.toContain('Say exactly this and nothing else');
         expect(speechEndpointSource).toContain('https://gen.pollinations.ai/v1/audio/speech');
-        expect(speechEndpointSource).toContain("model === 'openai-audio' ? 'tts-1' : model");
+        expect(speechEndpointSource).toContain('model === \'openai-audio\' ? \'tts-1\' : model');
         expect(speechEndpointSource).toContain('input: text');
-        expect(speechEndpointSource).not.toContain("modalities: ['text', 'audio']");
+        expect(speechEndpointSource).not.toContain('modalities: [\'text\', \'audio\']');
     });
 
     test('advances TTS queue immediately after segment generation completes', () => {
@@ -297,7 +302,15 @@ describe('conversation mode scoped connection profile', () => {
 
         const completeTtsJobBody = extensionTtsLines.slice(completeTtsJobIndex, endIndex + 1).join('\n');
         expect(completeTtsJobBody).toContain('ttsJobQueue.length > 0');
-        expect(completeTtsJobBody).toContain('setTimeout(() => wrapper.update(), 0)');
+        expect(completeTtsJobBody).toContain('scheduleTtsQueueWakeup()');
+
+        // The wakeup helper must schedule a macrotask; a microtask can run before
+        // SimpleMutex releases and be swallowed.
+        const wakeupIndex = extensionTtsLines.findIndex(line => line.includes('function scheduleTtsQueueWakeup()'));
+        expect(wakeupIndex).toBeGreaterThanOrEqual(0);
+        const wakeupBody = extensionTtsLines.slice(wakeupIndex, wakeupIndex + 6).join('\n');
+        expect(wakeupBody).toContain('setTimeout(() => void wrapper.update(), 0)');
+        expect(extensionTtsSource).not.toContain('queueMicrotask(() => void wrapper.update())');
     });
 
     test('waits around five seconds for rapid follow-up messages before replying', () => {

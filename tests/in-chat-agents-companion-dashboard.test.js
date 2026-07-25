@@ -7,6 +7,8 @@ describe('companion dashboard', () => {
     let agents;
     let companionResultsByMessage;
     let popupInstances;
+    let conversationModeActive;
+    let openCompanionPanelMock;
 
     class PopupMock {
         constructor(content, type, header, options) {
@@ -110,7 +112,8 @@ describe('companion dashboard', () => {
         }));
 
         await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
-            openCompanionPanel: jest.fn(),
+            isConversationModeActive: jest.fn(() => conversationModeActive),
+            openCompanionPanel: openCompanionPanelMock,
         }));
 
         return await import('../public/scripts/extensions/in-chat-agents/companion/companion-dashboard.js');
@@ -122,6 +125,8 @@ describe('companion dashboard', () => {
         agents = [];
         companionResultsByMessage = new Map();
         popupInstances = [];
+        conversationModeActive = false;
+        openCompanionPanelMock = jest.fn();
         globalThis.toastr = {
             info: jest.fn(),
             success: jest.fn(),
@@ -252,10 +257,11 @@ describe('companion dashboard', () => {
         expect(entries[0].snippet).toBe('Traveler saw Mona write: the stars are bright');
     });
 
-    test('appends the wand menu item once and wires its click handler', async () => {
+    test('appends the wand menu item once, wires its click handler, and starts hidden in Conversation Mode', async () => {
+        conversationModeActive = true;
         const dashboard = await importDashboard();
         const appended = [];
-        const menuItem = { on: jest.fn(() => menuItem) };
+        const menuItem = { on: jest.fn(() => menuItem), toggle: jest.fn(() => menuItem) };
         let wandItemInstalled = false;
         globalThis.$ = jest.fn(arg => {
             if (arg === '#ica_companions_wand_item') {
@@ -280,6 +286,20 @@ describe('companion dashboard', () => {
 
         expect(appended).toHaveLength(1);
         expect(menuItem.on).toHaveBeenCalledWith('click', expect.any(Function));
+        expect(menuItem.toggle).toHaveBeenCalledWith(false);
+    });
+
+    test('the dashboard refuses to open while Conversation Mode is active', async () => {
+        conversationModeActive = true;
+        const dashboard = await importDashboard();
+        dashboard.configureCompanionDashboard({
+            getVisibleAgents: () => [],
+            getLastAssistantMessageIndex: () => -1,
+        });
+
+        await dashboard.openCompanionDashboard();
+        expect(popupInstances).toHaveLength(0);
+        expect(eventSource.on).not.toHaveBeenCalled();
     });
 
     test('registers the results listener while open and removes it after close', async () => {

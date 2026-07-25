@@ -61,10 +61,10 @@ let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
+let conversationModeObserver = null;
 
-function isConversationModeActive() {
+export function isConversationModeActive() {
     const sheld = globalThis.document?.getElementById?.('sheld');
-
     return sheld?.dataset?.sbConversationMode === 'on'
         || sheld?.getAttribute?.('data-sb-conversation-mode') === 'on';
 }
@@ -86,8 +86,10 @@ function observeConversationModeState() {
         return;
     }
 
-    new globalThis.MutationObserver(syncConversationModePanelVisibility)
-        .observe(sheld, { attributes: true, attributeFilter: ['data-sb-conversation-mode'] });
+    // One observer instance for the panel lifecycle; re-init never stacks observers.
+    conversationModeObserver?.disconnect?.();
+    conversationModeObserver = new globalThis.MutationObserver(syncConversationModePanelVisibility);
+    conversationModeObserver.observe(sheld, { attributes: true, attributeFilter: ['data-sb-conversation-mode'] });
 }
 
 function scrollChatMessageIntoView(messageElement) {
@@ -764,8 +766,12 @@ export function refreshCompanionPanel() {
 }
 
 export function updateCompanionPanelHandleVisibility() {
+    const conversationModeActive = isConversationModeActive();
     const shouldShow = shouldShowCompanionPanelHandle();
     $('#ica--tracker-panel-handle').toggle(shouldShow);
+    // Conversation Mode hides both companion wand entries (panel + dashboard).
+    $('#ica_tracker_panel_wand_item').toggle?.(!conversationModeActive);
+    $('#ica_companions_wand_item').toggle?.(!conversationModeActive);
     if (shouldShow) {
         // Sizes are only measurable once visible; (re)place on the next frame.
         requestHandlePlacement();
@@ -1176,6 +1182,6 @@ export function initCompanionPanel() {
         });
     }
 
-    updateCompanionPanelHandleVisibility();
     observeConversationModeState();
+    syncConversationModePanelVisibility();
 }

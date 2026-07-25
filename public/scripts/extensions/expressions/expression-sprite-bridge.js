@@ -2,21 +2,13 @@
  * Non-blocking bridge from the Expressions extension to Quick Image Gen.
  *
  * SillyBunny divergence: QIG is vendored from an upstream repo, so this file lives
- * outside `quick-image-gen/` and imports only the small set of helpers it needs.
- * That keeps the vendored QIG surface minimal and makes upstream syncs safer.
+ * outside `quick-image-gen/` and discovers its activated runtime capability.
+ * This avoids loading a disabled or second URL identity of the QIG entrypoint.
  */
 
-import {
-    getSettings as getQigSettings,
-    getGenerationSettingsForRun as getQigGenerationSettingsForRun,
-    generateForProvider as qigGenerateForProvider,
-    finalizeGeneratedEntry as qigFinalizeGeneratedEntry,
-    withTransientGenerationSettings as qigWithTransientGenerationSettings,
-} from '../quick-image-gen/index.js';
-import { getRequestHeaders } from '../../../script.js';
+import { getExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 
 const SPINNER_ID = 'expression-agent-spinner';
-const LOCAL_INTERRUPT_TIMEOUT_MS = 2500;
 const EXPRESSION_SPRITE_FRAMING = {
     bust: 'bust',
     fullBody: 'full_body',
@@ -216,49 +208,31 @@ function endExpressionGenerationRequest(serial) {
     }
 }
 
-async function requestLocalProviderInterrupt(settings) {
-    if (!settings?.localUrl || !['local', 'comfyui'].includes(settings.provider)) return;
-
-    const baseUrl = settings.localUrl.replace(/\/$/, '');
-    const interruptUrl = settings.localType === 'comfyui'
-        ? `${baseUrl}/interrupt`
-        : `${baseUrl}/sdapi/v1/interrupt`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), LOCAL_INTERRUPT_TIMEOUT_MS);
-
+async function waitForQigReadiness(qig, signal) {
+    if (signal.aborted) throw signal.reason;
+    let abort;
+    const aborted = new Promise((_, reject) => {
+        abort = () => reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+        signal.addEventListener('abort', abort, { once: true });
+    });
     try {
-        await fetch(interruptUrl, { method: 'POST', signal: controller.signal });
-    } catch (error) {
-        if (error?.name === 'AbortError') return;
-        try {
-            await fetch(`/proxy/${interruptUrl}`, {
-                method: 'POST',
-                headers: getRequestHeaders(),
-                signal: controller.signal,
-            });
-        } catch (proxyError) {
-            if (proxyError?.name !== 'AbortError') {
-                console.debug('[Expression Sprite Bridge] Local generation interrupt failed:', proxyError);
-            }
-        }
+        await Promise.race([qig.ensureReady(), aborted]);
     } finally {
-        clearTimeout(timeoutId);
+        signal.removeEventListener('abort', abort);
     }
 }
 
-async function generateImageFromPrompt(prompt, negative) {
+async function runWithQigCapability(task) {
+    const qig = getExtensionCapability('quick-image-gen');
+    if (!qig) {
+        console.debug('[Expression Sprite Bridge] Quick Image Gen is not active');
+        return null;
+    }
+
     const generationRequest = beginExpressionGenerationRequest();
-
     try {
-        const imageUrl = await qigWithTransientGenerationSettings({}, async () => {
-            const settings = getQigGenerationSettingsForRun();
-            const rawResult = await qigGenerateForProvider(prompt, negative, settings, generationRequest.controller.signal, {});
-            if (!rawResult) return null;
-            const entry = await qigFinalizeGeneratedEntry(rawResult, prompt, negative, settings, {});
-            return entry?.url || null;
-        });
-
-        return imageUrl || null;
+        await waitForQigReadiness(qig, generationRequest.controller.signal);
+        return await task(qig, generationRequest.controller.signal);
     } finally {
         endExpressionGenerationRequest(generationRequest.serial);
     }
@@ -272,9 +246,6 @@ export function stopExpressionSpriteGeneration() {
     if (!activeGenerationAbortController || activeGenerationAbortController.signal.aborted) return false;
 
     activeGenerationAbortController.abort();
-    requestLocalProviderInterrupt(getQigSettings()).catch((error) => {
-        console.debug('[Expression Sprite Bridge] Local generation interrupt skipped:', error);
-    });
     hideSpinner();
     return true;
 }
@@ -328,19 +299,16 @@ function removeSpinner() {
 export async function generateExpressionSprite(expression, promptContext) {
     if (!expression || !promptContext?.characterName) return null;
 
-    const qigSettings = getQigSettings();
-    if (!qigSettings) {
-        console.debug('[Expression Sprite Bridge] Quick Image Gen settings not available');
-        return null;
-    }
-
     showSpinner();
 
     try {
-        const prompt = buildExpressionSpritePrompt(expression, promptContext);
-        const negative = [qigSettings.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
-
-        return await generateImageFromPrompt(prompt, negative);
+        return await runWithQigCapability(async (qig, signal) => {
+            const qigSettings = qig.getSettingsSnapshot();
+            const prompt = buildExpressionSpritePrompt(expression, promptContext);
+            const negative = [qigSettings?.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
+            const entry = await qig.generateImage(prompt, negative, { signal });
+            return entry?.url || null;
+        });
     } catch (error) {
         if (error?.name === 'AbortError') throw error;
         console.error('[Expression Sprite Bridge] Failed to generate sprite:', error);
@@ -364,20 +332,17 @@ export async function generateExpressionSpriteSheet(expressions, promptContext) 
     const labels = Array.isArray(expressions) ? expressions.filter(Boolean) : [];
     if (labels.length === 0 || !promptContext?.characterName) return null;
 
-    const qigSettings = getQigSettings();
-    if (!qigSettings) {
-        console.debug('[Expression Sprite Bridge] Quick Image Gen settings not available');
-        return null;
-    }
-
     showSpinner();
 
     try {
-        const grid = getExpressionSpriteSheetGrid(labels.length);
-        const prompt = buildExpressionSpriteSheetPrompt(labels, promptContext, grid);
-        const negative = [qigSettings.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
-        const imageUrl = await generateImageFromPrompt(prompt, negative);
-        return imageUrl ? { imageUrl, grid } : null;
+        return await runWithQigCapability(async (qig, signal) => {
+            const qigSettings = qig.getSettingsSnapshot();
+            const grid = getExpressionSpriteSheetGrid(labels.length);
+            const prompt = buildExpressionSpriteSheetPrompt(labels, promptContext, grid);
+            const negative = [qigSettings?.negativePrompt, EXPRESSION_SPRITE_NEGATIVE].filter(Boolean).join(', ');
+            const entry = await qig.generateImage(prompt, negative, { signal });
+            return entry?.url ? { imageUrl: entry.url, grid } : null;
+        });
     } catch (error) {
         if (error?.name === 'AbortError') throw error;
         console.error('[Expression Sprite Bridge] Failed to generate sprite sheet:', error);
