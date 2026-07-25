@@ -1,4 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
 
 import { escapeCharacterBookRegex, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
 
@@ -348,5 +349,12 @@ describe('serializeWorldInfoEntry', () => {
             ignore_budget: false,
             agent_blacklisted: false,
         });
+    });
+});
+
+describe('convertCharacterBook', () => {
+    test('maps CharacterBook filters to native entries', () => {
+        const source = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
+        expect(source).toMatch(/characterFilter:\s*entry\.character_filter,/);
     });
 });

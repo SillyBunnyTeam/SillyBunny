@@ -6165,6 +6165,7 @@ export function convertCharacterBook(characterBook) {
             caseSensitive: entry.case_sensitive ?? entry.extensions?.case_sensitive ?? null,
             matchWholeWords: entry.extensions?.match_whole_words ?? null,
             useGroupScoring: entry.extensions?.use_group_scoring ?? null,
+            characterFilter: entry.character_filter,
             automationId: entry.extensions?.automation_id ?? '',
             role: entry.extensions?.role ?? extension_prompt_roles.SYSTEM,
             vectorized: entry.extensions?.vectorized ?? false,
