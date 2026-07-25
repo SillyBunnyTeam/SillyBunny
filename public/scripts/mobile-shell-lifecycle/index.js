@@ -793,6 +793,10 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.ica--template-pill-row',
     '.sb-shell-nav',
     '.sb-settings-tabs-nav',
+    // The icons-only top bar is made entirely of buttons, so every swipe on it matches
+    // MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR and the pan guard blocks it unless the rail is
+    // allowlisted here.
+    '.sb-topbar-group-left',
     '.sb-conversation-channel-tabs',
     '.sb-conversation-quick-actions',
     '.sb-character-create-bar',
