@@ -219,6 +219,18 @@ describe('icons only top bar', () => {
         expect(pageStateSource).toContain('syncCharacterTopbarButtonState();');
     });
 
+    test('clears shell page highlights after native drawer dismissal only in icons-only mode', () => {
+        const activeStateSource = getFunctionSource('isTopbarPageActive');
+        expect(activeStateSource).toContain('isShellTabOpen(page.shellKey, page.tabId)');
+
+        const shellTabSource = getFunctionSource('isShellTabOpen');
+        expect(shellTabSource).toContain('isShellOpen(shellKey) && shellState.activeTabId === tabId');
+
+        const observerSource = getFunctionSource('observeProxyButton');
+        expect(observerSource).toContain('syncProxyButtonState(proxyButton, sourceIcon);');
+        expect(observerSource).toContain('if (isTopbarIconsOnlyActive()) {\n            queueTopbarPageStateSync();\n        }');
+    });
+
     test('keeps one canonical button order per mode instead of moving buttons around', () => {
         // appendChild on a node the group already holds is a move, so replaying a whole order is
         // idempotent -- unlike remembering a nextSibling that a neighbouring move can detach.

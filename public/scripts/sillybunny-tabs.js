@@ -9252,6 +9252,9 @@ function observeProxyButton(buttonId, iconSelector) {
 
     const observer = new MutationObserver(() => {
         syncProxyButtonState(proxyButton, sourceIcon);
+        if (isTopbarIconsOnlyActive()) {
+            queueTopbarPageStateSync();
+        }
     });
 
     observer.observe(sourceIcon, { attributes: true, attributeFilter: ['class'] });
