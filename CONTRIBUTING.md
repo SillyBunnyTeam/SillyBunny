@@ -6,7 +6,7 @@ BEFORE submitting a pull request, keep the following project goals and best prac
 
 #### Project Goals (taken from README)
 
-1) **Simple by default; powerful when needed.** Directly inspired by KDE Plasma's main driving philosophy, SillyBunny is aimed to be simple to understand and intuitive to use by default, with most of the complex settings hidden away from the default workspace. Sane defaults are implemented while all the extra complexity is hidden behind UI elements: still there, but less obtrusive. Our graphical shell best embodies this philosophy.
+1) **Simple by default; powerful when needed.** Directly inspired by KDE Plasma's main driving philosophy, SillyBunny is aimed to be simple to understand and intuitive to use by default, with most of the complex settings hidden away from the default workspace. Sane defaults are implemented while all the extra complexity is hidden behind UI elements. Our graphical shell best embodies this philosophy.
 2) **A focus on roleplay and storytelling.** SillyBunny has a more opinionated purpose compared to upstream SillyTavern. Our goals align closely with the creative writing scene for models, and the general direction of the fork is aimed for that use case. We facilitate this with pre-bundled tutorials/add-ons/presets designed to get you started with LLM creative writing in fun ways.
 3) **Modernised features.** We aim to implement new features that can greatly take advantage of modern models and their strong, agentic capabilities. Currently, this includes full support for In-Chat pre, sidecar, and post gen agents that complement the main generation. Models work best on smaller individual tasks, and this is best shown through in-chat agents and their capabilities. We've also implemented a conversational "instant messenger' mode that accompanies the roleplay mode, and plan on introducing more of these modes in the future.
 4) **Better performance & UX.** Base SillyTavern relies on node.js for its runtime environment. While robust, this is not ideal for performance. We've switched to a Bun runtime to increase general performance and startup times, while optimising for lower power devices like smartphones. Mobile development gets as much attention as desktop development in this fork, so the program remains easy to use regardless of your platform of choice.
@@ -124,4 +124,4 @@ This program is licensed as free software under the [AGPL 3.0](https://www.gnu.o
 
 > [!WARNING]
 > ### AI Disclaimer (Vibe Coding)
-> LLMs are used liberally in this project to implement changes to the code. You are more than welcome to submit a PR with AI-assistance, as long as it aligns with the contribution guidelines.
+> LLMs are used liberally in this project to implement changes to the code. You are more than welcome to submit a PR with AI-assistance, as long as it aligns with the contribution guidelines and you understand and can explain the code being submitted in your own words.
