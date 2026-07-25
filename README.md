@@ -216,6 +216,10 @@ SillyBunny has support for In-Chat Agents. These are custom prompt fields that c
 * Built-in groups are available for the full preset, trackers only, and randomizers only.
 * Custom agents support ST-style regex options.
 
+### Conversation Mode REST API
+
+lorum ipsum
+
 ### Bundled Goodies & Tutorials
 SillyBunny includes some extras by default to help you get started right away:
 * A tutorial that guides you through the SillyBunny interface.
