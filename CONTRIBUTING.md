@@ -4,7 +4,9 @@
 
 BEFORE submitting a pull request, keep the following project goals and best practices in mind:
 
-#### Project Goals (taken from README)
+#### Project Goals
+
+The following goals summarize `PRODUCT.md` and `README.md`; `PRODUCT.md` is authoritative for product direction.
 
 1) **Simple by default; powerful when needed.** Directly inspired by KDE Plasma's main driving philosophy, SillyBunny is aimed to be simple to understand and intuitive to use by default, with most of the complex settings hidden away from the default workspace. Sane defaults are implemented while all the extra complexity is hidden behind UI elements: still there, but less obtrusive. Our graphical shell best embodies this philosophy.
 2) **A focus on roleplay and storytelling.** SillyBunny has a more opinionated purpose compared to upstream SillyTavern. Our goals align closely with the creative writing scene for models, and the general direction of the fork is aimed for that use case. We facilitate this with pre-bundled tutorials/add-ons/presets designed to get you started with LLM creative writing in fun ways.
@@ -57,7 +59,7 @@ All PRs must have their descriptions *manually* written, without AI assistance. 
 Project maintainers will test and can change your code before merging. To keep our workflow smooth, please ensure the following:
 - The "Allow edits from maintainers" option is checked.
 - Avoid force-pushing your branch once the PR is out of draft state.
-- Do not self push any PR to origin. It must be reviewed by at least one other contributor. Direct end user debugging to the correct PR branch instead of staging, before merging.
+- Do not self-merge any PR into the upstream repository. It must be reviewed by at least one other contributor. Direct end user debugging to the correct PR branch instead of staging, before merging.
 #### Release and hotfix hygiene
 
 If you're helping ship a SillyBunny release, keep the release copy in sync with the code:
