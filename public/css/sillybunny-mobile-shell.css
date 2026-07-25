@@ -1256,8 +1256,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: none;
     }
 
-    :root[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
-    :root[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle,
+    :root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle {
         display: inline-flex;
     }
 

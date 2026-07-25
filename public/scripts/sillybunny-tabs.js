@@ -726,14 +726,11 @@ const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
 ]);
 
 // SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
-// each Layer 2 anchor in place into that anchor's own Layer 3 pages, so the bar keeps the skeleton
-// PRODUCT.md prescribes -- Workspace, Customize, title, quick access, Home, Characters -- and each
-// cluster stays readable as its own zone. Deliberately capped at three pages per cluster: the
-// anchor toggle still opens the full page list, so a page left off the bar is demoted a layer, not
-// removed. Labels and icons resolve from SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a
-// cluster cannot drift when a page is renamed. Kept separate from SB_SHORTCUT_TARGETS and
-// SB_MOBILE_NAV_PAGE_TARGETS because those two are persisted in user settings and carry
-// pseudo-entries these lists must not inherit.
+// each section in place into that section's own pages, so the bar keeps the skeleton PRODUCT.md
+// prescribes and each cluster stays readable as its own zone. Labels and icons resolve from
+// SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a cluster cannot drift when a page is
+// renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because those two
+// are persisted in user settings and carry pseudo-entries these lists must not inherit.
 const SB_TOPBAR_CLUSTERS = Object.freeze([
     {
         key: 'workspace',
@@ -743,6 +740,8 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
             { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
             { value: 'left:api', shellKey: 'left', tabId: 'api' },
             { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
+            { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+            { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
         ]),
     },
     {
@@ -753,6 +752,8 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
             { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
             { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
             { value: 'right:background', shellKey: 'right', tabId: 'background' },
+            { value: 'right:server', shellKey: 'right', tabId: 'server' },
+            { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
         ]),
     },
     {
@@ -761,19 +762,18 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
         railId: 'sb-topbar-cluster-characters',
         pages: Object.freeze([
             { value: 'characters:groups', shellKey: 'characters', tabId: 'groups' },
+            { value: 'characters:editor', shellKey: 'characters', tabId: 'editor' },
             { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info' },
             { value: 'characters:persona', shellKey: 'characters', tabId: 'persona' },
+            { value: 'characters:import', shellKey: 'characters', tabId: 'import' },
         ]),
     },
 ]);
 const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
 
-// SillyBunny: every Layer 2 anchor stays on the bar in icons-only mode and only drops its text
-// label. Nothing is parked: the clusters are capped, so an anchor is the only way back to the pages
-// its cluster left off, and removing it would bury them.
+// SillyBunny: Home and Characters remain as Layer 2 anchors. Workspace and Customize are redundant
+// once all of their pages are shown, so CSS hides those two only while icons-only mode is active.
 const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
-    'sb-left-shell-toggle',
-    'sb-right-shell-toggle',
     'sb-home-toggle',
     'sb-character-toggle',
 ]);
@@ -2359,8 +2359,8 @@ function getShellProxyButton(shellKey) {
         return proxyButton;
     }
 
-    // SillyBunny: the Workspace toggle is display:none on phones, and focusing a display:none
-    // button silently drops focus to <body>. Fall back to the cluster icon for the active tab.
+    // SillyBunny: Workspace and Customize are hidden in icons-only mode, and Workspace is also
+    // hidden on phones. Fall back to the cluster icon so focus does not silently drop to <body>.
     const activeTabId = getShellState(shellKey)?.activeTabId;
     const pageButton = activeTabId
         ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
@@ -5034,7 +5034,6 @@ function syncTopbarIconsOnlyLayout() {
     const iconsOnly = isTopbarIconsOnlyActive();
 
     for (const buttonId of SB_TOPBAR_ANCHOR_IDS) {
-        // Layer 2 anchors always stay on the bar; icons-only mode only drops their text labels.
         document.getElementById(buttonId)?.classList.toggle('sb-proxy-button-icon-only', iconsOnly);
     }
 
@@ -5047,31 +5046,22 @@ function syncTopbarIconsOnlyLayout() {
     }
 }
 
-// SillyBunny: a Quick Access slot pointed at a page that also has a cluster icon renders the same
-// glyph twice. The slot wins, because the user picked it deliberately, and the cluster copy hides.
+// SillyBunny: the complete clusters keep their canonical positions. A Quick Access slot pointed at
+// one of those pages yields in icons-only mode; non-cluster actions such as Search remain visible.
 function syncTopbarIconsOnlyDedupe() {
     const clusterButtons = document.querySelectorAll('.sb-topbar-page-button[data-sb-topbar-page]');
-
-    if (!isTopbarIconsOnlyActive()) {
-        for (const button of clusterButtons) {
-            button.classList.remove('sb-topbar-page-duplicate');
-        }
-
-        return;
-    }
-
-    const claimed = new Set();
+    const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));
+    const iconsOnly = isTopbarIconsOnlyActive();
 
     for (const side of SB_SHORTCUT_SLOTS) {
-        const target = getShortcutTarget(side);
+        const button = document.getElementById(getShortcutButtonId(side));
 
-        if (target !== 'none') {
-            claimed.add(target);
+        if (button instanceof HTMLElement) {
+            button.classList.toggle(
+                'sb-topbar-shortcut-duplicate',
+                iconsOnly && claimedByClusters.has(getShortcutTarget(side)),
+            );
         }
-    }
-
-    for (const button of clusterButtons) {
-        button.classList.toggle('sb-topbar-page-duplicate', claimed.has(button.dataset.sbTopbarPage));
     }
 }
 

@@ -140,31 +140,15 @@ describe('icons only top bar', () => {
             .toEqual(['workspace', 'customize', 'characters']);
     });
 
-    test('caps every cluster at three pages', () => {
-        // Clutter reduction is the point: an anchor still opens the full page list, so a page left
-        // off the bar is demoted a layer rather than removed.
-        const clusterBlocks = getClustersSource().split('pages: Object.freeze([').slice(1);
+    test('keeps every requested page in its canonical cluster order', () => {
+        const pageLists = [...getClustersSource().matchAll(/pages: Object\.freeze\(\[([\s\S]*?)\]\),/g)]
+            .map(match => [...match[1].matchAll(/value: '([^']+)'/g)].map(pageMatch => pageMatch[1]));
 
-        expect(clusterBlocks).toHaveLength(3);
-
-        for (const block of clusterBlocks) {
-            const pages = [...block.matchAll(/value: '([^']+)'/g)].map(match => match[1]);
-            expect(pages.length).toBeGreaterThan(0);
-            expect(pages.length).toBeLessThanOrEqual(3);
-        }
-    });
-
-    test('leaves the maintenance and duplicate pages off the bar', () => {
-        const clustersSource = getClustersSource();
-
-        // Server and Console Logs are troubleshooting surfaces, Formatting is rarely touched
-        // mid-write, and Agents is the documented default for the left Quick Access slot.
-        for (const target of ['right:server', 'right:console-logs', 'left:advanced-formatting', 'left:agents']) {
-            expect(clustersSource).not.toContain(`'${target}'`);
-        }
-
-        // Still selectable as a Quick Access target, so nothing became unreachable.
-        expect(normalizedTabsSource).toContain('{ value: \'left:agents\', label: \'Agents\', icon: \'fa-robot\' }');
+        expect(pageLists).toEqual([
+            ['left:presets', 'left:api', 'left:sampling', 'left:advanced-formatting', 'left:agents'],
+            ['right:settings', 'right:extensions', 'right:background', 'right:server', 'right:console-logs'],
+            ['characters:groups', 'characters:editor', 'characters:world-info', 'characters:persona', 'characters:import'],
+        ]);
     });
 
     test('derives page labels and icons from the shell registries', () => {
@@ -176,17 +160,35 @@ describe('icons only top bar', () => {
         const configSource = getFunctionSource('getTopbarPageConfig');
         expect(configSource).toContain('getCharacterPanelTabConfig(page.tabId)');
         expect(configSource).toContain('getShellConfig(page.shellKey)');
+
+        const buttonSource = getFunctionSource('createTopbarPageButton');
+        expect(buttonSource).toContain('icon: config?.icon ?? \'fa-circle-dot\'');
+        for (const entry of [
+            "id: 'advanced-formatting',",
+            "id: 'agents',",
+            "id: 'server',",
+            "id: 'console-logs',",
+            "{ id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' }",
+            "{ id: 'import', label: 'Import', icon: 'fa-file-import' }",
+        ]) {
+            expect(normalizedTabsSource).toContain(entry);
+        }
     });
 
-    test('keeps every layer 2 anchor on the bar and parks nothing', () => {
-        // Trimming the clusters makes the section toggles the only way back to the pages they left
-        // off, so removing them would bury those pages rather than hide them.
+    test('hides only redundant section anchors in icons-only mode and parks nothing', () => {
         const anchorMatch = normalizedTabsSource.match(/const SB_TOPBAR_ANCHOR_IDS = Object\.freeze\(\[[\s\S]*?\]\);/);
         expect(anchorMatch).not.toBeNull();
 
-        for (const anchorId of ['sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-home-toggle', 'sb-character-toggle']) {
+        for (const anchorId of ['sb-home-toggle', 'sb-character-toggle']) {
             expect(anchorMatch[0]).toContain(`'${anchorId}'`);
         }
+        for (const anchorId of ['sb-left-shell-toggle', 'sb-right-shell-toggle']) {
+            expect(anchorMatch[0]).not.toContain(`'${anchorId}'`);
+        }
+
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-left-shell-toggle,\n:root\[data-sb-topbar-icons-only='true'\] #sb-right-shell-toggle \{\n\s*display: none;\n\}/);
+        expect(mobileCss).toContain(":root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-layout='horizontal'][data-sb-mobile-nav-customize='shown'] #sb-left-shell-toggle");
+        expect(mobileCss).toContain(":root:not([data-sb-topbar-icons-only='true'])[data-sb-mobile-nav-replacement='shown'] #sb-left-shell-toggle");
 
         // The parking machinery and its bay are gone entirely.
         expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
@@ -267,7 +269,7 @@ describe('icons only top bar', () => {
         // "The different buttons should be placed in more appropriate locations, with some
         // appropriate gaps." Derived from the group gap so it tracks the user's top bar scale.
         expect(cssSource).toContain('--sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);');
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-lead:not\(:first-child\) \{\n\s*margin-inline-start: calc\(var\(--sb-topbar-cluster-gap\) - var\(--sb-topbar-group-gap\)\);\n\}/);
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-cluster-workspace \{\n\s*margin-inline-start: calc\(var\(--sb-topbar-cluster-gap\) - var\(--sb-topbar-group-gap\)\);\n\}/);
 
         const railRule = cssSource.match(/\.sb-topbar-pages \{[^}]*\}/);
         expect(railRule[0]).toContain('gap: var(--sb-topbar-group-gap);');
@@ -312,18 +314,17 @@ describe('icons only top bar', () => {
         expect(getFunctionSource('syncTopbarPageButtonStates')).toContain('for (const page of SB_TOPBAR_PAGE_TARGETS) {');
     });
 
-    test('keeps quick access fully live rather than superseded', () => {
-        // The slots are part of the right-hand cluster now, so greying the settings rows out would
-        // be wrong -- and no slot is hidden to make room for a cluster icon.
+    test('keeps canonical cluster icons and yields duplicate quick access slots', () => {
         expect(normalizedTabsSource).not.toContain('.sb-shortcut-rows\')?.classList.toggle(\'is-disabled\'');
         expect(cssSource).not.toContain('.sb-shortcut-rows.is-disabled');
 
         const dedupeSource = getFunctionSource('syncTopbarIconsOnlyDedupe');
         expect(dedupeSource).not.toContain('style.setProperty(\'display\'');
-        // A slot pointed at a page that also has a cluster icon wins; the cluster copy hides.
-        expect(dedupeSource).toContain('claimed.add(target);');
-        expect(dedupeSource).toContain('button.classList.toggle(\'sb-topbar-page-duplicate\', claimed.has(button.dataset.sbTopbarPage));');
-        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-page-duplicate');
+        expect(dedupeSource).toContain('const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));');
+        expect(dedupeSource).toContain("'sb-topbar-shortcut-duplicate'");
+        expect(dedupeSource).toContain('iconsOnly && claimedByClusters.has(getShortcutTarget(side))');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-page-duplicate');
+        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-shortcut-duplicate');
     });
 
     test('re-runs dedupe and refit when a quick action is reassigned', () => {
@@ -397,8 +398,8 @@ describe('icons only top bar', () => {
     });
 
     test('keeps shell focus on a visible control', () => {
-        // The Workspace toggle is display:none on phones, and focusing a display:none button
-        // silently drops focus to <body> when a shell closes.
+        // Workspace and Customize are hidden in icons-only mode, so shell-close focus falls back
+        // to the active page icon instead of silently dropping to <body>.
         const proxySource = getFunctionSource('getShellProxyButton');
         expect(proxySource).toContain('isActuallyVisible(proxyButton)');
         expect(proxySource).toContain('data-sb-topbar-page');

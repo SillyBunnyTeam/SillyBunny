@@ -1314,8 +1314,8 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-/* Icons only top bar: each Layer 2 anchor grows a cluster of its own page icons beside it, and the
-   anchors stay put with their labels suppressed.
+/* Icons only top bar: each section grows a cluster of its own page icons. Workspace and Customize
+   yield to their complete clusters while Home and Characters stay put with labels suppressed.
 
    Square hit boxes at the labelled buttons' own height. The icons used to be 30px wide inside a
    36px-tall bar, which read as a smaller, harder-to-hit control than the anchors beside them
@@ -1336,10 +1336,19 @@ body:not(.movingUI) .drawer-content.maximized {
     gap: var(--sb-topbar-group-gap);
 }
 
+:root[data-sb-topbar-icons-only='true'] #sb-left-shell-toggle,
+:root[data-sb-topbar-icons-only='true'] #sb-right-shell-toggle {
+    display: none;
+}
+
 /* A cluster's anchor sits tight against its own page icons; each new anchor opens the wider seam
    that separates the clusters, so Workspace, Customize and Characters read as three zones rather
    than one strip. Derived from the group gap so it follows the user's top bar scale. */
 :root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-lead:not(:first-child) {
+    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
+}
+
+:root[data-sb-topbar-icons-only='true'] #sb-topbar-cluster-workspace {
     margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
 }
 
@@ -1431,7 +1440,7 @@ body:not(.movingUI) .drawer-content.maximized {
     display: flex;
 }
 
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-page-duplicate {
+:root[data-sb-topbar-icons-only='true'] .sb-topbar-shortcut-duplicate {
     display: none;
 }
 
