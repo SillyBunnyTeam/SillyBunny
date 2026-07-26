@@ -149,6 +149,8 @@ export function getUserAvatar(avatarImg) {
     return `${USER_AVATAR_PATH}${encodeURIComponent(avatarImg)}`;
 }
 
+// SillyBunny: Added to support mobile thumbnail optimization and viewport-aware avatar rendering.
+// Returns all avatar source variants (desktop thumbnail, mobile thumbnail, original) for performance.
 /**
  * Gets every source used to render a persona avatar.
  * @param {string} avatarId Persona avatar file name
@@ -385,6 +387,8 @@ export async function setUserAvatar(imgfile, { toastPersonaNameChange = true, na
     await eventSource.emit(event_types.PERSONA_CHANGED, user_avatar);
 }
 
+// SillyBunny: Added avatar source tracking functions for mobile thumbnail optimization.
+// These helpers enable efficient avatar updates across desktop and mobile viewports.
 function messageUsesPersonaAvatar(avatarImg, avatarId) {
     return ['src', 'data-thumbnail-src', 'data-original-src'].some((attribute) => {
         const source = parseAvatarSource(avatarImg.getAttribute(attribute));

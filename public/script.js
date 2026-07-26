@@ -3565,6 +3565,8 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
+// SillyBunny: Extracted message text preparation from messageFormatting for mobile streaming performance.
+// Allows plain-text preview rendering without full markdown/sanitizer pipeline on Android.
 function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning = false) {
     const resolvedMessageId = messageId !== null && messageId !== undefined && messageId !== ''
         ? Number(messageId)
@@ -3641,6 +3643,7 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
     return { mes, isSystem, showdownSource };
 }
 
+// SillyBunny: Extracted markdown balancing for streaming preview optimization.
 function balanceStreamingMarkdown(text) {
     let balancedText = text;
     for (const char of ['*', '"', '```', '~~~']) {
@@ -3652,6 +3655,7 @@ function balanceStreamingMarkdown(text) {
     return balancedText;
 }
 
+// SillyBunny: Extracted HTML sanitization to allow reuse in streaming and final render paths.
 function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
     /** @type {DOMPurify.Config} */
     const config = {
@@ -4621,12 +4625,14 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
  */
 export function updateMessageElement(mes, { messageId = chat.length - 1, messageElement = messageTemplate.clone(), adjustMediaScroll = SCROLL_BEHAVIOR.NONE } = {}) {
     let avatarImg = getThumbnailUrl('persona', user_avatar);
+    // SillyBunny: Add mobile thumbnail tracking for viewport-aware avatar rendering (mobile performance).
     let mobileAvatarImg = getMobileThumbnailUrl('persona', user_avatar);
     let originalAvatarImg = getFullAvatarUrl('persona', user_avatar);
 
     //for non-user messages
     if (!mes.is_user) {
         if (mes.force_avatar) {
+            // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
             ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
         } else if (this_chid === undefined) {
             avatarImg = system_avatar;
@@ -4634,6 +4640,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
             originalAvatarImg = system_avatar;
         } else if (characters[this_chid] && characters[this_chid].avatar !== 'none') {
             avatarImg = getThumbnailUrl('avatar', characters[this_chid].avatar);
+            // SillyBunny: Mobile thumbnail for character avatars reduces payload on mobile devices.
             mobileAvatarImg = getMobileThumbnailUrl('avatar', characters[this_chid].avatar);
             originalAvatarImg = getFullAvatarUrl('avatar', characters[this_chid].avatar);
         } else {
@@ -4647,6 +4654,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         //characterName = mes.is_system || mes.force_avatar ? mes.name : name2;
     } else if (mes.is_user && mes.force_avatar) {
         // Special case for persona images.
+        // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
         ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
     }
     const momentDate = timestampToMoment(mes.send_date);
