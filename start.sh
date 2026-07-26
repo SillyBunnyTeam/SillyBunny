@@ -315,6 +315,11 @@ fi
 
 "$PACKAGE_MANAGER_CMD" run init
 
+if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then
+    echo "[SillyBunny] SILLYBUNNY_BUN_SMOL is set, but this host resolved to Node.js — --smol is a Bun flag and will be ignored."
+    echo "[SillyBunny] For Bun with --smol, use ./start-bun.sh (Termux: bash start-termux-bun.sh)."
+fi
+
 echo "Entering SillyBunny..."
 export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1

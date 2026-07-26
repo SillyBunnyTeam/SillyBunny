@@ -1,5 +1,18 @@
 #!/bin/sh
 
+# Mirrors is_truthy in start.sh so SILLYBUNNY_* flags accept the same spellings
+# in containers as they do under the shell launchers.
+is_truthy() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Function to handle startup logic (Config check + init + Start)
 start_sillybunny() {
     local PREFIX="$1"
@@ -15,6 +28,14 @@ start_sillybunny() {
     $PREFIX bun run init
 
     # Start the server
+    if is_truthy "${SILLYBUNNY_BUN_SMOL:-}"; then
+        # Bun grows the JSC heap freely while RAM looks plentiful, which reads as
+        # a leak under a container memory cap. --smol trades throughput for much
+        # more aggressive GC.
+        echo "[SillyBunny] SILLYBUNNY_BUN_SMOL set — starting Bun in low-memory mode (--smol)."
+        exec $PREFIX bun --smol server.js --listen "$@"
+    fi
+
     exec $PREFIX bun server.js --listen "$@"
 }
 

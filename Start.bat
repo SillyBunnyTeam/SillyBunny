@@ -119,10 +119,23 @@ if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
     )
 )
 
+REM Normalise SILLYBUNNY_BUN_SMOL to a 0/1 flag so the accepted spellings match
+REM is_truthy in start.sh, rather than only the literal 1.
+set "_bun_smol=0"
+if /I "!SILLYBUNNY_BUN_SMOL!"=="1" set "_bun_smol=1"
+if /I "!SILLYBUNNY_BUN_SMOL!"=="true" set "_bun_smol=1"
+if /I "!SILLYBUNNY_BUN_SMOL!"=="yes" set "_bun_smol=1"
+if /I "!SILLYBUNNY_BUN_SMOL!"=="on" set "_bun_smol=1"
+
+if "!_bun_smol!"=="1" if "!_server_runtime!"=="node" (
+    echo [SillyBunny] SILLYBUNNY_BUN_SMOL is set, but Node.js was selected. --smol is a Bun flag and will be ignored.
+    echo [SillyBunny] For Bun with --smol, use Start-Bun.bat.
+)
+
 :server_loop
 if "!_server_runtime!"=="node" (
     node --no-warnings server.js %*
-) else if /I "!SILLYBUNNY_BUN_SMOL!"=="1" (
+) else if "!_bun_smol!"=="1" (
     REM Bun grows the JSC heap freely while RAM looks plentiful; --smol trades
     REM throughput for much more aggressive GC on memory-constrained hosts.
     bun --smol server.js %*
