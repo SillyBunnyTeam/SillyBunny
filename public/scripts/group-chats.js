@@ -1123,13 +1123,14 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
             chatData: chatSnapshot,
             metadata: metadataSnapshot,
             deferBackup: Boolean(options.deferBackup),
+            allowShrink: Boolean(options.allowShrink),
         }));
 
     groupChatSaveQueue = saveTask.catch(() => {});
     return saveTask;
 }
 
-async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false }) {
+async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, allowShrink = false }) {
     const group = groups.find(x => x.id == groupId);
     if (!group) {
         console.warn('Group not found', groupId);
@@ -1151,7 +1152,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
         character_name: 'unused',
     };
     const chatMessages = Array.isArray(chatData) ? chatData : cloneGroupChatSavePayload(chat);
-    const savePayload = JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup) });
+    const savePayload = JSON.stringify({ id: chatId, chat: [chatHeader, ...chatMessages], force: force, deferBackup: Boolean(deferBackup), allowShrink: Boolean(allowShrink) });
     const buildSaveGroupChatRequest = () => compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
@@ -1188,7 +1189,7 @@ async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = fals
             return false;
         }
 
-        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup });
+        return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, allowShrink });
     }
 
     const responseData = await response.json().catch(() => ({}));

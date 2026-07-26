@@ -50,6 +50,29 @@ const CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX = 'chat_forced_overwrite_';
 const CHAT_PRE_WRITE_BACKUPS_PREFIX = 'chat_pre_write_';
 const PRE_WRITE_BACKUP_RING_SIZE = 3;
 
+/**
+ * Trims regular chat backups only. `CHAT_BACKUPS_PREFIX` is a prefix of the pre-write and
+ * forced-overwrite prefixes, so a plain prefix sweep would also rotate away those recovery layers.
+ * @param {string} directory The user's backup directory.
+ * @param {number} limit Maximum number of regular chat backups to keep.
+ */
+export function removeOldRegularChatBackups(directory, limit) {
+    const reservedPrefixes = [CHAT_PRE_WRITE_BACKUPS_PREFIX, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX];
+    const files = fs.readdirSync(directory)
+        .filter(file => file.startsWith(CHAT_BACKUPS_PREFIX) && !reservedPrefixes.some(reserved => file.startsWith(reserved)))
+        .map(file => path.join(directory, file))
+        .sort((left, right) => fs.statSync(left).mtimeMs - fs.statSync(right).mtimeMs);
+
+    while (files.length > limit) {
+        const oldest = files.shift();
+        if (!oldest) {
+            break;
+        }
+
+        fs.unlinkSync(oldest);
+    }
+}
+
 function logBackupEvent(action, details = {}) {
     if (!isBackupLoggingEnabled) {
         return;
@@ -197,6 +220,10 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
             return;
         }
+        if (backupPrefix === CHAT_BACKUPS_PREFIX) {
+            removeOldRegularChatBackups(directory, maxTotalChatBackups);
+            return;
+        }
         removeOldBackups(directory, backupPrefix, maxTotalChatBackups);
     } catch (err) {
         console.error(`Could not backup chat for ${name}`, err);
@@ -265,6 +292,26 @@ function isSuspiciousChatShrink(newData, existingSerializedChat) {
     }
 
     return Array.isArray(newData) && newData.length < existingLines * 0.5;
+}
+
+/**
+ * Classifies a save that would replace an existing chat with substantially less content.
+ * A chat payload carries one metadata header, so a length below two rows has no messages at all.
+ * @param {Array} newData Incoming chat array.
+ * @param {string} existingSerializedChat Current serialized chat on disk.
+ * @returns {''|'emptied'|'shrink'} Reason the save is destructive, or an empty string.
+ */
+function getDestructiveChatSaveReason(newData, existingSerializedChat) {
+    const existingLines = countSerializedChatLines(existingSerializedChat);
+    if (existingLines < 2 || !Array.isArray(newData)) {
+        return '';
+    }
+
+    if (newData.length < 2) {
+        return 'emptied';
+    }
+
+    return isSuspiciousChatShrink(newData, existingSerializedChat) ? 'shrink' : '';
 }
 
 /**
@@ -718,6 +765,18 @@ class InvalidChatDataError extends Error {
     }
 }
 
+// SillyBunny: a save that would destroy an existing chat is rejected unless the client forces it.
+class DestructiveChatSaveError extends Error {
+    constructor(reason, ...params) {
+        super(...params);
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, DestructiveChatSaveError);
+        }
+        this.reason = reason;
+        this.date = new Date();
+    }
+}
+
 function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -781,8 +840,9 @@ function sendChatLoadResponse(response, target, { allowCreate = false } = {}) {
  * @param {object} [options] Additional save options.
  * @param {boolean} [options.deferBackup] Skip the regular chat backup for this save.
  * @param {object} [options.recoveryTarget] Exact chat recovery target.
+ * @param {boolean} [options.allowShrink] The client is deliberately removing messages, so allow a smaller chat.
  */
-export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null } = {}) {
+export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null, allowShrink = false } = {}) {
     if (!isValidChatSavePayload(chatData)) {
         throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
     }
@@ -813,11 +873,27 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
 
     if (fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
+
+        // SillyBunny: an existing chat that cannot be read can be neither checked nor backed up, so never overwrite it blind.
+        // An empty file reads back as '' rather than null, so this only catches a genuine read failure.
+        if (currentChatData === null && !skipIntegrityCheck && !allowShrink) {
+            throw new DestructiveChatSaveError('unreadable', `Refused a chat save for "${cardName}": the existing chat file could not be read, so it cannot be backed up before being replaced.`);
+        }
+
         if (currentChatData) {
+            const destructiveReason = getDestructiveChatSaveReason(savedChatData, currentChatData);
+            const existingLines = countSerializedChatLines(currentChatData);
+
+            // SillyBunny: reject before the pre-write ring runs, so a rejected save cannot evict the last good state.
+            // Deliberate message deletion sets allowShrink, which is not the same confirmation as an integrity overwrite.
+            if (destructiveReason && !skipIntegrityCheck && !allowShrink) {
+                throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
+            }
+
             backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
 
-            if (isSuspiciousChatShrink(savedChatData, currentChatData)) {
-                console.warn(`Suspicious chat shrink while saving "${cardName}": incoming payload has ${savedChatData.length} JSONL rows, existing file has ${countSerializedChatLines(currentChatData)} rows.`);
+            if (destructiveReason) {
+                console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
             }
 
             if (skipIntegrityCheck) {
@@ -828,6 +904,7 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
 
     if (isBackupEnabled && recoveryTarget) {
         // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
+        // Destructive payloads are rejected above, so this cannot mirror a chat-destroying write.
         try {
             writeLatestChatSnapshot(recoveryTarget, jsonlData);
         } catch (error) {
@@ -860,6 +937,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
             const recoveryTarget = createChatRecoveryTarget(request, false, sanitizedChatFileName);
             const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups, {
                 deferBackup: request.body.deferBackup === true,
+                allowShrink: request.body.allowShrink === true,
                 recoveryTarget,
             });
             return response.send({ ok: true, integrity: saveResult.integrity });
@@ -870,6 +948,10 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
             return response.status(400).send({ error: 'integrity' });
+        }
+        if (error instanceof DestructiveChatSaveError) {
+            console.error(error.message);
+            return response.status(409).send({ error: 'destructive', reason: error.reason });
         }
         if (error instanceof InvalidChatDataError) {
             console.error(error.message);
@@ -1002,7 +1084,20 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
         }
 
         //Return success if the file was deleted.
-        if (tryDeleteFile(chatFilePath)) {
+        let chatFileDeleted = false;
+        try {
+            chatFileDeleted = tryDeleteFile(chatFilePath);
+        } finally {
+            // SillyBunny: a chat that survived the delete must not keep a tombstone blocking its recovery.
+            if (isBackupEnabled && !chatFileDeleted) {
+                runChatRecoveryBestEffort(
+                    () => seedLatestChatSnapshot(recoveryTarget),
+                    'Failed to clear the chat recovery tombstone after a failed deletion.',
+                );
+            }
+        }
+
+        if (chatFileDeleted) {
             runChatRecoveryBestEffort(
                 () => clearChatRecoveryState(recoveryTarget),
                 'Failed to clear chat recovery state after deletion.',
@@ -1273,7 +1368,20 @@ router.post('/group/delete', (request, response) => {
         }
 
         //Return success if the file was deleted.
-        if (tryDeleteFile(chatFilePath)) {
+        let chatFileDeleted = false;
+        try {
+            chatFileDeleted = tryDeleteFile(chatFilePath);
+        } finally {
+            // SillyBunny: a chat that survived the delete must not keep a tombstone blocking its recovery.
+            if (isBackupEnabled && !chatFileDeleted) {
+                runChatRecoveryBestEffort(
+                    () => seedLatestChatSnapshot(recoveryTarget),
+                    'Failed to clear the chat recovery tombstone after a failed deletion.',
+                );
+            }
+        }
+
+        if (chatFileDeleted) {
             runChatRecoveryBestEffort(
                 () => clearChatRecoveryState(recoveryTarget),
                 'Failed to clear chat recovery state after deletion.',
@@ -1305,6 +1413,7 @@ router.post('/group/save', async function (request, response) {
             const recoveryTarget = createChatRecoveryTarget(request, true, chatFileName);
             const saveResult = await trySaveChat(chatData, chatFilePath, request.body.force, handle, String(id), request.user.directories.backups, {
                 deferBackup: request.body.deferBackup === true,
+                allowShrink: request.body.allowShrink === true,
                 recoveryTarget,
             });
             return response.send({ ok: true, integrity: saveResult.integrity });
@@ -1315,6 +1424,10 @@ router.post('/group/save', async function (request, response) {
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
             return response.status(400).send({ error: 'integrity' });
+        }
+        if (error instanceof DestructiveChatSaveError) {
+            console.error(error.message);
+            return response.status(409).send({ error: 'destructive', reason: error.reason });
         }
         if (error instanceof InvalidChatDataError) {
             console.error(error.message);
