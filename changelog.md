@@ -143,6 +143,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #692 (2026-07-26) `fix: overlap between favorites bar and Roleplay/Conversation selector`
 - PR #693 (2026-07-26) `fix: Dropdowns scrollbar fixes`
 - PR #694 (2026-07-26) `fix: QR Stale Bar Fix`
+- PR #695 (2026-07-26) `chore: Clean up dead references`
 
 ## v1.6.5
 
