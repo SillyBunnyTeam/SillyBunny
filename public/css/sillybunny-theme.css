@@ -2256,11 +2256,9 @@ input[type='range']::-moz-range-thumb {
     overflow: hidden;
 }
 
-.select2-container--default .select2-results {
-    max-height: 300px;
-    overflow-x: hidden;
-    overflow-y: auto;
-}
+/* No cap on the .select2-results wrapper: .select2-results__options is the one
+   scroll container (300px base, 320px for World Info). Capping both nests two
+   scrollbars and cuts the option list off mid-row. */
 
 .select2-container--default .select2-results__options {
     background-color: #11151c;
