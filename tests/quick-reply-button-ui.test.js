@@ -151,6 +151,11 @@ class FakeDocument {
         }
         return this.body.querySelector(selector);
     }
+
+    querySelectorAll(selector) {
+        const matches = this.body.matches(selector) ? [this.body] : [];
+        return matches.concat(this.body.querySelectorAll(selector));
+    }
 }
 
 let ButtonUi;
@@ -257,6 +262,24 @@ describe('Quick Reply button bar', () => {
         expect(qrBars).toHaveLength(1);
         expect(sendForm.children).toEqual([fileForm, qrBars[0], nonQrFormItems]);
         expect(qrBars[0].querySelector('.qr--button').textContent).toBe('HELP');
+    });
+
+    test('renderBar removes a stale bar left behind by an integration host', () => {
+        const { sendForm } = appendComposer();
+        const staleHost = document.createElement('div');
+        staleHost.id = 'gg-qr-container';
+        const staleBar = document.createElement('div');
+        staleBar.id = 'qr--bar';
+        staleHost.appendChild(staleBar);
+        document.body.append(staleHost);
+
+        const buttons = new ButtonUi(createSettings());
+        buttons.show();
+
+        const qrBars = document.body.querySelectorAll('#qr--bar');
+        expect(qrBars).toHaveLength(1);
+        expect(qrBars[0].parentElement).toBe(sendForm);
+        expect(staleHost.children).toEqual([]);
     });
 
     test('refresh renders updated visible quick replies from the active set', () => {
