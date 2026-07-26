@@ -325,6 +325,12 @@ server_restart_count=0
 run_server() {
     if [[ "$runtime_kind" == node ]]; then
         "$RUNTIME_CMD" --no-warnings server.js "$@"
+    elif is_truthy "${SILLYBUNNY_BUN_SMOL:-}"; then
+        # Bun grows the JSC heap freely while RAM looks plentiful, so on small
+        # hosts RSS sawtooths by more than a gigabyte between collections.
+        # --smol trades throughput for much more aggressive GC, matching the
+        # start:mobile script in package.json.
+        "$RUNTIME_CMD" --smol server.js "$@"
     else
         "$RUNTIME_CMD" server.js "$@"
     fi

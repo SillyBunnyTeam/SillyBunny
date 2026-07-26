@@ -122,6 +122,10 @@ if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
 :server_loop
 if "!_server_runtime!"=="node" (
     node --no-warnings server.js %*
+) else if /I "!SILLYBUNNY_BUN_SMOL!"=="1" (
+    REM Bun grows the JSC heap freely while RAM looks plentiful; --smol trades
+    REM throughput for much more aggressive GC on memory-constrained hosts.
+    bun --smol server.js %*
 ) else (
     bun server.js %*
 )
