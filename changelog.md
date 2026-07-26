@@ -145,6 +145,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #694 (2026-07-26) `fix: QR Stale Bar Fix`
 - PR #695 (2026-07-26) `chore: Clean up dead references`
 - PR #697 (2026-07-26) `chore: hardcoded values revised for z index in extension menu/options/popper modal`
+- PR #698 (2026-07-26) `fix: subtitle tooltip for shell subtitles`
 
 ## v1.6.5
 
