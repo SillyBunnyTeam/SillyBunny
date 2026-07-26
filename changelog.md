@@ -144,6 +144,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #693 (2026-07-26) `fix: Dropdowns scrollbar fixes`
 - PR #694 (2026-07-26) `fix: QR Stale Bar Fix`
 - PR #695 (2026-07-26) `chore: Clean up dead references`
+- PR #697 (2026-07-26) `chore: hardcoded values revised for z index in extension menu/options/popper modal`
 
 ## v1.6.5
 
