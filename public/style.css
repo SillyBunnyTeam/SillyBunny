@@ -1260,7 +1260,9 @@ body .panelControlBar {
 #extensionsMenu,
 .popup .popper-modal {
     display: flex;
-    z-index: 29999;
+    /* SillyBunny: fold the hardcoded 29999 into the --sb-z-* scale. Critical tier
+       keeps these menus above zoomed avatars/MovingUI panels (9999) like before. */
+    z-index: var(--sb-z-critical, 10000);
     background-color: var(--SmartThemeBlurTintColor);
     -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength));
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
