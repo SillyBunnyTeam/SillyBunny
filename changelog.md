@@ -139,6 +139,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #688 (2026-07-25) `fix: characters with spaces show proper thumbnails`
 - PR #689 (2026-07-26) `feat(launcher): gate bun --smol behind SILLYBUNNY_BUN_SMOL`
 - PR #690 (2026-07-26) `fix: Chat saving issue resolution via hardening`
+- PR #691 (2026-07-26) `fix: WI activation sliders width consistency`
 - PR #692 (2026-07-26) `fix: overlap between favorites bar and Roleplay/Conversation selector`
 - PR #693 (2026-07-26) `fix: Dropdowns scrollbar fixes`
 - PR #694 (2026-07-26) `fix: QR Stale Bar Fix`
