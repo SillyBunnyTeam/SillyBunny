@@ -653,10 +653,14 @@ function renderShellSubtitle(target, subtitle, { isHtml = false } = {}) {
     target.textContent = '';
     if (isHtml) {
         target.insertAdjacentHTML('beforeend', subtitle || '');
+        // Subtitles render single-line with text-overflow: ellipsis; expose the
+        // full text as a tooltip so truncated copy stays readable.
+        target.title = target.textContent.trim();
         return;
     }
 
     target.textContent = subtitle || '';
+    target.title = (subtitle || '').trim();
 }
 
 const SB_DRAWER_ROUTES = Object.freeze({
