@@ -168,7 +168,7 @@
                                     </div>
 
                                     <div class="flex-container flexNoGap">
-                                        <select id="settings_preset_openai" class="flex1 text_pole" data-preset-manager-for="openai">
+                                        <select id="settings_preset_openai" class="flex1 text_pole" data-preset-manager-for="openai" aria-label="Chat Completion Preset" data-i18n="[aria-label]Chat Completion Preset">
                                             <option value="gui" data-i18n="Default">Default</option>
                                         </select>
                                         <div class="flex-container marginLeft5 gap3px">
@@ -596,22 +596,22 @@
                                             <span data-i18n="Temperature">Temperature</span>
                                             <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Temperature controls the randomness in token selection" title="Temperature controls the randomness in token selection:&#13;- low temperature (<1.0) leads to more predictable text, favoring higher probability tokens.&#13;- high temperature (>1.0) increases creativity and diversity in the output by giving lower probability tokens a better chance.&#13;Set to 1.0 for the original probabilities."></div>
                                         </small>
-                                        <input class="neo-range-slider" type="range" id="temp_openai" name="volume" min="0" max="2.0" step="0.01">
-                                        <input class="neo-range-input" type="number" min="0" max="2.0" step="0.01" data-for="temp_openai" id="temp_counter_openai">
+                                        <input class="neo-range-slider" type="range" id="temp_openai" name="volume" min="0" max="2.0" step="0.01" aria-label="Temperature" data-i18n="[aria-label]Temperature">
+                                        <input class="neo-range-input" type="number" min="0" max="2.0" step="0.01" data-for="temp_openai" id="temp_counter_openai" aria-label="Temperature" data-i18n="[aria-label]Temperature">
                                     </div>
                                     <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi" data-tg-samplers="freq_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Frequency Penalty">Frequency Penalty</span>
                                         </small>
-                                        <input class="neo-range-slider" type="range" id="freq_pen_openai" name="volume" min="-2" max="2" step="0.01">
-                                        <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="freq_pen_openai" id="freq_pen_counter_openai">
+                                        <input class="neo-range-slider" type="range" id="freq_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
+                                        <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="freq_pen_openai" id="freq_pen_counter_openai" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
                                     </div>
                                     <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi" data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Presence Penalty">Presence Penalty</span>
                                         </small>
-                                        <input class="neo-range-slider" type="range" id="pres_pen_openai" name="volume" min="-2" max="2" step="0.01">
-                                        <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="pres_pen_openai" id="pres_pen_counter_openai">
+                                        <input class="neo-range-slider" type="range" id="pres_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
+                                        <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="pres_pen_openai" id="pres_pen_counter_openai" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
                                     </div>
                                     <div data-source="claude,aimlapi,openrouter,makersuite,vertexai,cohere,perplexity,electronhub,chutes,nanogpt,workers_ai,linkapi" data-tg-samplers="top_k" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
@@ -626,8 +626,8 @@
                                             <span data-i18n="Top P">Top P</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top P (a.k.a. nucleus sampling) adds up all the top tokens required to add up to the target percentage.&#13;E.g If the Top 2 tokens are both 25%, and Top P is 0.50, only the Top 2 tokens are considered.&#13;Set to 1.0 to disable." data-i18n="[title]Top_P_desc"></div>
                                         </small>
-                                        <input class="neo-range-slider" type="range" id="top_p_openai" name="volume" min="0" max="1" step="0.01">
-                                        <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="top_p_openai" id="top_p_counter_openai">
+                                        <input class="neo-range-slider" type="range" id="top_p_openai" name="volume" min="0" max="1" step="0.01" aria-label="Top P" data-i18n="[aria-label]Top P">
+                                        <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="top_p_openai" id="top_p_counter_openai" aria-label="Top P" data-i18n="[aria-label]Top P">
                                     </div>
                                     <div data-source="openrouter,nanogpt,chutes,workers_ai" data-tg-samplers="repetition_penalty" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
@@ -846,7 +846,7 @@
                                         Set to get deterministic results. Use -1 for random seed.
                                     </div>
                                     <div class="wide100p">
-                                        <input type="number" id="seed_openai" name="seed_openai" class="text_pole" min="-1" max="2147483647" value="-1">
+                                        <input type="number" id="seed_openai" name="seed_openai" class="text_pole" min="-1" max="2147483647" value="-1" aria-label="Seed" data-i18n="[aria-label]Seed">
                                     </div>
                                 </div>
                             </div>
@@ -2141,7 +2141,7 @@
                                         <a target="_blank" href="https://platform.openai.com/tokenizer/" data-i18n="Tokenizer">Tokenizer</a>.
                                     </div>
                                     <div class="openai_logit_bias_preset_form">
-                                        <select id="openai_logit_bias_preset">
+                                        <select id="openai_logit_bias_preset" aria-label="Logit Bias Preset" data-i18n="[aria-label]Logit Bias Preset">
                                         </select>
                                         <i title="New preset" id="openai_logit_bias_new_preset" class="menu_button fa-solid fa-plus" data-i18n="[title]New preset"></i>
                                         <i title="Import preset" id="openai_logit_bias_import_preset" class="menu_button fa-solid fa-file-import" data-i18n="[title]Import preset"></i>
@@ -2188,7 +2188,7 @@
                 <h3 class="margin0" id="title_api">API</h3>
                 <div class="flex-container flexFlowColumn">
                     <div id="main-API-selector-block">
-                        <select id="main_api">
+                        <select id="main_api" aria-label="API" data-i18n="[aria-label]API">
                             <option value="openai" data-i18n="Chat Completion">Chat Completion</option>
                             <option value="textgenerationwebui" data-i18n="Text Completion">Text Completion</option>
                             <option value="novel" data-i18n="NovelAI">NovelAI</option>
@@ -2808,7 +2808,7 @@
                         <h4 class="margin0" data-i18n="Chat Completion Source">
                             Chat Completion Source
                         </h4>
-                        <select id="chat_completion_source">
+                        <select id="chat_completion_source" aria-label="Chat Completion Source" data-i18n="[aria-label]Chat Completion Source">
                             <optgroup>
                                 <option value="openai">OpenAI</option>
                                 <option value="openai_responses">OpenAI (Responses)</option>
@@ -3801,7 +3801,7 @@
                                 <small data-i18n="(Optional)">(Optional)</small>
                             </h4>
                             <div class="flex-container">
-                                <input id="api_key_custom" name="api_key_custom" class="text_pole flex1" value="" type="text" autocomplete="off">
+                                <input id="api_key_custom" name="api_key_custom" class="text_pole flex1" value="" type="text" autocomplete="off" aria-label="Custom API Key" data-i18n="[aria-label]Custom API Key">
                                 <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_custom"></div>
                             </div>
                             <div data-for="api_key_custom" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'.">
@@ -3814,7 +3814,7 @@
                             </div>
                             <h4 data-i18n="Available Models">Available Models</h4>
                             <div class="flex-container">
-                                <select id="model_custom_select" class="text_pole model_custom_select"></select>
+                                <select id="model_custom_select" class="text_pole model_custom_select" aria-label="Available Models" data-i18n="[aria-label]Available Models"></select>
                             </div>
                             <div class="range-block">
                                 <label class="checkbox_label widthFreeExpand" for="custom_model_icon_detection">
@@ -4528,7 +4528,7 @@
                                 </small>
                             </div>
                             <div>
-                                <textarea id="custom_stopping_strings" class="text_pole textarea_compact monospace autoSetHeight"></textarea>
+                                <textarea id="custom_stopping_strings" class="text_pole textarea_compact monospace autoSetHeight" aria-label="Custom Stopping Strings" data-i18n="[aria-label]Custom Stopping Strings"></textarea>
                             </div>
                             <label class="checkbox_label" for="custom_stopping_strings_macro">
                                 <input id="custom_stopping_strings_macro" type="checkbox" checked>
@@ -4618,7 +4618,7 @@
                                         Reasoning Formatting
                                     </summary>
                                     <div class="flex-container flexNoGap" title="Select your current Reasoning Template" data-i18n="[title]Select your current Reasoning Template">
-                                        <select id="reasoning_select" data-preset-manager-for="reasoning" class="flex1 text_pole"></select>
+                                        <select id="reasoning_select" data-preset-manager-for="reasoning" class="flex1 text_pole" aria-label="Reasoning Template" data-i18n="[aria-label]Reasoning Template"></select>
                                         <div class="flex-container marginLeft5 gap3px">
                                             <input type="file" hidden data-preset-manager-file="reasoning" accept=".json, .settings">
                                             <div data-preset-manager-update="reasoning" class="menu_button menu_button_icon" title="Update current template" data-i18n="[title]Update current template">
@@ -4647,17 +4647,17 @@
                                     <div class="flex-container">
                                         <div class="flex1" title="Inserted before the reasoning content." data-i18n="[title]reasoning_prefix">
                                             <small data-i18n="Prefix">Prefix</small>
-                                            <textarea id="reasoning_prefix" data-macros class="text_pole textarea_compact autoSetHeight"></textarea>
+                                            <textarea id="reasoning_prefix" data-macros class="text_pole textarea_compact autoSetHeight" aria-label="Reasoning Prefix" data-i18n="[aria-label]Reasoning Prefix"></textarea>
                                         </div>
                                         <div class="flex1" title="Inserted after the reasoning content." data-i18n="[title]reasoning_suffix">
                                             <small data-i18n="Suffix">Suffix</small>
-                                            <textarea id="reasoning_suffix" data-macros class="text_pole textarea_compact autoSetHeight"></textarea>
+                                            <textarea id="reasoning_suffix" data-macros class="text_pole textarea_compact autoSetHeight" aria-label="Reasoning Suffix" data-i18n="[aria-label]Reasoning Suffix"></textarea>
                                         </div>
                                     </div>
                                     <div class="flex-container">
                                         <div class="flex1" title="Inserted between the reasoning and the message content." data-i18n="[title]reasoning_separator">
                                             <small data-i18n="Separator">Separator</small>
-                                            <textarea id="reasoning_separator" data-macros class="text_pole textarea_compact autoSetHeight"></textarea>
+                                            <textarea id="reasoning_separator" data-macros class="text_pole textarea_compact autoSetHeight" aria-label="Reasoning Separator" data-i18n="[aria-label]Reasoning Separator"></textarea>
                                         </div>
                                     </div>
                                 </details>
@@ -4691,7 +4691,7 @@
                                         </span>
                                     </small>
                                     <div>
-                                        <textarea id="start_reply_with" data-macros class="text_pole textarea_compact autoSetHeight"></textarea>
+                                        <textarea id="start_reply_with" data-macros class="text_pole textarea_compact autoSetHeight" aria-label="Start Reply With" data-i18n="[aria-label]Start Reply With"></textarea>
                                     </div>
                                     <label class="checkbox_label" for="chat-show-reply-prefix-checkbox">
                                         <input id="chat-show-reply-prefix-checkbox" type="checkbox" />
@@ -4978,7 +4978,7 @@
                         </div>
                         <div id="UI-language-block" class="flex-container alignItemsBaseline">
                             <span data-i18n="UI Language">Language:</span>
-                            <select id="ui_language_select" class="flex1 margin0 text_pole">
+                            <select id="ui_language_select" class="flex1 margin0 text_pole" aria-label="UI Language" data-i18n="[aria-label]UI Language">
                                 <option value="" data-i18n="Default">Default</option>
                                 <option value="en">English</option>
                             </select>
