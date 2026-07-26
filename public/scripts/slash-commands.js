@@ -5129,7 +5129,8 @@ async function deleteMessagesByNameCallback(_, name) {
         }
     }
 
-    await saveChatConditional();
+    // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+    await saveChatConditional({ allowShrink: true });
     await reloadCurrentChat();
 
     toastr.info(t`Deleted ${messagesToDelete.length} messages from ${name}`);

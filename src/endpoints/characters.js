@@ -1786,8 +1786,9 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
 
         return response.send(validFiles);
     } catch (error) {
+        // SillyBunny: a listing failure must be distinguishable from a character that has no chats yet.
         console.error(error);
-        return response.send({ error: true });
+        return response.status(500).send({ error: true });
     }
 });
 

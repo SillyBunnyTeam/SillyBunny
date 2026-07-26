@@ -1810,7 +1810,8 @@ async function getExistingCharacterChats(characterId, fileName = '') {
     });
 
     if (!response.ok) {
-        return [];
+        // SillyBunny: an unreadable chat list must not look like a character with no chats.
+        throw new Error(`Could not list existing chats: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -3488,7 +3489,8 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
     const startIndex = [0, minId].includes(id) ? id : null;
     deleteItemizedPromptForMessage(id);
     updateViewMessageIds(startIndex);
-    saveChatDebounced();
+    // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+    saveChatDebounced({ allowShrink: true });
 
     if (this_edit_mes_id === id) {
         this_edit_mes_id = undefined;
@@ -10489,7 +10491,7 @@ export function saveChat(...saveChatArguments) {
     return saveTask;
 }
 
-async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
+async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, mesId, force = false, chatData = undefined, throwOnError = false, deferBackup = false, allowShrink = false, activeChatName, characterName, avatarUrl, wasGroupChat = false } = {}) {
     if (wasGroupChat || (selected_group && !activeChatName)) {
         toastr.error(t`Operation was aborted to prevent data corruption.`, t`saveChat called for a group chat`);
         throw new Error('saveChat called for a group chat');
@@ -10550,6 +10552,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
                 avatar_url: resolvedAvatarUrl,
                 force: force,
                 deferBackup: Boolean(deferBackup),
+                allowShrink: Boolean(allowShrink),
             }),
         });
         const result = await fetch('/api/chats/save', saveChatRequest);
@@ -10564,6 +10567,16 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
         }
 
         const errorData = await result.json();
+
+        if (errorData?.error === 'destructive') {
+            console.error(`Chat save refused as destructive (${errorData?.reason}). The file on disk was left unchanged.`);
+            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat not saved`);
+            if (throwOnError) {
+                throw new Error('destructive');
+            }
+            return false;
+        }
+
         const isIntegrityError = errorData?.error === 'integrity' && !force;
         if (!isIntegrityError) {
             const errorMessage = typeof errorData?.error === 'string' ? errorData.error : result.statusText;
@@ -10586,7 +10599,7 @@ async function saveChatImmediately({ chatName, withMetadata, metadataSnapshot, m
             return false;
         }
 
-        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, activeChatName, characterName, avatarUrl, wasGroupChat });
+        return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -10943,7 +10956,10 @@ async function getChatResult({ emitCreated = false, switchMenu = true } = {}) {
             freshChat = true;
         }
         // Make sure the chat appears on the server
-        await saveChatConditional();
+        // SillyBunny: never persist a message-less chat over a file this load did not create.
+        if (emitCreated || freshChat) {
+            await saveChatConditional();
+        }
     }
     await loadItemizedPrompts(getCurrentChatId());
     await printMessages();
@@ -16807,7 +16823,8 @@ jQuery(async function () {
             chatElement.find(`.mes[mesid="${this_del_mes}"]`).remove();
             chat.length = this_del_mes;
             chat_metadata.tainted = true;
-            await saveChatConditional();
+            // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.
+            await saveChatConditional({ allowShrink: true });
             chatElement.scrollTop(chatElement[0].scrollHeight);
             await eventSource.emit(event_types.MESSAGE_DELETED, chat.length);
             chatElement.find('.mes').removeClass('last_mes');
