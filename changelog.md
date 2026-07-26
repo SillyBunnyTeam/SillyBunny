@@ -137,6 +137,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #683 (2026-07-24) `chore: enforce LF line endings via .gitattributes`
 - PR #687 (2026-07-25) `fix: issue of being unable to import or rename any preset to any user-deleted bundled default presets`
 - PR #688 (2026-07-25) `fix: characters with spaces show proper thumbnails`
+- PR #689 (2026-07-26) `feat(launcher): gate bun --smol behind SILLYBUNNY_BUN_SMOL`
 
 ## v1.6.5
 
