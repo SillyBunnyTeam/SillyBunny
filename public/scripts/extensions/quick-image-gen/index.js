@@ -5114,6 +5114,7 @@ function enrichSceneTextForFilters(sceneText, label = "Contextual filters", cont
 
 let quickImageGenInitializationPromise = null;
 
+// SillyBunny divergence: expose a tiny readiness seam so Conversation media flows can wait for QIG boot without copying its init state.
 function ensureQuickImageGenReady(timeoutMs = 10000) {
     if (!quickImageGenInitializationPromise) {
         return Promise.reject(new Error("Quick Image Gen initialization has not started."));

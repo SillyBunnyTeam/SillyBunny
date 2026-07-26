@@ -63,6 +63,7 @@ let suppressHandleClickUntil = 0;
 let handleNode = null;
 let conversationModeObserver = null;
 
+// SillyBunny divergence: Conversation Mode owns the shell while active, so the upstream companion panel must hide behind this DOM-state adapter.
 export function isConversationModeActive() {
     const sheld = globalThis.document?.getElementById?.('sheld');
     return sheld?.dataset?.sbConversationMode === 'on'

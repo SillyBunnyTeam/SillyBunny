@@ -1194,6 +1194,7 @@ function prefillSendTextarea(sendTextArea, value, { skipIOSFocus = false } = {})
     focusSendTextarea(sendTextArea, { skipIOS: skipIOSFocus });
 }
 
+// SillyBunny divergence: suppress the legacy chat shell briefly while Conversation Mode takes over from welcome-screen recent-chat entry points.
 const conversationWelcomeOpeningVisibilityKey = 'sbConversationWelcomeOpeningVisibility';
 
 function setConversationWelcomeOpeningSuppressed(suppressed) {

@@ -125,6 +125,7 @@ pollinations.post('/generate', async (req, res) => {
         const text = req.body.text;
         const model = req.body.model || 'openai-audio';
         const voice = req.body.voice || 'alloy';
+        // SillyBunny divergence: Pollinations TTS must hit the provider's audio endpoint directly so Conversation narration receives literal speech output.
         const speechModel = model === 'openai-audio' ? 'tts-1' : model;
 
         console.debug('Pollinations TTS request', { text, model: speechModel, voice });

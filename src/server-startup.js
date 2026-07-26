@@ -54,6 +54,7 @@ import { router as imageMetadataRouter } from './endpoints/image-metadata.js';
 import { router as volcengineRouter } from './endpoints/volcengine.js';
 import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
+// SillyBunny divergence: keep Conversation REST mounted here only; endpoint behavior stays isolated in its fork-owned router for upstream syncs.
 import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-conversation.js';
 
 /**
@@ -120,6 +121,7 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/image-metadata', imageMetadataRouter);
     app.use('/api/server-admin', serverAdminRouter);
     app.use('/api/in-chat-agents', inChatAgentsRouter);
+    // SillyBunny divergence: preserve both fork REST aliases here so future upstream merges only need to reconcile these mount points.
     app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter);
     app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter);
 }
