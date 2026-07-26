@@ -110,6 +110,16 @@ bun run start:global   # SillyBunny-owned data paths
 bun run start:no-csrf  # disable CSRF (local dev)
 ```
 
+If you launch through a script rather than `bun run` — pm2, systemd, Docker, or Termux — set `SILLYBUNNY_BUN_SMOL=1` to get the same low-memory mode as `start:mobile`:
+
+```bash
+SILLYBUNNY_BUN_SMOL=1 ./start.sh
+```
+
+`start.sh`, `Start.bat`, and the Docker entrypoint all honour it; for Docker, set it under `environment:` in `docker/docker-compose.yml`.
+
+`--smol` is a Bun flag, so it does nothing in Node.js mode — and Termux, macOS, and ARM hosts pick Node.js by default. Use `./start-bun.sh` (Termux: `bash start-termux-bun.sh`) to get Bun together with `--smol`. The launcher warns when the flag is set while Node.js is selected.
+
 ### macOS notes
 
 - If the launcher window closes too fast, run `./Start.command` from Terminal to keep output visible

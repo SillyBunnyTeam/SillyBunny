@@ -14,6 +14,8 @@ services:
       # Match container-created files to your host user and group by default.
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # Uncomment on memory-capped hosts to trade throughput for aggressive GC.
+      # - SILLYBUNNY_BUN_SMOL=1
     ports:
       - "4444:4444"
     volumes:
