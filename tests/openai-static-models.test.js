@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
+const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
 const retiredMainModels = [
     'chatgpt-4o-latest',
     'gpt-4.5-preview',
@@ -130,16 +131,23 @@ test('GPT-5.6 supports distinct max reasoning effort and one-million-token conte
     expect(openAiScript).toMatch(/case reasoning_effort_types\.max:[\s\S]*?\^gpt-5\\\.6[\s\S]*?return reasoning_effort_types\.max/);
 });
 
-test('Claude pickers include claude-sonnet-5 and omit all retired Claude IDs', () => {
+test('Claude pickers include current Claude 5 models and omit all retired Claude IDs', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
+    const openAiScript = readSource('../public/scripts/openai.js');
     const mainPicker = getSelectOptionIds(mainSource, 'model_claude_select');
     const captionPicker = getDataTypeOptionIds(captionSource, 'anthropic');
+    const claudeContextConfig = openAiScript.match(/if \(oai_settings\.chat_completion_source == chat_completion_sources\.CLAUDE\) \{\s+if \(maxContextUnlocked\) \{([\s\S]*?)oai_settings\.openai_max_context/)[1];
+    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
 
-    expect(mainPicker).toContain('claude-sonnet-5');
-    expect(captionPicker).toContain('claude-sonnet-5');
+    expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
+    expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
+    expect(openAiScript).toContain('claude_model: \'claude-opus-5\'');
+    expect(claudeContextConfig).toContain('opus-5');
+    expect(claudeContextConfig).toContain('attr(\'max\', max_1mil)');
+    expect(visionModels).toContain('\'claude-opus-5\'');
 });
 
 test('Other provider pickers omit confirmed-retired model IDs', () => {

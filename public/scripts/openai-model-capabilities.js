@@ -8,7 +8,7 @@
  */
 export function applyClaudeModelParameterConstraints(generateData, { preserveReasoning = false } = {}) {
     const model = String(generateData?.model ?? '').trim().toLowerCase();
-    const hasRestrictedSampling = /(?:^|[/:])claude-(?:fable|sonnet-5)(?:[-./:]|$)/.test(model);
+    const hasRestrictedSampling = /(?:^|[/:])claude-(?:fable|opus-5|sonnet-5)(?:[-./:]|$)/.test(model);
 
     if (!hasRestrictedSampling) {
         return generateData;

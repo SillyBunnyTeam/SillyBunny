@@ -343,17 +343,17 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        // SillyBunny: claude-sonnet-5 always uses adaptive thinking; never accepts manual thinking, sampling params, or assistant prefill.
-        const isSonnet5 = /^claude-sonnet-5/.test(request.body.model);
-        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking) || isSonnet5;
-        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnet5) && Boolean(request.body.enable_web_search);
+        // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
+        const isSonnetOrOpus5 = /^claude-(?:sonnet|opus)-5/.test(request.body.model);
+        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || (isFableModel && enableAdaptiveThinking) || isSonnetOrOpus5;
+        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5) && Boolean(request.body.enable_web_search);
         const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
-        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnet5;
-        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnet5;
-        // Sonnet 5 is always adaptive regardless of enableAdaptiveThinking; other adaptive models require the flag.
-        const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnet5;
-        // SillyBunny: Sonnet 5 supports xhigh; existing adaptive Claude models keep the max fallback.
-        const supportsXhigh = isSonnet5;
+        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        // Sonnet 5 and Opus 5 are always adaptive; other adaptive models require the feature flag.
+        const isAdaptiveModel = (enableAdaptiveThinking && (/^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel)) || isSonnetOrOpus5;
+        // SillyBunny: Claude 5 preserves xhigh separately from max; older adaptive models keep the max fallback.
+        const supportsXhigh = isSonnetOrOpus5;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -445,8 +445,8 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.top_k;
         }
 
-        // SillyBunny: claude-sonnet-5 rejects all custom sampling params with HTTP 400.
-        if (isSonnet5) {
+        // SillyBunny: Claude Sonnet 5 and Opus 5 reject all custom sampling params with HTTP 400.
+        if (isSonnetOrOpus5) {
             delete requestBody.temperature;
             delete requestBody.top_p;
             delete requestBody.top_k;
@@ -459,8 +459,8 @@ async function sendClaudeRequest(request, response) {
         if (useThinking && typeof budgetTokens === 'string') {
             fixThinkingPrefill = true;
             requestBody.thinking = { type: 'adaptive' };
-            // SillyBunny: claude-sonnet-5 defaults to omitted; request summarized display when the UI shows reasoning.
-            if (isSonnet5 && request.body.include_reasoning) {
+            // SillyBunny: Claude 5 defaults to omitted; request summarized display when the UI shows reasoning.
+            if (isSonnetOrOpus5 && request.body.include_reasoning) {
                 requestBody.thinking.display = 'summarized';
             }
             requestBody.output_config ??= {};
@@ -486,8 +486,8 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.temperature;
             delete requestBody.top_p;
             delete requestBody.top_k;
-        } else if (isSonnet5 && budgetTokens === null) {
-            // SillyBunny: Sonnet 5 enables adaptive thinking by default; explicitly disable when effort is none/auto.
+        } else if (isSonnetOrOpus5 && budgetTokens === null) {
+            // SillyBunny: Claude 5 enables adaptive thinking by default; explicitly disable when effort is none/auto.
             requestBody.thinking = { type: 'disabled' };
         }
 

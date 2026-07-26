@@ -7,40 +7,44 @@ import { applyClaudeModelParameterConstraints } from '../public/scripts/openai-m
 const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
 
 describe('OpenAI-compatible Claude model capabilities', () => {
-    test('removes unsupported Sonnet 5 parameters from provider-prefixed proxy requests', () => {
-        const payload = {
-            model: 'anthropic/claude-sonnet-5',
-            temperature: 0.8,
-            top_p: 0.9,
-            top_k: 40,
-            frequency_penalty: 0.2,
-            presence_penalty: 0.3,
-            reasoning_effort: 'high',
-            custom_reasoning_param_name: 'reasoning_effort',
-        };
+    test('removes unsupported parameters from provider-prefixed Claude 5 requests', () => {
+        for (const model of ['anthropic/claude-sonnet-5', 'anthropic/claude-opus-5']) {
+            const payload = {
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                top_k: 40,
+                frequency_penalty: 0.2,
+                presence_penalty: 0.3,
+                reasoning_effort: 'high',
+                custom_reasoning_param_name: 'reasoning_effort',
+            };
 
-        applyClaudeModelParameterConstraints(payload);
+            applyClaudeModelParameterConstraints(payload);
 
-        expect(payload).toEqual({ model: 'anthropic/claude-sonnet-5' });
+            expect(payload).toEqual({ model });
+        }
     });
 
-    test('preserves native Claude reasoning controls while removing sampling parameters', () => {
-        const payload = {
-            model: 'claude-sonnet-5',
-            temperature: 0.8,
-            top_p: 0.9,
-            top_k: 40,
-            reasoning_effort: 'high',
-            custom_reasoning_param_name: 'reasoning_effort',
-        };
+    test('preserves native Claude 5 reasoning controls while removing sampling parameters', () => {
+        for (const model of ['claude-sonnet-5', 'claude-opus-5']) {
+            const payload = {
+                model,
+                temperature: 0.8,
+                top_p: 0.9,
+                top_k: 40,
+                reasoning_effort: 'high',
+                custom_reasoning_param_name: 'reasoning_effort',
+            };
 
-        applyClaudeModelParameterConstraints(payload, { preserveReasoning: true });
+            applyClaudeModelParameterConstraints(payload, { preserveReasoning: true });
 
-        expect(payload).toEqual({
-            model: 'claude-sonnet-5',
-            reasoning_effort: 'high',
-            custom_reasoning_param_name: 'reasoning_effort',
-        });
+            expect(payload).toEqual({
+                model,
+                reasoning_effort: 'high',
+                custom_reasoning_param_name: 'reasoning_effort',
+            });
+        }
     });
 
     test('applies Claude model constraints while building generation parameters', () => {

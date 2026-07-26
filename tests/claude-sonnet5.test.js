@@ -13,6 +13,7 @@ const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
 await jest.unstable_mockModule('node-fetch', () => ({
     default: nodeFetchMock,
 }));
+const currentClaude5Models = ['claude-sonnet-5', 'claude-opus-5'];
 
 function captureClaudePayload() {
     nodeFetchMock.mockClear();
@@ -36,7 +37,7 @@ function captureClaudePayload() {
     return () => capturedBody;
 }
 
-describe('Claude Sonnet 5 backend request handling', () => {
+describe('Claude 5 backend request handling', () => {
     /** @type {import('http').Server} */
     let appServer;
     /** @type {import('../src/users.js').UserDirectoryList} */
@@ -102,9 +103,9 @@ describe('Claude Sonnet 5 backend request handling', () => {
         });
     }
 
-    test('Sonnet 5 with effort=high sends adaptive thinking and omits sampling params', async () => {
+    test.each(currentClaude5Models)('%s with effort=high sends adaptive thinking and omits sampling params', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'high' });
+        const res = await makeRequest({ model, reasoning_effort: 'high' });
         expect(res.status).toBe(200);
         const body = getBody();
 
@@ -115,14 +116,18 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
-    test('Sonnet 5 with effort=xhigh sends xhigh (not max) as the effort string', async () => {
+    test.each([
+        ['claude-sonnet-5', 'xhigh'],
+        ['claude-opus-5', 'xhigh'],
+        ['claude-opus-5', 'max'],
+    ])('%s preserves effort=%s', async (model, reasoningEffort) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'xhigh' });
+        const res = await makeRequest({ model, reasoning_effort: reasoningEffort });
         expect(res.status).toBe(200);
         const body = getBody();
 
         expect(body.thinking).toEqual({ type: 'adaptive' });
-        expect(body.output_config?.effort).toBe('xhigh');
+        expect(body.output_config?.effort).toBe(reasoningEffort);
     });
 
     test('Sonnet 4.6 maps unsupported xhigh effort to max', async () => {
@@ -135,7 +140,7 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.output_config?.effort).toBe('max');
     });
 
-    test.each(['claude-opus-4-8', 'claude-fable-5'])('%s does not inherit Sonnet 5 xhigh support', async (model) => {
+    test.each(['claude-opus-4-8', 'claude-fable-5'])('%s does not inherit Claude 5 xhigh support', async (model) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({ model, reasoning_effort: 'xhigh' });
         expect(res.status).toBe(200);
@@ -145,9 +150,9 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.output_config?.effort).toBe('max');
     });
 
-    test('Sonnet 5 with effort=none sends thinking.type disabled and omits sampling params', async () => {
+    test.each(currentClaude5Models)('%s with effort=none sends thinking.type disabled and omits sampling params', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'none' });
+        const res = await makeRequest({ model, reasoning_effort: 'none' });
         expect(res.status).toBe(200);
         const body = getBody();
 
@@ -158,18 +163,18 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
-    test('Sonnet 5 with no reasoning_effort sends thinking.type disabled', async () => {
+    test.each(currentClaude5Models)('%s with no reasoning_effort sends thinking.type disabled', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({});
+        const res = await makeRequest({ model });
         expect(res.status).toBe(200);
         const body = getBody();
 
         expect(body.thinking).toEqual({ type: 'disabled' });
     });
 
-    test('Sonnet 5 with include_reasoning adds display:summarized to thinking', async () => {
+    test.each(currentClaude5Models)('%s with include_reasoning adds display:summarized to thinking', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'high', include_reasoning: true });
+        const res = await makeRequest({ model, reasoning_effort: 'high', include_reasoning: true });
         expect(res.status).toBe(200);
         const body = getBody();
 
@@ -177,9 +182,9 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.thinking?.display).toBe('summarized');
     });
 
-    test('Sonnet 5 sampling params are omitted even without reasoning effort', async () => {
+    test.each(currentClaude5Models)('%s sampling params are omitted at low effort', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'low' });
+        const res = await makeRequest({ model, reasoning_effort: 'low' });
         expect(res.status).toBe(200);
         const body = getBody();
 
@@ -188,9 +193,9 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
-    test('Sonnet 5 with web search enabled includes the web_search tool', async () => {
+    test.each(currentClaude5Models)('%s with web search enabled includes the web_search tool', async (model) => {
         const getBody = captureClaudePayload();
-        const res = await makeRequest({ reasoning_effort: 'high', enable_web_search: true });
+        const res = await makeRequest({ model, reasoning_effort: 'high', enable_web_search: true });
         expect(res.status).toBe(200);
         const body = getBody();
 
@@ -198,9 +203,10 @@ describe('Claude Sonnet 5 backend request handling', () => {
         expect(body.tools.some(t => t.type === 'web_search_20250305')).toBe(true);
     });
 
-    test('Sonnet 5 removes assistant prefill from messages', async () => {
+    test.each(currentClaude5Models)('%s removes assistant prefill from messages', async (model) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({
+            model,
             reasoning_effort: 'high',
             messages: [
                 { role: 'user', content: 'Question' },

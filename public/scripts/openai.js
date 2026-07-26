@@ -570,7 +570,7 @@ const default_settings = {
     scenario_format: default_scenario_format,
     personality_format: default_personality_format,
     openai_model: 'gpt-4-turbo',
-    claude_model: 'claude-opus-4-8',
+    claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
     google_model: 'gemini-2.5-pro',
@@ -8562,7 +8562,7 @@ async function onModelChange() {
     if (oai_settings.chat_completion_source == chat_completion_sources.CLAUDE) {
         if (maxContextUnlocked) {
             $('#openai_max_context').attr('max', unlocked_max);
-        } else if (/^claude-(sonnet-5|sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: |fable — claude-fable-5; |sonnet-5 — 1M context window
+        } else if (/^claude-(opus-5|sonnet-5|sonnet-4-(?:[5-9]|\d{2,})|opus-4-(?:[6-9]|\d{2,})|fable)/.test(value)) { // SillyBunny: current Claude models with 1M context windows
             $('#openai_max_context').attr('max', max_1mil);
         } else if (/^claude-(3|opus|haiku|sonnet)/.test(value)) {
             $('#openai_max_context').attr('max', max_200k);
@@ -9194,6 +9194,7 @@ export function isImageInliningSupported() {
         // Claude
         'claude-3',
         'claude-fable', // SillyBunny: claude-fable-5 vision support
+        'claude-opus-5', // SillyBunny: claude-opus-5 vision support
         'claude-sonnet-5', // SillyBunny: claude-sonnet-5 vision support
         'claude-opus-4',
         'claude-sonnet-4',
