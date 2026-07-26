@@ -1345,6 +1345,9 @@ select.keyselect+span.select2-container .select2-selection--multiple {
 
     #WorldInfo.sb-shell-embedded-content #wiActivationSettings {
         flex-direction: column;
+        /* override the base align-items: start, which in column direction shrinks
+           #wiSliders/#wiCheckboxes to content width instead of filling the panel */
+        align-items: stretch;
     }
 
     #WorldInfo.sb-shell-embedded-content #wiSliders,
