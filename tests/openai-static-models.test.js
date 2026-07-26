@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
+const currentGoogleStudioModels = ['gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 const retiredMainModels = [
     'chatgpt-4o-latest',
     'gpt-4.5-preview',
@@ -183,7 +184,7 @@ test('Other provider pickers omit confirmed-retired model IDs', () => {
     expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-thinking-preview"'));
 });
 
-test('Google AI Studio pickers omit all retired Gemini/Gemma models', () => {
+test('Google AI Studio pickers include current models and omit all retired Gemini/Gemma models', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
 
@@ -193,6 +194,8 @@ test('Google AI Studio pickers omit all retired Gemini/Gemma models', () => {
 
     expect(mainAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
     expect(captionAiStudio).toEqual(expect.not.arrayContaining(retiredGoogleStudioModels));
+    expect(mainAiStudio).toEqual(expect.arrayContaining(currentGoogleStudioModels));
+    expect(captionAiStudio).toEqual(expect.arrayContaining(currentGoogleStudioModels));
     expect(mainAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
     expect(captionAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
 });

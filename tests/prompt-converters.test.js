@@ -179,6 +179,15 @@ describe('calculateGoogleBudgetTokens', () => {
     });
 
     describe('gemini-3 flash', () => {
+        test('new AI Studio models use Gemini 3 thinking levels', () => {
+            for (const model of ['gemini-3.6-flash', 'gemini-3.5-flash-lite']) {
+                expect(mod.calculateGoogleBudgetTokens(8192, 'auto', model)).toBeNull();
+                expect(mod.calculateGoogleBudgetTokens(8192, 'min', model)).toBe('minimal');
+                expect(mod.calculateGoogleBudgetTokens(8192, 'medium', model)).toBe('medium');
+                expect(mod.calculateGoogleBudgetTokens(8192, 'max', model)).toBe('high');
+            }
+        });
+
         test('auto returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.5-flash')).toBeNull());
 
         test('none returns null', () => expect(mod.calculateGoogleBudgetTokens(8192, 'none', 'gemini-3.5-flash')).toBeNull());
