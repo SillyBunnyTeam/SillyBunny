@@ -2804,7 +2804,13 @@ async function sendOpenAIResponsesRequest(request, response) {
     }
 }
 
-router.post('/generate', async function (request, response) {
+function getSafeCompletionErrorStatus(status) {
+    const parsed = Number(status);
+    return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
+}
+
+// SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream request assembly without forking backend logic.
+export async function handleChatCompletionsGenerate(request, response) {
     try {
         if (!request.body) return response.status(400).send({ error: true });
 
@@ -3282,7 +3288,7 @@ router.post('/generate', async function (request, response) {
             console.error('Chat completion request error: ', message, responseText);
 
             if (!response.headersSent) {
-                response.send({ error: { message }, quota_error: quota_error });
+                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message }, quota_error: quota_error });
             } else if (!response.writableEnded) {
                 response.write(responseText);
             } else {
@@ -3311,7 +3317,9 @@ router.post('/generate', async function (request, response) {
             response.end();
         }
     }
-});
+}
+
+router.post('/generate', handleChatCompletionsGenerate);
 
 const multimodalModels = express.Router();
 

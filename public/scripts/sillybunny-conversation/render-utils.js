@@ -30,6 +30,33 @@ function compactAttachmentFingerprint(item) {
     ].join('\u001e');
 }
 
+function compactReplyFingerprint(reply) {
+    if (!reply || typeof reply !== 'object') {
+        return '';
+    }
+
+    return [
+        reply.messageId || '',
+        reply.name || '',
+        reply.role || '',
+        reply.text || '',
+        reply.attachmentSummary || '',
+        reply.createdAt || '',
+    ].join('\u001e');
+}
+
+function compactConversationCommandsFingerprint(commands) {
+    if (!commands || typeof commands !== 'object') {
+        return '';
+    }
+
+    return [
+        Array.isArray(commands.selfieRequests) ? commands.selfieRequests.join('\u001e') : '',
+        Array.isArray(commands.scheduleUpdates) ? commands.scheduleUpdates.join('\u001e') : '',
+        Array.isArray(commands.reminders) ? commands.reminders.map(item => `${item?.delay || ''}:${item?.memo || ''}`).join('\u001e') : '',
+    ].join('\u001d');
+}
+
 export function getConversationMessageExtraFingerprint(message) {
     const extra = message?.extra && typeof message.extra === 'object' ? message.extra : {};
     const media = Array.isArray(extra.media) ? extra.media.map(compactAttachmentFingerprint).join('\u001d') : '';
@@ -48,6 +75,8 @@ export function getConversationMessageExtraFingerprint(message) {
         extra.image_prompt || '',
         extra.media_display || '',
         extra.media_index || '',
+        compactReplyFingerprint(extra.conversation_reply_to),
+        compactConversationCommandsFingerprint(extra.conversation_commands),
         extra.conversation_pinned ? 'pin' : '',
         extra.conversation_mode_image ? 'image' : '',
         extra.conversation_mode_ooc ? 'ooc' : '',

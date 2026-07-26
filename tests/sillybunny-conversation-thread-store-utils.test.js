@@ -6,6 +6,7 @@ import {
     getConversationMediaIndex,
     getConversationPromptMediaAttachments,
     normalizeConversationStoredMessage,
+    resolveConversationReminderBranchId,
     safeParseThread,
 } from '../public/scripts/sillybunny-conversation/thread-store-utils.js';
 
@@ -57,5 +58,16 @@ describe('sillybunny conversation thread store utils', () => {
             { url: 'generated.png', type: 'image', title: 'Generated image' },
         ]);
         expect(getConversationAttachmentSummary(message)).toBe('[Attachments: generated image; image: Desk; video; file: Notes]');
+    });
+
+    test('resolves only existing reminder branches', () => {
+        const threadStore = {
+            activeBranchId: 'main',
+            branches: { main: { id: 'main' } },
+        };
+        expect(resolveConversationReminderBranchId({ branchId: 'main' }, threadStore)).toBe('main');
+        expect(resolveConversationReminderBranchId({ branchId: 'deleted' }, threadStore)).toBe('');
+        expect(resolveConversationReminderBranchId({}, threadStore)).toBe('main');
+        expect(resolveConversationReminderBranchId({}, null)).toBe('');
     });
 });

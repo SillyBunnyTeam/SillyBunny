@@ -4,42 +4,79 @@ import {
     getActiveConversationBranch,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
 import { parseAvatarList } from './partners.js';
-import { formatPromptText } from './prompt.js';
+import { getExtensionCapability } from './extension-capabilities.js';
+import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationThread } from './thread-store.js';
 
-export async function generateConversationImage(prompt, negative = '') {
-    if (conversationState.imageGenerationActive) {
+function isAbortError(error, signal) {
+    return signal?.aborted || error?.name === 'AbortError';
+}
+
+export async function generateConversationImage(prompt, negative = '', { avatar = '', character = null, notify = false } = {}) {
+    const runAvatar = String(avatar || character?.avatar || '').trim();
+    if (!runAvatar && !character) {
         return null;
     }
 
+    if (conversationState.imageGenerationActive) {
+        if (notify) {
+            globalThis.toastr?.warning?.('Image generation is already running.');
+        }
+        return null;
+    }
+
+    const qig = getExtensionCapability('quick-image-gen');
+    if (!qig) {
+        return null;
+    }
+
+    const runContext = {
+        avatar: runAvatar,
+        character: character || getCharacterForAvatar(runAvatar),
+    };
+    const controller = new AbortController();
     conversationState.imageGenerationActive = true;
-    conversationState.imageGenerationAbortController = new AbortController();
+    conversationState.imageGenerationAbortController = controller;
     scheduleTimelineRender();
     try {
-        const qig = await import('./extensions/quick-image-gen/index.js');
-        const entry = await qig.withTransientGenerationSettings({}, async () => {
-            const settings = qig.getGenerationSettingsForRun();
-            const raw = await qig.generateForProvider(prompt, negative, settings, conversationState.imageGenerationAbortController.signal, {});
-            return raw ? qig.finalizeGeneratedEntry(raw, prompt, negative, settings, {}) : null;
+        await qig.ensureReady();
+        if (controller.signal.aborted) {
+            throw controller.signal.reason || new DOMException('Aborted', 'AbortError');
+        }
+
+        const entry = await qig.generateScopedImage(prompt, negative, {
+            ...runContext,
+            signal: controller.signal,
         });
 
+        if (!entry?.url && notify) {
+            globalThis.toastr?.warning?.('Quick Image Gen did not return an image.');
+        }
         return entry?.url ?? null;
     } catch (error) {
-        console.warn('Conversation Mode: QIG not available or generation failed', error);
+        if (!isAbortError(error, controller.signal)) {
+            console.warn('Conversation Mode: QIG not available or generation failed', error);
+            if (notify) {
+                globalThis.toastr?.warning?.(`Quick Image Gen failed: ${error?.message || 'check Image Gen settings'}`);
+            }
+        }
         return null;
     } finally {
-        conversationState.imageGenerationActive = false;
-        conversationState.imageGenerationAbortController = null;
-        scheduleTimelineRender();
+        if (conversationState.imageGenerationAbortController === controller) {
+            conversationState.imageGenerationActive = false;
+            conversationState.imageGenerationAbortController = null;
+            scheduleTimelineRender();
+        }
     }
 }
 
@@ -63,12 +100,12 @@ export function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
     avatars.push(avatar);
 }
 
-export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
+export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { branchId = '', includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const partnerAvatars = [];
     parseAvatarList(resolvedSettings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
 
-    const group = getConversationGroupById(groupId);
+    const group = getConversationGroupById(groupId, { personaId });
     if (group?.members?.length) {
         group.members
             .filter(memberAvatar => !group.disabled_members?.includes(memberAvatar))
@@ -76,7 +113,7 @@ export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), s
     }
 
     if (includeThreadPartners) {
-        getConversationThread(avatar, { groupId }).forEach((message) => {
+        getConversationThread(avatar, { branchId, create: false, groupId, personaId }).forEach((message) => {
             if (message?.role !== 'partner') {
                 return;
             }
@@ -89,8 +126,8 @@ export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), s
 }
 
 export function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = null, options = {}) {
-    const { groupId = getConversationGroupIdForAvatar(avatar) } = options;
-    const resolvedSettings = settings || getSettings(avatar, { groupId });
+    const { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = options;
+    const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const participants = [];
     const primary = getCharacterForAvatar(avatar);
     if (primary?.avatar) {
@@ -246,12 +283,8 @@ export function buildCharacterImagePrompt(template, scene = 'the current DM conv
         .replace(/\{\{scene\}\}/g, scene)
         .replace(/\{\{appearance\}\}/g, details || `${charName}'s established appearance`);
 
-    if (!details) {
-        return basePrompt;
-    }
-
-    return [
+    return details ? [
         basePrompt,
         `Depict ${charName} specifically, not a generic person. Use these character-card details: ${details}`,
-    ].join('\n');
+    ].join('\n') : basePrompt;
 }

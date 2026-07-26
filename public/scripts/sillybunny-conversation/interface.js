@@ -4,6 +4,7 @@ import {
     getConversationBranches,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationThreadStore,
     getCurrentCharacter,
     getCurrentCharAvatar,
@@ -13,6 +14,7 @@ import {
     saveGroupConversationSettings,
 } from './context.js';
 import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
+import { getConversationMessageRevision } from './message-identity-utils.js';
 import { getConversationDisplayName, getConversationParticipants, getEffectiveConversationStatus, renderConversationParticipantStack } from './media.js';
 import {
     clearUnreadCount,
@@ -47,11 +49,12 @@ function buildBranchListFingerprint(characterStore, activeBranchId) {
 }
 
 function buildPalsRailFingerprint(pals) {
-    const parts = [String(pals.length), conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
+    const personaId = getConversationPersonaId();
+    const parts = [String(pals.length), personaId, conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
     for (const { character, index, settings, groupId, group } of pals) {
         const avatar = character?.avatar || '';
-        const unreadCount = getUnreadCount(avatar, { groupId });
-        const characterStore = getConversationThreadStore(avatar, { create: false, groupId });
+        const unreadCount = getUnreadCount(avatar, { groupId, personaId });
+        const characterStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
         const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
         const participants = getConversationParticipants(avatar, settings, { groupId })
             .map((participant) => {
@@ -71,9 +74,9 @@ function buildPalsRailFingerprint(pals) {
             settings?.availability || '',
             settings?.multi_char_names || '',
             getConversationDisplayName(avatar, settings, { groupId }),
-            getLastConversationPreview(avatar, { groupId }),
+            getLastConversationPreview(avatar, { groupId, personaId }),
             unreadCount,
-            isConversationActiveThread(avatar, groupId) ? '1' : '0',
+            isConversationActiveThread(avatar, groupId, { personaId }) ? '1' : '0',
             activeBranchId,
             participants,
             branches,
@@ -123,6 +126,7 @@ export function renderPalsRail() {
     }
 
     const pals = getConversationRailItems();
+    const personaId = getConversationPersonaId();
     const fingerprint = buildPalsRailFingerprint(pals);
     if (fingerprint === conversationState.lastPalsRailFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
         return;
@@ -142,7 +146,7 @@ export function renderPalsRail() {
     }
 
     for (const { character, index, settings, groupId, group } of pals) {
-        const unreadCount = getUnreadCount(character.avatar, { groupId });
+        const unreadCount = getUnreadCount(character.avatar, { groupId, personaId });
         const row = document.createElement('div');
         row.className = 'sb-conversation-pal-row';
         row.dataset.groupId = groupId || '';
@@ -154,7 +158,7 @@ export function renderPalsRail() {
         button.dataset.avatar = character.avatar;
         button.dataset.groupId = groupId || '';
         button.dataset.unread = String(unreadCount > 0);
-        button.setAttribute('aria-current', String(isConversationActiveThread(character.avatar, groupId)));
+        button.setAttribute('aria-current', String(isConversationActiveThread(character.avatar, groupId, { personaId })));
         button.innerHTML = `
             <span class="sb-conversation-pal-avatar"></span>
             <span class="sb-conversation-pal-copy">
@@ -195,14 +199,14 @@ export function renderPalsRail() {
             kind.textContent = groupId ? (group?.name || 'Group DM') : 'Solo';
         }
         if (preview instanceof HTMLElement) {
-            preview.textContent = getLastConversationPreview(character.avatar, { groupId });
+            preview.textContent = getLastConversationPreview(character.avatar, { groupId, personaId });
         }
         if (unreadBadge instanceof HTMLElement) {
             unreadBadge.textContent = getBadgeLabel(unreadCount);
             unreadBadge.hidden = unreadCount <= 0;
         }
 
-        const characterStore = getConversationThreadStore(character.avatar, { create: false, groupId });
+        const characterStore = getConversationThreadStore(character.avatar, { create: false, groupId, personaId });
         const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
         const branchList = document.createElement('div');
         branchList.className = 'sb-conversation-branch-list';
@@ -210,6 +214,7 @@ export function renderPalsRail() {
             const branchRow = document.createElement('div');
             branchRow.className = 'sb-conversation-branch-row';
             branchRow.dataset.active = String(branch.id === activeBranchId);
+            branchRow.dataset.unread = String(branch.unread > 0);
 
             const branchButton = document.createElement('button');
             branchButton.type = 'button';
@@ -218,14 +223,23 @@ export function renderPalsRail() {
             branchButton.dataset.avatar = character.avatar;
             branchButton.dataset.groupId = groupId || '';
             branchButton.dataset.branchId = branch.id;
-            branchButton.innerHTML = '<span class="sb-conversation-branch-name"></span><span class="sb-conversation-branch-preview"></span>';
+            branchButton.dataset.unread = String(branch.unread > 0);
+            branchButton.innerHTML = '<span class="sb-conversation-branch-name"></span><span class="sb-conversation-branch-preview"></span><span class="sb-conversation-branch-unread" aria-hidden="true"></span>';
             const branchName = branchButton.querySelector('.sb-conversation-branch-name');
             const branchPreview = branchButton.querySelector('.sb-conversation-branch-preview');
+            const branchUnread = branchButton.querySelector('.sb-conversation-branch-unread');
             if (branchName instanceof HTMLElement) {
                 branchName.textContent = branch.name || 'Conversation';
             }
             if (branchPreview instanceof HTMLElement) {
                 branchPreview.textContent = branch.preview || 'Conversation ready';
+            }
+            if (branchUnread instanceof HTMLElement) {
+                branchUnread.textContent = getBadgeLabel(branch.unread);
+                branchUnread.hidden = branch.unread <= 0;
+            }
+            if (branch.unread > 0) {
+                branchButton.setAttribute('aria-label', `${branch.name || 'Conversation'}, ${branch.unread} unread`);
             }
 
             const renameBranch = document.createElement('button');
@@ -270,6 +284,7 @@ export function renderPalsRail() {
 export function updateConversationHeader(settings = getSettings()) {
     const character = getCurrentCharacter();
     const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const stage = document.getElementById(CHROME_IDS.stage);
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
@@ -277,8 +292,8 @@ export function updateConversationHeader(settings = getSettings()) {
     const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
     const addMemberButton = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="open-add-member"]`);
     const statusCopy = getAvailabilityCopy(settings.availability);
-    const schedule = avatar ? getStoredSchedule(avatar) : null;
-    const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar) : null;
+    const schedule = avatar ? getStoredSchedule(avatar, { personaId }) : null;
+    const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar, new Date(), { personaId }) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
     if (!avatar || !character) {
@@ -324,7 +339,7 @@ export function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
-        const typingParticipants = getActiveTypingParticipants(avatar, { groupId });
+        const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
         if (typingParticipants.length) {
             const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
             if (typingNames.length > 2) {
@@ -374,8 +389,9 @@ export function updateConversationChrome(settings = getSettings()) {
 
 export function refreshConversationInterface({ syncControls = false } = {}) {
     const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const settings = getSettings(avatar, { groupId, personaId });
     const active = Boolean(conversationState.conversationWorkspaceOpen);
 
     setConversationInterfaceActive(active);
@@ -386,8 +402,9 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     if (active) {
         if (avatar) {
-            clearUnreadCount(avatar, { groupId });
-            updateLastPreviewFromConversation(avatar, { groupId });
+            const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+            clearUnreadCount(avatar, { branchId, groupId, personaId });
+            updateLastPreviewFromConversation(avatar, { groupId, personaId });
         }
         renderConversationTimeline();
         updateConversationChrome(settings);
@@ -415,8 +432,8 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
     updateProsePolisherButtonVisibility();
 }
 
-export function readSettingsFromPanel(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const settings = getSettings(avatar, { groupId });
+export function readSettingsFromPanel(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const settings = getSettings(avatar, { groupId, personaId });
 
     for (const field of SETTINGS_FIELDS) {
         const element = document.getElementById(field.id);
@@ -437,13 +454,14 @@ export function readSettingsFromPanel(avatar, { groupId = getConversationGroupId
     return settings;
 }
 
-export function saveCurrentPanelSettings() {
-    const avatar = getCurrentCharAvatar();
+export function saveCurrentPanelSettings(options = {}) {
+    const avatar = options?.avatar || getCurrentCharAvatar();
     if (!avatar) {
         return;
     }
 
-    const groupId = getConversationGroupIdForAvatar(avatar);
+    const groupId = Object.prototype.hasOwnProperty.call(options, 'groupId') ? options.groupId || '' : getConversationGroupIdForAvatar(avatar);
+    const personaId = options?.personaId || getConversationPersonaId();
 
     // Sync dynamic editor state into hidden backing inputs before reading
     const weeklyInput = document.getElementById('sb_conv_weekly_schedule');
@@ -455,15 +473,17 @@ export function saveCurrentPanelSettings() {
         chimingInput.value = readChimingPartnersFromList();
     }
 
-    const settings = readSettingsFromPanel(avatar, { groupId });
+    const settings = readSettingsFromPanel(avatar, { groupId, personaId });
     settings.idle_action = getIdleActionFromSettings(settings);
     settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
     settings.auto_chat_names = settings.multi_char_names;
     if (groupId) {
-        saveGroupConversationSettings(groupId, settings);
+        saveGroupConversationSettings(groupId, settings, { personaId });
     }
-    saveSettings(avatar, settings, { groupId });
-    scheduleInterfaceRefresh({ syncControls: false });
+    saveSettings(avatar, settings, { groupId, personaId });
+    if (personaId === getConversationPersonaId()) {
+        scheduleInterfaceRefresh({ syncControls: false });
+    }
     updateGroupMembersVisibility();
 }
 
@@ -494,6 +514,7 @@ export function updateGroupMembersVisibility() {
 
 export function loadCurrentPanelSettings() {
     const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
 
     if (!avatar) {
         applySettingsToPanel(DEFAULT_SETTINGS);
@@ -502,7 +523,7 @@ export function loadCurrentPanelSettings() {
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const settings = getSettings(avatar, { groupId, personaId });
     applySettingsToPanel(settings);
     scheduleInterfaceRefresh({ syncControls: false });
 }
@@ -519,12 +540,18 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     const avatar = getCurrentCharAvatar();
     if (!avatar) return;
 
+    const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const thread = getConversationThread(avatar, { groupId });
-    const msg = thread.find(m => m.id === messageId);
+    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    if (!branchId) {
+        return;
+    }
+    const thread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+    const msg = thread.find(m => String(m.id) === String(messageId));
     if (!msg || !msg.mes) {
         return;
     }
+    const sourceRevision = getConversationMessageRevision(msg);
 
     if (buttonElement instanceof HTMLElement) {
         buttonElement.classList.remove('fa-wand-magic-sparkles');
@@ -532,10 +559,10 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     }
 
     try {
-        const charName = getCurrentCharName();
+        const charName = msg.name || getCurrentCharName();
         const systemPrompt = `You are an editor for ${charName}'s messages. Polish ${charName}'s reply in this instant messaging chatroom to make it more expressive, fitting for their personality, and natural. Correct any structural awkwardness while preserving the exact meaning, spelling quirks, and intent of the original text. Output only the polished reply without formatting prefixes or labels.`;
         const prompt = `Polish this message text:\n"${msg.mes}"`;
-        const settings = getSettings(avatar, { groupId });
+        const settings = getSettings(avatar, { groupId, personaId });
         const response = await generateConversationRaw({
             prompt,
             systemPrompt,
@@ -544,10 +571,17 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }, settings);
 
         if (response?.trim()) {
-            msg.mes = normalizeConversationOutputText(response.trim());
-            saveConversationThread(avatar, thread, { groupId });
-            updateLastPreviewFromConversation(avatar, { groupId });
-            scheduleTimelineRender();
+            const targetThread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+            const targetMessage = targetThread.find(message => String(message.id) === String(messageId));
+            if (!targetMessage || getConversationMessageRevision(targetMessage) !== sourceRevision) {
+                return;
+            }
+            targetMessage.mes = normalizeConversationOutputText(response.trim());
+            saveConversationThread(avatar, targetThread, { branchId, create: false, groupId, personaId });
+            updateLastPreviewFromConversation(avatar, { branchId, groupId, personaId });
+            if (isConversationActiveThread(avatar, groupId, { branchId, personaId })) {
+                scheduleTimelineRender();
+            }
             globalThis.toastr?.success?.('Character reply polished successfully!');
         } else {
             globalThis.toastr?.error?.('Polishing failed. No response received.');

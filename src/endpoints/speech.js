@@ -125,28 +125,21 @@ pollinations.post('/generate', async (req, res) => {
         const text = req.body.text;
         const model = req.body.model || 'openai-audio';
         const voice = req.body.voice || 'alloy';
+        // SillyBunny divergence: Pollinations TTS must hit the provider's audio endpoint directly so Conversation narration receives literal speech output.
+        const speechModel = model === 'openai-audio' ? 'tts-1' : model;
 
-        console.debug('Pollinations TTS request', { text, model, voice });
+        console.debug('Pollinations TTS request', { text, model: speechModel, voice });
 
-        const response = await fetch('https://gen.pollinations.ai/v1/chat/completions', {
+        const response = await fetch('https://gen.pollinations.ai/v1/audio/speech', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${key}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: model,
-                stream: false,
-                modalities: ['text', 'audio'],
-                seed: Math.floor(Math.random() * Math.pow(2, 32)),
-                audio: {
-                    format: 'mp3',
-                    voice: voice,
-                },
-                messages: [{
-                    role: 'user',
-                    content: text,
-                }],
+                model: speechModel,
+                input: text,
+                voice: voice,
             }),
         });
 
@@ -155,17 +148,10 @@ pollinations.post('/generate', async (req, res) => {
             throw new Error(`Failed to generate audio from Pollinations: ${text}`);
         }
 
-        /** @type {any} */
-        const data = await response.json();
-        const audioData = data?.choices?.[0]?.message?.audio?.data;
-
-        if (!audioData) {
-            console.warn('Pollinations TTS audio data is missing from the response');
-            return res.sendStatus(500);
-        }
-
-        res.set('Content-Type', 'audio/mpeg');
-        return res.send(Buffer.from(audioData, 'base64'));
+        const contentType = response.headers.get('content-type') || 'audio/mpeg';
+        const audioData = await response.arrayBuffer();
+        res.set('Content-Type', contentType);
+        return res.send(Buffer.from(audioData));
     } catch (error) {
         console.error(error);
         return res.sendStatus(500);

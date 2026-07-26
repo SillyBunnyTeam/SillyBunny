@@ -18,7 +18,7 @@ import {
     runCompanionsOnMessage,
 } from './companion-runner.js';
 import { resolveCompanionContentMacros } from './companion-macros.js';
-import { openCompanionPanel } from './companion-panel.js';
+import { isConversationModeActive, openCompanionPanel } from './companion-panel.js';
 import {
     MESSAGE_INBOX_EMPTY_OUTPUTS,
     isMessageInboxAgent,
@@ -391,6 +391,10 @@ export async function openCompanionDashboard() {
         return;
     }
 
+    if (isConversationModeActive()) {
+        return;
+    }
+
     if (activeDashboardPopup) {
         return;
     }
@@ -448,5 +452,6 @@ export function initCompanionWandMenuItem() {
         </div>
     `);
     menuItem.on('click', () => openCompanionDashboard());
+    menuItem.toggle?.(!isConversationModeActive());
     $('#extensionsMenu').append(menuItem);
 }

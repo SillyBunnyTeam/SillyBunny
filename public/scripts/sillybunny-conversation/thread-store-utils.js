@@ -45,6 +45,12 @@ export function hasConversationMessageContent(message) {
     );
 }
 
+export function resolveConversationReminderBranchId(reminder, threadStore) {
+    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
+    const branchId = String(reminder?.branchId || threadStore?.activeBranchId || '').trim();
+    return branchId && branches[branchId] ? branchId : '';
+}
+
 export function normalizeConversationStoredMessage(message, index = 0, now = Date.now()) {
     if (!message || typeof message !== 'object') {
         return message;

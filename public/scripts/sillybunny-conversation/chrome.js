@@ -1,18 +1,21 @@
-import { animation_duration, characters, selectCharacterById } from '../../script.js';
+import { animation_duration, characters } from '../../script.js';
+import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
-import { openGroupById, selected_group } from '../group-chats.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
-import { getUserAvatar, setUserAvatar } from '../personas.js';
+import { getUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
+import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import {
     createConversationBranchForAvatar,
     deleteConversationBranch,
     getConversationBranches,
-    getConversationGroupById,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationThreadKey,
+    getConversationThreadStore,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getRoleplayCurrentCharacter,
@@ -35,6 +38,7 @@ import {
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
 import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
     addWeeklyScheduleRow,
@@ -64,11 +68,14 @@ import {
 } from './settings-panel.js';
 import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
-import { updateLastUserActivity } from './thread-store.js';
+import { createForcedConversationQueueItem } from './send-queue-utils.js';
+import { getConversationThread, updateLastUserActivity } from './thread-store.js';
 import {
     branchConversationFromMessage,
+    clearConversationReplyTarget,
     copyConversationMessage,
     deleteConversationMessage,
+    generateConversationSelfieFromMessageCommand,
     ensureConversationChrome,
     quickConversationReminder,
     quickConversationSelfie,
@@ -77,13 +84,14 @@ import {
     regenerateConversationMessage,
     replyToConversationMessage,
     setConversationTimelineChannel,
+    speakConversationMessage,
     toggleConversationMessagePin,
     updateConversationNotificationSettingsVisibility,
     updateConversationSearchQuery,
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260618g';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260725a';
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
 function ensureConversationStylesheet() {
@@ -93,6 +101,12 @@ function ensureConversationStylesheet() {
 
     conversationState.conversationCssLoaded = true;
     loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+        .then(() => {
+            if (conversationState.conversationWorkspaceOpen) {
+                conversationState.timelineBottomScrollPending = true;
+                scheduleTimelineRender();
+            }
+        })
         .catch(error => {
             conversationState.conversationCssLoaded = false;
             console.warn('Conversation Mode: stylesheet failed to load', error);
@@ -117,6 +131,130 @@ function setConversationToolsVisible(visible) {
     } catch {
         // Ignore storage write failures in Safari Private Browsing.
     }
+}
+
+function closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement) {
+    overlay.remove();
+    if (previouslyFocusedElement instanceof HTMLElement) {
+        previouslyFocusedElement.focus({ preventScroll: true });
+    }
+}
+
+function openGroundedDialogueRulesEditor() {
+    const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
+    if (!(backingInput instanceof HTMLTextAreaElement)) {
+        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules.');
+        return;
+    }
+
+    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    overlay.id = 'sb_conversation_grounded_rules_modal';
+    overlay.className = 'sb-conversation-schedule-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+        background: rgba(0, 0, 0, 0.7);
+        box-sizing: border-box;
+    `;
+
+    const modal = document.createElement('div');
+    modal.className = 'sb-conversation-schedule-modal';
+    modal.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        inline-size: min(720px, calc(100vw - 24px));
+        max-block-size: min(78vh, 760px);
+        padding: 16px;
+        border: 1px solid color-mix(in srgb, var(--sb-shell-border, #666) 70%, transparent);
+        border-radius: var(--sb-radius-lg, 16px);
+        background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor));
+        color: var(--SmartThemeBodyColorContrast);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    `;
+
+    const header = document.createElement('div');
+    header.className = 'sb-conversation-field-row';
+    header.style.cssText = 'align-items: center; justify-content: space-between; gap: 10px;';
+
+    const title = document.createElement('div');
+    title.innerHTML = '<div class="sb-conversation-settings-kicker">Global prompt style</div><div class="sb-conversation-settings-title">Grounded Dialogue Rules</div>';
+    header.appendChild(title);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'menu_button menu_button_icon';
+    closeButton.title = 'Close editor';
+    closeButton.setAttribute('aria-label', 'Close Grounded Dialogue Rules editor');
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    header.appendChild(closeButton);
+
+    const hint = document.createElement('p');
+    hint.className = 'sb-conversation-field-hint';
+    hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
+
+    const editor = document.createElement('textarea');
+    editor.className = 'text_pole textarea_compact wide100p';
+    editor.rows = 18;
+    editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
+    editor.style.cssText = 'min-block-size: 340px; resize: vertical; font-family: var(--monoFontFamily, monospace);';
+
+    const actions = document.createElement('div');
+    actions.className = 'sb-conversation-field-row';
+    actions.style.cssText = 'justify-content: flex-end; gap: 8px;';
+
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.className = 'menu_button';
+    resetButton.textContent = 'Reset';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'menu_button';
+    cancelButton.textContent = 'Cancel';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'menu_button';
+    saveButton.textContent = 'Save Rules';
+
+    actions.append(resetButton, cancelButton, saveButton);
+    modal.append(header, hint, editor, actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const closeEditor = () => closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement);
+    closeButton.addEventListener('click', closeEditor);
+    cancelButton.addEventListener('click', closeEditor);
+    resetButton.addEventListener('click', () => {
+        editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
+        editor.focus({ preventScroll: true });
+    });
+    saveButton.addEventListener('click', () => {
+        backingInput.value = editor.value;
+        backingInput.dispatchEvent(new Event('input', { bubbles: true }));
+        saveCurrentPanelSettings();
+        toastr.success('Grounded Dialogue Rules updated.');
+        closeEditor();
+    });
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            closeEditor();
+        }
+    });
+    overlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeEditor();
+        }
+    });
+
+    requestAnimationFrame(() => editor.focus({ preventScroll: true }));
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -215,21 +353,18 @@ function showConversationZoomedAvatar(target) {
     }
 }
 
-export async function selectConversationThread(avatar, { groupId = null, showToast = false } = {}) {
+export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
     }
 
-    const normalizedGroupId = groupId ? String(groupId) : '';
-    const didSyncRoleplaySelection = normalizedGroupId
-        ? await openGroupById(normalizedGroupId, { switchMenu: false })
-        : await selectCharacterById(characters.findIndex(character => character?.avatar === avatar), { switchMenu: false });
-
-    if (!didSyncRoleplaySelection) {
+    if (personaId && !await switchConversationPersona(personaId)) {
         return false;
     }
 
+    const normalizedGroupId = groupId ? String(groupId) : '';
     return openConversationWorkspaceForAvatar(avatar, {
+        branchId,
         groupId: normalizedGroupId || null,
         showToast,
     });
@@ -362,6 +497,9 @@ export function bindConversationChromeControls(sheld) {
             }
             case 'clear-attachments':
                 clearConversationAttachmentInput();
+                break;
+            case 'clear-reply-target':
+                clearConversationReplyTarget();
                 break;
             case 'create-memory':
                 await forceCreateMemoryFromPanel();
@@ -545,6 +683,9 @@ export function bindConversationChromeControls(sheld) {
             case 'copy-message':
                 await copyConversationMessage(target.dataset.messageId);
                 break;
+            case 'speak-message':
+                await speakConversationMessage(target.dataset.messageId);
+                break;
             case 'toggle-message-pin':
                 toggleConversationMessagePin(target.dataset.messageId);
                 break;
@@ -569,6 +710,9 @@ export function bindConversationChromeControls(sheld) {
             case 'quick-selfie':
                 await quickConversationSelfie();
                 break;
+            case 'generate-selfie-command':
+                await generateConversationSelfieFromMessageCommand(target.dataset.messageId, target.dataset.selfieIndex);
+                break;
             case 'quick-remind':
                 await quickConversationReminder();
                 break;
@@ -579,14 +723,18 @@ export function bindConversationChromeControls(sheld) {
                 const avatar = getCurrentCharAvatar();
                 if (avatar) {
                     const groupId = conversationState.conversationSelectedGroupId || '';
-                    sendQueue.push({
+                    const personaId = getConversationPersonaId();
+                    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+                    const branchId = threadStore?.activeBranchId || '';
+                    const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                    sendQueue.push(createForcedConversationQueueItem({
                         avatar,
+                        branchId,
                         groupId,
-                        text: '',
-                        attachmentContext: '',
+                        personaId,
+                        threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
                         createdAt: Date.now(),
-                        force: true,
-                    });
+                    }, messages));
                     void processSendQueue();
                 }
                 break;
@@ -613,6 +761,9 @@ export function bindConversationChromeControls(sheld) {
                 }
                 break;
             }
+            case 'edit-grounded-dialogue-rules':
+                openGroundedDialogueRulesEditor();
+                break;
             case 'weekly-remove': {
                 const row = target.closest('.sb-conversation-weekly-row');
                 if (row instanceof HTMLElement) {
@@ -642,9 +793,10 @@ export function bindConversationChromeControls(sheld) {
             case 'pick-persona': {
                 const avatarId = target.dataset.personaAvatar;
                 if (avatarId) {
-                    await setUserAvatar(avatarId, { toastPersonaNameChange: false });
+                    if (!await switchConversationPersona(avatarId)) {
+                        break;
+                    }
                     updateUserFooter();
-                    saveCurrentPanelSettings();
                     const picker = document.getElementById(CHROME_IDS.personaPicker);
                     if (picker instanceof HTMLElement) {
                         renderConversationPersonaPicker(picker);
@@ -664,25 +816,28 @@ export function bindConversationChromeControls(sheld) {
                 }
                 conversationState.scheduleGenerationBusy = true;
                 const genBtn = target;
+                const personaId = getConversationPersonaId();
                 genBtn.setAttribute('disabled', '');
                 toastr.info(`Generating schedule for ${character.name}…`);
                 try {
                     const groupId = getConversationGroupIdForAvatar(genAvatar);
-                    const schedule = await generateCharacterSchedule(character, { groupId });
+                    const schedule = await generateCharacterSchedule(character, { groupId, personaId });
                     if (schedule) {
-                        saveStoredSchedule(genAvatar, schedule);
-                        const genSettings = getSettings(genAvatar, { groupId });
+                        saveStoredSchedule(genAvatar, schedule, { personaId });
+                        const genSettings = getSettings(genAvatar, { groupId, personaId });
                         genSettings.auto_schedule = JSON.stringify(schedule);
                         genSettings.talkativeness = schedule.talkativeness;
                         genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
                         genSettings.schedule_generated_at = Date.now();
                         if (groupId) {
-                            saveGroupConversationSettings(groupId, genSettings);
+                            saveGroupConversationSettings(groupId, genSettings, { personaId });
                         }
-                        saveSettings(genAvatar, genSettings, { groupId });
-                        applySettingsToPanel(genSettings);
-                        renderScheduleDisplay();
-                        updateConversationChrome(genSettings);
+                        saveSettings(genAvatar, genSettings, { groupId, personaId });
+                        if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
+                            applySettingsToPanel(genSettings);
+                            renderScheduleDisplay();
+                            updateConversationChrome(genSettings);
+                        }
                         toastr.success(`Schedule generated for ${character.name}.`);
                     } else {
                         toastr.warning('Schedule generation returned no data. Try again.');
@@ -757,7 +912,8 @@ export function bindConversationChromeControls(sheld) {
     const searchInput = document.getElementById(CHROME_IDS.search);
     if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbConversationBound !== 'true') {
         searchInput.dataset.sbConversationBound = 'true';
-        searchInput.addEventListener('input', () => updateConversationSearchQuery(searchInput.value));
+        const debouncedSearch = debounce(() => updateConversationSearchQuery(searchInput.value), debounce_timeout.short);
+        searchInput.addEventListener('input', debouncedSearch);
     }
 
     const stage = document.getElementById(CHROME_IDS.stage);
@@ -802,7 +958,7 @@ export function bindConversationChromeControls(sheld) {
     const palsSearch = document.getElementById('sb_conversation_pals_search');
     if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
         palsSearch.dataset.sbConversationBound = 'true';
-        palsSearch.addEventListener('input', () => {
+        const debouncedPalsFilter = debounce(() => {
             const query = palsSearch.value.toLowerCase().trim();
             const pals = document.querySelectorAll('.sb-conversation-pal');
             pals.forEach(pal => {
@@ -811,13 +967,14 @@ export function bindConversationChromeControls(sheld) {
                     const row = pal.closest('.sb-conversation-pal-row');
                     const targetElement = row instanceof HTMLElement ? row : pal;
                     if (palName.includes(query)) {
-                        targetElement.style.display = '';
+                        targetElement.classList.remove('sb-conversation-hidden');
                     } else {
-                        targetElement.style.display = 'none';
+                        targetElement.classList.add('sb-conversation-hidden');
                     }
                 }
             });
-        });
+        }, debounce_timeout.short);
+        palsSearch.addEventListener('input', debouncedPalsFilter);
     }
 
     const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
@@ -839,7 +996,12 @@ export function bindConversationChromeControls(sheld) {
             const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
                 .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
                 .map(input => input.value);
-            setActiveConversationPersonaAppendixIds(avatarId, selectedIds);
+            const threadAvatar = getCurrentCharAvatar();
+            setActiveConversationPersonaAppendixIds(avatarId, selectedIds, {
+                avatar: threadAvatar,
+                groupId: getConversationGroupIdForAvatar(threadAvatar),
+                personaId: avatarId,
+            });
             renderConversationPersonaPicker(personaPicker);
             updateUserFooter();
         });
@@ -847,22 +1009,18 @@ export function bindConversationChromeControls(sheld) {
 }
 
 export function getDefaultConversationAvatar() {
-    const group = getConversationGroupById(selected_group);
-    const groupAvatar = group?.members
-        ?.filter(avatar => avatar && !group.disabled_members?.includes(avatar))
-        ?.find(avatar => getCharacterForAvatar(avatar));
-    if (selected_group && groupAvatar) {
-        return groupAvatar;
-    }
-
-    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
-    if (currentAvatar) {
-        return currentAvatar;
+    if (conversationState.conversationSelectedAvatar && getCharacterForAvatar(conversationState.conversationSelectedAvatar)) {
+        return conversationState.conversationSelectedAvatar;
     }
 
     const pal = getConversationPals().find(item => item.character?.avatar);
     if (pal?.character?.avatar) {
         return pal.character.avatar;
+    }
+
+    const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
+    if (currentAvatar) {
+        return currentAvatar;
     }
 
     return (Array.isArray(characters) ? characters : []).find(character => character?.avatar)?.avatar || null;
@@ -876,10 +1034,12 @@ function emitConversationWorkspaceStateChange() {
     }));
 }
 
-export function openConversationWorkspaceForAvatar(avatar, { groupId = null, showToast = true, enable = false } = {}) {
+export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
+    closeConversationSettings();
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
+    const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
     const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
     emitConversationWorkspaceStateChange();
@@ -890,14 +1050,21 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
     }
+    if (!wasWorkspaceOpen || threadChanged) {
+        conversationState.timelineBottomScrollPending = true;
+    }
     ensureConversationStylesheet();
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
         setTimeout(() => {
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
         }, 100);
         return false;
+    }
+
+    if (branchId) {
+        setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
     }
 
     const settings = getSettings(targetAvatar, { groupId: targetGroupId });
@@ -913,14 +1080,15 @@ export function openConversationWorkspaceForAvatar(avatar, { groupId = null, sho
         toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
     setTimeout(() => {
-        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: false });
+        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
     }, 100);
     return true;
 }
 
 export function openConversationWorkspaceFromWelcome() {
     const avatar = conversationState.conversationSelectedAvatar || getDefaultConversationAvatar();
-    const groupId = selected_group && avatar && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
+    const selectedGroupId = conversationState.conversationSelectedGroupId || '';
+    const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
     if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
         toastr.warning('Pick or import a character before opening Conversation Mode.');
         return false;
@@ -930,6 +1098,10 @@ export function openConversationWorkspaceFromWelcome() {
 }
 
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
+    const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    closeConversationSettings({ avatar, groupId, personaId });
     conversationState.conversationWorkspaceOpen = false;
     conversationState.conversationSelectedAvatar = null;
     conversationState.conversationSelectedGroupId = null;
@@ -966,7 +1138,9 @@ export function setConversationInterfaceActive(active) {
             timeline.removeAttribute('data-sb-conversation-fingerprint');
             conversationState.lastTimelineFingerprint = '';
             conversationState.lastRenderedAvatar = null;
+            conversationState.lastRenderedThreadKey = '';
             conversationState.lastRenderedMessageCount = 0;
+            conversationState.timelineBottomScrollPending = false;
         }
         return;
     }

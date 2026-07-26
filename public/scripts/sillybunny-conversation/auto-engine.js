@@ -1,4 +1,4 @@
-import { chat, is_send_press, name1 } from '../../script.js';
+import { chat, is_send_press } from '../../script.js';
 import { selected_group } from '../group-chats.js';
 import {
     DEFAULT_INACTIVITY_THRESHOLD,
@@ -18,10 +18,13 @@ import {
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationStore,
-    getCurrentCharacter,
+    getConversationThreadStore,
     getCurrentCharAvatar,
     getCurrentCharName,
+    getRoleplayCurrentCharacter,
+    getRoleplayGroupById,
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
@@ -34,7 +37,6 @@ import {
     getConversationRailItems,
     getCurrentGroupConversationMembers,
     getGroupAsideKey,
-    getSelectedConversationGroup,
 } from './pals-rail.js';
 import {
     chooseConversationPartner,
@@ -44,8 +46,9 @@ import {
     getRecentlySilentMentionedPartner,
     isCharacterMentionedInText,
 } from './partners.js';
-import { getUserStatus, safeParseWeeklySchedule } from './personas.js';
+import { getConversationPersonaName, getUserStatus, safeParseWeeklySchedule } from './personas.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { buildConversationRoleplayContext } from './shared-helpers.js';
 import {
     getAutoCharacterChatCooldownMs,
     getConversationBranchActivityTime,
@@ -66,7 +69,7 @@ import {
     sendQueue,
 } from './state.js';
 import { clearConversationTimeouts, setConversationTimeout } from './timers.js';
-import { getConversationThread, getImageCooldownRemainingSeconds, markImageGenerated } from './thread-store.js';
+import { getConversationThread, getImageCooldownRemainingSeconds, markImageGenerated, resolveConversationReminderBranchId } from './thread-store.js';
 import { getConversationActivityContext, withTypingParticipant } from './typing.js';
 
 function isAutoWorkerAborted(signal = conversationState.autoWorkerAbortController?.signal) {
@@ -107,8 +110,8 @@ export function buildAutoMessageDirective(directive) {
     return directive;
 }
 
-export async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    if (!settings.image_gen_enabled || !settings.spontaneous_selfies || getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { groupId }) > 0) {
+export async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    if (!settings.image_gen_enabled || !settings.spontaneous_selfies || getImageCooldownRemainingSeconds(avatar, settings, Date.now(), { branchId, groupId, personaId }) > 0) {
         return;
     }
 
@@ -119,9 +122,9 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
         'a spontaneous selfie in the current DM conversation',
         avatar,
     );
-    const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '');
+    const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '', { avatar, character });
     if (imageUrl) {
-        markImageGenerated(avatar, Date.now(), { groupId });
+        markImageGenerated(avatar, Date.now(), { branchId, groupId, personaId });
         await appendConversationMessage('Snapped something for you.', {
             name: charName,
             role: 'character',
@@ -130,18 +133,25 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
                 image_url: imageUrl,
                 image_prompt: prompt,
             },
+            branchId,
             groupId,
+            personaId,
         }, avatar);
     }
 }
 
-export async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar()) {
+export async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar(), { branchId = '', personaId = getConversationPersonaId() } = {}) {
     const character = getCharacterForAvatar(avatar);
     if (conversationState.autoWorkerBusy || conversationState.conversationReplyBusy || is_send_press || !character || !avatar) {
         return false;
     }
 
-    const groupId = extra.groupId || getConversationGroupIdForAvatar(avatar);
+    const groupId = extra.groupId ?? getConversationGroupIdForAvatar(avatar);
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const capturedBranchId = branchId || threadStore?.activeBranchId || '';
+    if (!capturedBranchId || !threadStore?.branches?.[capturedBranchId]) {
+        return false;
+    }
 
     conversationState.autoWorkerBusy = true;
 
@@ -150,19 +160,26 @@ export async function triggerAutoMessage(directive, settings, extra = {}, avatar
         const response = await generateConversationReply(quietPrompt, settings, {
             speakerName: character.name || 'Character',
             avatar,
+            branchId: capturedBranchId,
             threadAvatar: avatar,
             groupId,
+            personaId,
         });
 
         if (response?.trim()) {
-            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
+            const postedText = await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_auto: true,
                     ...extra,
                 },
+                branchId: capturedBranchId,
                 groupId,
-            }, avatar), avatar, { groupId });
-            await maybeGenerateSpontaneousImage(settings, avatar, { groupId });
+                personaId,
+            }, avatar), avatar, { branchId: capturedBranchId, groupId, personaId });
+            if (!postedText) {
+                return false;
+            }
+            await maybeGenerateSpontaneousImage(settings, avatar, { branchId: capturedBranchId, groupId, personaId });
             return true;
         }
     } catch (error) {
@@ -187,25 +204,25 @@ export function getCurrentDayKey(date = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
-export function getLastAutoMessageTime(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return parsePositiveInt(getActiveConversationBranch(avatar, { create: false, groupId })?.lastAutoMessageAt, 0, 0);
+export function getLastAutoMessageTime(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.lastAutoMessageAt, 0, 0);
 }
 
-export function setLastAutoMessageTime(avatar, timestamp = Date.now(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { groupId });
+export function setLastAutoMessageTime(avatar, timestamp = Date.now(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (branch) {
         branch.lastAutoMessageAt = timestamp;
         persistConversationStore();
     }
 }
 
-export function getScheduleTriggerState(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const state = getActiveConversationBranch(avatar, { create: false, groupId })?.scheduleTriggers;
+export function getScheduleTriggerState(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const state = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.scheduleTriggers;
     return state && typeof state === 'object' ? state : {};
 }
 
-export function setScheduleTriggered(avatar, triggerKey, timestamp, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const state = getScheduleTriggerState(avatar, { groupId });
+export function setScheduleTriggered(avatar, triggerKey, timestamp, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const state = getScheduleTriggerState(avatar, { branchId, groupId, personaId });
     state[triggerKey] = timestamp;
 
     const stateEntries = Object.entries(state).sort((first, second) => first[1] - second[1]);
@@ -214,18 +231,18 @@ export function setScheduleTriggered(avatar, triggerKey, timestamp, { groupId = 
         delete state[oldestKey];
     }
 
-    const branch = getActiveConversationBranch(avatar, { groupId });
+    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
     if (branch) {
         branch.scheduleTriggers = state;
         persistConversationStore();
     }
 }
 
-export function hasScheduleTriggered(avatar, triggerKey, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    return Object.prototype.hasOwnProperty.call(getScheduleTriggerState(avatar, { groupId }), triggerKey);
+export function hasScheduleTriggered(avatar, triggerKey, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    return Object.prototype.hasOwnProperty.call(getScheduleTriggerState(avatar, { branchId, groupId, personaId }), triggerKey);
 }
 
-export async function checkScheduledAutoMessages(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function checkScheduledAutoMessages(avatar, settings, now, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!settings.auto_message) {
         return false;
     }
@@ -254,7 +271,7 @@ export async function checkScheduledAutoMessages(avatar, settings, now, { groupI
         }
 
         const triggerKey = `weekly:${currentDay}:${entry.time}:${entry.message}`;
-        if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
+        if (hasScheduleTriggered(avatar, triggerKey, { branchId, groupId, personaId })) {
             continue;
         }
 
@@ -263,10 +280,11 @@ export async function checkScheduledAutoMessages(avatar, settings, now, { groupI
             settings,
             { schedule: `weekly:${entry.time}`, groupId },
             avatar,
+            { branchId, personaId },
         );
         if (triggered) {
-            setScheduleTriggered(avatar, triggerKey, now, { groupId });
-            setLastAutoMessageTime(avatar, now, { groupId });
+            setScheduleTriggered(avatar, triggerKey, now, { branchId, groupId, personaId });
+            setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
         }
 
         return triggered;
@@ -286,14 +304,14 @@ export async function checkScheduledAutoMessages(avatar, settings, now, { groupI
         const absoluteMatch = trimmed.match(/^(\d{2}):(\d{2})\s*-\s*(.*)$/);
         if (absoluteMatch && `${absoluteMatch[1]}:${absoluteMatch[2]}` === currentMinute) {
             const triggerKey = `absolute:${currentDay}:${currentMinute}:${trimmed}`;
-            if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
+            if (hasScheduleTriggered(avatar, triggerKey, { branchId, groupId, personaId })) {
                 continue;
             }
 
-            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed, groupId }, avatar);
+            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed, groupId }, avatar, { branchId, personaId });
             if (triggered) {
-                setScheduleTriggered(avatar, triggerKey, now, { groupId });
-                setLastAutoMessageTime(avatar, now, { groupId });
+                setScheduleTriggered(avatar, triggerKey, now, { branchId, groupId, personaId });
+                setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
             }
 
             return triggered;
@@ -302,19 +320,19 @@ export async function checkScheduledAutoMessages(avatar, settings, now, { groupI
         const relativeMatch = trimmed.match(/^(\d+)\s*-\s*(.*)$/);
         if (relativeMatch) {
             const delayMinutes = parsePositiveInt(relativeMatch[1], 0, 0);
-            const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
+            const lastUserActivity = getLastUserActivity(avatar, now, { branchId, groupId, personaId });
             const elapsedMinutes = (now - lastUserActivity) / (60 * 1000);
 
             if (delayMinutes > 0 && elapsedMinutes >= delayMinutes) {
                 const triggerKey = `relative:${lastUserActivity}:${trimmed}`;
-                if (hasScheduleTriggered(avatar, triggerKey, { groupId })) {
+                if (hasScheduleTriggered(avatar, triggerKey, { branchId, groupId, personaId })) {
                     continue;
                 }
 
-                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed, groupId }, avatar);
+                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed, groupId }, avatar, { branchId, personaId });
                 if (triggered) {
-                    setScheduleTriggered(avatar, triggerKey, now, { groupId });
-                    setLastAutoMessageTime(avatar, now, { groupId });
+                    setScheduleTriggered(avatar, triggerKey, now, { branchId, groupId, personaId });
+                    setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
                 }
 
                 return triggered;
@@ -325,14 +343,14 @@ export async function checkScheduledAutoMessages(avatar, settings, now, { groupI
     return false;
 }
 
-export async function checkIdleAutoMessage(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function checkIdleAutoMessage(avatar, settings, now, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const followupEnabled = Boolean(settings.idle_followup);
     const spontaneousEnabled = Boolean(settings.idle_spontaneous);
     if (!followupEnabled && !spontaneousEnabled) {
         return false;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
+    const lastUserActivity = getLastUserActivity(avatar, now, { branchId, groupId, personaId });
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
     if (idleMinutes < settings.idle_limit) {
@@ -340,16 +358,17 @@ export async function checkIdleAutoMessage(avatar, settings, now, { groupId = ge
     }
 
     const followupSessionKey = `${LAST_IDLE_SESSION_PREFIX}followup`;
-    if (followupEnabled && getConversationSessionMarker(avatar, followupSessionKey, { groupId }) !== String(lastUserActivity)) {
+    if (followupEnabled && getConversationSessionMarker(avatar, followupSessionKey, { branchId, groupId, personaId }) !== String(lastUserActivity)) {
         const triggered = await triggerAutoMessage(
             '[System directive: The user has been quiet for a while. Send a casual auto follow-up checking in or asking what they are up to.]',
             settings,
             { idle_action: 'followup', groupId },
             avatar,
+            { branchId, personaId },
         );
         if (triggered) {
-            setConversationSessionMarker(avatar, followupSessionKey, lastUserActivity, { groupId });
-            setLastAutoMessageTime(avatar, now, { groupId });
+            setConversationSessionMarker(avatar, followupSessionKey, lastUserActivity, { branchId, groupId, personaId });
+            setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
         }
         return triggered;
     }
@@ -360,7 +379,7 @@ export async function checkIdleAutoMessage(avatar, settings, now, { groupId = ge
     }
 
     const spontaneousSessionKey = `${LAST_IDLE_SESSION_PREFIX}spontaneous`;
-    if (getConversationSessionMarker(avatar, spontaneousSessionKey, { groupId }) === String(lastUserActivity)) {
+    if (getConversationSessionMarker(avatar, spontaneousSessionKey, { branchId, groupId, personaId }) === String(lastUserActivity)) {
         return false;
     }
 
@@ -369,10 +388,11 @@ export async function checkIdleAutoMessage(avatar, settings, now, { groupId = ge
         settings,
         { idle_action: 'spontaneous', groupId },
         avatar,
+        { branchId, personaId },
     );
     if (triggered) {
-        setConversationSessionMarker(avatar, spontaneousSessionKey, lastUserActivity, { groupId });
-        setLastAutoMessageTime(avatar, now, { groupId });
+        setConversationSessionMarker(avatar, spontaneousSessionKey, lastUserActivity, { branchId, groupId, personaId });
+        setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
     }
 
     return triggered;
@@ -402,7 +422,7 @@ export function buildProactiveDirective(activity, status, now = new Date()) {
     return `[System directive: It is ${timeOfDay} and you are currently ${activity} (status: ${status}). ${statusNote} The user has not replied in a while. Reach out to them yourself with a short, natural direct message. Reference your current activity or the time of day if it feels right. Do not wait for them to speak first.]`;
 }
 
-export async function checkProactiveMessaging(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar), lastAutoMessageAt = null } = {}) {
+export async function checkProactiveMessaging(avatar, settings, now, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), lastAutoMessageAt = null, personaId = getConversationPersonaId() } = {}) {
     if (!settings.proactive_messaging) {
         return false;
     }
@@ -412,20 +432,20 @@ export async function checkProactiveMessaging(avatar, settings, now, { groupId =
         return false;
     }
 
-    const schedule = getStoredSchedule(avatar);
-    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now));
+    const schedule = getStoredSchedule(avatar, { personaId });
+    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now), { personaId });
 
     // The character never initiates while offline.
     if (current.status === 'offline') {
         return false;
     }
 
-    const thread = getConversationThread(avatar, { groupId });
+    const thread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
     const lastMessage = thread[thread.length - 1];
-    const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
+    const lastUserActivity = getLastUserActivity(avatar, now, { branchId, groupId, personaId });
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
     const maxFollowups = clamp(parsePositiveInt(settings.max_followups, DEFAULT_MAX_FOLLOWUPS, 1), 1, 3);
-    const sentCount = getFollowupCount(avatar, { groupId });
+    const sentCount = getFollowupCount(avatar, { branchId, groupId, personaId });
 
     // Catch-up: the user messaged while the character was unavailable and it is
     // now back online. Respond regardless of the inactivity threshold.
@@ -454,7 +474,7 @@ export async function checkProactiveMessaging(avatar, settings, now, { groupId =
             }
         } else {
             // Follow-ups use an escalating cooldown measured from the last auto message.
-            const elapsedSinceAuto = (now - (lastAutoMessageAt ?? getLastAutoMessageTime(avatar, { groupId }))) / (60 * 1000);
+            const elapsedSinceAuto = (now - (lastAutoMessageAt ?? getLastAutoMessageTime(avatar, { branchId, groupId, personaId }))) / (60 * 1000);
             const followupThreshold = thresholdMinutes * Math.pow(2, sentCount);
             if (elapsedSinceAuto < followupThreshold) {
                 return false;
@@ -467,11 +487,11 @@ export async function checkProactiveMessaging(avatar, settings, now, { groupId =
         proactive: true,
         proactive_status: current.status,
         groupId,
-    }, avatar);
+    }, avatar, { branchId, personaId });
 
     if (triggered) {
-        setFollowupCount(avatar, sentCount + 1, { groupId });
-        setLastAutoMessageTime(avatar, now, { groupId });
+        setFollowupCount(avatar, sentCount + 1, { branchId, groupId, personaId });
+        setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
     }
 
     return triggered;
@@ -481,8 +501,8 @@ export function getPartnerReplyBusyKey(avatar, partnerAvatar, scope) {
     return `${avatar || 'thread'}:${partnerAvatar || 'partner'}:${scope || 'reply'}`;
 }
 
-export function getConversationPartnerChimeCandidates(avatar, selectedAvatars, { max = PARALLEL_CHIME_MAX_PARTNERS, groupId = getConversationGroupIdForAvatar(avatar), settings = getSettings(avatar) } = {}) {
-    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar, settings, { groupId, includeThreadPartners: true });
+export function getConversationPartnerChimeCandidates(avatar, selectedAvatars, { branchId = '', max = PARALLEL_CHIME_MAX_PARTNERS, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), settings = getSettings(avatar, { groupId, personaId }) } = {}) {
+    const partners = getAllowedPartnerCharacters(selectedAvatars, avatar, settings, { branchId, groupId, includeThreadPartners: true, personaId });
     const candidates = [];
     const addCandidate = (partner) => {
         if (partner?.avatar && !candidates.some(candidate => candidate.avatar === partner.avatar)) {
@@ -490,8 +510,8 @@ export function getConversationPartnerChimeCandidates(avatar, selectedAvatars, {
         }
     };
 
-    addCandidate(getRecentlySilentMentionedPartner(avatar, selectedAvatars, settings, { groupId }));
-    addCandidate(getLeastRecentPartner(avatar, selectedAvatars, settings, { groupId }));
+    addCandidate(getRecentlySilentMentionedPartner(avatar, selectedAvatars, settings, { branchId, groupId, personaId }));
+    addCandidate(getLeastRecentPartner(avatar, selectedAvatars, settings, { branchId, groupId, personaId }));
 
     const shuffled = [...partners].sort(() => Math.random() - 0.5);
     for (const partner of shuffled) {
@@ -504,7 +524,7 @@ export function getConversationPartnerChimeCandidates(avatar, selectedAvatars, {
     return candidates.slice(0, max);
 }
 
-export async function triggerConversationPartnerChime(partner, settings, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function triggerConversationPartnerChime(partner, settings, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!partner?.avatar || !avatar) {
         return false;
     }
@@ -517,29 +537,33 @@ export async function triggerConversationPartnerChime(partner, settings, avatar 
     partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
-        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId });
-        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId, personaId });
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar, new Date(), { personaId });
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
-        const userName = name1 || 'User';
+        const userName = getConversationPersonaName(personaId, 'User');
         const directive = `[System directive: You are ${partnerName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${partnerContext.activity} (status: ${partnerContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Other people may be typing at the same time; do not wait for them. Output only your message body, without a name prefix.]`;
         const response = await generateConversationReply(directive, partnerSettings, {
             trimNames: false,
             speakerName: partnerName,
             avatar,
+            branchId,
             threadAvatar: avatar,
             speakerAvatar: partner.avatar,
             groupId,
+            personaId,
         });
 
         if (response?.trim()) {
             await postPartnerConversationReply(response.trim(), partner, partnerSettings, {
                 avatar,
+                branchId,
                 extra: {
                     conversation_mode_chime: true,
                     partner_avatar: partner.avatar,
                 },
                 groupId,
+                personaId,
             });
             return true;
         }
@@ -552,23 +576,23 @@ export async function triggerConversationPartnerChime(partner, settings, avatar 
     return false;
 }
 
-export async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const partners = getConversationPartnerChimeCandidates(avatar, settings.multi_char_names, { groupId, settings });
+export async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const partners = getConversationPartnerChimeCandidates(avatar, settings.multi_char_names, { branchId, groupId, personaId, settings });
     if (!partners.length) {
         return false;
     }
 
-    const results = await Promise.allSettled(partners.map(partner => triggerConversationPartnerChime(partner, settings, avatar, { groupId })));
+    const results = await Promise.allSettled(partners.map(partner => triggerConversationPartnerChime(partner, settings, avatar, { branchId, groupId, personaId })));
     return results.some(result => result.status === 'fulfilled' && result.value === true);
 }
 
-export async function checkMultiCharacterChime(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const mentionedPartner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names, settings, { groupId });
+export async function checkMultiCharacterChime(avatar, settings, now, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const mentionedPartner = getRecentlySilentMentionedPartner(avatar, settings.multi_char_names, settings, { branchId, groupId, personaId });
     if (!settings.multi_char && !mentionedPartner) {
         return false;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, now, { groupId });
+    const lastUserActivity = getLastUserActivity(avatar, now, { branchId, groupId, personaId });
     const idleMinutes = (now - lastUserActivity) / (60 * 1000);
 
     if (!mentionedPartner && idleMinutes < Math.max(0.75, settings.idle_limit / 4)) {
@@ -576,24 +600,24 @@ export async function checkMultiCharacterChime(avatar, settings, now, { groupId 
     }
 
     const sessionKey = LAST_CHIME_SESSION_PREFIX;
-    if (getConversationSessionMarker(avatar, sessionKey, { groupId }) === String(lastUserActivity)) {
+    if (getConversationSessionMarker(avatar, sessionKey, { branchId, groupId, personaId }) === String(lastUserActivity)) {
         return false;
     }
 
     const triggered = !settings.multi_char && mentionedPartner
-        ? await triggerConversationPartnerChime(mentionedPartner, settings, avatar, { groupId })
-        : await triggerMultiCharacterChime(settings, avatar, { groupId });
+        ? await triggerConversationPartnerChime(mentionedPartner, settings, avatar, { branchId, groupId, personaId })
+        : await triggerMultiCharacterChime(settings, avatar, { branchId, groupId, personaId });
     if (triggered) {
-        setConversationSessionMarker(avatar, sessionKey, lastUserActivity, { groupId });
-        setLastAutoMessageTime(avatar, now, { groupId });
+        setConversationSessionMarker(avatar, sessionKey, lastUserActivity, { branchId, groupId, personaId });
+        setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
     }
 
     return triggered;
 }
 
-export async function triggerAutoCharacterChat(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const partner = getLeastRecentPartner(avatar, settings.multi_char_names, settings, { groupId })
-        || chooseConversationPartner(avatar, settings.multi_char_names, settings, { groupId });
+export async function triggerAutoCharacterChat(avatar, settings, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const partner = getLeastRecentPartner(avatar, settings.multi_char_names, settings, { branchId, groupId, personaId })
+        || chooseConversationPartner(avatar, settings.multi_char_names, settings, { branchId, groupId, personaId });
     if (!partner) {
         return false;
     }
@@ -606,15 +630,15 @@ export async function triggerAutoCharacterChat(avatar, settings, { groupId = get
     partnerReplyBusyKeys.add(busyKey);
     try {
         const partnerName = partner.name || 'A friend';
-        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId });
-        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar);
+        const partnerSettings = getConversationPartnerSettings(partner.avatar, settings, { groupId, personaId });
+        const partnerContext = getConversationActivityContext(partnerSettings, partner.avatar, new Date(), { personaId });
         if (partnerContext.status === 'offline') {
             return false;
         }
 
         const character = getCharacterForAvatar(avatar);
         const charName = character?.name || getCurrentCharName();
-        const otherMembers = [character, ...getAllowedPartnerCharacters(settings.multi_char_names, avatar, settings, { groupId })]
+        const otherMembers = [character, ...getAllowedPartnerCharacters(settings.multi_char_names, avatar, settings, { branchId, groupId, personaId })]
             .filter(member => member?.avatar && member.avatar !== partner.avatar);
         const target = otherMembers.length ? otherMembers[Math.floor(Math.random() * otherMembers.length)] : character;
         const targetName = target?.name || charName;
@@ -623,16 +647,20 @@ export async function triggerAutoCharacterChat(avatar, settings, { groupId = get
             trimNames: false,
             speakerName: partnerName,
             avatar,
+            branchId,
             threadAvatar: avatar,
             speakerAvatar: partner.avatar,
             groupId,
+            personaId,
         });
 
         if (response?.trim()) {
             await postPartnerConversationReply(response.trim(), partner, partnerSettings, {
                 avatar,
+                branchId,
                 extra: { conversation_mode_auto_chat: true, partner_avatar: partner.avatar },
                 groupId,
+                personaId,
             });
             return true;
         }
@@ -645,24 +673,99 @@ export async function triggerAutoCharacterChat(avatar, settings, { groupId = get
     return false;
 }
 
-export async function checkAutoCharacterChat(avatar, settings, now, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function checkAutoCharacterChat(avatar, settings, now, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!settings.auto_character_chat) {
         return false;
     }
 
-    const lastAutoChatAt = getLastAutoCharacterChatTime(avatar, { groupId });
-    const cooldownBaseline = lastAutoChatAt || getConversationBranchActivityTime(avatar, { groupId });
+    const lastAutoChatAt = getLastAutoCharacterChatTime(avatar, { branchId, groupId, personaId });
+    const cooldownBaseline = lastAutoChatAt || getConversationBranchActivityTime(avatar, { branchId, groupId, personaId });
     if (now - cooldownBaseline < getAutoCharacterChatCooldownMs(settings)) {
         return false;
     }
 
-    const triggered = await triggerAutoCharacterChat(avatar, settings, { groupId });
+    const triggered = await triggerAutoCharacterChat(avatar, settings, { branchId, groupId, personaId });
     if (triggered) {
-        setLastAutoCharacterChatTime(avatar, now, { groupId });
-        setLastAutoMessageTime(avatar, now, { groupId });
+        setLastAutoCharacterChatTime(avatar, now, { branchId, groupId, personaId });
+        setLastAutoMessageTime(avatar, now, { branchId, groupId, personaId });
     }
 
     return triggered;
+}
+
+export function getRoleplaySourceMessageRevision(message) {
+    return JSON.stringify({
+        id: message?.id ?? '',
+        is_user: Boolean(message?.is_user),
+        mes: message?.mes || '',
+        name: message?.name || '',
+        original_avatar: message?.original_avatar || message?.extra?.original_avatar || message?.extra?.avatar || '',
+        role: message?.role || '',
+    });
+}
+
+function getRoleplayGroupRevision(group) {
+    return JSON.stringify({
+        disabled_members: Array.isArray(group?.disabled_members) ? group.disabled_members : [],
+        id: group?.id || '',
+        members: Array.isArray(group?.members) ? group.members : [],
+    });
+}
+
+function isCapturedRoleplaySourceValid({ avatar = '', sourceGroupId = '', sourceGroupRevision = '', sourceMessageId = null, sourceMessageRevision = '' } = {}) {
+    if (sourceMessageId !== null && typeof sourceMessageId !== 'undefined') {
+        const currentMessage = chat[sourceMessageId];
+        if (!currentMessage || getRoleplaySourceMessageRevision(currentMessage) !== sourceMessageRevision) {
+            return false;
+        }
+    }
+    if (sourceGroupId) {
+        const currentGroup = getRoleplayGroupById(sourceGroupId);
+        return String(selected_group || '') === sourceGroupId
+            && Boolean(currentGroup)
+            && getRoleplayGroupRevision(currentGroup) === sourceGroupRevision;
+    }
+
+    return !selected_group && (!avatar || getRoleplayCurrentCharacter()?.avatar === avatar);
+}
+
+export function captureGroupAsideRequest(character, { personaId = getConversationPersonaId(), reason = 'random', sourceGroup = null, sourceGroupId = String(selected_group || ''), sourceMessageId = null } = {}) {
+    const group = sourceGroup || getRoleplayGroupById(sourceGroupId);
+    const sourceMessage = sourceMessageId !== null && typeof sourceMessageId !== 'undefined' ? chat[sourceMessageId] : null;
+    const branchId = getConversationThreadStore(character?.avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
+    const groupContext = buildGroupChatContext();
+    if (!group || !character?.avatar || !branchId || !groupContext || (sourceMessageId !== null && !sourceMessage)) {
+        return null;
+    }
+
+    return {
+        branchId,
+        groupContext,
+        personaId,
+        reason,
+        sourceGroupId: String(group.id || sourceGroupId || ''),
+        sourceGroupRevision: getRoleplayGroupRevision(group),
+        sourceMessageId,
+        sourceMessageRevision: sourceMessage ? getRoleplaySourceMessageRevision(sourceMessage) : '',
+    };
+}
+
+export function captureRoleplayDMRequest({ avatar = getCurrentCharAvatar(), personaId = getConversationPersonaId(), roleplayContext = '', sourceMessageId = null } = {}) {
+    const sourceMessage = sourceMessageId !== null && typeof sourceMessageId !== 'undefined' ? chat[sourceMessageId] : null;
+    const branchId = getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
+    const capturedContext = String(roleplayContext || buildConversationRoleplayContext(chat, sourceMessageId)).trim();
+    if (!avatar || !branchId || !capturedContext || (sourceMessageId !== null && !sourceMessage)) {
+        return null;
+    }
+
+    return {
+        avatar,
+        branchId,
+        personaId,
+        roleplayContext: capturedContext,
+        sourceMessageId,
+        sourceMessageRevision: sourceMessage ? getRoleplaySourceMessageRevision(sourceMessage) : '',
+    };
 }
 
 export async function checkGroupChatMention(messageId) {
@@ -675,38 +778,54 @@ export async function checkGroupChatMention(messageId) {
         return;
     }
 
-    const members = getCurrentGroupConversationMembers({ requireRoleplayReactions: true });
+    const personaId = getConversationPersonaId();
+    const sourceGroupId = String(selected_group || '');
+    const roleplayGroup = getRoleplayGroupById(sourceGroupId);
+    const members = getCurrentGroupConversationMembers({ group: roleplayGroup, requireRoleplayReactions: true });
     const memberCharacters = members.map(item => item.character).filter(Boolean);
     const mentionedMembers = members.filter(({ character }) => isCharacterMentionedInText(character, message.mes, memberCharacters));
     if (!mentionedMembers.length) {
         return;
     }
 
-    setConversationTimeout(() => {
-        for (const { character } of mentionedMembers) {
-            void triggerGroupAsideDM(character, { reason: 'mention', sourceMessageId: messageId });
-        }
-    }, 900);
+    const requests = mentionedMembers
+        .map(({ character }) => ({
+            character,
+            request: captureGroupAsideRequest(character, { personaId, reason: 'mention', sourceGroup: roleplayGroup, sourceGroupId, sourceMessageId: messageId }),
+        }))
+        .filter(item => item.request);
+    if (requests.length) {
+        setConversationTimeout(() => {
+            for (const { character, request } of requests) {
+                void triggerGroupAsideDM(character, request);
+            }
+        }, 900);
+    }
 }
 
-export async function triggerGroupAsideDM(character, { reason = 'random', sourceMessageId = null } = {}) {
-    const group = getSelectedConversationGroup();
+export async function triggerGroupAsideDM(character, options = {}) {
+    const captured = options.branchId ? options : captureGroupAsideRequest(character, options);
+    if (!captured || !isCapturedRoleplaySourceValid({ ...captured, avatar: character?.avatar })) {
+        return false;
+    }
+    const { branchId, groupContext, personaId, reason, sourceGroupId, sourceMessageId } = captured;
+    const groupId = String(sourceGroupId || '');
+    const group = getRoleplayGroupById(groupId);
     if (!group || !character?.avatar || !group.members?.includes(character.avatar) || group.disabled_members?.includes(character.avatar)) {
         return false;
     }
 
-    const groupId = String(group.id || '');
-    const settings = getSettings(character.avatar, { groupId });
+    const settings = getSettings(character.avatar, { groupId, personaId });
     if (!settings.enabled || !settings.roleplay_reactions) {
         return false;
     }
 
-    const current = getConversationActivityContext(settings, character.avatar);
+    const current = getConversationActivityContext(settings, character.avatar, new Date(), { personaId });
     if (current.status === 'offline') {
         return false;
     }
 
-    const key = getGroupAsideKey(character.avatar, group.id);
+    const key = getGroupAsideKey(character.avatar, group.id, personaId);
     if (groupAsideBusyKeys.has(key)) {
         return false;
     }
@@ -717,14 +836,18 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
         return false;
     }
 
-    const groupContext = buildGroupChatContext();
-    if (!groupContext) {
+    const threadStore = getConversationThreadStore(character.avatar, { create: false, groupId: '', personaId });
+    if (!threadStore?.branches?.[branchId]) {
         return false;
     }
+    const validateTarget = () => Boolean(
+        getConversationThreadStore(character.avatar, { create: false, groupId: '', personaId })?.branches?.[branchId]
+        && isCapturedRoleplaySourceValid({ ...captured, avatar: character.avatar }),
+    );
 
     groupAsideBusyKeys.add(key);
     try {
-        const userName = name1 || 'User';
+        const userName = getConversationPersonaName(personaId, 'User');
         const characterName = character.name || 'Character';
         const reasonLine = reason === 'mention'
             ? `${userName} just mentioned or addressed you in the group chat. Send them a private aside DM about it.`
@@ -734,10 +857,12 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
             speakerName: characterName,
             trimNames: false,
             avatar: character.avatar,
+            branchId,
             groupId: null,
+            personaId,
         });
 
-        if (response?.trim()) {
+        if (response?.trim() && validateTarget()) {
             const extra = {
                 conversation_mode_group_aside: true,
                 conversation_mode_gossip: true,
@@ -749,9 +874,17 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
                 extra.source_group_message_id = sourceMessageId;
             }
 
-            await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, { extra, groupId: null }, character.avatar), character.avatar, { groupId: null });
-            groupAsideLastSent.set(key, Date.now());
-            return true;
+            const postedText = await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
+                extra,
+                branchId,
+                groupId: null,
+                personaId,
+                validateTarget,
+            }, character.avatar), character.avatar, { branchId, groupId: null, personaId });
+            if (postedText) {
+                groupAsideLastSent.set(key, Date.now());
+                return true;
+            }
         }
     } catch (err) {
         reportConversationGenerationError('group aside DM', err, { toast: false });
@@ -762,29 +895,28 @@ export async function triggerGroupAsideDM(character, { reason = 'random', source
     return false;
 }
 
-export async function triggerRoleplayDM() {
-    const character = getCurrentCharacter();
-    const avatar = getCurrentCharAvatar();
-    if (!character || !avatar) return;
+export async function triggerRoleplayDM(options = {}) {
+    const captured = options.branchId ? options : captureRoleplayDMRequest(options);
+    if (!captured || !isCapturedRoleplaySourceValid(captured)) return false;
+    const { avatar, branchId, personaId, roleplayContext } = captured;
+    const character = getCharacterForAvatar(avatar);
+    if (!character || !avatar) return false;
 
-    const settings = getSettings(avatar, { groupId: '' });
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId: '', personaId });
+    if (!threadStore?.branches?.[branchId]) return false;
+
+    const settings = getSettings(avatar, { groupId: '', personaId });
     const sheld = document.getElementById('sheld');
     if (!settings.enabled || (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on')) {
-        return;
+        return false;
     }
 
-    const snippet = [];
-    const startIdx = Math.max(0, chat.length - 6);
-    for (let i = startIdx; i < chat.length; i++) {
-        const msg = chat[i];
-        if (msg && msg.mes) {
-            snippet.push(`${msg.name || (msg.is_user ? 'User' : 'Character')}: ${msg.mes}`);
-        }
-    }
-
-    if (!snippet.length) return;
-
-    const chatText = snippet.join('\n');
+    const chatText = String(roleplayContext).trim();
+    if (!chatText) return false;
+    const validateTarget = () => Boolean(
+        getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.branches?.[branchId]
+        && isCapturedRoleplaySourceValid(captured),
+    );
     const directive = `[System directive: You are sending a private direct message (DM) to {{user}} to comment on the ongoing roleplay/story scene. Step out of the main scene and send a short, private, personal DM sharing your inner thoughts, a side-comment, or a private reaction to what just happened. Keep it short, casual, and completely in-character. Do not continue the roleplay scene; write a private side-message.\n\nRoleplay context:\n${chatText}]`;
 
     try {
@@ -793,16 +925,25 @@ export async function triggerRoleplayDM() {
             speakerName: character.name || 'Character',
             trimNames: true,
             avatar,
+            branchId,
+            groupId: '',
+            personaId,
         });
 
-        if (response?.trim()) {
-            await postCharacterReply(response.trim(), settings, {
+        if (response?.trim() && validateTarget()) {
+            const postedText = await postCharacterReply(response.trim(), settings, {
                 extra: { conversation_mode_gossip: true, gossip_source_roleplay: true },
+                branchId,
+                groupId: '',
+                personaId,
+                validateTarget,
             }, avatar);
+            return Boolean(postedText);
         }
     } catch (err) {
         reportConversationGenerationError('roleplay side DM', err, { toast: false });
     }
+    return false;
 }
 
 export async function checkConversationReminders(now) {
@@ -811,9 +952,14 @@ export async function checkConversationReminders(now) {
         return false;
     }
 
+    const personaId = getConversationPersonaId();
     const dueReminders = store.reminders.filter(rem => {
         const retryAfter = parsePositiveInt(rem.retryAfter, 0, 0);
-        return now >= rem.triggerAt && !rem.fired && (!retryAfter || now >= retryAfter);
+        return getConversationPersonaId(rem?.personaId) === personaId
+            && now >= rem.triggerAt
+            && !rem.fired
+            && !rem.invalidAt
+            && (!retryAfter || now >= retryAfter);
     });
     if (!dueReminders.length) {
         return false;
@@ -822,7 +968,17 @@ export async function checkConversationReminders(now) {
     const reminder = dueReminders[0];
     const avatar = reminder.avatar;
     const groupId = reminder.groupId || '';
-    const settings = getSettings(avatar, { groupId });
+    const reminderPersonaId = getConversationPersonaId(reminder.personaId);
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId: reminderPersonaId });
+    const branchId = resolveConversationReminderBranchId(reminder, threadStore);
+    if (!branchId) {
+        reminder.invalidAt = now;
+        reminder.invalidReason = 'missing_branch';
+        persistConversationStore();
+        return false;
+    }
+    reminder.branchId = branchId;
+    const settings = getSettings(avatar, { groupId, personaId: reminderPersonaId });
 
     if (!settings.enabled) {
         reminder.fired = true;
@@ -847,8 +1003,8 @@ export async function checkConversationReminders(now) {
             reminder_text: reminder.text,
             reminder_id: reminder.id,
             partner_avatar: groupId ? avatar : undefined,
-            groupId: groupId || undefined,
-        }, avatar);
+            groupId,
+        }, avatar, { branchId, personaId: reminderPersonaId });
 
         if (triggered) {
             reminder.fired = true;
@@ -877,6 +1033,7 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
     }
 
     const now = Date.now();
+    const personaId = getConversationPersonaId();
 
     if (await checkConversationReminders(now)) {
         return;
@@ -885,12 +1042,12 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         return;
     }
 
-    const railItems = getConversationRailItems();
+    const railItems = getConversationRailItems({ personaId });
     const lastAutoMessageTimes = new Map();
-    const getTickLastAutoMessageTime = (avatar, groupId) => {
-        const key = `${groupId || ''}:${avatar || ''}`;
+    const getTickLastAutoMessageTime = (avatar, groupId, branchId) => {
+        const key = `${personaId}:${groupId || ''}:${avatar || ''}:${branchId}`;
         if (!lastAutoMessageTimes.has(key)) {
-            lastAutoMessageTimes.set(key, getLastAutoMessageTime(avatar, { groupId }));
+            lastAutoMessageTimes.set(key, getLastAutoMessageTime(avatar, { branchId, groupId, personaId }));
         }
         return lastAutoMessageTimes.get(key);
     };
@@ -901,13 +1058,17 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         }
 
         const avatar = character.avatar;
-        const lastAutoMessageAt = getTickLastAutoMessageTime(avatar, groupId);
+        const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+        if (!branchId) {
+            continue;
+        }
+        const lastAutoMessageAt = getTickLastAutoMessageTime(avatar, groupId, branchId);
         const elapsedSeconds = (now - lastAutoMessageAt) / 1000;
         if (elapsedSeconds < settings.cooldown) {
             continue;
         }
 
-        if (await checkScheduledAutoMessages(avatar, settings, now, { groupId })) {
+        if (await checkScheduledAutoMessages(avatar, settings, now, { branchId, groupId, personaId })) {
             return;
         }
         if (isAutoWorkerAborted(signal)) {
@@ -916,30 +1077,30 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
 
         // Marinara-style proactive loop takes priority over legacy idle action.
         if (settings.proactive_messaging) {
-            if (await checkProactiveMessaging(avatar, settings, now, { groupId, lastAutoMessageAt })) {
+            if (await checkProactiveMessaging(avatar, settings, now, { branchId, groupId, lastAutoMessageAt, personaId })) {
                 return;
             }
-        } else if (await checkIdleAutoMessage(avatar, settings, now, { groupId })) {
+        } else if (await checkIdleAutoMessage(avatar, settings, now, { branchId, groupId, personaId })) {
             return;
         }
         if (isAutoWorkerAborted(signal)) {
             return;
         }
 
-        if (await checkMultiCharacterChime(avatar, settings, now, { groupId })) {
+        if (await checkMultiCharacterChime(avatar, settings, now, { branchId, groupId, personaId })) {
             return;
         }
         if (isAutoWorkerAborted(signal)) {
             return;
         }
 
-        if (await checkAutoCharacterChat(avatar, settings, now, { groupId })) {
+        if (await checkAutoCharacterChat(avatar, settings, now, { branchId, groupId, personaId })) {
             return;
         }
     }
 }
 
-export async function handleAvailabilityAutoResponder(settings = getSettings(), avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
+export async function handleAvailabilityAutoResponder(settings = getSettings(), avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return false;
     }
@@ -950,7 +1111,7 @@ export async function handleAvailabilityAutoResponder(settings = getSettings(), 
 
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
-    const userName = name1 || 'User';
+    const userName = getConversationPersonaName(personaId, 'User');
     const offlineText = (settings.offline_message || DEFAULT_SETTINGS.offline_message)
         .replace(/{{char}}/g, charName)
         .replace(/{{user}}/g, userName);
@@ -959,7 +1120,9 @@ export async function handleAvailabilityAutoResponder(settings = getSettings(), 
             conversation_mode_auto_responder: true,
             availability: settings.availability,
         },
+        branchId,
         groupId,
+        personaId,
     }, avatar);
     return true;
 }

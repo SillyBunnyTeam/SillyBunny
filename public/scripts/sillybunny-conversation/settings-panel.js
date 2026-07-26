@@ -9,12 +9,14 @@ import {
 import {
     getActiveConversationBranch,
     getConversationGroupIdForAvatar,
+    getConversationPersonaId,
     getConversationThreadStore,
     getCurrentCharAvatar,
     parsePositiveInt,
     saveGroupConversationSettings,
 } from './context.js';
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
+import { isConversationActiveThread } from './notifications.js';
 import { getScheduleEditorTargets } from './pals-rail.js';
 import { bindPartnerList, bindWeeklyScheduleEditor, updateUserFooter } from './pickers.js';
 import { updateConversationMemorySummary } from './prompt.js';
@@ -82,6 +84,7 @@ export function formatScheduleTimestamp(timestamp) {
 }
 
 export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) {
+    const personaId = getConversationPersonaId();
     const targets = getScheduleEditorTargets(initialAvatar);
     let editAvatar = targets.some(target => target.avatar === initialAvatar) ? initialAvatar : targets[0]?.avatar;
     if (!editAvatar) {
@@ -144,7 +147,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
     const editedSchedulesByAvatar = new Map();
     const getEditedSchedule = (avatar) => {
         if (!editedSchedulesByAvatar.has(avatar)) {
-            editedSchedulesByAvatar.set(avatar, createEditableSchedule(getStoredSchedule(avatar)));
+            editedSchedulesByAvatar.set(avatar, createEditableSchedule(getStoredSchedule(avatar, { personaId })));
         }
 
         return editedSchedulesByAvatar.get(avatar);
@@ -448,26 +451,27 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
             normalized.days[String(d)] = normalizedBlocks;
         }
 
-        saveStoredSchedule(editAvatar, normalized);
+        saveStoredSchedule(editAvatar, normalized, { personaId });
         const editTarget = targets.find(target => target.avatar === editAvatar);
         const editGroupId = editTarget?.groupId || '';
-        const editSettings = getSettings(editAvatar, { groupId: editGroupId });
+        const editSettings = getSettings(editAvatar, { groupId: editGroupId, personaId });
         editSettings.auto_schedule = JSON.stringify(normalized);
         editSettings.talkativeness = normalized.talkativeness;
         editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
         editSettings.schedule_generated_at = normalized.generatedAt;
         if (editGroupId) {
-            saveGroupConversationSettings(editGroupId, editSettings);
+            saveGroupConversationSettings(editGroupId, editSettings, { personaId });
         }
-        saveSettings(editAvatar, editSettings, { groupId: editGroupId });
-        if (editAvatar === getCurrentCharAvatar()) {
+        saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
+        if (isConversationActiveThread(editAvatar, editGroupId, { personaId })) {
             applySettingsToPanel(editSettings);
             renderScheduleDisplay();
             updateConversationChrome(editSettings);
         } else {
             const currentAvatar = getCurrentCharAvatar();
             const currentGroupId = getConversationGroupIdForAvatar(currentAvatar);
-            updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId }));
+            const currentPersonaId = getConversationPersonaId();
+            updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId, personaId: currentPersonaId }));
         }
         const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
         toastr.success(`Schedule saved for ${targetName}.`);
@@ -482,7 +486,8 @@ export function renderScheduleDisplay() {
     }
 
     const avatar = getCurrentCharAvatar();
-    const schedule = avatar ? getStoredSchedule(avatar) : null;
+    const personaId = getConversationPersonaId();
+    const schedule = avatar ? getStoredSchedule(avatar, { personaId }) : null;
 
     if (!schedule || !schedule.days) {
         display.dataset.empty = 'true';
@@ -493,11 +498,11 @@ export function renderScheduleDisplay() {
     display.dataset.empty = 'false';
     const now = new Date();
     const todayIndex = now.getDay();
-    const current = getCurrentActivityFromSchedule(schedule, avatar, now);
+    const current = getCurrentActivityFromSchedule(schedule, avatar, now, { personaId });
     const todayBlocks = Array.isArray(schedule.days[todayIndex]) ? schedule.days[todayIndex] : [];
 
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const settings = getSettings(avatar, { groupId, personaId });
     const talkativeness = parsePositiveInt(settings.talkativeness, DEFAULT_TALKATIVENESS, 0);
     const generatedLabel = formatScheduleTimestamp(settings.schedule_generated_at);
 
@@ -619,9 +624,13 @@ export function openConversationSettings() {
 
     closePalsRail();
     const avatar = getCurrentCharAvatar();
+    const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const settings = getSettings(avatar, { groupId, personaId });
     chrome.drawer.innerHTML = buildSettingsDrawerHtml();
+    chrome.drawer.dataset.conversationAvatar = avatar || '';
+    chrome.drawer.dataset.conversationGroupId = groupId || '';
+    chrome.drawer.dataset.conversationPersonaId = personaId;
 
     // Refresh live-data dropdowns before showing the drawer.
     const lorebookSelect = document.getElementById('sb_conv_lorebook_override');
@@ -648,14 +657,24 @@ export function openConversationSettings() {
     chrome.drawer.querySelector('input, select, textarea, button')?.focus?.({ preventScroll: true });
 }
 
-export function closeConversationSettings() {
+export function closeConversationSettings(identity = null) {
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     if (drawer instanceof HTMLElement) {
         const shouldSave = drawer.hidden === false;
+        const capturedIdentity = {
+            avatar: identity?.avatar || drawer.dataset.conversationAvatar || getCurrentCharAvatar(),
+            groupId: Object.prototype.hasOwnProperty.call(identity || {}, 'groupId')
+                ? identity.groupId || ''
+                : drawer.dataset.conversationGroupId || '',
+            personaId: identity?.personaId || drawer.dataset.conversationPersonaId || getConversationPersonaId(),
+        };
         drawer.hidden = true;
         if (shouldSave) {
-            saveCurrentPanelSettings();
+            saveCurrentPanelSettings(capturedIdentity);
         }
+        delete drawer.dataset.conversationAvatar;
+        delete drawer.dataset.conversationGroupId;
+        delete drawer.dataset.conversationPersonaId;
     }
     setConversationBackdropVisible();
 }

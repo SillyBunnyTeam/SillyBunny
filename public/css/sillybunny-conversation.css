@@ -932,6 +932,53 @@
     font-size: 0.72em;
 }
 
+.sb-conversation-message-reply-preview,
+.sb-conversation-composer-reply-card {
+    min-inline-size: 0;
+    display: grid;
+    gap: 1px;
+    padding: 5px 8px;
+    border-inline-start: 3px solid color-mix(in srgb, var(--sb-accent) 72%, var(--SmartThemeBodyColor));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 72%, transparent);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-line-compact);
+}
+
+.sb-conversation-message-reply-preview {
+    margin-block: 2px 6px;
+}
+
+.sb-conversation-message[data-role='user'] .sb-conversation-message-reply-preview {
+    border-inline-start-color: color-mix(in srgb, var(--sb-accent) 84%, var(--SmartThemeBodyColor));
+    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+}
+
+.sb-conversation-reply-label,
+.sb-conversation-reply-name {
+    overflow: hidden;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, transparent);
+    font-weight: var(--sb-weight-title);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-conversation-reply-label {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    font-size: 0.9em;
+    font-weight: var(--sb-weight-control);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sb-conversation-reply-text {
+    overflow: hidden;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sb-conversation-message-edit {
     inline-size: 24px;
     block-size: 24px;
@@ -1067,6 +1114,43 @@
     flex-wrap: wrap;
     gap: 4px;
     margin-block-start: 6px;
+}
+
+.sb-conversation-selfie-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-block-start: 8px;
+}
+
+.sb-conversation-selfie-action {
+    min-block-size: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--sb-accent) 12%, var(--SmartThemeBlurTintColor));
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 86%, transparent);
+    cursor: pointer;
+    font-size: var(--sb-type-meta);
+    font-weight: var(--sb-weight-control);
+    line-height: 1;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+
+.sb-conversation-selfie-action:hover,
+.sb-conversation-selfie-action:focus-visible {
+    border-color: color-mix(in srgb, var(--sb-accent) 54%, var(--SmartThemeBodyColor));
+    background: color-mix(in srgb, var(--sb-accent) 18%, var(--SmartThemeBlurTintColor));
+    color: var(--SmartThemeBodyColor);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.sb-conversation-selfie-action i {
+    font-size: 0.92em;
 }
 
 .sb-conversation-message-reaction-chip {
@@ -1212,6 +1296,43 @@
     padding: 8px 10px;
     border-block-start: 1px solid color-mix(in srgb, var(--sb-shell-border) 78%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, transparent);
+}
+
+.sb-conversation-reply-preview {
+    grid-column: 1 / -1;
+    min-inline-size: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--sb-accent) 22%, var(--sb-shell-border));
+    border-radius: var(--sb-radius-md, 18px);
+    background: color-mix(in srgb, var(--sb-accent) 7%, var(--SmartThemeBlurTintColor));
+}
+
+.sb-conversation-reply-preview[hidden] {
+    display: none;
+}
+
+.sb-conversation-reply-cancel {
+    inline-size: 28px;
+    block-size: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    cursor: pointer;
+}
+
+.sb-conversation-reply-cancel:hover,
+.sb-conversation-reply-cancel:focus-visible {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    outline: none;
 }
 
 .sb-conversation-composer textarea {
@@ -2198,6 +2319,21 @@
     }
 }
 
+/* Touch-target sizing must cover coarse pointers and the project mobile
+   breakpoint (<=1000px), not only phone-width layouts. */
+@media (pointer: coarse), (max-width: 1000px) {
+    .sb-conversation-selfie-action {
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sb-conversation-reply-cancel {
+        inline-size: var(--sb-mobile-touch-target, 44px);
+        block-size: var(--sb-mobile-touch-target, 44px);
+        min-inline-size: var(--sb-mobile-touch-target, 44px);
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
 @media (max-width: 768px) {
     #sheld[data-sb-conversation-mode='on'] {
         grid-template-columns: minmax(0, 1fr);
@@ -2702,4 +2838,9 @@
     box-shadow: 0 0 6px var(--sb-accent, #ff453a);
     pointer-events: none;
     z-index: 99;
+}
+
+/* Utility class for hiding filtered items */
+.sb-conversation-hidden {
+    display: none !important;
 }

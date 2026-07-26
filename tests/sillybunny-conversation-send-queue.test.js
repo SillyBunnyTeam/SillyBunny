@@ -2,15 +2,25 @@ import { describe, expect, test, jest, beforeEach, afterEach } from '@jest/globa
 
 import {
     coalesceConversationQueueItems,
+    createConversationMessageRevisionEntries,
+    createConversationQueueReplyTarget,
+    createForcedConversationQueueItem,
     drainSameThreadItems,
+    getLastConversationQueueUserMessage,
     isSameConversationQueueThread,
     mergeConversationQueueItems,
+    requeueConversationQueueItem,
+    resolveConversationQueueReplyTargetSpeaker,
+    resolveConversationQueueTriggerMessages,
 } from '../public/scripts/sillybunny-conversation/send-queue-utils.js';
 
 function makeItem(text, overrides = {}) {
     return {
         avatar: 'charA.png',
+        branchId: 'main',
         groupId: '',
+        personaId: 'persona-a.png',
+        threadKey: 'persona:persona-a.png:charA.png',
         text,
         attachmentContext: '',
         createdAt: Date.now(),
@@ -19,6 +29,120 @@ function makeItem(text, overrides = {}) {
 }
 
 describe('sillybunny conversation send-queue utils', () => {
+    test('builds Force Response items with complete captured identity and the latest user trigger', () => {
+        const item = createForcedConversationQueueItem({
+            avatar: 'charA.png',
+            branchId: 'branch-a',
+            groupId: 'group-a',
+            personaId: 'persona-a.png',
+            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+        }, [
+            { id: 'user-1', role: 'user' },
+            { id: 'character-1', role: 'character' },
+            { id: 'user-2', role: 'user' },
+        ]);
+
+        expect(item).toMatchObject({
+            avatar: 'charA.png',
+            branchId: 'branch-a',
+            force: true,
+            groupId: 'group-a',
+            messageIds: ['user-2'],
+            personaId: 'persona-a.png',
+            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+        });
+    });
+
+    test('invalidates missing triggers and resolves the captured user instead of a newer message', () => {
+        const capturedUser = { id: 'captured-user', role: 'user', mes: 'captured' };
+        const newerUser = { id: 'newer-user', role: 'user', mes: 'newer' };
+        const queueItem = makeItem('', {
+            messageIds: ['captured-user'],
+            messageRevisions: createConversationMessageRevisionEntries([capturedUser]),
+        });
+
+        expect(resolveConversationQueueTriggerMessages(queueItem, [capturedUser, newerUser])).toEqual([capturedUser]);
+        expect(getLastConversationQueueUserMessage(queueItem, [capturedUser, newerUser])).toBe(capturedUser);
+        expect(resolveConversationQueueTriggerMessages(queueItem, [newerUser])).toBeNull();
+
+        capturedUser.mes = 'edited';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [capturedUser, newerUser])).toBeNull();
+
+        const attachedUser = { id: 'attached-user', role: 'user', mes: '', extra: { files: [{ url: 'one.txt' }] } };
+        const attachmentItem = makeItem('', {
+            messageIds: ['attached-user'],
+            messageRevisions: createConversationMessageRevisionEntries([attachedUser]),
+        });
+        attachedUser.extra.files[0].url = 'edited.txt';
+        expect(resolveConversationQueueTriggerMessages(attachmentItem, [attachedUser])).toBeNull();
+    });
+
+    test('ignores display-only pin and reaction changes but invalidates prompt-relevant edits', () => {
+        const message = {
+            id: 'captured-user',
+            role: 'user',
+            mes: 'hello',
+            extra: {
+                files: [{ name: 'notes.txt', url: '/files/notes.txt' }],
+            },
+        };
+        const queueItem = makeItem('hello', {
+            messageIds: [message.id],
+            messageRevisions: createConversationMessageRevisionEntries([message]),
+        });
+
+        message.extra.conversation_pinned = true;
+        message.extra.conversation_reactions = { heart: 1 };
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
+
+        message.extra.files[0].url = '/files/revised.txt';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
+        message.extra.files[0].url = '/files/notes.txt';
+        message.mes = 'edited';
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
+    });
+
+    test('resolves the speaker targeted by explicit reply metadata', () => {
+        const partnerMessage = {
+            id: 'partner-message',
+            role: 'partner',
+            mes: 'Want to go?',
+            extra: { partner_avatar: 'partner.png' },
+        };
+        const userMessage = {
+            id: 'captured-user',
+            role: 'user',
+            mes: 'Yes',
+            extra: { conversation_reply_to: { messageId: partnerMessage.id } },
+        };
+        const makeReplyItem = () => makeItem('Yes', {
+            messageIds: [userMessage.id],
+            messageRevisions: createConversationMessageRevisionEntries([userMessage]),
+            replyTarget: createConversationQueueReplyTarget([userMessage], [partnerMessage, userMessage]),
+        });
+
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('partner.png');
+
+        // A target edited after capture no longer matches its captured revision.
+        const staleItem = makeReplyItem();
+        partnerMessage.mes = 'Want to go? (edited)';
+        expect(resolveConversationQueueReplyTargetSpeaker(staleItem, [partnerMessage, userMessage], 'host.png')).toBe('');
+
+        // A host-character target resolves to the thread avatar.
+        partnerMessage.role = 'character';
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('host.png');
+    });
+
+    test('requeues a blocked item once without duplicating it', () => {
+        const item = makeItem('queued reply');
+        const queue = [makeItem('later')];
+
+        expect(requeueConversationQueueItem(queue, item)).toBe(true);
+        expect(queue[0]).toBe(item);
+        expect(requeueConversationQueueItem(queue, item)).toBe(false);
+        expect(queue.filter(candidate => candidate === item)).toHaveLength(1);
+    });
+
     describe('isSameConversationQueueThread', () => {
         test('matches same avatar and group', () => {
             const a = makeItem('hi');
@@ -32,6 +156,17 @@ describe('sillybunny conversation send-queue utils', () => {
 
         test('differs on groupId', () => {
             expect(isSameConversationQueueThread(makeItem('a', { groupId: 'g1' }), makeItem('b', { groupId: 'g2' }))).toBe(false);
+        });
+
+        test('separates messages across persona changes', () => {
+            expect(isSameConversationQueueThread(
+                makeItem('a'),
+                makeItem('b', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
+            )).toBe(false);
+        });
+
+        test('separates messages across branch changes', () => {
+            expect(isSameConversationQueueThread(makeItem('a'), makeItem('b', { branchId: 'branch-b' }))).toBe(false);
         });
 
         test('differs when either is forced', () => {
@@ -64,6 +199,14 @@ describe('sillybunny conversation send-queue utils', () => {
             expect(merged.text).toBe('one\n\ntwo\n\nthree');
             expect(merged.attachmentContext).toBe('att1\n\natt2');
             expect(merged.messageCount).toBe(3);
+        });
+
+        test('retains message identities from every coalesced send', () => {
+            const merged = mergeConversationQueueItems([
+                makeItem('one', { messageIds: ['message-1'] }),
+                makeItem('two', { messageIds: ['message-2'] }),
+            ]);
+            expect(merged.messageIds).toEqual(['message-1', 'message-2']);
         });
 
         test('preserves earliest createdAt and records latest as latestQueuedAt', () => {
@@ -139,6 +282,17 @@ describe('sillybunny conversation send-queue utils', () => {
             const result = await coalesceConversationQueueItems(makeItem('first'), queue, { timeoutRef });
             expect(result.text).toBe('first');
             expect(queue).toHaveLength(1);
+        });
+
+        test('does not coalesce queued sends after a persona or branch change', async () => {
+            const timeoutRef = resolve => { setTimeout(resolve, 0); return 0; };
+            const queue = [
+                makeItem('other persona', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
+                makeItem('other branch', { branchId: 'branch-b' }),
+            ];
+            const result = await coalesceConversationQueueItems(makeItem('first'), queue, { timeoutRef });
+            expect(result.text).toBe('first');
+            expect(queue.map(item => item.text)).toEqual(['other persona', 'other branch']);
         });
 
         test('extends the window when a new message arrives mid-wait', async () => {

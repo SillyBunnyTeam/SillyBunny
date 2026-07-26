@@ -303,7 +303,13 @@ router.post('/props', async function (request, response) {
     }
 });
 
-router.post('/generate', async function (request, response) {
+function getSafeCompletionErrorStatus(status) {
+    const parsed = Number(status);
+    return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
+}
+
+// SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream text-generation flow without duplicating provider glue.
+export async function handleTextCompletionsGenerate(request, response) {
     if (!request.body) return response.sendStatus(400);
 
     try {
@@ -465,7 +471,7 @@ router.post('/generate', async function (request, response) {
                 const errorBody = { error: true, status: completionsReply.status, response: text };
 
                 return !response.headersSent
-                    ? response.send(errorBody)
+                    ? response.status(getSafeCompletionErrorStatus(completionsReply.status)).send(errorBody)
                     : response.end();
             }
         }
@@ -476,10 +482,12 @@ router.post('/generate', async function (request, response) {
         console.error('Endpoint error:', error);
 
         return !response.headersSent
-            ? response.send(value)
+            ? response.status(getSafeCompletionErrorStatus(status)).send(value)
             : response.end();
     }
-});
+}
+
+router.post('/generate', handleTextCompletionsGenerate);
 
 const ollama = express.Router();
 

@@ -1194,6 +1194,43 @@ function prefillSendTextarea(sendTextArea, value, { skipIOSFocus = false } = {})
     focusSendTextarea(sendTextArea, { skipIOS: skipIOSFocus });
 }
 
+// SillyBunny divergence: suppress the legacy chat shell briefly while Conversation Mode takes over from welcome-screen recent-chat entry points.
+const conversationWelcomeOpeningVisibilityKey = 'sbConversationWelcomeOpeningVisibility';
+
+function setConversationWelcomeOpeningSuppressed(suppressed) {
+    [document.getElementById('chat'), document.getElementById('form_sheld')].forEach((element) => {
+        if (!(element instanceof HTMLElement)) {
+            return;
+        }
+
+        if (suppressed) {
+            if (!(conversationWelcomeOpeningVisibilityKey in element.dataset)) {
+                element.dataset[conversationWelcomeOpeningVisibilityKey] = element.style.visibility || 'default';
+            }
+            element.style.visibility = 'hidden';
+            return;
+        }
+
+        if (!(conversationWelcomeOpeningVisibilityKey in element.dataset)) {
+            return;
+        }
+
+        const previousVisibility = element.dataset[conversationWelcomeOpeningVisibilityKey] || 'default';
+        element.style.visibility = previousVisibility === 'default' ? '' : previousVisibility;
+        delete element.dataset[conversationWelcomeOpeningVisibilityKey];
+    });
+}
+
+function clearConversationWelcomeOpeningSuppressionAfterRender() {
+    const clearSuppression = () => setConversationWelcomeOpeningSuppressed(false);
+    if (typeof requestAnimationFrame !== 'function') {
+        setTimeout(clearSuppression, 0);
+        return;
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(clearSuppression));
+}
+
 async function refreshCharacterAvatarCache(avatar) {
     if (!avatar) {
         return;
@@ -1792,15 +1829,20 @@ async function openRecentConversationChat(avatarId, groupId = '') {
     }
 
     try {
+        setConversationWelcomeOpeningSuppressed(true);
         const conversationModule = await import('./sillybunny-conversation.js');
         const opened = conversationModule.openConversationWorkspaceForAvatar?.(avatarId, {
             groupId: groupId || null,
             showToast: false,
         });
         if (!opened) {
+            setConversationWelcomeOpeningSuppressed(false);
             toastr.warning(t`Failed to open Conversation Mode for this chat.`);
+            return;
         }
+        clearConversationWelcomeOpeningSuppressionAfterRender();
     } catch (error) {
+        setConversationWelcomeOpeningSuppressed(false);
         console.error('Error opening conversation chat:', error);
         toastr.error(t`Failed to open conversation chat. See console for details.`);
     }

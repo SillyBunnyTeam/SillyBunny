@@ -407,6 +407,119 @@ describe('companion tracker panel', () => {
         expect(panel.shouldShowCompanionPanelHandle()).toBe(false);
     });
 
+    test('hides the panel, handle, and both wand items only while Conversation Mode is active', async () => {
+        let conversationMode = 'on';
+        const sheld = {
+            dataset: { sbConversationMode: conversationMode },
+            getAttribute: jest.fn(() => conversationMode),
+        };
+        globalThis.document.getElementById = jest.fn(id => id === 'sheld' ? sheld : null);
+        agents = [{ id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true }];
+        const panel = await importPanel();
+        const panelElement = {
+            attr: jest.fn(() => panelElement),
+            addClass: jest.fn(() => panelElement),
+            removeClass: jest.fn(() => panelElement),
+        };
+        const handleElement = { toggle: jest.fn(() => handleElement) };
+        const panelMenuElement = { toggle: jest.fn(() => panelMenuElement) };
+        const dashboardMenuElement = { toggle: jest.fn(() => dashboardMenuElement) };
+        globalThis.$ = jest.fn(arg => {
+            if (arg === '#ica--tracker-panel') return panelElement;
+            if (arg === '#ica--tracker-panel-handle') return handleElement;
+            if (arg === '#ica_tracker_panel_wand_item') return panelMenuElement;
+            if (arg === '#ica_companions_wand_item') return dashboardMenuElement;
+            return { toggle: jest.fn() };
+        });
+
+        expect(panel.isConversationModeActive()).toBe(true);
+        expect(panel.shouldShowCompanionPanelHandle()).toBe(false);
+        panel.openCompanionPanel();
+        expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
+        expect(handleElement.toggle).toHaveBeenLastCalledWith(false);
+        expect(panelMenuElement.toggle).toHaveBeenLastCalledWith(false);
+        expect(dashboardMenuElement.toggle).toHaveBeenLastCalledWith(false);
+
+        conversationMode = 'off';
+        sheld.dataset.sbConversationMode = conversationMode;
+        panel.updateCompanionPanelHandleVisibility();
+        expect(handleElement.toggle).toHaveBeenLastCalledWith(true);
+        expect(panelMenuElement.toggle).toHaveBeenLastCalledWith(true);
+        expect(dashboardMenuElement.toggle).toHaveBeenLastCalledWith(true);
+    });
+
+    test('a real MutationObserver drives both wand items across Conversation Mode changes without stacking observers', async () => {
+        agents = [{ id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true }];
+        const observers = [];
+        class MutationObserverMock {
+            constructor(callback) {
+                this.callback = callback;
+                this.observed = [];
+                this.disconnected = false;
+                observers.push(this);
+            }
+            observe(target, options) {
+                this.observed.push({ target, options });
+            }
+            disconnect() {
+                this.disconnected = true;
+            }
+        }
+        globalThis.MutationObserver = MutationObserverMock;
+        const sheld = {
+            dataset: { sbConversationMode: 'off' },
+            getAttribute: jest.fn(name => (name === 'data-sb-conversation-mode' ? sheld.dataset.sbConversationMode : null)),
+        };
+        globalThis.document.getElementById = jest.fn(id => id === 'sheld' ? sheld : null);
+        const panel = await importPanel();
+        const elementStub = () => {
+            const element = {
+                length: 1,
+                on: jest.fn(() => element),
+                append: jest.fn(() => element),
+                html: jest.fn(() => element),
+                toggle: jest.fn(() => element),
+                attr: jest.fn(() => element),
+                addClass: jest.fn(() => element),
+                removeClass: jest.fn(() => element),
+            };
+            return element;
+        };
+        const handleElement = elementStub();
+        const panelMenuElement = elementStub();
+        const dashboardMenuElement = elementStub();
+        const panelElement = elementStub();
+        globalThis.$ = jest.fn(arg => {
+            if (arg === '#ica--tracker-panel') return panelElement;
+            if (arg === '#ica--tracker-panel-handle') return handleElement;
+            if (arg === '#ica_tracker_panel_wand_item') return panelMenuElement;
+            if (arg === '#ica_companions_wand_item') return dashboardMenuElement;
+            if (arg === globalThis.document || arg === globalThis.document.body) return elementStub();
+            if (typeof arg === 'string' && arg.trim().startsWith('<')) return elementStub();
+            return elementStub();
+        });
+
+        panel.initCompanionPanel();
+        panel.initCompanionPanel();
+        const activeObservers = observers.filter(observer => !observer.disconnected);
+        expect(activeObservers).toHaveLength(1);
+        expect(activeObservers[0].observed).toEqual([
+            { target: sheld, options: { attributes: true, attributeFilter: ['data-sb-conversation-mode'] } },
+        ]);
+
+        // Observed attribute flips drive both wand entries via the observer callback.
+        sheld.dataset.sbConversationMode = 'on';
+        activeObservers[0].callback();
+        expect(panelMenuElement.toggle).toHaveBeenLastCalledWith(false);
+        expect(dashboardMenuElement.toggle).toHaveBeenLastCalledWith(false);
+
+        sheld.dataset.sbConversationMode = 'off';
+        activeObservers[0].callback();
+        expect(panelMenuElement.toggle).toHaveBeenLastCalledWith(true);
+        expect(dashboardMenuElement.toggle).toHaveBeenLastCalledWith(true);
+        delete globalThis.MutationObserver;
+    });
+
     test('injects the panel, handle, and wand item once on init', async () => {
         const panel = await importPanel();
         const bodyAppends = [];

@@ -145,6 +145,7 @@ import {
     summarizeOperationOutcomes,
     unregisterConversationCheckpointInsertion,
 } from "./lib/client-orchestration.js";
+import { registerExtensionCapability } from "../../sillybunny-conversation/extension-capabilities.js";
 
 // Artist lists for random selection
 const ARTISTS_NATURAL = ["a1 (initial-g)", "abubu", "afrobull", "aiue oka", "akairiot", "akamatsu ken", "alex ahad", "alzi xiaomi", "amazuyu tatsuki", "aoi nagisa (metalder)", "ask (askzy)", "atdan", "awa", "ayami kojima", "azasuke", "azto dio", "bkub", "blade (galaxist)", "boris (noborhys)", "bow (bhp)", "butcha-u", "chouzuki maryou", "ciloranko", "circle anco", "crote", "dagasi", "dairi", "dino (dinoartforame)", "dishwasher1910", "drawfag", "dsmile", "ebifurya", "eroquis", "fkey", "fuzichoco", "gomennasai", "hammer (sunset beach)", "hana kazari", "hara (harayutaka)", "haruyama kazunori", "hews", "hiroki (yyqw7151)", "hiten", "hoshi (snacherubi)", "inoino", "itomugi-kun", "ixy", "kagami hirotaka", "kanon (kurogane knights)", "kantoku", "kawacy", "ke-ta", "kou hiyoyo", "kouji (campus life)", "kuavera", "kuon (kwonchan)", "lack", "lm7", "lolita channel", "m-da s-tarou", "matsunaga kouyou", "mika pikazo", "mikeinel", "mizuki hitoshi", "mizumizuni", "morikura en", "naga u", "nardack", "neco", "nel-zel formula", "neocoill", "nian", "nixeu", "nyamota", "nyantcha", "ojipon", "onikobe rin", "piromizu", "pochi (pochi-goya)", "qp:flapper", "rebecca (keinelove)", "redjuice", "rei (sanbonzakura)", "rurudo", "ruu (tksymkw)", "shirataki", "sincos", "sky-freedom", "tofuubear", "tony taka", "tukiwani", "wanke", "yaegashi nan", "yamakaze", "yoko juusuke", "yoshiaki", "yuuki tatsuya"];
@@ -1333,6 +1334,10 @@ let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
 let activeGenerationRun = null;
 let activeComfyPrompt = null;
+let activeExternalGenerationRun = null;
+let externalGenerationTail = Promise.resolve();
+let nextExternalGenerationRunId = 1;
+let unregisterQuickImageGenCapability = null;
 const blobUrls = new Set();
 let lifecycleCleanupInstalled = false;
 let batchKeyHandler = null;
@@ -2590,7 +2595,7 @@ function extractProxyImageFromJson(data, options = {}) {
     return null;
 }
 
-function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, proxySeed) {
+function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, proxySeed, context = getContext?.()) {
     const negPrompt = negative ? `\nAvoid: ${negative}` : "";
     const extraInstr = s.proxyExtraInstructions ? `\n${s.proxyExtraInstructions}` : "";
     const content = [];
@@ -2616,7 +2621,7 @@ function buildProxyChatPayload(prompt, negative, s, refImages, payloadMode, prox
 
     const messages = [];
     if (s.proxyChatImageMode) {
-        const systemPrompt = buildProxyChatImageSystemPrompt(s, getContext?.());
+        const systemPrompt = buildProxyChatImageSystemPrompt(s, context);
         if (systemPrompt) {
             messages.push({ role: "system", content: systemPrompt });
         }
@@ -3517,6 +3522,69 @@ async function cancelTrackedComfyPrompt(tracked) {
     });
 }
 
+function cancelTrackedComfyPromptOnce(tracked) {
+    if (!tracked?.promptId) return Promise.resolve({ cancelled: false, reason: "missing prompt id" });
+    tracked.cancelPromise ??= cancelTrackedComfyPrompt(tracked);
+    return tracked.cancelPromise;
+}
+
+function abortExternalGenerationRun(run, reason) {
+    if (!run || run.signal.aborted) return false;
+    run.controller.abort(reason instanceof DOMException ? reason : new DOMException("Generation cancelled", "AbortError"));
+    if (run.comfyPrompt) {
+        void cancelTrackedComfyPromptOnce(run.comfyPrompt).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
+    }
+    return true;
+}
+
+function assertExternalGenerationRun(run) {
+    if (activeExternalGenerationRun !== run || run?.signal?.aborted) {
+        throw getAbortError(run?.signal, "External generation is no longer active");
+    }
+}
+
+function enqueueExternalGeneration(task, parentSignal = null) {
+    const controller = new AbortController();
+    const run = {
+        id: nextExternalGenerationRunId++,
+        controller,
+        signal: controller.signal,
+        comfyPrompt: null,
+    };
+    const abortFromParent = () => abortExternalGenerationRun(run, parentSignal?.reason);
+    if (parentSignal?.aborted) abortFromParent();
+    else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+
+    const execute = async () => {
+        if (run.signal.aborted) throw getAbortError(run.signal);
+        activeExternalGenerationRun = run;
+        try {
+            return await task(run);
+        } finally {
+            if (activeExternalGenerationRun === run) activeExternalGenerationRun = null;
+            parentSignal?.removeEventListener("abort", abortFromParent);
+        }
+    };
+    const result = externalGenerationTail.catch(() => {}).then(execute);
+    externalGenerationTail = result.then(() => undefined, () => undefined);
+    return result;
+}
+
+async function waitForPromiseWithSignal(promise, signal) {
+    if (!signal) return await promise;
+    if (signal.aborted) throw getAbortError(signal);
+    let abort;
+    const aborted = new Promise((_, reject) => {
+        abort = () => reject(getAbortError(signal));
+        signal.addEventListener("abort", abort, { once: true });
+    });
+    try {
+        return await Promise.race([promise, aborted]);
+    } finally {
+        signal.removeEventListener("abort", abort);
+    }
+}
+
 function requestGenerationCancel(reason = "Generation cancelled by user", { force = false } = {}) {
     if (!isGenerating) return false;
     const now = Date.now();
@@ -4112,13 +4180,13 @@ function getEnabledPoolIdsForScope(scopeRef = getNormalizedScopedRecord(FILTER_S
     return enabled;
 }
 
-function getEnabledPoolIdsForCurrentContext() {
+function getEnabledPoolIdsForCurrentContext(ctx = getContext()) {
     const enabled = new Set(normalizePoolIdList(activeFilterPoolIdsGlobal));
-    for (const cardKey of getActiveCardScopeKeys()) {
+    for (const cardKey of getActiveCardScopeKeys(ctx)) {
         const cardPoolIds = normalizePoolIdList(activeFilterPoolIdsByCard?.[cardKey]);
         for (const id of cardPoolIds) enabled.add(id);
     }
-    const activeCharIds = getActiveCharacterScopeIds();
+    const activeCharIds = getActiveCharacterScopeIds(ctx);
     for (const charId of activeCharIds) {
         const charPoolIds = normalizePoolIdList(activeFilterPoolIdsByChar?.[String(charId)]);
         for (const id of charPoolIds) enabled.add(id);
@@ -4628,6 +4696,53 @@ function getContextCharactersList(ctx) {
     return entries;
 }
 
+function freezeContextSnapshot(value, seen = new WeakSet()) {
+    if (!value || typeof value !== "object" || seen.has(value)) return value;
+    seen.add(value);
+    for (const child of Object.values(value)) freezeContextSnapshot(child, seen);
+    return Object.freeze(value);
+}
+
+function createScopedCharacterGenerationContext({ avatar = "", character = null, characterName = "" } = {}) {
+    const baseContext = getContext?.();
+    if (!baseContext) return null;
+
+    const targetAvatar = String(avatar || character?.avatar || "").trim();
+    const targetName = String(characterName || character?.name || "").trim();
+    const entries = getContextCharactersList(baseContext);
+    const existing = entries.find(entry =>
+        (character && entry.data === character) ||
+        (targetAvatar && normalizeContextLookupValue(entry.avatar) === normalizeContextLookupValue(targetAvatar)) ||
+        (targetName && normalizeContextLookupValue(entry.name) === normalizeContextLookupValue(targetName))
+    );
+    const sourceCharacter = character || existing?.data || null;
+    if (!sourceCharacter) return null;
+
+    const characterId = String(existing?.id ?? "__qig_scoped_character__");
+    const targetCharacter = freezeContextSnapshot(snapshotGenerationSettings(sourceCharacter));
+    const characters = Object.freeze({ [characterId]: targetCharacter });
+    const personaDescription = String(baseContext.persona || baseContext.powerUserSettings?.persona_description || "");
+    const powerUserSettings = Object.freeze({ persona_description: personaDescription });
+
+    return Object.freeze({
+        characterId,
+        characters,
+        chat: Object.freeze([]),
+        chatId: "",
+        group: null,
+        groupId: null,
+        groups: Object.freeze([]),
+        name1: String(baseContext.name1 || "").trim(),
+        name2: String(targetCharacter.name || existing?.name || targetName).trim(),
+        persona: personaDescription,
+        powerUserSettings,
+        ConnectionManagerRequestService: baseContext.ConnectionManagerRequestService,
+        __qigScopedCharacter: true,
+        __qigCharacterAvatar: targetAvatar || String(targetCharacter.avatar || "").trim(),
+        __qigCharacterId: existing?.id != null ? String(existing.id) : null,
+    });
+}
+
 function getCharacterEntryById(charId, ctx = getContext()) {
     if (charId == null) return null;
     const key = normalizeContextLookupValue(charId);
@@ -4857,8 +4972,8 @@ function getActiveCharacterScopeIds(ctx = getContext()) {
     return uniqueStringList(profile.charIds);
 }
 
-function resolveContextualFilterText(value) {
-    const profile = getPromptAwareProfileContext(resolveChatProfileContext());
+function resolveContextualFilterText(value, context = getContext()) {
+    const profile = getPromptAwareProfileContext(resolveChatProfileContext(context));
     return resolvePrompt(value, {
         charName: profile.charNameJoined,
         userName: profile.userName,
@@ -4889,7 +5004,7 @@ function buildProxyChatImagePersonalityContext(ctx = getContext()) {
 function buildProxyChatImageSystemPrompt(settings = getSettings(), ctx = getContext()) {
     const base = String(settings?.proxyChatImageSystemPrompt || DEFAULT_PROXY_CHAT_IMAGE_SYSTEM_PROMPT).trim();
     if (!settings?.proxyChatImageIncludePersonality) return base;
-    const personality = buildProxyChatImagePersonalityContext(ctx || getContext());
+    const personality = buildProxyChatImagePersonalityContext(ctx);
     if (!personality) return base;
     return [base, "Use this chat personality context when it helps preserve identity, tone, outfit, and scene continuity:", personality]
         .filter(Boolean)
@@ -4959,23 +5074,23 @@ function setProxyChatImageCheckboxMode(enabled) {
     return s;
 }
 
-function resolveContextualFilter(filter) {
+function resolveContextualFilter(filter, context = getContext()) {
     if (!filter || typeof filter !== "object") return filter;
     return {
         ...filter,
-        name: resolveContextualFilterText(filter.name || ""),
-        description: resolveContextualFilterText(filter.description || ""),
-        keywords: resolveContextualFilterText(filter.keywords || ""),
-        positive: resolveContextualFilterText(filter.positive || ""),
-        negative: resolveContextualFilterText(filter.negative || ""),
-        removePositive: resolveContextualFilterText(filter.removePositive || ""),
-        removeNegative: resolveContextualFilterText(filter.removeNegative || ""),
+        name: resolveContextualFilterText(filter.name || "", context),
+        description: resolveContextualFilterText(filter.description || "", context),
+        keywords: resolveContextualFilterText(filter.keywords || "", context),
+        positive: resolveContextualFilterText(filter.positive || "", context),
+        negative: resolveContextualFilterText(filter.negative || "", context),
+        removePositive: resolveContextualFilterText(filter.removePositive || "", context),
+        removeNegative: resolveContextualFilterText(filter.removeNegative || "", context),
     };
 }
 
-function enrichSceneTextForFilters(sceneText, label = "Contextual filters") {
+function enrichSceneTextForFilters(sceneText, label = "Contextual filters", context = getContext()) {
     const base = String(sceneText || "").trim();
-    const profile = getPromptAwareProfileContext(resolveChatProfileContext(), base);
+    const profile = getPromptAwareProfileContext(resolveChatProfileContext(context), base);
     const extraLines = [];
     if (profile.charNames.length) {
         extraLines.push(`Characters: ${profile.charNames.join(", ")}`);
@@ -4997,18 +5112,47 @@ function enrichSceneTextForFilters(sceneText, label = "Contextual filters") {
     return enriched;
 }
 
+let quickImageGenInitializationPromise = null;
+
+// SillyBunny divergence: expose a tiny readiness seam so Conversation media flows can wait for QIG boot without copying its init state.
+function ensureQuickImageGenReady(timeoutMs = 10000) {
+    if (!quickImageGenInitializationPromise) {
+        return Promise.reject(new Error("Quick Image Gen initialization has not started."));
+    }
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+        return quickImageGenInitializationPromise;
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Quick Image Gen did not finish initializing.")), timeoutMs);
+        quickImageGenInitializationPromise.then(
+            value => {
+                clearTimeout(timeout);
+                resolve(value);
+            },
+            error => {
+                clearTimeout(timeout);
+                reject(error);
+            },
+        );
+    });
+}
+
 function getSettings() {
     return extension_settings[extensionName];
 }
 
-function getGenerationSettingsForRun() {
+function getGenerationSettingsForRun(context = null) {
     const baseSettings = getSettings();
     const merged = transientGenerationSettingsOverride && typeof transientGenerationSettingsOverride === "object"
         ? { ...baseSettings, ...transientGenerationSettingsOverride }
         : baseSettings;
-    const snapshot = snapshotGenerationSettings(merged);
+    const runContext = context || getContext?.();
+    const snapshot = snapshotGenerationSettings(getScopedCharacterGenerationSettings(merged, runContext));
     if (!Array.isArray(snapshot.__qigActiveContextualFilters)) {
-        snapshot.__qigActiveContextualFilters = snapshotGenerationSettings(getActiveFilters().map(resolveContextualFilter));
+        snapshot.__qigActiveContextualFilters = snapshotGenerationSettings(
+            getActiveFilters(runContext).map(filter => resolveContextualFilter(filter, runContext)),
+        );
     }
     return snapshot;
 }
@@ -5187,8 +5331,15 @@ function getSTStyleSettings(context = getContext?.()) {
     }
 }
 
-function applySTStylePrompts(prompt, negative, context) {
-    const resolveMacros = typeof substituteParams === "function" ? substituteParams : resolvePrompt;
+function applySTStylePrompts(prompt, negative, context, { scoped = false } = {}) {
+    let resolveMacros = typeof substituteParams === "function" ? substituteParams : resolvePrompt;
+    if (scoped) {
+        const profile = resolveChatProfileContext(context);
+        resolveMacros = value => resolvePrompt(value, {
+            charName: profile.charNameJoined,
+            userName: profile.userName,
+        });
+    }
     return mergeSTStylePrompts(prompt, negative, getSTStyleSettings(context), resolveMacros);
 }
 
@@ -5390,11 +5541,11 @@ function isContextualFilterInCurrentContext(filter, { activeCardKeys = new Set(g
     return true;
 }
 
-function getActiveFilters() {
+function getActiveFilters(context = getContext()) {
     ensureFilterPoolsState();
-    const activeCardKeys = new Set(getActiveCardScopeKeys());
-    const activeCharIds = new Set(getActiveCharacterScopeIds());
-    const enabledPoolIds = getEnabledPoolIdsForCurrentContext();
+    const activeCardKeys = new Set(getActiveCardScopeKeys(context));
+    const activeCharIds = new Set(getActiveCharacterScopeIds(context));
+    const enabledPoolIds = getEnabledPoolIdsForCurrentContext(context);
     return contextualFilters.filter(f => {
         if (!f || typeof f !== "object") return false;
         if (!isContextualFilterInCurrentContext(f, { activeCardKeys, activeCharIds })) return false;
@@ -5533,10 +5684,10 @@ function getRunContextualFilters(settings) {
         : getActiveFilters().map(resolveContextualFilter);
 }
 
-function applyContextualFilters(prompt, negative, sceneText, settings = null) {
+function applyContextualFilters(prompt, negative, sceneText, settings = null, context = getContext()) {
     const activeFilters = getRunContextualFilters(settings);
     if (!activeFilters.length || !sceneText) return { prompt, negative, matchedFilters: [] };
-    const sceneForMatching = enrichSceneTextForFilters(sceneText, "Contextual filters");
+    const sceneForMatching = enrichSceneTextForFilters(sceneText, "Contextual filters", context);
     const scene = sceneForMatching.toLowerCase();
     const matched = [];
     for (const f of activeFilters) {
@@ -5571,13 +5722,14 @@ async function applyResolvedContextualFilters(prompt, negative, {
     llmSceneText,
     signal = null,
     settings = null,
+    context = getContext(),
 } = {}) {
-    const applied = applyContextualFilters(prompt, negative, matchText, settings);
+    const applied = applyContextualFilters(prompt, negative, matchText, settings, context);
     let nextPrompt = applied.prompt;
     let nextNegative = applied.negative;
     const matchedFilters = [...(applied.matchedFilters || [])];
 
-    const llmMatched = await matchLLMFilters(llmSceneText || matchText, signal, settings);
+    const llmMatched = await matchLLMFilters(llmSceneText || matchText, signal, settings, context);
     if (llmMatched.length) {
         const llmApplied = applyMatchedFiltersWithDebug(nextPrompt, nextNegative, llmMatched, "LLM contextual filter");
         nextPrompt = llmApplied.prompt;
@@ -5603,12 +5755,12 @@ function getBatchBaseSeed(settings, batchCount, seedOverride = null) {
     return baseSeed;
 }
 
-async function matchLLMFilters(sceneText, signal = null, settings = null) {
+async function matchLLMFilters(sceneText, signal = null, settings = null, context = getContext()) {
     const llmFilters = getRunContextualFilters(settings)
         .filter(f => f.enabled && f.matchMode === "LLM" && f.description)
         .filter(f => f.description);
     if (!llmFilters.length || !sceneText) return [];
-    const sceneForMatching = enrichSceneTextForFilters(sceneText, "LLM filters");
+    const sceneForMatching = enrichSceneTextForFilters(sceneText, "LLM filters", context);
 
     const conceptList = llmFilters.map((f, i) => `${i + 1}. "${f.name || "(unnamed)"}": ${f.description}`).join('\n');
     log(`LLM filter matching concepts: ${previewTextForLog(conceptList, 180)}`);
@@ -5626,7 +5778,7 @@ ${conceptList}`;
     let response;
     try {
         if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
-            response = await callOverrideLLM(instruction, "You are a scene analyst. Reply only with numbers.", signal, { settings: s });
+            response = await callOverrideLLM(instruction, "You are a scene analyst. Reply only with numbers.", signal, { context, settings: s });
         } else {
             response = await callInternalQuietPrompt(instruction, {
                 signal,
@@ -5634,7 +5786,8 @@ ${conceptList}`;
                 label: "LLM filter matching request",
             });
         }
-        checkAborted();
+        if (signal?.aborted) throw getAbortError(signal);
+        if (!signal) checkAborted();
     } catch (e) {
         if (e.name === "AbortError") throw e; // Let cancellation propagate
         log(`LLM filter matching failed: ${e.message}`);
@@ -5852,13 +6005,13 @@ function extractLLMResponse(response) {
     return extractLLMResponseDetails(response).text;
 }
 
-async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", returnMeta = false, settings = null } = {}) {
+async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { assistantPrefill = "", context = null, returnMeta = false, settings = null } = {}) {
     const s = settings || activeGenerationRun?.settings || getSettings();
     const requestedMaxTokens = s.llmOverrideMaxTokens || 500;
+    const requestContext = context || getContext();
     let CMRS = null;
     try {
-        const ctx = getContext();
-        CMRS = ctx.ConnectionManagerRequestService;
+        CMRS = requestContext.ConnectionManagerRequestService;
     } catch { /* pre-1.15.0 */ }
 
     if (!CMRS || !s.llmOverrideProfileId) {
@@ -5895,10 +6048,9 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
     log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"})`);
 
     try {
-        const context = getContext();
         const response = await runWithInternalLLMRequest("LLM override profile request", () => sendIsolatedConnectionManagerRequest({
             service: CMRS,
-            context,
+            context: requestContext,
             profileId: s.llmOverrideProfileId,
             messages,
             maxTokens: requestedMaxTokens,
@@ -7725,12 +7877,21 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 return parseComfyPromptResponse(await readResponseJson(res, 1024 * 1024));
             });
             const trackedPrompt = {
-                runId: activeGenerationRun?.id ?? null,
+                runId: options.externalRun ? null : (activeGenerationRun?.id ?? null),
+                externalRunId: options.externalRun?.id ?? null,
                 baseUrl,
                 promptId: promptResponse.prompt_id,
                 allowLegacyInterrupt: s.comfyAllowLegacyInterrupt === true,
             };
-            activeComfyPrompt = trackedPrompt;
+            if (options.externalRun) {
+                options.externalRun.comfyPrompt = trackedPrompt;
+            } else {
+                activeComfyPrompt = trackedPrompt;
+            }
+            if (signal?.aborted) {
+                await cancelTrackedComfyPromptOnce(trackedPrompt).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
+                throw getAbortError(signal);
+            }
             showStatus("🖼️ ComfyUI workflow queued...");
             try {
                 const historyResult = await pollComfyHistory(promptResponse.prompt_id, {
@@ -7771,14 +7932,18 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                     effectiveRequest: { parameters: effectiveParameters },
                 };
             } catch (error) {
-                if (error?.code === "COMFY_HISTORY_TIMEOUT" || error?.code === "COMFY_DEADLINE_TIMEOUT") {
-                    cancelTrackedComfyPrompt(trackedPrompt).then(result => {
-                        if (result.cancelled === false) log(`ComfyUI timeout cleanup: ${result.reason || "prompt could not be safely cancelled"}`);
-                    }).catch(cancelError => log(`ComfyUI timeout cleanup failed: ${cancelError.message}`));
+                if (error?.name === "AbortError" || error?.code === "COMFY_HISTORY_TIMEOUT" || error?.code === "COMFY_DEADLINE_TIMEOUT") {
+                    try {
+                        const result = await cancelTrackedComfyPromptOnce(trackedPrompt);
+                        if (result.cancelled === false) log(`ComfyUI cleanup: ${result.reason || "prompt could not be safely cancelled"}`);
+                    } catch (cancelError) {
+                        log(`ComfyUI cleanup failed: ${cancelError.message}`);
+                    }
                 }
                 throw error;
             } finally {
                 if (activeComfyPrompt === trackedPrompt) activeComfyPrompt = null;
+                if (options.externalRun?.comfyPrompt === trackedPrompt) options.externalRun.comfyPrompt = null;
             }
         }
 
@@ -8308,7 +8473,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         const requestPrompt = normalizedPrompt.promptText || getProxyPromptFallback(refImages.length > 0);
         log(`Proxy mode: endpoint=${endpointMode}, payload=${payloadMode}, refMode=${refMode}, sse=${sseEnabled}, refImages=${refImages.length}, runtimeRefs=${runtimeRefImages.length}, url=${redactUrlCredentials(requestUrl).substring(0, 80)}`);
         const payload = endpointMode === "chat_completions"
-            ? buildProxyChatPayload(requestPrompt, negative, s, refImages, payloadMode, proxySeed)
+            ? buildProxyChatPayload(requestPrompt, negative, s, refImages, payloadMode, proxySeed, options.context ?? undefined)
             : buildProxyImagesPayload(requestPrompt, negative, s, refImages, payloadMode, proxySeed, sseEnabled);
         log(`${endpointMode === "chat_completions" ? "Chat" : "Images"} endpoint payload keys: ${Object.keys(payload).join(", ")}`);
         const res = await fetch(requestUrl, {
@@ -10309,16 +10474,29 @@ async function finalizeGeneratedEntry(providerResult, prompt, negative, settings
 }
 
 async function finalizeGeneratedResults(providerResult, prompt, negative, settings, options = {}) {
-    const providerResults = Array.isArray(providerResult) ? providerResult : [providerResult];
+    const normalizedProviderResult = !Array.isArray(providerResult) && Array.isArray(providerResult?.images)
+        ? normalizeProviderResult(providerResult, settings, {
+            model: getProviderModelId(settings),
+            resolvedSeed: Number.isFinite(settings?.__qigResolvedSeed) ? settings.__qigResolvedSeed : undefined,
+        })
+        : providerResult;
+    const providerResults = Array.isArray(normalizedProviderResult) ? normalizedProviderResult : [normalizedProviderResult];
+    const finalizedEntries = [];
     try {
-        const outcome = await collectSequentialResults(providerResults, result =>
-            finalizeGeneratedEntry(result, prompt, negative, settings, options)
-        );
+        const outcome = await collectSequentialResults(providerResults, async result => {
+            const entry = await finalizeGeneratedEntry(result, prompt, negative, settings, options);
+            if (entry) finalizedEntries.push(entry);
+            return entry;
+        });
         if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
         return attachResultFailures(outcome.results, [
-            ...getResultFailures(providerResult),
+            ...getResultFailures(normalizedProviderResult),
             ...outcome.errors,
         ]);
+    } catch (error) {
+        finalizedEntries.forEach(releaseTransientProviderResult);
+        releaseTransientProviderResult(providerResult);
+        throw error;
     } finally {
         if (settings && Object.prototype.hasOwnProperty.call(settings, "__qigResolvedSeed")) {
             delete settings.__qigResolvedSeed;
@@ -11913,6 +12091,128 @@ async function generateForProvider(prompt, negative, settings, signal, options =
     }
 }
 
+async function finalizeFirstExternalResult(providerResult, prompt, negative, settings, options) {
+    const entries = await finalizeGeneratedResults(providerResult, prompt, negative, settings, options);
+    try {
+        options.commitGuard?.();
+        const first = entries.find(entry => entry?.url) || null;
+        for (const entry of entries) {
+            if (entry !== first) releaseTransientProviderResult(entry);
+        }
+        return first;
+    } catch (error) {
+        entries.forEach(releaseTransientProviderResult);
+        throw error;
+    }
+}
+
+async function executeExternalImageGeneration(prompt, negative, settings, context, {
+    applyScopedPipeline = false,
+    finalizationOptions = {},
+    signal = null,
+} = {}) {
+    return enqueueExternalGeneration(async run => {
+        assertExternalGenerationRun(run);
+        let providerResult = null;
+        let finalPrompt = String(prompt || "").trim();
+        let finalNegative = String(negative || "").trim();
+
+        if (applyScopedPipeline) {
+            finalPrompt = applyStyle(finalPrompt, settings);
+            if (settings.appendQuality && settings.qualityTags) {
+                finalPrompt = `${settings.qualityTags}, ${finalPrompt}`;
+            }
+            if (settings.useSTStyle !== false) {
+                ({ prompt: finalPrompt, negative: finalNegative } = applySTStylePrompts(
+                    finalPrompt,
+                    finalNegative,
+                    context,
+                    { scoped: true },
+                ));
+            }
+
+            const contextual = await applyResolvedContextualFilters(finalPrompt, finalNegative, {
+                matchText: finalPrompt,
+                llmSceneText: finalPrompt,
+                signal: run.signal,
+                settings,
+                context,
+            });
+            assertExternalGenerationRun(run);
+            finalPrompt = contextual.prompt;
+            finalNegative = contextual.negative;
+            if (contextual.seedOverride != null) {
+                setGenerationSeedValue(settings, contextual.seedOverride);
+            }
+        }
+
+        const commitGuard = () => assertExternalGenerationRun(run);
+        try {
+            providerResult = await generateForProvider(finalPrompt, finalNegative, settings, run.signal, {
+                context,
+                externalRun: run,
+            });
+            commitGuard();
+            if (!providerResult) return null;
+            return await finalizeFirstExternalResult(providerResult, finalPrompt, finalNegative, settings, {
+                ...finalizationOptions,
+                commitGuard,
+                context,
+                promptWasLLM: finalizationOptions.promptWasLLM ?? false,
+                serverSubfolder: finalizationOptions.serverSubfolder || getServerSubfolder(context ?? getContext?.()),
+                signal: run.signal,
+                sourceChatId: finalizationOptions.sourceChatId ?? "",
+                sourceMessageId: finalizationOptions.sourceMessageId ?? "",
+                sourceMessageSignature: finalizationOptions.sourceMessageSignature ?? "",
+            });
+        } catch (error) {
+            if (providerResult) releaseTransientProviderResult(providerResult);
+            throw error;
+        }
+    }, signal);
+}
+
+function getCapabilitySettingsSnapshot({ avatar = "", character = null, characterName = "" } = {}) {
+    const context = avatar || character || characterName
+        ? createScopedCharacterGenerationContext({ avatar, character, characterName })
+        : null;
+    return context ? getGenerationSettingsForRun(context) : snapshotGenerationSettings(getSettings() || {});
+}
+
+async function generateCapabilityImage(prompt, negative = "", {
+    avatar = "",
+    character = null,
+    characterName = "",
+    finalizationOptions = {},
+    signal = null,
+} = {}) {
+    await waitForPromiseWithSignal(ensureQuickImageGenReady(), signal);
+    // Non-Conversation callers (e.g. the expression sprite bridge) may not have
+    // an explicit character; the live roleplay context is correct for them.
+    const context = avatar || character || characterName
+        ? createScopedCharacterGenerationContext({ avatar, character, characterName })
+        : null;
+    const settings = context ? getGenerationSettingsForRun(context) : getGenerationSettingsForRun();
+    return executeExternalImageGeneration(prompt, negative, settings, context, { finalizationOptions, signal });
+}
+
+async function generateScopedImage(prompt, negative = "", {
+    avatar = "",
+    character = null,
+    finalizationOptions = {},
+    signal = null,
+} = {}) {
+    await waitForPromiseWithSignal(ensureQuickImageGenReady(), signal);
+    const context = createScopedCharacterGenerationContext({ avatar, character });
+    if (!context) throw new Error("Quick Image Gen requires an explicit Conversation character context.");
+    const settings = getGenerationSettingsForRun(context);
+    return executeExternalImageGeneration(prompt, negative, settings, context, {
+        applyScopedPipeline: true,
+        finalizationOptions,
+        signal,
+    });
+}
+
 function reportPartialBatchErrors(label, outcome) {
     if (!outcome?.errors?.length) return;
     const failed = outcome.errors.length;
@@ -13495,6 +13795,75 @@ function cloneCharScopedState(s = getSettings()) {
         nanogptRefImages: [...(s.nanogptRefImages || [])],
         localRefImage: s.localRefImage || "",
     };
+}
+
+function applyCharScopedStateToGenerationSettings(settings, state) {
+    if (!state || typeof state !== "object") return;
+    const fallback = cloneCharScopedState(defaultSettings);
+    for (const key of ["prompt", "negativePrompt", "style", "width", "height"]) {
+        if (Object.prototype.hasOwnProperty.call(state, key)) {
+            settings[key] = state[key] ?? fallback[key];
+        }
+    }
+    for (const key of ["proxyRefImages", "customApiRefImages", "nanobananaRefImages", "nanogptRefImages"]) {
+        if (Object.prototype.hasOwnProperty.call(state, key)) {
+            settings[key] = [...(state[key] || [])];
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(state, "localRefImage")) {
+        settings.localRefImage = state.localRefImage || "";
+    }
+}
+
+function clearCharacterReferenceSettings(settings) {
+    settings.proxyRefImages = [];
+    settings.customApiRefImages = [];
+    settings.nanobananaRefImages = [];
+    settings.nanogptRefImages = [];
+    settings.localRefImage = "";
+}
+
+function getScopedCharacterStoreValue(store, context) {
+    const entry = getCurrentCharacterEntry(context);
+    const keys = uniqueStringList([
+        context?.__qigCharacterId,
+        entry?.id,
+        entry?.avatar,
+        entry?.data?.avatar,
+        context?.__qigCharacterAvatar,
+    ]);
+    for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(store || {}, key)) return store[key];
+    }
+    return null;
+}
+
+function getScopedCharacterGenerationSettings(baseSettings, context) {
+    if (!context?.__qigScopedCharacter) return baseSettings;
+
+    const settings = { ...baseSettings };
+    if (charSettingsOverrideApplied) {
+        const globalState = charSettingsBaseState || baseSettings?._charSettingsBaseState;
+        applyCharScopedStateToGenerationSettings(settings, globalState || cloneCharScopedState(defaultSettings));
+    }
+
+    const settingsRecord = getScopedCharacterStoreValue(charSettings, context);
+    const rawReferences = getScopedCharacterStoreValue(charRefImages, context);
+    const referenceRecord = normalizeCharacterReferenceRecord(rawReferences, settings.provider);
+    if (!settingsRecord && !hasCharacterReferenceOverrides(referenceRecord)) {
+        return settings;
+    }
+
+    applyCharScopedStateToGenerationSettings(settings, settingsRecord);
+    clearCharacterReferenceSettings(settings);
+    const references = getCharacterProviderReferences(referenceRecord, settings.provider);
+    const referenceList = Array.isArray(references) ? [...references] : [];
+    if (settings.provider === "proxy") settings.proxyRefImages = referenceList;
+    if (settings.provider === "custom") settings.customApiRefImages = referenceList;
+    if (settings.provider === "nanobanana") settings.nanobananaRefImages = referenceList;
+    if (settings.provider === "nanogpt") settings.nanogptRefImages = referenceList;
+    if (settings.provider === "local") settings.localRefImage = typeof references === "string" ? references : "";
+    return settings;
 }
 
 function rememberCharSettingsBaseState(state, s = getSettings()) {
@@ -20151,9 +20520,8 @@ function scheduleDirectAutoGeneration(job, delayMs) {
 }
 
 
-jQuery(function () {
-    // Non-blocking async initialization
-    (async () => {
+function initializeQuickImageGen() {
+    return (async () => {
         try {
             const extensionsModule = await import("../../extensions.js");
             const scriptModule = await import("../../../script.js");
@@ -20290,9 +20658,17 @@ jQuery(function () {
             }
         } catch (err) {
             console.error("[Quick Image Gen] Initialization failed:", err);
+            throw err;
         }
     })();
+}
+
+quickImageGenInitializationPromise = new Promise((resolve, reject) => {
+    jQuery(() => {
+        void initializeQuickImageGen().then(resolve, reject);
+    });
 });
+void quickImageGenInitializationPromise.catch(() => {});
 
 
 let _saveToServerToastTs = 0;
@@ -20812,6 +21188,20 @@ async function handleMetadataDrop(e) {
     }
 }
 
+const quickImageGenCapability = Object.freeze({
+    ensureReady: ensureQuickImageGenReady,
+    generateImage: generateCapabilityImage,
+    generateScopedImage,
+    getSettingsSnapshot: getCapabilitySettingsSnapshot,
+});
+unregisterQuickImageGenCapability = registerExtensionCapability(extensionName, quickImageGenCapability);
+
+export function deactivate() {
+    abortExternalGenerationRun(activeExternalGenerationRun);
+    unregisterQuickImageGenCapability?.();
+    unregisterQuickImageGenCapability = null;
+}
+
 // Export module info for SillyTavern
 export { extensionName };
 
@@ -20820,9 +21210,11 @@ export { extensionName };
 // one export block. The actual sprite-generation logic lives outside QIG in
 // public/scripts/extensions/expressions/expression-sprite-bridge.js.
 export {
+    ensureQuickImageGenReady,
     getSettings,
     getGenerationSettingsForRun,
     generateForProvider,
+    generateScopedImage,
     finalizeGeneratedEntry,
     withTransientGenerationSettings,
 };

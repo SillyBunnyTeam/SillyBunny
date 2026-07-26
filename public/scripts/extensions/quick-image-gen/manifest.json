@@ -10,5 +10,8 @@
   "minimum_client_version": "1.12.0",
   "homePage": "https://github.com/platberlitz/sillytavern-image-gen",
   "auto_update": true,
-  "manifest_version": 3
+  "manifest_version": 3,
+  "hooks": {
+    "disable": "deactivate"
+  }
 }

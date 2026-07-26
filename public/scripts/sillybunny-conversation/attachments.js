@@ -1,7 +1,8 @@
-import { is_send_press, name1 } from '../../script.js';
+import { is_send_press } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
+    AUTO_WORKER_WAIT_POLL_MS,
     AUTO_WORKER_WAIT_TIMEOUT_MS,
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -14,17 +15,35 @@ import {
     SEND_QUEUE_BATCH_MS,
     SEND_QUEUE_COALESCE_MS,
 } from './constants.js';
-import { getConversationGroupById, getConversationGroupIdForAvatar, getCurrentCharAvatar, getCurrentCharName } from './context.js';
+import {
+    getConversationGroupById,
+    getConversationGroupIdForAvatar,
+    getConversationPersonaId,
+    getConversationThreadKey,
+    getConversationThreadStore,
+    getCurrentCharAvatar,
+    getCurrentCharName,
+} from './context.js';
 import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
-import { isCharacterMentionedInText } from './partners.js';
-import { formatConversationFileSize, formatPromptText } from './prompt.js';
+import { getAllowedPartnerCharacters, getConversationPartnerSettings, isCharacterMentionedInText } from './partners.js';
+import { getConversationPersonaName } from './personas.js';
+import { formatConversationFileSize } from './prompt.js';
+import { formatPromptText } from './shared-helpers.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
 import { getSettings, saveSettings } from './settings-store.js';
-import { conversationState, partnerReplyBusyKeys, sendQueue } from './state.js';
+import {
+    beginConversationGenerationOperation,
+    conversationState,
+    endConversationGenerationOperation,
+    partnerReplyBusyKeys,
+    sendQueue,
+} from './state.js';
+import { consumeConversationReplyTarget } from './timeline-render.js';
 import {
     appendConversationThreadMessage,
+    buildConversationMessageReplyReference,
     getConversationAttachmentSummary,
     getConversationFileAttachments,
     getConversationMediaAttachments,
@@ -36,9 +55,27 @@ import {
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
-import { coalesceConversationQueueItems } from './send-queue-utils.js';
+import {
+    coalesceConversationQueueItems,
+    createConversationMessageRevisionEntries,
+    createConversationQueueItem,
+    createConversationQueueReplyTarget,
+    getLastConversationQueueUserMessage,
+    requeueConversationQueueItem,
+    resolveConversationQueueReplyTarget,
+    resolveConversationQueueTriggerMessages,
+} from './send-queue-utils.js';
 
 export { appendConversationMessage };
+
+const CONVERSATION_QUEUE_RETRY = 'retry';
+
+function buildConversationUserMessageExtra(replyTarget = null) {
+    return {
+        conversation_mode_user: true,
+        ...(replyTarget ? { conversation_reply_to: replyTarget } : {}),
+    };
+}
 
 export function getConversationPendingFiles() {
     const fileInput = document.getElementById(CHROME_IDS.fileInput);
@@ -225,8 +262,16 @@ export async function waitForAutoWorker() {
             break;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, AUTO_WORKER_WAIT_POLL_MS));
     }
+}
+
+export async function waitForRoleplayGeneration() {
+    const startTime = Date.now();
+    while (is_send_press && Date.now() - startTime < AUTO_WORKER_WAIT_TIMEOUT_MS) {
+        await new Promise(resolve => setTimeout(resolve, AUTO_WORKER_WAIT_POLL_MS));
+    }
+    return !is_send_press;
 }
 
 function getConversationSpeakerAvatar(message, threadAvatar) {
@@ -239,18 +284,28 @@ function getConversationSpeakerAvatar(message, threadAvatar) {
         : String(threadAvatar || '');
 }
 
-function getLastGroupSpeakerIndex(thread, speakerAvatar, threadAvatar) {
+function isBroadGroupAddress(text) {
+    return /\b(everyone|everybody|anyone|someone|you\s+all|you\s+guys|y['’]?all|yall|both\s+of\s+you|all\s+of\s+you)\b/i.test(String(text || ''));
+}
+
+function getImplicitGroupReplyCandidate(thread, threadAvatar, candidates, latestUserText) {
+    if (!String(latestUserText || '').trim() || isBroadGroupAddress(latestUserText)) {
+        return null;
+    }
+
     for (let index = thread.length - 1; index >= 0; index--) {
-        if (getConversationSpeakerAvatar(thread[index], threadAvatar) === speakerAvatar) {
-            return index;
+        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+        const candidate = candidates.find(item => item.character.avatar === speakerAvatar);
+        if (candidate) {
+            return candidate;
         }
     }
 
-    return -1;
+    return null;
 }
 
-function getGroupReplyCandidates(threadAvatar, groupId) {
-    const group = getConversationGroupById(groupId);
+function getGroupReplyCandidates(threadAvatar, groupId, personaId) {
+    const group = getConversationGroupById(groupId, { personaId });
     if (!group?.members?.length) {
         return [];
     }
@@ -260,7 +315,7 @@ function getGroupReplyCandidates(threadAvatar, groupId) {
         .map((avatar) => {
             const character = getCharacterForAvatar(avatar);
             return character?.avatar
-                ? { character, settings: getSettings(character.avatar, { groupId }) }
+                ? { character, settings: getSettings(character.avatar, { groupId, personaId }) }
                 : null;
         })
         .filter(Boolean);
@@ -296,20 +351,35 @@ function pickWeightedGroupReplyCandidate(candidates) {
 }
 
 function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = false } = {}) {
-    const candidates = getGroupReplyCandidates(threadAvatar, groupId);
+    const candidates = getGroupReplyCandidates(threadAvatar, groupId, queueItem?.personaId);
     if (!candidates.length) {
         return [];
     }
 
     const availableCandidates = force
         ? candidates
-        : candidates.filter(({ character, settings }) => getConversationActivityContext(settings, character.avatar).status !== 'offline');
+        : candidates.filter(({ character, settings }) => getConversationActivityContext(settings, character.avatar, new Date(), { personaId: queueItem?.personaId }).status !== 'offline');
     const pool = availableCandidates.length ? availableCandidates : candidates;
     const candidateCharacters = pool.map(item => item.character).filter(Boolean);
     const latestUserText = [queueItem?.text, queueItem?.attachmentContext].filter(Boolean).join('\n');
-    const thread = getConversationThread(threadAvatar, { groupId });
+    const thread = getConversationThread(threadAvatar, {
+        branchId: queueItem?.branchId,
+        create: false,
+        groupId,
+        personaId: queueItem?.personaId,
+    });
+
+    // Build a cache of lastSpeakerIndex for all avatars in one pass
+    const lastSpeakerIndexCache = new Map();
+    for (let index = thread.length - 1; index >= 0; index--) {
+        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+        if (speakerAvatar && !lastSpeakerIndexCache.has(speakerAvatar)) {
+            lastSpeakerIndexCache.set(speakerAvatar, index);
+        }
+    }
+
     const weightedPool = pool.map((item) => {
-        const lastSpeakerIndex = getLastGroupSpeakerIndex(thread, item.character.avatar, threadAvatar);
+        const lastSpeakerIndex = lastSpeakerIndexCache.get(item.character.avatar) ?? -1;
         const messagesSinceSpeaking = lastSpeakerIndex < 0
             ? thread.length + 1
             : Math.max(1, thread.length - lastSpeakerIndex);
@@ -320,10 +390,19 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
         };
     });
     const selected = [];
-    weightedPool
+    const mentionedCandidates = weightedPool
         .filter(({ character }) => isCharacterMentionedInText(character, latestUserText, candidateCharacters))
-        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS)
-        .forEach(candidate => addUniqueGroupReplyCandidate(selected, candidate));
+        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS);
+    for (const candidate of mentionedCandidates) {
+        if (selected.length >= GROUP_MAX_CONCURRENT_SPEAKERS) {
+            break;
+        }
+        addUniqueGroupReplyCandidate(selected, candidate);
+    }
+
+    if (!selected.length) {
+        addUniqueGroupReplyCandidate(selected, getImplicitGroupReplyCandidate(thread, threadAvatar, weightedPool, latestUserText));
+    }
 
     const drawRandomCandidate = () => {
         const remaining = weightedPool.filter(candidate => !selected.some(item => item.character.avatar === candidate.character.avatar));
@@ -342,17 +421,22 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
 }
 
 async function waitForConversationSpeakerAvailability(queueItem, settings, avatar, groupId) {
+    const personaId = queueItem?.personaId || getConversationPersonaId();
     if (!queueItem?.force) {
-        if (getConversationActivityContext(settings, avatar).status === 'offline') {
+        if (getConversationActivityContext(settings, avatar, new Date(), { personaId }).status === 'offline') {
             return false;
         }
 
-        if (!groupId && await handleAvailabilityAutoResponder(settings, avatar, { groupId })) {
+        if (!groupId && await handleAvailabilityAutoResponder(settings, avatar, {
+            branchId: queueItem?.branchId,
+            groupId,
+            personaId: queueItem?.personaId,
+        })) {
             return false;
         }
     }
 
-    const status = getConversationActivityContext(settings, avatar).status || 'online';
+    const status = getConversationActivityContext(settings, avatar, new Date(), { personaId }).status || 'online';
     if (!queueItem?.force && (status === 'idle' || status === 'dnd')) {
         const initialDelayMs = status === 'idle'
             ? (Math.random() * 1.5 + 1.5) * 1000
@@ -364,14 +448,27 @@ async function waitForConversationSpeakerAvailability(queueItem, settings, avata
 }
 
 async function processConversationSpeakerReply(queueItem, { threadAvatar, groupId, threadSettings, replyCandidate = null, skipAvailabilityWait = false } = {}) {
+    const branchId = queueItem?.branchId || '';
+    const personaId = queueItem?.personaId || '';
     const replyCharacter = replyCandidate?.character || getCharacterForAvatar(threadAvatar);
     const replyAvatar = replyCharacter?.avatar || threadAvatar;
     const replySettings = replyCandidate?.settings || threadSettings;
+    const validateTarget = () => {
+        const messages = getConversationThread(threadAvatar, { branchId, create: false, groupId, personaId });
+        if (resolveConversationQueueTriggerMessages(queueItem, messages) === null) {
+            return false;
+        }
+        const replyTarget = resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar);
+        return !replyTarget.explicit || replyTarget.valid;
+    };
     if (!skipAvailabilityWait && !await waitForConversationSpeakerAvailability(queueItem, replySettings, replyAvatar, groupId)) {
         return false;
     }
+    if (!validateTarget()) {
+        return false;
+    }
 
-    maybePostDelayedReplyNotice(threadAvatar, replySettings, { groupId, statusAvatar: replyAvatar });
+    maybePostDelayedReplyNotice(threadAvatar, replySettings, { branchId, groupId, personaId, statusAvatar: replyAvatar });
 
     const speakerName = replyCharacter?.name || (replyAvatar === threadAvatar ? getCurrentCharName() : 'Character');
     const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
@@ -389,43 +486,62 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
             threadAvatar,
             speakerAvatar: replyAvatar,
             speakerName,
+            branchId,
             groupId,
+            personaId,
         },
-    ), threadAvatar, { groupId });
+    ), threadAvatar, { branchId, groupId, personaId });
+    if (!validateTarget()) {
+        return false;
+    }
+
+    const replyExtra = {
+        conversation_mode_reply: true,
+        ...(queueItem.replyReference ? { conversation_reply_to: queueItem.replyReference } : {}),
+    };
     let posted = false;
     if (response?.trim()) {
         if (replyAvatar === threadAvatar) {
-            await postCharacterReply(response.trim(), replySettings, {
+            const postedText = await postCharacterReply(response.trim(), replySettings, {
                 extra: {
-                    conversation_mode_reply: true,
+                    ...replyExtra,
                 },
+                branchId,
                 groupId,
+                personaId,
+                validateTarget,
             }, threadAvatar);
+            posted = Boolean(postedText);
         } else {
-            await postPartnerConversationReply(response.trim(), replyCharacter, replySettings, {
+            posted = await postPartnerConversationReply(response.trim(), replyCharacter, replySettings, {
                 avatar: threadAvatar,
+                branchId,
                 extra: {
-                    conversation_mode_reply: true,
+                    ...replyExtra,
                     partner_avatar: replyAvatar,
                 },
                 groupId,
+                personaId,
+                validateTarget,
             });
         }
-        posted = true;
     }
 
     const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
     const wantsImage = replySettings.image_gen_enabled
         && (replySettings.spontaneous_selfies || imageKeywords.test(queueItem.text || ''));
-    if (wantsImage && getImageCooldownRemainingSeconds(replyAvatar, replySettings, Date.now(), { groupId }) === 0) {
+    if (wantsImage && getImageCooldownRemainingSeconds(replyAvatar, replySettings, Date.now(), { branchId, groupId, personaId }) === 0) {
+        if (!validateTarget()) {
+            return posted;
+        }
         const prompt = buildCharacterImagePrompt(
             replySettings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
             'the current DM conversation',
             replyAvatar,
         );
-        const imageUrl = await generateConversationImage(prompt, replySettings.image_gen_negative || '');
-        if (imageUrl) {
-            markImageGenerated(replyAvatar, Date.now(), { groupId });
+        const imageUrl = await generateConversationImage(prompt, replySettings.image_gen_negative || '', { avatar: replyAvatar, character: replyCharacter });
+        if (imageUrl && validateTarget()) {
+            markImageGenerated(replyAvatar, Date.now(), { branchId, groupId, personaId });
             await appendConversationMessage('Here, I can show you.', {
                 name: speakerName,
                 role: replyAvatar === threadAvatar ? 'character' : 'partner',
@@ -435,7 +551,9 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
                     image_prompt: prompt,
                     ...(replyAvatar === threadAvatar ? {} : { partner_avatar: replyAvatar }),
                 },
+                branchId,
                 groupId,
+                personaId,
             }, threadAvatar);
             posted = true;
         }
@@ -461,24 +579,89 @@ async function processGroupConversationSpeakerReply(queueItem, options) {
 
 export async function processQueuedConversationReply(queueItem) {
     const avatar = queueItem?.avatar;
-    if (!avatar || is_send_press) {
+    if (!avatar) {
+        return;
+    }
+    if (is_send_press) {
+        return CONVERSATION_QUEUE_RETRY;
+    }
+
+    const groupId = queueItem?.groupId || '';
+    const personaId = queueItem?.personaId || getConversationPersonaId();
+    const branchId = queueItem?.branchId || '';
+    const threadKey = getConversationThreadKey(avatar, groupId, { personaId });
+    if (!threadKey || queueItem?.threadKey !== threadKey) {
+        return;
+    }
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    if (!branchId || !threadStore?.branches?.[branchId]) {
+        return;
+    }
+    const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+    const triggerMessages = resolveConversationQueueTriggerMessages(queueItem, branchMessages);
+    if (!triggerMessages) {
         return;
     }
 
-    const groupId = queueItem?.groupId ?? getConversationGroupIdForAvatar(avatar);
-
     await waitForAutoWorker();
 
-    const threadSettings = getSettings(avatar, { groupId });
+    if (is_send_press) {
+        return CONVERSATION_QUEUE_RETRY;
+    }
+
+    const currentBranchMessages = getConversationThread(avatar, {
+        branchId,
+        create: false,
+        groupId,
+        personaId,
+    });
+    const currentTriggerMessages = resolveConversationQueueTriggerMessages(queueItem, currentBranchMessages);
+    if (!currentTriggerMessages) {
+        return;
+    }
+    const triggeringUserMessage = getLastConversationQueueUserMessage(queueItem, currentBranchMessages);
+    queueItem.replyReference = buildConversationMessageReplyReference(triggeringUserMessage);
+    const replyTarget = resolveConversationQueueReplyTarget(queueItem, currentBranchMessages, avatar);
+    if (replyTarget.explicit && !replyTarget.valid) {
+        return;
+    }
+
+    const threadSettings = getSettings(avatar, { groupId, personaId });
     if (!threadSettings.enabled) {
         return;
     }
 
-    conversationState.conversationReplyBusy = true;
-    conversationState.generationActive = true;
+    const operation = beginConversationGenerationOperation();
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
+        if (replyTarget.explicit) {
+            const replyCandidate = groupId
+                ? getGroupReplyCandidates(avatar, groupId, personaId).find(candidate => candidate.character.avatar === replyTarget.speakerAvatar)
+                : replyTarget.speakerAvatar === avatar
+                    ? { character: getCharacterForAvatar(avatar), settings: threadSettings }
+                    : getAllowedPartnerCharacters(threadSettings.multi_char_names, avatar, threadSettings, {
+                        branchId,
+                        groupId,
+                        includeThreadPartners: true,
+                        personaId,
+                    }).filter(character => character.avatar === replyTarget.speakerAvatar)
+                        .map(character => ({
+                            character,
+                            settings: getConversationPartnerSettings(character.avatar, threadSettings, { groupId, personaId }),
+                        }))[0];
+            if (!replyCandidate?.character?.avatar) {
+                return;
+            }
+
+            if (groupId) {
+                await processGroupConversationSpeakerReply(queueItem, { threadAvatar: avatar, groupId, threadSettings, replyCandidate });
+            } else {
+                await processConversationSpeakerReply(queueItem, { threadAvatar: avatar, groupId, threadSettings, replyCandidate });
+            }
+            return;
+        }
+
         if (groupId) {
             const replyCandidates = chooseGroupReplyCandidates(avatar, groupId, queueItem, { force: Boolean(queueItem?.force) });
             await Promise.allSettled(replyCandidates.map(replyCandidate => processGroupConversationSpeakerReply(queueItem, {
@@ -497,8 +680,8 @@ export async function processQueuedConversationReply(queueItem) {
             return;
         }
 
-        const partnerChimePromise = getConversationPartnerAvatars(avatar, threadSettings, { groupId, includeThreadPartners: true }).length
-            ? checkMultiCharacterChime(avatar, threadSettings, Date.now(), { groupId }).catch((error) => {
+        const partnerChimePromise = getConversationPartnerAvatars(avatar, threadSettings, { branchId, groupId, includeThreadPartners: true, personaId }).length
+            ? checkMultiCharacterChime(avatar, threadSettings, Date.now(), { branchId, groupId, personaId }).catch((error) => {
                 console.error('Conversation partner chime error:', error);
                 return false;
             })
@@ -515,8 +698,7 @@ export async function processQueuedConversationReply(queueItem) {
     } catch (error) {
         reportConversationGenerationError('reply', error);
     } finally {
-        conversationState.conversationReplyBusy = false;
-        conversationState.generationActive = false;
+        endConversationGenerationOperation(operation);
         scheduleInterfaceRefresh({ syncControls: false });
     }
 }
@@ -527,7 +709,7 @@ async function collectConversationQueueItem(firstItem) {
     });
 }
 
-export async function processSendQueue() {
+export async function processSendQueue({ processItem = processQueuedConversationReply, waitForRoleplay = waitForRoleplayGeneration } = {}) {
     if (conversationState.sendQueueProcessing) {
         conversationState.sendQueueNeedsProcessing = true;
         return;
@@ -542,7 +724,16 @@ export async function processSendQueue() {
                 if (!queueItem) {
                     continue;
                 }
-                await processQueuedConversationReply(queueItem);
+                const result = await processItem(queueItem);
+                if (result === CONVERSATION_QUEUE_RETRY) {
+                    requeueConversationQueueItem(sendQueue, queueItem);
+                    if (!await waitForRoleplay()) {
+                        conversationState.sendQueueNeedsProcessing = false;
+                        setTimeout(() => void processSendQueue(), AUTO_WORKER_WAIT_POLL_MS);
+                        break;
+                    }
+                    continue;
+                }
                 if (sendQueue.length) {
                     await new Promise(resolve => setTimeout(resolve, SEND_QUEUE_BATCH_MS));
                 }
@@ -567,7 +758,10 @@ export async function submitConversationInput() {
 
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
+    const personaId = getConversationPersonaId();
+    const threadStore = getConversationThreadStore(avatar, { groupId, personaId });
+    const branchId = threadStore?.activeBranchId || '';
+    const settings = getSettings(avatar, { groupId, personaId });
     const text = input.value.trim();
     const pendingFiles = getValidatedConversationPendingFiles({ notify: true });
     if (!pendingFiles) {
@@ -579,11 +773,11 @@ export async function submitConversationInput() {
 
     if (!settings.enabled) {
         settings.enabled = true;
-        saveSettings(avatar, settings, { groupId });
+        saveSettings(avatar, settings, { groupId, personaId });
     }
 
     if (text.startsWith('/') && !pendingFiles.length) {
-        const handled = await handleConversationSlashAction(text, { avatar, settings, groupId });
+        const handled = await handleConversationSlashAction(text, { avatar, branchId, settings, groupId, personaId });
         if (handled) {
             input.value = '';
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -599,18 +793,18 @@ export async function submitConversationInput() {
     }
 
     try {
-        const userName = name1 || 'You';
+        const userName = getConversationPersonaName(personaId, 'You');
         const hasAttachments = pendingFiles.length > 0;
         const attachmentContextParts = [];
+        const messageIds = [];
+        const triggerMessages = [];
 
         if (hasAttachments) {
             const messageInput = {
                 role: 'user',
                 name: userName,
                 mes: text,
-                extra: {
-                    conversation_mode_user: true,
-                },
+                extra: buildConversationUserMessageExtra(),
             };
             await populateConversationUserAttachments(messageInput);
             const attachmentContext = await buildConversationAttachmentPromptContext(messageInput, text);
@@ -622,34 +816,54 @@ export async function submitConversationInput() {
                 return;
             }
 
-            appendConversationThreadMessage(avatar, messageInput, { groupId });
+            const replyTarget = consumeConversationReplyTarget(avatar, { branchId, groupId, personaId });
+            if (replyTarget) {
+                messageInput.extra.conversation_reply_to = replyTarget;
+            }
+            const message = appendConversationThreadMessage(avatar, messageInput, { branchId, create: false, groupId, personaId });
+            if (message?.id) {
+                messageIds.push(message.id);
+                triggerMessages.push(message);
+            }
         } else {
+            const replyTarget = consumeConversationReplyTarget(avatar, { branchId, groupId, personaId });
+            let includeReplyTarget = true;
             for (const messageText of splitChatroomMessages(text)) {
-                appendConversationThreadMessage(avatar, {
+                const message = appendConversationThreadMessage(avatar, {
                     role: 'user',
                     name: userName,
                     mes: messageText,
-                    extra: {
-                        conversation_mode_user: true,
-                    },
-                }, { groupId });
+                    extra: buildConversationUserMessageExtra(includeReplyTarget ? replyTarget : null),
+                }, { branchId, create: false, groupId, personaId });
+                if (message?.id) {
+                    messageIds.push(message.id);
+                    triggerMessages.push(message);
+                }
+                includeReplyTarget = false;
             }
         }
 
         input.value = '';
         input.dispatchEvent(new Event('input', { bubbles: true }));
         clearConversationAttachmentInput();
-        updateLastUserActivity(avatar, { groupId });
+        updateLastUserActivity(avatar, { branchId, groupId, personaId });
         scheduleInterfaceRefresh({ syncControls: false });
 
         const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
-        sendQueue.push({
+        const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+        sendQueue.push(createConversationQueueItem({
             avatar,
+            branchId,
             groupId,
+            messageIds,
+            messageRevisions: createConversationMessageRevisionEntries(triggerMessages),
+            personaId,
+            replyTarget: createConversationQueueReplyTarget(triggerMessages, branchMessages),
+            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
             text: queuedText,
             attachmentContext: attachmentContextParts.join('\n'),
             createdAt: Date.now(),
-        });
+        }));
         void processSendQueue();
     } finally {
         conversationState.conversationUploadActive = false;
@@ -657,4 +871,42 @@ export async function submitConversationInput() {
             sendButton.disabled = false;
         }
     }
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('sb:queue-conversation-reply', (event) => {
+        const detail = event?.detail || {};
+        const avatar = String(detail.avatar || '').trim();
+        const text = String(detail.text || '').trim();
+        if (!avatar || !text) {
+            return;
+        }
+
+        const createdAt = Number(detail.createdAt);
+        const personaId = String(detail.personaId || getConversationPersonaId()).trim();
+        const groupId = detail.groupId || '';
+        const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+        const branchId = String(detail.branchId || threadStore?.activeBranchId || '').trim();
+        if (!branchId) {
+            return;
+        }
+        const messageIds = Array.isArray(detail.messageIds) ? detail.messageIds.filter(Boolean) : [];
+        const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+        const triggerMessages = messageIds.map(messageId => messages.find(message => message?.id === messageId)).filter(Boolean);
+        sendQueue.push(createConversationQueueItem({
+            avatar,
+            branchId,
+            groupId,
+            messageIds,
+            messageRevisions: createConversationMessageRevisionEntries(triggerMessages),
+            personaId,
+            replyTarget: createConversationQueueReplyTarget(triggerMessages, messages),
+            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+            text,
+            attachmentContext: String(detail.attachmentContext || '').trim(),
+            createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+            force: Boolean(detail.force),
+        }));
+        void processSendQueue();
+    });
 }

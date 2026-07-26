@@ -7,9 +7,155 @@
  * own self-contained files where possible.
  */
 
+import { getConversationMessageRevision } from './message-identity-utils.js';
+
+const DEFAULT_COALESCE_WINDOW_MS = 5000;
+
+export function createConversationMessageRevisionEntries(messages) {
+    return (Array.isArray(messages) ? messages : [])
+        .filter(message => message?.id)
+        .map(message => ({
+            messageId: String(message.id),
+            revision: getConversationMessageRevision(message),
+        }));
+}
+
+export function createConversationQueueItem({
+    avatar,
+    attachmentContext = '',
+    branchId,
+    coalesced = false,
+    createdAt = Date.now(),
+    force = false,
+    groupId = '',
+    messageIds = [],
+    messageRevisions = [],
+    personaId,
+    replyTarget = null,
+    text = '',
+    threadKey,
+} = {}) {
+    return {
+        avatar: String(avatar || '').trim(),
+        branchId: String(branchId || '').trim(),
+        coalesced: Boolean(coalesced),
+        groupId: String(groupId || '').trim(),
+        messageIds: Array.from(new Set((Array.isArray(messageIds) ? messageIds : []).map(String).filter(Boolean))),
+        messageRevisions: Array.isArray(messageRevisions) ? messageRevisions.map(item => ({
+            messageId: String(item?.messageId || ''),
+            revision: String(item?.revision || ''),
+        })).filter(item => item.messageId && item.revision) : [],
+        personaId: String(personaId || '').trim(),
+        replyTarget: replyTarget?.messageId && replyTarget?.revision ? {
+            messageId: String(replyTarget.messageId),
+            revision: String(replyTarget.revision),
+        } : null,
+        threadKey: String(threadKey || '').trim(),
+        text: String(text || ''),
+        attachmentContext: String(attachmentContext || ''),
+        createdAt: Number.isFinite(Number(createdAt)) ? Number(createdAt) : Date.now(),
+        force: Boolean(force),
+    };
+}
+
+export function createConversationQueueReplyTarget(triggerMessages, messages) {
+    const triggeringUserMessage = [...(Array.isArray(triggerMessages) ? triggerMessages : [])].reverse().find(message => message?.role === 'user');
+    const targetMessageId = String(triggeringUserMessage?.extra?.conversation_reply_to?.messageId || '').trim();
+    if (!targetMessageId) {
+        return null;
+    }
+
+    const targetMessage = (Array.isArray(messages) ? messages : []).find(message => String(message?.id || '') === targetMessageId);
+    return targetMessage ? {
+        messageId: targetMessageId,
+        revision: getConversationMessageRevision(targetMessage),
+    } : null;
+}
+
+export function createForcedConversationQueueItem(identity, messages) {
+    const triggeringMessage = [...(Array.isArray(messages) ? messages : [])].reverse().find(message => message?.role === 'user');
+    return createConversationQueueItem({
+        ...identity,
+        attachmentContext: '',
+        force: true,
+        messageIds: triggeringMessage?.id ? [triggeringMessage.id] : [],
+        messageRevisions: createConversationMessageRevisionEntries(triggeringMessage ? [triggeringMessage] : []),
+        replyTarget: createConversationQueueReplyTarget(triggeringMessage ? [triggeringMessage] : [], messages),
+        text: '',
+    });
+}
+
+export function resolveConversationQueueTriggerMessages(queueItem, messages) {
+    const messageIds = Array.isArray(queueItem?.messageIds) ? queueItem.messageIds.map(String).filter(Boolean) : [];
+    if (!messageIds.length) {
+        return [];
+    }
+
+    const messagesById = new Map((Array.isArray(messages) ? messages : []).map(message => [String(message?.id || ''), message]));
+    const resolved = messageIds.map(messageId => messagesById.get(messageId));
+    if (!resolved.every(Boolean)) {
+        return null;
+    }
+
+    const revisions = new Map((Array.isArray(queueItem?.messageRevisions) ? queueItem.messageRevisions : [])
+        .map(item => [String(item?.messageId || ''), String(item?.revision || '')]));
+    if (messageIds.some(messageId => !revisions.get(messageId))) {
+        return null;
+    }
+    return resolved.every(message => revisions.get(String(message.id)) === getConversationMessageRevision(message)) ? resolved : null;
+}
+
+export function getLastConversationQueueUserMessage(queueItem, messages) {
+    const resolved = resolveConversationQueueTriggerMessages(queueItem, messages);
+    if (!resolved) {
+        return null;
+    }
+
+    return [...resolved].reverse().find(message => message?.role === 'user') || null;
+}
+
+export function resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar) {
+    const triggeringUserMessage = getLastConversationQueueUserMessage(queueItem, messages);
+    const targetMessageId = String(triggeringUserMessage?.extra?.conversation_reply_to?.messageId || '').trim();
+    if (!targetMessageId) {
+        return { explicit: false, valid: true, speakerAvatar: '', targetMessage: null };
+    }
+
+    const capturedTarget = queueItem?.replyTarget;
+    const targetMessage = (Array.isArray(messages) ? messages : []).find(message => String(message?.id || '') === targetMessageId);
+    if (
+        !capturedTarget
+        || String(capturedTarget.messageId || '') !== targetMessageId
+        || !targetMessage
+        || String(capturedTarget.revision || '') !== getConversationMessageRevision(targetMessage)
+        || ['user', 'system'].includes(targetMessage.role || '')
+    ) {
+        return { explicit: true, valid: false, speakerAvatar: '', targetMessage: targetMessage || null };
+    }
+
+    const speakerAvatar = targetMessage.role === 'partner'
+        ? String(targetMessage.extra?.partner_avatar || '').trim()
+        : String(threadAvatar || '').trim();
+    return { explicit: true, valid: Boolean(speakerAvatar), speakerAvatar, targetMessage };
+}
+
+export function resolveConversationQueueReplyTargetSpeaker(queueItem, messages, threadAvatar) {
+    const target = resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar);
+    return target.valid ? target.speakerAvatar : '';
+}
+
+export function requeueConversationQueueItem(queue, queueItem) {
+    if (!Array.isArray(queue) || !queueItem || queue.includes(queueItem)) {
+        return false;
+    }
+
+    queue.unshift(queueItem);
+    return true;
+}
+
 /**
  * Two queue items belong to the same conversation thread when they target the same
- * avatar + group and neither is a forced (non-coalescable) item.
+ * persona + thread + branch and neither is a forced (non-coalescable) item.
  */
 export function isSameConversationQueueThread(left, right) {
     return Boolean(
@@ -17,8 +163,11 @@ export function isSameConversationQueueThread(left, right) {
         && right
         && !left.force
         && !right.force
+        && String(left.personaId || '') === String(right.personaId || '')
         && left.avatar === right.avatar
-        && String(left.groupId || '') === String(right.groupId || ''),
+        && String(left.groupId || '') === String(right.groupId || '')
+        && String(left.threadKey || '') === String(right.threadKey || '')
+        && String(left.branchId || '') === String(right.branchId || ''),
     );
 }
 
@@ -41,6 +190,9 @@ export function mergeConversationQueueItems(items) {
         createdAt: first.createdAt,
         latestQueuedAt: items[items.length - 1]?.createdAt || first.createdAt,
         messageCount: items.length,
+        messageIds: Array.from(new Set(items.flatMap(item => Array.isArray(item.messageIds) ? item.messageIds : []).filter(Boolean))),
+        messageRevisions: items.flatMap(item => Array.isArray(item.messageRevisions) ? item.messageRevisions : []),
+        replyTarget: items[items.length - 1]?.replyTarget || null,
     };
 }
 
@@ -77,19 +229,20 @@ export function drainSameThreadItems(firstItem, queue) {
  * @param {object} firstItem - The item already shifted off the front of the queue.
  * @param {Array} queue - The live queue array (mutated as items are drained).
  * @param {object} [options]
- * @param {number} [options.windowMs=1500] - Idle window per round.
+ * @param {number} [options.windowMs=DEFAULT_COALESCE_WINDOW_MS] - Idle window per round.
  * @param {function} [options.timeoutRef=setTimeout] - Injectable timer (for tests).
  * @returns {Promise<object|null>} The (possibly merged) queue item, or null.
  */
 export async function coalesceConversationQueueItems(firstItem, queue, options = {}) {
-    if (!firstItem || firstItem.force) {
+    if (!firstItem || firstItem.force || firstItem.coalesced) {
         return firstItem || null;
     }
 
     const timeout = typeof options.timeoutRef === 'function' ? options.timeoutRef : setTimeout;
-    const windowMs = typeof options.windowMs === 'number' ? options.windowMs : 1500;
+    const windowMs = typeof options.windowMs === 'number' ? options.windowMs : DEFAULT_COALESCE_WINDOW_MS;
 
     if (windowMs <= 0) {
+        firstItem.coalesced = true;
         return firstItem;
     }
 
@@ -111,5 +264,9 @@ export async function coalesceConversationQueueItems(firstItem, queue, options =
         }
     }
 
-    return mergeConversationQueueItems(items);
+    const merged = mergeConversationQueueItems(items);
+    if (merged) {
+        merged.coalesced = true;
+    }
+    return merged;
 }

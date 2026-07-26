@@ -2,18 +2,17 @@ import {
     characters,
     default_avatar,
     default_user_avatar,
-    getCharacters,
-    getRequestHeaders,
     getThumbnailUrl,
     name1,
 } from '../../script.js';
-import { group_activation_strategy, group_generation_mode, groups } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
 import { selectConversationThread } from './chrome.js';
 import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
 import {
     createConversationBranch,
+    createConversationGroupRecord,
     getConversationGroupById,
+    getConversationGroupIdForAvatar,
     getConversationThreadStore,
     getCurrentCharAvatar,
     getDefaultGroupConversationSettings,
@@ -173,6 +172,8 @@ export function toggleUserStatusPicker() {
 export function renderConversationPersonaPicker(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
+    const threadAvatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(threadAvatar);
     if (!personas.length) {
         picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
         return;
@@ -204,7 +205,11 @@ export function renderConversationPersonaPicker(picker) {
 
         const appendices = getConversationPersonaAppendices(avatarId);
         if (appendices.length) {
-            const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId));
+            const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId, {
+                avatar: threadAvatar,
+                groupId,
+                personaId: avatarId,
+            }));
             const notes = document.createElement('div');
             notes.className = 'sb-conversation-persona-notes';
 
@@ -446,56 +451,21 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
         return null;
     }
 
-    const chatId = `conversation_${Date.now()}`;
-    const groupCreateModel = {
+    const group = createConversationGroupRecord(members, {
         name: buildConversationGroupName(members),
-        members,
-        avatar_url: default_avatar,
-        allow_self_responses: false,
-        activation_strategy: group_activation_strategy.NATURAL,
-        generation_mode: group_generation_mode.SWAP,
-        disabled_members: [],
-        fav: false,
-        chat_id: chatId,
-        chats: [chatId],
-        auto_mode_delay: 120,
-        conversation_settings: getDefaultGroupConversationSettings(),
-    };
-
-    const response = await fetch('/api/groups/create', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(groupCreateModel),
+        avatarUrl: default_avatar,
+        settings: getDefaultGroupConversationSettings(),
     });
-
-    if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        toastr.error(`Could not create group Conversation${detail ? `: ${detail.slice(0, 120)}` : '.'}`);
-        return null;
-    }
-
-    const group = await response.json();
     if (!group?.id) {
-        toastr.error('The group Conversation was created without a group id.');
+        toastr.error('Could not create group Conversation.');
         return null;
     }
 
-    if (Array.isArray(groups)) {
-        const existingIndex = groups.findIndex(item => String(item?.id) === String(group.id));
-        if (existingIndex >= 0) {
-            groups[existingIndex] = { ...groups[existingIndex], ...group };
-        } else {
-            groups.push(group);
-        }
+    if (sourceAvatar && copySourceGroupId !== null) {
+        copyConversationThreadToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
     }
 
-    try {
-        await getCharacters();
-    } catch (error) {
-        console.warn('Could not refresh characters after creating a Conversation group.', error);
-    }
-
-    return getConversationGroupById(group.id) || group;
+    return group;
 }
 
 export async function createAndOpenConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
@@ -569,7 +539,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
         : 'Create a group DM';
     const description = sourceAvatar
         ? 'Selected members will open as a separate group Conversation with its own history and group controls.'
-        : 'Create a new group chat with two or more of your character cards.';
+        : 'Create a new group DM with two or more of your character cards.';
 
     picker.innerHTML = `
         <div class="sb-conversation-add-dm-header">

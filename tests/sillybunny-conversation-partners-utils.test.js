@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     getRecentlySilentMentionedPartnerFromThread,
+    getSpeakerPrefixMatch,
     isCharacterMentionedInText,
     parseAvatarList,
     stripSpeakerPrefixText,
@@ -46,5 +47,18 @@ describe('sillybunny conversation partner utils', () => {
     test('strips generated speaker prefixes line by line', () => {
         expect(stripSpeakerPrefixText('**Ada:** hello\n{{char}} - checking', 'Ada')).toBe('hello\nchecking');
         expect(stripSpeakerPrefixText('Ada: hello', 'Ada', text => text.toUpperCase())).toBe('HELLO');
+    });
+
+    test('detects explicit generated speaker labels for group replies', () => {
+        const speakers = [
+            { name: 'Alhaitham', avatar: 'alhaitham.png' },
+            { name: 'Kaveh', avatar: 'kaveh.png' },
+        ];
+
+        expect(getSpeakerPrefixMatch('Kaveh: did you just type as me', speakers)).toEqual({
+            speaker: speakers[1],
+            text: 'did you just type as me',
+        });
+        expect(getSpeakerPrefixMatch('I saw Kaveh: type that', speakers)).toBe(null);
     });
 });

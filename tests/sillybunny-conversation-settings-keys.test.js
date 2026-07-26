@@ -15,13 +15,18 @@ describe('sillybunny conversation settings keys', () => {
             'idle_followup',
             'idle_spontaneous',
             'custom_instructions',
+            'grounded_dialogue_rules_enabled',
+            'grounded_dialogue_rules',
             'connection_profile',
         ]);
         expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
+        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
         expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
+        expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
+        expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
     });
 
