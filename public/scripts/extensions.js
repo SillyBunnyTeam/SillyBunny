@@ -420,7 +420,7 @@ function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedI
         }
     }
 
-    // SillyBunny: the legacy global bit covered older opt-ins, but diagnostics was added later.
+    // SillyBunny: the legacy global bit covered older opt-ins; newer bundled opt-ins are tracked per-extension.
     if (migrateLegacy && extension_settings.bundledOptInDefaultsApplied) {
         for (const id of LEGACY_BUNDLED_OPT_IN_EXTENSION_IDS) {
             const key = getExtensionDedupKey(id);
