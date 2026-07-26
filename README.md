@@ -108,15 +108,13 @@ bun run start:global   # SillyBunny-owned data paths
 bun run start:no-csrf  # disable CSRF (local dev)
 ```
 
-When you start through a launcher script rather than `bun run`, set `SILLYBUNNY_BUN_SMOL=1` to get the
-same `--smol` low-memory mode. This is the way to reach it from a process manager such as pm2, systemd
-or Docker, which invoke `start.sh` (or `Start.bat`) instead of the npm scripts:
+When you start through a launcher script through pm2, systemd or Docker, rather than `bun run`, set `SILLYBUNNY_BUN_SMOL=1` to get the same `bun run --smol` low-memory mode:
 
 ```bash
 SILLYBUNNY_BUN_SMOL=1 ./start.sh
 ```
 
-The flag is ignored when the Node runtime is selected, since it is a Bun option.
+This flag isn't supported in Node.js mode.
 
 ### macOS notes
 
