@@ -2079,6 +2079,9 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-width: 0;
         overflow: hidden;
         justify-content: flex-start;
+        /* The mode toggle (right: 56px) and close button float over this row;
+           reserve their footprint so the last favorites stay visible and tappable. */
+        margin-right: 136px;
     }
 
     /* Horizontal-rail treatment like .sb-character-create-bar: the strip must

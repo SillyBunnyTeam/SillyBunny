@@ -2154,6 +2154,17 @@ body.sb-shell-resizing * {
     display: none;
 }
 
+/* The mode toggle is absolutely positioned, so header text lays out underneath it.
+   The header is a start-aligned flex column, so cap the fit-content width instead
+   of using margin: reserve the toggle footprint (~215px + 66px right offset) so
+   long text ellipsizes instead of running under the pill. */
+@media screen and (min-width: 769px) {
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-title,
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-subtitle {
+        max-width: calc(100% - 276px);
+    }
+}
+
 .sb-character-shell-mode-toggle {
     position: absolute;
     top: 18px;
