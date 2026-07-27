@@ -9867,6 +9867,19 @@ function runProxyCallback(_, value) {
     }
 
     const proxyNames = proxies.map(preset => preset.name);
+
+    // SillyBunny: 'None' is the no-proxy sentinel connection profiles send when they
+    // have no proxy configured, but the None preset itself is deletable. Resolve the
+    // sentinel exactly — fuzzy search could land on a real proxy — and recreate it
+    // silently instead of warning about a preset the user never chose.
+    if (value.trim().toLowerCase() === 'none' && !proxyNames.some(name => name.toLowerCase() === 'none')) {
+        setProxyPreset('None', '', '', '');
+        updateProxyPresetOption(selected_proxy);
+        $('#openai_proxy_preset').val(selected_proxy.name);
+        saveSettingsDebounced();
+        return selected_proxy.name;
+    }
+
     const fuse = new Fuse(proxyNames);
     const result = fuse.search(value);
 
