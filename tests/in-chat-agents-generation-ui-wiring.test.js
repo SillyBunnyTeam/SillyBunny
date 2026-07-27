@@ -193,8 +193,15 @@ describe('in-chat agents generation UI wiring', () => {
         expect(coarsePointerStyles).toContain(`.ica--quick-chip-apply-target {
         width: 44px;
         min-width: 44px;
+    }`);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-apply,
+    .ica--quick-chip-apply-target,
+    .ica--quick-chip-pin {
         height: 44px;
         min-height: 44px;
+    }`);
+        expect(coarsePointerStyles).toContain(`.ica--quick-chip-actions {
+        align-items: center;
     }`);
     });
 

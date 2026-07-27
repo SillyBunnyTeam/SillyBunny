@@ -1215,6 +1215,16 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     caret-color: var(--color-primary, var(--sb-accent));
     font-size: calc(var(--mainFontSize) * 0.9);
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), background-color var(--sb-transition-fast);
+
+    /* style.css paints a permanent 3px border-top as the STscript progress bar and hides
+       it behind a 5px-deep rectangular clip-path. The 10px radius above bows that border
+       down the left/right edges past the clip, leaking blue arcs at the corners. Keep the
+       track transparent at rest; the rule below restores it while commands run. */
+    --progColor: transparent;
+}
+
+#form_sheld.isExecutingCommandsFromChatInput #send_textarea {
+    --progColor: rgb(146, 190, 252);
 }
 
 :root[data-sb-compact-mode='true'] #send_form {

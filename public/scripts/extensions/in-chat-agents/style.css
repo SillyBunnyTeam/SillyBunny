@@ -2829,11 +2829,24 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
         inset: -14px -10px;
     }
 
+    /* .ica--quick-chip-actions uses align-items: stretch, so the definite height below
+       leaves the crosshair at cross-start while its siblings stretch to the chip height.
+       Centre the row and share one height so all three icons land on the same axis.
+       Widths stay untouched to preserve the phone density rules above. */
+    .ica--quick-chip-actions {
+        align-items: center;
+    }
+
+    .ica--quick-chip-apply,
+    .ica--quick-chip-apply-target,
+    .ica--quick-chip-pin {
+        height: 44px;
+        min-height: 44px;
+    }
+
     .ica--quick-chip-apply-target {
         width: 44px;
         min-width: 44px;
-        height: 44px;
-        min-height: 44px;
     }
 
     /* Companion card actions are transparent at rest, so growing them to the 44px touch
