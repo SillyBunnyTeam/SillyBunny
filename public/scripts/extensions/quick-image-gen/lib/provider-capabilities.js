@@ -91,10 +91,33 @@ export function getNanoGptModelCapabilities(model, metadata = null) {
     };
 }
 
+export function getNanoGptStrengthParameter(metadata = null) {
+    const endpoint = metadata?.endpoints?.[0] || {};
+    const supported = metadata?.supported_parameters || endpoint.supported_parameters || {};
+    const passthrough = metadata?.allowed_passthrough_parameters || endpoint.allowed_passthrough_parameters || [];
+    return Object.prototype.hasOwnProperty.call(supported, "strength") || passthrough.includes("strength")
+        ? "strength"
+        : null;
+}
+
+export function buildNanoGptReferenceFields(references = [], strength = 0.75, metadata = null) {
+    if (!Array.isArray(references) || !references.length) return {};
+    const fields = { input_references: references };
+    const strengthParameter = getNanoGptStrengthParameter(metadata);
+    if (strengthParameter) {
+        const numericStrength = Number(strength);
+        fields[strengthParameter] = Math.max(0, Math.min(1, Number.isFinite(numericStrength) ? numericStrength : 0.75));
+    }
+    return fields;
+}
+
 export function getNanoGptReferenceConstraints(metadata = null) {
     const endpoint = metadata?.endpoints?.[0] || {};
     const supported = metadata?.supported_parameters || endpoint.supported_parameters || {};
-    const constraints = endpoint.input_reference_constraints || metadata?.input_reference_constraints || {};
+    const constraints = endpoint.input_reference_constraints
+        || supported.input_image_constraints
+        || metadata?.input_reference_constraints
+        || {};
     const route = constraints.route || endpoint.route || metadata?.route || {};
     const maxCandidate = constraints.max_items ?? constraints.max_images ?? constraints.max_input_images ?? supported.max_input_images;
     const providerMaxImages = Number.isSafeInteger(Number(maxCandidate)) && Number(maxCandidate) >= 0

@@ -80,7 +80,29 @@ export function restorePropertyIfUnchanged(target, key, expectedValue, previousV
 
 function cloneRecord(value) {
     if (typeof structuredClone === "function") return structuredClone(value);
+    if (value === undefined) return undefined;
     return JSON.parse(JSON.stringify(value));
+}
+
+const MUTABLE_MESSAGE_KEYS = Object.freeze(["mes", "extra", "swipes", "swipe_id"]);
+
+export function snapshotMutableMessageState(message) {
+    if (!message || typeof message !== "object") return null;
+    return MUTABLE_MESSAGE_KEYS.map(key => ({
+        key,
+        present: Object.prototype.hasOwnProperty.call(message, key),
+        value: cloneRecord(message[key]),
+    }));
+}
+
+export function restoreMutableMessageState(message, snapshot) {
+    if (!message || typeof message !== "object" || !Array.isArray(snapshot)) return false;
+    for (const entry of snapshot) {
+        if (!entry || !MUTABLE_MESSAGE_KEYS.includes(entry.key)) continue;
+        if (entry.present) message[entry.key] = cloneRecord(entry.value);
+        else delete message[entry.key];
+    }
+    return true;
 }
 
 async function sendClonedConnectionProfileRequest({
@@ -280,6 +302,29 @@ export async function applyStateBeforePersistence({ apply, persist, rollback }) 
     }
 }
 
+export async function persistIfCurrent({
+    persist,
+    isCurrent = null,
+    skipIfStale = false,
+    staleMessage = "Persistence target changed",
+    failureMessage = "Persistence reported failure",
+} = {}) {
+    if (typeof persist !== "function") throw new TypeError("A persistence callback is required");
+    if (isCurrent != null && typeof isCurrent !== "function") {
+        throw new TypeError("Persistence identity validation must be a function");
+    }
+    const checkCurrent = isCurrent || (() => true);
+    if (!checkCurrent()) {
+        if (skipIfStale) return false;
+        throw new DOMException(staleMessage, "AbortError");
+    }
+
+    const saved = await persist();
+    if (saved === false) throw new Error(failureMessage);
+    if (!checkCurrent()) throw new DOMException(staleMessage, "AbortError");
+    return true;
+}
+
 export async function rethrowAfterRollbackPersistence(error, persist, message = "Operation failed and rollback could not be persisted") {
     try {
         await persist?.();
@@ -310,17 +355,83 @@ export function normalizeMessageSourceIdentity(value = {}, fallback = {}) {
     };
 }
 
+export const MAX_PROMPT_HISTORY_PROMPT_LENGTH = 16_384;
+export const MAX_PROMPT_HISTORY_NEGATIVE_LENGTH = 16_384;
+export const MAX_PROMPT_HISTORY_SERIALIZED_LENGTH = 256 * 1024;
+
+export function createAccountStorageScope(syncCacheId) {
+    if (typeof syncCacheId !== "string" || !syncCacheId || syncCacheId.length > 512) return null;
+    let namespace = "";
+    for (let index = 0; index < syncCacheId.length; index++) {
+        namespace += syncCacheId.charCodeAt(index).toString(16).padStart(4, "0");
+    }
+    return Object.freeze({
+        galleryDbName: `qig-gallery-account-${namespace}`,
+        galleryManifestKey: `qig_gallery_manifest_v2:${namespace}`,
+        galleryLegacyKey: `qig_gallery:${namespace}`,
+        promptHistoryKey: `qig_prompt_history:${namespace}`,
+    });
+}
+
 export function normalizePromptHistory(value, maxEntries = 50) {
     if (!Array.isArray(value)) return [];
     const limit = Number.isSafeInteger(maxEntries) && maxEntries >= 0 ? maxEntries : 50;
-    return value
-        .filter(entry => entry && typeof entry === "object" && typeof entry.prompt === "string" && entry.prompt.trim())
-        .map(entry => ({
-            prompt: entry.prompt,
-            negative: typeof entry.negative === "string" ? entry.negative : "",
-            time: typeof entry.time === "string" ? entry.time : "",
-        }))
-        .slice(0, limit);
+    if (limit === 0) return [];
+    const normalized = [];
+    let serializedLength = 2;
+    for (const entry of value) {
+        if (!entry || typeof entry !== "object" || typeof entry.prompt !== "string") continue;
+        const prompt = entry.prompt.slice(0, MAX_PROMPT_HISTORY_PROMPT_LENGTH);
+        if (!prompt.trim()) continue;
+        const normalizedEntry = {
+            prompt,
+            negative: typeof entry.negative === "string"
+                ? entry.negative.slice(0, MAX_PROMPT_HISTORY_NEGATIVE_LENGTH)
+                : "",
+            time: typeof entry.time === "string" ? entry.time.slice(0, 128) : "",
+        };
+        const entryLength = JSON.stringify(normalizedEntry).length;
+        const nextLength = serializedLength + entryLength + (normalized.length ? 1 : 0);
+        if (nextLength > MAX_PROMPT_HISTORY_SERIALIZED_LENGTH) break;
+        normalized.push(normalizedEntry);
+        serializedLength = nextLength;
+        if (normalized.length >= limit) break;
+    }
+    return normalized;
+}
+
+function isStorageQuotaError(error) {
+    return error?.name === "QuotaExceededError"
+        || error?.name === "NS_ERROR_DOM_QUOTA_REACHED"
+        || error?.code === 22
+        || error?.code === 1014;
+}
+
+export function persistPromptHistory(storage, key, value) {
+    const history = normalizePromptHistory(value);
+    if (typeof key !== "string" || !key) {
+        return { saved: false, history, error: new Error("Prompt history storage identity is unavailable") };
+    }
+    if (!history.length) {
+        return { saved: true, history, error: null };
+    }
+
+    let candidate = history;
+    let lastError = null;
+    while (candidate.length > 0) {
+        try {
+            storage.setItem(key, JSON.stringify(candidate));
+            return { saved: true, history: candidate, error: null };
+        } catch (error) {
+            lastError = error;
+            if (!isStorageQuotaError(error)) break;
+            candidate = candidate.slice(0, -1);
+        }
+    }
+
+    // Do not write an empty array after a non-empty candidate fails: setItem is atomic,
+    // so leaving the key untouched preserves the last successfully stored history.
+    return { saved: false, history, error: lastError };
 }
 
 const CHARACTER_REFERENCE_ARRAY_KEYS = Object.freeze({

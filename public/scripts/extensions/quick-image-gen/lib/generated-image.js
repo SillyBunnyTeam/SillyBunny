@@ -1,5 +1,39 @@
 const GEMINI_SUCCESS_FINISH_REASONS = new Set(["", "STOP"]);
 
+function encodePathSegment(value) {
+    return encodeURIComponent(value).replace(/[!'()*]/g, char =>
+        `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+}
+
+export function normalizeSavedImagePath(value) {
+    if (typeof value !== "string") return null;
+    const source = value.trim();
+    if (!source.startsWith("/user/images/") || source.startsWith("//")) return null;
+    if (/[\u0000-\u001f\u007f\\]/.test(source)) return null;
+
+    const segments = source.split("/");
+    const encoded = [];
+    for (let index = 0; index < segments.length; index++) {
+        const segment = segments[index];
+        if (index === 0) {
+            encoded.push("");
+            continue;
+        }
+        if (!segment) return null;
+
+        let decoded = segment;
+        try {
+            decoded = decodeURIComponent(segment);
+        } catch {
+            // A literal percent from the server path is encoded below.
+        }
+        if (decoded === "." || decoded === ".." || /[\u0000-\u001f\u007f/\\]/.test(decoded)) return null;
+        encoded.push(encodePathSegment(decoded));
+    }
+    return encoded.join("/");
+}
+
 export function getGeminiCandidateFailure(candidate) {
     const finishReason = String(candidate?.finishReason || "").trim().toUpperCase();
     if (GEMINI_SUCCESS_FINISH_REASONS.has(finishReason)) return null;

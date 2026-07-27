@@ -1,6 +1,7 @@
 import { redactUrlCredentials, sanitizeReproducibleModel } from "./security.js";
 import { getCustomBackendCapabilities } from "./custom-backend.js";
 import { getFalEffectiveSteps, getProviderGenerationCapabilities } from "./provider-capabilities.js";
+import { coerceSettingsFieldValue } from "./settings-transfer.js";
 
 const MAX_SNAPSHOT_STRING = 16_384;
 const MAX_REPRODUCIBLE_SNAPSHOT_BYTES = 16 * 1024;
@@ -132,7 +133,13 @@ export function sanitizeReproducibleSettings(settings, options = {}) {
         if (key === "provider") continue;
         if (provider === "custom" && key === "model") continue;
         if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-        const sanitized = sanitizeValue(source[key], key);
+        const normalized = coerceSettingsFieldValue(key, source[key], {
+            defaultType: "string",
+            maxStringBytes: MAX_SNAPSHOT_STRING,
+            provider,
+        });
+        if (normalized === undefined) continue;
+        const sanitized = sanitizeValue(normalized, key);
         if (sanitized === undefined) continue;
         const candidate = { ...result, [key]: sanitized };
         if (textEncoder.encode(JSON.stringify(candidate)).byteLength <= MAX_REPRODUCIBLE_SNAPSHOT_BYTES) {

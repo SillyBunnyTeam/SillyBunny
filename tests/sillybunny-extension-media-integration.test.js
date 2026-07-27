@@ -358,6 +358,7 @@ describe('Conversation extension media integration', () => {
             normalizeProviderResult: result => (Array.isArray(result?.images)
                 ? result.images.map(image => ({ url: image.url }))
                 : [{ url: result.url }]),
+            rememberRegenerationReferences: jest.fn(),
             releaseTransientProviderResult: value => released.push(value),
         });
         evaluateInContext('finalizeGeneratedResults', context);

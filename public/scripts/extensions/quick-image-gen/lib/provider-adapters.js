@@ -333,7 +333,11 @@ function extractImageValue(candidate, defaultMime) {
     if (candidate.source?.data) return `data:${candidate.source.media_type || defaultMime};base64,${candidate.source.data}`;
     if (candidate.inline_data?.data) return `data:${candidate.inline_data.mime_type || defaultMime};base64,${candidate.inline_data.data}`;
     if (candidate.inlineData?.data) return `data:${candidate.inlineData.mimeType || defaultMime};base64,${candidate.inlineData.data}`;
-    return extractImageFromString(candidate.image, defaultMime);
+    for (const value of [candidate.image, candidate.text, candidate.content]) {
+        const source = extractImageFromString(value, defaultMime);
+        if (source) return source;
+    }
+    return null;
 }
 
 export function extractProviderImageSource(data, { defaultMime = 'image/png', includeGeminiCandidates = true } = {}) {
@@ -368,8 +372,10 @@ export function extractProviderImageSource(data, { defaultMime = 'image/png', in
     }
 
     if (includeGeminiCandidates) {
-        for (const candidate of data?.candidates || []) {
-            for (const part of candidate?.content?.parts || []) {
+        const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+        for (const candidate of candidates) {
+            const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+            for (const part of parts) {
                 const source = extractImageValue(part, defaultMime);
                 if (source) return source;
             }

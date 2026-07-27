@@ -232,6 +232,7 @@ export class GalleryRepository {
     this.createId = options.createId || createFallbackId;
     this.createObjectURL = options.createObjectURL || (blob => URL.createObjectURL(blob));
     this.revokeObjectURL = options.revokeObjectURL || (url => URL.revokeObjectURL(url));
+    this.onEvict = typeof options.onEvict === 'function' ? options.onEvict : null;
     this.lockManager = options.lockManager ?? globalThis.navigator?.locks ?? null;
     this.lockName = options.lockName || `qig-gallery:${this.dbName}:${this.manifestKey}`;
     this.entries = [];
@@ -255,11 +256,11 @@ export class GalleryRepository {
       const legacyEntries = this.manifest.legacyMigrated
         ? []
         : parseLegacyEntries(this.storage, this.legacyKey);
-      await this.#reconcileAssets({
+      const reconciledAssets = await this.#reconcileAssets({
         replaceInvalidManifest: manifestWasInvalid,
         hasLegacySource: legacyEntries.length > 0,
       });
-      const durableEntries = await this.#loadManifestEntries();
+      const durableEntries = await this.#loadManifestEntries(reconciledAssets);
 
       if (!legacyEntries.length) {
         this.entries = durableEntries;
@@ -271,10 +272,12 @@ export class GalleryRepository {
         && migration.every(item => item.asset?.blob instanceof Blob);
 
       if (!canMigrate) {
-        this.entries = this.#sortAndLimit([
+        const runtimeCandidates = [
           ...durableEntries,
           ...migration.filter(item => !item.asset?.invalid).map(item => this.#createEphemeralEntry(item.entry, item.asset, true)),
-        ]);
+        ];
+        this.entries = this.#sortAndLimit(runtimeCandidates);
+        this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
         return this.list();
       }
 
@@ -306,7 +309,10 @@ export class GalleryRepository {
         ));
         this.#writeManifest(nextManifest);
         this.manifest = nextManifest;
-        this.entries = this.#sortAndLimit([...durableEntries, ...migratedEntries]);
+        const runtimeCandidates = [...durableEntries, ...migratedEntries];
+        this.entries = this.#sortAndLimit(runtimeCandidates);
+        await this.#removeTrimmedAssets();
+        this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
         try {
           this.storage.removeItem(this.legacyKey);
         } catch {
@@ -329,12 +335,14 @@ export class GalleryRepository {
         if (!nextManifest || restoredManifest) {
           await Promise.allSettled(insertedIds.map(id => this.#deleteAsset(id)));
         }
-        this.entries = this.#sortAndLimit([
+        const runtimeCandidates = [
           ...durableEntries,
           ...migration
             .filter(item => !item.asset?.invalid)
             .map(item => this.#createEphemeralEntry(item.entry, item.asset, true, errorMessage(error, 'Legacy migration failed'))),
-        ]);
+        ];
+        this.entries = this.#sortAndLimit(runtimeCandidates);
+        this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
         return this.list();
       }
     });
@@ -453,8 +461,10 @@ export class GalleryRepository {
         materialized.push(runtimeEntry);
       }
 
-      this.entries = this.#sortAndLimit([...materialized, ...this.entries]);
+      const runtimeCandidates = [...materialized, ...this.entries];
+      this.entries = this.#sortAndLimit(runtimeCandidates);
       await this.#removeTrimmedAssets();
+      this.#notifyEvictions(this.#findEvictions(runtimeCandidates, this.entries));
       return results;
     });
   }
@@ -616,16 +626,31 @@ export class GalleryRepository {
     return value || null;
   }
 
-  async #getAllAssets() {
+  async #getAllAssetKeys() {
     const db = await this.#openDatabase();
     const transaction = db.transaction(this.storeName, 'readonly');
     const done = transactionDone(transaction);
     const store = transaction.objectStore(this.storeName);
-    let values;
-    if (typeof store.getAll === 'function') {
-      values = await requestResult(store.getAll());
-    } else {
-      values = await new Promise((resolve, reject) => {
+    let keys;
+    if (typeof store.openKeyCursor === 'function') {
+      keys = await new Promise((resolve, reject) => {
+        const result = [];
+        const request = store.openKeyCursor();
+        request.onerror = () => reject(request.error || new Error('Could not enumerate gallery assets'));
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            resolve(result);
+            return;
+          }
+          result.push(cursor.primaryKey);
+          cursor.continue();
+        };
+      });
+    } else if (typeof store.getAllKeys === 'function') {
+      keys = await requestResult(store.getAllKeys());
+    } else if (typeof store.openCursor === 'function') {
+      keys = await new Promise((resolve, reject) => {
         const result = [];
         const request = store.openCursor();
         request.onerror = () => reject(request.error || new Error('Could not enumerate gallery assets'));
@@ -635,13 +660,18 @@ export class GalleryRepository {
             resolve(result);
             return;
           }
-          result.push(cursor.value);
+          result.push(cursor.primaryKey);
           cursor.continue();
         };
       });
+    } else if (typeof store.getAll === 'function') {
+      const values = await requestResult(store.getAll());
+      keys = Array.isArray(values) ? values.map(value => value?.id) : [];
+    } else {
+      throw new Error('Could not enumerate gallery assets');
     }
     await done;
-    return Array.isArray(values) ? values : [];
+    return Array.isArray(keys) ? keys : [];
   }
 
   async #deleteAsset(id) {
@@ -688,49 +718,77 @@ export class GalleryRepository {
   }
 
   async #reconcileAssets({ replaceInvalidManifest = false, hasLegacySource = false } = {}) {
-    const assets = await this.#getAllAssets();
-    const validAssets = [];
+    // Enumerate keys without cloning every Blob, then load recovery candidates one at a time.
+    const assetKeys = await this.#getAllAssetKeys();
+    const availableKeys = new Set(assetKeys);
+    const processedIds = new Set();
+    const candidateMetadata = [];
+    let retainedMetadata = [];
+    const retainedAssets = new Map();
     const corruptIds = [];
-    for (const asset of assets) {
-      const sanitized = await this.#sanitizeStoredAsset(asset);
-      if (sanitized) {
-        validAssets.push(sanitized);
-        if (sanitized !== asset) await this.#putAsset(asset.id, sanitized, asset.metadata).catch(() => {});
-      }
-      else if (typeof asset?.id === 'string') corruptIds.push(asset.id);
-    }
-    await this.#deleteAssets(corruptIds).catch(() => {});
-    const assetsById = new Map(
-      validAssets.map(asset => [asset.id, asset]),
-    );
-    const metadata = [];
-    const referencedIds = new Set();
+    const staleIds = [];
     const pendingIds = new Set(this.manifest.pendingAssetIds || []);
+
+    const retainCandidate = (metadata, asset, needsRepair) => {
+      candidateMetadata.push(metadata);
+      retainedMetadata = this.#sortAndLimitMetadata([...retainedMetadata, metadata]);
+      const retainedIds = new Set(retainedMetadata.map(entry => entry.assetId));
+      if (retainedIds.has(metadata.assetId)) {
+        retainedAssets.set(metadata.assetId, { asset, needsRepair });
+      }
+      for (const id of retainedAssets.keys()) {
+        if (!retainedIds.has(id)) retainedAssets.delete(id);
+      }
+    };
+
+    const inspectCandidate = async (assetId, createMetadata) => {
+      const storedAsset = await this.#getAsset(assetId);
+      const asset = await this.#sanitizeStoredAsset(storedAsset);
+      if (!asset) {
+        if (typeof storedAsset?.id === 'string') corruptIds.push(storedAsset.id);
+        return;
+      }
+      const metadata = createMetadata(asset);
+      if (!metadata) {
+        staleIds.push(assetId);
+        return;
+      }
+      retainCandidate(metadata, asset, asset !== storedAsset);
+    };
 
     for (const entry of this.manifest.entries) {
       const assetId = typeof entry?.assetId === 'string' ? entry.assetId : '';
-      if (!assetId || !assetsById.get(assetId)?.blob) continue;
-      referencedIds.add(assetId);
-      metadata.push(toManifestEntry(entry, assetId));
+      if (!assetId || processedIds.has(assetId)) continue;
+      processedIds.add(assetId);
+      if (!availableKeys.has(assetId)) continue;
+      await inspectCandidate(assetId, () => toManifestEntry(entry, assetId));
     }
 
-    for (const asset of validAssets) {
-      if (!asset || typeof asset.id !== 'string' || referencedIds.has(asset.id) || !asset.blob) continue;
-      if (this.manifest.cleared === true) continue;
-      if (!replaceInvalidManifest && !pendingIds.has(asset.id)) continue;
-      if (hasLegacySource && this.manifest.legacyMigrated !== true && asset.metadata?.legacy === true) {
+    for (const assetId of assetKeys) {
+      if (processedIds.has(assetId)) continue;
+      processedIds.add(assetId);
+      const canRecover = typeof assetId === 'string'
+        && this.manifest.cleared !== true
+        && (replaceInvalidManifest || pendingIds.has(assetId));
+      if (!canRecover) {
+        if (typeof assetId === 'string') staleIds.push(assetId);
         continue;
       }
-      const stored = asset.metadata && typeof asset.metadata === 'object' ? asset.metadata : {};
-      metadata.push(toManifestEntry({
-        ...stored,
-        prompt: typeof stored.prompt === 'string' ? stored.prompt : 'Recovered gallery image',
-        date: Number.isFinite(Number(stored.date)) ? Number(stored.date) : 0,
-      }, asset.id));
-      referencedIds.add(asset.id);
+      await inspectCandidate(assetId, asset => {
+        if (hasLegacySource && this.manifest.legacyMigrated !== true && asset.metadata?.legacy === true) {
+          return null;
+        }
+        const stored = asset.metadata && typeof asset.metadata === 'object' ? asset.metadata : {};
+        return toManifestEntry({
+          ...stored,
+          prompt: typeof stored.prompt === 'string' ? stored.prompt : 'Recovered gallery image',
+          date: Number.isFinite(Number(stored.date)) ? Number(stored.date) : 0,
+        }, assetId);
+      });
     }
+    await this.#deleteAssets(corruptIds).catch(() => {});
 
-    const nextEntries = this.#sortAndLimitMetadata(metadata);
+    const nextEntries = retainedMetadata;
     const retainedIds = new Set(nextEntries.map(entry => entry.assetId));
     const changed = replaceInvalidManifest
       || (this.manifest.pendingAssetIds || []).length > 0
@@ -747,37 +805,40 @@ export class GalleryRepository {
       this.manifest = nextManifest;
     }
 
-    const staleIds = validAssets
-      .map(asset => asset?.id)
-      .filter(id => typeof id === 'string' && !retainedIds.has(id));
+    for (const metadata of candidateMetadata) {
+      if (!retainedIds.has(metadata.assetId)) staleIds.push(metadata.assetId);
+    }
     await this.#deleteAssets(staleIds).catch(() => {});
 
     for (const entry of this.manifest.entries) {
-      const asset = assetsById.get(entry.assetId);
+      const retained = retainedAssets.get(entry.assetId);
+      const asset = retained?.asset;
       if (!asset?.blob) continue;
       const desiredMetadata = {
         ...toManifestEntry(entry, entry.assetId),
         legacy: asset.metadata?.legacy === true,
         pending: false,
       };
-      if (JSON.stringify(asset.metadata || null) === JSON.stringify(desiredMetadata)) continue;
+      if (!retained.needsRepair
+        && JSON.stringify(asset.metadata || null) === JSON.stringify(desiredMetadata)) continue;
       await this.#putAsset(entry.assetId, asset, desiredMetadata).catch(() => {});
     }
+
+    this.#notifyEvictions(candidateMetadata.filter(metadata => !retainedIds.has(metadata.assetId)));
+    return new Map([...retainedAssets].map(([id, retained]) => [id, retained.asset]));
   }
 
-  async #loadManifestEntries() {
+  async #loadManifestEntries(assetsById) {
     const loaded = [];
     const missingIds = [];
 
     for (const metadata of this.manifest.entries) {
-      const storedAsset = await this.#getAsset(metadata.assetId);
-      const asset = await this.#sanitizeStoredAsset(storedAsset);
+      const asset = assetsById.get(metadata.assetId);
       if (!asset) {
         missingIds.push(metadata.assetId);
         await this.#deleteAsset(metadata.assetId).catch(() => {});
         continue;
       }
-      if (asset !== storedAsset) await this.#putAsset(metadata.assetId, asset, storedAsset.metadata).catch(() => {});
       loaded.push(this.#materializeEntry(metadata, asset));
     }
 
@@ -851,6 +912,29 @@ export class GalleryRepository {
       .filter(entry => entry?.id && !seen.has(entry.id) && seen.add(entry.id))
       .sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date))
       .slice(0, this.maxEntries);
+  }
+
+  #findEvictions(candidates, retained) {
+    const retainedIds = new Set(retained.map(entry => entry.id));
+    const seen = new Set();
+    return candidates.filter(entry => entry?.id
+      && !seen.has(entry.id)
+      && seen.add(entry.id)
+      && !retainedIds.has(entry.id));
+  }
+
+  #notifyEvictions(entries) {
+    if (!this.onEvict || !entries.length) return;
+    try {
+      const result = this.onEvict({
+        reason: 'retention-limit',
+        limit: this.maxEntries,
+        entries: entries.map(entry => clone(entry)),
+      });
+      result?.catch?.(() => {});
+    } catch {
+      // Observer failures must not turn successful gallery writes into failures.
+    }
   }
 
   async #removeTrimmedAssets() {

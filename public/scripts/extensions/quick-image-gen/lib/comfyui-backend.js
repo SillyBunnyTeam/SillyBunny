@@ -529,10 +529,11 @@ export function parseComfyHistoryEntry(entry, options = {}) {
     }
 
     const images = enumerateOutputImages(entry.outputs, options);
+    const hasOutputs = isRecord(entry.outputs) && Object.keys(entry.outputs).length > 0;
     const terminal = status.completed === true
         || ["success", "completed", "complete"].includes(statusName)
         || terminalMessage(messages, "execution_success") !== undefined
-        || (hasOwn(entry, "outputs") && !["pending", "queued", "running", "in_progress"].includes(statusName));
+        || (hasOutputs && !["pending", "queued", "running", "in_progress"].includes(statusName));
     if (terminal && images.length) return { state: "success", terminal: true, messages, images };
     if (terminal) return { state: "completed_no_images", terminal: true, messages, images: [] };
     return { state: "pending", terminal: false, messages, images };
@@ -636,7 +637,12 @@ function withAbort(promise, signal) {
     });
 }
 
-async function readBoundedJson(response, maxBytes, label) {
+async function readBoundedJson(response, maxBytes, label, allowEmpty = false) {
+    const contentLength = response.headers?.get?.("content-length");
+    if (allowEmpty && (response.status === 204 || response.status === 205
+        || contentLength === "0" || response.body == null)) {
+        return null;
+    }
     let text;
     try {
         text = await readResponseText(response, maxBytes);
@@ -646,6 +652,7 @@ async function readBoundedJson(response, maxBytes, label) {
         }
         throw error;
     }
+    if (allowEmpty && text.length === 0) return null;
     try {
         return JSON.parse(text);
     } catch {
@@ -789,7 +796,7 @@ async function postCancellation(url, body, options, label, expectJson = false) {
     }), options.signal);
     if (!response.ok) throw await withAbort(httpError(response, label), options.signal);
     if (!expectJson) return null;
-    return withAbort(readBoundedJson(response, MAX_ERROR_BYTES, `${label} response`), options.signal);
+    return withAbort(readBoundedJson(response, MAX_ERROR_BYTES, `${label} response`, true), options.signal);
 }
 
 async function tryJobsCancellation(promptId, options) {
@@ -802,7 +809,10 @@ async function tryJobsCancellation(promptId, options) {
     }), options.signal);
     if (response.status === 404 || response.status === 405) return null;
     if (!response.ok) throw await withAbort(httpError(response, "ComfyUI jobs cancellation"), options.signal);
-    const result = await withAbort(readBoundedJson(response, MAX_ERROR_BYTES, "ComfyUI jobs cancellation response"), options.signal);
+    const result = await withAbort(
+        readBoundedJson(response, MAX_ERROR_BYTES, "ComfyUI jobs cancellation response", true),
+        options.signal,
+    );
     return { strategy: "jobs-api", cancelled: result?.cancelled !== false, result };
 }
 

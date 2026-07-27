@@ -1,7 +1,10 @@
 import { normalizeImageSource } from "./security.js";
+import { detectImageFormat, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS } from "./image-metadata.js";
 
 export const CONTEXT_MEDIA_LIBRARY_VERSION = 1;
 export const DEFAULT_CONTEXT_MEDIA_MAX_BYTES = 50 * 1024 * 1024;
+export const DEFAULT_CONTEXT_MEDIA_MAX_FILES = 20;
+export const DEFAULT_CONTEXT_MEDIA_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 
 export const SUPPORTED_CONTEXT_MEDIA_FORMATS = Object.freeze([
     Object.freeze({ extensions: Object.freeze([".jpg", ".jpeg"]), mimeType: "image/jpeg", type: "image" }),
@@ -13,6 +16,9 @@ export const SUPPORTED_CONTEXT_MEDIA_FORMATS = Object.freeze([
 ]);
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MAX_CONTEXT_MEDIA_CONTAINER_ELEMENTS = 8_192;
+const MAX_WEBM_HEADER_BYTES = 1024 * 1024;
+const MAX_WEBM_CLUSTER_ELEMENTS_TO_INSPECT = 256;
 
 function text(value) {
     return typeof value === "string" ? value.trim() : "";
@@ -272,6 +278,280 @@ function extensionFor(value) {
     return dot >= 0 ? fileName.slice(dot).toLowerCase() : "";
 }
 
+function asMediaBytes(value) {
+    if (value instanceof Uint8Array) return value;
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return null;
+}
+
+function bytesAscii(bytes, start, length) {
+    let result = "";
+    for (let index = 0; index < length; index += 1) result += String.fromCharCode(bytes[start + index]);
+    return result;
+}
+
+function readIsoMediaBoxes(bytes, start, end, state) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const boxes = [];
+    let offset = start;
+    while (offset < end) {
+        state.elements += 1;
+        if (state.elements > MAX_CONTEXT_MEDIA_CONTAINER_ELEMENTS || offset + 8 > end) return null;
+        let size = view.getUint32(offset);
+        const type = bytesAscii(bytes, offset + 4, 4);
+        let headerSize = 8;
+        if (size === 1) {
+            if (offset + 16 > end) return null;
+            const largeSize = view.getBigUint64(offset + 8);
+            if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+            size = Number(largeSize);
+            headerSize = 16;
+        } else if (size === 0) {
+            size = end - offset;
+        }
+        if (size < headerSize || size > end - offset) return null;
+        boxes.push({ type, start: offset + headerSize, end: offset + size });
+        offset += size;
+    }
+    return offset === end ? boxes : null;
+}
+
+function isMp4Brand(brand) {
+    return /^(?:isom|iso[2-9]|mp4[12]|avc1|dash|M4V |MSNV|f4v |cmf[cs])$/.test(brand)
+        || /^3g[2p][A-Za-z0-9 ]$/.test(brand);
+}
+
+function hasValidFullBoxLength(bytes, box, versionZeroLength, versionOneLength) {
+    if (!box || box.end <= box.start) return false;
+    const version = bytes[box.start];
+    return (version === 0 && box.end - box.start >= versionZeroLength)
+        || (version === 1 && box.end - box.start >= versionOneLength);
+}
+
+function isStructurallyValidMp4(bytes) {
+    if (bytes.length < 32 || bytes.length > DEFAULT_CONTEXT_MEDIA_MAX_BYTES) return false;
+    const state = { elements: 0 };
+    const boxes = readIsoMediaBoxes(bytes, 0, bytes.length, state);
+    if (!boxes) return false;
+    const ftyp = boxes.find((box) => box.type === "ftyp");
+    const moov = boxes.find((box) => box.type === "moov");
+    const hasMediaData = boxes.some((box) => box.type === "mdat" && box.end > box.start);
+    const ftypLength = ftyp ? ftyp.end - ftyp.start : 0;
+    if (!ftyp || !moov || !hasMediaData || ftypLength < 8 || ftypLength > 1_024 || ftypLength % 4 !== 0) return false;
+
+    const brands = [bytesAscii(bytes, ftyp.start, 4)];
+    for (let offset = ftyp.start + 8; offset < ftyp.end; offset += 4) brands.push(bytesAscii(bytes, offset, 4));
+    if (!brands.some(isMp4Brand)) return false;
+
+    const moovBoxes = readIsoMediaBoxes(bytes, moov.start, moov.end, state);
+    if (!moovBoxes || !hasValidFullBoxLength(bytes, moovBoxes.find((box) => box.type === "mvhd"), 100, 112)) return false;
+    for (const track of moovBoxes.filter((box) => box.type === "trak")) {
+        const trackBoxes = readIsoMediaBoxes(bytes, track.start, track.end, state);
+        if (!trackBoxes || !hasValidFullBoxLength(bytes, trackBoxes.find((box) => box.type === "tkhd"), 84, 96)) continue;
+        const media = trackBoxes.find((box) => box.type === "mdia");
+        if (!media) continue;
+        const mediaBoxes = readIsoMediaBoxes(bytes, media.start, media.end, state);
+        const mediaHeader = mediaBoxes?.find((box) => box.type === "mdhd");
+        const handler = mediaBoxes?.find((box) => box.type === "hdlr");
+        const mediaInfo = mediaBoxes?.find((box) => box.type === "minf");
+        if (!mediaBoxes || !hasValidFullBoxLength(bytes, mediaHeader, 24, 36)
+            || !handler || handler.end - handler.start < 24
+            || bytesAscii(bytes, handler.start + 8, 4) !== "vide" || !mediaInfo) continue;
+        const mediaInfoBoxes = readIsoMediaBoxes(bytes, mediaInfo.start, mediaInfo.end, state);
+        if (mediaInfoBoxes?.some((box) => box.type === "stbl")) return true;
+    }
+    return false;
+}
+
+function readEbmlVint(bytes, offset, maxLength, stripMarker) {
+    if (offset >= bytes.length || bytes[offset] === 0) return null;
+    let marker = 0x80;
+    let length = 1;
+    while (length <= maxLength && !(bytes[offset] & marker)) {
+        marker >>>= 1;
+        length += 1;
+    }
+    if (length > maxLength || offset + length > bytes.length) return null;
+    let value = BigInt(stripMarker ? bytes[offset] & (marker - 1) : bytes[offset]);
+    let unknown = stripMarker && (bytes[offset] & (marker - 1)) === marker - 1;
+    for (let index = 1; index < length; index += 1) {
+        value = (value << 8n) | BigInt(bytes[offset + index]);
+        unknown = unknown && bytes[offset + index] === 0xff;
+    }
+    if (!unknown && value > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    return { length, unknown, value: unknown ? null : Number(value) };
+}
+
+function readEbmlElement(bytes, offset, limit, state, allowUnknownSize = false) {
+    state.elements += 1;
+    if (state.elements > MAX_CONTEXT_MEDIA_CONTAINER_ELEMENTS) return null;
+    const id = readEbmlVint(bytes, offset, 4, false);
+    if (!id) return null;
+    const size = readEbmlVint(bytes, offset + id.length, 8, true);
+    if (!size || (size.unknown && !allowUnknownSize)) return null;
+    const start = offset + id.length + size.length;
+    const end = size.unknown ? limit : start + size.value;
+    if (start > limit || end > limit || end < start) return null;
+    return { id: id.value, start, end, unknownSize: size.unknown };
+}
+
+function readEbmlUnsigned(bytes, element) {
+    const length = element.end - element.start;
+    if (length < 1 || length > 8) return null;
+    let value = 0n;
+    for (let offset = element.start; offset < element.end; offset += 1) value = (value << 8n) | BigInt(bytes[offset]);
+    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
+}
+
+function hasValidVideoDimensions(width, height) {
+    return Number.isSafeInteger(width) && Number.isSafeInteger(height)
+        && width > 0 && height > 0
+        && width <= MAX_IMAGE_DIMENSION && height <= MAX_IMAGE_DIMENSION
+        && width * height <= MAX_IMAGE_PIXELS;
+}
+
+function isValidWebmInfo(bytes, info, state) {
+    let offset = info.start;
+    let sawKnownField = false;
+    while (offset < info.end) {
+        const element = readEbmlElement(bytes, offset, info.end, state);
+        if (!element) return false;
+        if (element.id === 0x2ad7b1) {
+            const scale = readEbmlUnsigned(bytes, element);
+            if (!scale) return false;
+            sawKnownField = true;
+        } else if ([0x4489, 0x4d80, 0x5741].includes(element.id) && element.end > element.start) {
+            sawKnownField = true;
+        }
+        offset = element.end;
+    }
+    return sawKnownField;
+}
+
+function isValidWebmVideoTrack(bytes, track, state) {
+    let offset = track.start;
+    let trackType = null;
+    let codec = "";
+    let video = null;
+    while (offset < track.end) {
+        const element = readEbmlElement(bytes, offset, track.end, state);
+        if (!element) return false;
+        if (element.id === 0x83) trackType = readEbmlUnsigned(bytes, element);
+        else if (element.id === 0x86 && element.end - element.start <= 64) codec = bytesAscii(bytes, element.start, element.end - element.start);
+        else if (element.id === 0xe0) video = element;
+        offset = element.end;
+    }
+    if (trackType !== 1 || !codec.startsWith("V_") || !video) return false;
+
+    let width = null;
+    let height = null;
+    offset = video.start;
+    while (offset < video.end) {
+        const element = readEbmlElement(bytes, offset, video.end, state);
+        if (!element) return false;
+        if (element.id === 0xb0) width = readEbmlUnsigned(bytes, element);
+        else if (element.id === 0xba) height = readEbmlUnsigned(bytes, element);
+        offset = element.end;
+    }
+    return hasValidVideoDimensions(width, height);
+}
+
+function hasValidWebmVideoTrack(bytes, tracks, state) {
+    let offset = tracks.start;
+    while (offset < tracks.end) {
+        const element = readEbmlElement(bytes, offset, tracks.end, state);
+        if (!element) return false;
+        if (element.id === 0xae && isValidWebmVideoTrack(bytes, element, state)) return true;
+        offset = element.end;
+    }
+    return false;
+}
+
+function hasWebmBlockGroup(bytes, group, state) {
+    let offset = group.start;
+    for (let count = 0; offset < group.end && count < 64; count += 1) {
+        const element = readEbmlElement(bytes, offset, group.end, state);
+        if (!element) return false;
+        if (element.id === 0xa1 && element.end - element.start >= 5) return true;
+        offset = element.end;
+    }
+    return false;
+}
+
+function isValidWebmCluster(bytes, cluster, state) {
+    let offset = cluster.start;
+    let sawTimestamp = false;
+    let sawBlock = false;
+    for (let count = 0; offset < cluster.end && count < MAX_WEBM_CLUSTER_ELEMENTS_TO_INSPECT; count += 1) {
+        const element = readEbmlElement(bytes, offset, cluster.end, state);
+        if (!element || element.unknownSize) return false;
+        if (element.id === 0xe7) sawTimestamp = readEbmlUnsigned(bytes, element) !== null;
+        else if (element.id === 0xa3 && element.end - element.start >= 5) sawBlock = true;
+        else if (element.id === 0xa0 && hasWebmBlockGroup(bytes, element, state)) sawBlock = true;
+        if (sawTimestamp && sawBlock) return true;
+        offset = element.end;
+    }
+    return false;
+}
+
+function isStructurallyValidWebm(bytes) {
+    if (bytes.length < 24 || bytes.length > DEFAULT_CONTEXT_MEDIA_MAX_BYTES) return false;
+    const state = { elements: 0 };
+    const header = readEbmlElement(bytes, 0, bytes.length, state);
+    if (!header || header.id !== 0x1a45dfa3 || header.end - header.start > MAX_WEBM_HEADER_BYTES) return false;
+
+    let offset = header.start;
+    let docType = "";
+    while (offset < header.end) {
+        const element = readEbmlElement(bytes, offset, header.end, state);
+        if (!element) return false;
+        if (element.id === 0x4282 && element.end - element.start <= 16) {
+            docType = bytesAscii(bytes, element.start, element.end - element.start).toLowerCase();
+        }
+        offset = element.end;
+    }
+    if (docType !== "webm") return false;
+
+    offset = header.end;
+    let segment = null;
+    while (offset < bytes.length) {
+        const element = readEbmlElement(bytes, offset, bytes.length, state, true);
+        if (!element || (element.unknownSize && element.id !== 0x18538067)) return false;
+        if (element.id === 0x18538067) {
+            segment = element;
+            break;
+        }
+        if (element.id !== 0xec && element.id !== 0xbf) return false;
+        offset = element.end;
+    }
+    if (!segment || segment.end <= segment.start) return false;
+
+    let sawInfo = false;
+    let sawVideoTrack = false;
+    let sawCluster = false;
+    offset = segment.start;
+    while (offset < segment.end) {
+        const element = readEbmlElement(bytes, offset, segment.end, state, true);
+        if (!element || (element.unknownSize && element.id !== 0x1f43b675)) return false;
+        if (element.id === 0x1549a966) sawInfo = isValidWebmInfo(bytes, element, state);
+        else if (element.id === 0x1654ae6b) sawVideoTrack = hasValidWebmVideoTrack(bytes, element, state);
+        else if (element.id === 0x1f43b675) sawCluster = isValidWebmCluster(bytes, element, state);
+        if (sawInfo && sawVideoTrack && sawCluster) return true;
+        offset = element.end;
+    }
+    return false;
+}
+
+export function contextMediaBytesMatchFormat(value, format) {
+    const bytes = asMediaBytes(value);
+    if (!bytes || !bytes.length || bytes.length > DEFAULT_CONTEXT_MEDIA_MAX_BYTES) return false;
+    if (format?.type === "image") return detectImageFormat(bytes)?.mime === format.mimeType;
+    if (format?.mimeType === "video/mp4") return isStructurallyValidMp4(bytes);
+    if (format?.mimeType === "video/webm") return isStructurallyValidWebm(bytes);
+    return false;
+}
+
 function isObviouslyNonPublicHostname(hostname) {
     const host = text(hostname).toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
     if (!host) return true;
@@ -351,6 +631,54 @@ export function validateContextMediaFile(file, options = {}) {
             mimeType: mimeFormat.mimeType,
             type: mimeFormat.type,
         } : null,
+    };
+}
+
+export function validateContextMediaFileSelection(files, options = {}) {
+    const maxFiles = options.maxFiles ?? DEFAULT_CONTEXT_MEDIA_MAX_FILES;
+    const maxTotalBytes = options.maxTotalBytes ?? DEFAULT_CONTEXT_MEDIA_MAX_TOTAL_BYTES;
+    if (!Number.isSafeInteger(maxFiles) || maxFiles < 0) {
+        throw new RangeError("maxFiles must be a non-negative safe integer");
+    }
+    if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 0) {
+        throw new RangeError("maxTotalBytes must be a non-negative safe integer");
+    }
+
+    const source = files || [];
+    const declaredLength = Number(source.length ?? 0);
+    if (Number.isSafeInteger(declaredLength) && declaredLength > maxFiles) {
+        return {
+            valid: false,
+            errors: [`Select no more than ${maxFiles} Context Media files at once`],
+            files: [],
+            totalBytes: 0,
+        };
+    }
+    const selectedFiles = [];
+    const errors = [];
+    let totalBytes = 0;
+    const selectedSource = typeof source[Symbol.iterator] === "function" ? source : Array.from(source);
+    for (const file of selectedSource) {
+        if (selectedFiles.length >= maxFiles) {
+            errors.push(`Select no more than ${maxFiles} Context Media files at once`);
+            break;
+        }
+        selectedFiles.push(file);
+        if (!Number.isSafeInteger(file?.size) || file.size < 0) {
+            errors.push(`${text(file?.name) || "Media file"} has an invalid byte size`);
+            continue;
+        }
+        if (file.size > maxTotalBytes - totalBytes) {
+            errors.push(`Selected Context Media files exceed the ${maxTotalBytes} byte aggregate limit`);
+            break;
+        }
+        totalBytes += file.size;
+    }
+    return {
+        valid: errors.length === 0,
+        errors,
+        files: errors.length === 0 ? selectedFiles : [],
+        totalBytes,
     };
 }
 

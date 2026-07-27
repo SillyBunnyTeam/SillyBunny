@@ -478,6 +478,7 @@
 }
 
 .qig-provider-card,
+.qig-output-settings,
 .qig-filter-panel,
 .qig-dependent-panel {
     margin-top: 12px;
@@ -486,6 +487,11 @@
     border-top: 1px solid var(--qig-line);
     border-radius: 0;
     background: transparent;
+}
+
+.qig-output-settings > .qig-muted {
+    display: block;
+    margin: 2px 0 10px;
 }
 
 .qig-collapsible {
@@ -984,13 +990,32 @@
 }
 
 #qig-input-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
     cursor: pointer;
     padding: 2px 5px;
     font-size: 1em;
+    line-height: 1;
     opacity: 0.7;
 }
 #qig-input-btn:hover {
     opacity: 1;
+}
+
+#qig-input-btn:focus-visible,
+.qig-message-generate:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+}
+
+button.qig-message-generate {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
 }
 
 .qig-message-generate--fallback {
@@ -2089,31 +2114,131 @@
     opacity: 0.82;
 }
 
-.qig-prompt-edit-dialog {
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    gap: 12px;
-    box-sizing: border-box;
-    color: var(--SmartThemeBodyColor);
+.qig-popup-content--review {
+    width: min(96vw, 980px);
+    max-width: 980px;
+    max-height: min(90vh, 920px);
 }
 
-.qig-prompt-edit-dialog textarea {
+.qig-prompt-review {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding: 18px;
+    gap: 14px;
+    box-sizing: border-box;
+    color: var(--SmartThemeBodyColor);
+    overflow-y: auto;
+}
+
+.qig-review-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--qig-text-soft, var(--SmartThemeBodyColor));
+    font-size: 12px;
+}
+
+.qig-review-progress li {
+    padding: 4px 9px;
+    border: 1px solid var(--qig-line, var(--SmartThemeBorderColor));
+    border-radius: 999px;
+    opacity: 0.72;
+}
+
+.qig-review-progress li.is-active {
+    border-color: var(--qig-accent, var(--SmartThemeQuoteColor));
+    color: var(--qig-accent, var(--SmartThemeQuoteColor));
+    opacity: 1;
+    font-weight: 700;
+}
+
+.qig-review-description {
+    max-width: 72ch;
+    margin: 0;
+    color: var(--qig-text-soft, var(--SmartThemeBodyColor));
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.qig-review-fields {
+    display: grid;
+    min-height: 0;
+    gap: 7px;
+}
+
+.qig-review-fields label {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.qig-review-fields textarea {
     width: 100%;
-    min-height: 200px;
-    padding: 10px;
+    min-height: 280px;
+    padding: 12px;
     resize: vertical;
     color: var(--SmartThemeBodyColor);
     background: var(--SmartThemeBlurTintColor);
     border: 1px solid var(--qig-line-strong, var(--SmartThemeBorderColor));
     border-radius: 6px;
-    font: inherit;
+    font: 13px/1.5 var(--monoFontFamily, ui-monospace, SFMono-Regular, Consolas, monospace);
     box-sizing: border-box;
 }
 
+.qig-review-fields textarea.qig-review-prefill {
+    min-height: 82px;
+}
+
+.qig-review-field-note {
+    max-width: 72ch;
+    margin: -1px 0 3px;
+    color: var(--qig-text-soft, var(--SmartThemeBodyColor));
+    font-size: 12px;
+    line-height: 1.45;
+    opacity: 0.82;
+}
+
+.qig-review-fields--final textarea:first-of-type {
+    min-height: 230px;
+}
+
+.qig-review-fields--final textarea:last-of-type {
+    min-height: 110px;
+}
+
+.qig-review-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 @media (max-width: 768px) {
-    .qig-prompt-editor textarea {
+    .qig-popup-content--review {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+    }
+
+    .qig-prompt-review {
+        padding: 14px;
+    }
+
+    .qig-review-fields textarea {
+        min-height: 240px;
         font-size: 16px;
+    }
+
+    .qig-review-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .qig-review-actions .menu_button {
+        width: 100%;
     }
 }
 

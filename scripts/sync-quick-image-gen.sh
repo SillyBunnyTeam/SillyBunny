@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="$REPO_DIR/public/scripts/extensions/quick-image-gen"
+STATE_FILE="$SCRIPT_DIR/quick-image-gen-sync-state.json"
 DEFAULT_UPSTREAM_REPO="https://github.com/platberlitz/sillytavern-image-gen.git"
 
 UPSTREAM_REPO="$DEFAULT_UPSTREAM_REPO"
@@ -12,16 +13,29 @@ UPSTREAM_REF="main"
 LOCAL_SOURCE=""
 CHECK_ONLY=0
 METADATA_FILE=""
+BASE_COMMIT_OVERRIDE=""
 
 usage() {
     cat <<'EOF'
 Usage: bash scripts/sync-quick-image-gen.sh [options]
 
+Syncs the bundled Quick Image Gen extension from upstream. The bundled copy carries
+SillyBunny divergences (Conversation capability wiring, scoped generation, lifecycle
+hooks), so the sync is a three-way merge instead of an overwrite:
+
+  base     = upstream commit recorded in scripts/quick-image-gen-sync-state.json,
+             re-generated through this script's transforms
+  upstream = the requested upstream ref, generated through the same transforms
+  ours     = the current bundled files
+
+Conflicts are reported with markers left in place for manual resolution.
+
 Options:
   --repo <url>           Upstream repository URL. Defaults to platberlitz/sillytavern-image-gen.
   --ref <git-ref>        Upstream ref to sync. Defaults to main.
   --source <path>        Use an existing local Quick Image Gen checkout instead of cloning.
-  --check                Exit with status 1 if the bundled files are out of sync.
+  --base <commit>        Override the recorded merge base commit.
+  --check                Exit with status 1 if the bundled copy is behind the upstream ref.
   --metadata-file <path> Write QIG_VERSION, QIG_COMMIT, QIG_SHORT_COMMIT, QIG_REF, and QIG_REPO.
   -h, --help             Show this help.
 EOF
@@ -39,6 +53,10 @@ while (($#)); do
             ;;
         --source)
             LOCAL_SOURCE="${2:-}"
+            shift 2
+            ;;
+        --base)
+            BASE_COMMIT_OVERRIDE="${2:-}"
             shift 2
             ;;
         --check)
@@ -87,39 +105,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-SOURCE_DIR="$LOCAL_SOURCE"
-if [[ -z "$SOURCE_DIR" ]]; then
-    SOURCE_DIR="$TMP_DIR/source"
-    git init --quiet "$SOURCE_DIR"
-    git -C "$SOURCE_DIR" remote add origin "$UPSTREAM_REPO"
-    git -C "$SOURCE_DIR" fetch --quiet --depth=1 origin "$UPSTREAM_REF"
-    git -C "$SOURCE_DIR" checkout --quiet FETCH_HEAD
-fi
-
-for required_file in index.js style.css manifest.json; do
-    if [[ ! -f "$SOURCE_DIR/$required_file" ]]; then
-        echo "Upstream Quick Image Gen source is missing $required_file." >&2
-        exit 1
-    fi
-done
-
-UPSTREAM_COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || printf 'local-source')"
-UPSTREAM_SHORT_COMMIT="$UPSTREAM_COMMIT"
-if [[ "$UPSTREAM_COMMIT" != "local-source" ]]; then
-    UPSTREAM_SHORT_COMMIT="$(git -C "$SOURCE_DIR" rev-parse --short=12 HEAD)"
-fi
-
-UPSTREAM_VERSION="$(node -e "const fs = require('fs'); const manifest = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (!manifest.version) process.exit(1); process.stdout.write(String(manifest.version));" "$SOURCE_DIR/manifest.json")"
-
-WORK_DIR="$TMP_DIR/quick-image-gen"
-mkdir -p "$WORK_DIR"
-cp "$SOURCE_DIR/index.js" "$WORK_DIR/index.js"
-cp "$SOURCE_DIR/style.css" "$WORK_DIR/style.css"
-if [[ -d "$SOURCE_DIR/lib" ]]; then
-    cp -R "$SOURCE_DIR/lib" "$WORK_DIR/lib"
-fi
-
-node - "$WORK_DIR/style.css" <<'NODE'
+cat > "$TMP_DIR/transform-style.js" <<'NODE'
 const fs = require('fs');
 
 const stylePath = process.argv[2];
@@ -147,7 +133,7 @@ for (let index = 0; index < lines.length; index++) {
 fs.writeFileSync(stylePath, lines.join('\n'));
 NODE
 
-node - "$WORK_DIR/index.js" "$WORK_DIR" "$TARGET_DIR" <<'NODE'
+cat > "$TMP_DIR/transform-index.js" <<'NODE'
 const fs = require('fs');
 const path = require('path');
 
@@ -156,41 +142,25 @@ const workDir = process.argv[3];
 const bundledExtensionDir = process.argv[4];
 let source = fs.readFileSync(indexPath, 'utf8');
 
-const importRewrites = new Map([
-    ['await import("../../../extensions.js")', 'await import("../../extensions.js")'],
-    ['await import("../../../../script.js")', 'await import("../../../script.js")'],
-    ['await import("../../../openai.js")', 'await import("../../openai.js")'],
-    ['await import("../../../utils.js")', 'await import("../../utils.js")'],
-    ['await import("../../../RossAscends-mods.js")', 'await import("../../RossAscends-mods.js")'],
-]);
+// Upstream ships from public/scripts/extensions/third-party/quick-image-gen while the
+// bundled copy lives one directory shallower, so every host import that escapes the
+// extension directory loses exactly one leading "../". Deriving this instead of listing
+// each import keeps the sync working when upstream reaches for new host modules.
+const dynamicImportPattern = /(\bimport\(\s*)"(\.[^"]*)"/g;
+let rewrittenImports = 0;
+source = source.replace(dynamicImportPattern, (match, prefix, specifier) => {
+    if (!specifier.startsWith('../')) return match;
 
-const legacySecretsImport = 'await import("../../../../scripts/secrets.js")';
-if (source.includes(legacySecretsImport)) {
-    source = source.replaceAll(legacySecretsImport, 'await import("../../secrets.js")');
-}
+    rewrittenImports++;
+    return `${prefix}"${specifier.slice(3)}"`;
+});
 
-for (const [upstreamImport, bundledImport] of importRewrites) {
-    if (!source.includes(upstreamImport)) {
-        console.error(`Upstream Quick Image Gen index.js is missing expected import: ${upstreamImport}`);
-        process.exit(1);
-    }
-
-    source = source.replaceAll(upstreamImport, bundledImport);
-}
-
-const remainingUpstreamImports = [...importRewrites.keys()].filter(importPath => source.includes(importPath));
-if (remainingUpstreamImports.length) {
-    console.error('Quick Image Gen index.js still contains upstream-depth imports after rewriting:');
-    for (const importPath of remainingUpstreamImports) {
-        console.error(`- ${importPath}`);
-    }
+if (!rewrittenImports) {
+    console.error('Quick Image Gen index.js has no host imports to rewrite for the bundled location.');
     process.exit(1);
 }
 
-const dynamicImportPattern = /await\s+import\("([^"]+)"\)/g;
-for (const [, specifier] of source.matchAll(dynamicImportPattern)) {
-    if (!specifier.startsWith('.')) continue;
-
+for (const [, , specifier] of source.matchAll(dynamicImportPattern)) {
     const resolvedPath = path.resolve(bundledExtensionDir, specifier);
     if (!fs.existsSync(resolvedPath)) {
         console.error(`Quick Image Gen dynamic import does not resolve in the bundled location: ${specifier}`);
@@ -274,7 +244,7 @@ source = source.replace(moduleExport, `${moduleExport}${bridgeExportBlock}`);
 fs.writeFileSync(indexPath, source);
 NODE
 
-node - "$SOURCE_DIR/manifest.json" "$WORK_DIR/manifest.json" <<'NODE'
+cat > "$TMP_DIR/transform-manifest.js" <<'NODE'
 const fs = require('fs');
 
 const sourcePath = process.argv[2];
@@ -287,6 +257,164 @@ manifest.manifest_version = 3;
 fs.writeFileSync(targetPath, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
+cat > "$TMP_DIR/merge-tree.js" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const [, , oursDir, baseDir, upstreamDir, outDir] = process.argv;
+
+const listFiles = (root) => {
+    const files = [];
+    const walk = (directory, relative) => {
+        if (!fs.existsSync(directory)) return;
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            const relativePath = relative ? `${relative}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) walk(path.join(directory, entry.name), relativePath);
+            else if (entry.isFile()) files.push(relativePath);
+        }
+    };
+    walk(root, '');
+    return files;
+};
+
+const emptyBase = path.join(outDir, '.empty-merge-base');
+fs.mkdirSync(outDir, { recursive: true });
+fs.writeFileSync(emptyBase, '');
+
+const relativePaths = [...new Set([
+    ...listFiles(baseDir),
+    ...listFiles(upstreamDir),
+    ...listFiles(oursDir),
+])].sort();
+
+const copy = (from, to) => {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+};
+
+const conflicts = [];
+const removed = [];
+for (const relativePath of relativePaths) {
+    const ours = path.join(oursDir, relativePath);
+    const base = path.join(baseDir, relativePath);
+    const upstream = path.join(upstreamDir, relativePath);
+    const output = path.join(outDir, relativePath);
+
+    const hasOurs = fs.existsSync(ours);
+    const hasBase = fs.existsSync(base);
+    const hasUpstream = fs.existsSync(upstream);
+
+    if (!hasOurs && !hasUpstream) continue;
+
+    if (!hasOurs) {
+        // Upstream added a file that the bundled copy does not have yet.
+        if (!hasBase) copy(upstream, output);
+        continue;
+    }
+
+    if (!hasUpstream) {
+        // Upstream deleted the file, or it only ever existed downstream.
+        if (hasBase) removed.push(relativePath);
+        else copy(ours, output);
+        continue;
+    }
+
+    copy(ours, output);
+    const result = spawnSync('git', [
+        'merge-file',
+        '-L', 'SillyBunny',
+        '-L', 'upstream base',
+        '-L', 'upstream incoming',
+        output,
+        hasBase ? base : emptyBase,
+        upstream,
+    ], { encoding: 'utf8' });
+
+    if (result.status === null || result.status < 0) {
+        console.error(`Quick Image Gen merge failed for ${relativePath}: ${result.stderr || result.error}`);
+        process.exit(1);
+    }
+
+    if (result.status > 0) conflicts.push(`${relativePath} (${result.status} conflict${result.status === 1 ? '' : 's'})`);
+}
+
+fs.rmSync(emptyBase);
+
+fs.writeFileSync(path.join(path.dirname(outDir), 'merge-report.txt'), JSON.stringify({ conflicts, removed }, null, 2));
+
+for (const relativePath of removed) console.log(`removed upstream: ${relativePath}`);
+if (conflicts.length) {
+    console.error('Quick Image Gen merge produced conflicts:');
+    for (const conflict of conflicts) console.error(`- ${conflict}`);
+    process.exit(2);
+}
+NODE
+
+generate_bundle() {
+    local source_dir="$1"
+    local out_dir="$2"
+
+    mkdir -p "$out_dir"
+    cp "$source_dir/index.js" "$out_dir/index.js"
+    cp "$source_dir/style.css" "$out_dir/style.css"
+    if [[ -d "$source_dir/lib" ]]; then
+        cp -R "$source_dir/lib" "$out_dir/lib"
+    fi
+
+    node "$TMP_DIR/transform-style.js" "$out_dir/style.css"
+    node "$TMP_DIR/transform-index.js" "$out_dir/index.js" "$out_dir" "$TARGET_DIR"
+    node "$TMP_DIR/transform-manifest.js" "$source_dir/manifest.json" "$out_dir/manifest.json"
+}
+
+checkout_commit() {
+    local dest="$1"
+    local commit="$2"
+
+    git init --quiet "$dest"
+    git -C "$dest" remote add origin "$UPSTREAM_REPO"
+    if ! git -C "$dest" fetch --quiet --depth=1 origin "$commit" 2>/dev/null; then
+        git -C "$dest" fetch --quiet origin
+    fi
+    git -C "$dest" checkout --quiet "$commit"
+}
+
+read_state() {
+    local key="$1"
+
+    [[ -f "$STATE_FILE" ]] || return 0
+    node -e "const fs = require('fs'); const state = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(String(state[process.argv[2]] ?? ''));" "$STATE_FILE" "$key"
+}
+
+SOURCE_DIR="$LOCAL_SOURCE"
+if [[ -z "$SOURCE_DIR" ]]; then
+    SOURCE_DIR="$TMP_DIR/source"
+    git init --quiet "$SOURCE_DIR"
+    git -C "$SOURCE_DIR" remote add origin "$UPSTREAM_REPO"
+    git -C "$SOURCE_DIR" fetch --quiet --depth=1 origin "$UPSTREAM_REF"
+    git -C "$SOURCE_DIR" checkout --quiet FETCH_HEAD
+fi
+
+for required_file in index.js style.css manifest.json; do
+    if [[ ! -f "$SOURCE_DIR/$required_file" ]]; then
+        echo "Upstream Quick Image Gen source is missing $required_file." >&2
+        exit 1
+    fi
+done
+
+UPSTREAM_COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || printf 'local-source')"
+UPSTREAM_SHORT_COMMIT="$UPSTREAM_COMMIT"
+if [[ "$UPSTREAM_COMMIT" != "local-source" ]]; then
+    UPSTREAM_SHORT_COMMIT="$(git -C "$SOURCE_DIR" rev-parse --short=12 HEAD)"
+fi
+
+UPSTREAM_VERSION="$(node -e "const fs = require('fs'); const manifest = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (!manifest.version) process.exit(1); process.stdout.write(String(manifest.version));" "$SOURCE_DIR/manifest.json")"
+
+BASE_COMMIT="$BASE_COMMIT_OVERRIDE"
+if [[ -z "$BASE_COMMIT" ]]; then
+    BASE_COMMIT="$(read_state commit)"
+fi
+
 if [[ -n "$METADATA_FILE" ]]; then
     {
         printf 'QIG_VERSION=%s\n' "$UPSTREAM_VERSION"
@@ -297,33 +425,68 @@ if [[ -n "$METADATA_FILE" ]]; then
     } > "$METADATA_FILE"
 fi
 
-LIB_IN_SYNC=0
-if [[ ! -d "$WORK_DIR/lib" && ! -e "$TARGET_DIR/lib" ]]; then
-    LIB_IN_SYNC=1
-elif [[ -d "$WORK_DIR/lib" && -d "$TARGET_DIR/lib" ]] \
-    && diff -qr "$WORK_DIR/lib" "$TARGET_DIR/lib" >/dev/null; then
-    LIB_IN_SYNC=1
-fi
-
-if cmp -s "$WORK_DIR/index.js" "$TARGET_DIR/index.js" \
-    && cmp -s "$WORK_DIR/style.css" "$TARGET_DIR/style.css" \
-    && cmp -s "$WORK_DIR/manifest.json" "$TARGET_DIR/manifest.json" \
-    && (( LIB_IN_SYNC )); then
-    echo "Quick Image Gen is already in sync with $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT), version $UPSTREAM_VERSION."
-    exit 0
-fi
-
 if (( CHECK_ONLY )); then
+    if [[ -z "$BASE_COMMIT" ]]; then
+        echo "Quick Image Gen sync state is missing. Run scripts/sync-quick-image-gen.sh to record it." >&2
+        exit 1
+    fi
+
+    if [[ "$BASE_COMMIT" == "$UPSTREAM_COMMIT" ]]; then
+        echo "Quick Image Gen is in sync with $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT), version $UPSTREAM_VERSION."
+        exit 0
+    fi
+
     echo "Quick Image Gen is out of sync with $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT), version $UPSTREAM_VERSION." >&2
     exit 1
 fi
 
-cp "$WORK_DIR/index.js" "$TARGET_DIR/index.js"
-cp "$WORK_DIR/style.css" "$TARGET_DIR/style.css"
-cp "$WORK_DIR/manifest.json" "$TARGET_DIR/manifest.json"
-rm -rf "$TARGET_DIR/lib"
-if [[ -d "$WORK_DIR/lib" ]]; then
-    cp -R "$WORK_DIR/lib" "$TARGET_DIR/lib"
+if [[ -z "$BASE_COMMIT" ]]; then
+    echo "Quick Image Gen sync state is missing a base commit. Pass --base <commit> for the upstream commit the bundled copy was generated from." >&2
+    exit 1
 fi
+
+WORK_DIR="$TMP_DIR/upstream"
+generate_bundle "$SOURCE_DIR" "$WORK_DIR"
+
+BASE_DIR="$TMP_DIR/base"
+if [[ "$BASE_COMMIT" == "$UPSTREAM_COMMIT" ]]; then
+    cp -R "$WORK_DIR" "$BASE_DIR"
+else
+    BASE_SOURCE_DIR="$TMP_DIR/base-source"
+    checkout_commit "$BASE_SOURCE_DIR" "$BASE_COMMIT"
+    generate_bundle "$BASE_SOURCE_DIR" "$BASE_DIR"
+fi
+
+MERGED_DIR="$TMP_DIR/merged/quick-image-gen"
+MERGE_STATUS=0
+node "$TMP_DIR/merge-tree.js" "$TARGET_DIR" "$BASE_DIR" "$WORK_DIR" "$MERGED_DIR" || MERGE_STATUS=$?
+
+if (( MERGE_STATUS == 2 )); then
+    CONFLICT_DIR="$REPO_DIR/.quick-image-gen-merge"
+    rm -rf "$CONFLICT_DIR"
+    mkdir -p "$CONFLICT_DIR"
+    cp -R "$MERGED_DIR/." "$CONFLICT_DIR/"
+    echo "Conflicted merge output written to $CONFLICT_DIR. Resolve the markers, copy the files into $TARGET_DIR, then re-run with --base $UPSTREAM_COMMIT." >&2
+    exit 1
+fi
+
+if (( MERGE_STATUS != 0 )); then
+    exit "$MERGE_STATUS"
+fi
+
+RECORDED_COMMIT="$(read_state commit)"
+if diff -qr "$MERGED_DIR" "$TARGET_DIR" >/dev/null && [[ "$RECORDED_COMMIT" == "$UPSTREAM_COMMIT" ]]; then
+    echo "Quick Image Gen is already in sync with $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT), version $UPSTREAM_VERSION."
+    exit 0
+fi
+
+rm -rf "$TARGET_DIR"
+cp -R "$MERGED_DIR" "$TARGET_DIR"
+
+node -e "
+const fs = require('fs');
+const [statePath, repo, ref, commit, version] = process.argv.slice(1);
+fs.writeFileSync(statePath, \`\${JSON.stringify({ repo, ref, commit, version }, null, 2)}\n\`);
+" "$STATE_FILE" "$UPSTREAM_REPO" "$UPSTREAM_REF" "$UPSTREAM_COMMIT" "$UPSTREAM_VERSION"
 
 echo "Synced Quick Image Gen to version $UPSTREAM_VERSION from $UPSTREAM_REF ($UPSTREAM_SHORT_COMMIT)."

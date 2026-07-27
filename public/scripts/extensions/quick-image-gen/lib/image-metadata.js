@@ -4,7 +4,17 @@ export const MAX_PNG_FILE_BYTES = MAX_IMAGE_BYTES;
 export const MAX_PNG_METADATA_BYTES = 512 * 1024;
 export const MAX_IMAGE_DIMENSION = 16_384;
 export const MAX_IMAGE_PIXELS = 40_000_000;
+export const MAX_PNG_CHUNKS = 4_096;
+export const MAX_ISO_BOXES = 1_024;
+export const MAX_TIFF_IFD_ENTRIES = 1_024;
+export const MAX_TIFF_TOTAL_IFD_ENTRIES = 4_096;
+export const MAX_TIFF_VALUE_COUNT = 1_000_000;
+export const MAX_TIFF_VALUE_BYTES = 4 * 1024 * 1024;
+export const MAX_TIFF_REFERENCED_BYTES = MAX_IMAGE_BYTES;
+export const MAX_ANIMATED_FRAMES = 4_096;
+export const MAX_ANIMATED_FRAME_PIXELS = 200_000_000;
 const MAX_DECODED_PNG_BYTES = 128 * 1024 * 1024;
+const MAX_WEBP_CHUNKS = 4_096;
 export const QIG_STRUCTURED_METADATA_VERSION = 1;
 export const QIG_STRUCTURED_METADATA_KEYWORD = 'qig';
 
@@ -29,6 +39,12 @@ function hasValidDimensions(width, height) {
         && width > 0 && height > 0
         && width <= MAX_IMAGE_DIMENSION && height <= MAX_IMAGE_DIMENSION
         && width * height <= MAX_IMAGE_PIXELS;
+}
+
+function addFrameResources(state, width, height) {
+    state.frames += 1;
+    state.pixels += width * height;
+    return state.frames <= MAX_ANIMATED_FRAMES && state.pixels <= MAX_ANIMATED_FRAME_PIXELS;
 }
 
 const JPEG_START_OF_FRAME_MARKERS = new Set([
@@ -118,6 +134,7 @@ function isStructurallyValidGif(bytes) {
     if (packed & 0x80) offset += 3 * (2 ** ((packed & 0x07) + 1));
     if (offset > bytes.length) return false;
     let sawImage = false;
+    const resources = { frames: 0, pixels: 0 };
     while (offset < bytes.length) {
         const marker = bytes[offset++];
         if (marker === 0x3b) return sawImage && offset === bytes.length;
@@ -135,9 +152,13 @@ function isStructurallyValidGif(bytes) {
             continue;
         }
         if (marker !== 0x2c || offset + 9 > bytes.length) return false;
+        const left = view.getUint16(offset, true);
+        const top = view.getUint16(offset + 2, true);
         const width = view.getUint16(offset + 4, true);
         const height = view.getUint16(offset + 6, true);
-        if (!hasValidDimensions(width, height)) return false;
+        if (!hasValidDimensions(width, height)
+            || left > canvasWidth - width || top > canvasHeight - height
+            || !addFrameResources(resources, width, height)) return false;
         const imagePacked = bytes[offset + 8];
         offset += 9;
         if (imagePacked & 0x80) offset += 3 * (2 ** ((imagePacked & 0x07) + 1));
@@ -168,8 +189,17 @@ function isStructurallyValidWebp(bytes) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (view.getUint32(4, true) + 8 !== bytes.length) return false;
     let offset = 12;
-    let sawImage = false;
+    let chunkCount = 0;
+    let sawStillImage = false;
+    let sawFrame = false;
+    let sawAnimation = false;
+    let extendedFlags = 0;
+    let canvasWidth = 0;
+    let canvasHeight = 0;
+    const resources = { frames: 0, pixels: 0 };
     while (offset < bytes.length) {
+        chunkCount += 1;
+        if (chunkCount > MAX_WEBP_CHUNKS) return false;
         if (offset + 8 > bytes.length) return false;
         const type = ascii(bytes, offset, 4);
         const size = view.getUint32(offset + 4, true);
@@ -179,29 +209,54 @@ function isStructurallyValidWebp(bytes) {
         const data = bytes.subarray(dataStart, dataEnd);
         if (type === "VP8 " && !isValidVp8Chunk(data)) return false;
         if (type === "VP8L" && !isValidVp8lChunk(data)) return false;
-        if (type === "VP8 " || type === "VP8L") sawImage = true;
+        if (type === "VP8 " || type === "VP8L") sawStillImage = true;
         if (type === "VP8X") {
             if (size !== 10) return false;
-            const width = 1 + data[4] + (data[5] << 8) + (data[6] << 16);
-            const height = 1 + data[7] + (data[8] << 8) + (data[9] << 16);
-            if (!hasValidDimensions(width, height)) return false;
+            extendedFlags = data[0];
+            canvasWidth = 1 + data[4] + (data[5] << 8) + (data[6] << 16);
+            canvasHeight = 1 + data[7] + (data[8] << 8) + (data[9] << 16);
+            if (!hasValidDimensions(canvasWidth, canvasHeight)) return false;
+        }
+        if (type === "ANIM") {
+            if (size !== 6) return false;
+            sawAnimation = true;
         }
         if (type === "ANMF") {
-            if (size < 24) return false;
+            if (size < 24 || !canvasWidth || !(extendedFlags & 0x02)) return false;
+            const x = 2 * (data[0] + (data[1] << 8) + (data[2] << 16));
+            const y = 2 * (data[3] + (data[4] << 8) + (data[5] << 16));
             const width = 1 + data[6] + (data[7] << 8) + (data[8] << 16);
             const height = 1 + data[9] + (data[10] << 8) + (data[11] << 16);
-            if (!hasValidDimensions(width, height)) return false;
-            const nestedType = ascii(data, 16, 4);
-            const nestedSize = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(20, true);
-            const nested = data.subarray(24, 24 + nestedSize);
-            if (nested.length !== nestedSize) return false;
-            if ((nestedType === "VP8 " && isValidVp8Chunk(nested)) || (nestedType === "VP8L" && isValidVp8lChunk(nested))) {
-                sawImage = true;
+            if (!hasValidDimensions(width, height)
+                || x > canvasWidth - width || y > canvasHeight - height
+                || !addFrameResources(resources, width, height)) return false;
+            const nestedView = new DataView(data.buffer, data.byteOffset, data.byteLength);
+            let nestedOffset = 16;
+            let frameImage = false;
+            while (nestedOffset < data.length) {
+                chunkCount += 1;
+                if (chunkCount > MAX_WEBP_CHUNKS || nestedOffset + 8 > data.length) return false;
+                const nestedType = ascii(data, nestedOffset, 4);
+                const nestedSize = nestedView.getUint32(nestedOffset + 4, true);
+                const nestedStart = nestedOffset + 8;
+                const nestedEnd = nestedStart + nestedSize;
+                if (nestedEnd > data.length) return false;
+                const nested = data.subarray(nestedStart, nestedEnd);
+                if (nestedType === "VP8 " || nestedType === "VP8L") {
+                    if (frameImage
+                        || (nestedType === "VP8 " && !isValidVp8Chunk(nested))
+                        || (nestedType === "VP8L" && !isValidVp8lChunk(nested))) return false;
+                    frameImage = true;
+                }
+                nestedOffset = nestedEnd + (nestedSize & 1);
             }
+            if (!frameImage || nestedOffset !== data.length) return false;
+            sawFrame = true;
         }
         offset = dataEnd + (size & 1);
     }
-    return sawImage && offset === bytes.length;
+    if (offset !== bytes.length || (sawStillImage && sawFrame)) return false;
+    return sawStillImage || (sawFrame && sawAnimation);
 }
 
 function isStructurallyValidBmp(bytes) {
@@ -238,23 +293,35 @@ function isStructurallyValidBmp(bytes) {
     return imageSize > 0 && pixelOffset + imageSize <= bytes.length;
 }
 
-function readTiffValues(bytes, entryOffset, littleEndian) {
+const TIFF_TYPE_WIDTHS = Object.freeze({
+    1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8,
+});
+const NEEDED_TIFF_TAGS = new Set([256, 257, 273, 279, 324, 325, 513, 514]);
+
+function readTiffValueDescriptor(bytes, entryOffset, littleEndian, state) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const type = view.getUint16(entryOffset + 2, littleEndian);
     const count = view.getUint32(entryOffset + 4, littleEndian);
-    const widths = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
-    const width = widths[type];
-    if (!width || !count || count > 1_000_000) return null;
+    const width = TIFF_TYPE_WIDTHS[type];
+    if (!width || !count) return null;
     const byteLength = count * width;
+    if (count > MAX_TIFF_VALUE_COUNT - state.valueCount
+        || byteLength > MAX_TIFF_VALUE_BYTES - state.valueBytes) return null;
+    state.valueCount += count;
+    state.valueBytes += byteLength;
     const start = byteLength <= 4 ? entryOffset + 8 : view.getUint32(entryOffset + 8, littleEndian);
-    if (start + byteLength > bytes.length) return null;
-    if (![1, 3, 4].includes(type)) return [0];
-    const values = [];
-    for (let index = 0; index < count; index++) {
-        const offset = start + index * width;
-        values.push(width === 1 ? bytes[offset] : (width === 2 ? view.getUint16(offset, littleEndian) : view.getUint32(offset, littleEndian)));
-    }
-    return values;
+    if (start > bytes.length - byteLength) return null;
+    return { type, count, width, start };
+}
+
+function readTiffUnsigned(bytes, descriptor, index, littleEndian) {
+    if (!descriptor || index < 0 || index >= descriptor.count || ![1, 3, 4].includes(descriptor.type)) return null;
+    const offset = descriptor.start + index * descriptor.width;
+    if (descriptor.width === 1) return bytes[offset];
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return descriptor.width === 2
+        ? view.getUint16(offset, littleEndian)
+        : view.getUint32(offset, littleEndian);
 }
 
 function isStructurallyValidTiff(bytes) {
@@ -264,35 +331,62 @@ function isStructurallyValidTiff(bytes) {
     if (!littleEndian && !bigEndian) return false;
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (view.getUint16(2, littleEndian) !== 42) return false;
-    const ifdOffset = view.getUint32(4, littleEndian);
-    if (ifdOffset < 8 || ifdOffset + 2 > bytes.length) return false;
-    const count = view.getUint16(ifdOffset, littleEndian);
-    if (!count || ifdOffset + 2 + count * 12 + 4 > bytes.length) return false;
-    const tags = new Map();
-    for (let index = 0; index < count; index++) {
-        const entryOffset = ifdOffset + 2 + index * 12;
-        const tag = view.getUint16(entryOffset, littleEndian);
-        const values = readTiffValues(bytes, entryOffset, littleEndian);
-        if (!values) return false;
-        tags.set(tag, values);
+    let ifdOffset = view.getUint32(4, littleEndian);
+    const seenIfds = new Set();
+    const state = { valueCount: 0, valueBytes: 0, entries: 0, referencedBytes: 0, frames: 0, pixels: 0 };
+    while (ifdOffset !== 0) {
+        if (ifdOffset < 8 || ifdOffset > bytes.length - 2 || seenIfds.has(ifdOffset)) return false;
+        seenIfds.add(ifdOffset);
+        const count = view.getUint16(ifdOffset, littleEndian);
+        if (!count || count > MAX_TIFF_IFD_ENTRIES || count > MAX_TIFF_TOTAL_IFD_ENTRIES - state.entries) return false;
+        state.entries += count;
+        const entriesEnd = ifdOffset + 2 + count * 12;
+        if (entriesEnd > bytes.length - 4) return false;
+
+        const tags = new Map();
+        for (let index = 0; index < count; index++) {
+            const entryOffset = ifdOffset + 2 + index * 12;
+            const tag = view.getUint16(entryOffset, littleEndian);
+            const descriptor = readTiffValueDescriptor(bytes, entryOffset, littleEndian, state);
+            if (!descriptor) return false;
+            if (NEEDED_TIFF_TAGS.has(tag)) {
+                if (tags.has(tag) || ![1, 3, 4].includes(descriptor.type)) return false;
+                tags.set(tag, descriptor);
+            }
+        }
+
+        const widthTag = tags.get(256);
+        const heightTag = tags.get(257);
+        if (widthTag?.count !== 1 || heightTag?.count !== 1) return false;
+        const width = readTiffUnsigned(bytes, widthTag, 0, littleEndian);
+        const height = readTiffUnsigned(bytes, heightTag, 0, littleEndian);
+        if (!hasValidDimensions(width, height) || !addFrameResources(state, width, height)) return false;
+
+        const dataPair = [[273, 279], [324, 325], [513, 514]]
+            .map(([offsetTag, countTag]) => [tags.get(offsetTag), tags.get(countTag)])
+            .find(([offsets, byteCounts]) => offsets && byteCounts);
+        if (!dataPair) return false;
+        const [offsets, byteCounts] = dataPair;
+        if (byteCounts.count !== 1 && offsets.count !== byteCounts.count) return false;
+        for (let index = 0; index < offsets.count; index++) {
+            const offset = readTiffUnsigned(bytes, offsets, index, littleEndian);
+            const length = readTiffUnsigned(bytes, byteCounts, byteCounts.count === 1 ? 0 : index, littleEndian);
+            if (offset === null || !length || offset >= bytes.length || length > bytes.length - offset
+                || length > MAX_TIFF_REFERENCED_BYTES - state.referencedBytes) return false;
+            state.referencedBytes += length;
+        }
+        ifdOffset = view.getUint32(entriesEnd, littleEndian);
     }
-    const width = tags.get(256)?.[0];
-    const height = tags.get(257)?.[0];
-    const offsets = tags.get(273) || tags.get(324) || tags.get(513);
-    const byteCounts = tags.get(279) || tags.get(325) || tags.get(514);
-    if (!hasValidDimensions(width, height) || !offsets?.length || !byteCounts?.length) return false;
-    if (byteCounts.length !== 1 && offsets.length !== byteCounts.length) return false;
-    return offsets.every((offset, index) => {
-        const length = byteCounts[byteCounts.length === 1 ? 0 : index];
-        return length > 0 && offset < bytes.length && offset + length <= bytes.length;
-    });
+    return state.frames > 0;
 }
 
-function readIsoBoxes(bytes, start = 0, end = bytes.length) {
+function readIsoBoxes(bytes, start = 0, end = bytes.length, state = { count: 0 }) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const boxes = [];
     let offset = start;
     while (offset < end) {
+        state.count += 1;
+        if (state.count > MAX_ISO_BOXES) return null;
         if (offset + 8 > end) return null;
         let size = view.getUint32(offset);
         const type = ascii(bytes, offset + 4, 4);
@@ -313,23 +407,26 @@ function readIsoBoxes(bytes, start = 0, end = bytes.length) {
 
 function isStructurallyValidAvif(bytes) {
     if (bytes.length < 32) return false;
-    const boxes = readIsoBoxes(bytes);
+    const state = { count: 0 };
+    const boxes = readIsoBoxes(bytes, 0, bytes.length, state);
     if (!boxes) return false;
     const ftyp = boxes.find(box => box.type === "ftyp");
     const meta = boxes.find(box => box.type === "meta");
     const mdat = boxes.find(box => box.type === "mdat");
-    if (!ftyp || !meta || !mdat || mdat.end <= mdat.start || ftyp.end - ftyp.start < 8) return false;
-    const brands = ascii(bytes, ftyp.start, ftyp.end - ftyp.start);
-    if (!brands.includes("avif") && !brands.includes("avis")) return false;
+    const ftypLength = ftyp ? ftyp.end - ftyp.start : 0;
+    if (!ftyp || !meta || !mdat || mdat.end <= mdat.start || ftypLength < 8 || ftypLength > 256 || ftypLength % 4 !== 0) return false;
+    const brands = [ascii(bytes, ftyp.start, 4)];
+    for (let offset = ftyp.start + 8; offset < ftyp.end; offset += 4) brands.push(ascii(bytes, offset, 4));
+    if (!brands.includes("avif") || brands.includes("avis")) return false;
     if (meta.start + 4 > meta.end) return false;
-    const metaBoxes = readIsoBoxes(bytes, meta.start + 4, meta.end);
+    const metaBoxes = readIsoBoxes(bytes, meta.start + 4, meta.end, state);
     const required = new Set(["pitm", "iloc", "iinf", "iprp"]);
     if (!metaBoxes || !metaBoxes.some(box => box.type === "hdlr")
         || ![...required].every(type => metaBoxes.some(box => box.type === type))) return false;
     const iprp = metaBoxes.find(box => box.type === "iprp");
-    const iprpBoxes = readIsoBoxes(bytes, iprp.start, iprp.end);
+    const iprpBoxes = readIsoBoxes(bytes, iprp.start, iprp.end, state);
     const ipco = iprpBoxes?.find(box => box.type === "ipco");
-    const properties = ipco && readIsoBoxes(bytes, ipco.start, ipco.end);
+    const properties = ipco && readIsoBoxes(bytes, ipco.start, ipco.end, state);
     const ispe = properties?.find(box => box.type === "ispe");
     if (!ispe || ispe.end - ispe.start < 12) return false;
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -338,6 +435,7 @@ function isStructurallyValidAvif(bytes) {
 
 export function detectImageFormat(value) {
     const bytes = asBytes(value);
+    if (!bytes.length || bytes.byteLength > MAX_IMAGE_BYTES) return null;
     if (bytes.length >= 20 && hasPrefix(bytes, PNG_SIGNATURE)) {
         try {
             readChunks(bytes);
@@ -379,7 +477,14 @@ function readChunks(value) {
     let sawHeader = false;
     let sawImageData = false;
     let imageDataEnded = false;
+    let chunkCount = 0;
+    let canvasWidth = 0;
+    let canvasHeight = 0;
+    let animation = null;
+    const animationResources = { frames: 0, pixels: 0 };
     while (offset < bytes.length) {
+        chunkCount += 1;
+        if (chunkCount > MAX_PNG_CHUNKS) throw new Error(`PNG contains more than ${MAX_PNG_CHUNKS} chunks`);
         if (offset + 12 > bytes.length) throw new Error('Truncated PNG chunk');
         const length = view.getUint32(offset);
         const end = offset + 12 + length;
@@ -407,9 +512,30 @@ function readChunks(value) {
                 || ![0, 1].includes(bytes[offset + 20])) {
                 throw new Error('Invalid PNG header');
             }
+            canvasWidth = width;
+            canvasHeight = height;
             sawHeader = true;
         } else if (type === 'IHDR') {
             throw new Error('PNG contains multiple IHDR chunks');
+        }
+        if (type === 'acTL') {
+            if (animation || sawImageData || length !== 8) throw new Error('Invalid PNG animation control');
+            const frames = view.getUint32(offset + 8);
+            if (!frames || frames > MAX_ANIMATED_FRAMES) throw new Error('PNG animation contains too many frames');
+            animation = { frames };
+        } else if (type === 'fcTL') {
+            if (!animation || length !== 26) throw new Error('Invalid PNG animation frame control');
+            const width = view.getUint32(offset + 12);
+            const height = view.getUint32(offset + 16);
+            const x = view.getUint32(offset + 20);
+            const y = view.getUint32(offset + 24);
+            if (!hasValidDimensions(width, height)
+                || x > canvasWidth - width || y > canvasHeight - height
+                || !addFrameResources(animationResources, width, height)) {
+                throw new Error('PNG animation exceeds the configured frame resource limit');
+            }
+        } else if (type === 'fdAT' && (!animation || length <= 4 || animationResources.frames === 0)) {
+            throw new Error('Invalid PNG animation frame data');
         }
         if (type === 'IDAT') {
             if (imageDataEnded) throw new Error('PNG IDAT chunks must be consecutive');
@@ -427,6 +553,7 @@ function readChunks(value) {
     }
     if (!sawIend) throw new Error('PNG is missing IEND');
     if (!sawHeader || !sawImageData) throw new Error('PNG is missing required image data');
+    if (animation && animationResources.frames !== animation.frames) throw new Error('PNG animation frame count does not match its header');
     assertZlibEnvelope(chunks.filter(chunk => chunk.type === 'IDAT').map(chunk => chunk.data));
     return chunks;
 }

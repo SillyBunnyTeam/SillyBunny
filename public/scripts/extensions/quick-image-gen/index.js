@@ -16,7 +16,7 @@ import {
     getResultFailures,
     normalizeBatchCount,
 } from "./lib/generation.js";
-import { GenerationRunManager, snapshotGenerationSettings } from "./lib/generation-run.js";
+import { GenerationRunManager, OwnedTransientValue, snapshotGenerationRunSettings, snapshotGenerationSettings } from "./lib/generation-run.js";
 import { normalizeProviderResult, sanitizeEffectiveRequest } from "./lib/provider-contract.js";
 import {
     createSettingsExport,
@@ -45,6 +45,7 @@ import {
 import {
     boundedInjectSource,
     compileInjectRegex,
+    limitAutomaticInjectMatches,
     MAX_INJECT_MATCHES,
 } from "./lib/inject-regex.js";
 import { mergeSTStylePrompts, resolveSTStyleSettings } from "./lib/st-style.js";
@@ -61,12 +62,33 @@ import {
     selectComfyModelList,
 } from "./lib/comfyui-backend.js";
 import {
+    A1111_REQUEST_TIMEOUT_MS,
     buildA1111ADetailerUnit,
+    isCurrentA1111ModelRefresh,
+    materializeA1111ReferenceBase64,
     normalizeA1111BaseUrl,
     parseFiniteFloat,
     parseFiniteInt,
 } from "./lib/a1111-runtime.js";
-import { getGeminiCandidateFailure, isEffectivelyBlankPixels } from "./lib/generated-image.js";
+import {
+    assertSafeConfigurableEndpoint,
+    clonedResponseIncludes,
+    combineAbortSignals,
+    createAbortDeadline,
+    getCorsFailureMessage,
+    getCorsProxyStateKey,
+} from "./lib/network-runtime.js";
+import {
+    getGeminiCandidateFailure,
+    isEffectivelyBlankPixels,
+    normalizeSavedImagePath,
+} from "./lib/generated-image.js";
+import {
+    persistLockedBackgroundState,
+    removeInsertedMessage,
+    rethrowAfterTransactionRollback,
+    runDurableTransaction,
+} from "./lib/chat-transaction.js";
 import {
     buildGptImagePayload,
     buildNanobananaPayload,
@@ -85,12 +107,14 @@ import {
     requestGptImageWithRouteRetry,
 } from "./lib/provider-adapters.js";
 import {
+    buildNanoGptReferenceFields,
     getFalEffectiveGuidance,
     getFalEffectiveSteps,
     getGlmImageResolution,
     getNanoGptEffectiveResolution,
     getNanoGptModelCapabilities,
     getNanoGptReferenceConstraints,
+    getNanoGptStrengthParameter,
     getProviderGenerationCapabilities,
     pollinationsModelRequiresAuth,
     registerPollinationsModelMetadata,
@@ -118,14 +142,18 @@ import {
 import {
     buildContextMediaCandidates,
     canDeleteContextMediaPath,
+    contextMediaBytesMatchFormat,
     normalizeContextMediaLibrary,
     parseContextMediaClassifierResponse,
     selectContextMedia,
     validateContextMediaFile,
+    validateContextMediaFileSelection,
     validateContextMediaRemoteUrl,
 } from "./lib/context-media.js";
 import {
     applyStateBeforePersistence,
+    createAccountStorageScope,
+    createAbortableSerializedRunner,
     createConversationCheckpoint,
     createLatestWinsAsyncRunner,
     getCharacterProviderReferences,
@@ -137,14 +165,46 @@ import {
     normalizeCharacterReferenceRecord,
     normalizeMessageSourceIdentity,
     normalizePromptHistory,
+    persistIfCurrent,
+    persistPromptHistory,
     readConstrainedNumber,
     registerConversationCheckpointInsertion,
     rethrowAfterRollbackPersistence,
+    restoreMutableMessageState,
     sendIsolatedConnectionManagerRequest,
     setCharacterProviderReferences,
+    snapshotMutableMessageState,
     summarizeOperationOutcomes,
     unregisterConversationCheckpointInsertion,
 } from "./lib/client-orchestration.js";
+import {
+    appendWorldInfoToRequest,
+    createPromptPipelineState,
+    getPromptPipelineResult,
+    setAuthoritativeFinalPrompt,
+    updatePromptPipelineState,
+} from "./lib/prompt-pipeline.js";
+import {
+    buildWorldInfoScanChat,
+    formatWorldInfoScanMessage,
+    getWorldInfoContextBudget,
+    resolveWorldInfoContext,
+} from "./lib/world-info-context.js";
+import {
+    captureRegenerationReferences,
+    normalizeInjectInsertMode,
+    parseContextualFilterSelection,
+    RegenerationReferenceStore,
+    shouldCleanInjectSourceTags,
+} from "./lib/generation-semantics.js";
+import { createLifecycleScope } from "./lib/lifecycle.js";
+import { PrivacyLogBuffer } from "./lib/privacy-log.js";
+import {
+    createAccessibleIconButton,
+    resolveMainGenerationControlState,
+    shouldBlockGenerationStart,
+} from "./lib/action-controls.js";
+// SillyBunny divergence: Conversation capability registry bridge.
 import { registerExtensionCapability } from "../../sillybunny-conversation/extension-capabilities.js";
 
 // Artist lists for random selection
@@ -159,11 +219,13 @@ function getRandomArtist(useTagFormat = false) {
 
 const extensionName = "quick-image-gen";
 let extension_settings, getContext, saveSettingsDebounced, saveSettings, generateQuietPrompt, generateRaw, generateRawData, createRawPrompt, substituteParams, getRequestHeaders;
+let checkWorldInfo, hostScriptModule, hostWorldInfoModule;
 let createGenerationParameters, getChatCompletionModel;
 let saveBase64AsFile, getSanitizedFilename, humanizedDateTime;
 
 function normalizeGeneratedImageSource(value) {
-    return normalizeImageSource(value, { allowHttp: true, allowRelative: true });
+    return normalizeSavedImagePath(value)
+        || normalizeImageSource(value, { allowHttp: true, allowRelative: true });
 }
 
 function normalizeProviderImageSource(value, { trustedLocalBackend = false, trustedBaseUrl = "" } = {}) {
@@ -349,7 +411,6 @@ const QIG_DEFAULT_COLLAPSED_SECTIONS = {
     sectionCreate: true,
     sectionContext: true,
     sectionAutomation: true,
-    sectionGeneration: true,
     providerSettings: false,
     promptAdvanced: true,
     injectOptions: true,
@@ -465,29 +526,31 @@ function updateGenerateShortcutHints() {
     if (hint) hint.textContent = label;
 }
 
+function handleQigKeyboardShortcut(event) {
+    if (isEditableShortcutTarget(event.target)) return;
+    if (event.target?.closest?.(".qig-popup")) return;
+    if (eventMatchesGenerateShortcut(event)) {
+        const generateBtn = document.getElementById("qig-generate-btn");
+        if (!generateBtn || generateBtn.disabled || isGenerating) return;
+        event.preventDefault();
+        runConfiguredPaletteGeneration();
+        return;
+    }
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || !event.shiftKey) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key === "g") {
+        event.preventDefault();
+        showGallery();
+    } else if (key === "h") {
+        event.preventDefault();
+        showPromptHistory();
+    }
+}
+
 function bindQigKeyboardShortcuts() {
     if (qigKeyboardShortcutsBound) return;
     qigKeyboardShortcutsBound = true;
-    document.addEventListener("keydown", (event) => {
-        if (isEditableShortcutTarget(event.target)) return;
-        if (event.target?.closest?.(".qig-popup")) return;
-        if (eventMatchesGenerateShortcut(event)) {
-            const generateBtn = document.getElementById("qig-generate-btn");
-            if (!generateBtn || generateBtn.disabled || isGenerating) return;
-            event.preventDefault();
-            runConfiguredPaletteGeneration();
-            return;
-        }
-        if (!(event.ctrlKey || event.metaKey) || event.altKey || !event.shiftKey) return;
-        const key = String(event.key || "").toLowerCase();
-        if (key === "g") {
-            event.preventDefault();
-            showGallery();
-        } else if (key === "h") {
-            event.preventDefault();
-            showPromptHistory();
-        }
-    });
+    document.addEventListener("keydown", handleQigKeyboardShortcut);
 }
 
 function setupQigCollapsibleSection(sectionId, buttonId, contentId) {
@@ -528,7 +591,6 @@ function setupSettingsSearch() {
             ["sectionCreate", "qig-section-create-toggle", "qig-section-create-content"],
             ["sectionContext", "qig-section-context-toggle", "qig-section-context-content"],
             ["sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content"],
-            ["sectionGeneration", "qig-section-generation-toggle", "qig-section-generation-content"],
             ["providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content"],
             ["promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content"],
             ["injectOptions", "qig-inject-options-toggle", "qig-inject-options"],
@@ -762,19 +824,19 @@ function collectQigStatus(s = getSettings()) {
     const selectedModelNeedsKey = s.provider === "pollinations"
         && pollinationsModelRequiresAuth(s.pollinationsModel);
     if ((PROVIDERS[s.provider]?.needsKey || selectedModelNeedsKey) && !getProviderKeyValue(s)) {
-        warnings.push(`${providerName} needs an API key. Open More settings → Provider Setup or Quick Setup to add one.`);
+        warnings.push(`${providerName} needs an API key. Open More settings → Image Provider & Output or Quick Setup to add one.`);
     }
     if (s.provider === "proxy" && !String(s.proxyUrl || "").trim()) {
-        warnings.push("Reverse proxy URL is not set. Open More settings → Provider Setup to configure it.");
+        warnings.push("Reverse proxy URL is not set. Open More settings → Image Provider & Output to configure it.");
     }
     if (s.provider === "custom" && !String(s.customApiUrl || "").trim()) {
-        warnings.push("Custom API request URL is not set. Open More settings → Provider Setup to configure it.");
+        warnings.push("Custom API request URL is not set. Open More settings → Image Provider & Output to configure it.");
     }
     if (s.provider === "custom" && s.customApiAuthType !== "none" && !String(s.customApiKey || "").trim()) {
         warnings.push("Custom API authentication is enabled but its credential is empty.");
     }
     if (s.provider === "local" && !String(s.localUrl || "").trim()) {
-        warnings.push("Local server URL is not set. Open More settings → Provider Setup to configure it.");
+        warnings.push("Local server URL is not set. Open More settings → Image Provider & Output to configure it.");
     }
     if (s.injectEnabled && !s.autoGenerate) {
         warnings.push("AI-tagged source needs Auto-generate on. Tags will not fire until it is re-enabled.");
@@ -836,7 +898,7 @@ function applyChatGptNbpWorkflowPreset({ persist = true, notify = true } = {}) {
         messageRange: "-1",
         useLLMPrompt: true,
         llmPromptStyle: "natural",
-        llmEditPrompt: false,
+        reviewBeforeGenerate: false,
         appendQuality: true,
         style: "none",
         width: 1024,
@@ -865,7 +927,9 @@ const defaultSettings = {
     useLLMPrompt: false,
     llmPromptStyle: "tags",
     llmCustomInstruction: "",
-    llmEditPrompt: false,
+    reviewBeforeGenerate: false,
+    preserveCharacterIdentity: true,
+    useWorldInfo: false,
     llmAddQuality: false,
     llmAddLighting: false,
     llmAddArtist: false,
@@ -1140,7 +1204,6 @@ const defaultSettings = {
 let lastPrompt = "";
 let lastNegative = "";
 let lastPromptWasLLM = false;
-let lastProxyContextRefImages = [];
 let lastGenerationSourceMessageIndex = null;
 let lastGenerationSourceChatId = "";
 let lastGenerationSourceMessageId = "";
@@ -1310,7 +1373,8 @@ function generateUUID() {
 let sessionGallery = [];
 let galleryRepository = null;
 let galleryInitializationPromise = Promise.resolve();
-let promptHistory = normalizePromptHistory(safeParse("qig_prompt_history", []));
+let accountStorageScope = null;
+let promptHistory = [];
 let charSettings = safeParse("qig_char_settings", {});
 let connectionProfiles = safeParse("qig_profiles", {});
 let charRefImages = safeParse("qig_char_ref_images", {});
@@ -1332,6 +1396,9 @@ try {
 let selectedComfyWorkflowId = "";
 let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
+const runSerializedTextAITask = createAbortableSerializedRunner();
+const regenerationReferenceStore = new RegenerationReferenceStore();
+let regenerationReferenceAccountId = null;
 let activeGenerationRun = null;
 let activeComfyPrompt = null;
 let activeExternalGenerationRun = null;
@@ -1340,6 +1407,8 @@ let nextExternalGenerationRunId = 1;
 let unregisterQuickImageGenCapability = null;
 const blobUrls = new Set();
 let lifecycleCleanupInstalled = false;
+let pageLifecycleScope = null;
+let hostEventLifecycleScope = null;
 let batchKeyHandler = null;
 const _processedInjectIndices = new Set();
 let _injectProcessingCount = 0;
@@ -1363,15 +1432,19 @@ let _suppressAutoGenerateUntil = 0;
 let _lastAutoGenerateSuppressionLogTs = 0;
 let paletteGenerateLockUntil = 0;
 let paletteCancelLockUntil = 0;
+let generationStartLockUntil = 0;
 let _palettePresetMenuCleanup = null;
 let _paletteInjectActive = false;
 let _paletteInjectSerial = 0;
 let _automationRevision = 0;
 let _promptHistorySaveQueued = false;
-let transientGenerationTarget = null;
-let transientGenerationSettingsOverride = null;
+const transientGenerationTargetState = new OwnedTransientValue();
+const localCancellationBarriers = new Map();
+const transientGenerationSettingsState = new OwnedTransientValue();
 let qigMessageActionObserver = null;
+let qigMessageActionObserverRetryTimer = null;
 let qigMessageActionRefreshQueued = false;
+let qigMessageActionRefreshCancel = null;
 let qigMessageActionClicksBound = false;
 let qigSlashCommandsRegistered = false;
 const PALETTE_GENERATE_LOCK_MS = 350;
@@ -1561,11 +1634,16 @@ async function runInternalQuietPromptRequest(instruction, {
     };
 
     try {
-        return await runAbortableTask(() => generateQuietPrompt(quietOptions), signal);
+        return await runSerializedTextAITask(() => generateQuietPrompt(quietOptions), signal);
     } catch (e) {
         if (e.name === "AbortError") throw e;
         log(`${requestLabel}: generateQuietPrompt with options failed: ${e.message}, using simple call`);
-        return await runAbortableTask(() => generateQuietPrompt({ quietPrompt, quietToLoud: false }), signal);
+        return await runSerializedTextAITask(() => generateQuietPrompt({
+            quietPrompt,
+            skipWIAN: true,
+            quietName: quietName || `ImageGen_${Date.now()}`,
+            quietToLoud: false,
+        }), signal);
     }
 }
 
@@ -1660,10 +1738,10 @@ async function callInternalStandaloneLLM(instruction, {
         if (attemptedDirectRawRequest || !canUseDirectMainChatRawRequest()) return null;
         attemptedDirectRawRequest = true;
         try {
-            const meta = await callDirectMainChatRawRequest(instruction, {
+            const meta = await runSerializedTextAITask(() => callDirectMainChatRawRequest(instruction, {
                 signal,
                 prefill: resolvedPrefill,
-            });
+            }), signal);
             if (meta?.text) {
                 return meta;
             }
@@ -1679,7 +1757,7 @@ async function callInternalStandaloneLLM(instruction, {
     return await runWithInternalLLMRequest(requestLabel, async () => {
         if (returnMeta && typeof generateRawData === "function") {
             try {
-                const response = await runAbortableTask(() => generateRawData({
+                const response = await runSerializedTextAITask(() => generateRawData({
                     prompt: instruction,
                     quietToLoud: false,
                     prefill: resolvedPrefill,
@@ -1709,7 +1787,7 @@ async function callInternalStandaloneLLM(instruction, {
             }
         } else if (typeof generateRaw === "function") {
             try {
-                const text = await runAbortableTask(() => generateRaw({
+                const text = await runSerializedTextAITask(() => generateRaw({
                     prompt: instruction,
                     quietToLoud: false,
                     trimNames: false,
@@ -1839,6 +1917,22 @@ function getMessageContentSignature(message) {
     }));
 }
 
+function createChatIdentitySnapshot(context = getContext?.()) {
+    if (!context) return null;
+    return Object.freeze({
+        chat: context.chat,
+        chatId: getContextMediaChatId(context),
+        chatMetadata: context.chatMetadata,
+    });
+}
+
+function isChatIdentitySnapshotCurrent(snapshot, { requireMetadata = false } = {}) {
+    const current = getContext?.();
+    if (!snapshot || !current || current.chat !== snapshot.chat) return false;
+    if (getContextMediaChatId(current) !== snapshot.chatId) return false;
+    return !requireMetadata || current.chatMetadata === snapshot.chatMetadata;
+}
+
 function createMessageTargetSnapshot(chat, index) {
     const numericIndex = Number(index);
     if (!Array.isArray(chat) || !Number.isInteger(numericIndex) || numericIndex < 0 || numericIndex >= chat.length) return null;
@@ -1876,6 +1970,36 @@ function rememberLastGenerationSource(source = null) {
     lastGenerationSourceChatId = String(source?.chatId ?? source?.sourceChatId ?? "");
     lastGenerationSourceMessageId = String(source?.messageId ?? source?.sourceMessageId ?? "");
     lastGenerationSourceMessageSignature = String(source?.signature ?? source?.sourceMessageSignature ?? "");
+}
+
+function getRegenerationReferenceScopeId(chatId = getContextMediaChatId()) {
+    const accountId = String(getSettings()?._syncCacheId || "");
+    if (regenerationReferenceAccountId !== null && regenerationReferenceAccountId !== accountId) {
+        regenerationReferenceStore.clear();
+    }
+    regenerationReferenceAccountId = accountId;
+    return `${accountId}\u0000${String(chatId || "")}`;
+}
+
+function clearRegenerationReferenceState() {
+    regenerationReferenceStore.clear();
+}
+
+function activateRegenerationReferenceResult(entry, ctx = getContext?.()) {
+    return regenerationReferenceStore.activate(entry, {
+        scopeId: getRegenerationReferenceScopeId(getContextMediaChatId(ctx)),
+    });
+}
+
+function rememberRegenerationReferences(entries, settings, runtimeOptions, { scopeId, groupId } = {}) {
+    return regenerationReferenceStore.remember(
+        entries,
+        captureRegenerationReferences(settings, runtimeOptions),
+        {
+            scopeId: scopeId || getRegenerationReferenceScopeId(),
+            groupId,
+        },
+    );
 }
 
 function resolveSceneMessageSource(message) {
@@ -2161,18 +2285,6 @@ function safeDecodeUrlComponent(value) {
     }
 }
 
-function splitTrailingUrlPunctuation(value) {
-    const raw = String(value || "");
-    const match = raw.match(/[)\],.;!?]+$/);
-    if (!match) {
-        return { url: raw, trailing: "" };
-    }
-    return {
-        url: raw.slice(0, -match[0].length),
-        trailing: match[0],
-    };
-}
-
 function isLikelyDirectImageHttpUrl(value) {
     const url = String(value || "").trim();
     if (!isHttpUrl(url)) return false;
@@ -2199,41 +2311,6 @@ function isLikelyDirectImageHttpUrl(value) {
     return false;
 }
 
-function normalizeExtractedProxyPromptText(value) {
-    return String(value || "")
-        .split("\n")
-        .map(line => line
-            .replace(/\s+([)\]}])/g, "$1")
-            .replace(/([([{])\s+/g, "$1")
-            .replace(/[ \t]{2,}/g, " ")
-            .trim())
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-}
-
-function extractPromptImageUrls(promptText, existingUrls = []) {
-    const source = typeof promptText === "string" ? promptText : "";
-    const seenUrls = new Set(
-        (existingUrls || [])
-            .map(url => String(url || "").trim())
-            .filter(Boolean)
-    );
-    const imageUrls = [];
-    const cleanedText = normalizeExtractedProxyPromptText(source.replace(/https?:\/\/[^\s<>"'`]+/gi, match => {
-        const { url, trailing } = splitTrailingUrlPunctuation(match);
-        if (!isLikelyDirectImageHttpUrl(url)) return match;
-        if (!seenUrls.has(url)) {
-            seenUrls.add(url);
-            imageUrls.push(url);
-        }
-        const preservedTrailing = trailing.replace(/[.,;!?]+/g, "");
-        return preservedTrailing || " ";
-    }));
-
-    return { imageUrls, cleanedText };
-}
-
 function getProxyPromptFallback(hasRefImages) {
     return hasRefImages
         ? "Create a new image that matches the provided reference image(s)."
@@ -2241,16 +2318,9 @@ function getProxyPromptFallback(hasRefImages) {
 }
 
 function normalizeProxyPromptInputs(prompt, refImages = []) {
-    const extracted = extractPromptImageUrls(prompt, refImages);
-    const mergedRefImages = [...refImages, ...extracted.imageUrls];
-    if (extracted.imageUrls.length > 0) {
-        log(`Auto-detected ${extracted.imageUrls.length} direct image URL(s) in prompt text`);
-        extracted.imageUrls.forEach(img => log(`  prompt image URL: ${img.substring(0, Math.min(img.length, 80))}${img.length > 80 ? "..." : ""}`));
-    }
     return {
-        promptText: extracted.cleanedText,
-        promptImageUrls: extracted.imageUrls,
-        refImages: mergedRefImages,
+        promptText: String(prompt || "").trim(),
+        refImages: normalizeProxyRuntimeRefImages(refImages),
     };
 }
 
@@ -2479,7 +2549,13 @@ async function normalizeProxyRefImages(refImages, refMode, signal) {
         const parsedUrl = new URL(absoluteUrl);
         if (parsedUrl.username || parsedUrl.password) throw new Error("Reference image URLs must not contain userinfo credentials");
         try {
-            const { buffer } = await fetchImageBuffer(absoluteUrl, { signal, maxBytes: MAX_IMAGE_BYTES - inlineBytes });
+            const parsedOrigin = parsedUrl.origin;
+            const currentOrigin = globalThis.location?.origin || "";
+            const { buffer } = await fetchImageBuffer(absoluteUrl, {
+                signal,
+                maxBytes: MAX_IMAGE_BYTES - inlineBytes,
+                credentials: currentOrigin && parsedOrigin === currentOrigin ? "same-origin" : "omit",
+            });
             const format = detectImageFormat(buffer);
             if (!format) throw new Error("URL did not return a supported image");
             inlineBytes += buffer.byteLength;
@@ -2878,11 +2954,20 @@ const A1111_SCHEDULERS = ["Automatic", "Uniform", "Karras", "Exponential", "Poly
 
 const COMFY_SCHEDULERS = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "beta", "kl_optimal"];
 
-const logs = [];
+const logs = new PrivacyLogBuffer();
+let debugLoggingEnabled = false;
+
+function writeLog(msg, options) {
+    const result = logs.append(msg, options);
+    if (result) console.log("[QIG]", result.message);
+}
+
 function log(msg) {
-    logs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
-    if (logs.length > 100) logs.shift();
-    console.log("[QIG]", msg);
+    writeLog(msg);
+}
+
+function debugLog(msg) {
+    writeLog(msg, { diagnostic: true, debugEnabled: debugLoggingEnabled });
 }
 
 function parseFloatOr(value, fallback) {
@@ -3139,18 +3224,26 @@ function isExactReplicateApiUrl(value) {
 }
 
 // CORS-aware fetch: tries direct, falls back to ST's /proxy/ endpoint
-let _corsProxyState = 0; // 0=unknown, 1=direct works, 2=proxy works, -1=proxy disabled, -2=blocked by basicAuth
+const _corsProxyStates = new Map(); // 0=unknown, 1=direct works, 2=proxy works, -1=proxy disabled, -2=blocked by basicAuth
 async function corsFetch(url, opts = {}) {
     const { qigAllowProxy = true, ...fetchOptions } = opts;
-    const crossOrigin = (() => {
-        try { return new URL(url).origin !== location.origin; } catch { return true; }
-    })();
+    const currentUrl = globalThis.location?.href || "http://localhost/";
+    let crossOrigin = true;
+    let proxyStateKey = "";
+    try {
+        crossOrigin = new URL(url, currentUrl).origin !== new URL(currentUrl).origin;
+        if (crossOrigin) proxyStateKey = getCorsProxyStateKey(url, fetchOptions, currentUrl);
+    } catch { /* invalid URLs are left to fetch */ }
+    const proxyState = proxyStateKey ? (_corsProxyStates.get(proxyStateKey) || 0) : 0;
+    const setProxyState = (state) => {
+        if (proxyStateKey) _corsProxyStates.set(proxyStateKey, state);
+    };
     const requestHasOwnAuthorization = hasAuthorizationHeader(fetchOptions.headers);
     // Prefer direct fetch; only skip direct cross-origin when proxy has already been proven required.
-    if (!crossOrigin || !qigAllowProxy || _corsProxyState !== 2) {
+    if (!crossOrigin || !qigAllowProxy || proxyState !== 2) {
         try {
             const res = await fetch(url, fetchOptions);
-            if (crossOrigin && _corsProxyState !== -2) _corsProxyState = 1;
+            if (crossOrigin && proxyState !== -2) setProxyState(1);
             return res;
         } catch (e) {
             if (e.name === 'AbortError') throw e;
@@ -3161,11 +3254,11 @@ async function corsFetch(url, opts = {}) {
         }
     }
     if (!qigAllowProxy) throw new TypeError(`Cannot reach ${url} directly`);
-    if (_corsProxyState === -2 && requestHasOwnAuthorization) {
+    if (proxyState === -2 && requestHasOwnAuthorization) {
         throw new CorsProxyBasicAuthError(url);
     }
-    if (_corsProxyState === -1) {
-        throw new TypeError(`Cannot reach ${url} (CORS). Enable enableCorsProxy in SillyTavern config.yaml or launch A1111 with --cors-allow-origins=*`);
+    if (proxyState === -1) {
+        throw new TypeError(getCorsFailureMessage(url));
     }
     const proxyUrl = `/proxy/${url}`;
     // Merge ST request headers (CSRF token) into proxy requests
@@ -3173,33 +3266,29 @@ async function corsFetch(url, opts = {}) {
     const mergedHeaders = { ...stHeaders, ...fetchOptions.headers };
     const res = await fetch(proxyUrl, { ...fetchOptions, headers: mergedHeaders });
     if (requestHasOwnAuthorization && res.status === 401 && isBasicAuthChallenge(res.headers.get("www-authenticate"))) {
-        _corsProxyState = -2;
+        setProxyState(-2);
         await readResponseText(res, 64 * 1024).catch(() => {});
         throw new CorsProxyBasicAuthError(url);
     }
-    if (res.status === 404) {
-        const text = await readResponseText(res, 64 * 1024);
-        if (text.includes('CORS proxy is disabled')) {
-            _corsProxyState = -1;
-            throw new TypeError(`Cannot reach ${url} (CORS). Enable enableCorsProxy in SillyTavern config.yaml or launch A1111 with --cors-allow-origins=*`);
-        }
+    if (res.status === 404 && await clonedResponseIncludes(res, "CORS proxy is disabled")) {
+        setProxyState(-1);
+        throw new TypeError(getCorsFailureMessage(url));
     }
-    if (res.status !== 403) _corsProxyState = 2;
+    if (res.status !== 403) setProxyState(2);
     return res;
 }
 
 // A1111 Model API helpers
-let a1111ModelsCache = [];
 let a1111ControlNetScriptKey = "ControlNet";
 async function fetchA1111Models(url) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`);
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/sd-models`, { redirect: "error" });
         if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
         const models = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
-        a1111ModelsCache = models.map(m => ({ title: m.title, name: m.model_name }));
-        log(`A1111: Found ${a1111ModelsCache.length} models`);
-        return a1111ModelsCache;
+        const normalizedModels = models.map(m => ({ title: m.title, name: m.model_name }));
+        log(`A1111: Found ${normalizedModels.length} models`);
+        return normalizedModels;
     } catch (e) {
         log(`A1111: Error fetching models: ${e.message}`);
         return [];
@@ -3214,7 +3303,7 @@ async function fetchControlNetModels(url) {
     ];
     for (const endpoint of endpoints) {
         try {
-            const res = await corsFetch(endpoint);
+            const res = await corsFetch(endpoint, { redirect: "error" });
             if (!res.ok) continue;
             const data = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
             if (Array.isArray(data?.model_list)) return data.model_list;
@@ -3230,7 +3319,8 @@ async function switchA1111Model(url, modelTitle) {
         const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sd_model_checkpoint: modelTitle })
+            body: JSON.stringify({ sd_model_checkpoint: modelTitle }),
+            redirect: "error",
         });
         if (!res.ok) throw new Error(`Failed to switch model: ${res.status}`);
         log(`A1111: Model switched successfully`);
@@ -3244,7 +3334,7 @@ async function switchA1111Model(url, modelTitle) {
 async function getCurrentA1111Model(url) {
     try {
         const baseUrl = normalizeA1111BaseUrl(url);
-        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`);
+        const res = await corsFetch(`${baseUrl}/sdapi/v1/options`, { redirect: "error" });
         if (!res.ok) return null;
         const opts = await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES);
         return opts.sd_model_checkpoint || null;
@@ -3255,7 +3345,7 @@ async function getCurrentA1111Model(url) {
 
 async function fetchA1111Upscalers(url) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`);
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/upscalers`, { redirect: "error" });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(u => u.name);
     } catch (e) {
@@ -3267,7 +3357,7 @@ async function fetchA1111Upscalers(url) {
 
 async function fetchA1111VAEs(url) {
     try {
-        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`);
+        const res = await corsFetch(`${normalizeA1111BaseUrl(url)}/sdapi/v1/sd-vae`, { redirect: "error" });
         if (!res.ok) throw new Error(`${res.status}`);
         return (await readResponseJson(res, MAX_DISCOVERY_RESPONSE_BYTES)).map(v => v.model_name);
     } catch (e) {
@@ -3277,7 +3367,7 @@ async function fetchA1111VAEs(url) {
 }
 
 async function fetchComfyNodeModelList(baseUrl, nodeClass, inputKey) {
-    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`);
+    const res = await corsFetch(`${baseUrl}/object_info/${nodeClass}`, { redirect: "error" });
     if (!res.ok) {
         if (res.status === 403) {
             throw new Error("ComfyUI returned 403 Forbidden. This is usually caused by ComfyUI-Manager's security check. Fix: in ComfyUI-Manager settings, set Security Level to 'normal', then restart ComfyUI. Also ensure ComfyUI is launched with --enable-cors-header.");
@@ -3419,20 +3509,28 @@ function setGenerationActiveUI(active, { disableGenerateButton = false } = {}) {
     if (!disableGenerateButton) return;
     const btn = getOrCacheElement("qig-generate-btn");
     if (!btn) return;
-    if (active) {
-        btn.disabled = true;
-        btn.setAttribute("aria-busy", "true");
-        btn.innerHTML = '<span class="fa-solid fa-spinner fa-spin" aria-hidden="true"></span><span>Generating...</span>';
-    } else {
-        btn.disabled = false;
-        btn.removeAttribute("aria-busy");
-        btn.innerHTML = `<span class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></span><span>Generate</span><span class="qig-shortcut-hint">${escapeHtml(formatGenerateShortcutLabel())}</span>`;
-    }
+    const shortcutLabel = formatGenerateShortcutLabel();
+    const controlState = resolveMainGenerationControlState({
+        active,
+        paletteAvailable: !!paletteBtn && !getSettings()?.disablePaletteButton,
+        manageBusyState: disableGenerateButton,
+        cancelling: cancelRequested,
+        shortcutLabel,
+    });
+    btn.disabled = controlState.disabled;
+    btn.title = controlState.title;
+    if (controlState.ariaBusy) btn.setAttribute("aria-busy", "true");
+    else btn.removeAttribute("aria-busy");
+    const shortcut = controlState.action === "generate" && shortcutLabel
+        ? `<span class="qig-shortcut-hint">${escapeHtml(shortcutLabel)}</span>`
+        : "";
+    btn.innerHTML = `<span class="fa-solid ${escapeHtml(controlState.iconClass)}" aria-hidden="true"></span><span>${escapeHtml(controlState.label)}</span>${shortcut}`;
 }
 
-function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), messageSnapshots = [], conversationCheckpoint = null, disableGenerateButton = false, clearPendingAuto = false } = {}) {
+function beginGeneration({ settings = getGenerationSettingsForRun(), context = getContext?.(), messageSnapshots = [], conversationCheckpoint = null, disableGenerateButton = false, clearPendingAuto = false, preserveRegenerationReferences = false } = {}) {
     closePalettePresetMenu();
     cancelContextMediaWork();
+    if (!preserveRegenerationReferences) clearRegenerationReferenceState();
     if (clearPendingAuto) {
         resetAutoGenerateCadence({ clearTimer: true });
     }
@@ -3442,7 +3540,7 @@ function beginGeneration({ settings = getGenerationSettingsForRun(), context = g
         serverSubfolder: getServerSubfolder(context),
         messageSnapshots: Array.isArray(messageSnapshots) ? messageSnapshots : [],
         conversationCheckpoint,
-    });
+    }, { settingsSnapshot: true });
     activeGenerationRun = run;
     cancelRequested = false;
     isGenerating = true;
@@ -3592,7 +3690,8 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
         log("Palette: Ignored rapid duplicate cancel click");
         return false;
     }
-    if (currentAbortController?.signal?.aborted) {
+    const run = activeGenerationRun;
+    if (!run || currentAbortController?.signal?.aborted) {
         log("Cancel already requested, ignoring duplicate click");
         return false;
     }
@@ -3600,40 +3699,53 @@ function requestGenerationCancel(reason = "Generation cancelled by user", { forc
     paletteCancelLockUntil = now + PALETTE_CANCEL_LOCK_MS;
     cancelRequested = true;
     cancelRequestSerial += 1;
-    generationRunManager.cancel(reason);
+    const settings = run.settings;
+    const trackedComfyPrompt = activeComfyPrompt?.runId === run.id
+        ? { ...activeComfyPrompt }
+        : null;
+    const released = generationRunManager.cancelAndRelease(reason);
+    if (!released) return false;
     resetAutoGenerateCadence({ clearTimer: true });
+
+    if (activeComfyPrompt?.runId === run.id) activeComfyPrompt = null;
+    activeGenerationRun = null;
+    currentAbortController = null;
+    isGenerating = false;
+    cancelRequested = false;
+    transientGenerationTargetState.clear();
+    transientGenerationSettingsState.clear();
+    generationStartLockUntil = Math.max(generationStartLockUntil, now + PALETTE_CANCEL_LOCK_MS);
+    paletteCancelLockUntil = 0;
+    showStatus(null);
+    setGenerationActiveUI(false, { disableGenerateButton: true });
 
     // Best-effort server cancellation. ComfyUI never receives a bodyless global interrupt.
     try {
-        const s = activeGenerationRun?.settings || extension_settings?.[extensionName];
-        if (s?.provider === "local" && s.localUrl) {
-            const baseUrl = normalizeA1111BaseUrl(s.localUrl);
-            if (s.localType === "comfyui") {
-                const tracked = activeComfyPrompt;
-                if (tracked?.promptId) {
-                    cancelTrackedComfyPrompt(tracked).then(result => {
+        if (settings?.provider === "local" && settings.localUrl) {
+            const baseUrl = normalizeA1111BaseUrl(settings.localUrl);
+            if (settings.localType === "comfyui") {
+                if (trackedComfyPrompt?.promptId) {
+                    cancelTrackedComfyPrompt(trackedComfyPrompt).then(result => {
                         if (result.cancelled === false) log(`ComfyUI: ${result.reason || "prompt could not be safely cancelled"}`);
                     }).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
                 }
             } else {
-                corsFetch(`${baseUrl}/sdapi/v1/interrupt`, { method: "POST" }).catch(() => {});
+                const interruptController = new AbortController();
+                const timeoutId = setTimeout(() => interruptController.abort(), 2000);
+                const barrier = corsFetch(`${baseUrl}/sdapi/v1/interrupt`, {
+                    method: "POST",
+                    redirect: "error",
+                    signal: interruptController.signal,
+                }).catch(() => {}).finally(() => clearTimeout(timeoutId));
+                localCancellationBarriers.set(baseUrl, barrier);
+                barrier.finally(() => {
+                    if (localCancellationBarriers.get(baseUrl) === barrier) localCancellationBarriers.delete(baseUrl);
+                }).catch(() => {});
             }
         }
     } catch (e) { /* best-effort */ }
 
-    // Cancellation watchdog: keep the UI busy until the active async chain actually settles.
-    const thisCancelSerial = cancelRequestSerial;
-    setTimeout(() => {
-        if (isGenerating && cancelRequestSerial === thisCancelSerial && currentAbortController?.signal?.aborted) {
-            log("Cancel watchdog: generation is still settling after 5 seconds");
-        }
-    }, 5000);
-
-    const paletteBtn = getOrCacheElement("qig-input-btn");
-    if (paletteBtn) {
-        paletteBtn.title = "Cancelling...";
-        paletteBtn.style.opacity = "0.4";
-    }
+    toastr?.info?.("Stopped waiting. Remote work may continue if the provider cannot cancel it.", "Image Gen", { timeOut: 3500 });
     return true;
 }
 
@@ -3658,6 +3770,7 @@ function getGenerationFinalizationOptions(run, options = {}) {
         ...options,
         signal: run.signal,
         serverSubfolder: run.context.serverSubfolder,
+        regenerationGroupId: run.id,
         commitGuard: () => {
             assertGenerationCanCommit(run);
             additionalCommitGuard?.();
@@ -3670,9 +3783,13 @@ function cleanupLegacyTemplateStores(settings = getSettings()) {
     if (!s || s._legacyTemplatesIgnored) return false;
 
     let changed = false;
-    if (localStorage.getItem("qig_templates") != null) {
-        localStorage.removeItem("qig_templates");
-        changed = true;
+    try {
+        if (localStorage.getItem("qig_templates") != null) {
+            localStorage.removeItem("qig_templates");
+            changed = true;
+        }
+    } catch (error) {
+        log(`Could not clean up legacy template cache: ${error.message}`);
     }
     if (s._backupTemplates != null) {
         s._backupTemplates = null;
@@ -3826,10 +3943,19 @@ async function loadSettings() {
     const normalizedSaved = normalizeComfyIntegrationSettings(saved || {});
     extension_settings[extensionName] = { ...defaultSettings, ...normalizedSaved };
     const s = extension_settings[extensionName];
+    const reviewBeforeGenerateNeedsMigration = !!saved && saved.reviewBeforeGenerate === undefined;
+    if (reviewBeforeGenerateNeedsMigration) {
+        s.reviewBeforeGenerate = Boolean(saved.llmEditPrompt);
+    }
+    delete s.llmEditPrompt;
     const comfyModelLoaderNeedsMigration = !!saved
         && (saved.comfyModelLoader !== normalizedSaved.comfyModelLoader
             || saved.comfyFluxVaeModel !== normalizedSaved.comfyFluxVaeModel
             || !Object.is(saved.comfyOutputImageIndex, normalizedSaved.comfyOutputImageIndex));
+    const normalizedInjectInsertMode = normalizeInjectInsertMode(s.injectInsertMode);
+    const injectInsertModeNeedsMigration = saved?.injectInsertMode !== undefined
+        && saved.injectInsertMode !== normalizedInjectInsertMode;
+    s.injectInsertMode = normalizedInjectInsertMode;
     // Existing installs keep their current behavior: no first-run wizard, no starter presets.
     if (saved && Object.keys(saved).length > 0) {
         if (saved.setupWizardSeen === undefined) s.setupWizardSeen = true;
@@ -3889,7 +4015,9 @@ async function loadSettings() {
         serverCacheId: savedCacheId,
         localCacheId,
     });
-    let serverSettingsNeedSave = comfyModelLoaderNeedsMigration;
+    let serverSettingsNeedSave = comfyModelLoaderNeedsMigration
+        || injectInsertModeNeedsMigration
+        || reviewBeforeGenerateNeedsMigration;
     if (!savedCacheId) {
         s._syncCacheId = generateUUID();
         serverSettingsNeedSave = true;
@@ -5144,11 +5272,14 @@ function getSettings() {
 
 function getGenerationSettingsForRun(context = null) {
     const baseSettings = getSettings();
-    const merged = transientGenerationSettingsOverride && typeof transientGenerationSettingsOverride === "object"
-        ? { ...baseSettings, ...transientGenerationSettingsOverride }
+    const transientValues = transientGenerationSettingsState.current?.value;
+    const merged = transientValues && typeof transientValues === "object"
+        ? { ...baseSettings, ...transientValues }
         : baseSettings;
+    // SillyBunny divergence: scope settings to an explicitly supplied context so
+    // Conversation generation cannot inherit the active roleplay character.
     const runContext = context || getContext?.();
-    const snapshot = snapshotGenerationSettings(getScopedCharacterGenerationSettings(merged, runContext));
+    const snapshot = snapshotGenerationRunSettings(getScopedCharacterGenerationSettings(merged, runContext));
     if (!Array.isArray(snapshot.__qigActiveContextualFilters)) {
         snapshot.__qigActiveContextualFilters = snapshotGenerationSettings(
             getActiveFilters(runContext).map(filter => resolveContextualFilter(filter, runContext)),
@@ -5158,37 +5289,32 @@ function getGenerationSettingsForRun(context = null) {
 }
 
 async function withTransientGenerationSettings(overrides, task) {
-    const previousOverride = transientGenerationSettingsOverride;
-    transientGenerationSettingsOverride = {
-        ...(previousOverride || {}),
+    const values = {
+        ...(transientGenerationSettingsState.current?.value || {}),
         ...(overrides || {}),
     };
-    try {
-        return await task();
-    } finally {
-        transientGenerationSettingsOverride = previousOverride;
-    }
+    return await transientGenerationSettingsState.withValue(values, task);
 }
 
 function setTransientGenerationTarget(messageIndex, { forceMessagePrompt = true, conversationCheckpoint = null } = {}) {
     const ctx = getContext?.();
     const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
     const targetSnapshot = createMessageTargetSnapshot(chat, messageIndex);
-    transientGenerationTarget = {
+    return transientGenerationTargetState.set({
         messageIndex: targetSnapshot?.index ?? Number(messageIndex),
         forceMessagePrompt: forceMessagePrompt !== false,
         targetSnapshot,
         conversationCheckpoint,
         createdAt: Date.now(),
-    };
-    return transientGenerationTarget;
+    });
 }
 
-function clearTransientGenerationTarget() {
-    transientGenerationTarget = null;
+function clearTransientGenerationTarget(expectedTarget = null) {
+    return transientGenerationTargetState.clear(expectedTarget);
 }
 
 function getTransientGenerationTarget(ctx = getContext?.()) {
+    const transientGenerationTarget = transientGenerationTargetState.current?.value;
     if (!transientGenerationTarget || typeof transientGenerationTarget !== "object") return null;
     const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
     const resolvedIndex = Number(transientGenerationTarget.messageIndex);
@@ -5305,6 +5431,86 @@ function resolveLLMPromptProfileContext(ctx = getContext(), sceneText = "") {
         usesCurrentCardContext: true,
         useExactNameRequirements: false,
     };
+}
+
+function buildWorldInfoGlobalScanData(ctx = getContext()) {
+    const profile = resolveChatProfileContext(ctx);
+    const characterSections = {
+        description: [],
+        personality: [],
+        depth: [],
+        scenario: [],
+        creatorNotes: [],
+    };
+    for (const card of profile.charCards || []) {
+        const name = String(card?.name || "Character").trim() || "Character";
+        const add = (key, value) => {
+            const text = String(value || "").trim();
+            if (text) characterSections[key].push(`${name}: ${text}`);
+        };
+        add("description", card?.description);
+        add("personality", card?.personality);
+        add("depth", card?.extensions?.depth_prompt?.prompt || card?.depth_prompt?.prompt || card?.depth_prompt);
+        add("scenario", card?.scenario);
+        add("creatorNotes", card?.creator_notes || card?.creatorcomment);
+    }
+    return {
+        personaDescription: String(ctx?.persona || ctx?.powerUserSettings?.persona_description || profile.userDesc || "").trim(),
+        characterDescription: characterSections.description.join("\n\n"),
+        characterPersonality: characterSections.personality.join("\n\n"),
+        characterDepthPrompt: characterSections.depth.join("\n\n"),
+        scenario: characterSections.scenario.join("\n\n"),
+        creatorNotes: characterSections.creatorNotes.join("\n\n"),
+        trigger: "normal",
+    };
+}
+
+async function resolveWorldInfoForPromptPipeline(settings, {
+    context = getContext(),
+    throughIndex = null,
+    sourceText = "",
+    signal = null,
+    forceTextAI = false,
+} = {}) {
+    if (!settings?.useWorldInfo || (!settings?.useLLMPrompt && !forceTextAI)) {
+        return { records: [], text: "" };
+    }
+    const chat = Array.isArray(context?.chat) ? context.chat : [];
+    const explicitSource = String(sourceText || "").trim();
+
+    try {
+        const includeNames = hostWorldInfoModule?.world_info_include_names !== false;
+        const scanChat = Number.isInteger(throughIndex) && chat.length
+            ? buildWorldInfoScanChat(chat, throughIndex, (message) => {
+                const source = resolveSceneMessageSource(message);
+                return formatWorldInfoScanMessage(message, {
+                    text: source?.text,
+                    speakerName: getSceneMessageSpeakerName(message, context),
+                    includeNames,
+                });
+            })
+            : (explicitSource ? [explicitSource] : []);
+        if (!scanChat.length) return { records: [], text: "" };
+        const maxContext = getWorldInfoContextBudget(hostScriptModule);
+        const resolved = await runSerializedTextAITask(() => resolveWorldInfoContext({
+            checkWorldInfo: hostWorldInfoModule?.checkWorldInfo || checkWorldInfo,
+            chat: scanChat,
+            maxContext,
+            globalScanData: buildWorldInfoGlobalScanData(context),
+        }), signal);
+        if (signal?.aborted) throw getAbortError(signal);
+        if (resolved.text) log(`World Info: Added ${resolved.records.length} matched placement record(s) to visible Text AI context`);
+        return resolved;
+    } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        log(`World Info context unavailable: ${error.message}`);
+        toastr?.warning?.(
+            "Matched World Info could not be resolved, so this request will continue without lore context.",
+            "Quick Image Gen",
+            { timeOut: 5000 },
+        );
+        return { records: [], text: "" };
+    }
 }
 
 function expandWildcards(text) {
@@ -5747,6 +5953,75 @@ async function applyResolvedContextualFilters(prompt, negative, {
     };
 }
 
+async function prepareQigFinalPrompt({
+    settings,
+    context,
+    sourcePrompt,
+    matchText = "",
+    llmSceneText = "",
+    signal = null,
+    isMultiMessageScene = false,
+    worldInfoText = "",
+    forcePromptWasLLM = false,
+} = {}) {
+    let pipelineState = createPromptPipelineState({ sourceText: sourcePrompt, worldInfoText });
+
+    while (true) {
+        const generatedPrompt = await generateLLMPrompt(settings, sourcePrompt, signal, {
+            isMultiMessageScene,
+            worldInfoText,
+        });
+        if (signal?.aborted) throw getAbortError(signal);
+        const promptWasLLM = forcePromptWasLLM || (settings.useLLMPrompt && generatedPrompt !== sourcePrompt);
+        pipelineState = updatePromptPipelineState(pipelineState, { promptResult: generatedPrompt });
+
+        let prompt = applyStyle(generatedPrompt, settings);
+        if (settings.appendQuality && settings.qualityTags) {
+            prompt = `${settings.qualityTags}, ${prompt}`;
+        }
+        let negative = resolvePrompt(settings.negativePrompt);
+        if (settings.useSTStyle !== false) {
+            ({ prompt, negative } = applySTStylePrompts(prompt, negative, context));
+        }
+
+        const contextualApplied = await applyResolvedContextualFilters(prompt, negative, {
+            matchText: [matchText, prompt].filter(Boolean).join("\n\n") || prompt,
+            llmSceneText: llmSceneText || sourcePrompt,
+            signal,
+            settings,
+            // SillyBunny divergence: keep filter matching on the caller's context.
+            ...(context ? { context } : {}),
+        });
+        if (signal?.aborted) throw getAbortError(signal);
+        pipelineState = updatePromptPipelineState(pipelineState, {
+            positive: contextualApplied.prompt,
+            negative: contextualApplied.negative,
+            finalPromptEdited: false,
+        });
+
+        if (settings.reviewBeforeGenerate) {
+            const reviewed = await reviewFinalImagePrompt(
+                pipelineState.positive,
+                pipelineState.negative,
+                signal,
+                { canGoBack: !!settings.useLLMPrompt },
+            );
+            if (!reviewed) throw getAbortError(signal, "Prompt review cancelled");
+            if (reviewed.action === "back" && settings.useLLMPrompt) continue;
+            pipelineState = setAuthoritativeFinalPrompt(pipelineState, {
+                positive: reviewed.prompt,
+                negative: reviewed.negative,
+            });
+        }
+
+        return {
+            ...getPromptPipelineResult(pipelineState),
+            promptWasLLM,
+            seedOverride: contextualApplied.seedOverride,
+        };
+    }
+}
+
 function getBatchBaseSeed(settings, batchCount, seedOverride = null) {
     let baseSeed = seedOverride != null ? seedOverride : getGenerationSeedValue(settings);
     if (settings?.sequentialSeeds && batchCount > 1 && baseSeed === -1) {
@@ -5765,7 +6040,7 @@ async function matchLLMFilters(sceneText, signal = null, settings = null, contex
     const conceptList = llmFilters.map((f, i) => `${i + 1}. "${f.name || "(unnamed)"}": ${f.description}`).join('\n');
     log(`LLM filter matching concepts: ${previewTextForLog(conceptList, 180)}`);
 
-    const instruction = `Given the following scene, identify which concepts are present.
+    let instruction = `Given the following scene, identify which concepts are present.
 Reply ONLY with the numbers of matching concepts, comma-separated. If none match, reply "none".
 
 Scene:
@@ -5777,8 +6052,16 @@ ${conceptList}`;
     const s = settings || activeGenerationRun?.settings || getSettings();
     let response;
     try {
+        if (s.reviewBeforeGenerate) {
+            const reviewed = await reviewTextAIRequest(instruction, {
+                title: "Review Contextual Filter Request",
+                description: "This request asks Text AI which Contextual Filters match the scene. Edit it before running the classifier.",
+                signal,
+            });
+            instruction = reviewed.request;
+        }
         if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
-            response = await callOverrideLLM(instruction, "You are a scene analyst. Reply only with numbers.", signal, { context, settings: s });
+            response = await callOverrideLLM(instruction, "", signal, { context, settings: s });
         } else {
             response = await callInternalQuietPrompt(instruction, {
                 signal,
@@ -5794,8 +6077,12 @@ ${conceptList}`;
         return [];
     }
 
-    const nums = (response || "").match(/\d+/g)?.map(Number) || [];
-    const matched = llmFilters.filter((_, i) => nums.includes(i + 1)).sort(compareContextualFilters);
+    const selected = parseContextualFilterSelection(response, llmFilters.length);
+    if (selected === null) {
+        log(`LLM filter matching rejected invalid classifier response: ${previewTextForLog(response, 120) || "(empty)"}`);
+        return [];
+    }
+    const matched = llmFilters.filter((_, i) => selected.includes(i + 1)).sort(compareContextualFilters);
     log(`LLM filter matching: ${matched.length}/${llmFilters.length} concepts matched`);
     return matched;
 }
@@ -6048,15 +6335,17 @@ async function callOverrideLLM(instruction, systemPrompt = "", signal = null, { 
     log(`LLM Override: Using connection profile '${s.llmOverrideProfileId}' (preset: ${requestedPreset || "profile default"})`);
 
     try {
-        const response = await runWithInternalLLMRequest("LLM override profile request", () => sendIsolatedConnectionManagerRequest({
-            service: CMRS,
-            context: requestContext,
-            profileId: s.llmOverrideProfileId,
-            messages,
-            maxTokens: requestedMaxTokens,
-            preset: requestedPreset,
-            signal,
-        }));
+        const response = await runWithInternalLLMRequest("LLM override profile request", () =>
+            runSerializedTextAITask(() => sendIsolatedConnectionManagerRequest({
+                service: CMRS,
+                context: requestContext,
+                profileId: s.llmOverrideProfileId,
+                messages,
+                maxTokens: requestedMaxTokens,
+                preset: requestedPreset,
+                signal,
+            }), signal)
+        );
         const details = extractLLMResponseDetails(response);
         const meta = {
             ...details,
@@ -6193,7 +6482,7 @@ async function generateSceneDescription(s, sceneText, signal, options = {}) {
     const selectedScene = String(sceneText || "").trim();
     if (!selectedScene) return "";
 
-    checkAborted();
+    if (signal?.aborted) throw getAbortError(signal);
     log("Generating plain scene description via SillyTavern LLM...");
     showStatus("🤖 Summarizing scene for image prompt...");
 
@@ -6208,6 +6497,7 @@ async function generateSceneDescription(s, sceneText, signal, options = {}) {
         const tags = profile.charTagsResolved || "";
         const activeCharacterNames = uniqueStringList(profile.charNames || []);
         const activeCharacterList = activeCharacterNames.join(", ");
+        const preserveCharacterIdentity = s.preserveCharacterIdentity !== false;
         const forcedMultiMessage = options?.isMultiMessageScene;
         const isMultiMessage = forcedMultiMessage === true
             ? true
@@ -6218,7 +6508,7 @@ async function generateSceneDescription(s, sceneText, signal, options = {}) {
         if (userPersona) referenceSections.push(`${userName}'s persona/appearance: ${userPersona.substring(0, 800)}`);
         if (tags) referenceSections.push(`Source/Tags: ${tags}`);
         if (scenario) referenceSections.push(`Setting: ${scenario.substring(0, 400)}`);
-        if (activeCharacterList) referenceSections.push(`Active character names to preserve when visible: ${activeCharacterList}`);
+        if (preserveCharacterIdentity && activeCharacterList) referenceSections.push(`Active character names to preserve when visible: ${activeCharacterList}`);
         const referenceBlock = referenceSections.length ? `\nREFERENCE CONTEXT:\n${referenceSections.join("\n")}` : "";
 
         const customInstruction = String(s.twoStepInstruction || "").trim();
@@ -6241,7 +6531,7 @@ Convert the selected chat scene into one concise plain-language visual descripti
 Rules:
 - Output ONLY the plain description. No commentary, no markdown, no speaker labels, no tags, no bullet list.
 - Describe one coherent visible moment: subjects, identities, poses, expressions, clothing, setting, lighting, mood, and camera framing.
-- Preserve explicit species, ages, body traits, names, and non-human details from the scene or reference context.
+${preserveCharacterIdentity ? "- Preserve explicit species, ages, body traits, names, and non-human details from the scene or reference context." : ""}
 - Do not continue the roleplay and do not quote dialogue.
 ${isMultiMessage ? "- The selected scene is a multi-message transcript. Infer the best single visual moment from it." : ""}${referenceBlock}
 
@@ -6254,7 +6544,16 @@ Plain visual description:`;
         const timestamp = Date.now();
         const randomPart = Math.random().toString(36).substring(2, 11);
         const entropyInline = `{{${timestamp}_${randomPart}}}`;
-        const instructionWithEntropy = `[${timestamp}]\n${instruction}\n\nRequest marker: ${entropyInline}`;
+        let instructionWithEntropy = `[${timestamp}]\n${instruction}\n\nRequest marker: ${entropyInline}`;
+        instructionWithEntropy = appendWorldInfoToRequest(instructionWithEntropy, options.worldInfoText);
+        if (s.reviewBeforeGenerate || !!options.worldInfoText) {
+            const reviewed = await reviewTextAIRequest(instructionWithEntropy, {
+                title: "Review Scene Summary Request",
+                description: "Review the exact request used to create the intermediate visual summary. Matched World Info, when enabled, is included as editable context.",
+                signal,
+            });
+            instructionWithEntropy = reviewed.request;
+        }
 
         log(`Sending scene description instruction to LLM (length: ${instructionWithEntropy.length} chars)`);
 
@@ -6274,7 +6573,7 @@ Plain visual description:`;
             llmDescription = helperResponseMeta?.text || "";
         }
 
-        checkAborted();
+        if (signal?.aborted) throw getAbortError(signal);
         logLLMHelperResponseMeta(helperResponseMeta, "Scene description helper response");
 
         const cleaned = cleanSceneDescriptionText(llmDescription);
@@ -6285,7 +6584,7 @@ Plain visual description:`;
             return "";
         }
 
-        log(`Scene description: ${cleaned.substring(0, 200)}${cleaned.length > 200 ? "..." : ""}`);
+        debugLog(`Scene description: ${cleaned.substring(0, 200)}${cleaned.length > 200 ? "..." : ""}`);
         return cleaned;
     } catch (e) {
         if (e.name === "AbortError") throw e;
@@ -6301,7 +6600,7 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
     // Clear any cached styles before generating new prompt
     clearStyleCache();
 
-    checkAborted(); // Bail early if already cancelled
+    if (signal?.aborted) throw getAbortError(signal);
 
     // Only show status message when actually generating
     log("Generating prompt via SillyTavern LLM...");
@@ -6318,6 +6617,7 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
         const tags = profile.charTagsResolved || "";
         const activeCharacterNames = uniqueStringList(profile.charNames || []);
         const activeCharacterList = activeCharacterNames.join(", ");
+        const preserveCharacterIdentity = s.preserveCharacterIdentity !== false;
         const resolvedPrefill = getResolvedLLMPrefill(s);
         const sceneUsesFirstPersonUser = /\b(i|me|my|mine|myself)\b/i.test(basePrompt);
         const sceneMentionsUserByName = promptIncludesName(basePrompt, userName);
@@ -6328,8 +6628,8 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
         const userLikelyPrimarySubject = sceneIncludesUserPersona && sceneCentersUserAppearance;
 
         const skinTones = [];
-        const charSkin = charDesc.match(skinPattern);
-        const userSkin = userPersona.match(skinPattern);
+        const charSkin = preserveCharacterIdentity ? charDesc.match(skinPattern) : null;
+        const userSkin = preserveCharacterIdentity ? userPersona.match(skinPattern) : null;
         if (charSkin) skinTones.push(`${charName}: ${charSkin[0]}`);
         if (userSkin) skinTones.push(`${userName}: ${userSkin[0]}`);
 
@@ -6359,18 +6659,18 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
             if (appearanceContext) appearanceContext += "\n";
         }
 
-        const skinEnforce = skinTones.length ? `\nCRITICAL - You MUST include these skin tones: ${skinTones.join(", ")}` : "";
-        const shouldUseExactNameRequirements = !!profile.useExactNameRequirements && activeCharacterNames.length > 0;
+        const skinEnforce = preserveCharacterIdentity && skinTones.length ? `\nCRITICAL - You MUST include these skin tones: ${skinTones.join(", ")}` : "";
+        const shouldUseExactNameRequirements = preserveCharacterIdentity && !!profile.useExactNameRequirements && activeCharacterNames.length > 0;
         const exactNameRequirement = shouldUseExactNameRequirements
             ? `\n- Preserve and include these exact character name${activeCharacterNames.length === 1 ? "" : "s"} when the scene/card identifies them${shouldDeprioritizeUnmentionedCharacters ? "; otherwise do not force them into the prompt just because they are the active chat character" : ""}: ${activeCharacterList}`
             : "";
-        const exactUserRequirement = userPersona
+        const exactUserRequirement = preserveCharacterIdentity && userPersona
             ? `\n- If the scene refers to the user in first person or by name, preserve and include the exact user persona name when applicable: ${userName}`
             : "";
         const exactNameBlock = shouldUseExactNameRequirements
             ? `\n${shouldDeprioritizeUnmentionedCharacters ? "ACTIVE CHARACTER NAMES (only use if the scene explicitly includes them):" : "CHARACTER NAMES TO PRESERVE (use these exact spellings when applicable):"} ${activeCharacterList}`
             : "";
-        const userNameBlock = userPersona
+        const userNameBlock = preserveCharacterIdentity && userPersona
             ? `\nUSER PERSONA NAME (use when the scene refers to the user / I / me / my): ${userName}`
             : "";
         const identityRequirements = [
@@ -6381,7 +6681,9 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
         if (userPersona) {
             identityRequirements.push(`- If the scene uses first-person references like I/me/my or mentions ${userName}, that subject is the user persona described below. Use that persona's age, species, body type, and nonhuman traits.`);
         }
-        const identityRequirementBlock = `\nIDENTITY REQUIREMENTS:\n${identityRequirements.join("\n")}`;
+        const identityRequirementBlock = preserveCharacterIdentity
+            ? `\nIDENTITY REQUIREMENTS:\n${identityRequirements.join("\n")}`
+            : "";
         const subjectPriorityRequirements = [];
         if (sceneIncludesUserPersona) {
             subjectPriorityRequirements.push(`- The user persona (${userName}) is visually involved in this scene whenever the scene uses first-person references or the user name.`);
@@ -6397,10 +6699,10 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
         if (sceneIncludesUserPersona && sceneMentionedCharacterNames.length) {
             subjectPriorityRequirements.push(`- If both the user persona and another subject are present, preserve both identities accurately and do not let ${sceneMentionedCharacterNames.join(", ")} overshadow the user persona.`);
         }
-        const subjectPriorityBlock = subjectPriorityRequirements.length
+        const subjectPriorityBlock = preserveCharacterIdentity && subjectPriorityRequirements.length
             ? `\nSCENE SUBJECT PRIORITY:\n${subjectPriorityRequirements.join("\n")}`
             : "";
-        const userSceneRequirementBullet = userPersona
+        const userSceneRequirementBullet = preserveCharacterIdentity && userPersona
             ? `\n- If the scene refers to the user in first person or by name, use the user persona reference below for that subject (${userName})`
             : "";
 
@@ -6419,8 +6721,8 @@ async function generateLLMPrompt(s, basePrompt, signal, options = {}) {
 
         let instruction;
         if (isCustom) {
-            log(`Custom macros: scene=${basePrompt.length}ch, char="${charName}", user="${userName}", charDesc=${charDesc.length}ch, userDesc=${userPersona.length}ch`);
-            log(`Using custom instruction: ${s.llmCustomInstruction.substring(0, 100)}...`);
+            debugLog(`Custom macros: scene=${basePrompt.length}ch, char="${charName}", user="${userName}", charDesc=${charDesc.length}ch, userDesc=${userPersona.length}ch`);
+            debugLog(`Using custom instruction: ${s.llmCustomInstruction.substring(0, 100)}...`);
             instruction = s.llmCustomInstruction
                 .replace(/\{\{scene\}\}/gi, basePrompt)
                 .replace(/\{\{charDesc\}\}/gi, charDesc.substring(0, 1500))
@@ -6485,8 +6787,8 @@ Write a detailed image prompt describing:
 - The characters involved with their defining visual traits (hair color, eye color, outfit, distinguishing features)
 ${shouldUseExactNameRequirements ? `- Use the exact active character names when the scene/card identifies them${activeCharacterNames.length ? ` (${activeCharacterList})` : ""}` : ""}
 ${userSceneRequirementBullet}
-- Preserve explicit ages, species, creature types, and nonhuman identities from the scene/profile instead of replacing them with generic human labels
-- If from known media/franchise, include the series name and character's canonical appearance
+${preserveCharacterIdentity ? "- Preserve explicit ages, species, creature types, and nonhuman identities from the scene/profile instead of replacing them with generic human labels" : ""}
+${preserveCharacterIdentity ? "- If from known media/franchise, include the series name and character's canonical appearance" : ""}
 - Their poses, expressions, and body language
 - The setting/background
 - Lighting and atmosphere
@@ -6543,9 +6845,9 @@ Create Danbooru/Booru-style tags for this ${isMultiMessage ? "scene context:\n" 
 Character info: ${appearanceContext}${exactNameBlock}${userNameBlock}${identityRequirementBlock}${subjectPriorityBlock}
 
 Required tag categories:
-- Character name + series name (CRITICAL: Use recognizable fictional media character tags whenever recognized${shouldUseExactNameRequirements ? `, and keep exact active names like ${activeCharacterList || "the named character"} when no canonical tag exists` : ""})
+${preserveCharacterIdentity ? `- Character name + series name (CRITICAL: Use recognizable fictional media character tags whenever recognized${shouldUseExactNameRequirements ? `, and keep exact active names like ${activeCharacterList || "the named character"} when no canonical tag exists` : ""})` : "- Subjects and visible traits relevant to the selected scene"}
 ${userSceneRequirementBullet}
-- Preserve explicit ages, species, creature types, and nonhuman identities from the scene/profile instead of replacing them with generic human tags
+${preserveCharacterIdentity ? "- Preserve explicit ages, species, creature types, and nonhuman identities from the scene/profile instead of replacing them with generic human tags" : ""}
 - Physical traits (hair, eyes, body, skin)
 - Clothing and accessories
 - Pose and expression
@@ -6578,9 +6880,18 @@ Tags:`;
 
         log(`Request ID: ${uniqueId}`);
 
-        // Build the full instruction with optional prefill
-        const prefillHint = resolvedPrefill ? `\n\nContinue the output from this exact prefix if your backend supports prefills:\n${resolvedPrefill}` : "";
-        instructionWithEntropy += prefillHint;
+        let effectivePrefill = resolvedPrefill;
+        instructionWithEntropy = appendWorldInfoToRequest(instructionWithEntropy, options.worldInfoText);
+        if (s.reviewBeforeGenerate || !!options.worldInfoText) {
+            const reviewed = await reviewTextAIRequest(instructionWithEntropy, {
+                title: "Review Image Prompt Request",
+                description: "Review the exact QIG instruction and assistant prefill sent to Text AI. The selected scene, character context, enabled identity rules, and matched lore are editable here.",
+                prefill: resolvedPrefill || null,
+                signal,
+            });
+            instructionWithEntropy = reviewed.request;
+            effectivePrefill = reviewed.prefill;
+        }
 
         log(isCustom ? "Custom instruction mode" : "Built-in instruction mode");
 
@@ -6591,7 +6902,7 @@ Tags:`;
         if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
             log("Using LLM Override for prompt generation");
             helperResponseMeta = await callOverrideLLM(instructionWithEntropy, "", signal, {
-                assistantPrefill: resolvedPrefill,
+                assistantPrefill: effectivePrefill,
                 returnMeta: true,
                 settings: s,
             });
@@ -6601,15 +6912,15 @@ Tags:`;
                 signal,
                 quietName: `ImageGen_${timestamp}`,
                 label: "image prompt generation request",
-                prefill: resolvedPrefill,
+                prefill: effectivePrefill,
                 returnMeta: true,
             });
             llmPrompt = helperResponseMeta?.text || "";
         }
 
-        checkAborted(); // Check immediately after LLM call returns
+        if (signal?.aborted) throw getAbortError(signal);
         logLLMHelperResponseMeta(helperResponseMeta, "LLM helper response");
-        log(`LLM raw response: ${llmPrompt}`);
+        debugLog(`LLM raw response: ${llmPrompt}`);
         log(`LLM response length: ${(llmPrompt || "").length} chars`);
 
         let cleaned = (llmPrompt || "").trim();
@@ -6632,10 +6943,10 @@ Tags:`;
         }
 
         // Strip only meta-label prefills; preserve character-name prefills so filters can still key off them.
-        if (resolvedPrefill && shouldStripPrefillFromLLMResult(resolvedPrefill, profile) && cleaned.toLowerCase().startsWith(resolvedPrefill.toLowerCase())) {
-            cleaned = cleaned.substring(resolvedPrefill.length).trim();
+        if (effectivePrefill && shouldStripPrefillFromLLMResult(effectivePrefill, profile) && cleaned.toLowerCase().startsWith(effectivePrefill.toLowerCase())) {
+            cleaned = cleaned.substring(effectivePrefill.length).trim();
         }
-        cleaned = mergeMeaningfulPrefillIntoLLMResult(cleaned, resolvedPrefill, profile);
+        cleaned = mergeMeaningfulPrefillIntoLLMResult(cleaned, effectivePrefill, profile);
 
         // CRITICAL: Check if response looks like roleplay dialogue (indicates LLM used chat context)
         // Roleplay dialogue typically has dialogue markers, quotation marks, or narrative text
@@ -6677,7 +6988,7 @@ async function generateLiteralFallback(originalInstruction) {
         // Clean up but keep essence
         extracted = extracted.replace(/\n\n+/g, '\n').trim();
 
-        log(`Literal fallback extracted: ${extracted.substring(0, 100)}...`);
+        debugLog(`Literal fallback extracted: ${extracted.substring(0, 100)}...`);
         return extracted;
     } catch (e) {
         log(`Literal fallback failed: ${e.message}`);
@@ -6827,6 +7138,7 @@ async function genNovelAI(prompt, negative, s, signal) {
         const v1Url = isOpenAIChatCompletionsEndpoint(proxyUrl)
             ? proxyUrl
             : buildNovelAIProxyRequestUrl(proxyUrl, "chat");
+        assertSafeConfigurableEndpoint(v1Url, "NovelAI proxy URL");
         const v1Size = s.width > s.height ? "1216:832" : s.width < s.height ? "832:1216" : "1024:1024";
         const [v1Width, v1Height] = v1Size.split(":").map(Number);
         const v1Payload = {
@@ -6838,25 +7150,24 @@ async function genNovelAI(prompt, negative, s, signal) {
             return_base64: true,
             stream: false
         };
-        log(`NAI v1 proxy request to ${v1Url}: ${JSON.stringify(v1Payload).substring(0, 200)}...`);
+        debugLog(`NAI v1 proxy request to ${v1Url}: ${JSON.stringify(v1Payload).substring(0, 200)}...`);
         const res = await fetch(v1Url, {
             method: "POST",
             headers: { "Authorization": `Bearer ${proxyKey}`, "Content-Type": "application/json" },
             body: JSON.stringify(v1Payload),
-            signal
+            signal,
+            redirect: "error",
         });
         if (!res.ok) {
             const { message } = await readProviderErrorResponse(res);
             throw new Error(`NovelAI proxy error ${res.status}: ${message || res.statusText}`);
         }
         const json = await readResponseJson(res);
-        const content = json.choices?.[0]?.message?.content;
-        if (!content) throw new Error(`NovelAI proxy returned no image: ${JSON.stringify(json).substring(0, 300)}`);
-        if (content.startsWith("data:")) return withEffectiveDimensions(content, { width: v1Width, height: v1Height });
-        if (content.startsWith("http")) return withEffectiveDimensions(content, { width: v1Width, height: v1Height });
-        const mdMatch = content.match(/!\[.*?\]\((.*?)\)/);
-        if (mdMatch) return withEffectiveDimensions(mdMatch[1], { width: v1Width, height: v1Height });
-        throw new Error(`NovelAI proxy returned unexpected content: ${content.substring(0, 200)}`);
+        const source = extractProviderImageSource(json);
+        if (source) {
+            return withEffectiveDimensions(resolveNovelAIProxyImageUrl(source, v1Url), { width: v1Width, height: v1Height });
+        }
+        throw new Error(`NovelAI proxy returned no image: ${JSON.stringify(json ?? null).substring(0, 300)}`);
     }
 
     const isProxy = !!s.naiProxyUrl;
@@ -6864,6 +7175,7 @@ async function genNovelAI(prompt, negative, s, signal) {
         ? getNovelAIProxyGenerateUrl(s.naiProxyUrl)
         : "https://image.novelai.net/ai/generate-image";
     if (isProxy && !apiUrl) throw new Error("NovelAI proxy URL is required");
+    if (isProxy) assertSafeConfigurableEndpoint(apiUrl, "NovelAI proxy URL");
     const apiKey = s.naiProxyKey || s.naiKey;
 
     if (isProxy) params.return_base64 = true;
@@ -6872,7 +7184,8 @@ async function genNovelAI(prompt, negative, s, signal) {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json", "Accept": "*/*" },
         body: JSON.stringify(payload),
-        signal
+        signal,
+        redirect: "error",
     });
     if (!res.ok) {
         const { message } = await readProviderErrorResponse(res);
@@ -7023,6 +7336,7 @@ async function genGptImage(prompt, negative, s, signal) {
 
     const apiUrl = getGptImageApiUrl(s.gptImageProxyUrl);
     if (!apiUrl) throw new Error("GPT Image API URL is required");
+    if (s.gptImageProxyUrl) assertSafeConfigurableEndpoint(apiUrl, "GPT Image proxy URL");
 
     const model = String(s.gptImageModel || "gpt-image-2").trim();
     const outputFormat = normalizeGptImageFormat(s.gptImageFormat);
@@ -7057,6 +7371,7 @@ async function genGptImage(prompt, negative, s, signal) {
             headers,
             body: JSON.stringify(payload),
             signal,
+            redirect: "error",
         });
         if (!response.ok) {
             const failure = await readProviderErrorResponse(response);
@@ -7398,7 +7713,7 @@ async function genNanoGPT(prompt, negative, s, signal) {
             throw new Error(`NanoGPT reference image ${index + 1} could not be attached: ${error.message}`);
         }
     }
-    if (materializedRefs.length) body.input_references = materializedRefs;
+    Object.assign(body, buildNanoGptReferenceFields(materializedRefs, s.nanogptStrength, metadata));
     const serializedBody = JSON.stringify(body);
     if (new TextEncoder().encode(serializedBody).byteLength > NANOGPT_MAX_ENCODED_INPUT_BYTES) {
         throw new Error("NanoGPT request exceeds the 4 MB encoded input limit; remove or reduce reference images");
@@ -7539,8 +7854,12 @@ async function genCivitAI(prompt, negative, s, signal) {
         }
     } catch (error) {
         if (workflowId && signal?.aborted) {
-            const cancelSignal = AbortSignal.timeout(5000);
-            await civitaiFetch("cancelWorkflow", { apiKey: s.civitaiKey, id: workflowId }, cancelSignal).catch(() => {});
+            const cancelDeadline = createAbortDeadline(null, 5000, "CivitAI cancellation timed out");
+            try {
+                await civitaiFetch("cancelWorkflow", { apiKey: s.civitaiKey, id: workflowId }, cancelDeadline.signal).catch(() => {});
+            } finally {
+                cancelDeadline.dispose();
+            }
         }
         throw error;
     }
@@ -7622,6 +7941,7 @@ async function genNanobanana(prompt, negative, s, signal) {
 
     const apiKey = s.nanobananaProxyKey || s.nanobananaKey;
     const url = getNanobananaApiUrl(s.nanobananaProxyUrl, s.nanobananaModel, apiKey);
+    if (s.nanobananaProxyUrl) assertSafeConfigurableEndpoint(url, "Nanobanana proxy URL");
     const isOpenAIProxy = isOpenAIChatCompletionsEndpoint(url);
     const headers = { "Content-Type": "application/json", ...getNanobananaAuthHeaders(url, apiKey) };
     const payload = buildNanobananaPayload({
@@ -7641,7 +7961,8 @@ async function genNanobanana(prompt, negative, s, signal) {
         method: "POST",
         headers,
         body: serializedPayload,
-        signal
+        signal,
+        redirect: "error",
     });
     if (!res.ok) {
         const { message } = await readProviderErrorResponse(res);
@@ -7721,7 +8042,7 @@ async function genNanobanana(prompt, negative, s, signal) {
 function startA1111ProgressPolling(baseUrl, generationSignal) {
     const controller = new AbortController();
     const pollingSignal = generationSignal
-        ? AbortSignal.any([generationSignal, controller.signal])
+        ? combineAbortSignals([generationSignal, controller.signal])
         : controller.signal;
     let stopped = false;
     let timeoutId = null;
@@ -7739,6 +8060,7 @@ function startA1111ProgressPolling(baseUrl, generationSignal) {
         try {
             const response = await corsFetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true`, {
                 signal: pollingSignal,
+                redirect: "error",
             });
             if (response.ok) {
                 const progress = await readResponseJson(response, 1024 * 1024);
@@ -7764,6 +8086,13 @@ function startA1111ProgressPolling(baseUrl, generationSignal) {
 
 async function genLocal(prompt, negative, s, signal, options = {}) {
     const baseUrl = normalizeA1111BaseUrl(s.localUrl);
+    const generationOwner = activeGenerationRun?.signal === signal ? activeGenerationRun : null;
+    const generationOwnerId = generationOwner?.id ?? null;
+
+    if (s.localType !== "comfyui") {
+        const cancellationBarrier = localCancellationBarriers.get(baseUrl);
+        if (cancellationBarrier) await runAbortableTask(() => cancellationBarrier, signal);
+    }
 
     if (s.localType === "comfyui") {
         // Map sampler names to ComfyUI format
@@ -7840,6 +8169,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                     method: "POST",
                     body: formData,
                     signal: requestSignal,
+                    redirect: "error",
                 });
                 if (!uploadRes.ok) {
                     const detail = await readResponseText(uploadRes, 64 * 1024).catch(() => "");
@@ -7864,6 +8194,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(body),
                     signal: requestSignal,
+                    redirect: "error",
                 });
                 if (!res.ok) {
                     let detail = "";
@@ -7877,20 +8208,30 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 return parseComfyPromptResponse(await readResponseJson(res, 1024 * 1024));
             });
             const trackedPrompt = {
-                runId: options.externalRun ? null : (activeGenerationRun?.id ?? null),
+                runId: options.externalRun ? null : generationOwnerId,
                 externalRunId: options.externalRun?.id ?? null,
                 baseUrl,
                 promptId: promptResponse.prompt_id,
                 allowLegacyInterrupt: s.comfyAllowLegacyInterrupt === true,
             };
+            // SillyBunny divergence: external capability runs own their prompt directly and
+            // must never claim or clear the UI generation's tracked prompt.
             if (options.externalRun) {
                 options.externalRun.comfyPrompt = trackedPrompt;
+                if (signal?.aborted) {
+                    await cancelTrackedComfyPromptOnce(trackedPrompt).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
+                    throw getAbortError(signal);
+                }
             } else {
+                const ownerIsCurrent = !generationOwner
+                    || (generationRunManager.active === generationOwner && activeGenerationRun === generationOwner);
+                if (signal?.aborted || !ownerIsCurrent) {
+                    cancelTrackedComfyPromptOnce(trackedPrompt).then(result => {
+                        if (result.cancelled === false) log(`ComfyUI stale submission cleanup: ${result.reason || "prompt could not be safely cancelled"}`);
+                    }).catch(error => log(`ComfyUI stale submission cleanup failed: ${error.message}`));
+                    throw getAbortError(signal, "Generation no longer owns the submitted ComfyUI prompt");
+                }
                 activeComfyPrompt = trackedPrompt;
-            }
-            if (signal?.aborted) {
-                await cancelTrackedComfyPromptOnce(trackedPrompt).catch(error => log(`ComfyUI cancellation failed: ${error.message}`));
-                throw getAbortError(signal);
             }
             showStatus("🖼️ ComfyUI workflow queued...");
             try {
@@ -8121,6 +8462,10 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
     }
 
     // A1111 API
+    const requestDeadline = createAbortDeadline(signal, A1111_REQUEST_TIMEOUT_MS, "A1111 request timed out");
+    const requestSignal = requestDeadline.signal;
+    let stopProgressPolling = () => {};
+    try {
     const isImg2Img = s.localType === "a1111" && s.localRefImage && !s.a1111IpAdapter;
     const endpoint = isImg2Img ? "/sdapi/v1/img2img" : "/sdapi/v1/txt2img";
 
@@ -8241,9 +8586,31 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
         payload.save_images = true;
     }
 
+    const referenceCache = new Map();
+    const getReferenceBase64 = async (source, label) => {
+        if (referenceCache.has(source)) return referenceCache.get(source);
+        try {
+            const encoded = await materializeA1111ReferenceBase64(source, {
+                signal: requestSignal,
+                readImage: fetchImageBuffer,
+            });
+            referenceCache.set(source, encoded);
+            return encoded;
+        } catch (error) {
+            if (error?.name === "AbortError" || error?.name === "TimeoutError") throw error;
+            throw new Error(`${label} could not be attached: ${error.message}`);
+        }
+    };
+    const localReferenceBase64 = s.localRefImage
+        ? await getReferenceBase64(s.localRefImage, "A1111 reference image")
+        : "";
+    const controlNetReferenceBase64 = s.a1111ControlNet && s.a1111ControlNetModel && s.a1111ControlNetImage
+        ? await getReferenceBase64(s.a1111ControlNetImage, "A1111 ControlNet image")
+        : "";
+
     if (isImg2Img && !s.a1111IpAdapter) {
         // Standard img2img - use as init image
-        payload.init_images = [s.localRefImage.replace(/^data:image\/.+;base64,/, '')];
+        payload.init_images = [localReferenceBase64];
         payload.denoising_strength = parseFiniteFloat(s.localDenoise, 0.75, 0, 1);
     }
 
@@ -8256,7 +8623,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
             ? 'ip-adapter_face_id_plus'
             : 'ip-adapter_face_id';
 
-        const imageData = s.localRefImage.replace(/^data:image\/.+;base64,/, '');
+        const imageData = localReferenceBase64;
 
         // ControlNet unit configuration - use both 'image' and 'input_image' for compatibility
         // A1111 extension uses 'image', Forge Neo may use 'input_image'
@@ -8276,7 +8643,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
         controlNetUnits.push(controlNetUnit);
 
         const logPayload = { ...controlNetUnit, image: "BASE64_TRUNCATED", input_image: "BASE64_TRUNCATED" };
-        log(`A1111/Forge ControlNet Payload: ${JSON.stringify(logPayload)}`);
+        debugLog(`A1111/Forge ControlNet Payload: ${JSON.stringify(logPayload)}`);
         log(`A1111/Forge: Using IP-Adapter Face with preprocessor=${ipAdapterPreprocessor}, model=${ipAdapterModel}, weight=${s.a1111IpAdapterWeight}`);
     }
 
@@ -8293,10 +8660,9 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
             guidance_start: parseFiniteFloat(s.a1111ControlNetGuidanceStart, 0, 0, 1),
             guidance_end: parseFiniteFloat(s.a1111ControlNetGuidanceEnd, 1, 0, 1)
         };
-        if (s.a1111ControlNetImage) {
-            const cnImageData = s.a1111ControlNetImage.replace(/^data:image\/.+;base64,/, '');
-            cnUnit.image = cnImageData;
-            cnUnit.input_image = cnImageData;
+        if (controlNetReferenceBase64) {
+            cnUnit.image = controlNetReferenceBase64;
+            cnUnit.input_image = controlNetReferenceBase64;
         }
         controlNetUnits.push(cnUnit);
         log(`A1111: Generic ControlNet: model=${s.a1111ControlNetModel}, module=${cnUnit.module}, weight=${cnUnit.weight}, image=${s.a1111ControlNetImage ? 'yes' : 'no'}`);
@@ -8308,7 +8674,7 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
 
     log(`A1111: steps=${s.steps}, cfg=${s.cfgScale}, clip_skip=${clipSkip}, loras=${s.a1111Loras || 'none'}, hires=${s.a1111HiresFix && !isImg2Img ? 'on' : 'off'}, adetailer=${s.a1111Adetailer ? 'on' : 'off'}, ip-adapter=${s.a1111IpAdapter && s.localRefImage ? 'on' : 'off'}, controlnet=${s.a1111ControlNet ? 'on' : 'off'}`);
 
-    const stopProgressPolling = startA1111ProgressPolling(baseUrl, signal);
+    stopProgressPolling = startA1111ProgressPolling(baseUrl, requestSignal);
 
     const getAlternateControlNetScriptKey = (key) => key === "ControlNet" ? "sd_forge_controlnet" : "ControlNet";
     const parseA1111ErrorDetail = async (res) => {
@@ -8326,12 +8692,12 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestPayload),
-        signal
+        signal: requestSignal,
+        redirect: "error",
     });
 
-    try {
-        let requestPayload = payload;
-        let res = await postA1111(requestPayload);
+    let requestPayload = payload;
+    let res = await postA1111(requestPayload);
         let responseDetail;
         if (!res.ok && controlNetUnits.length > 0 && res.status === 422) {
             responseDetail = await parseA1111ErrorDetail(res);
@@ -8375,9 +8741,15 @@ async function genLocal(prompt, negative, s, signal, options = {}) {
                 },
             };
         }
-        throw new Error("No image in response");
+    throw new Error("No image in response");
+    } catch (error) {
+        if (requestDeadline.didTimeOut() && !signal?.aborted) {
+            throw new Error(`A1111 request timed out after ${A1111_REQUEST_TIMEOUT_MS / 1000} seconds`);
+        }
+        throw error;
     } finally {
         stopProgressPolling();
+        requestDeadline.dispose();
     }
 }
 
@@ -8385,6 +8757,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     // ComfyUI Proxy mode — simple GET /prompt/{text}?token=xxx → PNG
     if (s.proxyComfyMode) {
         const baseUrl = s.proxyUrl.replace(/\/$/, "");
+        assertSafeConfigurableEndpoint(baseUrl, "ComfyUI proxy URL");
         const params = new URLSearchParams();
         if (s.proxyKey) params.set("token", s.proxyKey);
         if (s.proxyComfyNodeId) params.set("node_id", s.proxyComfyNodeId);
@@ -8403,7 +8776,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         if (signal?.aborted) abortFromParent();
         else signal?.addEventListener("abort", abortFromParent, { once: true });
 
-        const fetchOpts = { signal: controller.signal };
+        const fetchOpts = { signal: controller.signal, redirect: "error" };
         if (hasWorkflow) {
             fetchOpts.method = "POST";
             fetchOpts.headers = { "Content-Type": "application/json" };
@@ -8456,6 +8829,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
     const sseEnabled = endpointMode === "images_generations" ? shouldUseProxySse(s, payloadMode) : false;
 
     if (!requestUrl) throw new Error("Proxy URL is required");
+    assertSafeConfigurableEndpoint(requestUrl, "Reverse Proxy URL");
     if (endpointMode === "images_generations" && payloadMode === "openai_strict" && rawRefImages.length) {
         throw new Error("OpenAI-strict images/generations does not support reference images. Remove the references, switch to chat/completions, or use Extended payload mode with a compatible proxy.");
     }
@@ -8480,7 +8854,8 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
             method: "POST",
             headers,
             body: JSON.stringify(payload),
-            signal: controller.signal
+            signal: controller.signal,
+            redirect: "error",
         });
 
         if (!res.ok) {
@@ -8564,7 +8939,7 @@ async function genProxy(prompt, negative, s, signal, options = {}) {
         if (imageUrl) return withEffectiveProxyRequest(await materializeProxyResult(imageUrl));
 
         if (endpointMode === "chat_completions") {
-            log(`Full message structure: ${JSON.stringify(data?.choices?.[0]?.message || {}).substring(0, 500)}`);
+            debugLog(`Full message structure: ${JSON.stringify(data?.choices?.[0]?.message || {}).substring(0, 500)}`);
             const msgContent = data?.choices?.[0]?.message?.content;
             throw new Error(msgContent === null
                 ? "Model returned empty response - image generation may not be supported via this proxy"
@@ -8662,8 +9037,8 @@ function initResizeHandle(popup) {
             document.removeEventListener('mouseup', onMouseUp);
         };
 
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('mousemove', onMouseMove, { signal });
+        document.addEventListener('mouseup', onMouseUp, { signal });
     }, { signal });
 }
 
@@ -8828,7 +9203,14 @@ function showPromptHistory() {
         document.getElementById("qig-clear-history").onclick = () => {
             if (confirm("Clear all prompt history?")) {
                 promptHistory = [];
-                localStorage.removeItem("qig_prompt_history");
+                try {
+                    if (accountStorageScope?.promptHistoryKey) {
+                        localStorage.removeItem(accountStorageScope.promptHistoryKey);
+                    }
+                } catch (error) {
+                    log(`Prompt history could not be cleared from browser storage: ${error.message}`);
+                    toastr?.warning?.("Prompt history was cleared for this session, but browser storage could not be updated.");
+                }
                 container.innerHTML = '<p class="qig-muted">No prompts yet</p>';
             }
         };
@@ -8897,10 +9279,10 @@ async function readValidatedReferenceFiles(files, existingSources = [], maxCount
     return { sources, errors };
 }
 
-function reportReferenceFileErrors(errors) {
+function reportReferenceFileErrors(errors, limitDescription = "25 MiB total limit") {
     if (!errors?.length) return;
     log(`Reference upload skipped: ${errors.join("; ")}`);
-    toastr.warning(`${errors.length} reference image${errors.length === 1 ? " was" : "s were"} skipped. Files must be valid supported images and stay within the 25 MiB total limit.`);
+    toastr.warning(`${errors.length} reference image${errors.length === 1 ? " was" : "s were"} skipped. Files must be valid supported images and stay within the ${limitDescription}.`);
 }
 
 async function useImageAsReference(source, popup) {
@@ -8936,8 +9318,13 @@ async function useImageAsReference(source, popup) {
     if (s.provider === "nanobanana" || s.provider === "nanogpt") {
         const key = s.provider === "nanobanana" ? "nanobananaRefImages" : "nanogptRefImages";
         if (!Array.isArray(s[key])) s[key] = [];
-        if (s[key].length >= 15) {
-            toastr.warning("Maximum 15 reference images reached");
+        const maxReferences = s.provider === "nanogpt" ? getNanoGptReferenceLimit(s) : 15;
+        if (s[key].length >= maxReferences) {
+            toastr.warning(`Maximum ${maxReferences} reference images reached`);
+            return;
+        }
+        if (s.provider === "nanogpt" && !nanoGptReferencesFitRequest([...s[key], persistedSource])) {
+            toastr.warning("NanoGPT references must fit within the 4 MiB encoded request limit");
             return;
         }
         const inlineBytes = s[key].reduce((total, value) => total + getInlineImageBytes(value), 0) + getInlineImageBytes(persistedSource);
@@ -8993,31 +9380,40 @@ function toAbsoluteImageUrl(url) {
 
 async function resolveChatInsertImageUrl(entryOrUrl, outputMode = getSettings()?.outputMode) {
     const entry = normalizeGenerationEntry(entryOrUrl);
+    if (!entry.url && !entry.sourceUrl) throw new Error("Generated image has no valid delivery URL");
     if (normalizeOutputMode(outputMode) !== "image_url") {
-        return entry.url;
+        const inlineSource = entry.url || entry.sourceUrl;
+        if (inlineSource.startsWith("data:")) return inlineSource;
+        if (inlineSource.startsWith("blob:")) return await blobUrlToDataUrl(inlineSource);
+        const { buffer } = await fetchImageBuffer(inlineSource);
+        const format = detectImageFormat(buffer);
+        if (!format) throw new Error("Generated image bytes are invalid or unsupported");
+        return `data:${format.mime};base64,${arrayBufferToBase64(buffer)}`;
     }
 
-    const candidateUrl = entry.sourceUrl || entry.url;
+    if (entry.serverPath) return entry.serverPath;
+    const candidateUrl = entry.url || entry.sourceUrl;
     if (isUrlBasedImageSource(candidateUrl)) {
-        return toAbsoluteImageUrl(candidateUrl);
+        return candidateUrl;
     }
     if (isUrlBasedImageSource(entry.url)) {
-        return toAbsoluteImageUrl(entry.url);
+        return entry.url;
     }
     if (typeof saveBase64AsFile !== "function") {
         throw new Error("image_url output requires SillyTavern file saving support");
     }
 
-    const savedUrl = await saveImageToServer(entry.url, entry.prompt, entry.negative, {
+    const savedUrl = normalizeSavedImagePath(await saveImageToServer(entry.url, entry.prompt, entry.negative, {
         ...cloneMetadataSettings(entry.metadataSettings || {}),
         effectiveRequest: cloneMetadataSettings(entry.effectiveRequest || {}),
         saveToServer: true,
-    });
+    }));
     if (!isUrlBasedImageSource(savedUrl)) {
         throw new Error("Failed to create a server image URL");
     }
+    entry.serverPath = savedUrl;
     entry.sourceUrl = savedUrl;
-    return toAbsoluteImageUrl(savedUrl);
+    return savedUrl;
 }
 
 function toCssImageUrl(url) {
@@ -9090,50 +9486,58 @@ function applyBackgroundCss(cssUrl) {
     return false;
 }
 
-async function saveLockedBackgroundMetadata(cssUrl, path) {
-    const ctx = getContext?.();
-    if (!ctx?.chatMetadata) throw new Error("No active chat metadata available");
-
-    const previousBackground = ctx.chatMetadata.custom_background;
-    const previousBackgrounds = ctx.chatMetadata.chat_backgrounds;
-    ctx.chatMetadata.custom_background = cssUrl;
-    if (path) {
-        const list = Array.isArray(ctx.chatMetadata.chat_backgrounds) ? [...ctx.chatMetadata.chat_backgrounds] : [];
-        if (!list.includes(path)) list.push(path);
-        ctx.chatMetadata.chat_backgrounds = list;
-    }
-
-    try {
-        if (typeof ctx.saveMetadataDebounced === "function") {
-            ctx.saveMetadataDebounced();
-        } else if (typeof ctx.saveMetadata === "function") {
-            await ctx.saveMetadata();
-        }
-    } catch (error) {
-        ctx.chatMetadata.custom_background = previousBackground;
-        ctx.chatMetadata.chat_backgrounds = previousBackgrounds;
-        throw error;
-    }
+async function saveLockedBackgroundMetadata(cssUrl, path, { commitGuard, context, chatIdentity } = {}) {
+    const ctx = context || getContext?.();
+    const identity = chatIdentity || createChatIdentitySnapshot(ctx);
+    await persistLockedBackgroundState(ctx, {
+        cssUrl,
+        path,
+        validate: commitGuard,
+        isCurrent: () => isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }),
+    });
 }
 
 async function setImageAsBackground(entryOrUrl, mode = getSettings()?.backgroundMode, options = {}) {
     const normalizedMode = normalizeBackgroundMode(mode);
+    const lockedContext = normalizedMode === "locked" ? getContext?.() : null;
+    const lockedChatIdentity = lockedContext ? createChatIdentitySnapshot(lockedContext) : null;
+    const assertCommitState = () => {
+        options.commitGuard?.();
+        if (normalizedMode === "locked"
+            && !isChatIdentitySnapshotCurrent(lockedChatIdentity, { requireMetadata: true })) {
+            throw new DOMException("Locked background chat changed", "AbortError");
+        }
+    };
+    assertCommitState();
     const { url, path } = await resolveBackgroundImageUrl(entryOrUrl, normalizedMode);
     const cssUrl = toCssImageUrl(url);
 
+    assertCommitState();
     await verifyRenderableImage(url, options.signal);
-    options.commitGuard?.();
+    assertCommitState();
     const backgroundElement = document.getElementById("bg1");
     const previousBackground = backgroundElement?.style.backgroundImage || "";
     if (!applyBackgroundCss(cssUrl)) throw new Error("Could not find SillyTavern background element");
+    const appliedBackground = backgroundElement?.style.backgroundImage || cssUrl;
     try {
         if (normalizedMode === "locked") {
-            options.commitGuard?.();
-            await saveLockedBackgroundMetadata(cssUrl, path);
+            assertCommitState();
+            await saveLockedBackgroundMetadata(cssUrl, path, {
+                commitGuard: options.commitGuard,
+                context: lockedContext,
+                chatIdentity: lockedChatIdentity,
+            });
         }
     } catch (error) {
-        applyBackgroundCss(previousBackground);
-        throw error;
+        await rethrowAfterTransactionRollback(error, {
+            rollback: () => {
+                if (backgroundElement && backgroundElement.style.backgroundImage !== appliedBackground) return;
+                if (!applyBackgroundCss(previousBackground)) {
+                    throw new Error("Could not restore the previous SillyTavern background CSS");
+                }
+            },
+            message: "Locked background failed and its CSS rollback could not be applied",
+        });
     }
 
     const modeLabel = normalizedMode === "locked" ? "locked chat" : "temporary";
@@ -9163,15 +9567,20 @@ function restoreMessageExtra(message, hadExtra, previousExtra) {
     else delete message.extra;
 }
 
-function rerenderMessageMedia(ctx, message, index) {
+function rerenderMessageMedia(ctx, message, index, expectedChat = ctx?.chat) {
+    if (!isChatIdentitySnapshotCurrent(createChatIdentitySnapshot(ctx), { requireMetadata: true })) return;
+    if (getContext?.()?.chat !== expectedChat || expectedChat[index] !== message) return;
     if (typeof ctx.appendMediaToMessage !== "function") return;
     const messageElement = $(`.mes[mesid="${index}"]`);
-    if (messageElement.length) ctx.appendMediaToMessage(message, messageElement, "replace");
+    if (messageElement.length) ctx.appendMediaToMessage(message, messageElement, "adjust");
 }
 
 function rollbackInsertedMessage(ctx, chat, message, expectedIndex) {
-    const index = chat[expectedIndex] === message ? expectedIndex : chat.lastIndexOf(message);
-    if (index >= 0) chat.splice(index, 1);
+    const current = getContext?.();
+    const identity = createChatIdentitySnapshot(ctx);
+    if (current?.chat === chat && !isChatIdentitySnapshotCurrent(identity, { requireMetadata: true })) return;
+    const index = removeInsertedMessage(chat, message, expectedIndex);
+    if (!isChatIdentitySnapshotCurrent(identity, { requireMetadata: true }) || getContext?.()?.chat !== chat) return;
     const renderedIndex = index >= 0 ? index : expectedIndex;
     const messageElement = $(`.mes[mesid="${renderedIndex}"]`);
     if (messageElement.length) messageElement.remove();
@@ -9218,6 +9627,9 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
         url = await blobUrlToDataUrl(url);
         assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed");
     }
+    if (!url) throw new Error("Generated image has no valid delivery URL");
+    await verifyRenderableImage(url, options.signal);
+    assertMessageTargetSnapshot(mutationTargetSnapshot, "Image insertion target changed");
     options.commitGuard?.();
 
     const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
@@ -9249,7 +9661,7 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
             message.extra.inline_image = true;
             message.extra.media_index = message.extra.media.length - 1;
 
-            rerenderMessageMedia(ctx, message, idx);
+            rerenderMessageMedia(ctx, message, idx, chat);
         } else {
             // Legacy fallback for older ST versions
             message.extra.image = url;
@@ -9263,7 +9675,7 @@ async function insertImageIntoMessage(entryOrUrl, targetMessageIndex = null, opt
     } catch (error) {
         restoreMessageExtra(message, hadExtra, previousExtra);
         try {
-            rerenderMessageMedia(ctx, message, idx);
+            rerenderMessageMedia(ctx, message, idx, chat);
         } catch (rollbackError) {
             log(`Failed to refresh message after insert rollback: ${rollbackError.message}`);
         }
@@ -9281,6 +9693,8 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
     }
+    if (!url) throw new Error("Generated image has no valid delivery URL");
+    await verifyRenderableImage(url, options.signal);
     options.commitGuard?.();
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
@@ -9289,7 +9703,7 @@ async function insertImageAsNewMessage(entryOrUrl, options = {}) {
         is_user: false,
         is_system: false,
         send_date: new Date().toISOString(),
-        mes: "",
+        mes: "Generated image",
         extra: {
             media: [{ url, type: 'image', title, source: 'generated' }],
             media_display: 'gallery',
@@ -9331,6 +9745,8 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
     if (url.startsWith('blob:')) {
         url = await blobUrlToDataUrl(url);
     }
+    if (!url) throw new Error("Generated image has no valid delivery URL");
+    await verifyRenderableImage(url, options.signal);
     options.commitGuard?.();
 
     const title = entry.prompt || lastPrompt || 'Generated Image';
@@ -9339,7 +9755,7 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
         is_user: false,
         is_system: true,
         send_date: new Date().toISOString(),
-        mes: "",
+        mes: "Generated image",
         extra: {
             media: [{ url, type: 'image', title, source: 'generated' }],
             media_display: 'gallery',
@@ -9372,7 +9788,7 @@ async function insertImageAsHiddenReply(entryOrUrl, options = {}) {
 }
 
 async function autoInsertInjectImage(entryOrUrl, { messageIndex, insertMode, commitGuard, conversationCheckpoint, targetSnapshot, outputMode } = {}) {
-    const mode = insertMode || "replace";
+    const mode = normalizeInjectInsertMode(insertMode);
     if (mode === "hidden") return await insertImageAsHiddenReply(entryOrUrl, { commitGuard, conversationCheckpoint, outputMode });
     if (mode === "new") {
         return await insertImageAsNewMessage(entryOrUrl, { commitGuard, conversationCheckpoint, outputMode });
@@ -9571,51 +9987,99 @@ async function addContextMediaRemoteUrls(rawValue, target) {
     return inserted;
 }
 
-async function insertContextMedia(media, { messageIndex, insertMode = "replace", commitGuard, targetSnapshot } = {}) {
+async function insertContextMedia(media, {
+    messageIndex,
+    insertMode = "replace",
+    commitGuard,
+    targetSnapshot,
+    conversationCheckpoint,
+} = {}) {
     const ctx = getContext();
     const chat = ctx?.chat;
     if (!Array.isArray(chat)) throw new Error("No active chat");
+    if (typeof ctx.saveChat !== "function") throw new Error("Chat persistence is unavailable");
+    const chatIdentity = createChatIdentitySnapshot(ctx);
+    const isCurrentChat = () => isChatIdentitySnapshotCurrent(chatIdentity, { requireMetadata: true });
+    const persistChat = (skipIfStale = false) => persistIfCurrent({
+        persist: () => ctx.saveChat(),
+        isCurrent: isCurrentChat,
+        skipIfStale,
+        staleMessage: "Context Media chat changed",
+        failureMessage: "Context Media chat persistence reported failure",
+    });
     const attachment = createContextMediaAttachment(media);
-    commitGuard?.();
     if (attachment.type === "video" && typeof ctx.appendMediaToMessage !== "function") {
         throw new Error("Video attachments require a newer SillyTavern media API");
     }
+    const initialChatLength = chat.length;
+    const assertCommitState = (message) => {
+        if (!isCurrentChat()) throw new DOMException(message, "AbortError");
+        commitGuard?.();
+        if (targetSnapshot) assertMessageTargetSnapshot(targetSnapshot, message);
+        if (conversationCheckpoint && !isConversationCheckpointCurrent(conversationCheckpoint, getContext?.()?.chat)) {
+            throw new DOMException(message, "AbortError");
+        }
+    };
+    assertCommitState("Context Media target changed");
 
     if (insertMode === "replace") {
         const idx = targetSnapshot?.index ?? Number(messageIndex);
         if (!Number.isInteger(idx) || idx < 0 || idx >= chat.length) throw new Error("Could not find Context Media target message");
-        if (targetSnapshot) assertMessageTargetSnapshot(targetSnapshot, "Context Media target changed");
         const message = chat[idx];
         if (!message) throw new Error("Could not find Context Media target message");
+        const mutationTargetSnapshot = targetSnapshot || createMessageTargetSnapshot(chat, idx);
+        if (!mutationTargetSnapshot) throw new Error("Could not find Context Media target message");
+        assertMessageTargetSnapshot(mutationTargetSnapshot, "Context Media target changed");
         const hadExtra = Object.prototype.hasOwnProperty.call(message, "extra");
         const previousExtra = hadExtra && message.extra && typeof message.extra === "object"
             ? snapshotGenerationSettings(message.extra)
             : message.extra;
-        try {
-            message.extra = message.extra && typeof message.extra === "object" ? message.extra : {};
-            message.extra.media = Array.isArray(message.extra.media) ? message.extra.media : [];
-            if (!message.extra.media.length && !message.extra.media_display) message.extra.media_display = "gallery";
-            message.extra.media.push(attachment);
-            message.extra.inline_image = true;
-            message.extra.media_index = message.extra.media.length - 1;
-            if (typeof ctx.appendMediaToMessage === "function") {
-                const messageElement = $(`.mes[mesid="${idx}"]`);
-                if (messageElement.length) {
-                    ctx.appendMediaToMessage(message, messageElement, "replace");
-                    applyRemoteContextMediaPrivacy(messageElement, ctx);
+
+        await runDurableTransaction({
+            mutate: () => {
+                message.extra = message.extra && typeof message.extra === "object" ? message.extra : {};
+                message.extra.media = Array.isArray(message.extra.media) ? message.extra.media : [];
+                if (!message.extra.media.length && !message.extra.media_display) message.extra.media_display = "gallery";
+                message.extra.media.push(attachment);
+                message.extra.inline_image = true;
+                message.extra.media_index = message.extra.media.length - 1;
+                if (typeof ctx.appendMediaToMessage === "function") {
+                    const messageElement = $(`.mes[mesid="${idx}"]`);
+                    if (messageElement.length) {
+                        ctx.appendMediaToMessage(message, messageElement, "replace");
+                        applyRemoteContextMediaPrivacy(messageElement, ctx);
+                        scheduleRefreshMessageGenerateActions();
+                    }
+                } else if (attachment.type === "image") {
+                    message.extra.image = attachment.url;
+                    message.extra.title = attachment.title;
+                }
+                assertCommitState("Context Media target changed before saving chat");
+            },
+            persist: () => persistChat(),
+            validate: () => {
+                assertCommitState("Context Media target changed while saving chat");
+                assertMessageTargetSnapshot(mutationTargetSnapshot, "Context Media target changed while saving chat");
+                if (getContext?.()?.chat !== chat || chat.length !== initialChatLength) {
+                    throw new DOMException("Chat changed while saving Context Media", "AbortError");
+                }
+            },
+            rollback: () => {
+                restoreMessageExtra(message, hadExtra, previousExtra);
+                try {
+                    rerenderMessageMedia(ctx, message, idx, chat);
+                    if (isCurrentChat() && chat[idx] === message) {
+                        applyRemoteContextMediaPrivacy($(`.mes[mesid="${idx}"]`), ctx);
+                    }
+                } catch (rollbackError) {
+                    log(`Failed to refresh message after Context Media rollback: ${rollbackError.message}`);
+                } finally {
                     scheduleRefreshMessageGenerateActions();
                 }
-            } else if (attachment.type === "image") {
-                message.extra.image = attachment.url;
-                message.extra.title = attachment.title;
-            }
-            commitGuard?.();
-            await ctx.saveChat();
-        } catch (error) {
-            restoreMessageExtra(message, hadExtra, previousExtra);
-            try { rerenderMessageMedia(ctx, message, idx); } catch { /* best-effort DOM rollback */ }
-            throw error;
-        }
+            },
+            persistRollback: () => persistChat(true),
+            rollbackFailureMessage: "Context Media insertion failed and its rollback could not be persisted",
+        });
     } else {
         const hidden = insertMode === "hidden";
         const message = {
@@ -9632,19 +10096,41 @@ async function insertContextMedia(media, { messageIndex, insertMode = "replace",
             },
         };
         const messageIndexAtInsert = chat.length;
-        try {
-            chat.push(message);
-            if (typeof ctx.addOneMessage === "function") {
-                ctx.addOneMessage(message);
-                applyRemoteContextMediaPrivacy($(`.mes[mesid="${chat.length - 1}"]`), ctx);
+        let checkpointRegistered = false;
+        await runDurableTransaction({
+            mutate: () => {
+                chat.push(message);
+                checkpointRegistered = registerConversationCheckpointInsertion(conversationCheckpoint, message);
+                if (conversationCheckpoint && !checkpointRegistered) {
+                    throw new DOMException(`Conversation advanced before ${hidden ? "hidden " : ""}Context Media insertion`, "AbortError");
+                }
+                assertCommitState("Context Media target changed before saving chat");
+                if (typeof ctx.addOneMessage === "function") {
+                    ctx.addOneMessage(message);
+                    applyRemoteContextMediaPrivacy($(`.mes[mesid="${messageIndexAtInsert}"]`), ctx);
+                    scheduleRefreshMessageGenerateActions();
+                }
+            },
+            persist: () => persistChat(),
+            validate: () => {
+                assertCommitState("Context Media target changed while saving chat");
+                if (getContext?.()?.chat !== chat
+                    || chat.length !== messageIndexAtInsert + 1
+                    || chat[messageIndexAtInsert] !== message) {
+                    throw new DOMException(`Chat changed while saving ${hidden ? "hidden " : ""}Context Media`, "AbortError");
+                }
+            },
+            rollback: () => {
+                if (checkpointRegistered) {
+                    unregisterConversationCheckpointInsertion(conversationCheckpoint, message);
+                    checkpointRegistered = false;
+                }
+                rollbackInsertedMessage(ctx, chat, message, messageIndexAtInsert);
                 scheduleRefreshMessageGenerateActions();
-            }
-            await ctx.saveChat();
-        } catch (error) {
-            rollbackInsertedMessage(ctx, chat, message, messageIndexAtInsert);
-            scheduleRefreshMessageGenerateActions();
-            throw error;
-        }
+            },
+            persistRollback: () => persistChat(true),
+            rollbackFailureMessage: `${hidden ? "Hidden Context Media" : "New Context Media"} insertion failed and its rollback could not be persisted`,
+        });
     }
 }
 
@@ -9728,30 +10214,22 @@ async function deleteContextMediaServerPath(path) {
     return true;
 }
 
-function contextMediaBytesMatchFormat(buffer, format) {
-    const bytes = new Uint8Array(buffer);
-    if (format.type === "image") return detectImageFormat(buffer)?.mime === format.mimeType;
-    if (format.mimeType === "video/mp4") {
-        return bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
-    }
-    if (format.mimeType === "video/webm") {
-        return bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
-    }
-    return false;
-}
-
 async function uploadContextMediaFiles(files, target) {
     if (typeof saveBase64AsFile !== "function") throw new Error("SillyTavern media saving is unavailable");
+    const selection = validateContextMediaFileSelection(files);
+    if (!selection.valid) throw new Error(selection.errors[0] || "Invalid Context Media file selection");
     const accepted = [];
     const rejected = [];
-    for (const file of Array.from(files || [])) {
+    for (const file of selection.files) {
         const validation = validateContextMediaFile(file);
         if (!validation.valid) {
             rejected.push(`${file.name}: ${validation.errors[0]}`);
             continue;
         }
         try {
+            if (typeof file.arrayBuffer !== "function") throw new Error("file is unreadable");
             const buffer = await file.arrayBuffer();
+            if (buffer.byteLength !== file.size) throw new Error("file size changed while it was being read");
             if (!contextMediaBytesMatchFormat(buffer, validation.format)) throw new Error("file bytes do not match its declared format");
             const base64 = arrayBufferToBase64(buffer);
             const cleanBase = String(file.name || "media").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "media";
@@ -10223,6 +10701,7 @@ async function classifyAndInsertContextMedia(snapshot, { testOnly = false } = {}
         insertMode: snapshot.insertMode,
         commitGuard: snapshot.commitGuard,
         targetSnapshot: snapshot.targetSnapshot,
+        conversationCheckpoint: snapshot.conversationCheckpoint,
     });
     _contextMediaPreviousMediaId = media.id;
     return { ...result, media };
@@ -10304,6 +10783,7 @@ function scheduleContextMediaForMessage(messageIndex) {
         message,
         targetSnapshot,
         contextSnapshots,
+        conversationCheckpoint,
         scene,
         controller,
         signal: controller.signal,
@@ -10376,7 +10856,8 @@ function createGenerationEntry(url, prompt = lastPrompt, negative = lastNegative
     const snapshot = cloneMetadataSettings(metadataSettings || {});
     const provider = options.provider || snapshot.provider || getSettings()?.provider || "";
     if (provider && !snapshot.provider) snapshot.provider = provider;
-    const normalizedUrl = normalizeGeneratedImageSource(url) || "";
+    const normalizedServerPath = normalizeSavedImagePath(options.serverPath || url) || "";
+    const normalizedUrl = normalizedServerPath || normalizeGeneratedImageSource(url) || "";
     const normalizedSourceUrl = normalizeGeneratedImageSource(options.sourceUrl ?? url) || normalizedUrl;
     const sourceIdentity = normalizeMessageSourceIdentity({
         ...options,
@@ -10385,6 +10866,7 @@ function createGenerationEntry(url, prompt = lastPrompt, negative = lastNegative
     return {
         id: typeof options.id === "string" && options.id ? options.id : generateUUID(),
         url: normalizedUrl,
+        serverPath: normalizedServerPath,
         sourceUrl: normalizedSourceUrl,
         ...sourceIdentity,
         thumbnail: options.thumbnail ?? null,
@@ -10408,7 +10890,12 @@ function normalizeGenerationEntry(entryOrUrl, fallback = {}) {
     const snapshot = cloneMetadataSettings(entryOrUrl.metadataSettings || fallback.metadataSettings || {});
     const provider = entryOrUrl.provider || snapshot.provider || fallback.provider || getSettings()?.provider || "";
     if (provider && !snapshot.provider) snapshot.provider = provider;
-    const normalizedUrl = normalizeGeneratedImageSource(entryOrUrl.url ?? fallback.url ?? "") || "";
+    const normalizedServerPath = normalizeSavedImagePath(
+        entryOrUrl.serverPath ?? fallback.serverPath ?? entryOrUrl.url ?? fallback.url ?? "",
+    ) || "";
+    const normalizedUrl = normalizedServerPath
+        || normalizeGeneratedImageSource(entryOrUrl.url ?? fallback.url ?? "")
+        || "";
     const normalizedSourceUrl = normalizeGeneratedImageSource(
         entryOrUrl.sourceUrl ?? fallback.sourceUrl ?? entryOrUrl.url ?? fallback.url ?? "",
     ) || normalizedUrl;
@@ -10419,6 +10906,7 @@ function normalizeGenerationEntry(entryOrUrl, fallback = {}) {
             ? entryOrUrl.id
             : (typeof fallback.id === "string" && fallback.id ? fallback.id : generateUUID()),
         url: normalizedUrl,
+        serverPath: normalizedServerPath,
         sourceUrl: normalizedSourceUrl,
         ...sourceIdentity,
         prompt: entryOrUrl.prompt ?? fallback.prompt ?? "",
@@ -10457,14 +10945,18 @@ async function finalizeGeneratedEntry(providerResult, prompt, negative, settings
         metadataSettings.serverSaveStatus = metadataSettings.saveToServer
             ? (finalized.saved ? "saved" : "failed")
             : "not-requested";
-        const stableUrl = finalized.saved ? finalUrl : await persistImageUrl(finalUrl, { signal: options.signal });
+        const serverPath = finalized.saved ? normalizeSavedImagePath(finalUrl) : "";
+        if (finalized.saved && !serverPath) throw new Error("SillyTavern returned an invalid saved image path");
+        const stableUrl = serverPath || await persistImageUrl(finalUrl, { signal: options.signal });
         options.commitGuard?.();
         const sourceUrl = blobUrls.has(finalUrl) && stableUrl !== finalUrl ? stableUrl : finalUrl;
         entry = createGenerationEntry(stableUrl, prompt, negative, metadataSettings, {
             ...options,
-            sourceUrl,
+            serverPath,
+            sourceUrl: serverPath || sourceUrl,
             effectiveRequest,
         });
+        if (!entry.url) throw new Error("Generated image could not be assigned a valid delivery URL");
         return entry;
     } finally {
         const retainedUrl = entry?.url || "";
@@ -10489,11 +10981,17 @@ async function finalizeGeneratedResults(providerResult, prompt, negative, settin
             return entry;
         });
         if (!outcome.results.length && outcome.errors.length) throw outcome.errors[0].error;
-        return attachResultFailures(outcome.results, [
+        const entries = attachResultFailures(outcome.results, [
             ...getResultFailures(normalizedProviderResult),
             ...outcome.errors,
         ]);
+        options.commitGuard?.();
+        rememberRegenerationReferences(entries, settings, options.referenceRuntimeOptions, {
+            groupId: options.regenerationGroupId,
+        });
+        return entries;
     } catch (error) {
+        // SillyBunny divergence: release outputs when a scoped/external run fails or is cancelled.
         finalizedEntries.forEach(releaseTransientProviderResult);
         releaseTransientProviderResult(providerResult);
         throw error;
@@ -10552,36 +11050,96 @@ function warnGalleryPersistence(entry) {
     toastr.warning("Image is available for this session but could not be saved permanently.");
 }
 
+let _galleryEvictionToastTs = 0;
+function warnGalleryEviction(event) {
+    const count = Array.isArray(event?.entries) ? event.entries.length : 0;
+    if (!count) return;
+    const limit = Number.isSafeInteger(event.limit) ? event.limit : 50;
+    log(`Gallery retention limit (${limit}) removed ${count} older image(s)`);
+    const now = Date.now();
+    if (now - _galleryEvictionToastTs < 4000) return;
+    _galleryEvictionToastTs = now;
+    toastr.warning(`Gallery keeps the newest ${limit} images. ${count} older image${count === 1 ? " was" : "s were"} removed.`);
+}
+
 async function initializeGalleryRepository() {
-    const repository = new GalleryRepository({ createId: generateUUID });
-    galleryRepository = repository;
+    let repository = null;
     try {
+        if (!accountStorageScope) throw new Error("Account storage identity is unavailable");
+        repository = new GalleryRepository({
+            createId: generateUUID,
+            dbName: accountStorageScope.galleryDbName,
+            manifestKey: accountStorageScope.galleryManifestKey,
+            legacyKey: accountStorageScope.galleryLegacyKey,
+            onEvict: warnGalleryEviction,
+        });
+        galleryRepository = repository;
         sessionGallery = await repository.init(createGalleryAsset);
         if (sessionGallery.some(entry => entry.ephemeral)) {
             warnGalleryPersistence(sessionGallery.find(entry => entry.ephemeral));
         }
     } catch (error) {
         if (galleryRepository === repository) galleryRepository = null;
-        await repository.close().catch(() => {});
-        const legacyEntries = safeParse("qig_gallery", []);
-        sessionGallery = Array.isArray(legacyEntries)
-            ? legacyEntries.map(entry => ({ ...normalizeGenerationEntry(entry), ephemeral: true }))
-            : [];
-        log(`Gallery: IndexedDB unavailable: ${error.message}`);
+        await repository?.close().catch(() => {});
+        sessionGallery = [];
+        log(`Gallery storage unavailable: ${error.message}`);
         warnGalleryPersistence({ ephemeral: true });
     }
+    renderOpenGallery();
+}
+
+export function teardownQuickImageGen() {
+    _automationRevision += 1;
+    clearPendingAutoGenerateTimer();
+    cancelContextMediaWork({ resetCadence: true });
+    closePalettePresetMenu();
+    cleanupMessageGenerateActionBindings();
+    hostEventLifecycleScope?.dispose();
+    hostEventLifecycleScope = null;
+    clearRegenerationReferenceState();
+
+    resizeAbortController?.abort();
+    resizeAbortController = null;
+    if (batchKeyHandler) {
+        document.removeEventListener("keydown", batchKeyHandler);
+        batchKeyHandler = null;
+    }
+    if (qigKeyboardShortcutsBound) {
+        document.removeEventListener("keydown", handleQigKeyboardShortcut);
+        qigKeyboardShortcutsBound = false;
+    }
+    if (isGenerating) {
+        cancelRequested = true;
+        cancelRequestSerial += 1;
+        generationRunManager.cancel("Quick Image Gen unloaded");
+    }
+
+    document.querySelectorAll(`.${QIG_MESSAGE_ACTION_CLASS}`).forEach(element => element.remove());
+    document.getElementById("qig-input-btn")?.remove();
+    clearCache();
+    blobUrls.forEach(url => URL.revokeObjectURL(url));
+    blobUrls.clear();
+    void galleryRepository?.close();
+    galleryRepository = null;
+
+    const lifecycle = pageLifecycleScope;
+    pageLifecycleScope = null;
+    lifecycleCleanupInstalled = false;
+    lifecycle?.dispose();
 }
 
 function installLifecycleCleanup() {
     if (lifecycleCleanupInstalled) return;
     lifecycleCleanupInstalled = true;
-    window.addEventListener("pagehide", (event) => {
-        if (event.persisted) return;
-        cancelContextMediaWork();
-        blobUrls.forEach(url => URL.revokeObjectURL(url));
-        blobUrls.clear();
-        void galleryRepository?.close();
-    });
+    pageLifecycleScope = createLifecycleScope();
+    pageLifecycleScope.listen(window, "pagehide", teardownQuickImageGen);
+    pageLifecycleScope.listen(window, "unload", teardownQuickImageGen);
+}
+
+function renderOpenGallery() {
+    const gallery = document.getElementById("qig-gallery-popup");
+    if (!gallery || gallery.style.display === "none") return;
+    gallery._qigRender?.();
 }
 
 async function addToGallery(entryOrUrl) {
@@ -10593,9 +11151,12 @@ async function addToGallery(entryOrUrl) {
     if (!repository) {
         const ephemeralEntry = { ...entry, ephemeral: true, persistenceError: "IndexedDB is unavailable" };
         if (!sessionGallery.some(item => item.id === ephemeralEntry.id)) {
-            sessionGallery = [ephemeralEntry, ...sessionGallery].slice(0, 50);
+            const candidates = [ephemeralEntry, ...sessionGallery];
+            sessionGallery = candidates.slice(0, 50);
+            warnGalleryEviction({ entries: candidates.slice(50), limit: 50 });
         }
         warnGalleryPersistence(ephemeralEntry);
+        renderOpenGallery();
         return ephemeralEntry;
     }
 
@@ -10603,6 +11164,7 @@ async function addToGallery(entryOrUrl) {
         const savedEntry = await repository.add(entry, createGalleryAsset);
         sessionGallery = repository.list();
         warnGalleryPersistence(savedEntry);
+        renderOpenGallery();
         return savedEntry;
     } catch (error) {
         log(`Gallery save failed: ${error.message}`);
@@ -10625,6 +11187,7 @@ async function addBatchToGallery(entries) {
         sessionGallery = repository.list();
         const ephemeralEntry = savedEntries.find(entry => entry?.ephemeral);
         warnGalleryPersistence(ephemeralEntry);
+        renderOpenGallery();
         return savedEntries.filter(Boolean);
     } catch (error) {
         log(`Gallery batch save failed: ${error.message}`);
@@ -10683,27 +11246,45 @@ function savePromptHistory() {
     _promptHistorySaveQueued = true;
     queueMicrotask(() => {
         _promptHistorySaveQueued = false;
-        let candidate = normalizePromptHistory(promptHistory);
-        while (candidate.length >= 0) {
-            try {
-                localStorage.setItem("qig_prompt_history", JSON.stringify(candidate));
-                promptHistory = candidate;
-                return;
-            } catch (error) {
-                if (!candidate.length) {
-                    log(`Prompt history could not be saved: ${error.message}`);
-                    toastr?.warning?.("Prompt history could not be saved because browser storage is unavailable or full.");
-                    return;
-                }
-                candidate = candidate.slice(0, -1);
-            }
+        let result;
+        try {
+            result = persistPromptHistory(localStorage, accountStorageScope?.promptHistoryKey, promptHistory);
+        } catch (error) {
+            result = { saved: false, history: promptHistory, error };
+        }
+        promptHistory = result.history;
+        if (!result.saved) {
+            log(`Prompt history could not be saved: ${result.error?.message || "browser storage unavailable"}`);
+            toastr?.warning?.("Prompt history could not be saved because browser storage is unavailable or full.");
         }
     });
+}
+
+function commitSuccessfulPrompt(run, {
+    prompt,
+    negative = "",
+    promptWasLLM = false,
+    addHistory = false,
+} = {}) {
+    assertGenerationCanCommit(run);
+    lastPrompt = String(prompt || "");
+    lastNegative = String(negative || "");
+    lastPromptWasLLM = !!promptWasLLM;
+    if (addHistory) {
+        promptHistory.unshift({
+            prompt: lastPrompt,
+            negative: lastNegative,
+            time: new Date().toLocaleTimeString(),
+        });
+        if (promptHistory.length > 50) promptHistory.pop();
+        savePromptHistory();
+    }
 }
 
 function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
     const entry = normalizeGenerationEntry(entryOrUrl);
     if (!entry.url) return;
+    activateRegenerationReferenceResult(entry);
     if (!skipGallery) void addToGallery(entry);
     const popupInsertTargetIndex = Number.isInteger(entry.sourceMessageIndex)
         ? entry.sourceMessageIndex
@@ -10789,22 +11370,20 @@ function displayImage(entryOrUrl, skipGallery, returnFocusElement = null) {
                 toastr.warning("Generation already in progress");
                 return;
             }
-            if (promptTextarea && promptTextarea.value.trim()) {
-                lastPrompt = promptTextarea.value;
-            }
-            if (negativeTextarea) {
-                lastNegative = negativeTextarea.value;
-            }
-            lastPromptWasLLM = false;
-            rememberLastGenerationSource(entry);
-            lastEffectiveRequest = cloneMetadataSettings(entry.effectiveRequest || imageMetadataSettings.effectiveRequest || {});
-            if (!lastPrompt.trim()) {
+            const candidatePrompt = promptTextarea?.value || "";
+            const candidateNegative = negativeTextarea?.value || "";
+            if (!candidatePrompt.trim()) {
                 toastr.error("Prompt cannot be empty");
                 return;
             }
+            const effectiveRequest = cloneMetadataSettings(entry.effectiveRequest || imageMetadataSettings.effectiveRequest || {});
             const returnFocus = popup._qigReturnFocus;
             hidePopup(popup, { restoreFocus: false });
-            regenerateImage(lastEffectiveRequest, returnFocus);
+            void regenerateImage(effectiveRequest, returnFocus, entry, {
+                prompt: candidatePrompt,
+                negative: candidateNegative,
+                promptWasLLM: false,
+            });
         };
         document.getElementById("qig-gallery-btn").onclick = (e) => {
             e.stopPropagation();
@@ -10857,6 +11436,7 @@ function displayBatchResults(results, returnFocusElement = null) {
         sourceMessageIndex: batchFallbackSourceMessageIndex,
     }));
     if (!entries.length) return;
+    activateRegenerationReferenceResult(entries[0]);
     void addBatchToGallery(entries);
 
     let currentIndex = 0;
@@ -10947,6 +11527,7 @@ function displayBatchResults(results, returnFocusElement = null) {
 
         function showImage(index) {
             currentIndex = index;
+            activateRegenerationReferenceResult(entries[index]);
             img.src = entries[index].url;
             img.alt = `Generated image ${index + 1} of ${entries.length}`;
             syncPromptEditor(entries[index]);
@@ -11038,23 +11619,21 @@ function displayBatchResults(results, returnFocusElement = null) {
                 toastr.warning("Generation already in progress");
                 return;
             }
-            if (batchPromptTextarea && batchPromptTextarea.value.trim()) {
-                lastPrompt = batchPromptTextarea.value;
-            }
-            if (batchNegativeTextarea) {
-                lastNegative = batchNegativeTextarea.value;
-            }
-            lastPromptWasLLM = false;
             const activeEntry = getCurrentEntry();
-            rememberLastGenerationSource(activeEntry);
-            lastEffectiveRequest = cloneMetadataSettings(activeEntry?.effectiveRequest || activeEntry?.metadataSettings?.effectiveRequest || {});
-            if (!lastPrompt.trim()) {
+            const candidatePrompt = batchPromptTextarea?.value || "";
+            const candidateNegative = batchNegativeTextarea?.value || "";
+            if (!candidatePrompt.trim()) {
                 toastr.error("Prompt cannot be empty");
                 return;
             }
+            const effectiveRequest = cloneMetadataSettings(activeEntry?.effectiveRequest || activeEntry?.metadataSettings?.effectiveRequest || {});
             const returnFocus = popup._qigReturnFocus;
             hidePopup(popup, { restoreFocus: false });
-            regenerateImage(lastEffectiveRequest, returnFocus);
+            void regenerateImage(effectiveRequest, returnFocus, activeEntry, {
+                prompt: candidatePrompt,
+                negative: candidateNegative,
+                promptWasLLM: false,
+            });
         };
         document.getElementById("qig-batch-gallery").onclick = (e) => {
             e.stopPropagation();
@@ -11176,6 +11755,7 @@ async function showGallery(returnFocusElement = null) {
                 grid.appendChild(card);
             }
         };
+        gallery._qigRender = renderGalleryGrid;
 
         const runImport = async ({ insert = false } = {}) => {
             const rawUrl = importInput?.value?.trim() || "";
@@ -11185,7 +11765,6 @@ async function showGallery(returnFocusElement = null) {
             }
             try {
                 await importImageUrlToGallery(rawUrl, { insert });
-                renderGalleryGrid();
                 if (importInput) importInput.value = "";
                 toastr.success(insert ? "Image URL inserted into chat" : "Image URL added to gallery");
             } catch (err) {
@@ -11201,7 +11780,12 @@ async function showGallery(returnFocusElement = null) {
                     await galleryRepository.clear();
                     sessionGallery = galleryRepository.list();
                 } else {
-                    const recovery = await clearGalleryRepositoryStorage();
+                    if (!accountStorageScope) throw new Error("Account storage identity is unavailable");
+                    const recovery = await clearGalleryRepositoryStorage({
+                        dbName: accountStorageScope.galleryDbName,
+                        manifestKey: accountStorageScope.galleryManifestKey,
+                        legacyKey: accountStorageScope.galleryLegacyKey,
+                    });
                     sessionGallery = [];
                     if (!recovery.assetsCleared) {
                         log(`Gallery asset clear deferred: ${recovery.error?.message || "IndexedDB unavailable"}`);
@@ -11210,6 +11794,7 @@ async function showGallery(returnFocusElement = null) {
                 }
                 blobUrls.forEach(url => URL.revokeObjectURL(url));
                 blobUrls.clear();
+                clearRegenerationReferenceState();
                 renderGalleryGrid();
             } catch (error) {
                 log(`Gallery clear failed: ${error.message}`);
@@ -11245,23 +11830,65 @@ function bindAbortDismiss(signal, dismiss) {
     return () => signal.removeEventListener("abort", dismiss);
 }
 
-function showPromptEditDialog(prompt, signal) {
+function showPromptReviewStage({
+    mode,
+    title,
+    description,
+    request = "",
+    prefill = null,
+    result = "",
+    prompt = "",
+    negative = "",
+    canGoBack = false,
+    signal = null,
+}) {
     return new Promise((resolve) => {
-        const popup = createPopup("qig-prompt-edit-popup", "Edit LLM Generated Prompt", `
-            <div class="qig-popup-form qig-prompt-edit-dialog">
-                <textarea id="qig-prompt-edit-text" rows="10" placeholder="Edit the generated prompt..."></textarea>
-                <div class="qig-dialog-actions" style="margin-top:14px;">
-                    <button id="qig-prompt-edit-cancel" class="menu_button">Cancel</button>
-                    <button id="qig-prompt-edit-use" class="menu_button">Use Prompt</button>
+        const isRequest = mode === "request";
+        const isResult = mode === "result";
+        const isFinal = mode === "final";
+        const hasPrefill = isRequest && prefill !== null;
+        const fieldMarkup = isFinal
+            ? `<div class="qig-review-fields qig-review-fields--final">
+                    <label for="qig-review-positive">Positive prompt</label>
+                    <textarea id="qig-review-positive" rows="10" spellcheck="false"></textarea>
+                    <label for="qig-review-negative">Negative prompt</label>
+                    <textarea id="qig-review-negative" rows="5" spellcheck="false"></textarea>
+                </div>`
+            : `<div class="qig-review-fields">
+                    <label for="qig-review-text">${isRequest ? "Exact request sent to Text AI" : "Scene summary result"}</label>
+                    <textarea id="qig-review-text" rows="16" spellcheck="false"></textarea>
+                    ${hasPrefill ? `<label for="qig-review-prefill">Assistant prefill</label>
+                    <textarea id="qig-review-prefill" class="qig-review-prefill" rows="3" spellcheck="false"></textarea>
+                    <p class="qig-review-field-note">Sent as a separate assistant prefix when supported. Fallback routes convert this reviewed value into an explicit continuation instruction.</p>` : ""}
+                </div>`;
+        const backLabel = isResult ? "Re-run Text AI" : "Back";
+        const primaryLabel = isRequest ? "Run Text AI" : (isFinal ? "Generate" : "Continue");
+        const activeStage = isFinal ? 3 : (isResult ? 2 : 1);
+        const popup = createPopup("qig-prompt-review-popup", title, `
+            <div class="qig-prompt-review">
+                <ol class="qig-review-progress" aria-label="Prompt review progress">
+                    <li class="${activeStage === 1 ? "is-active" : ""}">Text AI request</li>
+                    <li class="${activeStage === 2 ? "is-active" : ""}">AI result</li>
+                    <li class="${activeStage === 3 ? "is-active" : ""}">Image prompt</li>
+                </ol>
+                <p class="qig-review-description">${escapeHtml(description)}</p>
+                ${fieldMarkup}
+                <div class="qig-review-actions">
+                    <button id="qig-review-cancel" type="button" class="menu_button">Cancel</button>
+                    ${(canGoBack || isResult) ? `<button id="qig-review-back" type="button" class="menu_button">${backLabel}</button>` : ""}
+                    <button id="qig-review-reset" type="button" class="menu_button">Reset stage</button>
+                    <button id="qig-review-primary" type="button" class="menu_button">${primaryLabel}</button>
                 </div>
-            </div>`, (popup) => {
-            const textarea = document.getElementById("qig-prompt-edit-text");
-            textarea.value = prompt;
-            const cancelBtn = document.getElementById("qig-prompt-edit-cancel");
-            const useBtn = document.getElementById("qig-prompt-edit-use");
-
-            textarea.focus();
-            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            </div>`, (popupElement) => {
+            const textArea = popupElement.querySelector("#qig-review-text");
+            const prefillArea = popupElement.querySelector("#qig-review-prefill");
+            const positiveArea = popupElement.querySelector("#qig-review-positive");
+            const negativeArea = popupElement.querySelector("#qig-review-negative");
+            const initialText = isRequest ? request : result;
+            if (textArea) textArea.value = initialText;
+            if (prefillArea) prefillArea.value = prefill;
+            if (positiveArea) positiveArea.value = prompt;
+            if (negativeArea) negativeArea.value = negative;
 
             let settled = false;
             let removeAbortListener = () => {};
@@ -11269,29 +11896,105 @@ function showPromptEditDialog(prompt, signal) {
                 if (settled) return;
                 settled = true;
                 removeAbortListener();
-                hidePopup(popup);
+                hidePopup(popupElement);
                 resolve(value);
             };
             const close = () => finish(null);
-            const use = () => finish(textarea.value);
-            removeAbortListener = bindAbortDismiss(signal, close);
-
-            cancelBtn.onclick = close;
-            useBtn.onclick = use;
-
-            bindPopupDismiss(popup, close);
-
-            textarea.onkeydown = (e) => {
-                if (e.key === "Enter" && e.ctrlKey) {
-                    e.preventDefault();
-                    use();
+            const submit = () => {
+                if (isFinal) {
+                    const positive = positiveArea?.value?.trim() || "";
+                    if (!positive) {
+                        toastr.warning("Image prompt cannot be empty");
+                        positiveArea?.focus();
+                        return;
+                    }
+                    finish({ action: "continue", prompt: positive, negative: negativeArea?.value || "" });
+                    return;
                 }
-                if (e.key === "Escape") {
-                    e.preventDefault();
-                    close();
+                const text = textArea?.value?.trim() || "";
+                if (!text) {
+                    toastr.warning(isRequest ? "Text AI request cannot be empty" : "Scene summary cannot be empty");
+                    textArea?.focus();
+                    return;
+                }
+                finish({ action: "continue", text, prefill: prefillArea?.value ?? null });
+            };
+            const reset = () => {
+                if (isFinal) {
+                    positiveArea.value = prompt;
+                    negativeArea.value = negative;
+                    positiveArea.focus();
+                } else {
+                    textArea.value = initialText;
+                    if (prefillArea) prefillArea.value = prefill;
+                    textArea.focus();
                 }
             };
-        }, { popupClass: "editor", contentClass: "qig-popup-content--editor", resizable: false });
+
+            removeAbortListener = bindAbortDismiss(signal, close);
+            popupElement.querySelector("#qig-review-cancel").onclick = close;
+            popupElement.querySelector("#qig-review-reset").onclick = reset;
+            popupElement.querySelector("#qig-review-primary").onclick = submit;
+            const backButton = popupElement.querySelector("#qig-review-back");
+            if (backButton) backButton.onclick = () => finish({ action: "back" });
+            bindPopupDismiss(popupElement, close, { closeOnBackdrop: false });
+
+            const firstField = textArea || positiveArea;
+            firstField?.focus();
+            firstField?.setSelectionRange?.(firstField.value.length, firstField.value.length);
+            for (const textarea of popupElement.querySelectorAll("textarea")) {
+                textarea.onkeydown = (event) => {
+                    if (event.key === "Enter" && event.ctrlKey) {
+                        event.preventDefault();
+                        submit();
+                    }
+                };
+            }
+        }, {
+            popupClass: "editor",
+            contentClass: "qig-popup-content--review",
+            resizable: false,
+            closeOnBackdrop: false,
+        });
+        popup.style.display = "flex";
+    });
+}
+
+async function reviewTextAIRequest(request, { title, description, prefill = null, signal } = {}) {
+    const reviewed = await showPromptReviewStage({
+        mode: "request",
+        title: title || "Review Text AI Request",
+        description: description || "This is the exact QIG instruction sent to Text AI. Edit it before running the request.",
+        request,
+        prefill,
+        signal,
+    });
+    if (!reviewed) throw getAbortError(signal, "Prompt review cancelled");
+    return {
+        request: reviewed.text,
+        prefill: reviewed.prefill ?? "",
+    };
+}
+
+async function reviewSceneSummaryResult(result, signal) {
+    return await showPromptReviewStage({
+        mode: "result",
+        title: "Review Scene Summary",
+        description: "Edit this intermediate visual summary, continue to prompt generation, or re-run the summary request.",
+        result,
+        signal,
+    });
+}
+
+async function reviewFinalImagePrompt(prompt, negative, signal, { canGoBack = false } = {}) {
+    return await showPromptReviewStage({
+        mode: "final",
+        title: "Review Image Prompt",
+        description: "This is the QIG-final prompt after styles, quality tags, ST Style, and Contextual Filters. Wildcards and provider wrappers are applied later.",
+        prompt,
+        negative,
+        canGoBack,
+        signal,
     });
 }
 
@@ -11311,12 +12014,6 @@ function showPlainDescriptionDialog() {
                             <option value="custom" ${s.llmPromptStyle === "custom" ? "selected" : ""}>Custom Instruction</option>
                         </select>
                     </div>
-                    <div class="qig-form-field" style="justify-content:end;">
-                        <label class="checkbox_label">
-                            <input id="qig-plain-description-edit" type="checkbox" ${s.llmEditPrompt ? "checked" : ""}>
-                            <span>Edit AI prompt before generation</span>
-                        </label>
-                    </div>
                 </div>
                 <div class="qig-dialog-actions" style="margin-top:14px;">
                     <button id="qig-plain-description-cancel" class="menu_button">Cancel</button>
@@ -11325,7 +12022,6 @@ function showPlainDescriptionDialog() {
             </div>`, (popup) => {
             const textEl = document.getElementById("qig-plain-description-text");
             const styleEl = document.getElementById("qig-plain-description-style");
-            const editEl = document.getElementById("qig-plain-description-edit");
 
             const close = () => {
                 hidePopup(popup);
@@ -11342,7 +12038,6 @@ function showPlainDescriptionDialog() {
                 resolve({
                     description,
                     promptStyle: styleEl.value || "tags",
-                    editPrompt: !!editEl.checked,
                 });
             };
 
@@ -11534,11 +12229,15 @@ async function genReplicate(prompt, negative, s, signal) {
         }
     } catch (error) {
         if (signal?.aborted) {
-            const cancelSignal = AbortSignal.timeout(5000);
-            await replicateFetch("cancelPrediction", {
-                apiKey: s.replicateKey,
-                id: predictionId,
-            }, cancelSignal).catch(() => {});
+            const cancelDeadline = createAbortDeadline(null, 5000, "Replicate cancellation timed out");
+            try {
+                await replicateFetch("cancelPrediction", {
+                    apiKey: s.replicateKey,
+                    id: predictionId,
+                }, cancelDeadline.signal).catch(() => {});
+            } finally {
+                cancelDeadline.dispose();
+            }
         }
         throw error;
     }
@@ -12225,9 +12924,14 @@ function reportPartialBatchErrors(label, outcome) {
     );
 }
 
-async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFocusElement = null) {
+async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFocusElement = null, sourceEntry = null, promptCandidate = null) {
     if (isGenerating) return;
-    if (!lastPrompt) {
+    const regenerationPrompt = String(promptCandidate?.prompt ?? lastPrompt ?? "");
+    const regenerationNegative = String(promptCandidate?.negative ?? lastNegative ?? "");
+    const regenerationPromptWasLLM = promptCandidate && Object.hasOwn(promptCandidate, "promptWasLLM")
+        ? !!promptCandidate.promptWasLLM
+        : lastPromptWasLLM;
+    if (!regenerationPrompt.trim()) {
         showStatus("❌ No previous prompt to regenerate");
         return;
     }
@@ -12237,7 +12941,39 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
     const reproducibleSettings = effectiveRequest?.settings && typeof effectiveRequest.settings === "object"
         ? effectiveRequest.settings
         : null;
-    const settingsWithoutCurrentReferences = {
+    const ctx = getContext?.();
+    const candidateSourceIndex = sourceEntry?.sourceMessageIndex ?? sourceEntry?.index ?? lastGenerationSourceMessageIndex;
+    const sourceMessageIndex = Number.isInteger(candidateSourceIndex) ? candidateSourceIndex : null;
+    const sourceChatId = String(sourceEntry?.sourceChatId ?? sourceEntry?.chatId ?? lastGenerationSourceChatId ?? "");
+    const sourceMessageId = String(sourceEntry?.sourceMessageId ?? sourceEntry?.messageId ?? lastGenerationSourceMessageId ?? "");
+    const sourceMessageSignature = String(sourceEntry?.sourceMessageSignature ?? sourceEntry?.signature ?? lastGenerationSourceMessageSignature ?? "");
+    const sourceTargetSnapshot = createMessageTargetSnapshot(ctx?.chat, sourceMessageIndex);
+    if ((sourceChatId && sourceChatId !== getContextMediaChatId(ctx))
+        || (Number.isInteger(sourceMessageIndex)
+        && (!sourceTargetSnapshot
+            || (sourceMessageId && sourceTargetSnapshot.messageId !== sourceMessageId)
+            || (sourceMessageSignature && sourceTargetSnapshot.signature !== sourceMessageSignature)))) {
+        showStatus("❌ The original source message changed; regeneration was cancelled");
+        return;
+    }
+    const provider = effectiveRequest?.provider
+        || reproducibleSettings?.provider
+        || sourceEntry?.provider
+        || liveSettings.provider;
+    const referenceLookup = sourceEntry
+        ? regenerationReferenceStore.lookup(sourceEntry, { scopeId: getRegenerationReferenceScopeId(getContextMediaChatId(ctx)) })
+        : { found: false, referencesRetained: false, references: null };
+    const originalReferences = referenceLookup.referencesRetained && referenceLookup.references?.provider === provider
+        ? referenceLookup.references
+        : null;
+    if (sourceEntry && !originalReferences && (!referenceLookup.found || !referenceLookup.referencesRetained)) {
+        const message = referenceLookup.found
+            ? "Original reference images exceeded the temporary reuse limit; regenerating without them."
+            : "Original reference state is no longer available in this session; regenerating without its reference images.";
+        log(`Regeneration: ${message}`);
+        toastr?.warning?.(message, "Regeneration");
+    }
+    const regenerationSettings = {
         ...liveSettings,
         proxyRefImages: [],
         customApiRefImages: [],
@@ -12245,39 +12981,47 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
         nanogptRefImages: [],
         localRefImage: "",
         a1111ControlNetImage: "",
+        ...(reproducibleSettings || {}),
+        provider,
+        ...(originalReferences?.settings || {}),
     };
-    const regenerationSettings = reproducibleSettings
-        ? { ...settingsWithoutCurrentReferences, ...reproducibleSettings, provider: effectiveRequest.provider || reproducibleSettings.provider || liveSettings.provider }
-        : settingsWithoutCurrentReferences;
-    const ctx = getContext?.();
-    const sourceTargetSnapshot = createMessageTargetSnapshot(ctx?.chat, lastGenerationSourceMessageIndex);
-    if ((lastGenerationSourceChatId && lastGenerationSourceChatId !== getContextMediaChatId(ctx))
-        || (Number.isInteger(lastGenerationSourceMessageIndex)
-        && (!sourceTargetSnapshot
-            || (lastGenerationSourceMessageId && sourceTargetSnapshot.messageId !== lastGenerationSourceMessageId)
-            || (lastGenerationSourceMessageSignature && sourceTargetSnapshot.signature !== lastGenerationSourceMessageSignature)))) {
-        showStatus("❌ The original source message changed; regeneration was cancelled");
-        return;
-    }
     const run = beginGeneration({
         settings: regenerationSettings,
         context: ctx,
         messageSnapshots: sourceTargetSnapshot ? [sourceTargetSnapshot] : [],
         disableGenerateButton: true,
+        preserveRegenerationReferences: true,
     });
     const s = run.settings;
     const batchCount = normalizeBatchCount(s.batchCount);
     const originalSeed = getGenerationSeedValue(s);
     const cancelCheckpoint = getCancelCheckpoint();
     setGenerationSeedValue(s, -1);
-    const providerRuntimeOptions = s.provider === "proxy" ? { proxyRefImages: [] } : {};
+    const providerRuntimeOptions = s.provider === "proxy"
+        ? { proxyRefImages: [...(originalReferences?.runtimeOptions?.proxyRefImages || [])] }
+        : {};
 
-    log(`Regenerating with prompt: ${lastPrompt.substring(0, 50)}... (batch: ${batchCount})`);
+    const commitRegenerationState = () => {
+        commitSuccessfulPrompt(run, {
+            prompt: regenerationPrompt,
+            negative: regenerationNegative,
+            promptWasLLM: regenerationPromptWasLLM,
+        });
+        rememberLastGenerationSource({
+            sourceMessageIndex,
+            sourceChatId: sourceTargetSnapshot?.chatId || sourceChatId,
+            sourceMessageId: sourceTargetSnapshot?.messageId || sourceMessageId,
+            sourceMessageSignature: sourceTargetSnapshot?.signature || sourceMessageSignature,
+        });
+        lastEffectiveRequest = cloneMetadataSettings(effectiveRequest || {});
+    };
+
+    debugLog(`Regenerating with prompt: ${regenerationPrompt.substring(0, 50)}... (batch: ${batchCount})`);
     try {
         checkAborted(cancelCheckpoint);
         if (batchCount <= 1) {
             showStatus("🔄 Regenerating...");
-            const result = await generateForProvider(lastPrompt, lastNegative, s, run.signal, {
+            const result = await generateForProvider(regenerationPrompt, regenerationNegative, s, run.signal, {
                 ...providerRuntimeOptions,
                 batchIndex: 0,
                 batchCount: 1,
@@ -12285,19 +13029,20 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
             checkAborted(cancelCheckpoint);
             hideStatus();
             if (result) {
-                const entries = await finalizeGeneratedResults(result, lastPrompt, lastNegative, s, getGenerationFinalizationOptions(run, {
-                    promptWasLLM: lastPromptWasLLM,
-                    sourceMessageIndex: Number.isInteger(lastGenerationSourceMessageIndex) ? lastGenerationSourceMessageIndex : undefined,
-                    sourceChatId: sourceTargetSnapshot?.chatId,
-                    sourceMessageId: sourceTargetSnapshot?.messageId,
-                    sourceMessageSignature: sourceTargetSnapshot?.signature,
+                const entries = await finalizeGeneratedResults(result, regenerationPrompt, regenerationNegative, s, getGenerationFinalizationOptions(run, {
+                    referenceRuntimeOptions: providerRuntimeOptions,
+                    promptWasLLM: regenerationPromptWasLLM,
+                    sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
+                    sourceChatId: sourceTargetSnapshot?.chatId || sourceChatId,
+                    sourceMessageId: sourceTargetSnapshot?.messageId || sourceMessageId,
+                    sourceMessageSignature: sourceTargetSnapshot?.signature || sourceMessageSignature,
                 }));
                 reportPartialBatchErrors("Regeneration", {
                     results: entries,
                     errors: getResultFailures(entries),
                 });
                 if (entries.length) {
-                    assertGenerationCanCommit(run);
+                    commitRegenerationState();
                     if (entries.length > 1) displayBatchResults(entries, returnFocusElement);
                     else displayImage(entries[0], false, returnFocusElement);
                 }
@@ -12308,8 +13053,8 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
                 checkAborted(cancelCheckpoint);
                 if (s.sequentialSeeds) setGenerationSeedValue(s, baseSeed + i);
                 showStatus(`🔄 Regenerating ${i + 1}/${batchCount}...`);
-                const expandedPrompt = expandWildcards(lastPrompt);
-                const expandedNegative = expandWildcards(lastNegative);
+                const expandedPrompt = expandWildcards(regenerationPrompt);
+                const expandedNegative = expandWildcards(regenerationNegative);
                 const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, {
                     ...providerRuntimeOptions,
                     batchIndex: i,
@@ -12317,11 +13062,12 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
                 });
                 if (result) {
                     return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
-                        promptWasLLM: lastPromptWasLLM,
-                        sourceMessageIndex: Number.isInteger(lastGenerationSourceMessageIndex) ? lastGenerationSourceMessageIndex : undefined,
-                        sourceChatId: sourceTargetSnapshot?.chatId,
-                        sourceMessageId: sourceTargetSnapshot?.messageId,
-                        sourceMessageSignature: sourceTargetSnapshot?.signature,
+                        referenceRuntimeOptions: providerRuntimeOptions,
+                        promptWasLLM: regenerationPromptWasLLM,
+                        sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
+                        sourceChatId: sourceTargetSnapshot?.chatId || sourceChatId,
+                        sourceMessageId: sourceTargetSnapshot?.messageId || sourceMessageId,
+                        sourceMessageSignature: sourceTargetSnapshot?.signature || sourceMessageSignature,
                     }));
                 }
                 return null;
@@ -12329,7 +13075,7 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
             const { results } = outcome;
             reportPartialBatchErrors("Regeneration", outcome);
             hideStatus();
-            assertGenerationCanCommit(run);
+            if (results.length) commitRegenerationState();
             if (results.length > 1) {
                 displayBatchResults(results, returnFocusElement);
             } else if (results.length === 1) {
@@ -12565,7 +13311,7 @@ async function addFilterPool(scope = FILTER_SCOPE_GLOBAL) {
         return;
     }
     if (findFilterPoolByName(name, targetScope)) {
-        toastr.warning(`Pool "${name}" already exists in this scope.`);
+        toastr.warning(`Pool "${name}" already exists in this scope.`, "Contextual Filters", { escapeHtml: true });
         return;
     }
     const previousState = snapshotFilterPoolState();
@@ -12778,7 +13524,7 @@ function showFilterDialog(filter) {
                         </div>
                         <div class="qig-form-field">
                             <label for="qig-fd-priority">Priority</label>
-                            <input id="qig-fd-priority" type="number" value="${f.priority || 0}">
+                            <input id="qig-fd-priority" type="number" value="${escapeHtml(String(f.priority ?? 0))}">
                             <small class="qig-help">Higher priority filters apply first and seed ties resolve in that order.</small>
                         </div>
                         <div class="qig-form-field">
@@ -13147,7 +13893,7 @@ async function copyFilterPoolToCurrentCard(poolId) {
     });
     const saved = await commitFilterPoolStateMutation(previousState);
     if (saved && existing) {
-        toastr.info(`Pool "${pool.name}" already exists for the current card.`);
+        toastr.info(`Pool "${pool.name}" already exists for the current card.`, "Contextual Filters", { escapeHtml: true });
     }
 }
 
@@ -13165,7 +13911,7 @@ async function copyFilterPoolToCurrentChar(poolId) {
     ensureFilterPoolByName(pool.name, { scope: FILTER_SCOPE_CHAR, charId: String(currentCharId), enable: true });
     const saved = await commitFilterPoolStateMutation(previousState);
     if (saved && existing) {
-        toastr.info(`Pool "${pool.name}" already exists for the current character.`);
+        toastr.info(`Pool "${pool.name}" already exists for the current character.`, "Contextual Filters", { escapeHtml: true });
     }
 }
 
@@ -13825,7 +14571,10 @@ function clearCharacterReferenceSettings(settings) {
 
 function getScopedCharacterStoreValue(store, context) {
     const entry = getCurrentCharacterEntry(context);
+    const { storageKey, legacyKey } = getCurrentCharStorageInfo(context);
     const keys = uniqueStringList([
+        storageKey,
+        legacyKey,
         context?.__qigCharacterId,
         entry?.id,
         entry?.avatar,
@@ -13938,17 +14687,26 @@ function getCurrentCharName() {
     return entry?.name || entry?.avatar || null;
 }
 
-function getLegacyCurrentCharStorageKey(ctx = getContext?.()) {
-    const character = ctx?.characterId != null ? ctx?.characters?.[ctx.characterId] : null;
-    return typeof character?.avatar === "string" ? character.avatar : null;
+function getCurrentCharStorageInfo(ctx = getContext?.()) {
+    const { entry, cardKey } = getCurrentCardScopeInfo(ctx);
+    const legacyKey = String(entry?.avatar || entry?.data?.avatar || "").trim() || null;
+    return {
+        storageKey: cardKey ? `card:${cardKey}` : null,
+        legacyKey,
+    };
+}
+
+function getCharacterStoreRecord(store, key) {
+    return key && Object.prototype.hasOwnProperty.call(store || {}, key) ? store[key] : null;
 }
 
 function getCurrentCharOverride() {
-    const charId = getCurrentCharId();
-    if (charId == null) return null;
-    const legacyKey = getLegacyCurrentCharStorageKey();
-    const settings = charSettings[charId] || (legacyKey ? charSettings[legacyKey] : null);
-    const refs = charRefImages[charId] || (legacyKey ? charRefImages[legacyKey] : null);
+    const { storageKey, legacyKey } = getCurrentCharStorageInfo();
+    if (!storageKey) return null;
+    const settings = getCharacterStoreRecord(charSettings, storageKey)
+        || getCharacterStoreRecord(charSettings, legacyKey);
+    const refs = getCharacterStoreRecord(charRefImages, storageKey)
+        || getCharacterStoreRecord(charRefImages, legacyKey);
     const normalizedRefs = normalizeCharacterReferenceRecord(refs, getSettings()?.provider);
     return settings || (Object.keys(normalizedRefs).length ? { refsOnly: true } : null);
 }
@@ -13988,7 +14746,7 @@ async function persistCharacterStores(nextSettings, nextRefs, errorMessage) {
 }
 
 function updateCharacterSettingsUI() {
-    const charId = getCurrentCharId();
+    const { storageKey } = getCurrentCharStorageInfo();
     const charName = getCurrentCharName();
     const override = getCurrentCharOverride();
     const style = getSettings().useSTStyle !== false ? getSTStyleSettings() : null;
@@ -13999,7 +14757,7 @@ function updateCharacterSettingsUI() {
     const resetButton = document.getElementById("qig-reset-char-btn");
 
     if (status) {
-        status.textContent = charId == null
+        status.textContent = !storageKey
             ? "No individual character is active. Character overrides are unavailable in groups."
             : `${charName || "Current character"}: ${override ? "QIG override active" : "using global QIG settings"}`;
     }
@@ -14009,10 +14767,10 @@ function updateCharacterSettingsUI() {
             : "No SillyTavern character-specific prefixes are active.";
     }
     if (saveButton) {
-        saveButton.disabled = charId == null;
-        saveButton.querySelector("span:last-child").textContent = charId == null ? "Save for character" : `Save for ${charName || "character"}`;
+        saveButton.disabled = !storageKey;
+        saveButton.querySelector("span:last-child").textContent = !storageKey ? "Save for character" : `Save for ${charName || "character"}`;
     }
-    if (resetButton) resetButton.disabled = charId == null || !override;
+    if (resetButton) resetButton.disabled = !storageKey || !override;
 }
 
 function getCurrentCardKey() {
@@ -14240,28 +14998,33 @@ function ensureContextualFilterManagerScopeSelection(scopeOptions = getContextua
 }
 
 async function saveCharSettings() {
-    const charId = getCurrentCharId();
-    if (charId == null) {
+    const { storageKey, legacyKey } = getCurrentCharStorageInfo();
+    if (!storageKey) {
         toastr.info("Open an individual character chat to save a character override");
         return;
     }
     const s = getSettings();
-    const nextSettings = { ...charSettings, [charId]: {
+    const nextSettings = { ...charSettings, [storageKey]: {
         prompt: s.prompt,
         negativePrompt: s.negativePrompt,
         style: s.style,
         width: s.width,
         height: s.height
     } };
+    if (legacyKey && legacyKey !== storageKey) delete nextSettings[legacyKey];
     const nextRefs = cloneSynchronizedValue(charRefImages);
     const refs = getCurrentRefImages(s);
-    const existingRefs = normalizeCharacterReferenceRecord(nextRefs[charId], s.provider);
+    const existingRefs = normalizeCharacterReferenceRecord(
+        getCharacterStoreRecord(nextRefs, storageKey) || getCharacterStoreRecord(nextRefs, legacyKey),
+        s.provider,
+    );
     const providerRefs = setCharacterProviderReferences(existingRefs, s.provider, refs);
     if (Object.keys(providerRefs).length > 0) {
-        nextRefs[charId] = providerRefs;
+        nextRefs[storageKey] = providerRefs;
     } else {
-        delete nextRefs[charId];
+        delete nextRefs[storageKey];
     }
+    if (legacyKey && legacyKey !== storageKey) delete nextRefs[legacyKey];
     if (!await persistCharacterStores(nextSettings, nextRefs)) return;
     charSettingsOverrideApplied = true;
     updateCharacterSettingsUI();
@@ -14270,14 +15033,13 @@ async function saveCharSettings() {
 }
 
 async function resetCharSettings() {
-    const charId = getCurrentCharId();
-    if (charId == null || !getCurrentCharOverride()) return;
+    const { storageKey, legacyKey } = getCurrentCharStorageInfo();
+    if (!storageKey || !getCurrentCharOverride()) return;
     if (!confirm(`Remove the QIG override for ${getCurrentCharName() || "this character"}?`)) return;
-    const legacyKey = getLegacyCurrentCharStorageKey();
     const nextSettings = { ...charSettings };
     const nextRefs = { ...charRefImages };
-    delete nextSettings[charId];
-    delete nextRefs[charId];
+    delete nextSettings[storageKey];
+    delete nextRefs[storageKey];
     if (legacyKey) {
         delete nextSettings[legacyKey];
         delete nextRefs[legacyKey];
@@ -14313,10 +15075,10 @@ async function resetCharSettings() {
 async function performLoadCharSettings(isCurrent) {
     if (!isCurrent()) return false;
     const s = getSettings();
-    const charId = getCurrentCharId();
+    const { storageKey, legacyKey } = getCurrentCharStorageInfo();
     if (!document.getElementById("qig-prompt")) return false;
 
-    if (charId == null) {
+    if (!storageKey) {
         if (charSettingsOverrideApplied && charSettingsBaseState) {
             applyCharScopedState(charSettingsBaseState, s);
             saveSettingsDebounced();
@@ -14330,7 +15092,7 @@ async function performLoadCharSettings(isCurrent) {
         return false;
     }
 
-    if (charSettingsBaseCharId !== charId) {
+    if (charSettingsBaseCharId !== storageKey) {
         if (charSettingsOverrideApplied && charSettingsBaseState) {
             applyCharScopedState(charSettingsBaseState, s);
         } else if (charSettingsStateInitialized && !charSettingsOverrideApplied) {
@@ -14339,29 +15101,51 @@ async function performLoadCharSettings(isCurrent) {
         }
     }
 
-    const legacyKey = getLegacyCurrentCharStorageKey();
-    if (!charSettings[charId] && legacyKey && charSettings[legacyKey]) {
-        const nextSettings = { ...charSettings, [charId]: { ...charSettings[legacyKey] } };
-        await persistCharacterStores(nextSettings, charRefImages);
-        if (!isCurrent()) return false;
+    let nextSettings = charSettings;
+    let nextRefs = charRefImages;
+    let storesChanged = false;
+    const legacySettings = getCharacterStoreRecord(charSettings, legacyKey);
+    const legacyRefs = getCharacterStoreRecord(charRefImages, legacyKey);
+    if (legacyKey && legacyKey !== storageKey) {
+        if (!getCharacterStoreRecord(charSettings, storageKey) && legacySettings) {
+            nextSettings = { ...nextSettings, [storageKey]: cloneSynchronizedValue(legacySettings) };
+        } else if (nextSettings === charSettings) {
+            nextSettings = { ...nextSettings };
+        }
+        if (Object.prototype.hasOwnProperty.call(nextSettings, legacyKey)) {
+            delete nextSettings[legacyKey];
+            storesChanged = true;
+        }
+        if (!getCharacterStoreRecord(charRefImages, storageKey) && legacyRefs) {
+            nextRefs = { ...nextRefs, [storageKey]: cloneSynchronizedValue(legacyRefs) };
+        } else if (nextRefs === charRefImages) {
+            nextRefs = { ...nextRefs };
+        }
+        if (Object.prototype.hasOwnProperty.call(nextRefs, legacyKey)) {
+            delete nextRefs[legacyKey];
+            storesChanged = true;
+        }
     }
-    const rawRefs = charRefImages[charId] ?? (legacyKey ? charRefImages[legacyKey] : null);
+    const rawRefs = getCharacterStoreRecord(nextRefs, storageKey);
     const normalizedRefRecord = normalizeCharacterReferenceRecord(rawRefs, s.provider);
-    if (rawRefs && (Array.isArray(rawRefs) || !charRefImages[charId])) {
-        const nextRefs = cloneSynchronizedValue(charRefImages);
-        if (Object.keys(normalizedRefRecord).length) nextRefs[charId] = normalizedRefRecord;
-        if (legacyKey && legacyKey !== String(charId)) delete nextRefs[legacyKey];
-        await persistCharacterStores(charSettings, nextRefs);
+    if (rawRefs && Array.isArray(rawRefs)) {
+        nextRefs = cloneSynchronizedValue(nextRefs);
+        if (Object.keys(normalizedRefRecord).length) nextRefs[storageKey] = normalizedRefRecord;
+        else delete nextRefs[storageKey];
+        storesChanged = true;
+    }
+    if (storesChanged) {
+        await persistCharacterStores(nextSettings, nextRefs);
         if (!isCurrent()) return false;
     }
-    const settingsRecord = charSettings[charId] || (legacyKey ? charSettings[legacyKey] : null);
+    const settingsRecord = getCharacterStoreRecord(charSettings, storageKey);
     const hasSettings = !!settingsRecord;
-    const refRecord = normalizeCharacterReferenceRecord(charRefImages[charId] || normalizedRefRecord, s.provider);
+    const refRecord = normalizeCharacterReferenceRecord(getCharacterStoreRecord(charRefImages, storageKey) || normalizedRefRecord, s.provider);
     const refs = getCharacterProviderReferences(refRecord, s.provider);
     const hasRefs = typeof refs === "string" ? !!refs : refs.length > 0;
     const hasStoredRefs = hasCharacterReferenceOverrides(refRecord);
     const hasOverride = hasSettings || hasStoredRefs;
-    if (charSettingsBaseCharId !== charId) {
+    if (charSettingsBaseCharId !== storageKey) {
         const persistedBase = s._charSettingsBaseState;
         if (!hasOverride) {
             rememberCharSettingsBaseState(s, s);
@@ -14374,7 +15158,7 @@ async function performLoadCharSettings(isCurrent) {
             // Keep those live values rather than replacing them with guessed defaults.
             charSettingsBaseState = null;
         }
-        charSettingsBaseCharId = charId;
+        charSettingsBaseCharId = storageKey;
     }
     if (!hasSettings && !hasStoredRefs) {
         if (charSettingsBaseState) applyCharScopedState(charSettingsBaseState, s);
@@ -14704,7 +15488,7 @@ function deleteSelectedComfyWorkflowPreset() {
 }
 
 // === Generation Presets ===
-const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "llmEditPrompt", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
+const PRESET_KEYS = ["provider", "style", "width", "height", "steps", "cfgScale", "sampler", "seed", "prompt", "negativePrompt", "qualityTags", "appendQuality", "useLastMessage", "messageRange", "enableParagraphPicker", "useLLMPrompt", "llmPromptStyle", "llmPrefill", "llmCustomInstruction", "reviewBeforeGenerate", "preserveCharacterIdentity", "useWorldInfo", "llmAddQuality", "llmAddLighting", "llmAddArtist", "twoStepPrompt", "twoStepInstruction", "batchCount", "sequentialSeeds"];
 const PROVIDER_PRESET_KEYS = Object.freeze({
     local: ["a1111Scheduler", "comfyScheduler", "a1111RestoreFaces", "a1111Tiling", "a1111Subseed", "a1111SubseedStrength"],
     nanobanana: ["nanobananaNbpMode", "nanobananaNbpPreset", "nanobananaNbpUseNegative", "nanobananaNbpCustomDirector", "nanobananaNbpCustomPrompt", "nanobananaExtraInstructions"],
@@ -14774,6 +15558,31 @@ function normalizeGenerationPresetStore(presets = generationPresets) {
     let changed = false;
     for (const preset of presets) {
         if (!preset || typeof preset !== "object") continue;
+        if (preset.reviewBeforeGenerate === undefined && preset.llmEditPrompt !== undefined) {
+            preset.reviewBeforeGenerate = Boolean(preset.llmEditPrompt);
+            changed = true;
+        }
+        if (Object.hasOwn(preset, "llmEditPrompt")) {
+            delete preset.llmEditPrompt;
+            changed = true;
+        }
+        const recipeDefaults = {
+            reviewBeforeGenerate: false,
+            preserveCharacterIdentity: true,
+            useWorldInfo: false,
+        };
+        for (const [key, value] of Object.entries(recipeDefaults)) {
+            if (preset[key] !== undefined) continue;
+            preset[key] = value;
+            changed = true;
+        }
+        if (preset.injectInsertMode !== undefined) {
+            const insertMode = normalizeInjectInsertMode(preset.injectInsertMode);
+            if (preset.injectInsertMode !== insertMode) {
+                preset.injectInsertMode = insertMode;
+                changed = true;
+            }
+        }
         if (preset.provider !== "proxy") continue;
         const before = JSON.stringify([
             preset.proxyChatImageMode,
@@ -14935,6 +15744,7 @@ function loadPreset(i) {
     const previousAutoGenerate = !!s.autoGenerate;
     const injectKeys = ["injectEnabled", "autoGenerate", "injectTagName", "injectPrompt", "injectRegex", "injectPosition", "injectDepth", "injectInsertMode", "injectAutoClean", "paletteMode"];
     injectKeys.forEach(k => { if (p[k] !== undefined) s[k] = p[k]; });
+    s.injectInsertMode = normalizeInjectInsertMode(s.injectInsertMode);
     if (s.injectEnabled && p.autoGenerate === undefined) s.autoGenerate = true;
     if (previousAutoGenerate !== !!s.autoGenerate) {
         _automationRevision += 1;
@@ -15006,6 +15816,7 @@ function seedStarterPresets() {
         appendQuality: true,
         batchCount: 1, sequentialSeeds: false,
         useLastMessage: false, useLLMPrompt: false, llmPromptStyle: "tags",
+        reviewBeforeGenerate: false, preserveCharacterIdentity: true, useWorldInfo: false,
         injectEnabled: false, paletteMode: "direct",
     };
     generationPresets.push(
@@ -15032,7 +15843,7 @@ function showSetupWizard() {
                 <label id="qig-wizard-key-label" for="qig-wizard-key">API Key</label>
                 <input id="qig-wizard-key" type="password" autocomplete="off" placeholder="Paste your API key">
             </div>
-            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider has more required settings (server URL, models). Finish here, then open More settings → Provider Setup.</div>
+            <div id="qig-wizard-extra-note" class="qig-muted" style="display:none;">This provider has more required settings (server URL, models). Finish here, then open More settings → Image Provider &amp; Output.</div>
             <label for="qig-wizard-style">Style</label>
             <select id="qig-wizard-style">${styleOpts}</select>
             <div class="qig-wizard-actions">
@@ -15165,6 +15976,7 @@ function applyInjectTagNameChange(nextTagName) {
 
 function refreshAllUI(s) {
     normalizeGenerationNumericSettings(s);
+    s.injectInsertMode = normalizeInjectInsertMode(s.injectInsertMode);
     const fields = {
         "qig-prompt": "prompt", "qig-negative": "negativePrompt", "qig-quality": "qualityTags",
         "qig-width": "width", "qig-height": "height",
@@ -15204,7 +16016,9 @@ function refreshAllUI(s) {
         "qig-append-quality": "appendQuality",
         "qig-use-llm": "useLLMPrompt", "qig-auto-generate": "autoGenerate",
         "qig-paragraph-picker": "enableParagraphPicker",
-        "qig-llm-edit": "llmEditPrompt", "qig-llm-quality": "llmAddQuality",
+        "qig-review-before-generate": "reviewBeforeGenerate",
+        "qig-preserve-character-identity": "preserveCharacterIdentity",
+        "qig-use-world-info": "useWorldInfo", "qig-llm-quality": "llmAddQuality",
         "qig-llm-lighting": "llmAddLighting", "qig-llm-artist": "llmAddArtist",
         "qig-two-step-prompt": "twoStepPrompt", "qig-auto-background": "autoSetBackground",
         "qig-auto-insert": "autoInsert", "qig-insert-hidden-reply": "insertAsHiddenReply",
@@ -15773,7 +16587,16 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
         updateProxyCompatibilityUI();
     }
     if (provider === "nanobanana") renderNanobananaRefImages();
-    if (provider === "nanogpt") renderNanogptRefImages();
+    if (provider === "nanogpt") {
+        renderNanogptRefImages();
+        const model = String(s.nanogptModel || "").trim();
+        void getNanoGptModelMetadata(model).then(() => {
+            const current = getSettings();
+            if (current.provider === "nanogpt" && String(current.nanogptModel || "").trim() === model) {
+                updateGenerationCapabilitiesUI(current);
+            }
+        });
+    }
     if (provider === "custom") {
         renderCustomApiRefImages();
         updateCustomApiUI();
@@ -15991,8 +16814,11 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
             // Keep controls visible while an incomplete template is being edited.
         }
     }
+    const nanoMetadata = settings.provider === "nanogpt"
+        ? nanoGptModelMetadataCache.get(String(settings.nanogptModel || "").trim()) || null
+        : null;
     const capabilitySettings = settings.provider === "nanogpt"
-        ? { ...settings, __qigNanoGptModelMetadata: nanoGptModelMetadataCache.get(String(settings.nanogptModel || "").trim()) || null }
+        ? { ...settings, __qigNanoGptModelMetadata: nanoMetadata }
         : settings;
     const capabilities = getProviderGenerationCapabilities(settings.provider, capabilitySettings, customCapabilities);
     for (const [id, capability] of Object.entries(capabilityById)) {
@@ -16005,6 +16831,19 @@ function updateGenerationCapabilitiesUI(settings = getSettings()) {
     if (refsField) refsField.style.display = customCapabilities && !customCapabilities.referenceImages ? "none" : "";
     const nanoRefsField = document.getElementById("qig-nanogpt-reference-fields");
     if (nanoRefsField) nanoRefsField.style.display = capabilities.referenceImages ? "" : "none";
+    const nanoStrengthField = document.getElementById("qig-nanogpt-strength-field");
+    if (nanoStrengthField) nanoStrengthField.style.display = capabilities.referenceImages && getNanoGptStrengthParameter(nanoMetadata) ? "" : "none";
+    const nanoReferenceLabel = document.getElementById("qig-nanogpt-reference-label");
+    const nanoReferenceHint = document.getElementById("qig-nanogpt-reference-hint");
+    if (nanoReferenceLabel && nanoMetadata) {
+        const constraints = getNanoGptReferenceConstraints(nanoMetadata);
+        nanoReferenceLabel.textContent = `Reference Images (up to ${constraints.maxImages}; 4 MiB encoded request total)`;
+        if (nanoReferenceHint) {
+            nanoReferenceHint.textContent = constraints.mimeTypes.length
+                ? `Accepted formats: ${constraints.mimeTypes.join(", ")}. URLs are checked when generation starts.`
+                : "Reference URLs and files are checked when generation starts.";
+        }
+    }
     const seqSeeds = document.getElementById("qig-seq-seeds-wrap");
     if (seqSeeds) seqSeeds.style.display = !capabilities.sequentialSeeds
         ? "none"
@@ -16092,6 +16931,15 @@ function renderNanogptRefImages() {
     renderReferenceImageList(container, imgs, removeNanogptRefImage);
 }
 
+function getNanoGptReferenceLimit(settings = getSettings()) {
+    const metadata = nanoGptModelMetadataCache.get(String(settings?.nanogptModel || "").trim()) || null;
+    return getNanoGptReferenceConstraints(metadata).maxImages;
+}
+
+function nanoGptReferencesFitRequest(sources) {
+    return new TextEncoder().encode(JSON.stringify(sources || [])).byteLength < NANOGPT_MAX_ENCODED_INPUT_BYTES;
+}
+
 function removeNanogptRefImage(idx) {
     const s = getSettings();
     if (!s.nanogptRefImages) s.nanogptRefImages = [];
@@ -16153,7 +17001,7 @@ function bind(id, key, isNum = false, isCheckbox = false, onChange = null) {
         const value = isCheckbox ? e.target.checked : (isNum ? parsed.value : e.target.value);
         settings[key] = value;
         if (key === "prompt") {
-            log(`[Prompt] Saved to settings: "${value.substring(0, 50)}..."`);
+            debugLog(`[Prompt] Saved to settings: "${value.substring(0, 50)}..."`);
         }
         if (typeof onChange === "function") onChange(value, e);
         saveSettingsDebounced();
@@ -16367,8 +17215,6 @@ function createUI() {
     const sectionContextExpanded = collapsed.sectionContext ? "false" : "true";
     const sectionAutomationHidden = collapsed.sectionAutomation ? "hidden" : "";
     const sectionAutomationExpanded = collapsed.sectionAutomation ? "false" : "true";
-    const sectionGenerationHidden = collapsed.sectionGeneration ? "hidden" : "";
-    const sectionGenerationExpanded = collapsed.sectionGeneration ? "false" : "true";
     const providerSettingsHidden = collapsed.providerSettings ? "hidden" : "";
     const providerSettingsExpanded = collapsed.providerSettings ? "false" : "true";
     const promptAdvancedHidden = collapsed.promptAdvanced ? "hidden" : "";
@@ -16497,8 +17343,8 @@ function createUI() {
                 <section class="qig-menu-section qig-menu-section--connection qig-menu-section--collapsible qig-flow-provider" aria-labelledby="qig-connection-heading">
                     <button id="qig-section-provider-toggle" type="button" class="qig-collapsible__header qig-section-header-toggle" aria-expanded="${sectionProviderExpanded}" aria-controls="qig-section-provider-content">
                         <span class="qig-section-header-text">
-                            <h3 id="qig-connection-heading" class="qig-section-kicker">Provider Setup</h3>
-                            <small class="qig-section-subtitle">Choose an image backend and manage credentials, models, and connection profiles.</small>
+                            <h3 id="qig-connection-heading" class="qig-section-kicker">Image Provider &amp; Output</h3>
+                            <small class="qig-section-subtitle">Choose a backend and profile, then set output size, count, model, and provider options.</small>
                         </span>
                         <span class="qig-collapsible__icon fa-solid ${collapsed.sectionProvider ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
                     </button>
@@ -16516,6 +17362,10 @@ function createUI() {
                                 <button id="qig-profile-save" class="menu_button" title="Save current provider, API key, and model as a reusable profile"><span class="fa-solid fa-floppy-disk"></span><span>Save Profile</span></button>
                             </div>
                         </div>
+                    </div>
+                    <div id="qig-output-settings" class="qig-output-settings">
+                        <div class="qig-card-title">Output</div>
+                        <small class="qig-muted">Set image dimensions and count. Unsupported controls are hidden for the active provider.</small>
                     </div>
                     <div class="qig-provider-card qig-collapsible">
                         <button id="qig-provider-settings-toggle" type="button" class="qig-collapsible__header" aria-expanded="${providerSettingsExpanded}" aria-controls="qig-provider-settings-content">
@@ -16625,9 +17475,12 @@ function createUI() {
                     <label>Model</label>
                     <input id="qig-nanogpt-model" type="text" value="${esc(s.nanogptModel)}" placeholder="flux-schnell">
                     <div id="qig-nanogpt-reference-fields">
-                        <label>Strength <span id="qig-nanogpt-strength-val">${s.nanogptStrength ?? 0.75}</span></label>
-                        <input id="qig-nanogpt-strength" type="range" min="0" max="1" step="0.05" value="${s.nanogptStrength ?? 0.75}">
-                        <label>Reference Images (up to 15)</label>
+                        <div id="qig-nanogpt-strength-field">
+                            <label>Strength <span id="qig-nanogpt-strength-val">${esc(s.nanogptStrength ?? 0.75)}</span></label>
+                            <input id="qig-nanogpt-strength" type="range" min="0" max="1" step="0.05" value="${esc(s.nanogptStrength ?? 0.75)}">
+                        </div>
+                        <label id="qig-nanogpt-reference-label">Reference Images (4 MiB encoded request total)</label>
+                        <small id="qig-nanogpt-reference-hint">The selected model determines the image count and formats.</small>
                         <div id="qig-nanogpt-refs" style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;"></div>
                         <input type="file" id="qig-nanogpt-ref-input" accept="image/*" multiple style="display:none">
                         <div style="display:flex;gap:4px;align-items:center;">
@@ -16908,8 +17761,8 @@ function createUI() {
                                  <div><label>Scale</label><input id="qig-a1111-hires-scale" type="number" value="${esc(s.a1111HiresScale || 2)}" min="1" max="4" step="0.25"></div>
                                  <div><label>2nd Pass Steps (0=same)</label><input id="qig-a1111-hires-steps" type="number" value="${esc(s.a1111HiresSteps || 0)}" min="0" max="150"></div>
                              </div>
-                             <label>Denoise: <span id="qig-a1111-hires-denoise-val">${s.a1111HiresDenoise || 0.55}</span></label>
-                             <input id="qig-a1111-hires-denoise" type="range" min="0" max="1" step="0.05" value="${esc(s.a1111HiresDenoise || 0.55)}">
+                              <label>Denoise: <span id="qig-a1111-hires-denoise-val">${esc(s.a1111HiresDenoise ?? 0.55)}</span></label>
+                              <input id="qig-a1111-hires-denoise" type="range" min="0" max="1" step="0.05" value="${esc(s.a1111HiresDenoise ?? 0.55)}">
                              <div class="qig-row" style="margin-top:4px;">
                                  <div><label>Hires Sampler</label><select id="qig-a1111-hires-sampler"><option value="" ${!s.a1111HiresSampler ? "selected" : ""}>Same as first pass</option>${Object.entries(SAMPLER_DISPLAY_NAMES).map(([k,v]) => `<option value="${v}" ${s.a1111HiresSampler === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>
                                  <div><label>Hires Scheduler</label><select id="qig-a1111-hires-scheduler"><option value="" ${!s.a1111HiresScheduler ? "selected" : ""}>Same as first pass</option>${A1111_SCHEDULERS.map(x => `<option value="${x}" ${s.a1111HiresScheduler === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
@@ -17012,8 +17865,8 @@ function createUI() {
                                  <option value="ip-adapter-faceid_sdxl" ${s.a1111IpAdapterMode === "ip-adapter-faceid_sdxl" ? "selected" : ""}>FaceID (SDXL)</option>
                                  <option value="ip-adapter-faceid-plusv2_sdxl" ${s.a1111IpAdapterMode === "ip-adapter-faceid-plusv2_sdxl" ? "selected" : ""}>FaceID Plus v2 (SDXL)</option>
                              </select>
-                             <label>Weight: <span id="qig-a1111-ipadapter-weight-val">${s.a1111IpAdapterWeight || 0.7}</span></label>
-                             <input id="qig-a1111-ipadapter-weight" type="range" min="0" max="1.5" step="0.05" value="${esc(s.a1111IpAdapterWeight || 0.7)}">
+                              <label>Weight: <span id="qig-a1111-ipadapter-weight-val">${esc(s.a1111IpAdapterWeight ?? 0.7)}</span></label>
+                              <input id="qig-a1111-ipadapter-weight" type="range" min="0" max="1.5" step="0.05" value="${esc(s.a1111IpAdapterWeight ?? 0.7)}">
                              
                              <label class="checkbox_label" style="margin-top:4px;">
                                  <input id="qig-a1111-ipadapter-pixel" type="checkbox" ${s.a1111IpAdapterPixelPerfect ? "checked" : ""}>
@@ -17071,7 +17924,7 @@ function createUI() {
                                  <option value="tile_resample" ${s.a1111ControlNetModule === "tile_resample" ? "selected" : ""}>tile_resample</option>
                                  <option value="inpaint_only" ${s.a1111ControlNetModule === "inpaint_only" ? "selected" : ""}>inpaint_only</option>
                              </select>
-                             <label>Weight: <span id="qig-a1111-cn-weight-val">${s.a1111ControlNetWeight ?? 1.0}</span></label>
+                              <label>Weight: <span id="qig-a1111-cn-weight-val">${esc(s.a1111ControlNetWeight ?? 1.0)}</span></label>
                              <input id="qig-a1111-cn-weight" type="range" min="0" max="2" step="0.05" value="${esc(s.a1111ControlNetWeight ?? 1.0)}">
                              <label class="checkbox_label" style="margin-top:4px;">
                                  <input id="qig-a1111-cn-pixel" type="checkbox" ${s.a1111ControlNetPixelPerfect ? "checked" : ""}>
@@ -17118,8 +17971,8 @@ function createUI() {
                     </div>
                     <input type="file" id="qig-local-ref-input" accept="image/*" style="display:none">
                     <div id="qig-local-denoise-wrap" style="display:${s.localType === "a1111" && s.localRefImage ? "block" : "none"};margin-top:4px;">
-                       <label>Denoising Strength: <span id="qig-local-denoise-val">${s.localDenoise}</span></label>
-                       <input id="qig-local-denoise" type="range" min="0" max="1" step="0.05" value="${esc(s.localDenoise)}">
+                       <label>Denoising Strength: <span id="qig-local-denoise-val">${esc(s.localDenoise ?? 0.75)}</span></label>
+                       <input id="qig-local-denoise" type="range" min="0" max="1" step="0.05" value="${esc(s.localDenoise ?? 0.75)}">
                     </div>
                     <div class="form-hint" style="margin-top:4px;">Upload a source image for img2img. ${s.localType === "comfyui" ? "Use the Denoise slider in ComfyUI settings above to control strength." : "Adjust Denoising Strength to control how much the output differs."}</div>
                 </div>
@@ -17362,6 +18215,11 @@ function createUI() {
                         <input id="qig-append-quality" type="checkbox" ${s.appendQuality ? "checked" : ""}>
                         <span>Prepend quality tags to prompt</span>
                     </label>
+                    <label class="checkbox_label qig-switch-row">
+                        <input id="qig-review-before-generate" type="checkbox" ${s.reviewBeforeGenerate ? "checked" : ""}>
+                        <span>Review before generating</span>
+                    </label>
+                    <small class="qig-muted">Review the exact Text AI request and the final positive and negative image prompts before they are sent.</small>
 
                     <div id="qig-chat-source-panel" class="qig-subsection" style="display:${promptSourceMode === "chat" ? "block" : "none"}">
                         <div class="qig-card-title">Chat scene source</div>
@@ -17394,9 +18252,10 @@ function createUI() {
                             <small>How the AI formats the image prompt.</small>
                             <div class="qig-toggle-list">
                                 <label class="checkbox_label qig-switch-row">
-                                    <input id="qig-llm-edit" type="checkbox" ${s.llmEditPrompt ? "checked" : ""}>
-                                    <span>Edit LLM prompt before generation</span>
+                                    <input id="qig-preserve-character-identity" type="checkbox" ${s.preserveCharacterIdentity !== false ? "checked" : ""}>
+                                    <span>Preserve character identity</span>
                                 </label>
+                                <small class="qig-muted">Adds name, skin tone, species, age, body-trait, and canonical-appearance requirements to Text AI requests.</small>
                                 <label class="checkbox_label qig-switch-row">
                                     <input id="qig-llm-quality" type="checkbox" ${s.llmAddQuality ? "checked" : ""}>
                                     <span>Add enhanced quality tags</span>
@@ -17447,6 +18306,11 @@ function createUI() {
                         <span>Use SillyTavern's Style panel</span>
                     </label>
                     <small class="qig-muted">Applies its prefix, negative prompt, and character-specific settings.</small>
+                    <label class="checkbox_label qig-switch-row">
+                        <input id="qig-use-world-info" type="checkbox" ${s.useWorldInfo ? "checked" : ""}>
+                        <span>Include matched World Info in Text AI context</span>
+                    </label>
+                    <small class="qig-muted">QIG resolves active lore for the selected scene and opens an editable request review when lore matches. Matched private lore may be sent to the selected Text AI or override profile.</small>
                     <div class="qig-character-panel">
                         <div class="qig-card-title">Character Layers</div>
                         <p id="qig-character-status" class="qig-character-panel__status"></p>
@@ -17566,13 +18430,13 @@ function createUI() {
                         </div>
                         <label>Tag handling</label>
                         <select id="qig-inject-insert-mode">
-                            <option value="replace" ${s.injectInsertMode === "replace" ? "selected" : ""}>Replace tag with image</option>
-                            <option value="inline" ${s.injectInsertMode === "inline" ? "selected" : ""}>Insert image after message</option>
-                            <option value="new" ${s.injectInsertMode === "new" ? "selected" : ""}>New message with image</option>
+                            <option value="replace" ${normalizeInjectInsertMode(s.injectInsertMode) === "replace" ? "selected" : ""}>Replace tag and attach to tagged message</option>
+                            <option value="new" ${s.injectInsertMode === "new" ? "selected" : ""}>Separate generated-image message</option>
                         </select>
+                        <small style="opacity:0.6;font-size:10px;">Replace always removes generated tags. Separate message leaves them in the source unless auto-clean is enabled.</small>
                         <label class="checkbox_label">
                             <input id="qig-inject-autoclean" type="checkbox" ${s.injectAutoClean !== false ? "checked" : ""}>
-                            <span>Remove detected image tags from the stored/displayed message</span>
+                            <span>Auto-clean tags when using a separate message</span>
                         </label>
                         <button id="qig-test-inject" class="menu_button qig-inline-action" style="margin-top:8px;">🔍 Test Inject Detection</button>
                     </div>
@@ -17610,15 +18474,7 @@ function createUI() {
                 </div>
                 </section>
 
-                <section class="qig-menu-section qig-menu-section--collapsible qig-flow-generation" aria-labelledby="qig-output-heading">
-                    <button id="qig-section-generation-toggle" type="button" class="qig-collapsible__header qig-section-header-toggle" aria-expanded="${sectionGenerationExpanded}" aria-controls="qig-section-generation-content">
-                        <span class="qig-section-header-text">
-                            <h3 id="qig-output-heading" class="qig-section-kicker">Generation Parameters</h3>
-                            <small class="qig-section-subtitle">Set output resolution, image count, chat insertion modes, sampler, CFG, and seed.</small>
-                        </span>
-                        <span class="qig-collapsible__icon fa-solid ${collapsed.sectionGeneration ? "fa-chevron-right" : "fa-chevron-down"}" aria-hidden="true"></span>
-                    </button>
-                    <div id="qig-section-generation-content" class="qig-collapsible__content" ${sectionGenerationHidden}>
+                <div id="qig-detached-generation-settings" hidden>
                 <div id="qig-delivery-settings">
                 <label class="checkbox_label">
                     <input id="qig-auto-insert" type="checkbox" ${s.autoInsert ? "checked" : ""}>
@@ -17709,7 +18565,6 @@ function createUI() {
                     </div>
                 </div>
                 </div>
-                </section>
                     </div>
                 </div>
             </div>
@@ -17724,7 +18579,6 @@ function createUI() {
         ".qig-flow-create",
         ".qig-flow-context",
         ".qig-flow-automation",
-        ".qig-flow-generation",
     ];
     for (const selector of flowSections) {
         const section = setupPanel?.querySelector(selector);
@@ -17733,12 +18587,19 @@ function createUI() {
     const deliverySettings = document.getElementById("qig-delivery-settings");
     const automationSection = setupPanel?.querySelector(".qig-flow-automation");
     if (deliverySettings && automationSection) automationSection.appendChild(deliverySettings);
+    const outputSettings = document.getElementById("qig-output-settings");
+    const detachedGenerationSettings = document.getElementById("qig-detached-generation-settings");
+    for (const selector of [".qig-generation-grid", "#qig-seq-seeds-wrap", ".qig-advanced-settings-shell"]) {
+        const control = detachedGenerationSettings?.querySelector(selector);
+        if (control && outputSettings) outputSettings.appendChild(control);
+    }
+    detachedGenerationSettings?.remove();
     const textAiRouting = document.getElementById("qig-text-ai-routing");
     const createSection = setupPanel?.querySelector(".qig-flow-create");
     if (textAiRouting && createSection) createSection.appendChild(textAiRouting);
     associateSettingsLabels();
 
-    document.getElementById("qig-generate-btn").onclick = () => runConfiguredPaletteGeneration();
+    document.getElementById("qig-generate-btn").onclick = handleMainGenerationControlClick;
     document.querySelectorAll(".qig-logs-btn").forEach(btn => {
         btn.onclick = showLogs;
     });
@@ -17763,7 +18624,6 @@ function createUI() {
     setupQigCollapsibleSection("sectionCreate", "qig-section-create-toggle", "qig-section-create-content");
     setupQigCollapsibleSection("sectionContext", "qig-section-context-toggle", "qig-section-context-content");
     setupQigCollapsibleSection("sectionAutomation", "qig-section-automation-toggle", "qig-section-automation-content");
-    setupQigCollapsibleSection("sectionGeneration", "qig-section-generation-toggle", "qig-section-generation-content");
     setupQigCollapsibleSection("providerSettings", "qig-provider-settings-toggle", "qig-provider-settings-content");
     setupQigCollapsibleSection("promptAdvanced", "qig-prompt-advanced-toggle", "qig-prompt-advanced-content");
     setupQigCollapsibleSection("injectOptions", "qig-inject-options-toggle", "qig-inject-options");
@@ -18128,14 +18988,26 @@ function createUI() {
     // A1111 Model dropdown
     const a1111ModelSelect = document.getElementById("qig-a1111-model");
     const a1111ModelRefresh = document.getElementById("qig-a1111-model-refresh");
+    let a1111ModelRefreshSerial = 0;
 
     async function populateA1111Models() {
         const s = getSettings();
+        const requestId = ++a1111ModelRefreshSerial;
+        const baseUrl = normalizeA1111BaseUrl(s.localUrl);
+        const configuredModel = s.a1111Model;
+        const isCurrentRequest = () => isCurrentA1111ModelRefresh({
+            requestId,
+            latestRequestId: a1111ModelRefreshSerial,
+            baseUrl,
+            settings: getSettings(),
+        });
         replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "Loading..." }]);
 
         // Fetch SD Checkpoints
-        const models = await fetchA1111Models(s.localUrl);
-        const currentModel = s.a1111Model || await getCurrentA1111Model(s.localUrl);
+        const models = await fetchA1111Models(baseUrl);
+        if (!isCurrentRequest()) return;
+        const currentModel = configuredModel || await getCurrentA1111Model(baseUrl);
+        if (!isCurrentRequest()) return;
 
         if (models.length === 0) {
             replaceSelectOptions(a1111ModelSelect, [{ value: "", label: "-- Failed to load (check if A1111 running) --" }]);
@@ -18145,14 +19017,15 @@ function createUI() {
                 label: model.name,
             })), currentModel);
 
-            if (currentModel && !s.a1111Model) {
-                s.a1111Model = currentModel;
+            if (currentModel && !getSettings().a1111Model) {
+                getSettings().a1111Model = currentModel;
                 saveSettingsDebounced();
             }
         }
 
         // Fetch ControlNet Models for IP-Adapter
-        const cnModels = await fetchControlNetModels(s.localUrl);
+        const cnModels = await fetchControlNetModels(baseUrl);
+        if (!isCurrentRequest()) return;
         const cnSelect = document.getElementById("qig-a1111-ipadapter-mode");
 
         // Filter for IP-Adapter/FaceID models
@@ -18160,7 +19033,7 @@ function createUI() {
 
         if (ipModels.length > 0) {
             // Preserve current selection if possible, otherwise default
-            const currentCn = s.a1111IpAdapterMode;
+            const currentCn = getSettings().a1111IpAdapterMode;
 
             replaceSelectOptions(cnSelect, [
                 { value: "", label: "-- Detected Models --", disabled: true },
@@ -18182,18 +19055,20 @@ function createUI() {
         }
 
         // Fetch Upscalers for Hires Fix
-        const upscalers = await fetchA1111Upscalers(s.localUrl);
+        const upscalers = await fetchA1111Upscalers(baseUrl);
+        if (!isCurrentRequest()) return;
         const upscalerSelect = document.getElementById("qig-a1111-hires-upscaler");
         if (upscalers.length > 0 && upscalerSelect) {
-            const cur = s.a1111HiresUpscaler || "Latent";
+            const cur = getSettings().a1111HiresUpscaler || "Latent";
             replaceSelectOptions(upscalerSelect, upscalers.map(upscaler => ({ value: upscaler, label: upscaler })), cur);
         }
 
         // Fetch VAEs
-        const vaes = await fetchA1111VAEs(s.localUrl);
+        const vaes = await fetchA1111VAEs(baseUrl);
+        if (!isCurrentRequest()) return;
         const vaeSelect = document.getElementById("qig-a1111-vae");
         if (vaeSelect) {
-            const curVae = s.a1111Vae || "";
+            const curVae = getSettings().a1111Vae || "";
             replaceSelectOptions(vaeSelect, [
                 { value: "", label: "Automatic" },
                 ...vaes.map(vae => ({ value: vae, label: vae })),
@@ -18203,7 +19078,7 @@ function createUI() {
         // Populate generic ControlNet model list (all models, not just IP-Adapter)
         const genericCnSelect = document.getElementById("qig-a1111-cn-model");
         if (genericCnSelect && cnModels.length > 0) {
-            const curCn = s.a1111ControlNetModel || "";
+            const curCn = getSettings().a1111ControlNetModel || "";
             replaceSelectOptions(genericCnSelect, [
                 { value: "", label: "-- Select Model --" },
                 ...cnModels.map(model => ({ value: model, label: model })),
@@ -18417,10 +19292,16 @@ function createUI() {
         try {
             const s = getSettings();
             if (!s.nanogptRefImages) s.nanogptRefImages = [];
-            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, s.nanogptRefImages, 15);
-            reportReferenceFileErrors(errors);
-            if (!sources.length) return;
-            s.nanogptRefImages.push(...sources);
+            const maxReferences = getNanoGptReferenceLimit(s);
+            const { sources, errors } = await readValidatedReferenceFiles(e.target.files, s.nanogptRefImages, maxReferences);
+            const accepted = [];
+            for (const source of sources) {
+                if (nanoGptReferencesFitRequest([...s.nanogptRefImages, ...accepted, source])) accepted.push(source);
+                else errors.push("4 MiB encoded request limit exceeded");
+            }
+            reportReferenceFileErrors(errors, "4 MiB encoded request limit");
+            if (!accepted.length) return;
+            s.nanogptRefImages.push(...accepted);
             saveSettingsDebounced();
             renderNanogptRefImages();
         } finally {
@@ -18435,7 +19316,9 @@ function createUI() {
         if (!url) return;
         const s = getSettings();
         if (!s.nanogptRefImages) s.nanogptRefImages = [];
-        if (s.nanogptRefImages.length >= 15) { toastr.warning("Maximum 15 reference images"); return; }
+        const maxReferences = getNanoGptReferenceLimit(s);
+        if (s.nanogptRefImages.length >= maxReferences) { toastr.warning(`Maximum ${maxReferences} reference images`); return; }
+        if (!nanoGptReferencesFitRequest([...s.nanogptRefImages, url])) { toastr.warning("NanoGPT references must fit within the 4 MiB encoded request limit"); return; }
         s.nanogptRefImages.push(url);
         saveSettingsDebounced();
         renderNanogptRefImages();
@@ -18448,6 +19331,7 @@ function createUI() {
     bind("qig-negative", "negativePrompt");
     bind("qig-quality", "qualityTags");
     bindCheckbox("qig-append-quality", "appendQuality");
+    bindCheckbox("qig-review-before-generate", "reviewBeforeGenerate");
     bind("qig-msg-range", "messageRange", false);
     bindCheckbox("qig-paragraph-picker", "enableParagraphPicker");
     document.getElementById("qig-use-llm").onchange = (e) => {
@@ -18458,7 +19342,8 @@ function createUI() {
         syncGenerationPresetIndicators();
     };
     bind("qig-llm-custom", "llmCustomInstruction");
-    bindCheckbox("qig-llm-edit", "llmEditPrompt");
+    bindCheckbox("qig-preserve-character-identity", "preserveCharacterIdentity");
+    bindCheckbox("qig-use-world-info", "useWorldInfo");
     bindCheckbox("qig-llm-quality", "llmAddQuality");
     bindCheckbox("qig-llm-lighting", "llmAddLighting");
     bindCheckbox("qig-llm-artist", "llmAddArtist");
@@ -18572,6 +19457,7 @@ function createUI() {
             if (btn) btn.style.display = "";
             else addInputButton();
         }
+        setGenerationActiveUI(isGenerating, { disableGenerateButton: isGenerating });
     };
     const paletteModeEl = document.getElementById("qig-palette-mode");
     if (paletteModeEl) {
@@ -18908,9 +19794,11 @@ function getMessageGenerateActionMount(messageElement) {
 }
 
 function createMessageGenerateActionButton(messageIndex) {
-    const button = document.createElement("div");
-    button.className = `mes_button fa-solid fa-palette ${QIG_MESSAGE_ACTION_CLASS}`;
-    button.title = "Generate image from this message with Quick Image Gen";
+    const button = createAccessibleIconButton(document, {
+        className: `mes_button fa-solid fa-palette ${QIG_MESSAGE_ACTION_CLASS}`,
+        label: `Generate image from message ${messageIndex + 1} with Quick Image Gen`,
+        title: "Generate image from this message with Quick Image Gen",
+    });
     button.dataset.messageIndex = String(messageIndex);
     return button;
 }
@@ -18958,19 +19846,31 @@ function refreshMessageGenerateActions(root = document) {
 function scheduleRefreshMessageGenerateActions() {
     if (qigMessageActionRefreshQueued) return;
     qigMessageActionRefreshQueued = true;
-    const scheduleFn = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"
-        ? window.requestAnimationFrame.bind(window)
-        : (cb) => setTimeout(cb, 0);
-    scheduleFn(() => {
+    const refresh = () => {
+        qigMessageActionRefreshCancel = null;
         qigMessageActionRefreshQueued = false;
         refreshMessageGenerateActions(document.getElementById("chat") || document);
-    });
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        const frameId = window.requestAnimationFrame(refresh);
+        qigMessageActionRefreshCancel = () => window.cancelAnimationFrame(frameId);
+    } else {
+        const timeoutId = setTimeout(refresh, 0);
+        qigMessageActionRefreshCancel = () => clearTimeout(timeoutId);
+    }
 }
 
 function initMessageGenerateActionObserver() {
+    if (qigMessageActionObserverRetryTimer !== null) {
+        clearTimeout(qigMessageActionObserverRetryTimer);
+        qigMessageActionObserverRetryTimer = null;
+    }
     const chatRoot = document.getElementById("chat");
     if (!chatRoot) {
-        setTimeout(initMessageGenerateActionObserver, 500);
+        qigMessageActionObserverRetryTimer = setTimeout(() => {
+            qigMessageActionObserverRetryTimer = null;
+            initMessageGenerateActionObserver();
+        }, 500);
         return;
     }
 
@@ -18986,11 +19886,27 @@ function initMessageGenerateActionObserver() {
     scheduleRefreshMessageGenerateActions();
 }
 
+function cleanupMessageGenerateActionBindings() {
+    if (qigMessageActionObserverRetryTimer !== null) {
+        clearTimeout(qigMessageActionObserverRetryTimer);
+        qigMessageActionObserverRetryTimer = null;
+    }
+    qigMessageActionObserver?.disconnect();
+    qigMessageActionObserver = null;
+    qigMessageActionRefreshCancel?.();
+    qigMessageActionRefreshCancel = null;
+    qigMessageActionRefreshQueued = false;
+    if (qigMessageActionClicksBound) {
+        $(document).off("click.qigMessageGenerate", `.${QIG_MESSAGE_ACTION_CLASS}`);
+        qigMessageActionClicksBound = false;
+    }
+}
+
 function bindMessageGenerateActionClicks() {
     if (qigMessageActionClicksBound) return;
     qigMessageActionClicksBound = true;
 
-    $(document).on("click", `.${QIG_MESSAGE_ACTION_CLASS}`, async function (event) {
+    $(document).on("click.qigMessageGenerate", `.${QIG_MESSAGE_ACTION_CLASS}`, async function (event) {
         event.preventDefault();
         event.stopPropagation();
 
@@ -19012,14 +19928,14 @@ function bindMessageGenerateActionClicks() {
             return;
         }
 
+        const transientTarget = setTransientGenerationTarget(messageIndex);
         try {
-            setTransientGenerationTarget(messageIndex);
             await generateImage();
         } catch (e) {
             log(`Message action: Generation failed for message ${messageIndex}: ${e.message}`);
             toastr.error("Failed to generate from that message: " + e.message, "", { escapeHtml: true });
         } finally {
-            clearTransientGenerationTarget();
+            clearTransientGenerationTarget(transientTarget);
         }
     });
 }
@@ -19030,24 +19946,54 @@ function runConfiguredPaletteGeneration() {
     return generateImage();
 }
 
+function isGenerationStartDebounced(now = Date.now()) {
+    const blocked = shouldBlockGenerationStart({
+        active: isGenerating,
+        now,
+        blockedUntil: generationStartLockUntil,
+    });
+    if (blocked) log("Ignored rapid generate click immediately after cancellation");
+    return blocked;
+}
+
+function handleMainGenerationControlClick() {
+    const paletteButton = document.getElementById("qig-input-btn");
+    const state = resolveMainGenerationControlState({
+        active: isGenerating,
+        paletteAvailable: !!paletteButton && !getSettings()?.disablePaletteButton,
+        manageBusyState: true,
+        cancelling: cancelRequested,
+        shortcutLabel: formatGenerateShortcutLabel(),
+    });
+    if (state.action === "busy") return;
+    if (state.action === "cancel") {
+        requestGenerationCancel();
+        return;
+    }
+    if (isGenerationStartDebounced()) return;
+    return runConfiguredPaletteGeneration();
+}
+
 function addInputButton() {
     if (document.getElementById("qig-input-btn")) return;
     if (getSettings().disablePaletteButton) return;
 
-    const btn = document.createElement("div");
-    btn.id = "qig-input-btn";
-    btn.className = "fa-solid fa-palette interactable";
-    btn.title = "Generate Image (right-click for presets)";
-    btn.style.cssText = "cursor:pointer;padding:5px;font-size:1.2em;opacity:0.7;";
+    const btn = createAccessibleIconButton(document, {
+        id: "qig-input-btn",
+        className: "fa-solid fa-palette interactable",
+        label: "Generate image; right-click for presets",
+        title: "Generate Image (right-click for presets)",
+    });
+    btn.setAttribute("aria-haspopup", "menu");
     btn.onclick = () => {
         closePalettePresetMenu();
         const now = Date.now();
         if (isGenerating) {
             if (!requestGenerationCancel()) return;
             log("User cancelled generation via palette button");
-            toastr.warning("Cancelling generation...");
             return;
         }
+        if (isGenerationStartDebounced(now)) return;
         if (now < paletteGenerateLockUntil) {
             log("Palette: Ignored rapid duplicate generate click");
             return;
@@ -19062,6 +20008,7 @@ function addInputButton() {
     const leftArea = document.getElementById("leftSendForm") || document.querySelector("#send_form .left_menu_buttons");
     if (leftArea) {
         leftArea.appendChild(btn);
+        if (isGenerating) setGenerationActiveUI(true, { disableGenerateButton: true });
     }
 }
 
@@ -19104,6 +20051,7 @@ async function generateImageInjectPalette() {
             if (consumedCandidate?.detectedPrompts?.length && !hasUserMessageAfterIndex(chat, consumedCandidate.index)) {
                 initialDetection = consumedCandidate.detection;
                 matches = [...new Set(consumedCandidate.detectedPrompts)];
+                sourceInjectMessage = consumedCandidate.message;
                 sourceMessageIndex = consumedCandidate.index;
                 sourceTargetSnapshot = createMessageTargetSnapshot(chat, sourceMessageIndex);
                 rememberLastGenerationSource(sourceTargetSnapshot);
@@ -19113,14 +20061,38 @@ async function generateImageInjectPalette() {
             }
         }
 
+        const paletteSceneEntries = getSceneMessageEntries(s, ctx);
+        const paletteWorldInfoIndex = Number.isInteger(sourceMessageIndex)
+            ? sourceMessageIndex
+            : paletteSceneEntries.reduce((latest, entry) => (
+                Number.isInteger(entry?.index) ? Math.max(latest, entry.index) : latest
+            ), -1);
+        const paletteSourceText = getMessages(s, ctx) || resolvePrompt(s.prompt) || "the current scene";
+        const worldInfoContext = await resolveWorldInfoForPromptPipeline(s, {
+            context: ctx,
+            throughIndex: paletteWorldInfoIndex >= 0 ? paletteWorldInfoIndex : null,
+            sourceText: paletteSourceText,
+            signal: run.signal,
+            forceTextAI: matches.length === 0,
+        });
+
         if (matches.length === 0) {
             log("Palette inject: No image tags found, asking LLM for one tag from the selected scene");
             showStatus("🔍 No image tags found; asking LLM for one image tag...");
 
-            const sceneContext = getMessages(s, ctx) || resolvePrompt(s.prompt) || "the current scene";
+            const sceneContext = paletteSourceText;
             const injectInstruction = resolvePrompt(getInjectPromptTemplate(s));
             const timestamp = Date.now();
-            const fullInstruction = `${injectInstruction}\n\nBased on this scene context, generate exactly one image tag for the single best visual moment. You must use the exact tag format shown above. Return exactly one tag only. Do not generate multiple tags, lists, moments, or variants.\n\nScene context:\n${sceneContext}\n\nRespond with image tags only.\n\n[${timestamp}]`;
+            let fullInstruction = `${injectInstruction}\n\nBased on this scene context, generate exactly one image tag for the single best visual moment. You must use the exact tag format shown above. Return exactly one tag only. Do not generate multiple tags, lists, moments, or variants.\n\nScene context:\n${sceneContext}\n\nRespond with image tags only.\n\n[${timestamp}]`;
+            fullInstruction = appendWorldInfoToRequest(fullInstruction, worldInfoContext.text);
+            if (s.reviewBeforeGenerate || !!worldInfoContext.text) {
+                const reviewed = await reviewTextAIRequest(fullInstruction, {
+                    title: "Review Image Tag Request",
+                    description: "No image tag was found. Review the exact Text AI request QIG will use to choose one visual moment.",
+                    signal: run.signal,
+                });
+                fullInstruction = reviewed.request;
+            }
 
             let llmResponse;
             if (s.llmOverrideEnabled && s.llmOverrideProfileId) {
@@ -19135,7 +20107,7 @@ async function generateImageInjectPalette() {
             }
             checkAborted(cancelCheckpoint);
 
-            log(`Palette inject: LLM response: ${(llmResponse || "").substring(0, 200)}...`);
+            debugLog(`Palette inject: LLM response: ${(llmResponse || "").substring(0, 200)}...`);
             if (llmResponse) {
                 matches = limitInjectFallbackMatches(
                     extractInjectMatchesFromText(llmResponse, regexPattern),
@@ -19148,20 +20120,22 @@ async function generateImageInjectPalette() {
                 const aiMsgPreview = initialDetection?.sources?.[0]?.text?.substring(0, 200) || "none";
                 const llmPreview = (llmResponse || "none").substring(0, 200);
                 const regexPreview = regexPattern.substring(0, 100);
-                log(`Palette inject: Regex pattern used: ${regexPattern}`);
+                debugLog(`Palette inject: Regex pattern used: ${regexPattern}`);
                 log(`Palette inject: AI sources scanned: ${aiSources}`);
-                log(`Palette inject: AI message scanned: ${aiMsgPreview}...`);
-                log(`Palette inject: LLM response received: ${llmPreview}...`);
-                log(`Palette inject: Full instruction sent: ${fullInstruction.substring(0, 300)}...`);
+                debugLog(`Palette inject: AI message scanned: ${aiMsgPreview}...`);
+                debugLog(`Palette inject: LLM response received: ${llmPreview}...`);
+                debugLog(`Palette inject: Full instruction sent: ${fullInstruction.substring(0, 300)}...`);
                 toastr.warning("No image tags found. Check console for details.", "Image Generation");
                 log(`Palette inject: Diagnostic info - regex ${regexPreview}${regexPattern.length > 100 ? "..." : ""}, sources ${aiSources}`);
-                console.warn("QIG Inject Mode Debug:", {
-                    regexPattern,
-                    aiSources,
-                    aiMessage: initialDetection?.sources?.map(source => ({ label: source.label, text: source.text })),
-                    llmResponse,
-                    instruction: fullInstruction,
-                });
+                if (debugLoggingEnabled) {
+                    debugLog(`Palette inject diagnostics: ${JSON.stringify({
+                        regexPattern,
+                        aiSources,
+                        aiMessage: initialDetection?.sources?.map(source => ({ label: source.label, text: source.text })),
+                        llmResponse,
+                        instruction: fullInstruction,
+                    })}`);
+                }
                 return { status: "failed", generated: 0, failed: 1, message: "No image tags found" };
             }
 
@@ -19177,43 +20151,21 @@ async function generateImageInjectPalette() {
 
             const originalSeed = getGenerationSeedValue(s);
             try {
-                let prompt = await generateLLMPrompt(s, extractedPrompt, run.signal);
-                checkAborted(cancelCheckpoint);
-
-                if (s.useLLMPrompt && s.llmEditPrompt && prompt !== extractedPrompt) {
-                    const editedPrompt = await showPromptEditDialog(prompt, run.signal);
-                    if (editedPrompt !== null) prompt = editedPrompt;
-                    else continue;
-                }
-                let negative = resolvePrompt(s.negativePrompt);
-                prompt = applyStyle(prompt, s);
-
-                if (s.appendQuality && s.qualityTags) {
-                    prompt = `${s.qualityTags}, ${prompt}`;
-                }
-
-                if (s.useSTStyle !== false) {
-                    ({ prompt, negative } = applySTStylePrompts(prompt, negative, ctx));
-                }
-
-                const contextualApplied = await applyResolvedContextualFilters(prompt, negative, {
-                    matchText: [baseSceneText, extractedPrompt, prompt].filter(Boolean).join("\n\n"),
+                const preparedPrompt = await prepareQigFinalPrompt({
+                    settings: s,
+                    context: ctx,
+                    sourcePrompt: extractedPrompt,
+                    matchText: [baseSceneText, extractedPrompt].filter(Boolean).join("\n\n"),
                     llmSceneText: baseSceneText || extractedPrompt,
                     signal: run.signal,
-                    settings: s,
+                    worldInfoText: worldInfoContext.text,
                 });
                 checkAborted(cancelCheckpoint);
-                prompt = contextualApplied.prompt;
-                negative = contextualApplied.negative;
-
-                lastPrompt = prompt;
-                lastNegative = negative;
-                lastPromptWasLLM = (s.useLLMPrompt && prompt !== extractedPrompt);
-                lastProxyContextRefImages = [];
+                const { prompt, negative, promptWasLLM, seedOverride } = preparedPrompt;
 
                 const batchCount = normalizeBatchCount(s.batchCount);
                 const useSequentialSeeds = s.sequentialSeeds && batchCount > 1;
-                const baseSeed = getBatchBaseSeed(s, batchCount, contextualApplied.seedOverride);
+                const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
                     setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
@@ -19223,7 +20175,7 @@ async function generateImageInjectPalette() {
                     const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
                     if (result) {
                         return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
-                            promptWasLLM: lastPromptWasLLM,
+                            promptWasLLM,
                             sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
                             sourceMessageId: sourceTargetSnapshot?.messageId,
                             sourceMessageSignature: sourceTargetSnapshot?.signature,
@@ -19239,6 +20191,7 @@ async function generateImageInjectPalette() {
 
                 if (results.length > 0) {
                     assertGenerationCanCommit(run);
+                    commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM });
                     if (sourceTargetSnapshot) assertMessageTargetSnapshot(sourceTargetSnapshot);
                     if (sourceInjectMessage) consumedMessagePrompts.add(extractedPrompt);
                     await maybeAutoSetBackground(results, s, run);
@@ -19334,57 +20287,33 @@ async function generateImageFromPlainDescription() {
         const basePrompt = request.description;
         checkAborted(cancelCheckpoint);
         rememberLastGenerationSource();
-        lastProxyContextRefImages = [];
         log(`Plain description: Generating AI prompt from ${basePrompt.length} chars`);
         showStatus("🤖 Turning description into image prompt...");
 
-        let prompt = await generateLLMPrompt(s, basePrompt, run.signal, {
-            isMultiMessageScene: false,
+        const worldInfoContext = await resolveWorldInfoForPromptPipeline(s, {
+            context: ctx,
+            sourceText: basePrompt,
+            signal: run.signal,
+            forceTextAI: true,
         });
-        checkAborted(cancelCheckpoint);
-        lastPromptWasLLM = prompt !== basePrompt;
-
-        if (request.editPrompt) {
-            const editedPrompt = await showPromptEditDialog(prompt, run.signal);
-            if (editedPrompt !== null) {
-                prompt = editedPrompt;
-            } else {
-                return;
-            }
-        }
-
-        prompt = applyStyle(prompt, s);
-
-        if (s.appendQuality && s.qualityTags) {
-            prompt = `${s.qualityTags}, ${prompt}`;
-        }
-        let negative = resolvePrompt(s.negativePrompt);
-
-        if (s.useSTStyle !== false) {
-            ({ prompt, negative } = applySTStylePrompts(prompt, negative, ctx));
-        }
-
-        const contextualApplied = await applyResolvedContextualFilters(prompt, negative, {
-            matchText: [basePrompt, prompt].filter(Boolean).join("\n\n"),
+        const preparedPrompt = await prepareQigFinalPrompt({
+            settings: s,
+            context: ctx,
+            sourcePrompt: basePrompt,
+            matchText: basePrompt,
             llmSceneText: basePrompt,
             signal: run.signal,
-            settings: s,
+            isMultiMessageScene: false,
+            worldInfoText: worldInfoContext.text,
         });
         checkAborted(cancelCheckpoint);
-        prompt = contextualApplied.prompt;
-        negative = contextualApplied.negative;
-
-        lastPrompt = prompt;
-        lastNegative = negative;
-        promptHistory.unshift({ prompt, negative, time: new Date().toLocaleTimeString() });
-        if (promptHistory.length > 50) promptHistory.pop();
-        savePromptHistory();
+        const { prompt, negative, promptWasLLM, seedOverride } = preparedPrompt;
 
         const batchCount = normalizeBatchCount(s.batchCount);
         const useSequentialSeeds = s.sequentialSeeds && batchCount > 1;
-        const baseSeed = getBatchBaseSeed(s, batchCount, contextualApplied.seedOverride);
+        const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
 
-        log(`Plain description final prompt: ${prompt.substring(0, 100)}...`);
+        debugLog(`Plain description final prompt: ${prompt.substring(0, 100)}...`);
         const outcome = await collectBatchResults(batchCount, async (i) => {
             checkAborted(cancelCheckpoint);
             setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
@@ -19394,7 +20323,7 @@ async function generateImageFromPlainDescription() {
             const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
             if (result) {
                 return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
-                    promptWasLLM: lastPromptWasLLM,
+                    promptWasLLM,
                     sourceMessageIndex: insertionSnapshot?.index,
                     sourceMessageId: insertionSnapshot?.messageId,
                     sourceMessageSignature: insertionSnapshot?.signature,
@@ -19407,6 +20336,7 @@ async function generateImageFromPlainDescription() {
 
         if (results.length > 0) {
             assertGenerationCanCommit(run);
+            commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM, addHistory: true });
             await maybeAutoSetBackground(results, s, run);
         }
 
@@ -19456,7 +20386,7 @@ async function generateImageFromPlainDescription() {
 
 async function generateImage() {
     if (isGenerating) return { status: "busy", generated: 0, failed: 0 };
-    const usingTransientSettingsOverride = !!transientGenerationSettingsOverride;
+    const usingTransientSettingsOverride = !!transientGenerationSettingsState.current;
     const initialSettings = getGenerationSettingsForRun();
     if (initialSettings.confirmBeforeGenerate && !confirm("Generate image?")) return { status: "cancelled", generated: 0, failed: 0 };
     const ctx = getContext();
@@ -19470,6 +20400,9 @@ async function generateImage() {
     const sceneSelectionMessageIndex = selectedSceneEntries.length > 0 && Number.isInteger(selectedSceneEntries[selectedSceneEntries.length - 1]?.index)
         ? selectedSceneEntries[selectedSceneEntries.length - 1].index
         : null;
+    const worldInfoThroughIndex = selectedSceneEntries.reduce((latest, entry) => (
+        Number.isInteger(entry?.index) ? Math.max(latest, entry.index) : latest
+    ), -1);
     const sceneSelectionIsMultiMessage = selectedSceneEntries.length > 1;
     const sourceMessageIndexForEntries = Number.isInteger(activeMessageTarget?.messageIndex)
         ? activeMessageTarget.messageIndex
@@ -19539,23 +20472,39 @@ async function generateImage() {
         chatContextProxyRefImages = await collectChatContextProxyRefImages(s, ctx, run.signal);
         checkAborted(cancelCheckpoint);
     }
-    lastProxyContextRefImages = [...chatContextProxyRefImages];
     const providerRuntimeOptions = s.provider === "proxy"
         ? { proxyRefImages: chatContextProxyRefImages }
         : {};
 
-    log(`Base prompt: ${basePrompt.substring(0, 100)}...`);
+    debugLog(`Base prompt: ${basePrompt.substring(0, 100)}...`);
     const batchCount = normalizeBatchCount(s.batchCount);
     showStatus(`🎨 Generating ${batchCount} image(s)...`);
 
     const originalLLMPromptSource = scenePrompt || basePrompt;
     let llmPromptSource = originalLLMPromptSource;
     let llmPromptSourceIsDescription = false;
+    const worldInfoContext = await resolveWorldInfoForPromptPipeline(s, {
+        context: ctx,
+        throughIndex: worldInfoThroughIndex >= 0 ? worldInfoThroughIndex : null,
+        sourceText: originalLLMPromptSource,
+        signal: run.signal,
+    });
     if (s.twoStepPrompt && s.useLLMPrompt && useChatMessageScene && scenePrompt) {
-        const sceneDescription = await generateSceneDescription(s, scenePrompt, run.signal, {
-            isMultiMessageScene: sceneSelectionIsMultiMessage,
-        });
-        checkAborted(cancelCheckpoint);
+        let sceneDescription = "";
+        do {
+            sceneDescription = await generateSceneDescription(s, scenePrompt, run.signal, {
+                isMultiMessageScene: sceneSelectionIsMultiMessage,
+                worldInfoText: worldInfoContext.text,
+            });
+            checkAborted(cancelCheckpoint);
+            if (sceneDescription && s.reviewBeforeGenerate) {
+                const reviewedSummary = await reviewSceneSummaryResult(sceneDescription, run.signal);
+                if (!reviewedSummary) throw getAbortError(run.signal, "Prompt review cancelled");
+                if (reviewedSummary.action === "back") continue;
+                sceneDescription = reviewedSummary.text;
+            }
+            break;
+        } while (true);
         if (sceneDescription) {
             llmPromptSource = sceneDescription;
             llmPromptSourceIsDescription = true;
@@ -19565,58 +20514,27 @@ async function generateImage() {
         }
     }
 
-    let prompt = await generateLLMPrompt(s, llmPromptSource, run.signal, {
-        isMultiMessageScene: llmPromptSourceIsDescription ? false : sceneSelectionIsMultiMessage,
-    });
-    checkAborted(cancelCheckpoint);
-    lastPromptWasLLM = (s.useLLMPrompt && (prompt !== originalLLMPromptSource || llmPromptSourceIsDescription));
-
-    // Show prompt editing dialog if enabled
-    if (s.useLLMPrompt && s.llmEditPrompt) {
-        const editedPrompt = await showPromptEditDialog(prompt, run.signal);
-        if (editedPrompt !== null) {
-            prompt = editedPrompt;
-        } else {
-            return { status: "cancelled", generated: 0, failed: 0 }; // finally block handles cleanup
-        }
-    }
-
-    prompt = applyStyle(prompt, s);
-
-    if (s.appendQuality && s.qualityTags) {
-        prompt = `${s.qualityTags}, ${prompt}`;
-    }
-    let negative = resolvePrompt(s.negativePrompt);
-
-    // Apply ST Style panel settings (prefix, char-specific, negative)
-    if (s.useSTStyle !== false) {
-        ({ prompt, negative } = applySTStylePrompts(prompt, negative, ctx));
-    }
-
     const llmSceneText = scenePrompt || basePrompt;
-    const filterMatchText = [llmSceneText, prompt].filter(Boolean).join("\n\n");
-    const contextualApplied = await applyResolvedContextualFilters(prompt, negative, {
-        matchText: filterMatchText || prompt,
+    const preparedPrompt = await prepareQigFinalPrompt({
+        settings: s,
+        context: ctx,
+        sourcePrompt: llmPromptSource,
+        matchText: llmSceneText,
         llmSceneText,
         signal: run.signal,
-        settings: s,
+        isMultiMessageScene: llmPromptSourceIsDescription ? false : sceneSelectionIsMultiMessage,
+        worldInfoText: worldInfoContext.text,
+        forcePromptWasLLM: llmPromptSourceIsDescription,
     });
     checkAborted(cancelCheckpoint);
-    prompt = contextualApplied.prompt;
-    negative = contextualApplied.negative;
+    const { prompt, negative, promptWasLLM, seedOverride } = preparedPrompt;
 
-    lastPrompt = prompt;
-    lastNegative = negative;
-    promptHistory.unshift({ prompt, negative, time: new Date().toLocaleTimeString() });
-    if (promptHistory.length > 50) promptHistory.pop();
-    savePromptHistory();
-
-    log(`Final prompt: ${prompt.substring(0, 100)}...`);
-    log(`Negative: ${negative.substring(0, 50)}...`);
+    debugLog(`Final prompt: ${prompt.substring(0, 100)}...`);
+    debugLog(`Negative: ${negative.substring(0, 50)}...`);
 
             log(`Using provider: ${s.provider}, batch: ${batchCount}`);
             const useSequentialSeeds = s.sequentialSeeds && batchCount > 1;
-            const baseSeed = getBatchBaseSeed(s, batchCount, contextualApplied.seedOverride);
+            const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
             const outcome = await collectBatchResults(batchCount, async (i) => {
                 checkAborted(cancelCheckpoint);
                 setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
@@ -19630,7 +20548,8 @@ async function generateImage() {
                 });
                 if (result) {
                     return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
-                        promptWasLLM: lastPromptWasLLM,
+                        referenceRuntimeOptions: providerRuntimeOptions,
+                        promptWasLLM,
                         sourceMessageIndex: sourceTargetSnapshot?.index,
                         sourceMessageId: sourceTargetSnapshot?.messageId,
                         sourceMessageSignature: sourceTargetSnapshot?.signature,
@@ -19640,8 +20559,11 @@ async function generateImage() {
             });
             const { results } = outcome;
             reportPartialBatchErrors("Generation", outcome);
-            log(`Generated ${results.length} image(s) successfully`);
+            log(`Generated ${results.length} valid image result(s)`);
             assertGenerationCanCommit(run);
+            if (results.length > 0) {
+                commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM, addHistory: true });
+            }
             await maybeAutoSetBackground(results, s, run);
             if (s.autoInsert) {
                 let insertedCount = 0;
@@ -19654,18 +20576,21 @@ async function generateImage() {
                                 commitGuard: () => assertGenerationCanCommit(run),
                                 conversationCheckpoint: run.context.conversationCheckpoint,
                                 outputMode: s.outputMode,
+                                signal: run.signal,
                             });
                         } else if (shouldAutoInsertChatImageAsAssistant(s)) {
                             await insertImageAsNewMessage(r, {
                                 commitGuard: () => assertGenerationCanCommit(run),
                                 conversationCheckpoint: run.context.conversationCheckpoint,
                                 outputMode: s.outputMode,
+                                signal: run.signal,
                             });
                         } else {
                             await insertImageIntoMessage(r, sourceTargetSnapshot?.index, {
                                 commitGuard: () => assertGenerationCanCommit(run),
                                 targetSnapshot: sourceTargetSnapshot,
                                 outputMode: s.outputMode,
+                                signal: run.signal,
                             });
                         }
                         insertedCount++;
@@ -19871,8 +20796,9 @@ async function persistConsumedInjectPrompts(message, prompts, settings = getSett
         return { remembered: false, cleaned: false };
     }
 
+    const previousState = snapshotMutableMessageState(message);
     const remembered = rememberConsumedInjectPrompts(message, normalizedPrompts, settings);
-    const cleaned = settings.injectAutoClean !== false
+    const cleaned = shouldCleanInjectSourceTags(settings.injectInsertMode, settings.injectAutoClean)
         ? cleanInjectTagsFromMessage(message, getInjectRegexPattern(settings), normalizedPrompts)
         : false;
 
@@ -19882,7 +20808,12 @@ async function persistConsumedInjectPrompts(message, prompts, settings = getSett
 
     const ctx = getContext();
     if (typeof ctx?.saveChat === "function") {
-        await ctx.saveChat();
+        try {
+            await ctx.saveChat();
+        } catch (error) {
+            restoreMutableMessageState(message, previousState);
+            await rethrowAfterRollbackPersistence(error, () => ctx.saveChat?.(), "Inject cleanup failed and its rollback could not be persisted");
+        }
     }
     if (cleaned && typeof ctx?.reloadCurrentChat === "function") {
         // Defer reload to prevent re-triggering MESSAGE_RECEIVED during processing
@@ -20127,6 +21058,10 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
 
         const sourceSummary = detection ? (detection.scannedSources.join(", ") || "message") : "raw message text";
         log(`Inject: Found ${matches.length} image tag(s) in ${sourceSummary}`);
+        if (job && matches.length > 1) {
+            log(`Inject: Automatic generation is limited to one image; skipped ${matches.length - 1} additional tag(s)`);
+        }
+        matches = limitAutomaticInjectMatches(matches, !!job);
 
         // Begin generation once for all tags
         checkAborted(cancelCheckpoint);
@@ -20163,58 +21098,34 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
 
         // Generate images for each extracted prompt
         const sceneTextForFilters = getMessages(s, ctx) || "";
+        const worldInfoContext = await resolveWorldInfoForPromptPipeline(s, {
+            context: ctx,
+            throughIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : null,
+            sourceText: sceneTextForFilters || matches.join("\n"),
+            signal: run.signal,
+        });
         for (const extractedPrompt of matches) {
             const originalSeed = getGenerationSeedValue(s);
             try {
                 checkAborted(cancelCheckpoint);
-                log(`Inject: Generating image for: ${extractedPrompt.substring(0, 80)}...`);
+                debugLog(`Inject: Generating image for: ${extractedPrompt.substring(0, 80)}...`);
                 showStatus("🖼️ Generating inject-mode image...");
 
-                let prompt = await generateLLMPrompt(s, extractedPrompt, run.signal);
-                checkAborted(cancelCheckpoint);
-
-                // Show prompt editing dialog if enabled
-                if (s.useLLMPrompt && s.llmEditPrompt && prompt !== extractedPrompt) {
-                    const editedPrompt = await showPromptEditDialog(prompt, run.signal);
-                    if (editedPrompt !== null) {
-                        prompt = editedPrompt;
-                    } else {
-                        continue;
-                    }
-                }
-                let negative = resolvePrompt(s.negativePrompt);
-
-                // Apply style
-                prompt = applyStyle(prompt, s);
-
-                // Apply quality tags
-                if (s.appendQuality && s.qualityTags) {
-                    prompt = `${s.qualityTags}, ${prompt}`;
-                }
-
-                // Apply ST Style
-                if (s.useSTStyle !== false) {
-                    ({ prompt, negative } = applySTStylePrompts(prompt, negative, ctx));
-                }
-
-                const contextualApplied = await applyResolvedContextualFilters(prompt, negative, {
-                    matchText: sceneTextForFilters || prompt,
+                const preparedPrompt = await prepareQigFinalPrompt({
+                    settings: s,
+                    context: ctx,
+                    sourcePrompt: extractedPrompt,
+                    matchText: sceneTextForFilters || extractedPrompt,
                     llmSceneText: sceneTextForFilters || extractedPrompt,
                     signal: run.signal,
-                    settings: s,
+                    worldInfoText: worldInfoContext.text,
                 });
                 checkAborted(cancelCheckpoint);
-                prompt = contextualApplied.prompt;
-                negative = contextualApplied.negative;
+                const { prompt, negative, promptWasLLM, seedOverride } = preparedPrompt;
 
-                lastPrompt = prompt;
-                lastNegative = negative;
-                lastPromptWasLLM = (s.useLLMPrompt && prompt !== extractedPrompt);
-                lastProxyContextRefImages = [];
-
-                const batchCount = normalizeBatchCount(s.batchCount);
+                const batchCount = job ? 1 : normalizeBatchCount(s.batchCount);
                 const useSequentialSeeds = s.sequentialSeeds && batchCount > 1;
-                const baseSeed = getBatchBaseSeed(s, batchCount, contextualApplied.seedOverride);
+                const baseSeed = getBatchBaseSeed(s, batchCount, seedOverride);
                 const outcome = await collectBatchResults(batchCount, async (i) => {
                     checkAborted(cancelCheckpoint);
                     setGenerationSeedValue(s, useSequentialSeeds ? baseSeed + i : baseSeed);
@@ -20224,7 +21135,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
                     const result = await generateForProvider(expandedPrompt, expandedNegative, s, run.signal, { batchIndex: i, batchCount });
                     if (result) {
                         return await finalizeGeneratedResults(result, expandedPrompt, expandedNegative, s, getGenerationFinalizationOptions(run, {
-                            promptWasLLM: lastPromptWasLLM,
+                            promptWasLLM,
                             sourceMessageIndex: Number.isInteger(sourceMessageIndex) ? sourceMessageIndex : undefined,
                             sourceMessageId: sourceTargetSnapshot?.messageId,
                             sourceMessageSignature: sourceTargetSnapshot?.signature,
@@ -20238,6 +21149,7 @@ async function processInjectMessage(messageText, messageIndex, job = null) {
 
                 if (results.length > 0) {
                     assertGenerationCanCommit(run);
+                    commitSuccessfulPrompt(run, { prompt, negative, promptWasLLM });
                     await maybeAutoSetBackground(results, s, run);
                     await deliverInjectResults(results, {
                         settings: s,
@@ -20507,16 +21419,99 @@ function scheduleDirectAutoGeneration(job, delayMs) {
             scheduleDirectAutoGeneration(job, 250);
             return;
         }
+        const transientTarget = setTransientGenerationTarget(job.index, {
+            forceMessagePrompt: false,
+            conversationCheckpoint: job.conversationCheckpoint,
+        });
         try {
-            setTransientGenerationTarget(job.index, {
-                forceMessagePrompt: false,
-                conversationCheckpoint: job.conversationCheckpoint,
-            });
             await withTransientGenerationSettings(job.settings, () => generateImage());
         } finally {
-            clearTransientGenerationTarget();
+            clearTransientGenerationTarget(transientTarget);
         }
     }, delayMs);
+}
+
+function handleHostMessageReceived(messageIndex) {
+    if (shouldSuppressAutoGenerateFromInternalLLM(messageIndex)) return;
+    scheduleRefreshMessageGenerateActions();
+    scheduleContextMediaForMessage(messageIndex);
+    const s = getSettings();
+    if (!s.autoGenerate) return;
+    normalizeAutoGenerateSettings(s);
+    const ctx = getContext();
+    const chat = ctx?.chat;
+    const preferredIdx = typeof messageIndex === "number" ? messageIndex : (chat ? chat.length - 1 : -1);
+    const idx = clampChatMessageIndex(preferredIdx, Array.isArray(chat) ? chat.length : 0);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    const msg = chat?.[idx];
+    if (!msg || msg.is_user || msg.extra?.inline_image) return;
+    const dedupeKey = msg;
+    if (s.injectEnabled && _processedInjectIndices.has(dedupeKey)) return;
+    if (!shouldRunAutoGenerateForEligibleMessage(idx, s)) return;
+    const delayMs = normalizeAutoGenerateDelayMs(s.autoGenerateDelayMs);
+    // Inject mode is checked first to prevent a second direct generation.
+    if (s.injectEnabled) {
+        const targetSnapshot = createMessageTargetSnapshot(chat, idx);
+        if (!targetSnapshot) return;
+        const job = {
+            chat,
+            index: idx,
+            message: msg,
+            targetSnapshot,
+            conversationCheckpoint: createConversationCheckpoint(chat),
+            dedupeKey,
+            revision: _automationRevision,
+        };
+        _processedInjectIndices.add(dedupeKey);
+        const timeoutId = setTimeout(() => {
+            _autoInjectTimeouts.delete(timeoutId);
+            void processInjectMessage(msg.mes || "", idx, job);
+        }, delayMs);
+        _autoInjectTimeouts.set(timeoutId, dedupeKey);
+        return;
+    }
+
+    clearPendingAutoGenerateTimer();
+    const targetSnapshot = createMessageTargetSnapshot(chat, idx);
+    if (!targetSnapshot) return;
+    scheduleDirectAutoGeneration({
+        chat,
+        index: idx,
+        message: msg,
+        targetSnapshot,
+        conversationCheckpoint: createConversationCheckpoint(chat),
+        settings: getGenerationSettingsForRun(),
+        revision: _automationRevision,
+    }, delayMs);
+}
+
+function handleHostChatChanged() {
+    if (isGenerating) requestGenerationCancel("Chat changed during generation", { force: true });
+    closePalettePresetMenu();
+    scheduleRefreshMessageGenerateActions();
+    resetAutoGenerateCadence({ clearTimer: true });
+    cancelContextMediaWork({ resetCadence: true });
+    clearRegenerationReferenceState();
+    if (_injectProcessingCount <= 0) {
+        _processedInjectIndices.clear();
+    }
+    void loadCharSettings();
+    renderContextualFilters();
+    renderContextMediaSummary();
+}
+
+function bindHostEventHandlers(eventSource, eventTypes) {
+    hostEventLifecycleScope?.dispose();
+    hostEventLifecycleScope = null;
+    if (!eventSource || !eventTypes) return;
+
+    const lifecycle = createLifecycleScope();
+    lifecycle.subscribe(eventSource, eventTypes.MESSAGE_RECEIVED, handleHostMessageReceived);
+    if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
+        lifecycle.subscribe(eventSource, eventTypes.CHAT_COMPLETION_PROMPT_READY, onChatCompletionPromptReady);
+    }
+    lifecycle.subscribe(eventSource, eventTypes.CHAT_CHANGED, handleHostChatChanged);
+    hostEventLifecycleScope = lifecycle;
 }
 
 
@@ -20525,6 +21520,7 @@ function initializeQuickImageGen() {
         try {
             const extensionsModule = await import("../../extensions.js");
             const scriptModule = await import("../../../script.js");
+            hostScriptModule = scriptModule;
             extension_settings = extensionsModule.extension_settings;
             getContext = extensionsModule.getContext;
             saveSettingsDebounced = scriptModule.saveSettingsDebounced;
@@ -20535,6 +21531,14 @@ function initializeQuickImageGen() {
             createRawPrompt = scriptModule.createRawPrompt;
             substituteParams = scriptModule.substituteParams;
             getRequestHeaders = scriptModule.getRequestHeaders;
+
+            try {
+                const worldInfoModule = await import("../../world-info.js");
+                hostWorldInfoModule = worldInfoModule;
+                checkWorldInfo = worldInfoModule.checkWorldInfo;
+            } catch (e) {
+                console.warn("[ImageGen] Could not import World Info helpers:", e.message);
+            }
 
             try {
                 const openAICompatModule = await import("../../openai.js");
@@ -20560,6 +21564,13 @@ function initializeQuickImageGen() {
             }
 
             await loadSettings();
+            accountStorageScope = createAccountStorageScope(getSettings()?._syncCacheId);
+            promptHistory = accountStorageScope
+                ? normalizePromptHistory(safeParse(accountStorageScope.promptHistoryKey, []))
+                : [];
+            if (!accountStorageScope) {
+                log("Account storage identity is unavailable; gallery and prompt history will remain session-only");
+            }
             galleryInitializationPromise = initializeGalleryRepository();
             installLifecycleCleanup();
             seedStarterPresets();
@@ -20583,79 +21594,7 @@ function initializeQuickImageGen() {
             }
 
             const { eventSource, event_types } = scriptModule;
-            if (eventSource) {
-                eventSource.on(event_types.MESSAGE_RECEIVED, (messageIndex) => {
-                    if (shouldSuppressAutoGenerateFromInternalLLM(messageIndex)) return;
-                    scheduleRefreshMessageGenerateActions();
-                    scheduleContextMediaForMessage(messageIndex);
-                    const s = getSettings();
-                    if (!s.autoGenerate) return;
-                    normalizeAutoGenerateSettings(s);
-                    const ctx = getContext();
-                    const chat = ctx?.chat;
-                    const preferredIdx = typeof messageIndex === "number" ? messageIndex : (chat ? chat.length - 1 : -1);
-                    const idx = clampChatMessageIndex(preferredIdx, Array.isArray(chat) ? chat.length : 0);
-                    if (!Number.isInteger(idx) || idx < 0) return;
-                    const msg = chat?.[idx];
-                    if (!msg || msg.is_user || msg.extra?.inline_image) return;
-                    const dedupeKey = msg;
-                    if (s.injectEnabled && _processedInjectIndices.has(dedupeKey)) return;
-                    if (!shouldRunAutoGenerateForEligibleMessage(idx, s)) return;
-                    const delayMs = normalizeAutoGenerateDelayMs(s.autoGenerateDelayMs);
-                    // Inject mode: extract image tags from AI response/reasoning
-                    // Checked first — if active, skip autoGenerate to prevent double generation
-                    if (s.injectEnabled) {
-                        const targetSnapshot = createMessageTargetSnapshot(chat, idx);
-                        if (!targetSnapshot) return;
-                        const job = {
-                            chat,
-                            index: idx,
-                            message: msg,
-                            targetSnapshot,
-                            conversationCheckpoint: createConversationCheckpoint(chat),
-                            dedupeKey,
-                            revision: _automationRevision,
-                        };
-                        _processedInjectIndices.add(dedupeKey);
-                        const timeoutId = setTimeout(() => {
-                            _autoInjectTimeouts.delete(timeoutId);
-                            void processInjectMessage(msg.mes || "", idx, job);
-                        }, delayMs);
-                        _autoInjectTimeouts.set(timeoutId, dedupeKey);
-                        return;
-                    }
-                    // Auto-generate mode (debounced — only one pending timeout at a time)
-                    clearPendingAutoGenerateTimer();
-                    const targetSnapshot = createMessageTargetSnapshot(chat, idx);
-                    if (!targetSnapshot) return;
-                    scheduleDirectAutoGeneration({
-                        chat,
-                        index: idx,
-                        message: msg,
-                        targetSnapshot,
-                        conversationCheckpoint: createConversationCheckpoint(chat),
-                        settings: getGenerationSettingsForRun(),
-                        revision: _automationRevision,
-                    }, delayMs);
-                });
-                // Inject mode: inject prompt into chat completion
-                if (event_types.CHAT_COMPLETION_PROMPT_READY) {
-                    eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, onChatCompletionPromptReady);
-                }
-                eventSource.on(event_types.CHAT_CHANGED, () => {
-                    if (isGenerating) requestGenerationCancel("Chat changed during generation", { force: true });
-                    closePalettePresetMenu();
-                    scheduleRefreshMessageGenerateActions();
-                    resetAutoGenerateCadence({ clearTimer: true });
-                    cancelContextMediaWork({ resetCadence: true });
-                    if (_injectProcessingCount <= 0) {
-                        _processedInjectIndices.clear();
-                    }
-                    void loadCharSettings();
-                    renderContextualFilters();
-                    renderContextMediaSummary();
-                });
-            }
+            bindHostEventHandlers(eventSource, event_types);
         } catch (err) {
             console.error("[Quick Image Gen] Initialization failed:", err);
             throw err;
@@ -20758,7 +21697,7 @@ function getServerSubfolder(context = getContext?.()) {
     return "QuickImageGen";
 }
 
-async function fetchImageBuffer(url, { signal, maxBytes = MAX_IMAGE_BYTES } = {}) {
+async function fetchImageBuffer(url, { signal, maxBytes = MAX_IMAGE_BYTES, credentials = "same-origin" } = {}) {
     const source = normalizeGeneratedImageSource(url);
     if (!source) throw new Error("Invalid or unsupported image source");
     const isDataLike = source.startsWith("data:") || source.startsWith("blob:");
@@ -20768,8 +21707,9 @@ async function fetchImageBuffer(url, { signal, maxBytes = MAX_IMAGE_BYTES } = {}
         blockPrivateHosts: true,
     });
     const res = isDataLike
-        ? await fetch(source, { signal })
+        ? await fetch(source, { signal, credentials: "omit" })
         : await corsFetch(source, {
+            credentials,
             qigAllowProxy: false,
             signal,
             ...(strictPublicSource ? { redirect: "error" } : {}),
