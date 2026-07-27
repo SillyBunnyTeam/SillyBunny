@@ -203,6 +203,13 @@ html {
     -webkit-transform: translateZ(0);
     -webkit-backface-visibility: hidden;
     -webkit-perspective: 1000;
+    /* SillyBunny: the translateZ flicker fix above makes <html> the containing
+       block for every position:fixed descendant. On mobile, body is itself
+       position:fixed (mobile-styles.css) and out of flow, collapsing <html> to
+       a 0px-tall box — bottom-anchored fixed elements (toast-bottom-* toast
+       containers) then resolve above the viewport and are never visible. Give
+       the box an explicit viewport height so fixed positioning anchors to it. */
+    height: 100dvh;
     /* SillyBunny: `clip` (unlike `hidden`) blocks programmatic viewport
        scrolling too, so scrollIntoView on search results can't shift the
        fixed-layout app and strand a black bar at the bottom. */
