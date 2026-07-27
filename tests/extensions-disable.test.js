@@ -192,6 +192,82 @@ describe('disabled extensions', () => {
         expect(globalThis.vectors_rearrangeChat).not.toHaveBeenCalled();
     });
 
+    test.each([
+        ['core', 'vectors'],
+        ['bundled', 'third-party/BunnyPresetTools'],
+    ])('keeps a %s extension inactive when the user disabled it', async (type, name) => {
+        installExtensionModuleMocks();
+
+        globalThis.fetch = jest.fn(async (url) => {
+            const text = String(url);
+            if (text.endsWith('/api/extensions/discover')) {
+                return { ok: true, json: async () => [{ name, type }] };
+            }
+            if (text.includes(`/scripts/extensions/${name}/manifest.json`)) {
+                return { ok: true, json: async () => ({ display_name: name, loading_order: 100, generate_interceptor: 'locked_rearrangeChat' }) };
+            }
+            return { ok: false, json: async () => ({}) };
+        });
+
+        const { findExtension, loadExtensionSettings, runGenerationInterceptors } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: { lockedExtensionsUnlockApplied: true, disabledExtensions: [name] },
+        }, false, false);
+
+        expect(findExtension(name)).toEqual({ name, enabled: false });
+
+        globalThis.locked_rearrangeChat = jest.fn();
+        await runGenerationInterceptors([], 4096, 'normal');
+
+        expect(globalThis.locked_rearrangeChat).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['core', 'vectors'],
+        ['bundled', 'third-party/BunnyPresetTools'],
+    ])('disableExtension records a %s extension as disabled', async (type, name) => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([{ name, type }]);
+
+        const { disableExtension, extension_settings, findExtension, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({ extension_settings: { disabledExtensions: [] } }, false, false);
+
+        expect(findExtension(name)).toEqual({ name, enabled: true });
+
+        await disableExtension(name, false);
+
+        expect(extension_settings.disabledExtensions).toContain(name);
+        expect(findExtension(name)).toEqual({ name, enabled: false });
+    });
+
+    test('drops stale disabled entries for previously locked extensions exactly once', async () => {
+        const { saveSettingsDebounced } = installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'vectors', type: 'core' },
+            { name: 'third-party/BunnyPresetTools', type: 'bundled' },
+            { name: 'memory', type: 'system' },
+        ]);
+
+        const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                bundledOptInProcessedExtensions: [],
+                disabledExtensions: ['vectors', 'third-party/BunnyPresetTools', 'memory'],
+            },
+        }, false, false);
+
+        // The user never saw these as off, so upgrading must not turn them off.
+        expect(extension_settings.disabledExtensions).toEqual(['memory']);
+        expect(extension_settings.lockedExtensionsUnlockApplied).toBe(true);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+
+        // A deliberate choice made after the migration survives the next load.
+        extension_settings.disabledExtensions.push('vectors');
+        await loadExtensionSettings({ extension_settings: { ...extension_settings } }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['memory', 'vectors']);
+    });
+
     test('migrates legacy opt-ins without changing their choices and disables new diagnostics', async () => {
         const { saveSettingsDebounced } = installExtensionModuleMocks();
         installExtensionDiscovery([
