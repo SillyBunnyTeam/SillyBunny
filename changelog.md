@@ -149,6 +149,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #697 (2026-07-26) `chore: hardcoded values revised for z index in extension menu/options/popper modal`
 - PR #698 (2026-07-26) `fix: subtitle tooltip for shell subtitles`
 - PR #700 (2026-07-27) `fix(proxy): resolve the 'None' no-proxy error`
+- PR #701 (2026-07-27) `fix(style): anchor bottom-positioned toasts to viewport on mobile`
 
 ## v1.6.5
 
