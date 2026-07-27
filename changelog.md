@@ -92,6 +92,7 @@ Status: Unreleased. This section is currently a mechanical staging PR ledger gen
 - PR #624 (2026-06-27) `feat(qol): add a Delete + Add Swipe button`
 - PR #625 (2026-06-27) `chore: Change default for 'Snap to Chat Width'`
 - PR #626 (2026-06-28) `fix: Hardening viewport escaping across the board`
+- PR #627 (2026-07-27) `fix: Performance Optimizations for mobile on Android`
 - PR #629 (2026-06-28) `feat(tts) - add stop button for TTS playback`
 - PR #630 (2026-07-01) `fix(ica): render macros in Companion Agents drawer`
 - PR #631 (2026-07-01) `feat(ica): add a hide/unhide button for every agent in the Companion Agents drawer`
