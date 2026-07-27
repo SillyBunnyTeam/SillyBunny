@@ -310,6 +310,7 @@ export const extension_settings = {
     notifyUpdates: false,
     bundledOptInDefaultsApplied: false,
     bundledOptInProcessedExtensions: [],
+    lockedExtensionsUnlockApplied: false,
     disabledExtensions: [],
     expressionOverrides: [],
     memory: {},
@@ -393,6 +394,32 @@ export const extension_settings = {
         sort: 'dateAsc',
     },
 };
+
+/**
+ * SillyBunny: core and bundled extensions used to be force-enabled, which made any entry
+ * the user still had in `disabledExtensions` for them a no-op. Now that those toggles are
+ * honoured, drop those stale entries once so upgrading does not silently switch off
+ * extensions that have been running all along. Choices made afterwards are respected.
+ * @returns {boolean} True if the settings were changed.
+ */
+function clearStaleLockedExtensionDisables() {
+    if (extension_settings.lockedExtensionsUnlockApplied) {
+        return false;
+    }
+
+    extension_settings.lockedExtensionsUnlockApplied = true;
+
+    const staleEntries = extension_settings.disabledExtensions
+        .filter(name => ['core', 'bundled'].includes(getExtensionType(name)));
+
+    if (staleEntries.length > 0) {
+        console.log(`[Extensions] Re-enabled previously locked extensions: ${staleEntries.join(', ')}`);
+        extension_settings.disabledExtensions = extension_settings.disabledExtensions
+            .filter(name => !staleEntries.includes(name));
+    }
+
+    return true;
+}
 
 function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedIds = false } = {}) {
     const bundledOptInExtensions = Object.entries(manifests)
@@ -553,10 +580,6 @@ function isExternalExtension(externalId) {
     return ['local', 'global'].includes(getExtensionType(externalId));
 }
 
-function isAlwaysEnabledExtension(externalId) {
-    return ['core', 'bundled'].includes(getExtensionType(externalId));
-}
-
 function areExtensionIdsEqual(left, right) {
     return getExtensionDedupKey(left) === getExtensionDedupKey(right);
 }
@@ -568,7 +591,7 @@ function resolveExtensionName(name) {
 }
 
 function isExtensionDisabled(externalId) {
-    return !isAlwaysEnabledExtension(externalId) && extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, externalId));
+    return extension_settings.disabledExtensions.some(name => areExtensionIdsEqual(name, externalId));
 }
 
 function markExtensionInactive(name) {
@@ -789,11 +812,6 @@ export async function enableExtension(name, reload = true) {
  */
 export async function disableExtension(name, reload = true) {
     const extensionName = resolveExtensionName(name);
-
-    if (isAlwaysEnabledExtension(extensionName)) {
-        console.warn(`Extension "${extensionName}" is always enabled and cannot be disabled.`);
-        return;
-    }
 
     await callExtensionHook(extensionName, 'disable');
     extension_settings.disabledExtensions = extension_settings.disabledExtensions.filter(x => !areExtensionIdsEqual(x, extensionName));
@@ -1348,9 +1366,9 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
             case 'local':
                 return '<i class="fa-sm fa-fw fa-solid fa-user" data-i18n="[title]ext_type_local" title="This is a local extension, available only for you."></i>';
             case 'core':
-                return '<i class="fa-sm fa-fw fa-solid fa-lock" title="This is a core extension and cannot be disabled."></i>';
+                return '<i class="fa-sm fa-fw fa-solid fa-cube" title="This is a SillyBunny core extension. It cannot be deleted and can be disabled."></i>';
             case 'bundled':
-                return '<i class="fa-sm fa-fw fa-solid fa-box-archive" title="This is a bundled third-party extension and cannot be disabled."></i>';
+                return '<i class="fa-sm fa-fw fa-solid fa-box-archive" title="This is a bundled third-party extension. It cannot be deleted or updated, and can be disabled."></i>';
             case 'system':
                 return '<i class="fa-sm fa-fw fa-solid fa-cog" data-i18n="[title]ext_type_system" title="This is a built-in extension. It cannot be deleted and can be disabled."></i>';
             default:
@@ -1371,11 +1389,9 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
             : '<a>';
     }
 
-    const isAlwaysEnabled = isAlwaysEnabledExtension(name);
-    let toggleElement = isAlwaysEnabled ?
-        `<input type="checkbox" title="This extension is required" data-name="${name}" class="${checkboxClass}" checked disabled>` : isActive || isDisabled ?
-            '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
-            `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
+    let toggleElement = isActive || isDisabled ?
+        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
+        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
 
     let deleteButton = isExternal ? `<button class="btn_delete menu_button" data-name="${externalId}" data-i18n="[title]Delete" title="Delete"><i class="fa-fw fa-solid fa-trash-can"></i></button>` : '';
     let cleanButton = isExternal && hasExtensionHook(externalId, 'clean') ? `<button class="btn_clean menu_button" data-name="${externalId}" data-i18n="[title]Clean extension data" title="Clean extension data"><i class="fa-fw fa-solid fa-broom"></i></button>` : '';
@@ -2268,12 +2284,13 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     });
     const removedCount = originalDisabledCount - extension_settings.disabledExtensions.length;
 
-    if (applyBundledOptInDefaults({
+    const unlockMigrationChanged = clearStaleLockedExtensionDisables();
+    const bundledOptInChanged = applyBundledOptInDefaults({
         migrateLegacy: shouldInitializeProcessedIds,
         initializeProcessedIds: shouldInitializeProcessedIds,
-    })) {
-        saveSettingsDebounced();
-    } else if (removedCount > 0) {
+    });
+
+    if (unlockMigrationChanged || bundledOptInChanged || removedCount > 0) {
         saveSettingsDebounced();
     }
     bundledOptInSettingsLoaded = true;
