@@ -37,12 +37,12 @@ const thumbnailMobileRuntimeSettings = {
     format: String(getConfigValue('thumbnails.mobile.format', 'jpg')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
 };
 
-function setCachedThumbnailContentType(response, filePath) {
-    let fd = null;
+async function setCachedThumbnailContentType(response, filePath) {
+    let fileHandle = null;
     try {
-        fd = fs.openSync(filePath, 'r');
+        fileHandle = await fs.promises.open(filePath, 'r');
         const header = Buffer.alloc(12);
-        fs.readSync(fd, header, 0, header.length, 0);
+        await fileHandle.read(header, 0, header.length, 0);
 
         if (header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
             response.type('jpg');
@@ -52,8 +52,8 @@ function setCachedThumbnailContentType(response, filePath) {
     } catch {
         // Fall back to Express' extension-based content type.
     } finally {
-        if (fd !== null) {
-            fs.closeSync(fd);
+        if (fileHandle !== null) {
+            await fileHandle.close();
         }
     }
 }
@@ -411,7 +411,7 @@ publicRouter.get('/', async function (request, response) {
 
         if (fs.existsSync(pathToCachedFile)) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
-            setCachedThumbnailContentType(response, pathToCachedFile);
+            await setCachedThumbnailContentType(response, pathToCachedFile);
             return response.sendFile(file, { root: thumbnailFolder, dotfiles: 'allow' });
         }
 

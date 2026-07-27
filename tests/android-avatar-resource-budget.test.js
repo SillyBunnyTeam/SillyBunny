@@ -97,9 +97,12 @@ describe('Android avatar resource budget', () => {
     });
 
     test('cached thumbnails report their encoded image type instead of original filename extension', () => {
-        expect(thumbnailsSource).toContain('function setCachedThumbnailContentType(response, filePath)');
+        expect(thumbnailsSource).toContain('async function setCachedThumbnailContentType(response, filePath)');
+        expect(thumbnailsSource).toContain('await fs.promises.open(filePath, \'r\')');
         expect(thumbnailsSource).toContain('response.type(\'jpg\')');
         expect(thumbnailsSource).toContain('response.type(\'png\')');
-        expect(thumbnailsSource).toContain('setCachedThumbnailContentType(response, pathToCachedFile);');
+        expect(thumbnailsSource).toContain('await setCachedThumbnailContentType(response, pathToCachedFile);');
+        expect(thumbnailsSource).not.toContain('fs.openSync(filePath, \'r\')');
+        expect(thumbnailsSource).not.toContain('fs.readSync(fd, header');
     });
 });

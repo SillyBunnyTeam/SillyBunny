@@ -47,7 +47,8 @@ describe('Android streaming settings UI', () => {
     test('routes reduced Android stream ticks through the plain-text preview path', () => {
         expect(scriptSource).toContain('shouldUsePlainTextStreamingPreview({');
         expect(scriptSource).toContain('isAndroidPlatform: isAndroidStreamingPreview');
-        expect(scriptSource).toContain('formatPlainTextStreamingPreview(previewText)');
+        expect(scriptSource).toContain('formatMobileStreamingPreview(');
+        expect(scriptSource).toContain('collapseOocBlocks: !preparedPreview?.isSystem');
         expect(scriptSource).toContain('sanitizeHtml: sanitizeMessageHtml');
     });
 });

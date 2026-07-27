@@ -1,4 +1,5 @@
 import { isIOSWebKitPlatform } from './mobile-send-button.js';
+import { extractOocBlocksForDisplay, restoreOocBlocksForDisplay } from './ooc-blocks.js';
 
 export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
@@ -211,6 +212,33 @@ export function formatBasicMarkdownStreamingPreview(text = '', { converter = nul
         console.warn('[Mobile Streaming] Basic markdown formatting failed:', error);
         return formatPlainTextStreamingPreview(text);
     }
+}
+
+/**
+ * Formats an interim mobile preview while preserving collapsed OOC display blocks.
+ * @param {string} text Raw streamed message text
+ * @param {object} options Preview options
+ * @param {boolean} [options.useBasicMarkdown] Whether to render the basic markdown preview
+ * @param {boolean} [options.collapseOocBlocks] Whether balanced OOC blocks should be collapsed
+ * @param {import('showdown').Converter} [options.converter] Showdown converter instance
+ * @param {(html: string) => string} [options.sanitizeHtml] Production message sanitizer
+ * @returns {string} Safe HTML preview
+ */
+export function formatMobileStreamingPreview(text = '', {
+    useBasicMarkdown = false,
+    collapseOocBlocks = true,
+    converter = null,
+    sanitizeHtml = null,
+} = {}) {
+    const oocBlocks = [];
+    const previewText = collapseOocBlocks
+        ? extractOocBlocksForDisplay(text, oocBlocks)
+        : text;
+    const formattedText = useBasicMarkdown
+        ? formatBasicMarkdownStreamingPreview(previewText, { converter, sanitizeHtml })
+        : formatPlainTextStreamingPreview(previewText);
+
+    return restoreOocBlocksForDisplay(formattedText, oocBlocks);
 }
 
 /**

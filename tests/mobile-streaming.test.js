@@ -7,6 +7,7 @@ import {
     ANDROID_STREAMING_UPDATE_INTERVAL_MS,
     formatPlainTextStreamingPreview,
     formatBasicMarkdownStreamingPreview,
+    formatMobileStreamingPreview,
     isReducedStreamingDomWorkPlatform,
     getMobileStreamingBottomPinBehavior,
     getStreamingReasoningRenderInterval,
@@ -201,6 +202,29 @@ describe('mobile streaming helpers', () => {
         expect(preview).not.toContain('javascript:');
         expect(preview).not.toContain('data:text/html');
         expect(preview).not.toContain('<img');
+    });
+
+    test('collapses and escapes OOC blocks in plain-text streaming previews', () => {
+        const preview = formatMobileStreamingPreview('Visible ((<img src=x onerror=alert(1)> note)) text');
+
+        expect(preview).toContain('Visible <details class="ooc_block">');
+        expect(preview).toContain('&lt;img src=x onerror=alert(1)&gt; note');
+        expect(preview).toContain('</details> text');
+        expect(preview).not.toContain('((<img');
+    });
+
+    test('collapses OOC blocks in basic-markdown streaming previews', () => {
+        const converter = new showdown.Converter();
+        const preview = formatMobileStreamingPreview('**Visible** ((private note))', {
+            useBasicMarkdown: true,
+            converter,
+            sanitizeHtml: html => html,
+        });
+
+        expect(preview).toContain('<strong>Visible</strong>');
+        expect(preview).toContain('<details class="ooc_block">');
+        expect(preview).toContain('<div class="ooc_content">private note</div>');
+        expect(preview).not.toContain('((private note))');
     });
 
     test('initializes only Android settings absent from persisted preferences', () => {
