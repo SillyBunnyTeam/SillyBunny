@@ -43,6 +43,12 @@ const THUMBNAIL_DIMENSION_DEFAULTS = Object.freeze({
     persona: Object.freeze([864, 1280]),
 });
 
+const THUMBNAIL_MOBILE_DIMENSION_DEFAULTS = Object.freeze({
+    bg: Object.freeze([240, 135]),
+    avatar: Object.freeze([320, 480]),
+    persona: Object.freeze([320, 480]),
+});
+
 function normalizeDimensionPair(value, fallback) {
     const fallbackPair = Array.isArray(fallback) ? fallback : THUMBNAIL_DIMENSION_DEFAULTS.avatar;
     const sourcePair = Array.isArray(value) ? value : fallbackPair;
@@ -58,9 +64,22 @@ export const thumbnailDimensions = {
     persona: normalizeDimensionPair(getConfigValue('thumbnails.dimensions.persona', THUMBNAIL_DIMENSION_DEFAULTS.persona), THUMBNAIL_DIMENSION_DEFAULTS.persona),
 };
 
+/** @type {Record<string, number[]>} */
+export const thumbnailMobileDimensions = {
+    bg: normalizeDimensionPair(getConfigValue('thumbnails.mobile.dimensions.bg', THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.bg), THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.bg),
+    avatar: normalizeDimensionPair(getConfigValue('thumbnails.mobile.dimensions.avatar', THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.avatar), THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.avatar),
+    persona: normalizeDimensionPair(getConfigValue('thumbnails.mobile.dimensions.persona', THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.persona), THUMBNAIL_MOBILE_DIMENSION_DEFAULTS.persona),
+};
+
 export function setThumbnailDimensions(nextDimensions = {}) {
     for (const type of Object.keys(THUMBNAIL_DIMENSION_DEFAULTS)) {
         thumbnailDimensions[type] = normalizeDimensionPair(nextDimensions?.[type], THUMBNAIL_DIMENSION_DEFAULTS[type]);
+    }
+}
+
+export function setThumbnailMobileDimensions(nextDimensions = {}) {
+    for (const type of Object.keys(THUMBNAIL_MOBILE_DIMENSION_DEFAULTS)) {
+        thumbnailMobileDimensions[type] = normalizeDimensionPair(nextDimensions?.[type], THUMBNAIL_MOBILE_DIMENSION_DEFAULTS[type]);
     }
 }
 
@@ -72,6 +91,14 @@ export function getThumbnailDimensions() {
     };
 }
 
+export function getThumbnailMobileDimensions() {
+    return {
+        bg: [...thumbnailMobileDimensions.bg],
+        avatar: [...thumbnailMobileDimensions.avatar],
+        persona: [...thumbnailMobileDimensions.persona],
+    };
+}
+
 /**
  * Gets the configured resolution for a given thumbnail type.
  * @param {ThumbnailType} type Thumbnail type
@@ -79,6 +106,19 @@ export function getThumbnailDimensions() {
  */
 export function getThumbnailResolution(type) {
     const dims = thumbnailDimensions[type];
+    if (Array.isArray(dims) && dims.length >= 2) {
+        return Number(dims[0]) * Number(dims[1]);
+    }
+    return 0;
+}
+
+/**
+ * Gets the configured mobile resolution for a given thumbnail type.
+ * @param {ThumbnailType} type Thumbnail type
+ * @returns {number} Resolution (width * height)
+ */
+export function getThumbnailMobileResolution(type) {
+    const dims = thumbnailMobileDimensions[type];
     if (Array.isArray(dims) && dims.length >= 2) {
         return Number(dims[0]) * Number(dims[1]);
     }

@@ -253,6 +253,25 @@
             col2.appendChild(iosDrawer);
         }
 
+        // Wrap Android Streaming Stability in its own inline-drawer
+        const androidBlock = document.querySelector('[name="AndroidStreamingToggles"]');
+        if (androidBlock && col2 && !document.getElementById('sb-android-streaming-drawer')) {
+            const androidDrawer = document.createElement('div');
+            androidDrawer.id = 'sb-android-streaming-drawer';
+            androidDrawer.className = 'inline-drawer wide100p flexFlowColumn sb-settings-subdrawer';
+            androidDrawer.innerHTML = `
+                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Controls Android browser safeguards for long streamed generations.">
+                    <b><i class="fa-solid fa-mobile-screen"></i> <span>Android Streaming Stability</span></b>
+                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                </div>
+                <div class="inline-drawer-content sb-settings-subdrawer-body" style="display:none">
+                </div>
+            `;
+            androidBlock.parentNode.insertBefore(androidDrawer, androidBlock);
+            androidDrawer.querySelector('.inline-drawer-content').appendChild(androidBlock);
+            col2.appendChild(androidDrawer);
+        }
+
         // Wrap Aggressive DOM Unloading in its own inline-drawer
         const domUnloadBlock = document.querySelector('[name="AggressiveDomUnloadToggles"]');
         if (domUnloadBlock && col2 && !document.getElementById('sb-aggressive-dom-unload-drawer')) {
@@ -342,6 +361,7 @@
             'DesktopSection': 'system-device',
             'MobileSection': 'system-device',
             'sb-ios-webkit-streaming-drawer': 'system-device',
+            'sb-android-streaming-drawer': 'system-device',
             'sb-aggressive-dom-unload-drawer': 'system-device',
 
             // Cache & Account Tab

@@ -12,7 +12,6 @@ import https from 'node:https';
 import cors from 'cors';
 import { csrfSync } from 'csrf-sync';
 import express from 'express';
-import compression from 'compression';
 import cookieSession from 'cookie-session';
 import multer from 'multer';
 import responseTime from 'response-time';
@@ -49,6 +48,7 @@ import {
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
+import getResponseCompressionMiddleware from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
 import { createSession, destroySession, validateCredentials, isSessionAuthEnabled } from './middleware/sessionAuth.js';
@@ -109,7 +109,7 @@ const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
 }));
-app.use(compression());
+app.use(getResponseCompressionMiddleware());
 app.use(responseTime());
 
 app.use(express.json({ limit: '500mb' }));

@@ -200,7 +200,7 @@ body.echostyle #chat {
                     left: 0;
                     width: var(--custom-EchoAvatarWidth, 25%);
                     height: var(--custom-EchoAvatarHeight, 30px);
-                    background: var(--mes-avatar-original-url, var(--mes-avatar-url)) center no-repeat;
+                    background: var(--mes-avatar-url, var(--sb-message-avatar)) center no-repeat;
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
@@ -252,7 +252,7 @@ body.echostyle #chat {
                     right: 0;
                     width: var(--custom-EchoAvatarWidth, 25%);
                     height: var(--custom-EchoAvatarHeight, 30px);
-                    background: var(--mes-avatar-original-url, var(--mes-avatar-url)) center no-repeat;
+                    background: var(--mes-avatar-url, var(--sb-message-avatar)) center no-repeat;
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
@@ -387,7 +387,7 @@ body.whisperstyle #chat {
             right: 0;
             width: var(--customWhisperAvatarWidth, 50%);
             height: 100px;
-            background: var(--mes-avatar-original-url, var(--mes-avatar-url)) var(--customWhisperAvatarAlign) no-repeat;
+            background: var(--mes-avatar-url, var(--sb-message-avatar)) var(--customWhisperAvatarAlign) no-repeat;
             background-size: cover;
             mask-image: linear-gradient(to bottom, black 60%, rgba(0, 0, 0, 0) 100%);
             mask-size: 100% 100%;

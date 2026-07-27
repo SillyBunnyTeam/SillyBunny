@@ -925,6 +925,7 @@ const sbState = {
         observer: null,
         debounceTimer: 0,
         retryTimer: 0,
+        sourceCache: new WeakMap(),
     },
     bottomChatBar: {
         chatSelect: null,
@@ -3855,18 +3856,20 @@ function ensureAvatarPath(path) {
 }
 
 function getChatAvatarSources(rawSrc) {
-    // Reuses script.js's parser so the thumbnail URL is built from a file name decoded exactly once.
-    const avatarInfo = parseAvatarSource(stripAvatarOrigin(rawSrc));
+    const source = ensureAvatarPath(stripAvatarOrigin(rawSrc));
+    const avatarInfo = parseAvatarSource(source);
     if (!avatarInfo) {
-        return { thumb: '', original: '' };
+        return { display: '', thumb: '', original: '' };
     }
 
     const { type, file, original } = avatarInfo;
+    const isThumbnail = Object.prototype.hasOwnProperty.call(avatarInfo, 'preset');
     const thumb = type === 'avatar' || type === 'persona'
-        ? getThumbnailUrl(type, file)
+        ? (isThumbnail ? source : getThumbnailUrl(type, file))
         : ensureAvatarPath(file);
 
     return {
+        display: source || thumb,
         thumb: stripAvatarOrigin(thumb),
         original: stripAvatarOrigin(ensureAvatarPath(original)),
     };
@@ -3892,20 +3895,32 @@ function updateChatAvatarVariables(root = document) {
             continue;
         }
 
-        const srcCandidate = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
-        const { thumb, original } = getChatAvatarSources(srcCandidate);
-
-        if (!thumb && !original) {
+        const src = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src') || avatarImg.currentSrc;
+        const thumbnailSrc = avatarImg.getAttribute('data-thumbnail-src');
+        const originalSrc = avatarImg.getAttribute('data-original-src');
+        const cachedSources = sbState.chatAvatars.sourceCache.get(message);
+        if (cachedSources?.src === src
+            && cachedSources.thumbnailSrc === thumbnailSrc
+            && cachedSources.originalSrc === originalSrc) {
             continue;
         }
+        sbState.chatAvatars.sourceCache.set(message, { src, thumbnailSrc, originalSrc });
 
-        const thumbUrl = thumb || original;
-        const originalUrl = original || thumbUrl;
-        const displayUrl = originalUrl || thumbUrl;
+        const srcSources = getChatAvatarSources(src);
+        const thumbnailSources = getChatAvatarSources(thumbnailSrc);
+        const originalSources = getChatAvatarSources(originalSrc);
+        const displayUrl = srcSources.display || thumbnailSources.display || originalSources.display;
+        const thumbUrl = thumbnailSources.display || srcSources.thumb || displayUrl;
+        const originalUrl = originalSources.display || srcSources.original || thumbnailSources.original || displayUrl;
+
+        if (!displayUrl && !thumbUrl && !originalUrl) {
+            continue;
+        }
 
         message.dataset.avatarThumb = thumbUrl;
         message.dataset.avatarOriginal = originalUrl;
         message.dataset.avatar = displayUrl;
+        message.style.setProperty('--sb-message-avatar', formatAvatarCssUrl(displayUrl));
         message.style.setProperty('--mes-avatar-thumb-url', formatAvatarCssUrl(thumbUrl));
         message.style.setProperty('--mes-avatar-original-url', formatAvatarCssUrl(originalUrl));
         message.style.setProperty('--mes-avatar-url', formatAvatarCssUrl(displayUrl));
@@ -3947,7 +3962,7 @@ function initChatAvatarVariables() {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['src', 'data-src'],
+        attributeFilter: ['src', 'data-src', 'data-thumbnail-src', 'data-original-src'],
     });
 
     sbState.chatAvatars.observer = observer;
@@ -10671,27 +10686,48 @@ function getThumbnailSettingsFromRefs(refs = getServerAdminRefs()) {
     };
 
     return {
-        enabled: Boolean(refs?.thumbnailEnabled?.checked),
-        format: refs?.thumbnailFormat?.value === 'jpg' ? 'jpg' : 'png',
-        quality: parseSize(refs?.thumbnailQuality, 100),
-        dimensions: {
-            bg: [
-                parseSize(refs?.thumbnailBgWidth, 240),
-                parseSize(refs?.thumbnailBgHeight, 135),
-            ],
-            avatar: [
-                parseSize(refs?.thumbnailAvatarWidth, 864),
-                parseSize(refs?.thumbnailAvatarHeight, 1280),
-            ],
-            persona: [
-                parseSize(refs?.thumbnailPersonaWidth, 864),
-                parseSize(refs?.thumbnailPersonaHeight, 1280),
-            ],
+        settings: {
+            enabled: Boolean(refs?.thumbnailEnabled?.checked),
+            format: refs?.thumbnailFormat?.value === 'jpg' ? 'jpg' : 'png',
+            quality: parseSize(refs?.thumbnailQuality, 100),
+            dimensions: {
+                bg: [
+                    parseSize(refs?.thumbnailBgWidth, 240),
+                    parseSize(refs?.thumbnailBgHeight, 135),
+                ],
+                avatar: [
+                    parseSize(refs?.thumbnailAvatarWidth, 864),
+                    parseSize(refs?.thumbnailAvatarHeight, 1280),
+                ],
+                persona: [
+                    parseSize(refs?.thumbnailPersonaWidth, 864),
+                    parseSize(refs?.thumbnailPersonaHeight, 1280),
+                ],
+            },
+        },
+        mobileSettings: {
+            enabled: Boolean(refs?.thumbnailMobileEnabled?.checked),
+            format: refs?.thumbnailMobileFormat?.value === 'jpg' ? 'jpg' : 'png',
+            quality: parseSize(refs?.thumbnailMobileQuality, 82),
+            dimensions: {
+                bg: [
+                    parseSize(refs?.thumbnailMobileBgWidth, 240),
+                    parseSize(refs?.thumbnailMobileBgHeight, 135),
+                ],
+                avatar: [
+                    parseSize(refs?.thumbnailMobileAvatarWidth, 320),
+                    parseSize(refs?.thumbnailMobileAvatarHeight, 480),
+                ],
+                persona: [
+                    parseSize(refs?.thumbnailMobilePersonaWidth, 320),
+                    parseSize(refs?.thumbnailMobilePersonaHeight, 480),
+                ],
+            },
         },
     };
 }
 
-function setThumbnailInputValues(settings = {}, refs = getServerAdminRefs()) {
+function setThumbnailInputValues({ settings = {}, mobileSettings = {} } = {}, refs = getServerAdminRefs()) {
     if (!refs) {
         return;
     }
@@ -10705,6 +10741,16 @@ function setThumbnailInputValues(settings = {}, refs = getServerAdminRefs()) {
     refs.thumbnailAvatarHeight.value = String(settings.dimensions?.avatar?.[1] ?? 1280);
     refs.thumbnailPersonaWidth.value = String(settings.dimensions?.persona?.[0] ?? 864);
     refs.thumbnailPersonaHeight.value = String(settings.dimensions?.persona?.[1] ?? 1280);
+
+    refs.thumbnailMobileEnabled.checked = Boolean(mobileSettings.enabled);
+    refs.thumbnailMobileFormat.value = mobileSettings.format === 'jpg' ? 'jpg' : 'png';
+    refs.thumbnailMobileQuality.value = String(mobileSettings.quality ?? 82);
+    refs.thumbnailMobileBgWidth.value = String(mobileSettings.dimensions?.bg?.[0] ?? 240);
+    refs.thumbnailMobileBgHeight.value = String(mobileSettings.dimensions?.bg?.[1] ?? 135);
+    refs.thumbnailMobileAvatarWidth.value = String(mobileSettings.dimensions?.avatar?.[0] ?? 320);
+    refs.thumbnailMobileAvatarHeight.value = String(mobileSettings.dimensions?.avatar?.[1] ?? 480);
+    refs.thumbnailMobilePersonaWidth.value = String(mobileSettings.dimensions?.persona?.[0] ?? 320);
+    refs.thumbnailMobilePersonaHeight.value = String(mobileSettings.dimensions?.persona?.[1] ?? 480);
 }
 
 function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
@@ -10719,9 +10765,19 @@ function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
         refs?.thumbnailPersonaWidth,
         refs?.thumbnailPersonaHeight,
         refs?.thumbnailUseRecommendedButton,
+        refs?.thumbnailUseRecommendedMobileButton,
         refs?.thumbnailSaveButton,
         refs?.thumbnailSaveClearButton,
         refs?.thumbnailClearButton,
+        refs?.thumbnailMobileEnabled,
+        refs?.thumbnailMobileFormat,
+        refs?.thumbnailMobileQuality,
+        refs?.thumbnailMobileBgWidth,
+        refs?.thumbnailMobileBgHeight,
+        refs?.thumbnailMobileAvatarWidth,
+        refs?.thumbnailMobileAvatarHeight,
+        refs?.thumbnailMobilePersonaWidth,
+        refs?.thumbnailMobilePersonaHeight,
     ];
 
     for (const control of controls) {
@@ -10933,9 +10989,10 @@ function renderServerThumbnailSettings(data) {
         return;
     }
 
-    setThumbnailInputValues(data?.settings ?? {});
+    setThumbnailInputValues({ settings: data?.settings ?? {}, mobileSettings: data?.mobileSettings ?? {} });
     state.thumbnailLastModifiedMs = Number(data?.lastModifiedMs ?? 0) || state.thumbnailLastModifiedMs;
     state.thumbnailRecommended = data?.recommended ?? state.thumbnailRecommended;
+    state.thumbnailRecommendedMobile = data?.recommendedMobile ?? state.thumbnailRecommendedMobile;
     state.thumbnailSettingsLoaded = true;
     setServerAdminMessage(refs.thumbnailNote, 'Thumbnail settings loaded. Saving applies to new thumbnails immediately.', 'neutral');
 }
@@ -11139,8 +11196,10 @@ async function handleServerThumbnailSave({ clearCache = false } = {}) {
     setServerAdminMessage(refs.thumbnailNote, clearCache ? 'Saving settings and clearing thumbnail cache…' : 'Saving thumbnail settings…');
 
     try {
+        const { settings, mobileSettings } = getThumbnailSettingsFromRefs(refs);
         const result = await requestServerAdmin('/api/server-admin/config/thumbnail-settings/save', {
-            settings: getThumbnailSettingsFromRefs(refs),
+            settings,
+            mobileSettings,
             expectedLastModifiedMs: state.thumbnailLastModifiedMs || state.lastModifiedMs,
             clearCache,
         });
@@ -11204,8 +11263,26 @@ function handleUseRecommendedThumbnailSettings() {
         },
     };
 
-    setThumbnailInputValues(recommended, refs);
-    setServerAdminMessage(refs.thumbnailNote, 'Recommended high-quality thumbnail settings are staged. Save them when ready.', 'warn');
+    setThumbnailInputValues({ settings: recommended, mobileSettings: getThumbnailSettingsFromRefs(refs).mobileSettings }, refs);
+    setServerAdminMessage(refs.thumbnailNote, 'Recommended desktop thumbnail settings are staged. Save them when ready.', 'warn');
+}
+
+function handleUseRecommendedMobileThumbnailSettings() {
+    const state = getServerAdminState();
+    const refs = getServerAdminRefs();
+    const recommendedMobile = state.thumbnailRecommendedMobile ?? {
+        enabled: true,
+        format: 'jpg',
+        quality: 82,
+        dimensions: {
+            bg: [240, 135],
+            avatar: [320, 480],
+            persona: [320, 480],
+        },
+    };
+
+    setThumbnailInputValues({ settings: getThumbnailSettingsFromRefs(refs).settings, mobileSettings: recommendedMobile }, refs);
+    setServerAdminMessage(refs.thumbnailNote, 'Recommended mobile thumbnail settings are staged. Save them when ready.', 'warn');
 }
 
 function createThumbnailSizeRow(label, key) {
@@ -11630,13 +11707,52 @@ function buildServerAdminPanel() {
     thumbnailSizes.append(bgSize.row, avatarSize.row, personaSize.row);
 
     const thumbnailActions = createElement('div', { className: 'sb-server-actions' });
-    const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use recommended', attrs: { type: 'button' } });
+    const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use desktop recommended', attrs: { type: 'button' } });
+    const thumbnailUseRecommendedMobileButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use mobile recommended', attrs: { type: 'button' } });
     const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
     const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
     const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Use PNG at 100 quality with larger avatar/persona dimensions for sharper character thumbnails, then clear the cache to rebuild them.' });
-    thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
-    thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailActions, thumbnailNote);
+    const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.' });
+
+    const thumbnailMobileHeading = createElement('div', { className: 'sb-thumbnail-mobile-heading', text: 'Mobile preset' });
+    const thumbnailMobileControls = createElement('div', { className: 'sb-thumbnail-controls' });
+    const thumbnailMobileEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
+    const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox' } });
+    const thumbnailMobileEnabledText = createElement('small', { text: 'Generate mobile thumbnails' });
+    thumbnailMobileEnabledLabel.append(thumbnailMobileEnabled, thumbnailMobileEnabledText);
+
+    const thumbnailMobileFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
+    const thumbnailMobileFormatText = createElement('span', { text: 'Mobile format' });
+    const thumbnailMobileFormat = createElement('select', { className: 'text_pole' });
+    thumbnailMobileFormat.append(
+        createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
+        createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
+    );
+    thumbnailMobileFormatGroup.append(thumbnailMobileFormatText, thumbnailMobileFormat);
+
+    const thumbnailMobileQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
+    const thumbnailMobileQualityText = createElement('span', { text: 'Mobile quality' });
+    const thumbnailMobileQuality = createElement('input', {
+        className: 'text_pole sb-thumbnail-number',
+        attrs: {
+            type: 'number',
+            inputmode: 'numeric',
+            min: '1',
+            max: '100',
+            step: '1',
+        },
+    });
+    thumbnailMobileQualityGroup.append(thumbnailMobileQualityText, thumbnailMobileQuality);
+    thumbnailMobileControls.append(thumbnailMobileEnabledLabel, thumbnailMobileFormatGroup, thumbnailMobileQualityGroup);
+
+    const thumbnailMobileSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
+    const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
+    const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
+    const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
+    thumbnailMobileSizes.append(mobileBgSize.row, mobileAvatarSize.row, mobilePersonaSize.row);
+
+    thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
+    thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailMobileHeading, thumbnailMobileControls, thumbnailMobileSizes, thumbnailActions, thumbnailNote);
 
     const configCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
     const configHeader = createElement('div', { className: 'sb-admin-card-header' });
@@ -11689,10 +11805,20 @@ function buildServerAdminPanel() {
         thumbnailPersonaWidth: personaSize.widthInput,
         thumbnailPersonaHeight: personaSize.heightInput,
         thumbnailUseRecommendedButton,
+        thumbnailUseRecommendedMobileButton,
         thumbnailSaveButton,
         thumbnailSaveClearButton,
         thumbnailClearButton,
         thumbnailNote,
+        thumbnailMobileEnabled,
+        thumbnailMobileFormat,
+        thumbnailMobileQuality,
+        thumbnailMobileBgWidth: mobileBgSize.widthInput,
+        thumbnailMobileBgHeight: mobileBgSize.heightInput,
+        thumbnailMobileAvatarWidth: mobileAvatarSize.widthInput,
+        thumbnailMobileAvatarHeight: mobileAvatarSize.heightInput,
+        thumbnailMobilePersonaWidth: mobilePersonaSize.widthInput,
+        thumbnailMobilePersonaHeight: mobilePersonaSize.heightInput,
         configPath,
         configState,
         configEditor,
@@ -11710,6 +11836,7 @@ function buildServerAdminPanel() {
     updateButton.addEventListener('click', handleServerAdminUpdate);
     restartButton.addEventListener('click', handleServerAdminRestart);
     thumbnailUseRecommendedButton.addEventListener('click', handleUseRecommendedThumbnailSettings);
+    thumbnailUseRecommendedMobileButton.addEventListener('click', handleUseRecommendedMobileThumbnailSettings);
     thumbnailSaveButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: false }));
     thumbnailSaveClearButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: true }));
     thumbnailClearButton.addEventListener('click', handleServerThumbnailClearCache);

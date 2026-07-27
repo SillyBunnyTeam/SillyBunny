@@ -38,6 +38,7 @@ function createJqueryMock(value = '') {
 }
 
 function installExtensionModuleMocks() {
+    const saveSettingsDebounced = jest.fn();
     jest.unstable_mockModule('../public/lib.js', () => ({
         DOMPurify: { sanitize: jest.fn(value => String(value ?? '')) },
         Popper: { createPopper: jest.fn(() => ({ update: jest.fn() })) },
@@ -50,7 +51,7 @@ function installExtensionModuleMocks() {
         event_types: { EXTENSIONS_FIRST_LOAD: 'extensions_first_load', EXTRAS_CONNECTED: 'extras_connected', EXTENSION_SETTINGS_LOADED: 'extension_settings_loaded' },
         getRequestHeaders: jest.fn(() => ({})),
         saveSettings: jest.fn(async () => {}),
-        saveSettingsDebounced: jest.fn(),
+        saveSettingsDebounced,
     }));
 
     jest.unstable_mockModule('../public/scripts/popup.js', () => ({
@@ -112,6 +113,36 @@ function installExtensionModuleMocks() {
         loadStylesheetAsync: jest.fn(async () => {}),
         prefetchAsset: jest.fn(),
     }));
+
+    return { saveSettingsDebounced };
+}
+
+function installExtensionDiscovery(extensions) {
+    globalThis.fetch = jest.fn(async (url) => {
+        const text = String(url);
+        if (text.endsWith('/api/extensions/discover')) {
+            return {
+                ok: true,
+                json: async () => extensions.map(({ name, type = 'system' }) => ({ name, type })),
+            };
+        }
+
+        const extension = extensions.find(({ name }) => text.includes(`/scripts/extensions/${name}/manifest.json`));
+        if (extension) {
+            return {
+                ok: true,
+                json: async () => ({
+                    display_name: extension.name,
+                    loading_order: 100,
+                    requires: [],
+                    optional: [],
+                    ...extension.manifest,
+                }),
+            };
+        }
+
+        return { ok: false, json: async () => ({}) };
+    });
 }
 
 describe('disabled extensions', () => {
@@ -159,6 +190,72 @@ describe('disabled extensions', () => {
         await runGenerationInterceptors([], 4096, 'normal');
 
         expect(globalThis.vectors_rearrangeChat).not.toHaveBeenCalled();
+    });
+
+    test('migrates legacy opt-ins without changing their choices and disables new diagnostics', async () => {
+        const { saveSettingsDebounced } = installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'third-party/sillytavern-character-colors', manifest: { bundled_opt_in: true } },
+            { name: 'third-party/sillytavern-image-gen', manifest: { bundled_opt_in: true } },
+            { name: 'performance-diagnostics', manifest: { bundled_opt_in: true } },
+        ]);
+
+        const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                bundledOptInDefaultsApplied: true,
+                disabledExtensions: ['third-party/sillytavern-image-gen'],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['third-party/sillytavern-image-gen', 'performance-diagnostics']);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual([
+            'sillytavern-character-colors',
+            'sillytavern-image-gen',
+            'sillytavern-moonlitechoestheme',
+            'performance-diagnostics',
+        ]);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('preserves an explicit diagnostics choice after its ID was processed', async () => {
+        installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'performance-diagnostics', manifest: { bundled_opt_in: true } },
+        ]);
+
+        const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                bundledOptInDefaultsApplied: true,
+                bundledOptInProcessedExtensions: ['PERFORMANCE-DIAGNOSTICS'],
+                disabledExtensions: [],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual([]);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual(['performance-diagnostics']);
+    });
+
+    test('defaults each future bundled opt-in only on its first encounter', async () => {
+        const { saveSettingsDebounced } = installExtensionModuleMocks();
+        installExtensionDiscovery([
+            { name: 'legacy-enabled', manifest: { bundled_opt_in: true } },
+            { name: 'future-opt-in', manifest: { bundled_opt_in: true } },
+        ]);
+
+        const { extension_settings, loadExtensionSettings } = await import('../public/scripts/extensions.js');
+        await loadExtensionSettings({
+            extension_settings: {
+                bundledOptInDefaultsApplied: true,
+                bundledOptInProcessedExtensions: ['legacy-enabled'],
+                disabledExtensions: [],
+            },
+        }, false, false);
+
+        expect(extension_settings.disabledExtensions).toEqual(['future-opt-in']);
+        expect(extension_settings.bundledOptInProcessedExtensions).toEqual(['legacy-enabled', 'future-opt-in']);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
     test('Summarize exposes a disable hook that clears the memory prompt', async () => {

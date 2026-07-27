@@ -326,7 +326,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval } from './scripts/mobile-streaming.js';
+import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -339,6 +339,7 @@ import {
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
+    getNonSystemMessageDepth,
     normalizeChatRenderWindowSize,
     renderMessagesInBatches,
     resolveChatBottomScrollAction,
@@ -1375,7 +1376,7 @@ async function getHiddenBlock(hidden) {
 function getCharacterBlock(item, id) {
     let this_avatar = default_avatar;
     if (item.avatar != 'none') {
-        this_avatar = getThumbnailUrl('avatar', item.avatar);
+        this_avatar = getThumbnailUrlForViewport('avatar', item.avatar);
     }
     // Populate the template
     const template = $('#character_template .character_select').clone();
@@ -3568,25 +3569,9 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
-/**
- * Formats the message text into an HTML string using Markdown and other formatting.
- * @param {string} mes Message text
- * @param {string} ch_name Character name
- * @param {boolean} isSystem If the message was sent by the system
- * @param {boolean} isUser If the message was sent by the user
- * @param {number} messageId Message index in chat array
- * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
- * @param {boolean} [isReasoning] If the message is reasoning output
- * @returns {string} HTML string
- */
-export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
-    if (!mes) {
-        return '';
-    }
-
-    const originalMessageHtml = mes;
-    const oocBlocks = [];
-
+// SillyBunny: Extracted message text preparation from messageFormatting for mobile streaming performance.
+// Allows plain-text preview rendering without full markdown/sanitizer pipeline on Android.
+function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning = false) {
     const resolvedMessageId = messageId !== null && messageId !== undefined && messageId !== ''
         ? Number(messageId)
         : NaN;
@@ -3600,7 +3585,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         }
     }
 
-    mesForShowdownParse = mes;
+    const showdownSource = mes;
 
     // Force isSystem = false on comment messages so they get formatted properly
     if (ch_name === COMMENT_NAME_DEFAULT && isSystem && !isUser) {
@@ -3637,9 +3622,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         };
 
         const regexPlacement = getRegexPlacement();
-        const usableMessages = chat.map((x, index) => ({ message: x, index: index })).filter(x => !x.message.is_system);
-        const indexOf = usableMessages.findIndex(x => x.index === resolvedMessageId);
-        const depth = resolvedMessageId >= 0 && indexOf !== -1 ? (usableMessages.length - indexOf - 1) : undefined;
+        const depth = getNonSystemMessageDepth(chat, resolvedMessageId);
         const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
         if (!isUser && !isReasoning && agentRegexScripts.length > 0) {
@@ -3660,6 +3643,61 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
             depth: depth,
         });
     }
+
+    return { mes, isSystem, showdownSource };
+}
+
+// SillyBunny: Extracted markdown balancing for streaming preview optimization.
+function balanceStreamingMarkdown(text) {
+    let balancedText = text;
+    for (const char of ['*', '"', '```', '~~~']) {
+        if (isOdd(countOccurrences(balancedText, char))) {
+            const separator = char.length > 1 ? '\n' : '';
+            balancedText = balancedText.trimEnd() + separator + char;
+        }
+    }
+    return balancedText;
+}
+
+// SillyBunny: Extracted HTML sanitization to allow reuse in streaming and final render paths.
+function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
+    /** @type {DOMPurify.Config} */
+    const config = {
+        RETURN_DOM: false,
+        RETURN_DOM_FRAGMENT: false,
+        RETURN_TRUSTED_TYPE: false,
+        MESSAGE_SANITIZE: true,
+        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
+        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
+        ...sanitizerOverrides,
+    };
+    mes = encodeStyleTags(mes);
+    mes = DOMPurify.sanitize(mes, config);
+    return decodeStyleTags(mes, { prefix: '.mes_text ' });
+}
+
+/**
+ * Formats the message text into an HTML string using Markdown and other formatting.
+ * @param {string} mes Message text
+ * @param {string} ch_name Character name
+ * @param {boolean} isSystem If the message was sent by the system
+ * @param {boolean} isUser If the message was sent by the user
+ * @param {number} messageId Message index in chat array
+ * @param {Partial<DOMPurify.Config>} [sanitizerOverrides] DOMPurify sanitizer option overrides
+ * @param {boolean} [isReasoning] If the message is reasoning output
+ * @returns {string} HTML string
+ */
+export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
+    if (!mes) {
+        return '';
+    }
+
+    const originalMessageHtml = mes;
+    const oocBlocks = [];
+    const preparedMessage = prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning);
+    mes = preparedMessage.mes;
+    isSystem = preparedMessage.isSystem;
+    mesForShowdownParse = preparedMessage.showdownSource;
 
     if (power_user.auto_fix_generated_markdown) {
         mes = fixMarkdown(mes, true);
@@ -3747,24 +3785,10 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replace(new RegExp(`(^|\n)${escapeRegex(ch_name)}:`, 'g'), '$1');
     }
 
-    /** @type {DOMPurify.Config} */
-    const config = {
-        RETURN_DOM: false,
-        RETURN_DOM_FRAGMENT: false,
-        RETURN_TRUSTED_TYPE: false,
-        MESSAGE_SANITIZE: true,
-        ADD_TAGS: ['custom-style', CARD_SCRIPT_MARKER_TAG],
-        ADD_ATTR: ['style'], // Allow inline CSS effects from model-generated message spans.
-        ...sanitizerOverrides,
-    };
     mes = restoreOocBlocksForDisplay(mes, oocBlocks);
     // SillyBunny: card script detection - see #94.
     mes = markCardScriptHtml(mes, messageId, originalMessageHtml);
-    mes = encodeStyleTags(mes);
-    mes = DOMPurify.sanitize(mes, config);
-    mes = decodeStyleTags(mes, { prefix: '.mes_text ' });
-
-    return mes;
+    return sanitizeMessageHtml(mes, sanitizerOverrides);
 }
 
 function notifyCardScriptStripped(messageElement, messageId) {
@@ -4605,21 +4629,27 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
  */
 export function updateMessageElement(mes, { messageId = chat.length - 1, messageElement = messageTemplate.clone(), adjustMediaScroll = SCROLL_BEHAVIOR.NONE } = {}) {
     let avatarImg = getThumbnailUrl('persona', user_avatar);
+    // SillyBunny: Add mobile thumbnail tracking for viewport-aware avatar rendering (mobile performance).
+    let mobileAvatarImg = getMobileThumbnailUrl('persona', user_avatar);
     let originalAvatarImg = getFullAvatarUrl('persona', user_avatar);
 
     //for non-user messages
     if (!mes.is_user) {
         if (mes.force_avatar) {
-            avatarImg = mes.force_avatar;
-            originalAvatarImg = mes.force_avatar;
+            // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
+            ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
         } else if (this_chid === undefined) {
             avatarImg = system_avatar;
+            mobileAvatarImg = system_avatar;
             originalAvatarImg = system_avatar;
         } else if (characters[this_chid] && characters[this_chid].avatar !== 'none') {
             avatarImg = getThumbnailUrl('avatar', characters[this_chid].avatar);
+            // SillyBunny: Mobile thumbnail for character avatars reduces payload on mobile devices.
+            mobileAvatarImg = getMobileThumbnailUrl('avatar', characters[this_chid].avatar);
             originalAvatarImg = getFullAvatarUrl('avatar', characters[this_chid].avatar);
         } else {
             avatarImg = default_avatar;
+            mobileAvatarImg = default_avatar;
             originalAvatarImg = default_avatar;
         }
         //old processing:
@@ -4628,8 +4658,8 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         //characterName = mes.is_system || mes.force_avatar ? mes.name : name2;
     } else if (mes.is_user && mes.force_avatar) {
         // Special case for persona images.
-        avatarImg = mes.force_avatar;
-        originalAvatarImg = mes.force_avatar;
+        // SillyBunny: getAvatarRenderSources provides desktop/mobile/original variants for performance.
+        ({ desktop: avatarImg, mobile: mobileAvatarImg, original: originalAvatarImg } = getAvatarRenderSources(mes.force_avatar));
     }
     const momentDate = timestampToMoment(mes.send_date);
     const timestamp = momentDate.isValid() ? momentDate.format('LL LT') : '';
@@ -4651,17 +4681,23 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         'type': mes.extra?.type ?? '',
     });
 
+    const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;
+    const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;
+
     if (messageElement[0] instanceof HTMLElement) {
-        const avatarCssUrl = `url("${String(avatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const avatarCssUrl = `url("${String(viewportAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
+        const thumbnailAvatarCssUrl = `url("${String(viewportThumbnailSrc).replace(/(["\\])/g, '\\$1')}")`;
         const originalAvatarCssUrl = `url("${String(originalAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         messageElement[0].style.setProperty('--sb-message-avatar', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement[0].style.setProperty('--mes-avatar-thumb-url', thumbnailAvatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
     messageElement.find('.avatar img').attr({
-        src: originalAvatarImg,
-        'data-thumbnail-src': avatarImg,
+        src: viewportAvatarImg,
+        'data-thumbnail-src': viewportThumbnailSrc,
+        'data-original-src': originalAvatarImg,
         decoding: 'async',
         loading: messageId > 8 ? 'lazy' : 'eager',
     });
@@ -5962,8 +5998,14 @@ class StreamingProcessor {
     async onProgressStreaming(messageId, text, isFinal) {
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        const isIOSWebKit = isIOSWebKitPlatform();
-        const shouldReduceIntermediateStreamingWork = !isFinal && isIOSWebKit && power_user.ios_webkit_reduce_streaming_work;
+        const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_reduce_streaming_work,
+            androidEnabled: power_user.android_reduce_streaming_work,
+        });
+        const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
+            iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
+            androidEnabled: power_user.android_disable_stream_fade_in,
+        });
         const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();
         const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();
 
@@ -5986,14 +6028,6 @@ class StreamingProcessor {
             displayIncompleteSentences: !isFinal,
             stoppingStrings: this.stoppingStrings,
         });
-
-        const charsToBalance = ['*', '"', '```', '~~~'];
-        for (const char of charsToBalance) {
-            if (!isFinal && isOdd(countOccurrences(processedText, char))) {
-                const separator = char.length > 1 ? '\n' : '';
-                processedText = processedText.trimEnd() + separator + char;
-            }
-        }
 
         if (isImpersonate) {
             this.sendTextarea.value = processedText;
@@ -6046,15 +6080,52 @@ class StreamingProcessor {
                 }
             }
 
-            const formattedText = messageFormatting(
-                processedText,
-                chat[messageId].name,
-                chat[messageId].is_system,
-                chat[messageId].is_user,
-                messageId,
-                {},
-                false,
-            );
+            const isAndroidStreamingPreview = isAndroidStreamingPlatform(globalThis.navigator);
+            const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPreview;
+            const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({
+                isFinal,
+                isReducedDomWork: shouldReduceIntermediateStreamingWork,
+                isAndroidPlatform: isAndroidStreamingPreview,
+                isImpersonate,
+                useBasicMarkdown: shouldUseAndroidBasicMarkdown,
+            });
+            const shouldUseBasicMarkdown = shouldReduceIntermediateStreamingWork
+                && !isFinal
+                && !isImpersonate
+                && shouldUseAndroidBasicMarkdown;
+
+            const preparedPreview = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                ? prepareMessageDisplayText(
+                    processedText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    false,
+                )
+                : null;
+            const previewText = preparedPreview?.mes ?? processedText;
+            const markdownText = isFinal ? processedText : balanceStreamingMarkdown(processedText);
+
+            const formattedText = shouldUsePlainTextPreview || shouldUseBasicMarkdown
+                ? formatMobileStreamingPreview(
+                    shouldUseBasicMarkdown ? balanceStreamingMarkdown(previewText) : previewText,
+                    {
+                        useBasicMarkdown: shouldUseBasicMarkdown,
+                        collapseOocBlocks: !preparedPreview?.isSystem,
+                        converter,
+                        sanitizeHtml: sanitizeMessageHtml,
+                    },
+                )
+                : messageFormatting(
+                    markdownText,
+                    chat[messageId].name,
+                    chat[messageId].is_system,
+                    chat[messageId].is_user,
+                    messageId,
+                    {},
+                    false,
+                );
             const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
             this.#queueStreamingVisibleWrite({
                 messageId,
@@ -6070,7 +6141,7 @@ class StreamingProcessor {
                     shouldRefreshTokenCount,
                     shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork,
                     shouldUseStreamFadeIn: power_user.stream_fade_in,
-                    bypassFadeIn: isIOSWebKit && power_user.ios_webkit_disable_stream_fade_in,
+                    bypassFadeIn: shouldBypassStreamingFadeIn,
                 },
                 isFinal,
             });
@@ -6286,7 +6357,8 @@ class StreamingProcessor {
 
         try {
             const sw = new Stopwatch(getStreamingUpdateInterval(1000 / power_user.streaming_fps, {
-                enabled: power_user.ios_webkit_conservative_streaming,
+                iosEnabled: power_user.ios_webkit_conservative_streaming,
+                androidEnabled: power_user.android_conservative_streaming,
             }));
             const timestamps = [];
             for await (const { text, swipes, logprobs, toolCalls, state } of this.generator()) {
@@ -10662,6 +10734,29 @@ export function getThumbnailUrl(type, file, t = false) {
     return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}${t ? `&t=${Date.now()}` : ''}`;
 }
 
+/**
+ * Gets the URL for a mobile thumbnail preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the mobile thumbnail
+ */
+export function getMobileThumbnailUrl(type, file, t = false) {
+    return `/thumbnail?type=${type}&file=${encodeURIComponent(file)}&preset=mobile${t ? `&t=${Date.now()}` : ''}`;
+}
+
+/**
+ * Gets the thumbnail URL appropriate for the current viewport.
+ * Desktop receives full-resolution desktop thumbnails; mobile receives the mobile preset.
+ * @param {import('../src/endpoints/thumbnails.js').ThumbnailType} type The type of the thumbnail to get
+ * @param {string} file The file name or path for which to get the thumbnail URL
+ * @param {boolean} [t=false] Whether to add a cache-busting timestamp to the URL
+ * @returns {string} The URL for the thumbnail
+ */
+export function getThumbnailUrlForViewport(type, file, t = false) {
+    return isMobile() ? getMobileThumbnailUrl(type, file, t) : getThumbnailUrl(type, file, t);
+}
+
 function getFullAvatarUrl(type, file, t = false) {
     if (!file || file === 'none') {
         return default_avatar;
@@ -10671,10 +10766,23 @@ function getFullAvatarUrl(type, file, t = false) {
     return `${basePath}${encodeURIComponent(file)}${t ? `?t=${Date.now()}` : ''}`;
 }
 
+function getAvatarRenderSources(rawSrc) {
+    const avatar = parseAvatarSource(rawSrc);
+    if (avatar?.type && avatar.file) {
+        return {
+            desktop: getThumbnailUrl(avatar.type, avatar.file),
+            mobile: getMobileThumbnailUrl(avatar.type, avatar.file),
+            original: avatar.original,
+        };
+    }
+
+    return { desktop: rawSrc, mobile: rawSrc, original: rawSrc };
+}
+
 /**
  * Parses an avatar URL from either the thumbnail endpoint or the full avatar path.
  * @param {string} rawSrc Avatar image source.
- * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string } | null}
+ * @returns {{ type: 'avatar' | 'persona' | null, file: string, original: string, preset?: string | null } | null}
  */
 // SillyBunny: exported so sillybunny-tabs.js reuses this parser instead of keeping a divergent copy
 // that skipped the pathname decode and re-encoded file names into "%2520".
@@ -10689,13 +10797,17 @@ export function parseAvatarSource(rawSrc) {
 
     try {
         const parsed = new URL(rawSrc, window.location.origin);
+        if (parsed.origin !== window.location.origin) {
+            return { type: null, file: rawSrc, original: rawSrc };
+        }
         const pathName = decodeURIComponent(parsed.pathname);
 
         if (pathName === '/thumbnail') {
             const type = parsed.searchParams.get('type');
             const file = parsed.searchParams.get('file');
+            const preset = parsed.searchParams.get('preset');
             if ((type === 'avatar' || type === 'persona') && file) {
-                return { type, file, original: getFullAvatarUrl(type, file) };
+                return { type, file, original: getFullAvatarUrl(type, file), preset };
             }
         }
 
@@ -10734,13 +10846,16 @@ export async function refreshCharacterAvatar(avatarKey) {
     }
 
     const thumbnailUrl = getThumbnailUrl('avatar', avatarKey);
+    const mobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey);
     const fullAvatarUrl = getFullAvatarUrl('avatar', avatarKey);
     const cacheBustedThumbnailUrl = getThumbnailUrl('avatar', avatarKey, true);
+    const cacheBustedMobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatarKey, true);
     const cacheBustedFullAvatarUrl = getFullAvatarUrl('avatar', avatarKey, true);
 
     try {
         await Promise.all([
             fetch(thumbnailUrl, { method: 'GET', cache: 'reload' }),
+            fetch(mobileThumbnailUrl, { method: 'GET', cache: 'reload' }),
             fetch(fullAvatarUrl, { method: 'GET', cache: 'reload' }),
         ]);
     } catch (error) {
@@ -10756,25 +10871,40 @@ export async function refreshCharacterAvatar(avatarKey) {
 
         const srcAvatar = parseAvatarSource(img.getAttribute('src'));
         const thumbnailAvatar = parseAvatarSource(img.getAttribute('data-thumbnail-src'));
+        const originalAvatar = parseAvatarSource(img.getAttribute('data-original-src'));
         const srcMatches = srcAvatar?.type === 'avatar' && srcAvatar.file === avatarKey;
         const thumbnailMatches = thumbnailAvatar?.type === 'avatar' && thumbnailAvatar.file === avatarKey;
+        const originalMatches = originalAvatar?.type === 'avatar' && originalAvatar.file === avatarKey;
 
-        if (!srcMatches && !thumbnailMatches) {
+        if (!srcMatches && !thumbnailMatches && !originalMatches) {
             continue;
         }
 
         if (thumbnailMatches) {
-            img.setAttribute('data-thumbnail-src', cacheBustedThumbnailUrl);
+            const cacheBustedUrl = thumbnailAvatar?.preset === 'mobile' ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl;
+            img.setAttribute('data-thumbnail-src', cacheBustedUrl);
+        }
+
+        if (originalMatches) {
+            img.setAttribute('data-original-src', cacheBustedFullAvatarUrl);
         }
 
         if (srcMatches) {
-            img.setAttribute('src', isThumbnailAvatarSource(img.getAttribute('src')) ? cacheBustedThumbnailUrl : cacheBustedFullAvatarUrl);
+            const currentSrc = img.getAttribute('src');
+            const parsedSrc = parseAvatarSource(currentSrc);
+            if (parsedSrc?.preset === 'mobile') {
+                img.setAttribute('src', cacheBustedMobileThumbnailUrl);
+            } else if (isThumbnailAvatarSource(currentSrc)) {
+                img.setAttribute('src', cacheBustedThumbnailUrl);
+            } else {
+                img.setAttribute('src', cacheBustedFullAvatarUrl);
+            }
         }
 
         refreshedImages++;
     }
 
-    const avatarCssUrl = `url("${String(cacheBustedThumbnailUrl).replace(/(["\\])/g, '\\$1')}")`;
+    const viewportAvatarCssUrl = `url("${String(isMobile() ? cacheBustedMobileThumbnailUrl : cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
     const originalAvatarCssUrl = `url("${String(cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
 
     for (const messageElement of document.querySelectorAll('.mes')) {
@@ -10791,8 +10921,8 @@ export async function refreshCharacterAvatar(avatarKey) {
             continue;
         }
 
-        messageElement.style.setProperty('--sb-message-avatar', avatarCssUrl);
-        messageElement.style.setProperty('--mes-avatar-url', avatarCssUrl);
+        messageElement.style.setProperty('--sb-message-avatar', viewportAvatarCssUrl);
+        messageElement.style.setProperty('--mes-avatar-url', viewportAvatarCssUrl);
         messageElement.style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
@@ -10812,7 +10942,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
 
         let this_avatar = default_avatar;
         if (entity.item.avatar !== undefined && entity.item.avatar != 'none') {
-            this_avatar = getThumbnailUrl('avatar', entity.item.avatar);
+            this_avatar = getThumbnailUrlForViewport('avatar', entity.item.avatar);
         }
 
         avatarTemplate.attr('data-type', entity.type);
@@ -10841,7 +10971,7 @@ export function buildAvatarList(block, entities, { templateId = 'inline_avatar_t
         } else if (entity.type === 'persona') {
             avatarTemplate.attr({ 'data-pid': id, 'data-chid': null });
             avatarTemplate.find('img').attr({
-                src: getThumbnailUrl('persona', entity.item.avatar),
+                src: getThumbnailUrlForViewport('persona', entity.item.avatar),
                 loading: 'lazy',
                 decoding: 'async',
             });
@@ -17361,8 +17491,9 @@ jQuery(async function () {
     $(document).on('click', '.mes .avatar', function () {
         const messageElement = $(this).closest('.mes');
         const avatarImage = $(this).children('img');
-        const fullAvatarURL = avatarImage.attr('src');
-        const thumbURL = avatarImage.attr('data-thumbnail-src') || fullAvatarURL;
+        const originalAvatarURL = avatarImage.attr('data-original-src');
+        const fullAvatarURL = originalAvatarURL || avatarImage.attr('src');
+        const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
         const charname = targetAvatarImg.replace('.png', '');
@@ -17399,9 +17530,9 @@ jQuery(async function () {
             const zoomedAvatarImgElement = $(`.zoomed_avatar[forChar="${charname}"] img`);
             if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
                 //handle user and system avatars
-                const isValidPersona = decodeURIComponent(targetAvatarImg) in power_user.personas;
+                const isValidPersona = targetAvatarImg in power_user.personas;
                 if (isValidPersona) {
-                    const personaSrc = getUserAvatar(targetAvatarImg);
+                    const personaSrc = originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg);
                     zoomedAvatarImgElement.attr('src', personaSrc);
                     zoomedAvatarImgElement.attr('data-izoomify-url', personaSrc);
                 } else {

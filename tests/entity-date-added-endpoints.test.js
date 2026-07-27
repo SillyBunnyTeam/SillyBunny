@@ -53,6 +53,7 @@ describe('entity date added endpoints', () => {
             groupChats: path.join(tempRoot, 'group chats'),
             groups: path.join(tempRoot, 'groups'),
             thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar', 'mobile'),
             worlds: path.join(tempRoot, 'worlds'),
         };
         for (const directory of Object.values(directories)) {

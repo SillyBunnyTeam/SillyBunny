@@ -1,6 +1,6 @@
 // SillyBunny: keep user-visible OOC notes readable while excluding them from prompt context.
-const OOC_BLOCK_PLACEHOLDER_PREFIX = '\uE000SB_OOC_BLOCK_';
-const OOC_BLOCK_PLACEHOLDER_SUFFIX = '_\uE001';
+const OOC_BLOCK_PLACEHOLDER_PREFIX = '\uE000SBOOCBLOCK';
+const OOC_BLOCK_PLACEHOLDER_SUFFIX = '\uE001';
 
 /**
  * Normalizes prompt-context retention settings.

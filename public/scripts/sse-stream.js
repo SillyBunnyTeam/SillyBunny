@@ -380,11 +380,12 @@ export class SmoothEventSourceStream extends EventSourceStream {
 }
 
 export function getEventSourceStream() {
-    // SillyBunny: smooth streaming can be disabled specifically for iOS
-    // WebKit even when the normal upstream setting remains enabled.
+    // SillyBunny: smooth streaming can be disabled per mobile platform even
+    // when the normal upstream setting remains enabled.
     if (isSmoothStreamingEffectivelyEnabled({
         smoothStreaming: power_user.smooth_streaming,
         iosWebKitDisableSmoothStreaming: power_user.ios_webkit_disable_smooth_streaming,
+        androidDisableSmoothStreaming: power_user.android_disable_smooth_streaming,
     })) {
         return new SmoothEventSourceStream();
     }
