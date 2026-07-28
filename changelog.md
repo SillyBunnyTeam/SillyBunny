@@ -161,6 +161,10 @@ lorum ipsum
 - PR #700 (2026-07-27) `fix(proxy): resolve the 'None' no-proxy error`
 - PR #701 (2026-07-27) `fix(style): anchor bottom-positioned toasts to viewport on mobile`
 
+### Merged Staging PRs
+- PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
+
+
 ## v1.6.5
 
 Date: 2026-06-15
