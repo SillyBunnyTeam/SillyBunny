@@ -1428,8 +1428,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
         min-width: 0 !important;
         margin-top: 0 !important;
-        border-radius: 22px 22px 0 0 !important;
-        animation: sbMobileShellSheetIn 220ms var(--sb-ease-out) both !important;
+        border-radius: 20px 20px 0 0 !important;
+        animation: sbMobileShellSheetIn 220ms var(--sb-ease-out) both;
         transform-origin: center bottom;
     }
 
@@ -3053,5 +3053,22 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     .streaming-display button {
         font-size: 0.82em;
         padding: 6px 10px;
+    }
+}
+
+@media screen and (max-width: 768px) and (prefers-reduced-motion: reduce) {
+    #left-nav-panel.openDrawer,
+    #user-settings-block.openDrawer,
+    .sb-shell-root.openDrawer,
+    .sb-shell-root.fillLeft.openDrawer,
+    .sb-shell-root.fillRight.openDrawer,
+    #right-nav-panel.openDrawer {
+        animation: none;
+    }
+
+    #sb-mobile-nav,
+    #sb-mobile-chat-tools,
+    .sb-nav-item {
+        transition: none;
     }
 }

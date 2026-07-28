@@ -1,5 +1,6 @@
 import { chat, substituteParams } from '../../../../script.js';
 import { parseRegexFromString, world_info_logic, world_info_match_whole_words } from '../../../world-info.js';
+import { isAbortLikeError } from '../../../util/abort-error.js';
 import { isPathfinderSubmoduleEnabled } from '../agent-store.js';
 import { getTree, findNodeById, getAllEntryUids, getSettings } from './tree-store.js';
 import { getReadableBooks, getEntryContent } from './pathfinder-tool-bridge.js';
@@ -141,14 +142,6 @@ function throwIfAborted(signal) {
     throw signal.reason ?? new Error('Pathfinder retrieval cancelled.');
 }
 
-function isAbortLikeError(error, signal = null) {
-    return Boolean(
-        signal?.aborted ||
-        error?.name === 'AbortError' ||
-        /abort|cancel/i.test(String(error?.message ?? error ?? '')),
-    );
-}
-
 async function withRetrievalStatusGuard(task, mode = 'retrieval', signal = null) {
     const timeoutMs = getRetrievalStatusTimeoutMs();
     let timeoutId = null;
@@ -239,7 +232,6 @@ async function runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, ex
 
     if (books.length === 0) {
         clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        console.log('[Pathfinder] No readable lorebooks with built trees for pipeline retrieval');
         logPathfinderRetrievalDetail({
             mode: 'pipeline',
             books,
@@ -253,7 +245,6 @@ async function runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, ex
 
     if (chatMessages.length === 0) {
         clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        console.log('[Pathfinder] No chat messages for pipeline retrieval');
         logPathfinderRetrievalDetail({
             mode: 'pipeline',
             books,
@@ -287,7 +278,6 @@ async function runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, ex
 
     if (result.selectedEntries.length === 0) {
         clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
-        console.log('[Pathfinder] Pipeline returned no entries');
         logPathfinderRetrievalDetail({
             mode: 'pipeline',
             books,
@@ -373,8 +363,6 @@ async function runPipelineRetrieval(setExtensionPrompt, extensionPromptTypes, ex
             false,
             extensionPromptRoles?.SYSTEM ?? 0,
         );
-
-        console.log(`[Pathfinder] Pipeline injected ${entryContents.length} entries`);
     } else {
         clearRetrievalPrompt(setExtensionPrompt, PIPELINE_RETRIEVAL_KEY, extensionPromptTypes, extensionPromptRoles);
         logPathfinderRetrievalDetail({

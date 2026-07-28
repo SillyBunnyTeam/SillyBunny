@@ -11,7 +11,7 @@ export async function dismissOnboardingIfPresent(page) {
         return;
     }
 
-    const dialogText = await openDialog.textContent().catch(() => '');
+    const dialogText = await openDialog.textContent({ timeout: 1000 }).catch(() => '');
     const onboardingInput = openDialog.locator('textarea.popup-input, input.popup-input, input[type="text"], textarea').first();
     const hasOnboardingInput = await onboardingInput.isVisible().catch(() => false);
     const isWelcomeDialog = /Welcome to SillyBunny/i.test(dialogText ?? '');
@@ -21,13 +21,13 @@ export async function dismissOnboardingIfPresent(page) {
     }
 
     if (hasOnboardingInput) {
-        await onboardingInput.fill('Scroll Tester');
+        await onboardingInput.fill('Scroll Tester', { timeout: 1000 }).catch(() => {});
     }
 
     const okControl = openDialog.locator('.popup-button-ok, [data-result="1"]').first();
 
     if (await okControl.isVisible().catch(() => false)) {
-        await okControl.click();
+        await okControl.click({ timeout: 1000 }).catch(() => {});
     } else {
         await page.evaluate(() => {
             document.querySelectorAll('dialog[open]').forEach(dialog => {
@@ -173,7 +173,7 @@ export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter
         await route.fulfill({ status: 200, json: {} });
     });
 
-    await page.goto(APP_URL);
+    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     await dismissOnboardingIfPresent(page);
     await dismissOpenDialogIfPresent(page);
@@ -217,7 +217,7 @@ export async function openQuietChatForSmoke(page, options = {}) {
         await route.fulfill({ status: 200, json: {} });
     });
 
-    await page.goto(APP_URL);
+    await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     await quietChatForSmoke(page);
     await dismissOnboardingIfPresent(page);

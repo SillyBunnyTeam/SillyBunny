@@ -42,6 +42,7 @@ const chara_note_position = {
     after: 2,
 };
 
+// SillyBunny divergence: character and group Author's Notes use a fork-owned scoped store while preserving existing note settings.
 function ensureCharacterNoteStore() {
     if (!extension_settings.note.chara) {
         extension_settings.note.chara = [];

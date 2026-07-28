@@ -20,6 +20,13 @@ async function importHelper({ resolvedProfileId = 'profile-1', profileResponse =
 }
 
 describe('SillyBunny Custom CSS AI helper', () => {
+    test('preserves the shared abort-like error export', async () => {
+        const { helper } = await importHelper();
+
+        expect(helper.isAbortLikeError(new Error('request cancelled'))).toBe(true);
+        expect(helper.isAbortLikeError(new Error('request failed'))).toBe(false);
+    });
+
     test('normalizes fenced CSS and style tags', async () => {
         const { helper } = await importHelper();
 

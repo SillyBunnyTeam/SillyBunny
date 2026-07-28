@@ -7,6 +7,7 @@ import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
 
 const WORLD_INFO_EXTENSION = '.json';
+// SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
 const MAX_FILENAME_BYTES = 255;
 const ATOMIC_WRITE_SUFFIX_BYTES = 16;
 

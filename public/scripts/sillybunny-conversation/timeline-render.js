@@ -15,6 +15,7 @@ import {
     DEFAULT_AUTO_CHAT_COOLDOWN,
     SELFIE_COMMAND_RE,
 } from './constants.js';
+import { truncateConversationReplyPreview } from './preview-utils.js';
 import {
     createConversationBranch,
     getActiveConversationBranch,
@@ -208,11 +209,6 @@ function createConversationSelfieCommandActions(message) {
     });
 
     return actions;
-}
-
-function truncateConversationReplyPreview(value, maxLength = 160) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function getConversationReplyReferencePreview(reference) {

@@ -142,14 +142,14 @@ function normalizeNumber(value, fallback = 0) {
     return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-function normalizeText(value) {
+export function normalizeMobileShellText(value) {
     return String(value ?? '')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
 }
 
-function clampText(value, maxLength = 120) {
+export function clampMobileShellText(value, maxLength = 120) {
     const normalizedValue = String(value ?? '').replace(/\s+/g, ' ').trim();
     const safeMaxLength = Math.max(1, Math.round(normalizeNumber(maxLength, 120)));
     if (normalizedValue.length <= safeMaxLength) {
@@ -159,14 +159,14 @@ function clampText(value, maxLength = 120) {
     return `${normalizedValue.slice(0, safeMaxLength - 1).trimEnd()}…`;
 }
 
-function normalizeRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
-    const fallbackIcon = clampText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
+export function normalizeMobileShellRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
+    const fallbackIcon = clampMobileShellText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
     const iconClass = String(value ?? '')
         .trim()
         .split(/\s+/)
         .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES.has(token.toLowerCase()));
 
-    return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
+    return clampMobileShellText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getTouchPoint(touch) {
@@ -402,8 +402,8 @@ export function resolveMobileShellExclusiveOpen({
  * @returns {{shellKey: string, tabId: string}}
  */
 export function resolveMobileShellQuickActionRoute(action = null) {
-    const legacyShellKey = normalizeText(action?.shellKey || action?.shell);
-    const legacyTabId = normalizeText(action?.tabId || action?.tab);
+    const legacyShellKey = normalizeMobileShellText(action?.shellKey || action?.shell);
+    const legacyTabId = normalizeMobileShellText(action?.tabId || action?.tab);
     const isLegacyWorldInfoRoute = legacyShellKey === 'left' && legacyTabId === 'world-info';
 
     return {
@@ -433,7 +433,7 @@ export function normalizeMobileShellQuickAction({
     }
 
     const { shellKey, tabId } = resolveMobileShellQuickActionRoute(action);
-    const requestedType = normalizeText(action.type);
+    const requestedType = normalizeMobileShellText(action.type);
     const isShellAction = requestedType === 'shell';
     const shellExists = shellKey === MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY || Boolean(shellConfig);
 
@@ -441,10 +441,10 @@ export function normalizeMobileShellQuickAction({
         return null;
     }
 
-    const dedupeKey = clampText(action.dedupeKey, 160);
+    const dedupeKey = clampMobileShellText(action.dedupeKey, 160);
     const type = dedupeKey ? 'custom' : isShellAction ? 'shell' : 'tab';
-    const displayText = clampText(action.displayText, 80);
-    const sectionLabel = clampText(action.sectionLabel, 80);
+    const displayText = clampMobileShellText(action.displayText, 80);
+    const sectionLabel = clampMobileShellText(action.sectionLabel, 80);
     const labelMaxLength = normalizeNumber(limits.labelMaxLength, MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH);
     const iconFallback = limits.iconFallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK;
     const fallbackLabel = type === 'custom'
@@ -452,7 +452,7 @@ export function normalizeMobileShellQuickAction({
         : type === 'shell'
             ? shellConfig?.title || shellKey
             : tabConfig?.label || tabId;
-    const label = clampText(action.label || fallbackLabel, labelMaxLength);
+    const label = clampMobileShellText(action.label || fallbackLabel, labelMaxLength);
 
     if (!label) {
         return null;
@@ -467,7 +467,7 @@ export function normalizeMobileShellQuickAction({
         type,
         shellKey,
         tabId,
-        icon: normalizeRailIcon(action.icon, fallbackIcon),
+        icon: normalizeMobileShellRailIcon(action.icon, fallbackIcon),
         label,
     };
 

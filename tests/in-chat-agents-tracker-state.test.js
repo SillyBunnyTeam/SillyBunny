@@ -1,12 +1,16 @@
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 
-import {
+await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+    escapeRegex: value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+}));
+
+const {
     findTrackerBlocks,
     getTrackerRepairPayload,
     inspectTrackerState,
     mergeTrackerRepairPayload,
     normalizeCompanionTrackerRepairPayload,
-} from '../public/scripts/extensions/in-chat-agents/tracker-state.js';
+} = await import('../public/scripts/extensions/in-chat-agents/tracker-state.js');
 
 const statusAgent = {
     prompt: '[STATUS|Character|Condition|Severity]\nnote\n[/STATUS]',

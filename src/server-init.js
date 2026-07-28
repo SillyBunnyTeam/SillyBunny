@@ -30,6 +30,7 @@ function resolveServerPath(relativePath) {
  * @param {string} sourceDirectory
  * @param {string} destinationDirectory
  */
+// SillyBunny divergence: initialization syncs ignored default assets without overwriting user files.
 function syncMissingDirectoryContents(sourceDirectory, destinationDirectory) {
     if (!fs.existsSync(sourceDirectory)) {
         throw new Error(`Default directory does not exist: ${sourceDirectory}`);

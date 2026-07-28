@@ -8,7 +8,12 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const startShSource = readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
 const startBatSource = readFileSync(path.join(repoRoot, 'Start.bat'), 'utf8');
+const startNodeBatSource = readFileSync(path.join(repoRoot, 'Start-Node.bat'), 'utf8');
 const dockerEntrypointSource = readFileSync(path.join(repoRoot, 'docker', 'docker-entrypoint.sh'), 'utf8');
+const prMetadataSource = readFileSync(path.join(repoRoot, '.github', 'workflows', 'pr-metadata.yml'), 'utf8');
+const serverGlobalSource = readFileSync(path.join(repoRoot, 'src', 'server-global.js'), 'utf8');
+const serverSource = readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
+const packageJson = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
 
 /**
  * Lifts a top-level shell function out of start.sh so it can be exercised in
@@ -146,6 +151,43 @@ describe('launcher parity', () => {
         expect(startBatSource).toMatch(/if "!_bun_smol!"=="1" if "!_server_runtime!"=="node"/);
     });
 
+    test('Start.bat accepts the shared Node and Bun runtime overrides', () => {
+        for (const value of ['1', 'true', 'yes', 'on']) {
+            expect(startBatSource).toMatch(
+                new RegExp(`if\\s+/I\\s+"!SILLYBUNNY_USE_NODE!"=="${value}"\\s+set "_force_node=1"`),
+            );
+            expect(startBatSource).toMatch(
+                new RegExp(`if\\s+/I\\s+"!SILLYBUNNY_USE_BUN!"=="${value}"\\s+set "_force_bun=1"`),
+            );
+        }
+    });
+
+    test('Start.bat selects runtime before installing matching dependencies', () => {
+        const runtimeSelection = startBatSource.indexOf('set "_server_runtime=bun"');
+        const dependencyProfile = startBatSource.indexOf('set "_dependency_profile=!_server_runtime!-production"');
+
+        expect(runtimeSelection).toBeGreaterThanOrEqual(0);
+        expect(dependencyProfile).toBeGreaterThan(runtimeSelection);
+        expect(startBatSource).toMatch(/if "!_force_node!"=="1" set "_server_runtime=node"/);
+        expect(startBatSource).toMatch(/if "!_force_node!"=="0" if "!_force_bun!"=="0" if "!_is_arm64!"=="1"/);
+        expect(startBatSource).toMatch(/node scripts\\dependency-state\.js check !_dependency_profile!/);
+        expect(startBatSource).toMatch(/call npm ci --no-audit --no-fund --omit=dev --loglevel=error/);
+        expect(startBatSource).toMatch(/call bun install !_bun_install_args!/);
+        expect(startBatSource).toMatch(/call npm run init/);
+        expect(startBatSource).toMatch(/call bun run init/);
+    });
+
+    test('Start-Node initializes before entering its restart loop', () => {
+        const initIndex = startNodeBatSource.indexOf('call npm run init');
+        const serverIndex = startNodeBatSource.indexOf('node --no-warnings server.js %*');
+
+        expect(initIndex).toBeGreaterThanOrEqual(0);
+        expect(serverIndex).toBeGreaterThan(initIndex);
+        expect(startNodeBatSource).toMatch(/node scripts\\dependency-state\.js check !_dependency_profile!/);
+        expect(startNodeBatSource).toMatch(/call npm ci --no-audit --no-fund --omit=dev --loglevel=error/);
+        expect(startNodeBatSource).toMatch(/if "!_server_exit!"=="75"/);
+    });
+
     test('the Docker entrypoint gates --smol on the same accepted values', () => {
         expect(dockerEntrypointSource).toMatch(/^\s*1\|true\|yes\|on\)/m);
         expect(startShSource).toMatch(/^\s*1\|true\|yes\|on\)/m);
@@ -155,5 +197,41 @@ describe('launcher parity', () => {
 
     test('the Docker entrypoint keeps its plain launch path', () => {
         expect(dockerEntrypointSource).toMatch(/exec \$PREFIX bun server\.js --listen "\$@"/);
+    });
+
+    test('the Docker mount guard matches the Bun image app root', () => {
+        expect(dockerEntrypointSource).toContain('app_path="/home/bun/app"');
+        expect(dockerEntrypointSource).toContain('[ "$PARENT_DIR" != "/home/bun/app" ]');
+        expect(dockerEntrypointSource).not.toContain('/home/node/app');
+    });
+
+    test('global package bins use Node while the default launch remains Bun-first', () => {
+        expect(packageJson.bin).toEqual({
+            sillybunny: './src/server-global.js',
+            sillytavern: './src/server-global.js',
+        });
+        expect(serverGlobalSource.startsWith('#!/usr/bin/env node')).toBe(true);
+        expect(serverSource.startsWith('#!/usr/bin/env bun')).toBe(true);
+        expect(packageJson.scripts.start).toBe('bun server.js');
+        expect(packageJson.scripts['start:node']).toBe('node --no-warnings server.js');
+    });
+
+    test('declares the supported Node engine and focused Node counterparts', () => {
+        expect(packageJson.engines).toEqual({
+            bun: '>= 1.3.0',
+            node: '>= 20',
+        });
+        expect(packageJson.scripts['debug:node']).toBe('node --inspect server.js');
+        expect(packageJson.scripts['start:global:node']).toBe('node --no-warnings server.js --global');
+        expect(packageJson.scripts['start:no-csrf:node']).toBe('node --no-warnings server.js --disableCsrf');
+    });
+
+    test('PR metadata keeps ordinary work on staging and permits staging releases to main', () => {
+        expect(prMetadataSource).toContain('[ "$BASE_REF" = "staging" ]');
+        expect(prMetadataSource).toContain('[ "$BASE_REF" = "main" ] && [ "$HEAD_REF" = "staging" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]');
+        expect(prMetadataSource).toContain('HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}');
+        expect(prMetadataSource).toContain('Only the staging release branch may target main.');
+        expect(prMetadataSource).toContain('Pull requests must target staging.');
+        expect(prMetadataSource).not.toContain('TLD/mobile-refactor');
     });
 });

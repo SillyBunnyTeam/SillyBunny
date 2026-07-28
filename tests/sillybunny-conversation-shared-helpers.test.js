@@ -6,8 +6,14 @@ import {
     buildConversationRoleplayContext,
     hasConversationMessageContent,
 } from '../public/scripts/sillybunny-conversation/shared-helpers.js';
+import { truncateConversationReplyPreview } from '../public/scripts/sillybunny-conversation/preview-utils.js';
 
 describe('conversation shared browser helpers', () => {
+    test('normalizes and bounds reply previews through one browser/server-safe helper', () => {
+        expect(truncateConversationReplyPreview('  short\n preview  ')).toBe('short preview');
+        expect(truncateConversationReplyPreview('123456', 5)).toBe('1234…');
+    });
+
     test.each([
         { attachments: [{ url: 'legacy.png' }] },
         { media: [{ url: 'image.png' }] },

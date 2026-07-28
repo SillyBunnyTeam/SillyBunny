@@ -1,9 +1,7 @@
+import { escapeRegex } from '../../util/escape-regex.js';
+
 function normalizeText(value = '') {
     return String(value ?? '').replaceAll(/\r\n?/g, '\n');
-}
-
-function escapeRegex(value = '') {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export const TRACKER_REPAIR_INSTRUCTION = 'Repair mode: produce the requested result again in the requested format. Keep scene prose, character dialogue, and narrative continuation outside the result. For choice/menu agents, return the bracketed choice or direction block.';
@@ -33,7 +31,7 @@ export function findTrackerBlocks(text, tag) {
     const source = normalizeText(text);
     if (!tag) return [];
 
-    const escapedTag = escapeRegex(tag);
+    const escapedTag = escapeRegex(String(tag));
     const opener = new RegExp(`\\[${escapedTag}(?=[:|\\]])`, 'ig');
     const closer = new RegExp(`\\[\\/${escapedTag}\\]`, 'ig');
     const openers = [...source.matchAll(opener)];
@@ -199,7 +197,7 @@ export function normalizeCompanionTrackerRepairPayload(agent = {}, text = '') {
         return inspection;
     }
 
-    const escapedTag = escapeRegex(inspection.tag);
+    const escapedTag = escapeRegex(String(inspection.tag));
     const malformedCloser = new RegExp(`(?:\\r?\\n)?\\s*\\/?${escapedTag}\\]\\s*$`, 'i');
     let normalized = source.trim();
     if (malformedCloser.test(normalized)) {

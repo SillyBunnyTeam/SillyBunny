@@ -1,3 +1,5 @@
+import { escapeRegex } from '../util/escape-regex.js';
+
 export function parseAvatarList(value) {
     return String(value || '')
         .split(',')
@@ -6,7 +8,7 @@ export function parseAvatarList(value) {
 }
 
 export function escapeRegExp(value) {
-    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return escapeRegex(String(value || ''));
 }
 
 export function hasMentionBoundaryMatch(messageText, mention) {

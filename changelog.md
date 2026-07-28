@@ -2,9 +2,18 @@
 
 ## v1.7.0
 
-Status: Unreleased. This section is currently a mechanical staging PR ledger generated for release preparation; it is not final user-facing release copy.
+Status: Unreleased. Human release copy is required before publication.
 
-### Merged Staging PRs
+### Release Summary
+lorum ipsum
+
+### Highlights
+lorum ipsum
+
+### Upgrade Notes
+lorum ipsum
+
+### Supporting Mechanical Staging PR Ledger
 - PR #495 (2026-06-15) `chore: bump version to 1.7.0`
 - PR #496 (2026-06-16) `fix: keep card and hidden companions out of the tracker panel`
 - PR #497 (2026-06-16) `fix: clamp unmapped SB minors to highest synced ST version`

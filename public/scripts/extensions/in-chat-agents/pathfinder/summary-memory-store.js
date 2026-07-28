@@ -1,4 +1,5 @@
 import { updateEntry } from './entry-manager.js';
+import { accountStorage } from '../../../util/AccountStorage.js';
 
 const STORAGE_KEY = 'pathfinder-summary-memory-state';
 const listeners = new Set();
@@ -6,7 +7,7 @@ let state = loadState();
 
 function loadState() {
     try {
-        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        const parsed = JSON.parse(accountStorage.getItem(STORAGE_KEY) || '{}');
         if (parsed && typeof parsed === 'object') {
             return {
                 title: String(parsed.title || ''),
@@ -39,9 +40,9 @@ function loadState() {
 
 function persistState() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        accountStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-        // Ignore storage write failures in Safari Private Browsing.
+        // Persistence failure leaves the current in-memory summary available.
     }
     for (const listener of listeners) {
         listener(getSummaryMemoryState());

@@ -56,7 +56,7 @@ for mount in $RAW_MOUNTS; do
 
         # Performance Safety: If the file is in the root of the app,
         # we do NOT add the parent (App Root), or we will recursively scan the whole app.
-        [ "$PARENT_DIR" != "/home/node/app" ] && MOUNTED_DIRS="$MOUNTED_DIRS $PARENT_DIR" || MOUNTED_DIRS="$MOUNTED_DIRS $mount"
+        [ "$PARENT_DIR" != "/home/bun/app" ] && MOUNTED_DIRS="$MOUNTED_DIRS $PARENT_DIR" || MOUNTED_DIRS="$MOUNTED_DIRS $mount"
     else
         # It is a directory, add it directly
         MOUNTED_DIRS="$MOUNTED_DIRS $mount"
