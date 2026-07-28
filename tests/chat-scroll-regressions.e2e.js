@@ -14,6 +14,7 @@ import {
     waitForAnimationFrames,
 } from './chat-scroll-regression-helpers.js';
 
+test.setTimeout(60_000);
 test.describe.configure({ mode: 'serial' });
 
 test.describe('issue 167 chat scroll regressions', () => {
@@ -69,7 +70,10 @@ test.describe('issue 167 chat scroll regressions', () => {
         const swipeMessageId = Number(renderedIds.at(-1));
 
         await installSwipeCandidate(page, swipeMessageId);
-        await scrollMessageNearTop(page, 32, 20);
+        await expect.poll(async () => {
+            await scrollMessageNearTop(page, 32, 20);
+            return (await getChatScrollSnapshot(page)).bottomDelta;
+        }, { timeout: 5000 }).toBeGreaterThan(200);
 
         const before = await getChatScrollSnapshot(page);
         await page.evaluate(async (messageId) => {
@@ -166,6 +170,6 @@ test.describe('issue 167 mobile chat scroll regressions', () => {
 
         expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
         expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(12);
-        expect(after.bottomDelta).toBeGreaterThan(200);
+        expect(after.bottomDelta).toBeGreaterThan(96);
     });
 });

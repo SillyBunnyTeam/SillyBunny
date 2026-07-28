@@ -1,4 +1,5 @@
 import { generateRaw } from '../../../../script.js';
+import { isAbortLikeError } from '../../../util/abort-error.js';
 import { extractProfileResponseText } from '../llm-utils.js';
 import { getSettings } from './tree-store.js';
 
@@ -12,14 +13,6 @@ export async function sidecarGenerate(prompt, systemPrompt = '', signal = null) 
     const s = getSettings();
     const profileId = s.connectionProfile ?? '';
     return sidecarGenerateWithProfile(prompt, systemPrompt, profileId, 2048, signal);
-}
-
-function isAbortLikeError(error, signal = null) {
-    return Boolean(
-        signal?.aborted ||
-        error?.name === 'AbortError' ||
-        /abort|cancel/i.test(String(error?.message ?? error ?? '')),
-    );
 }
 
 /**

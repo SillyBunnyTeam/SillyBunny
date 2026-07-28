@@ -5,10 +5,6 @@ const CHAT_LOREBOOK_METADATA_KEY = 'world_info';
 
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
 
-function logPathfinderToolBridge(message, ...details) {
-    console.log(`${PATHFINDER_LOG_PREFIX} ${message}`, ...details);
-}
-
 export const TOOL_NAMES = {
     SEARCH: 'Pathfinder_Search',
     REMEMBER: 'Pathfinder_Remember',
@@ -138,41 +134,25 @@ function getCharacterFileName(character) {
 }
 
 export function getReadableBooks() {
-    const books = getActiveTunnelVisionBooks().filter(b => canReadBook(b));
-    logPathfinderToolBridge('Readable lorebooks resolved for Pathfinder.', { books });
-    return books;
+    return getActiveTunnelVisionBooks().filter(b => canReadBook(b));
 }
 
 export function getWritableBooks() {
-    const books = getActiveTunnelVisionBooks().filter(b => canWriteBook(b));
-    logPathfinderToolBridge('Writable lorebooks resolved for Pathfinder.', { books });
-    return books;
+    return getActiveTunnelVisionBooks().filter(b => canWriteBook(b));
 }
 
 export function getDeletableBooks() {
-    const books = getActiveTunnelVisionBooks().filter(b => canDeleteBook(b));
-    logPathfinderToolBridge('Deletable lorebooks resolved for Pathfinder.', { books });
-    return books;
+    return getActiveTunnelVisionBooks().filter(b => canDeleteBook(b));
 }
 
 export function resolveTargetBook(requestedBook, writableBooks = null) {
     const books = writableBooks ?? getWritableBooks();
     if (books.length === 0) return null;
     if (requestedBook && books.includes(requestedBook)) {
-        logPathfinderToolBridge('Resolved requested writable lorebook for Pathfinder tool call.', {
-            requestedBook,
-            selectedBook: requestedBook,
-        });
         return requestedBook;
     }
 
-    const fallbackBook = books[0];
-    logPathfinderToolBridge('Falling back to the first writable lorebook for Pathfinder tool call.', {
-        requestedBook: requestedBook || null,
-        selectedBook: fallbackBook,
-        writableBooks: books,
-    });
-    return fallbackBook;
+    return books[0];
 }
 
 export function getBookListWithDescriptions() {
@@ -195,14 +175,11 @@ function countAllEntries(tree) {
 
 export function preflightToolRuntimeState() {
     const books = getActiveTunnelVisionBooks();
-    const runtimeState = {
+    return {
         hasBooks: books.length > 0,
         bookCount: books.length,
         books,
     };
-
-    logPathfinderToolBridge('Preflight Pathfinder tool runtime state computed.', runtimeState);
-    return runtimeState;
 }
 
 /**
@@ -222,7 +199,6 @@ export async function getEntryContent(bookName, uid) {
     }
 
     try {
-        logPathfinderToolBridge(`Fetching Pathfinder entry ${uid} from lorebook "${bookName}".`);
         const bookData = await ctx.loadWorldInfo(bookName);
         if (!bookData?.entries) {
             console.warn(`${PATHFINDER_LOG_PREFIX} Lorebook "${bookName}" has no entries while fetching UID ${uid}.`);
@@ -231,10 +207,6 @@ export async function getEntryContent(bookName, uid) {
 
         for (const entry of Object.values(bookData.entries)) {
             if (entry && entry.uid === uid) {
-                logPathfinderToolBridge(`Fetched Pathfinder entry ${uid} from lorebook "${bookName}".`, {
-                    title: entry.comment || entry.key?.[0] || '',
-                    disabled: entry.disable ?? false,
-                });
                 return {
                     uid: entry.uid,
                     world: entry.world || bookName,
@@ -275,14 +247,13 @@ export async function getAllEntriesWithContent(bookName) {
     }
 
     try {
-        logPathfinderToolBridge(`Fetching all Pathfinder entries from lorebook "${bookName}".`);
         const bookData = await ctx.loadWorldInfo(bookName);
         if (!bookData?.entries) {
             console.warn(`${PATHFINDER_LOG_PREFIX} Lorebook "${bookName}" has no entries while fetching all content.`);
             return [];
         }
 
-        const entries = Object.values(bookData.entries)
+        return Object.values(bookData.entries)
             .filter(entry => entry && !entry.disable)
             .map(entry => ({
                 uid: entry.uid,
@@ -298,10 +269,6 @@ export async function getAllEntriesWithContent(bookName) {
                 constant: entry.constant ?? false,
                 decorators: entry.decorators || [],
             }));
-        logPathfinderToolBridge(`Fetched lorebook contents for "${bookName}".`, {
-            entryCount: entries.length,
-        });
-        return entries;
     } catch (err) {
         console.warn(`[Pathfinder] Failed to get entries from ${bookName}:`, err);
         return [];

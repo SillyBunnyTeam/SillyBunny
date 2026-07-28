@@ -1,11 +1,5 @@
 import { createTreeNode, createEmptyTree, addEntryToNode, saveTree, getSettings } from './tree-store.js';
 
-const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
-
-function logPathfinderTree(message, ...details) {
-    console.log(`${PATHFINDER_LOG_PREFIX} ${message}`, ...details);
-}
-
 function categorizeEntries(entries) {
     const categories = {};
     for (const [, entry] of Object.entries(entries)) {
@@ -25,20 +19,11 @@ function categorizeEntries(entries) {
 
 export async function buildTreeFromMetadata(bookName, bookData) {
     if (!bookData || !bookData.entries) {
-        logPathfinderTree(`Tree build skipped for "${bookName}" because no lorebook entries were available.`);
         return createEmptyTree();
     }
 
-    const entryCount = Object.keys(bookData.entries).length;
-    logPathfinderTree(`Building metadata tree for "${bookName}".`, { entryCount });
     const tree = createEmptyTree(bookName, '');
     const categories = categorizeEntries(bookData.entries);
-    logPathfinderTree(`Categorized lorebook "${bookName}" into ${Object.keys(categories).length} groups.`, {
-        categories: Object.entries(categories).map(([name, entries]) => ({
-            name,
-            count: entries.length,
-        })),
-    });
 
     for (const [catName, catEntries] of Object.entries(categories)) {
         const catNode = createTreeNode(catName, `${catName} waypoint`);
@@ -49,21 +34,16 @@ export async function buildTreeFromMetadata(bookName, bookData) {
     }
 
     saveTree(bookName, tree);
-    logPathfinderTree(`Metadata tree complete for "${bookName}".`, {
-        topLevelWaypoints: tree.children.length,
-    });
     return tree;
 }
 
 export async function buildTreeWithLLM(bookName, bookData, llmGenerate) {
     if (!bookData || !bookData.entries) {
-        logPathfinderTree(`LLM tree build skipped for "${bookName}" because no lorebook entries were available.`);
         return createEmptyTree();
     }
 
     const entries = Object.values(bookData.entries).filter(e => e && !e.disable);
     if (entries.length === 0) {
-        logPathfinderTree(`LLM tree build skipped for "${bookName}" because every lorebook entry is disabled.`);
         return createEmptyTree();
     }
 
@@ -81,11 +61,6 @@ export async function buildTreeWithLLM(bookName, bookData, llmGenerate) {
     }
     if (current) chunks.push(current);
 
-    logPathfinderTree(`Starting LLM tree build for "${bookName}".`, {
-        entryCount: entries.length,
-        chunkCount: chunks.length,
-        chunkSize,
-    });
     const tree = createEmptyTree(bookName, '');
     for (let i = 0; i < chunks.length; i++) {
         const prompt = `You are a knowledge base organizer. Given these lorebook entries, create a hierarchical waypoint map (tree structure) for organizing them into logical categories and sub-categories.
@@ -101,31 +76,21 @@ ${chunks[i]}
 Respond ONLY with the waypoint structure. Do not add commentary.`;
 
         try {
-            logPathfinderTree(`Submitting lorebook chunk ${i + 1}/${chunks.length} for "${bookName}" to the LLM.`);
             const response = await llmGenerate(prompt);
             const parsed = parseLLMTreeResponse(response, entries);
             for (const rootNode of parsed) {
                 tree.children.push(rootNode);
             }
-            logPathfinderTree(`LLM chunk ${i + 1}/${chunks.length} completed for "${bookName}".`, {
-                rootNodesAdded: parsed.length,
-            });
         } catch (err) {
             console.warn(`[Pathfinder] LLM tree build chunk ${i} failed:`, err);
             const fallback = await buildTreeFromMetadata(bookName, bookData);
             for (const child of fallback.children) {
                 tree.children.push(child);
             }
-            logPathfinderTree(`Fell back to metadata tree for chunk ${i + 1}/${chunks.length} in "${bookName}".`, {
-                fallbackWaypoints: fallback.children.length,
-            });
         }
     }
 
     saveTree(bookName, tree);
-    logPathfinderTree(`LLM tree build complete for "${bookName}".`, {
-        topLevelWaypoints: tree.children.length,
-    });
     return tree;
 }
 
@@ -169,13 +134,11 @@ function parseLLMTreeResponse(response, entries) {
 
 export async function generateSummariesForTree(bookName, tree, llmGenerate) {
     if (!tree) return;
-    logPathfinderTree(`Generating summaries for "${bookName}" starting at node "${tree.name}".`);
     tree.description = await generateNodeSummary(tree, llmGenerate);
     for (const child of tree.children || []) {
         await generateSummariesForTree(bookName, child, llmGenerate);
     }
     saveTree(bookName, tree);
-    logPathfinderTree(`Summary generation complete for node "${tree.name}" in "${bookName}".`);
 }
 
 async function generateNodeSummary(node, llmGenerate) {
@@ -198,7 +161,6 @@ Write ONLY the summary, no labels.`;
 
 export async function ingestChatMessages(bookName, messages, createEntryFn) {
     if (!Array.isArray(messages) || messages.length === 0) return 0;
-    logPathfinderTree(`Starting chat-ingestion into "${bookName}".`, { messageCount: messages.length });
     let count = 0;
     for (const msg of messages) {
         if (msg?.is_system || !msg?.mes?.trim()) continue;
@@ -210,6 +172,5 @@ export async function ingestChatMessages(bookName, messages, createEntryFn) {
             console.warn('[Pathfinder] Failed to ingest message:', err);
         }
     }
-    logPathfinderTree(`Completed chat-ingestion into "${bookName}".`, { entriesCreated: count });
     return count;
 }

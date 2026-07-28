@@ -1,12 +1,16 @@
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 
-import {
+await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+    escapeRegex: value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+}));
+
+const {
     getRecentlySilentMentionedPartnerFromThread,
     getSpeakerPrefixMatch,
     isCharacterMentionedInText,
     parseAvatarList,
     stripSpeakerPrefixText,
-} from '../public/scripts/sillybunny-conversation/partners-utils.js';
+} = await import('../public/scripts/sillybunny-conversation/partners-utils.js');
 
 describe('sillybunny conversation partner utils', () => {
     test('parses configured partner avatar lists', () => {

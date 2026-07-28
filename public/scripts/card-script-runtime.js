@@ -456,6 +456,7 @@ function handleSettingInput(event) {
 }
 
 async function confirmCardScriptExecution() {
+    // Security boundary: consent stays device-local and never syncs through account settings.
     const storage = runtimeDependencies.getLocalStorage?.();
 
     try {

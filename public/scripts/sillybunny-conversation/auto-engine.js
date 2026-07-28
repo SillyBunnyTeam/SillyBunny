@@ -920,7 +920,6 @@ export async function triggerRoleplayDM(options = {}) {
     const directive = `[System directive: You are sending a private direct message (DM) to {{user}} to comment on the ongoing roleplay/story scene. Step out of the main scene and send a short, private, personal DM sharing your inner thoughts, a side-comment, or a private reaction to what just happened. Keep it short, casual, and completely in-character. Do not continue the roleplay scene; write a private side-message.\n\nRoleplay context:\n${chatText}]`;
 
     try {
-        console.log(`Generating private roleplay DM from ${character.name}...`);
         const response = await generateConversationReply(directive, settings, {
             speakerName: character.name || 'Character',
             trimNames: true,
@@ -986,8 +985,6 @@ export async function checkConversationReminders(now) {
         persistConversationStore();
         return false;
     }
-
-    console.log('Conversation Mode: triggering reminder auto-reply', reminder);
 
     const deferReminderRetry = () => {
         reminder.lastAttemptAt = now;

@@ -5,6 +5,7 @@
  */
 
 import { MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { truncateConversationReplyPreview } from '../../public/scripts/sillybunny-conversation/preview-utils.js';
 import {
     getConversationAttachmentLabels,
     getConversationAttachmentSummary,
@@ -92,13 +93,7 @@ export function getConversationMessagePreviewText(message) {
     return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
 }
 
-/**
- * Truncate preview text to max length
- */
-export function truncateConversationReplyPreview(value, maxLength = 160) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
-}
+export { truncateConversationReplyPreview } from '../../public/scripts/sillybunny-conversation/preview-utils.js';
 
 /**
  * Build a reply reference object from a message

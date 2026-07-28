@@ -15,6 +15,7 @@ import ipaddr from 'ipaddr.js';
 import mime from 'mime-types';
 
 import { MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { isPathInside } from '../path-containment.js';
 
 // Validation constants
 export const MAX_AVATAR_LENGTH = 512;
@@ -732,11 +733,6 @@ export function isGlobalIPAddress(address) {
     } catch {
         return false;
     }
-}
-
-function isPathInside(parentPath, childPath) {
-    const relative = path.relative(parentPath, childPath);
-    return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 function getUserImageRelativePath(imageUrl) {

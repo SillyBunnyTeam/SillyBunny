@@ -1,10 +1,14 @@
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 
-import {
+await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+    escapeRegex: value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+}));
+
+const {
     CHAT_LABEL_TITLE_LIMIT,
     extractGeneratedChatLabel,
     normalizeGeneratedChatLabel,
-} from '../public/scripts/chat-label.js';
+} = await import('../public/scripts/chat-label.js');
 
 describe('chat auto-label parser', () => {
     test('accepts valid structured and plain labels', () => {

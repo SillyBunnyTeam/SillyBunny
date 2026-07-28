@@ -1,6 +1,7 @@
 import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
+import { accountStorage } from '../../util/AccountStorage.js';
 import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../../utils.js';
 import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getCurrentChatId, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveChatDebounced, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
@@ -2222,7 +2223,7 @@ const AGENT_LIST_TABS = ['all', 'quick', 'pre', 'post', 'companion'];
 
 function getActiveAgentListTab() {
     try {
-        const stored = globalThis.localStorage?.getItem?.(AGENT_LIST_TAB_STORAGE_KEY);
+        const stored = accountStorage.getItem(AGENT_LIST_TAB_STORAGE_KEY);
         return AGENT_LIST_TABS.includes(stored) ? stored : 'all';
     } catch {
         return 'all';
@@ -2231,9 +2232,9 @@ function getActiveAgentListTab() {
 
 function setActiveAgentListTab(tab) {
     try {
-        globalThis.localStorage?.setItem?.(AGENT_LIST_TAB_STORAGE_KEY, tab);
+        accountStorage.setItem(AGENT_LIST_TAB_STORAGE_KEY, tab);
     } catch {
-        // Private browsing or storage quota: tab selection just won't persist.
+        // Persistence failure does not prevent changing tabs for this session.
     }
 }
 
@@ -5204,10 +5205,6 @@ async function openPathfinderEditor(agent) {
 
     if (!settingsPanel) return;
 
-    console.log('[Pathfinder] Settings popup opened from agent editor.', {
-        agentName: agent?.name || 'Pathfinder',
-    });
-
     const result = await new Popup(settingsPanel, POPUP_TYPE.CONFIRM, '', {
         okButton: 'Save & Close',
         cancelButton: 'Cancel',
@@ -5224,14 +5221,7 @@ async function openPathfinderEditor(agent) {
         await saveAgent(agent);
         renderAgentList();
         syncToolAgentRegistrations();
-        console.log('[Pathfinder] Settings popup saved and closed.', {
-            agentName: agent?.name || 'Pathfinder',
-        });
         toastr.success('Pathfinder settings saved');
-    } else {
-        console.log('[Pathfinder] Settings popup closed without confirmation.', {
-            agentName: agent?.name || 'Pathfinder',
-        });
     }
 }
 

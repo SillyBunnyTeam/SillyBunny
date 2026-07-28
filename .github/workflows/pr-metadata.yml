@@ -20,11 +20,25 @@ jobs:
       - name: Validate target branch
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          if [ "$BASE_REF" != "staging" ] && [ "$BASE_REF" != "TLD/mobile-refactor" ]; then
-            echo "Pull requests must target staging or TLD/mobile-refactor. Current target: $BASE_REF"
-            exit 1
+          if [ "$BASE_REF" = "staging" ]; then
+            exit 0
           fi
+
+          if [ "$BASE_REF" = "main" ] && [ "$HEAD_REF" = "staging" ] && [ "$HEAD_REPOSITORY" = "$REPOSITORY" ]; then
+            exit 0
+          fi
+
+          if [ "$BASE_REF" = "main" ]; then
+            echo "Only the staging release branch may target main. Current source: $HEAD_REF"
+          else
+            echo "Pull requests must target staging. Current target: $BASE_REF"
+          fi
+
+          exit 1
 
       - name: Validate PR title prefix
         env:

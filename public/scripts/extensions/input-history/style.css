@@ -157,3 +157,11 @@ html > body .stih--history .stih--hidden {
     order: 0;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .stih--buttons .stih--button,
+  .stih--history,
+  .stih--history .stih--item {
+    transition: none !important;
+  }
+}

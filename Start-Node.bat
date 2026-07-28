@@ -19,6 +19,13 @@ if %errorlevel% neq 0 (
     goto end
 )
 
+where npm > nul 2>&1
+if %errorlevel% neq 0 (
+    echo npm was not found in PATH.
+    echo Install a complete Node.js distribution from https://nodejs.org/
+    goto end
+)
+
 set NODE_ENV=production
 set SILLYBUNNY_LAUNCHER=1
 set "_dependency_profile=node-production"
@@ -49,6 +56,9 @@ if !errorlevel! neq 0 (
 ) else (
     echo Dependencies are up to date.
 )
+
+call npm run init
+if !errorlevel! neq 0 goto end
 
 echo Entering SillyBunny (Node.js mode)...
 set NODE_NO_WARNINGS=1

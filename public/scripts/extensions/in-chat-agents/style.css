@@ -2915,3 +2915,31 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
 .ica--run-target-range input {
     min-width: 0;
 }
+
+@media (prefers-reduced-motion: reduce) {
+    .ica--templates-callout-dismiss,
+    .ica--category-header .ica--chevron,
+    .ica--agent-card,
+    .ica--card-toggle,
+    .ica--card-toggle::after,
+    .ica--card-pill--version-update,
+    .ica--card-btn,
+    .prompt-manager-send-to-agents-action,
+    .ica--choice-line,
+    .ica--tpanel,
+    .ica--tpanel:not(.is-open),
+    .ica--template-pill,
+    .ica--group-card-create,
+    .ica--template-card {
+        transition: none !important;
+    }
+
+    .ica--card-pill--version-update:hover,
+    .ica--card-pill--version-update:focus-visible,
+    .mes_fix_trackers--running.fa-solid,
+    .mes_fix_trackers--running > i,
+    .mes_run_companions--running.fa-solid,
+    .mes_run_companions--running > i {
+        animation: none !important;
+    }
+}

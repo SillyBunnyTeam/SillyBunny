@@ -2,6 +2,7 @@ import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
 import {
     areAgentsGloballyEnabled,
@@ -148,7 +149,7 @@ export function parseStoredHandlePosition(raw) {
 
 function getStoredHandlePosition() {
     try {
-        return parseStoredHandlePosition(globalThis.localStorage?.getItem?.(HANDLE_POSITION_STORAGE_KEY));
+        return parseStoredHandlePosition(accountStorage.getItem(HANDLE_POSITION_STORAGE_KEY));
     } catch {
         return null;
     }
@@ -156,18 +157,18 @@ function getStoredHandlePosition() {
 
 function storeHandlePosition(edge, fraction) {
     try {
-        globalThis.localStorage?.setItem?.(HANDLE_POSITION_STORAGE_KEY, JSON.stringify({
+        accountStorage.setItem(HANDLE_POSITION_STORAGE_KEY, JSON.stringify({
             edge: HANDLE_EDGES.includes(edge) ? edge : 'right',
             fraction: clampHandleTopFraction(fraction),
         }));
     } catch {
-        // Private browsing or storage quota: the position just won't persist.
+        // Persistence failure must not make the handle unusable for this session.
     }
 }
 
 function getStoredPanelLocked() {
     try {
-        return globalThis.localStorage?.getItem?.(PANEL_LOCK_STORAGE_KEY) === 'true';
+        return accountStorage.getItem(PANEL_LOCK_STORAGE_KEY) === 'true';
     } catch {
         return false;
     }
@@ -175,9 +176,9 @@ function getStoredPanelLocked() {
 
 function storePanelLocked(locked) {
     try {
-        globalThis.localStorage?.setItem?.(PANEL_LOCK_STORAGE_KEY, locked ? 'true' : 'false');
+        accountStorage.setItem(PANEL_LOCK_STORAGE_KEY, locked ? 'true' : 'false');
     } catch {
-        // Private browsing or storage quota: the lock still applies for this session.
+        // Persistence failure leaves the in-memory lock state unchanged.
     }
 }
 

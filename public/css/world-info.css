@@ -1,3 +1,4 @@
+/* SillyBunny divergence: World Info is presented through the fork's shell and Characters-panel layout. */
 .world_info_select_block {
     display: flex;
     flex-direction: row;

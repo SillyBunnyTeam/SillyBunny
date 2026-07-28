@@ -2828,6 +2828,15 @@ function getChatRenderWindowSize(requestedSize = power_user.chat_truncation) {
     return normalizeChatRenderWindowSize(requestedSize);
 }
 
+function getPagedChatRenderWindowSize(requestedSize, renderedMessageCount) {
+    const pageSize = getChatRenderWindowSize(requestedSize);
+    if (power_user.aggressive_dom_unload) {
+        return pageSize;
+    }
+
+    return normalizeChatRenderWindowSize(renderedMessageCount + pageSize);
+}
+
 function getRenderedChatMessageElements() {
     return Array.from(chatElement[0]?.querySelectorAll('.mes[mesid]') ?? []);
 }
@@ -3017,7 +3026,7 @@ export async function showMoreMessages(messagesToLoad = null) {
     const firstDisplayedMesId = chatElement.children('.mes').first().attr('mesid');
     const renderedMessageCount = getRenderedChatMessageElements().length;
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
-    const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,
@@ -3091,7 +3100,7 @@ export async function showNewerMessages(messagesToLoad = null) {
 
     const { renderedMessageCount, lastMessageId } = getRenderedChatMessageWindow();
     const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;
-    const windowSize = getChatRenderWindowSize(requestedWindowSize);
+    const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);
     const count = getChatHistoryPageSize(requestedWindowSize, {
         renderedMessageCount,
         windowSize,

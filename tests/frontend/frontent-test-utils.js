@@ -15,8 +15,10 @@ export const testSetup = {
      */
     awaitST: async ({ page }) => {
         await page.goto('/');
-        await page.locator('#userList .userSelect').last().click();
-        await page.waitForURL('http://127.0.0.1:4444');
+        if (new URL(page.url()).pathname === '/login') {
+            await page.locator('#userList .userSelect').last().click();
+            await page.waitForURL(url => url.pathname === '/');
+        }
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     },
 };

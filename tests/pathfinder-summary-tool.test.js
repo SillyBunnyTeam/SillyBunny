@@ -57,6 +57,9 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/path
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/auto-summary.js', () => ({
     markAutoSummaryComplete: jest.fn(),
 }));
+await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+    escapeRegex: value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+}));
 
 const {
     createSeparateSummaryMemoryEntry,

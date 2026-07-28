@@ -33,7 +33,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, and update batching to the lifecycle module. |
 | Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
 | Validation | `node --check public/script.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js`, `npm run check:frontend-budgets`, plus prior lifecycle lint/unit/e2e packs on this stack. |
-| Rollback path | Keep legacy behavior behind temporary rollout guard until lifecycle fixtures pass. |
+| Rollback path | Disable affected lifecycle routes with the permanent device-local kill switch while correcting the routed implementation. |
 | Last reviewed | 2026-06-13 initial-load scroll-state route. |
 | Owner | Refactor integrator. |
 
@@ -76,20 +76,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-23 group chat greeting initialization fix. |
 | Owner | Bugfix integrator. |
 
-### `public/style.css` - message containment and scroll anchoring
-| Field | Value |
-| --- | --- |
-| Area | Chat lifecycle and CSS containment. |
-| Divergence reason | SillyBunny may need targeted containment or visibility handling to stabilize long-chat and macOS/mobile scroll behavior. |
-| Target seam | `public/scripts/chat-render-lifecycle/` controls transition classes; CSS remains declarative. |
-| Adapter shape | Prefer lifecycle state classes over permanent global `.mes` behavior changes. |
-| Protecting tests | Future issue `#167` long-chat, swipe, media resize, and mobile stream fixtures. |
-| Validation | No CSS behavior change until repro coverage exists. |
-| Rollback path | Revert CSS class or containment rule independently from lifecycle module. |
-| Last reviewed | 2026-05-26 refactor plan. |
-| Owner | Refactor integrator and test lead. |
-
-### `public/scripts/sillybunny-tabs.js` - shell chat controls
+### `public/scripts/sillybunny-tabs.js` - shell chat controls (fork seam reference)
 | Field | Value |
 | --- | --- |
 | Area | Mobile shell, top-bar layout, chat navigation, and preset/API sync. |
@@ -128,7 +115,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 tool recursion limit fix. |
 | Owner | Bugfix integrator. |
 
-### `public/scripts/mobile-streaming.js` - platform streaming policy
+### `public/scripts/mobile-streaming.js` - platform streaming policy (fork seam reference)
 | Field | Value |
 | --- | --- |
 | Area | Mobile streaming. |
@@ -167,7 +154,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-02 Quick Replies duplicate fix. |
 | Owner | Refactor integrator and extension runtime owner. |
 
-### `public/scripts/ooc-blocks.js` - prompt context retention
+### `public/scripts/ooc-blocks.js` - prompt context retention (fork seam reference)
 | Field | Value |
 | --- | --- |
 | Area | Prompt context and settings. |
@@ -232,7 +219,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 Bug 1 transparency migration. |
 | Owner | Refactor integrator. |
 
-### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer
+### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer (fork seam reference)
 | Field | Value |
 | --- | --- |
 | Area | Mobile shell and character menu. |
@@ -388,7 +375,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Extension maintainer. |
 
-### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard
+### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference)
 | Field | Value |
 | --- | --- |
 | Area | Extension boot and image-generation integration. |
@@ -414,11 +401,214 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | UI maintainer. |
 
-## Candidate Entries To Add Later
-| File or area | Add entry when |
+### `src/endpoints/users-private.js` - account export and import compatibility
+| Field | Value |
 | --- | --- |
-| Core settings modules | Preset/API sync refactor starts. |
-| Screenshot/image-gen UI code | Lazy loading of non-active tooling begins. |
+| Area | Account data and backup compatibility. |
+| Divergence reason | SillyBunny preserves fork-owned account metadata, user directories, and import markers while maintaining upstream archive safety. |
+| Target seam | `src/users.js`, `src/entity-date-added.js`, and the private-user endpoint helpers. |
+| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. |
+| Protecting tests | `tests/backups-hardening.test.js`, plus manual export/import smoke with a fork account archive. |
+| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke. |
+| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Account and release integrator. |
+
+### World Info files - shell integration and safe persistence
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/world-info.js`, `public/css/world-info.css`, `src/endpoints/worldinfo.js`. |
+| Area | World Info, lorebooks, and settings UI. |
+| Divergence reason | SillyBunny integrates World Info with the fork shell and auxiliary lorebook sources and bounds UTF-8 filenames before atomic writes. |
+| Target seam | `public/scripts/world-info-scan-core.js`, `public/scripts/world-info-batch-helpers.js`, and the World Info endpoint filename helpers. |
+| Adapter shape | Keep upstream scan and persistence entry points stable; route fork shell layout, source discovery, canonical naming, and atomic-write details through narrow helpers. |
+| Protecting tests | `tests/world-info-scan-core.test.js`, `tests/world-info-scan-chat.test.js`, `tests/world-info-endpoint-utils.test.js`, `tests/world-info-character-book.test.js`, `tests/world-info-batch-helpers.test.js`. |
+| Validation | `node --check public/scripts/world-info.js`, `node --check src/endpoints/worldinfo.js`, focused World Info unit tests, `npm run check:frontend-budgets`. |
+| Rollback path | Revert shell/source integration and filename normalization independently; retain the upstream World Info data format. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | World Info and shell integrator. |
+
+### In-Chat Agents expressions and connection profiles
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/expressions/index.js`, `public/scripts/extensions/connection-manager/index.js`, `public/scripts/extensions/shared.js`, `public/scripts/custom-request.js`. |
+| Area | Extension runtime, expressions, and connection-profile secrets. |
+| Divergence reason | Fork-owned agent classification, generated sprites, profile-scoped requests, and secret-aware connection state extend upstream extension surfaces. |
+| Target seam | `public/scripts/extensions/in-chat-agents/`, `public/scripts/extensions/expressions/`, and `public/scripts/extensions/connection-manager/`. |
+| Adapter shape | Keep extension boot and provider calls in upstream modules; delegate fork agent/profile decisions through existing narrow exports. |
+| Protecting tests | `tests/expressions-agent.test.js`, `tests/connection-profile-request-fields.test.js`, `tests/connection-manager-profile-save.test.js`, `tests/in-chat-agents-runner.test.js`. |
+| Validation | Focused unit tests, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Disable fork classifier/profile hooks while retaining upstream expression and connection behavior. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | In-Chat Agents maintainer. |
+
+### Settings, personas, presets, and prompt context
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js`, `public/scripts/personas.js`, `public/scripts/preset-manager.js`, `public/scripts/authors-note.js`. |
+| Area | Settings, persona state, presets, and prompt context. |
+| Divergence reason | SillyBunny adds shell settings, scoped persona behavior, preset synchronization, and character/group Author's Notes while preserving upstream persisted formats. |
+| Target seam | `public/scripts/sillybunny-tabs.js`, `public/scripts/sillybunny-conversation/`, `public/scripts/preset-api-sync-lifecycle/`, and `public/scripts/authors-note.js`. |
+| Adapter shape | Keep upstream settings/preset/persona APIs authoritative; isolate fork state transitions in the named seams and preserve legacy keys. |
+| Protecting tests | `tests/persona-avatar-source-sync.test.js`, `tests/sillybunny-conversation-persona-runtime.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-save-deleted-default.test.js`, `tests/openai-preset-utils.test.js`. |
+| Validation | Focused unit tests, `node --check` on each file, `npm run lint`. |
+| Rollback path | Revert fork settings and scoped-state adapters without changing upstream preset, persona, or character data schemas. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Settings and conversation integrator. |
+
+### Content/default management and server initialization
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
+| Area | Install, defaults, server lifecycle, and runtime utilities. |
+| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. |
+| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, and the bundled-content helpers in `content-manager.js`. |
+| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. |
+| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, and root lint. |
+| Validation | `npm run init`, `node --check src/server-init.js`, `node --check src/server-main.js`, `npm run lint`. |
+| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Runtime and release integrator. |
+
+### Chat backups, characters, and thumbnails
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chat-backups.js`, `public/css/chat-backups.css`, `src/endpoints/characters.js`, `src/endpoints/thumbnails.js`, `src/endpoints/image-metadata.js`. |
+| Area | Chat recovery, character assets, thumbnails, and media metadata. |
+| Divergence reason | SillyBunny adds backup recovery presentation and mobile-aware character/media handling without changing upstream chat or image formats. |
+| Target seam | `public/scripts/sillybunny-tabs.js`, `src/endpoints/conversation-utils.js`, and the thumbnail/image-metadata helpers. |
+| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`. |
+| Validation | Focused unit tests, `node --check` on endpoint/client files, `npm run lint`. |
+| Rollback path | Revert backup UI and mobile/media adapters without deleting user chat or character data. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Chat and media integrator. |
+
+### Repository policy, launchers, packaging, and build infrastructure
+| Field | Value |
+| --- | --- |
+| File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents. |
+| Area | Release policy, packaging, launch, CI, container runtime, and project identity. |
+| Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. |
+| Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |
+| Adapter shape | Keep upstream-compatible commands and package contracts; isolate fork runtime selection, metadata, branding, and release gates in the named infrastructure files. |
+| Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
+| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. |
+| Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Release integrator. |
+
+### Bundled defaults and install-time content
+| Field | Value |
+| --- | --- |
+| File | `default/config.yaml`, `default/content/index.json`, and `default/content/settings.json`. |
+| Area | Install defaults and bundled content. |
+| Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. |
+| Target seam | `src/server-init.js`, `src/endpoints/content-manager.js`, and bundled-template update helpers. |
+| Adapter shape | Preserve upstream IDs and metadata keys; change default values and bundled indexes only through existing synchronization paths. |
+| Protecting tests | `tests/default-preset-deletions.test.js`, bundled-template and agent-version tests, plus Bun initialization smoke. |
+| Validation | `npm run init`, full unit suite, and fresh-data-directory smoke. |
+| Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Defaults and release integrator. |
+
+### Frontend identity, localization, and static boot assets
+| Field | Value |
+| --- | --- |
+| File | `public/locales/*.json`, `public/img/**`, `public/*.ico`, `public/login.html`, `public/manifest.json`, `public/global.d.ts`, `public/lib/polyfill.js`, and `public/webfonts/**`. |
+| Area | Branding, localization, login, PWA metadata, compatibility, and static assets. |
+| Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. |
+| Target seam | Static assets and locale catalogs; no runtime seam. |
+| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. |
+| Protecting tests | Frontend asset tests, manifest/browser smoke, README mirror validation, and full build. |
+| Validation | `npm run build:frontend`, `npm run check:frontend-budgets`, JSON parsing, and desktop/mobile login smoke. |
+| Rollback path | Restore individual assets or translations without changing persisted data. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | UI and localization integrator. |
+
+### Upstream CSS surfaces and compatibility styling
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files under `public/css/` not named by a narrower active entry. |
+| Area | Shell integration, dialogs, tags, extensions, streaming, accessibility, and responsive styling. |
+| Divergence reason | SillyBunny adapts upstream surfaces to the fork shell, theme tokens, mobile viewport, and WebKit/accessibility requirements. |
+| Target seam | Fork stylesheets and scoped `sb-*`/feature selectors; upstream sheets retain only necessary compatibility overrides. |
+| Adapter shape | Keep overrides selector-scoped, token-aware, prefixed for supported WebKit properties, and covered by motion/budget ratchets. |
+| Protecting tests | `tests/mobile-css-budgets.test.js`, `tests/ui-motion-css-compliance.test.js`, frontend budgets, and desktop/mobile smoke. |
+| Validation | `npm run check:frontend-budgets`, `npm run build:frontend`, focused CSS tests, and WebKit prefix scan. |
+| Rollback path | Remove scoped fork overrides per surface while retaining upstream base styles and user CSS. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | UI and mobile shell integrator. |
+
+### Core browser runtime, settings, and templates
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files directly under `public/scripts/`, `public/scripts/templates/`, `public/scripts/macros/`, `public/scripts/slash-commands/`, and `public/scripts/autocomplete/` not named by a narrower active entry. |
+| Area | Browser runtime, settings, prompt assembly, macros, commands, chat UI, storage, and templates. |
+| Divergence reason | SillyBunny integrates fork shell, Conversation Mode, provider compatibility, accessibility, persistence safeguards, and prompt behavior through existing upstream browser APIs. |
+| Target seam | Fork lifecycle modules, `public/scripts/sillybunny-conversation/`, storage utilities, and feature-specific helpers. |
+| Adapter shape | Preserve upstream exports and persisted schemas; keep fork behavior behind imports, narrow hooks, templates, or compatibility helpers. |
+| Protecting tests | Full browser unit suite, macro E2E suite, Conversation tests, settings/preset tests, and frontend budgets. |
+| Validation | `npm run lint`, full unit suite, `npm run build:frontend`, and Chromium E2E validation. |
+| Rollback path | Remove feature adapters independently while preserving upstream settings, character, chat, preset, and macro formats. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Browser runtime integrator. |
+
+### Built-in extension adapters
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files under `public/scripts/extensions/` not named by a narrower active entry, including caption, connection manager, expressions, memory, Stable Diffusion, translation, TTS, and vectors. |
+| Area | Extension boot, provider integration, settings UI, media, memory, speech, and vector storage. |
+| Divergence reason | SillyBunny connects built-in extensions to fork agents, profiles, shell behavior, providers, and Conversation Mode without changing extension manifests or persisted settings incompatibly. |
+| Target seam | Feature-local extension helpers and fork-owned integration modules. |
+| Adapter shape | Preserve extension IDs, settings keys, provider request contracts, and upstream activation behavior; keep fork hooks narrow. |
+| Protecting tests | Extension boot, ICA, connection-profile, TTS, vectors, translation, memory, and image-generation unit coverage plus browser smoke. |
+| Validation | Full unit suite, root lint, frontend build/budgets, and release E2E. |
+| Rollback path | Disable or remove each integration hook independently while retaining extension settings and manifests. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Extension integrator. |
+
+### Server endpoints and persisted-data adapters
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files under `src/endpoints/` not named by a narrower active entry. |
+| Area | Accounts, settings, secrets, chats, groups, characters, media, providers, extensions, presets, tokenizers, and maintenance routes. |
+| Divergence reason | SillyBunny adds fork providers, shell/Conversation integrations, hardening, and compatibility behavior while retaining upstream route and storage contracts. |
+| Target seam | Endpoint-local helpers, `src/endpoints/conversation-*`, request filters, and provider adapters. |
+| Adapter shape | Preserve request/response shapes and upstream on-disk schemas; validate at route boundaries and delegate fork logic to side-effect-free helpers. |
+| Protecting tests | Full endpoint/unit suite, request-filter and backup hardening tests, character/settings/provider tests, plus Node/Bun startup smoke. |
+| Validation | Full unit suite, root lint, Node syntax checks, Node/Bun server smoke, and release E2E. |
+| Rollback path | Revert endpoint adapters by area without rewriting user data or removing migration paths. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Server and data compatibility integrator. |
+
+### Server core, middleware, parsers, and vector backends
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files directly under `src/`, plus `src/middleware/**`, `src/git/**`, `src/png/**`, `src/validator/**`, and `src/vectors/**`, not named by a narrower active entry. |
+| Area | Server lifecycle, configuration, auth, plugins, parsing, archives, Git, images, prompt conversion, and vector providers. |
+| Divergence reason | SillyBunny adds runtime parity, fork configuration, security checks, card compatibility, plugin behavior, and provider support around upstream server contracts. |
+| Target seam | `src/runtime.js`, server lifecycle helpers, path containment, middleware helpers, and provider-specific modules. |
+| Adapter shape | Keep startup ordering and public APIs stable; use guarded runtime detection and shared validation/security helpers. |
+| Protecting tests | Server supervisor/runtime, path containment, card/parser, prompt converter, request filter, plugin, image, and vector tests. |
+| Validation | Full unit suite, root lint, Node syntax checks, Node/Bun initialization and startup smoke. |
+| Rollback path | Revert helpers per subsystem while preserving configuration, plugin, character-card, and vector data compatibility. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Server runtime integrator. |
+
+### Upstream test harness and dependency metadata
+| Field | Value |
+| --- | --- |
+| File | Modified upstream-origin files under `tests/`, including frontend macro E2E fixtures, Jest/Playwright configuration, package metadata, request-filter utilities, and inherited smoke tests. |
+| Area | Test infrastructure and release validation. |
+| Divergence reason | SillyBunny extends inherited coverage for fork routes, direct-app/account-login startup, Node/Bun parity, frontend behavior, and release browser validation. |
+| Target seam | `tests/` helpers and configuration only. |
+| Adapter shape | Preserve upstream test semantics where applicable; parameterize base URLs and startup modes rather than hardcoding local state. |
+| Protecting tests | The full Jest and Playwright suites themselves. |
+| Validation | `npm run test:unit`, focused changed-test lint, and serial Chromium E2E. |
+| Rollback path | Revert fork fixtures/config independently from production code, retaining tests that protect shipped compatibility. |
+| Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Test and release integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?

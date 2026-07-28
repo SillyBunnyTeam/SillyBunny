@@ -1,13 +1,21 @@
 import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './chat-scroll-edges.js';
 import {
+    clampMobileShellText as clampText,
     createMobileShellLifecycle,
     MOBILE_SHELL_NAV_TOGGLE_ACTION,
+    normalizeMobileShellRailIcon as normalizeFontAwesomeIcon,
+    normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
+import {
+    PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
+    PERSONA_APPENDICES_SELECTIONS_KEY,
+} from './sillybunny-conversation/constants.js';
 import { conversationState } from './sillybunny-conversation/state.js';
+import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
 
@@ -701,7 +709,6 @@ const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.li
 let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
-const SB_FONT_AWESOME_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
 const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
@@ -1209,16 +1216,6 @@ function getMobileQuickActionTabConfig(shellKey, tabId) {
         ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
         ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
     ].find(tab => tab?.id === tabId) || null;
-}
-
-function normalizeFontAwesomeIcon(value, fallback = SB_MOBILE_QUICK_ACTION_ICON_FALLBACK) {
-    const fallbackIcon = clampText(fallback || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK, 60);
-    const iconClass = String(value ?? '')
-        .trim()
-        .split(/\s+/)
-        .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !SB_FONT_AWESOME_STYLE_CLASSES.has(token.toLowerCase()));
-
-    return clampText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getMobileQuickActionContext(value) {
@@ -2091,13 +2088,6 @@ function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-function normalizeText(value) {
-    return String(value ?? '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
-
 function normalizeCharacterEditorSubTab(tabId) {
     const normalizedTabId = normalizeText(tabId);
     return SB_CHARACTER_EDITOR_SUB_TABS.includes(normalizedTabId) ? normalizedTabId : SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB;
@@ -2119,15 +2109,6 @@ function resolveCharacterEditorSubTab(tabId) {
 
 function isCharacterEditorMenuType(menuType) {
     return ['character_edit', 'create'].includes(menuType ?? '');
-}
-
-function clampText(value, maxLength = 120) {
-    const normalizedValue = String(value ?? '').replace(/\s+/g, ' ').trim();
-    if (normalizedValue.length <= maxLength) {
-        return normalizedValue;
-    }
-
-    return `${normalizedValue.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function getSearchTextCandidates(element) {
@@ -5388,10 +5369,6 @@ function escapeSelectorValue(value) {
     return String(value ?? '').replace(/["\\]/g, '\\$&');
 }
 
-function escapeRegExp(value) {
-    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function stripDecoratedOptionText(value) {
     return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
 }
@@ -6633,7 +6610,7 @@ function createChatSearchRegex(terms = getSearchTerms()) {
         return null;
     }
 
-    return new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
+    return new RegExp(`(${terms.map(escapeRegex).join('|')})`, 'gi');
 }
 
 function addChatSearchTextSegment(segments, value) {
@@ -12262,7 +12239,6 @@ function logSillyTavernExtensionSyncReport(reportData) {
         warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0,
         error: result?.error || '',
     })));
-    console.log(reportData);
     console.groupEnd();
 }
 
@@ -16508,8 +16484,6 @@ async function refreshBottomChatSelect() {
 }
 
 const PERSONA_APPENDICES_METADATA_KEY = 'persona_appendices';
-const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
-const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 function getPersonaAppendixScopeKeyFromContext(context) {
     return String(context?.groupId || context?.characters?.[context?.characterId]?.avatar || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);

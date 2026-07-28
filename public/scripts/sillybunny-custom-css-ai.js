@@ -2,6 +2,9 @@ import { generateRaw } from '../script.js';
 import { resolveConnectionProfile } from './extensions/in-chat-agents/agent-store.js';
 import { extractProfileResponseText } from './extensions/in-chat-agents/llm-utils.js';
 import { getConnectionManagerRequestService } from './extensions/in-chat-agents/profile-utils.js';
+import { isAbortLikeError } from './util/abort-error.js';
+
+export { isAbortLikeError };
 
 export const CUSTOM_CSS_AI_MAX_TOKENS = 3072;
 
@@ -27,14 +30,6 @@ export const CUSTOM_CSS_AI_SYSTEM_PROMPT = [
     'Prefer stable SillyTavern/SillyBunny selectors and CSS custom properties. Keep desktop and mobile usable.',
     'Scope risky changes narrowly. Short CSS comments are allowed only when they clarify non-obvious rules.',
 ].join(' ');
-
-export function isAbortLikeError(error, signal = null) {
-    return Boolean(
-        signal?.aborted
-        || error?.name === 'AbortError'
-        || /abort|cancel/i.test(String(error?.message ?? error ?? '')),
-    );
-}
 
 export function stripCssMarkdownFences(text = '') {
     const value = String(text ?? '').trim();

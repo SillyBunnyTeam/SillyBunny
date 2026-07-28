@@ -7,13 +7,10 @@ import { sidecarGenerateWithProfile } from '../llm-sidecar.js';
 import { getSettings, getTree, getAllEntryUids } from '../tree-store.js';
 import { getReadableBooks, getEntryContent } from '../pathfinder-tool-bridge.js';
 import { logPipelineStageStart, logPipelineStageComplete, logPipelineError } from '../activity-feed.js';
+import { isAbortLikeError } from '../../../../util/abort-error.js';
 
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
 const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
-
-function logPathfinderPipeline(message, ...details) {
-    console.log(`${PATHFINDER_LOG_PREFIX} ${message}`, ...details);
-}
 
 function throwIfAborted(signal) {
     if (!signal?.aborted) {
@@ -21,14 +18,6 @@ function throwIfAborted(signal) {
     }
 
     throw signal.reason ?? new Error('Pathfinder pipeline cancelled.');
-}
-
-function isAbortLikeError(error, signal = null) {
-    return Boolean(
-        signal?.aborted ||
-        error?.name === 'AbortError' ||
-        /abort|cancel/i.test(String(error?.message ?? error ?? '')),
-    );
 }
 
 /**
@@ -56,10 +45,6 @@ function isAbortLikeError(error, signal = null) {
  */
 export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, signal = null) {
     throwIfAborted(signal);
-    logPathfinderPipeline(`Starting predictive pipeline "${pipelineId}".`, {
-        chatMessageCount: Array.isArray(chatMessages) ? chatMessages.length : 0,
-        maxMessages,
-    });
     const pipeline = getPipeline(pipelineId);
     if (!pipeline) {
         console.warn(`${PATHFINDER_LOG_PREFIX} Pipeline "${pipelineId}" was requested, but no matching pipeline was found.`);
@@ -75,7 +60,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
     const context = await buildPipelineContext(chatMessages, maxMessages);
 
     if (!context.entry_names.trim()) {
-        logPathfinderPipeline(`Pipeline "${pipeline.name}" found no readable lorebook entries to evaluate.`);
         return {
             success: true,
             selectedEntries: [],
@@ -93,10 +77,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
 
         // Check skip condition
         if (stage.optional && stage.skipCondition && settings[stage.skipCondition]) {
-            logPathfinderPipeline(`Skipping optional pipeline stage ${i + 1}/${pipeline.stages.length}.`, {
-                stagePromptId: stage.promptId,
-                skipCondition: stage.skipCondition,
-            });
             stageResults.push({
                 stageIndex: i,
                 promptId: stage.promptId,
@@ -120,18 +100,10 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
         }
 
         logPipelineStageStart(pipeline.name, prompt.name, i + 1, pipeline.stages.length);
-        logPathfinderPipeline(`Running pipeline stage ${i + 1}/${pipeline.stages.length} for "${pipeline.name}".`, {
-            promptId: stage.promptId,
-            promptName: prompt.name,
-        });
 
         try {
             // Resolve input mappings
             const inputs = resolveInputMappings(stage.inputMapping, context, currentEntries, settings);
-            logPathfinderPipeline(`Resolved pipeline stage inputs for "${prompt.name}".`, {
-                inputKeys: Object.keys(inputs),
-                candidateCount: currentEntries.length,
-            });
 
             // Build the prompt
             const userPrompt = substituteTemplate(prompt.userPromptTemplate, inputs);
@@ -139,10 +111,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
             // Get connection profile (stage-specific or default)
             const profileId = prompt.connectionProfile || settings.connectionProfile || '';
             const maxTokens = prompt.settings?.maxTokens ?? DEFAULT_PIPELINE_MAX_TOKENS;
-            logPathfinderPipeline(`Submitting pipeline stage "${prompt.name}" to sidecar model.`, {
-                profileId: profileId || 'main-model',
-                maxTokens,
-            });
 
             // Call the LLM
             const response = await sidecarGenerateWithProfile(
@@ -165,10 +133,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
             });
 
             logPipelineStageComplete(pipeline.name, prompt.name, currentEntries.length);
-            logPathfinderPipeline(`Pipeline stage "${prompt.name}" completed.`, {
-                selectedEntries: currentEntries.length,
-                reasoningLength: parsed.reasoning?.length ?? 0,
-            });
 
             stageResults.push({
                 stageIndex: i,
@@ -198,7 +162,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
 
             // If non-optional stage fails, abort
             if (!stage.optional) {
-                logPathfinderPipeline(`Aborting predictive pipeline "${pipeline.name}" after a required stage failure.`);
                 return {
                     success: false,
                     selectedEntries: [],
@@ -209,9 +172,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
         }
     }
 
-    logPathfinderPipeline(`Predictive pipeline "${pipeline.name}" completed.`, {
-        selectedEntries: currentEntries.length,
-    });
     return {
         success: true,
         selectedEntries: currentEntries,
@@ -227,10 +187,6 @@ export async function runPipeline(pipelineId, chatMessages, maxMessages = 10, si
  */
 async function buildPipelineContext(chatMessages, maxMessages) {
     const books = getReadableBooks();
-    logPathfinderPipeline('Building pipeline context from readable lorebooks.', {
-        books,
-        maxMessages,
-    });
 
     // Format chat history
     const recentMessages = chatMessages.slice(-maxMessages);
@@ -248,14 +204,10 @@ async function buildPipelineContext(chatMessages, maxMessages) {
     for (const bookName of books) {
         const tree = getTree(bookName);
         if (!tree) {
-            logPathfinderPipeline(`Skipped lorebook "${bookName}" while building pipeline context because no tree is cached yet.`);
             continue;
         }
 
         const uids = getAllEntryUids(tree);
-        logPathfinderPipeline(`Collecting entries for pipeline context from "${bookName}".`, {
-            uidCount: uids.length,
-        });
         for (const uid of uids) {
             const entry = await getEntryContent(bookName, uid);
             if (entry && entry.comment) {
@@ -266,11 +218,6 @@ async function buildPipelineContext(chatMessages, maxMessages) {
         }
     }
 
-    logPathfinderPipeline('Pipeline context build complete.', {
-        lorebookCount: books.length,
-        entryCount: entryNames.length,
-        chatMessageCount: recentMessages.length,
-    });
     return {
         chat_history,
         entry_names: entryNames.join('\n'),
@@ -328,12 +275,6 @@ function formatCandidateEntries(candidates, context, settings) {
     const contentMode = settings.entryContentMode ?? 'full';
     const truncateLength = settings.truncateLength ?? 500;
     const maxCandidates = settings.maxCandidates ?? 20;
-    logPathfinderPipeline('Formatting candidate entries for pipeline stage.', {
-        candidateCount: candidates.length,
-        contentMode,
-        truncateLength,
-        maxCandidates,
-    });
 
     const limited = candidates.slice(0, maxCandidates);
     const formatted = [];
@@ -401,10 +342,6 @@ function substituteTemplate(template, values) {
  */
 function parseOutput(response, format, entriesByName) {
     const trimmed = response.trim();
-    logPathfinderPipeline('Parsing pipeline stage output.', {
-        format,
-        responseLength: trimmed.length,
-    });
 
     if (format === 'json_object' || format === 'json_array') {
         // Try to extract JSON from response
@@ -432,20 +369,12 @@ function parseOutput(response, format, entriesByName) {
 
                 // Validate entries exist
                 const validEntries = [];
-                const missingEntries = [];
                 for (const name of entries) {
                     const resolvedName = resolveEntryName(name, entriesByName);
                     if (resolvedName) {
                         validEntries.push(resolvedName);
-                    } else if (typeof name === 'string') {
-                        missingEntries.push(name);
                     }
                 }
-                logPathfinderPipeline('Pipeline JSON output parsed successfully.', {
-                    requestedEntries: entries.length,
-                    validEntries: validEntries.length,
-                    missingEntries,
-                });
 
                 if (entries.length > 0 && validEntries.length === 0) {
                     console.warn(`${PATHFINDER_LOG_PREFIX} Pipeline JSON returned candidates, but none matched loaded lorebook entries.`, {
@@ -471,8 +400,5 @@ function parseOutput(response, format, entriesByName) {
         .map(line => line.replace(/^[-*]\s*/, '').trim())
         .filter(line => line && entriesByName.has(line));
 
-    logPathfinderPipeline('Pipeline fallback line parsing complete.', {
-        validEntries: lines.length,
-    });
     return { entries: lines };
 }

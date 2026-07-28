@@ -5,15 +5,12 @@ import { registerToolAction, registerToolFormatter } from '../../tool-action-reg
 import { logToolCallStarted, logToolCallCompleted, logToolCallError } from '../activity-feed.js';
 import { setSummaryMemoryCreated } from '../summary-memory-store.js';
 import { markAutoSummaryComplete } from '../auto-summary.js';
+import { escapeRegex } from '../../../../util/escape-regex.js';
 
 const COMPACT_DESCRIPTION = 'Create a scene or event summary with significance level and optional narrative arc.';
 const GENERIC_SUMMARY_TITLE_PATTERN = /^(recent scene summary|scene summary|memory summary|summary|untitled summary)$/i;
 const MAX_DERIVED_TITLE_LENGTH = 64;
 const MAX_DERIVED_TITLE_WORDS = 9;
-
-function escapeRegExp(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function normalizeTitle(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -33,7 +30,7 @@ function stripSummaryTitle(title, arc = '') {
     let normalized = normalizeTitle(title).replace(/^\[Summary\]\s*/i, '');
     const arcName = normalizeTitle(arc);
     if (arcName) {
-        normalized = normalized.replace(new RegExp(`\\s+(?:\\u2014|-|:)\\s*${escapeRegExp(arcName)}$`, 'i'), '').trim();
+        normalized = normalized.replace(new RegExp(`\\s+(?:\\u2014|-|:)\\s*${escapeRegex(arcName)}$`, 'i'), '').trim();
     }
 
     return normalized;

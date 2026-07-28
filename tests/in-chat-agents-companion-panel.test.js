@@ -8,7 +8,8 @@ describe('companion tracker panel', () => {
     let companionResultsByMessage;
     let globallyEnabled;
     let chatTokenEstimate;
-    let localStorageValues;
+    let accountStorageValues;
+    let accountStorage;
     let hiddenAgentIds;
 
     function createEventSource() {
@@ -35,6 +36,10 @@ describe('companion tracker panel', () => {
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
+        }));
+
+        await jest.unstable_mockModule('../public/scripts/util/AccountStorage.js', () => ({
+            accountStorage,
         }));
 
         await jest.unstable_mockModule('../public/scripts/chats.js', () => ({
@@ -118,12 +123,12 @@ describe('companion tracker panel', () => {
         companionResultsByMessage = new Map();
         globallyEnabled = true;
         chatTokenEstimate = 0;
-        localStorageValues = new Map();
-        hiddenAgentIds = new Set();
-        globalThis.localStorage = {
-            getItem: jest.fn(key => localStorageValues.get(key) ?? null),
-            setItem: jest.fn((key, value) => localStorageValues.set(key, String(value))),
+        accountStorageValues = new Map();
+        accountStorage = {
+            getItem: jest.fn(key => accountStorageValues.get(key) ?? null),
+            setItem: jest.fn((key, value) => accountStorageValues.set(key, String(value))),
         };
+        hiddenAgentIds = new Set();
         globalThis.toastr = {
             info: jest.fn(),
             success: jest.fn(),
@@ -627,19 +632,19 @@ describe('companion tracker panel', () => {
             outsideClickHandler({ target: { closest: jest.fn(() => null) } });
 
             expect(panel.isCompanionPanelLocked()).toBe(true);
-            expect(globalThis.localStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'true');
+            expect(accountStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'true');
             expect(panel.buildPanelHtml()).toContain('aria-pressed="true"');
             expect(panelElement.removeClass).not.toHaveBeenCalled();
 
             panel.setCompanionPanelLocked(false);
-            expect(globalThis.localStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'false');
+            expect(accountStorage.setItem).toHaveBeenCalledWith('ica--tracker-panel-locked', 'false');
         } finally {
             nowSpy.mockRestore();
         }
     });
 
     test('restores the saved panel lock state', async () => {
-        localStorageValues.set('ica--tracker-panel-locked', 'true');
+        accountStorageValues.set('ica--tracker-panel-locked', 'true');
         const panel = await importPanel();
 
         expect(panel.isCompanionPanelLocked()).toBe(true);

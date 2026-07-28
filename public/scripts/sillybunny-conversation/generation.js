@@ -1,5 +1,6 @@
 import { characters, generateRaw } from '../../script.js';
 import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
+import { isAbortLikeError } from '../util/abort-error.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -47,14 +48,6 @@ export {
 // switch pattern. Instead of flipping the active profile via /profile around
 // each generation, we issue a scoped request through ConnectionManagerRequestService
 // so the global selectedProfile (and the visible dropdown) never changes.
-function isAbortLikeError(error, signal = null) {
-    return Boolean(
-        signal?.aborted ||
-        error?.name === 'AbortError' ||
-        /abort|cancel/i.test(String(error?.message ?? error ?? '')),
-    );
-}
-
 /**
  * SillyBunny: generate Conversation Mode text using the configured connection
  * profile WITHOUT switching the global selected profile. Resolves the profile

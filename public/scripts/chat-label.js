@@ -1,13 +1,11 @@
+import { escapeRegex } from './util/escape-regex.js';
+
 export const CHAT_LABEL_TITLE_LIMIT = 72;
 
 const CHAT_LABEL_KEYS = Object.freeze(['title', 'label', 'name']);
 const GENERIC_CHAT_LABELS = new Set(['chat', 'conversation', 'new chat', 'roleplay chat', 'untitled', 'untitled chat']);
 const LABEL_PREFIX_PATTERN = /^[\s"'`*_]*(?:chat\s*)?(?:title|label|name)[\s"'`*_]*[:=-]\s*/i;
 const EXPLICIT_LABEL_PATTERN = /^[\s"'`*_]*(?:chat\s*)?(?:title|label|name)[\s"'`*_]*[:=-]\s*\S/i;
-
-function escapeRegExp(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function stripReasoningBlocks(value) {
     return value
@@ -126,7 +124,7 @@ export function normalizeGeneratedChatLabel(value, displayName = '') {
 
     const normalizedDisplayName = typeof displayName === 'string' ? displayName.trim() : '';
     if (normalizedDisplayName) {
-        title = title.replace(new RegExp(`^${escapeRegExp(normalizedDisplayName)}\\s*[-:]\\s*`, 'i'), '').trim();
+        title = title.replace(new RegExp(`^${escapeRegex(normalizedDisplayName)}\\s*[-:]\\s*`, 'i'), '').trim();
     }
 
     title = truncateChatLabelText(title);

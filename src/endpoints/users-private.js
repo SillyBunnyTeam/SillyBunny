@@ -15,6 +15,7 @@ import { SECRETS_FILE } from './secrets.js';
 import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath } from '../util.js';
 import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
 
+// SillyBunny divergence: private user export/import keeps fork-owned account data and metadata compatible across releases.
 const RESET_CACHE = new Cache(5 * 60 * 1000);
 const IMPORTABLE_ROOT_FILES = [SETTINGS_FILE, SECRETS_FILE, ENTITY_DATE_ADDED_FILE];
 const IMPORTABLE_TOP_LEVEL_DIRECTORIES = [...new Set(

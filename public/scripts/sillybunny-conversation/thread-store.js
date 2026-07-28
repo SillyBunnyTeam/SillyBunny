@@ -31,6 +31,7 @@ export {
     resolveConversationReminderBranchId,
     safeParseThread,
 } from './thread-store-utils.js';
+import { truncateConversationReplyPreview } from './preview-utils.js';
 
 export function markConversationSeen(avatar = getCurrentCharAvatar(), timestamp = Date.now(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
@@ -125,7 +126,6 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
 
     const triggerLabel = new Date(triggerAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     toastr.info(`Reminder scheduled: "${reminder.text}" at ${triggerLabel}.`, '', SAFE_TOAST_OPTIONS);
-    console.log('Conversation Mode: added reminder', reminder);
     return reminder;
 }
 
@@ -154,11 +154,6 @@ export function createConversationMessage({ role = 'character', name = getCurren
 
 export function getConversationMessagePreviewText(message) {
     return stripPreviewText(message?.mes) || stripPreviewText(getConversationAttachmentLabels(message).join(', '));
-}
-
-function truncateConversationReplyPreview(value, maxLength = 160) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 export function buildConversationMessageReplyReference(message) {
