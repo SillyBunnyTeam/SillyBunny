@@ -3697,6 +3697,12 @@ function updateOpenAISettingsGroupVisibility() {
     });
 }
 
+function updateKimiK3PrefillVisibility() {
+    const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT];
+    const isSupportedSource = supportedSources.includes(oai_settings.chat_completion_source);
+    $('#openai_start_reply_with').closest('.range-block').toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()));
+}
+
 function updateServerChatCompletionConfigSourceVisibility() {
     const currentSource = oai_settings.chat_completion_source;
 
@@ -8878,6 +8884,7 @@ async function onModelChange() {
 
     saveSettingsDebounced();
     updateFeatureSupportFlags();
+    updateKimiK3PrefillVisibility();
     updateAdvancedFormattingVisibility();
     updateOpenAIModelFavoriteButton();
     refreshModelIdSearchControlsForSource(oai_settings.chat_completion_source);
@@ -9064,6 +9071,7 @@ function toggleChatCompletionForms() {
 
     setToolReasoningControls();
     updateAdvancedFormattingVisibility();
+    updateKimiK3PrefillVisibility();
     updateOpenAISettingsGroupVisibility();
     updateOpenAIModelFavoriteButton();
 }
@@ -10655,6 +10663,8 @@ export function initOpenAI() {
 
     $('#custom_model_id').on('input', function () {
         oai_settings.custom_model = String($(this).val());
+        updateKimiK3PrefillVisibility();
+        updateOpenAISettingsGroupVisibility();
         saveSettingsDebounced();
     });
 

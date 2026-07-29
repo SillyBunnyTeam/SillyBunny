@@ -118,11 +118,14 @@ describe('Kimi K3 model capabilities', () => {
         expect(openAiSource).toContain('&& !isKimiK3Request;');
     });
 
-    test('exposes a synchronized Start Reply With control for Custom, Moonshot and NanoGPT', () => {
+    test('exposes a synchronized Start Reply With control only for K3 models', () => {
         expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt">[\s\S]*?id="openai_start_reply_with"/);
         expect(indexSource).toContain('for="openai_start_reply_with" class="range-block-title justifyLeft"');
         expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(2);
         expect(openAiSource).toContain('.range-block:has(#openai_start_reply_with)');
+        expect(openAiSource).toContain("const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT];");
+        expect(openAiSource).toContain(".toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()))");
+        expect(openAiSource.match(/updateKimiK3PrefillVisibility\(\);/g)).toHaveLength(3);
         expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.on\('input', function \(\) \{/);
         expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.not\(this\)\.val\(value\);/);
         expect(presetManagerSource).toMatch(/\$\('\.start-reply-with-input'\)\.val\(power_user\.user_prompt_bias\);/);
