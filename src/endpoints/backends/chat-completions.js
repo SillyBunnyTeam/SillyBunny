@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import urlJoin from 'url-join';
 import { getLocalPromptCacheValue, isLikelyLocalServerUrl } from '../../../public/scripts/local-url-utils.js';
 import { getLinkApiBaseUrl, getLinkApiRequestFormat } from '../../../public/scripts/linkapi-utils.js';
+import { applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../../../public/scripts/openai-model-capabilities.js';
 
 import {
     AIMLAPI_HEADERS,
@@ -3097,7 +3098,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             apiUrl = new URL(request.body.reverse_proxy || API_MOONSHOT).toString();
             apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MOONSHOT);
             headers = {};
-            bodyParams = {
+            bodyParams = isKimiK3Model(request.body.model) ? {} : {
                 thinking: {
                     type: request.body.include_reasoning ? 'enabled' : 'disabled',
                 },
@@ -3249,8 +3250,27 @@ export async function handleChatCompletionsGenerate(request, response) {
             ...bodyParams,
         };
 
+        const isKimiK3Request = !isTextCompletion
+            && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT].includes(request.body.chat_completion_source)
+            && isKimiK3Model(requestBody.model);
+
+        if (isKimiK3Request) {
+            applyKimiK3ModelParameterConstraints(requestBody);
+        }
+
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
             excludeKeysByYaml(requestBody, request.body.custom_exclude_body);
+        }
+
+        if (isKimiK3Request) {
+            const responseFormatType = requestBody.response_format?.type;
+            const usesStructuredOutput = Boolean(request.body.json_schema)
+                || Boolean(requestBody.response_format && responseFormatType !== 'text');
+            if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM
+                && !usesStructuredOutput
+                && Array.isArray(requestBody.messages)) {
+                addAssistantPrefix(requestBody.messages, [], 'partial');
+            }
         }
 
         /** @type {import('node-fetch').RequestInit} */

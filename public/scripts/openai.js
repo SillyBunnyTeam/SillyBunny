@@ -98,7 +98,7 @@ import {
     normalizeReverseProxyPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
-import { applyClaudeModelParameterConstraints } from './openai-model-capabilities.js';
+import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
@@ -5211,10 +5211,12 @@ export async function createGenerationParameters(settings, model, type, messages
 
     const isO1 = gptSources.includes(settings.chat_completion_source) && ['o1-2024-12-17', 'o1'].includes(model);
     const isWorkersAIJsonMode = settings.chat_completion_source === chat_completion_sources.WORKERS_AI && jsonSchema;
+    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT].includes(settings.chat_completion_source)
+        && isKimiK3Model(model);
     const stream = settings.stream_openai && type !== 'quiet' && !isO1 && !isWorkersAIJsonMode;
 
     const noMultiSwipeTypes = ['quiet', 'impersonate', 'continue'];
-    const canMultiSwipe = settings.n > 1 && !noMultiSwipeTypes.includes(type) && multiswipeSources.includes(settings.chat_completion_source);
+    const canMultiSwipe = settings.n > 1 && !noMultiSwipeTypes.includes(type) && multiswipeSources.includes(settings.chat_completion_source) && !isKimiK3Request;
 
     let logit_bias = {};
     if (settings.bias_preset_selected
@@ -5551,6 +5553,9 @@ export async function createGenerationParameters(settings, model, type, messages
     applyClaudeModelParameterConstraints(generate_data, {
         preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source),
     });
+    if (isKimiK3Request) {
+        applyKimiK3ModelParameterConstraints(generate_data);
+    }
 
     if (jsonSchema) {
         generate_data.json_schema = jsonSchema;
@@ -8117,6 +8122,7 @@ function getMoonshotMaxContext(model, isUnlocked) {
         'kimi-k2-turbo-preview': max_256k,
         'kimi-k2-thinking': max_256k,
         'kimi-k2-thinking-turbo': max_256k,
+        'kimi-k3': max_1mil,
     };
 
     // Return context size if model found, otherwise default to 32k

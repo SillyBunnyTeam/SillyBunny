@@ -2,7 +2,11 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { applyClaudeModelParameterConstraints } from '../public/scripts/openai-model-capabilities.js';
+import {
+    applyClaudeModelParameterConstraints,
+    applyKimiK3ModelParameterConstraints,
+    isKimiK3Model,
+} from '../public/scripts/openai-model-capabilities.js';
 
 const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
 
@@ -48,8 +52,66 @@ describe('OpenAI-compatible Claude model capabilities', () => {
     });
 
     test('applies Claude model constraints while building generation parameters', () => {
-        expect(openAiSource).toContain('import { applyClaudeModelParameterConstraints } from \'./openai-model-capabilities.js\';');
+        expect(openAiSource).toContain('applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model');
         expect(openAiSource).toContain('applyClaudeModelParameterConstraints(generate_data, {');
         expect(openAiSource).toContain('preserveReasoning: [chat_completion_sources.CLAUDE, chat_completion_sources.LINKAPI].includes(settings.chat_completion_source)');
+    });
+});
+
+describe('Kimi K3 model capabilities', () => {
+    test('recognizes native and provider-prefixed K3 model IDs', () => {
+        for (const model of ['kimi-k3', 'KIMI-K3', 'moonshotai/kimi-k3', 'models:moonshotai/kimi-k3']) {
+            expect(isKimiK3Model(model)).toBe(true);
+        }
+    });
+
+    test('rejects unrelated model IDs', () => {
+        for (const model of ['kimi-k2.5', 'moonshotai/kimi-k2', 'not-kimi-k3', '', undefined]) {
+            expect(isKimiK3Model(model)).toBe(false);
+        }
+    });
+
+    test('removes parameters fixed by the Kimi K3 API', () => {
+        const payload = {
+            model: 'moonshotai/Kimi-K3',
+            temperature: 1,
+            top_p: 0.95,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            n: 3,
+            max_tokens: 4096,
+            reasoning_effort: 'max',
+            thinking: { type: 'enabled' },
+        };
+
+        applyKimiK3ModelParameterConstraints(payload);
+
+        expect(payload).toEqual({
+            model: 'moonshotai/Kimi-K3',
+            max_tokens: 4096,
+            reasoning_effort: 'max',
+        });
+    });
+
+    test('leaves non-K3 payloads unchanged', () => {
+        const payload = {
+            model: 'kimi-k2.5',
+            temperature: 0.7,
+            n: 2,
+        };
+
+        applyKimiK3ModelParameterConstraints(payload);
+
+        expect(payload).toEqual({
+            model: 'kimi-k2.5',
+            temperature: 0.7,
+            n: 2,
+        });
+    });
+
+    test('applies K3 constraints while building Custom and Moonshot generation parameters', () => {
+        expect(openAiSource).toContain('const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT]');
+        expect(openAiSource).toContain('applyKimiK3ModelParameterConstraints(generate_data);');
+        expect(openAiSource).toContain('&& !isKimiK3Request;');
     });
 });
