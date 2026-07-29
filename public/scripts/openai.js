@@ -3698,7 +3698,7 @@ function updateOpenAISettingsGroupVisibility() {
 }
 
 function updateKimiK3PrefillVisibility() {
-    const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT];
+    const supportedSources = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER];
     const isSupportedSource = supportedSources.includes(oai_settings.chat_completion_source);
     $('#openai_start_reply_with').closest('.range-block').toggle(isSupportedSource && isKimiK3Model(getChatCompletionModel()));
 }
@@ -5218,7 +5218,7 @@ export async function createGenerationParameters(settings, model, type, messages
 
     const isO1 = gptSources.includes(settings.chat_completion_source) && ['o1-2024-12-17', 'o1'].includes(model);
     const isWorkersAIJsonMode = settings.chat_completion_source === chat_completion_sources.WORKERS_AI && jsonSchema;
-    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT].includes(settings.chat_completion_source)
+    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT, chat_completion_sources.OPENROUTER].includes(settings.chat_completion_source)
         && isKimiK3Model(model);
     const stream = settings.stream_openai && type !== 'quiet' && !isO1 && !isWorkersAIJsonMode;
 

@@ -33,7 +33,9 @@ describe('Kimi K3 chat completion requests', () => {
         const { SecretManager, SECRET_KEYS } = await import('../src/endpoints/secrets.js');
         const userRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-kimi-k3-user-'));
         tempDirs.push(userRoot);
-        new SecretManager({ root: userRoot, backups: userRoot }).writeSecret(SECRET_KEYS.NANOGPT, 'nanogpt-test-key');
+        const secretManager = new SecretManager({ root: userRoot, backups: userRoot });
+        secretManager.writeSecret(SECRET_KEYS.NANOGPT, 'nanogpt-test-key');
+        secretManager.writeSecret(SECRET_KEYS.OPENROUTER, 'openrouter-test-key');
 
         const app = express();
         app.use(express.json());
@@ -206,6 +208,31 @@ describe('Kimi K3 chat completion requests', () => {
 
     test('leaves non-K3 NanoGPT requests unchanged', async () => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, {
+            model: 'moonshotai/kimi-k2',
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.messages.at(-1).partial).toBeUndefined();
+        expect(capturedBody.temperature).toBe(1);
+        expect(capturedBody.n).toBe(3);
+    });
+
+    test('marks OpenRouter K3 prefill as partial and omits unsupported parameters', async () => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.OPENROUTER, {
+            model: 'moonshotai/kimi-k3',
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.messages.at(-1)).toEqual({
+            role: 'assistant',
+            content: 'Prefill',
+            partial: true,
+        });
+        expectFixedParametersOmitted();
+    });
+
+    test('leaves non-K3 OpenRouter requests unchanged', async () => {
+        const response = await makeRequest(CHAT_COMPLETION_SOURCES.OPENROUTER, {
             model: 'moonshotai/kimi-k2',
         });
 

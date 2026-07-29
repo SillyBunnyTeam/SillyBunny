@@ -3251,7 +3251,7 @@ export async function handleChatCompletionsGenerate(request, response) {
         };
 
         const isKimiK3Request = !isTextCompletion
-            && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT, CHAT_COMPLETION_SOURCES.NANOGPT].includes(request.body.chat_completion_source)
+            && [CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.MOONSHOT, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
             && isKimiK3Model(requestBody.model);
 
         if (isKimiK3Request) {
@@ -3266,7 +3266,7 @@ export async function handleChatCompletionsGenerate(request, response) {
             const responseFormatType = requestBody.response_format?.type;
             const usesStructuredOutput = Boolean(request.body.json_schema)
                 || Boolean(requestBody.response_format && responseFormatType !== 'text');
-            if ([CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.NANOGPT].includes(request.body.chat_completion_source)
+            if ([CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.NANOGPT, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
                 && !usesStructuredOutput
                 && Array.isArray(requestBody.messages)) {
                 addAssistantPrefix(requestBody.messages, [], 'partial');
