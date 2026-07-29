@@ -163,7 +163,7 @@ lorum ipsum
 
 ### Merged Staging PRs
 - PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
-
+- PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
 
 ## v1.6.5
 
