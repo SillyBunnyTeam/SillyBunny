@@ -9,6 +9,9 @@ import {
 } from '../public/scripts/openai-model-capabilities.js';
 
 const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
+const indexSource = fs.readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
+const powerUserSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/power-user.js', import.meta.url)), 'utf8');
+const presetManagerSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/preset-manager.js', import.meta.url)), 'utf8');
 
 describe('OpenAI-compatible Claude model capabilities', () => {
     test('removes unsupported parameters from provider-prefixed Claude 5 requests', () => {
@@ -109,9 +112,19 @@ describe('Kimi K3 model capabilities', () => {
         });
     });
 
-    test('applies K3 constraints while building Custom and Moonshot generation parameters', () => {
-        expect(openAiSource).toContain('const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT]');
+    test('applies K3 constraints while building Custom, Moonshot and NanoGPT generation parameters', () => {
+        expect(openAiSource).toContain('const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT]');
         expect(openAiSource).toContain('applyKimiK3ModelParameterConstraints(generate_data);');
         expect(openAiSource).toContain('&& !isKimiK3Request;');
+    });
+
+    test('exposes a synchronized Start Reply With control for Custom, Moonshot and NanoGPT', () => {
+        expect(indexSource).toMatch(/<div class="range-block" data-source="custom,moonshot,nanogpt">[\s\S]*?id="openai_start_reply_with"/);
+        expect(indexSource).toContain('for="openai_start_reply_with" class="range-block-title justifyLeft"');
+        expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(2);
+        expect(openAiSource).toContain('.range-block:has(#openai_start_reply_with)');
+        expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.on\('input', function \(\) \{/);
+        expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.not\(this\)\.val\(value\);/);
+        expect(presetManagerSource).toMatch(/\$\('\.start-reply-with-input'\)\.val\(power_user\.user_prompt_bias\);/);
     });
 });

@@ -3628,6 +3628,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_show_thoughts)',
                 '#openai_settings > div > .range-block:has(#openai_auto_append_reasoning_tags)',
                 '#openai_settings > div > .flex-container:has(#openai_reasoning_effort)',
+                '#openai_settings > div > .range-block:has(#openai_start_reply_with)',
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
                 '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
@@ -5211,7 +5212,7 @@ export async function createGenerationParameters(settings, model, type, messages
 
     const isO1 = gptSources.includes(settings.chat_completion_source) && ['o1-2024-12-17', 'o1'].includes(model);
     const isWorkersAIJsonMode = settings.chat_completion_source === chat_completion_sources.WORKERS_AI && jsonSchema;
-    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT].includes(settings.chat_completion_source)
+    const isKimiK3Request = [chat_completion_sources.CUSTOM, chat_completion_sources.MOONSHOT, chat_completion_sources.NANOGPT].includes(settings.chat_completion_source)
         && isKimiK3Model(model);
     const stream = settings.stream_openai && type !== 'quiet' && !isO1 && !isWorkersAIJsonMode;
 
