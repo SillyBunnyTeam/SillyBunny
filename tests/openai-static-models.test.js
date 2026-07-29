@@ -184,6 +184,15 @@ test('Other provider pickers omit confirmed-retired model IDs', () => {
     expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-thinking-preview"'));
 });
 
+test('Moonshot picker includes Kimi K3 with its one-million-token context', () => {
+    const mainSource = readSource('../public/index.html');
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const moonshotPicker = getSelectOptionIds(mainSource, 'model_moonshot_select');
+
+    expect(moonshotPicker).toContain('kimi-k3');
+    expect(openAiScript).toContain('\'kimi-k3\': max_1mil');
+});
+
 test('Google AI Studio pickers include current models and omit all retired Gemini/Gemma models', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');

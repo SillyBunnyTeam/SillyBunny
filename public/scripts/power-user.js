@@ -2474,7 +2474,7 @@ export async function loadPowerUserSettings(settings, data) {
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     $('#google_font_preset').val(power_user.google_font);
     $('#google_font_custom').val(power_user.google_font);
-    $('#start_reply_with').text(power_user.user_prompt_bias);
+    $('.start-reply-with-input').val(power_user.user_prompt_bias);
     $('#chat-show-reply-prefix-checkbox').prop('checked', power_user.show_user_prompt_bias);
     $('#auto_continue_enabled').prop('checked', power_user.auto_continue.enabled);
     $('#auto_continue_allow_chat_completions').prop('checked', power_user.auto_continue.allow_chat_completions);
@@ -4186,8 +4186,10 @@ jQuery(async () => {
         reloadMarkdownProcessor();
     });
 
-    $('#start_reply_with').on('input', function () {
-        power_user.user_prompt_bias = String($(this).val());
+    $('.start-reply-with-input').on('input', function () {
+        const value = String($(this).val());
+        power_user.user_prompt_bias = value;
+        $('.start-reply-with-input').not(this).val(value);
         saveSettingsDebounced();
     });
 
@@ -5589,7 +5591,7 @@ jQuery(async () => {
             }
 
             power_user.user_prompt_bias = String(value ?? '');
-            $('#start_reply_with').val(power_user.user_prompt_bias);
+            $('.start-reply-with-input').val(power_user.user_prompt_bias);
             saveSettingsDebounced();
 
             return power_user.user_prompt_bias;

@@ -26,3 +26,35 @@ export function applyClaudeModelParameterConstraints(generateData, { preserveRea
 
     return generateData;
 }
+
+/**
+ * Checks whether a model ID targets Kimi K3, including provider-prefixed IDs.
+ *
+ * @param {unknown} model Model identifier
+ * @returns {boolean} Whether the model is Kimi K3
+ */
+export function isKimiK3Model(model) {
+    const normalizedModel = String(model ?? '').trim().toLowerCase();
+    return /(?:^|[/:])kimi-k3(?:[-/:]|$)/.test(normalizedModel);
+}
+
+/**
+ * Removes request parameters fixed by the Kimi K3 API.
+ *
+ * @param {Record<string, any>} generateData Chat Completion request data
+ * @returns {Record<string, any>} The request data
+ */
+export function applyKimiK3ModelParameterConstraints(generateData) {
+    if (!isKimiK3Model(generateData?.model)) {
+        return generateData;
+    }
+
+    delete generateData.temperature;
+    delete generateData.top_p;
+    delete generateData.frequency_penalty;
+    delete generateData.presence_penalty;
+    delete generateData.n;
+    delete generateData.thinking;
+
+    return generateData;
+}
