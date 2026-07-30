@@ -294,4 +294,37 @@ describe('SillyBunny boot guard', () => {
 
         expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
     });
+
+    test('describes message-less thrown objects instead of showing [object Object]', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 0, statusText: 'error' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        const details = preloader.querySelector('pre').textContent;
+        expect(details).toContain('status: 0');
+        expect(details).toContain('statusText: error');
+        expect(details).toContain('readyState: 4');
+    });
+
+    test('describes rejected objects that only carry enumerable keys', () => {
+        const { document, listeners, timers } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        listeners.get('unhandledrejection')({ reason: { extensionId: 'quick-reply' } });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre').textContent).toContain('extensionId: quick-reply');
+    });
 });

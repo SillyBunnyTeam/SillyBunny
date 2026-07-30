@@ -15,6 +15,13 @@
     var THIRD_PARTY_EXTENSION_PATH = '/scripts/extensions/third-party/';
     var isBootGuardApplicable = isIOSWebKitBrowser();
 
+    // SillyBunny: jQuery rethrows whatever an async ready callback rejected with,
+    // so startup failures often arrive as message-less objects such as a jqXHR.
+    // These are the fields worth reading before falling back to enumeration.
+    var ERROR_DETAIL_KEYS = ['name', 'code', 'status', 'statusText', 'readyState', 'type', 'url', 'responseText'];
+    var MAX_ERROR_VALUE_LENGTH = 200;
+    var MAX_ERROR_DETAIL_LENGTH = 800;
+
     function isIOSWebKitBrowser() {
         try {
             if (typeof navigator === 'undefined') {
@@ -40,6 +47,77 @@
         }
     }
 
+    function truncate(value, limit) {
+        var text = String(value);
+        return text.length > limit ? text.slice(0, limit) + '...' : text;
+    }
+
+    function describeErrorValue(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (typeof value === 'object' || typeof value === 'function') {
+            return '';
+        }
+
+        return truncate(value, MAX_ERROR_VALUE_LENGTH);
+    }
+
+    // SillyBunny: `String(plainObject)` renders as "[object Object]", which hides
+    // every useful detail. Enumerate the value instead so iOS boot reports name the
+    // actual failure (for example an aborted jqXHR with status 0).
+    function describeErrorObject(error) {
+        var parts = [];
+        var seen = {};
+
+        function push(key, value) {
+            var text = describeErrorValue(value);
+
+            if (!text || seen[key]) {
+                return;
+            }
+
+            seen[key] = true;
+            parts.push(key + ': ' + text);
+        }
+
+        for (var index = 0; index < ERROR_DETAIL_KEYS.length; index++) {
+            try {
+                push(ERROR_DETAIL_KEYS[index], error[ERROR_DETAIL_KEYS[index]]);
+            } catch (_error) {
+                // Accessor properties can throw on cross-origin or revoked objects.
+            }
+        }
+
+        if (!parts.length) {
+            try {
+                var keys = Object.keys(error);
+
+                for (var keyIndex = 0; keyIndex < keys.length && parts.length < ERROR_DETAIL_KEYS.length; keyIndex++) {
+                    push(keys[keyIndex], error[keys[keyIndex]]);
+                }
+            } catch (_error) {
+                // Non-enumerable or exotic objects simply stay undescribed.
+            }
+        }
+
+        var constructorName = '';
+        try {
+            constructorName = String(error.constructor && error.constructor.name || '');
+        } catch (_error) {
+            constructorName = '';
+        }
+
+        var prefix = 'Thrown ' + (constructorName || 'object');
+
+        if (!parts.length) {
+            return prefix + ' with no readable details.';
+        }
+
+        return truncate(prefix + ' { ' + parts.join(', ') + ' }', MAX_ERROR_DETAIL_LENGTH);
+    }
+
     function describeError(error) {
         try {
             if (!error) {
@@ -56,6 +134,10 @@
 
             if (error.message) {
                 return String(error.message);
+            }
+
+            if (typeof error === 'object') {
+                return describeErrorObject(error);
             }
 
             return String(error);
