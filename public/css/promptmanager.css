@@ -726,13 +726,17 @@
         scrollbar-width: none;
     }
 
+    /* Keep the controls row clear of the absolutely positioned drag handle. */
+    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) > span:nth-child(3) {
+        padding-left: 14px;
+    }
+
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3)::-webkit-scrollbar {
         display: none;
     }
 
-    #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-        min-width: 0;
-        width: max-content;
+    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
+        min-width: max-content;
         justify-content: flex-start;
         gap: 4px;
     }
@@ -742,6 +746,7 @@
         height: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         width: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         flex-basis: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
+        flex-shrink: 0;
         border-radius: var(--sb-icon-control-radius, 10px);
     }
 
