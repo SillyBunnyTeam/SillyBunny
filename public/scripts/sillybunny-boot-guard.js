@@ -22,6 +22,11 @@
     var MAX_ERROR_VALUE_LENGTH = 200;
     var MAX_ERROR_DETAIL_LENGTH = 800;
 
+    // SillyBunny: a rejected jqXHR does not carry its own URL, so failing requests are
+    // tracked separately to name the endpoint that broke startup.
+    var MAX_TRACKED_REQUEST_FAILURES = 5;
+    var failedRequests = [];
+
     function isIOSWebKitBrowser() {
         try {
             if (typeof navigator === 'undefined') {
@@ -146,6 +151,73 @@
         }
     }
 
+    function recordRequestFailure(method, url, status) {
+        if (failedRequests.length >= MAX_TRACKED_REQUEST_FAILURES) {
+            return;
+        }
+
+        failedRequests.push(truncate(String(method || 'GET') + ' ' + String(url) + ' -> ' + String(status), MAX_ERROR_VALUE_LENGTH));
+    }
+
+    function describeRequestFailures() {
+        if (!failedRequests.length) {
+            return '';
+        }
+
+        return truncate('Failed requests during startup:\n' + failedRequests.join('\n'), MAX_ERROR_DETAIL_LENGTH);
+    }
+
+    // SillyBunny: jQuery AJAX goes through XMLHttpRequest, so watching it here captures
+    // the URL and status of the request behind an otherwise anonymous jqXHR rejection.
+    function trackFailingRequests() {
+        try {
+            var XHR = window.XMLHttpRequest;
+
+            if (!XHR || !XHR.prototype || !XHR.prototype.open || !XHR.prototype.send) {
+                return;
+            }
+
+            var originalOpen = XHR.prototype.open;
+            var originalSend = XHR.prototype.send;
+
+            XHR.prototype.open = function (method, url) {
+                try {
+                    this.sillyBunnyBootMethod = method;
+                    this.sillyBunnyBootUrl = url;
+                } catch (_error) {
+                    // Exotic instances simply stay unlabeled.
+                }
+
+                return originalOpen.apply(this, arguments);
+            };
+
+            XHR.prototype.send = function () {
+                try {
+                    var request = this;
+                    request.addEventListener('loadend', function () {
+                        if (bootCompleted) {
+                            return;
+                        }
+
+                        var status = Number(request.status || 0);
+
+                        if (status !== 0 && status < 400) {
+                            return;
+                        }
+
+                        recordRequestFailure(request.sillyBunnyBootMethod, request.sillyBunnyBootUrl, status || 'network error');
+                    });
+                } catch (_error) {
+                    // Never let diagnostics break startup.
+                }
+
+                return originalSend.apply(this, arguments);
+            };
+        } catch (_error) {
+            // Never let diagnostics break startup.
+        }
+    }
+
     function recordFailure(message, error) {
         if (!isBootGuardApplicable) {
             return;
@@ -156,6 +228,12 @@
 
         if (errorDetails && details.indexOf(errorDetails) === -1) {
             details += '\n' + errorDetails;
+        }
+
+        var requestDetails = describeRequestFailures();
+
+        if (requestDetails && details.indexOf(requestDetails) === -1) {
+            details += '\n' + requestDetails;
         }
 
         lastFailure = details;
@@ -358,6 +436,8 @@
     if (!isBootGuardApplicable) {
         return;
     }
+
+    trackFailingRequests();
 
     window.addEventListener('error', function (event) {
         if (bootCompleted) {

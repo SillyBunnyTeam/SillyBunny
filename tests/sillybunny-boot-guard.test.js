@@ -140,6 +140,34 @@ function matchesSelector(element, selector) {
     return true;
 }
 
+function createFakeXMLHttpRequest() {
+    return class FakeXMLHttpRequest {
+        constructor() {
+            this.status = 0;
+            this.requestListeners = new Map();
+        }
+
+        open(method, url) {
+            this.requestMethod = method;
+            this.requestUrl = url;
+        }
+
+        send() {
+            this.sent = true;
+        }
+
+        addEventListener(type, listener) {
+            const existing = this.requestListeners.get(type) || [];
+            existing.push(listener);
+            this.requestListeners.set(type, existing);
+        }
+
+        dispatch(type) {
+            (this.requestListeners.get(type) || []).forEach(listener => listener());
+        }
+    };
+}
+
 function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5 } = {}) {
     const document = new FakeDocument();
     const timers = [];
@@ -156,6 +184,7 @@ function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 
             timers.push({ callback, delay });
             return timers.length;
         },
+        XMLHttpRequest: createFakeXMLHttpRequest(),
     };
 
     vm.runInNewContext(bootGuardSource, {
@@ -314,6 +343,32 @@ describe('SillyBunny boot guard', () => {
         expect(details).toContain('status: 0');
         expect(details).toContain('statusText: error');
         expect(details).toContain('readyState: 4');
+    });
+
+    test('names the failing request behind an object-shaped startup failure', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const request = new window.XMLHttpRequest();
+        request.open('POST', '/api/tokenizers/openai/count?model=gpt-4-turbo');
+        request.send();
+        request.status = 404;
+        request.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 404, statusText: 'Not Found' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        const details = preloader.querySelector('pre').textContent;
+        expect(details).toContain('Failed requests during startup:');
+        expect(details).toContain('POST /api/tokenizers/openai/count?model=gpt-4-turbo -> 404');
     });
 
     test('describes rejected objects that only carry enumerable keys', () => {

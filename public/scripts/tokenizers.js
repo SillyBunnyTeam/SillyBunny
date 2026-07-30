@@ -845,6 +845,35 @@ export function countTokensOpenAI(messages, full = false) {
 }
 
 /**
+ * Posts messages to the OpenAI token counting endpoint.
+ * SillyBunny: jQuery rejects with the jqXHR object, which has no message or stack.
+ * If that escapes into an async jQuery ready callback, jQuery rethrows it and the
+ * whole startup aborts with an unreadable "[object Object]" error, so failures are
+ * downgraded to the guesstimate fallback used everywhere else in this module.
+ * @param {string} endpoint Tokenizer endpoint URL.
+ * @param {object[]} messages Messages to count.
+ * @returns {Promise<number|null>} Token count, or null when the request failed.
+ */
+async function requestOpenAITokenCount(endpoint, messages) {
+    try {
+        const data = await jQuery.ajax({
+            async: true,
+            type: 'POST', //
+            url: endpoint,
+            data: JSON.stringify(messages),
+            dataType: 'json',
+            contentType: 'application/json',
+        });
+
+        const tokenCount = Number(data?.token_count);
+        return Number.isFinite(tokenCount) ? tokenCount : null;
+    } catch (error) {
+        console.error('Failed to count tokens with the OpenAI tokenizer.', error);
+        return null;
+    }
+}
+
+/**
  * Returns the token count for a message using the OpenAI tokenizer.
  * @param {object[]|object} messages
  * @param {boolean} full
@@ -874,17 +903,15 @@ export async function countTokensOpenAIAsync(messages, full = false) {
         if (typeof cachedCount === 'number') {
             token_count += cachedCount;
         } else {
-            const data = await jQuery.ajax({
-                async: true,
-                type: 'POST', //
-                url: tokenizerEndpoint,
-                data: JSON.stringify([message]),
-                dataType: 'json',
-                contentType: 'application/json',
-            });
+            const tokenCount = await requestOpenAITokenCount(tokenizerEndpoint, [message]);
 
-            token_count += Number(data.token_count);
-            cacheObject[cacheKey] = Number(data.token_count);
+            if (tokenCount === null) {
+                token_count += guesstimate(JSON.stringify(message));
+                continue;
+            }
+
+            token_count += tokenCount;
+            cacheObject[cacheKey] = tokenCount;
         }
     }
 
@@ -903,16 +930,9 @@ export async function countChatCompletionPayloadTokensOpenAIAsync(messages) {
 
     // SillyBunny: count post-intercept payloads in one request so backend-specific
     // per-payload padding is applied once instead of once per message.
-    const data = await jQuery.ajax({
-        async: true,
-        type: 'POST', //
-        url: tokenizerEndpoint,
-        data: JSON.stringify(messages),
-        dataType: 'json',
-        contentType: 'application/json',
-    });
+    const tokenCount = await requestOpenAITokenCount(tokenizerEndpoint, messages);
 
-    return Number(data.token_count);
+    return tokenCount === null ? guesstimate(JSON.stringify(messages)) : tokenCount;
 }
 
 /**
