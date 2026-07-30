@@ -371,6 +371,60 @@ describe('SillyBunny boot guard', () => {
         expect(details).toContain('POST /api/tokenizers/openai/count?model=gpt-4-turbo -> 404');
     });
 
+    test('ignores object-shaped failures whose only failing request is a third-party extension file', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const request = new window.XMLHttpRequest();
+        request.open('GET', 'scripts/extensions/third-party/SB-GroupUtilities/html/group-note.html');
+        request.send();
+        request.status = 404;
+        request.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 404, statusText: 'Not Found', responseText: 'Not Found' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre')).toBeNull();
+    });
+
+    test('still blames SillyBunny when a core request failed alongside a third-party one', () => {
+        const { document, listeners, timers, window } = createBootGuardHarness();
+        const preloader = addPreloader(document);
+        const initialTimerCount = timers.length;
+
+        const extensionRequest = new window.XMLHttpRequest();
+        extensionRequest.open('GET', 'scripts/extensions/third-party/SB-GroupUtilities/html/group-note.html');
+        extensionRequest.send();
+        extensionRequest.status = 404;
+        extensionRequest.dispatch('loadend');
+
+        const coreRequest = new window.XMLHttpRequest();
+        coreRequest.open('GET', '/api/settings/get');
+        coreRequest.send();
+        coreRequest.status = 500;
+        coreRequest.dispatch('loadend');
+
+        listeners.get('error')({
+            filename: '/lib/jquery-3.5.1.min.js',
+            message: '[object Object]',
+            lineno: 2,
+            colno: 31677,
+            error: { readyState: 4, status: 500, statusText: 'Internal Server Error' },
+        });
+
+        timers.slice(initialTimerCount).forEach(timer => timer.callback());
+
+        expect(preloader.querySelector('pre').textContent).toContain('GET /api/settings/get -> 500');
+    });
+
     test('describes rejected objects that only carry enumerable keys', () => {
         const { document, listeners, timers } = createBootGuardHarness();
         const preloader = addPreloader(document);

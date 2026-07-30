@@ -12,7 +12,8 @@
     var MAX_BOOT_TIMEOUT_MS = 90000;
     var bootStartedAt = Date.now();
 
-    var THIRD_PARTY_EXTENSION_PATH = '/scripts/extensions/third-party/';
+    // SillyBunny: matched without a leading slash so relative extension URLs are recognised too.
+    var THIRD_PARTY_EXTENSION_PATH = 'scripts/extensions/third-party/';
     var isBootGuardApplicable = isIOSWebKitBrowser();
 
     // SillyBunny: jQuery rethrows whatever an async ready callback rejected with,
@@ -165,6 +166,27 @@
         }
 
         return truncate('Failed requests during startup:\n' + failedRequests.join('\n'), MAX_ERROR_DETAIL_LENGTH);
+    }
+
+    // SillyBunny: a rejected jqXHR carries no stack, message or URL, so jQuery rethrows it
+    // from its own source and the failure looks like a SillyBunny bug. When the only requests
+    // that failed belong to a third-party extension, blame the extension instead.
+    function isThirdPartyRequestFailure(error) {
+        if (!error || typeof error !== 'object' || error.stack || error.message) {
+            return false;
+        }
+
+        if (!failedRequests.length) {
+            return false;
+        }
+
+        for (var index = 0; index < failedRequests.length; index++) {
+            if (!isThirdPartyExtensionSource(failedRequests[index])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // SillyBunny: jQuery AJAX goes through XMLHttpRequest, so watching it here captures
@@ -467,6 +489,11 @@
             return;
         }
 
+        if (isThirdPartyRequestFailure(event.error)) {
+            console.warn('SillyBunny boot guard ignored a third-party extension request failure.', failedRequests);
+            return;
+        }
+
         var source = event.filename ? ' at ' + event.filename + ':' + event.lineno + ':' + event.colno : '';
         recordFailure(String(event.message || 'Startup script error') + source, event.error);
     }, true);
@@ -478,6 +505,11 @@
 
         if (isThirdPartyExtensionSource(describeError(event.reason))) {
             console.warn('SillyBunny boot guard ignored a third-party extension startup rejection.', event.reason);
+            return;
+        }
+
+        if (isThirdPartyRequestFailure(event.reason)) {
+            console.warn('SillyBunny boot guard ignored a third-party extension request failure.', failedRequests);
             return;
         }
 
