@@ -51,31 +51,40 @@ afterAll(() => {
 });
 
 /**
- * Whether `bash` on PATH can actually run a script living in the temp dir. On
- * Windows `bash` resolves to the WSL app-execution alias ahead of Git Bash, and
- * that alias either has no distribution installed or cannot see the Windows temp
- * path — so probe the exact mechanism these tests use rather than inferring
+ * Resolves the absolute path of a `bash` that can run a script living in the
+ * temp dir, or null when there is none.
+ *
+ * The absolute path matters because the fixtures below run with a narrowed PATH
+ * to keep a real `grun` from deciding the outcome. Relying on PATH to find bash
+ * would then break wherever bash does not happen to sit next to the Node
+ * binary, which is the case on the CI runners.
+ *
+ * On Windows `bash` also resolves to the WSL app-execution alias ahead of Git
+ * Bash, and that alias either has no distribution installed or cannot see the
+ * Windows temp path — so probe the real mechanism rather than inferring
  * capability from process.platform.
  */
-function hasUsableBash() {
+function resolveBash() {
     const probePath = path.join(harnessDir, 'probe.sh');
-    writeFileSync(probePath, '#!/usr/bin/env bash\nset -euo pipefail\necho ok\n');
+    writeFileSync(probePath, 'set -euo pipefail\nprintf %s "$BASH"\n');
 
     try {
         const stdout = execFileSync('bash', [probePath], {
             encoding: 'utf8',
             stdio: ['ignore', 'pipe', 'ignore'],
         });
-        return stdout.trim() === 'ok';
+        return stdout.trim() || null;
     } catch {
-        return false;
+        return null;
     }
 }
+
+const bashPath = resolveBash();
 
 // CI runs unit tests on ubuntu-latest, so this only spares Windows contributors
 // a wall of failures that say nothing about the bootstrap. The source-level
 // checks below still run everywhere.
-const describeShell = hasUsableBash() ? describe : describe.skip;
+const describeShell = bashPath ? describe : describe.skip;
 
 let glibcRootCounter = 0;
 
@@ -95,16 +104,17 @@ function glibcReady({ grun, linker }) {
         writeFileSync(path.join(glibcRoot, 'lib', 'ld-linux-aarch64.so.1'), '');
     }
 
-    // A bare PATH keeps a real grun on the developer's machine from deciding the
-    // outcome, and keeps `command -v` available via bash's builtin lookup.
+    // An empty PATH keeps a real grun on the developer's machine from deciding
+    // the outcome. termux_glibc_runner_path only needs `command -v`, which is a
+    // bash builtin, so nothing here depends on PATH being populated.
     const env = {
         ...process.env,
-        PATH: grun ? `${fakeBinDir}:${path.dirname(process.execPath)}` : path.dirname(process.execPath),
+        PATH: grun ? fakeBinDir : '',
         TERMUX_PREFIX: path.join(glibcRoot, 'no-such-prefix'),
         TERMUX_GLIBC_ROOT: glibcRoot,
     };
 
-    return execFileSync('bash', [harnessPath], { env, encoding: 'utf8' }).trim();
+    return execFileSync(bashPath, [harnessPath], { env, encoding: 'utf8' }).trim();
 }
 
 describeShell('install-prerequisites.sh termux_glibc_ready', () => {
