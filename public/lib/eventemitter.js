@@ -23,6 +23,20 @@ if (typeof Array.prototype.indexOf === 'function') {
 };
 
 
+/**
+ * Checks if event tracing is enabled.
+ * SillyBunny: iOS WebKit private browsing throws on localStorage access, which
+ * would otherwise abort the whole emit and every startup stage awaiting it.
+ * @returns {boolean} True if event tracing is enabled
+ */
+function isEventTracingEnabled() {
+    try {
+        return localStorage.getItem('eventTracing') === 'true';
+    } catch (error) {
+        return false;
+    }
+}
+
 /* Polyfill EventEmitter. */
 /**
  * Creates an event emitter.
@@ -129,7 +143,7 @@ EventEmitter.prototype.removeListener = function (event, listener) {
  */
 EventEmitter.prototype.emit = async function (event) {
     let args = [].slice.call(arguments, 1);
-    if (localStorage.getItem('eventTracing') === 'true') {
+    if (isEventTracingEnabled()) {
         console.trace('Event emitted: ' + event, args);
     } else {
         console.debug('Event emitted: ' + event);
@@ -159,7 +173,7 @@ EventEmitter.prototype.emit = async function (event) {
 
 EventEmitter.prototype.emitAndWait = function (event) {
     let args = [].slice.call(arguments, 1);
-    if (localStorage.getItem('eventTracing') === 'true') {
+    if (isEventTracingEnabled()) {
         console.trace('Event emitted: ' + event, args);
     } else {
         console.debug('Event emitted: ' + event);

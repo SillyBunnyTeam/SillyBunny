@@ -12,8 +12,21 @@
     var MAX_BOOT_TIMEOUT_MS = 90000;
     var bootStartedAt = Date.now();
 
-    var THIRD_PARTY_EXTENSION_PATH = '/scripts/extensions/third-party/';
+    // SillyBunny: matched without a leading slash so relative extension URLs are recognised too.
+    var THIRD_PARTY_EXTENSION_PATH = 'scripts/extensions/third-party/';
     var isBootGuardApplicable = isIOSWebKitBrowser();
+
+    // SillyBunny: jQuery rethrows whatever an async ready callback rejected with,
+    // so startup failures often arrive as message-less objects such as a jqXHR.
+    // These are the fields worth reading before falling back to enumeration.
+    var ERROR_DETAIL_KEYS = ['name', 'code', 'status', 'statusText', 'readyState', 'type', 'url', 'responseText'];
+    var MAX_ERROR_VALUE_LENGTH = 200;
+    var MAX_ERROR_DETAIL_LENGTH = 800;
+
+    // SillyBunny: a rejected jqXHR does not carry its own URL, so failing requests are
+    // tracked separately to name the endpoint that broke startup.
+    var MAX_TRACKED_REQUEST_FAILURES = 5;
+    var failedRequests = [];
 
     function isIOSWebKitBrowser() {
         try {
@@ -40,6 +53,77 @@
         }
     }
 
+    function truncate(value, limit) {
+        var text = String(value);
+        return text.length > limit ? text.slice(0, limit) + '...' : text;
+    }
+
+    function describeErrorValue(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (typeof value === 'object' || typeof value === 'function') {
+            return '';
+        }
+
+        return truncate(value, MAX_ERROR_VALUE_LENGTH);
+    }
+
+    // SillyBunny: `String(plainObject)` renders as "[object Object]", which hides
+    // every useful detail. Enumerate the value instead so iOS boot reports name the
+    // actual failure (for example an aborted jqXHR with status 0).
+    function describeErrorObject(error) {
+        var parts = [];
+        var seen = {};
+
+        function push(key, value) {
+            var text = describeErrorValue(value);
+
+            if (!text || seen[key]) {
+                return;
+            }
+
+            seen[key] = true;
+            parts.push(key + ': ' + text);
+        }
+
+        for (var index = 0; index < ERROR_DETAIL_KEYS.length; index++) {
+            try {
+                push(ERROR_DETAIL_KEYS[index], error[ERROR_DETAIL_KEYS[index]]);
+            } catch (_error) {
+                // Accessor properties can throw on cross-origin or revoked objects.
+            }
+        }
+
+        if (!parts.length) {
+            try {
+                var keys = Object.keys(error);
+
+                for (var keyIndex = 0; keyIndex < keys.length && parts.length < ERROR_DETAIL_KEYS.length; keyIndex++) {
+                    push(keys[keyIndex], error[keys[keyIndex]]);
+                }
+            } catch (_error) {
+                // Non-enumerable or exotic objects simply stay undescribed.
+            }
+        }
+
+        var constructorName = '';
+        try {
+            constructorName = String(error.constructor && error.constructor.name || '');
+        } catch (_error) {
+            constructorName = '';
+        }
+
+        var prefix = 'Thrown ' + (constructorName || 'object');
+
+        if (!parts.length) {
+            return prefix + ' with no readable details.';
+        }
+
+        return truncate(prefix + ' { ' + parts.join(', ') + ' }', MAX_ERROR_DETAIL_LENGTH);
+    }
+
     function describeError(error) {
         try {
             if (!error) {
@@ -58,9 +142,101 @@
                 return String(error.message);
             }
 
+            if (typeof error === 'object') {
+                return describeErrorObject(error);
+            }
+
             return String(error);
         } catch (_error) {
             return 'Unable to read startup error details.';
+        }
+    }
+
+    function recordRequestFailure(method, url, status) {
+        if (failedRequests.length >= MAX_TRACKED_REQUEST_FAILURES) {
+            return;
+        }
+
+        failedRequests.push(truncate(String(method || 'GET') + ' ' + String(url) + ' -> ' + String(status), MAX_ERROR_VALUE_LENGTH));
+    }
+
+    function describeRequestFailures() {
+        if (!failedRequests.length) {
+            return '';
+        }
+
+        return truncate('Failed requests during startup:\n' + failedRequests.join('\n'), MAX_ERROR_DETAIL_LENGTH);
+    }
+
+    // SillyBunny: a rejected jqXHR carries no stack, message or URL, so jQuery rethrows it
+    // from its own source and the failure looks like a SillyBunny bug. When the only requests
+    // that failed belong to a third-party extension, blame the extension instead.
+    function isThirdPartyRequestFailure(error) {
+        if (!error || typeof error !== 'object' || error.stack || error.message) {
+            return false;
+        }
+
+        if (!failedRequests.length) {
+            return false;
+        }
+
+        for (var index = 0; index < failedRequests.length; index++) {
+            if (!isThirdPartyExtensionSource(failedRequests[index])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SillyBunny: jQuery AJAX goes through XMLHttpRequest, so watching it here captures
+    // the URL and status of the request behind an otherwise anonymous jqXHR rejection.
+    function trackFailingRequests() {
+        try {
+            var XHR = window.XMLHttpRequest;
+
+            if (!XHR || !XHR.prototype || !XHR.prototype.open || !XHR.prototype.send) {
+                return;
+            }
+
+            var originalOpen = XHR.prototype.open;
+            var originalSend = XHR.prototype.send;
+
+            XHR.prototype.open = function (method, url) {
+                try {
+                    this.sillyBunnyBootMethod = method;
+                    this.sillyBunnyBootUrl = url;
+                } catch (_error) {
+                    // Exotic instances simply stay unlabeled.
+                }
+
+                return originalOpen.apply(this, arguments);
+            };
+
+            XHR.prototype.send = function () {
+                try {
+                    var request = this;
+                    request.addEventListener('loadend', function () {
+                        if (bootCompleted) {
+                            return;
+                        }
+
+                        var status = Number(request.status || 0);
+
+                        if (status !== 0 && status < 400) {
+                            return;
+                        }
+
+                        recordRequestFailure(request.sillyBunnyBootMethod, request.sillyBunnyBootUrl, status || 'network error');
+                    });
+                } catch (_error) {
+                    // Never let diagnostics break startup.
+                }
+
+                return originalSend.apply(this, arguments);
+            };
+        } catch (_error) {
+            // Never let diagnostics break startup.
         }
     }
 
@@ -74,6 +250,12 @@
 
         if (errorDetails && details.indexOf(errorDetails) === -1) {
             details += '\n' + errorDetails;
+        }
+
+        var requestDetails = describeRequestFailures();
+
+        if (requestDetails && details.indexOf(requestDetails) === -1) {
+            details += '\n' + requestDetails;
         }
 
         lastFailure = details;
@@ -277,6 +459,8 @@
         return;
     }
 
+    trackFailingRequests();
+
     window.addEventListener('error', function (event) {
         if (bootCompleted) {
             return;
@@ -305,6 +489,11 @@
             return;
         }
 
+        if (isThirdPartyRequestFailure(event.error)) {
+            console.warn('SillyBunny boot guard ignored a third-party extension request failure.', failedRequests);
+            return;
+        }
+
         var source = event.filename ? ' at ' + event.filename + ':' + event.lineno + ':' + event.colno : '';
         recordFailure(String(event.message || 'Startup script error') + source, event.error);
     }, true);
@@ -316,6 +505,11 @@
 
         if (isThirdPartyExtensionSource(describeError(event.reason))) {
             console.warn('SillyBunny boot guard ignored a third-party extension startup rejection.', event.reason);
+            return;
+        }
+
+        if (isThirdPartyRequestFailure(event.reason)) {
+            console.warn('SillyBunny boot guard ignored a third-party extension request failure.', failedRequests);
             return;
         }
 

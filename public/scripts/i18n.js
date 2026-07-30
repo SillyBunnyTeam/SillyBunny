@@ -302,7 +302,7 @@ function addLanguagesToDropdown() {
         uiLanguageSelects.append(option);
     }
 
-    const selectedLanguage = localStorage.getItem(storageKey);
+    const selectedLanguage = safeGetLocalStorageItem(storageKey);
     if (selectedLanguage) {
         uiLanguageSelects.val(selectedLanguage);
     }
@@ -335,7 +335,7 @@ export async function initLocales() {
         attributeFilter: ['data-i18n'],
     });
 
-    if (localStorage.getItem('trackDynamicTranslate') === 'true' && isSupportedNonEnglish()) {
+    if (safeGetLocalStorageItem('trackDynamicTranslate') === 'true' && isSupportedNonEnglish()) {
         trackMissingDynamicTranslate = new Set();
     }
 

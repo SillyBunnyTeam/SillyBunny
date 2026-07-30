@@ -509,7 +509,13 @@ function restoreUserInput() {
         return;
     }
 
-    const userInput = localStorage.getItem(getUserInputKey());
+    let userInput = null;
+    try {
+        userInput = localStorage.getItem(getUserInputKey());
+    } catch {
+        // Ignore storage read failures in Safari Private Browsing.
+    }
+
     if (userInput) {
         $('#send_textarea').val(userInput)[0].dispatchEvent(new Event('input', { bubbles: true }));
     }

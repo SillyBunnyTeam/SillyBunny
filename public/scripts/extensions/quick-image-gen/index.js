@@ -21321,10 +21321,10 @@ async function registerQigSlashCommands() {
 
     try {
         const [commandModule, parserModule, argumentModule, enumModule] = await Promise.all([
-            import("../../../slash-commands/SlashCommand.js"),
-            import("../../../slash-commands/SlashCommandParser.js"),
-            import("../../../slash-commands/SlashCommandArgument.js"),
-            import("../../../slash-commands/SlashCommandEnumValue.js"),
+            import("../../slash-commands/SlashCommand.js"),
+            import("../../slash-commands/SlashCommandParser.js"),
+            import("../../slash-commands/SlashCommandArgument.js"),
+            import("../../slash-commands/SlashCommandEnumValue.js"),
         ]);
         const { SlashCommand } = commandModule;
         const { SlashCommandParser } = parserModule;
