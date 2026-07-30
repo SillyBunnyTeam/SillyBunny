@@ -164,6 +164,7 @@ lorum ipsum
 ### Merged Staging PRs
 - PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
 - PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
+- PR #704 (2026-07-30) `fix(ios): fix iOS crash startup logs not being detailed enough`
 
 ## v1.6.5
 
