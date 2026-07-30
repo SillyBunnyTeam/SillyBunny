@@ -32,8 +32,12 @@ OS_NAME="$(uname -s 2>/dev/null || echo unknown)"
 BUN_INSTALL_DIR="${BUN_INSTALL:-$HOME/.bun}"
 TERMUX_PREFIX_DEFAULT='/data/data/com.termux/files/usr'
 TERMUX_PREFIX="${PREFIX:-$TERMUX_PREFIX_DEFAULT}"
+TERMUX_GLIBC_ROOT="${GLIBC_ROOT:-$TERMUX_PREFIX/glibc}"
 TERMUX_BUN_WRAPPER_MARKER='SillyBunny Termux Bun wrapper'
-TERMUX_BUN_MANAGER_URL='https://raw.githubusercontent.com/Happ1ness-dev/bun-termux/main/helper_scripts/bun-termux-manager'
+# Pinned to bun-termux-manager v1.0.1. This script is piped into bash, so it is
+# tracked by commit rather than by branch.
+TERMUX_BUN_MANAGER_COMMIT='b9f47733b0198d59dc9775a487a8a731cde322cb'
+TERMUX_BUN_MANAGER_URL="https://raw.githubusercontent.com/Happ1ness-dev/bun-termux/$TERMUX_BUN_MANAGER_COMMIT/helper_scripts/bun-termux-manager"
 TERMUX_BUN_SOURCE_DIR="${TERMUX_BUN_SOURCE_DIR:-$HOME/bun-termux}"
 TERMUX_BUN_SHIM_PATH="$BUN_INSTALL_DIR/lib/bun-shim.so"
 
@@ -206,27 +210,48 @@ termux_glibc_runner_path() {
     return 1
 }
 
+# bun-termux needs the glibc dynamic linker, not just the 'grun' launcher, and it
+# aborts on a missing linker with an error that names glibc-repo/glibc-runner as
+# unavailable even when 'grun' resolves fine. Check both signals so a half
+# provisioned glibc is repaired here instead of failing later inside bun-termux.
+termux_glibc_ready() {
+    termux_glibc_runner_path >/dev/null 2>&1 \
+        && compgen -G "$TERMUX_GLIBC_ROOT/lib/ld-linux-*.so.*" >/dev/null 2>&1
+}
+
 install_termux_glibc_runner() {
     if ! is_termux; then
         return 0
     fi
 
-    if termux_glibc_runner_path >/dev/null 2>&1; then
+    if termux_glibc_ready; then
         return 0
     fi
 
     echo "Termux detected. Installing glibc support for Bun..."
     if have_command pkg; then
-        pkg install -y glibc-repo
-        pkg install -y glibc-runner
+        pkg update -y || true
+        if ! pkg install -y glibc-repo || ! pkg install -y glibc-runner; then
+            echo "Termux could not install the glibc packages Bun depends on." >&2
+            echo "Run 'pkg update && pkg install glibc-repo glibc-runner' manually to see why, then rerun this launcher." >&2
+            echo "To start now without Bun, use Node.js instead: bash start-termux-node.sh" >&2
+            exit 1
+        fi
     else
         install_linux_packages glibc-repo
         install_linux_packages glibc-runner
     fi
     refresh_known_paths
 
-    if ! termux_glibc_runner_path >/dev/null 2>&1; then
-        echo "Termux glibc support installation finished, but 'grun' is still unavailable in this session." >&2
+    if ! termux_glibc_ready; then
+        echo "Termux glibc support installation finished, but Bun still cannot run through it in this session." >&2
+        if ! termux_glibc_runner_path >/dev/null 2>&1; then
+            echo "'grun' is unavailable on PATH." >&2
+        else
+            echo "'grun' resolves, but no glibc dynamic linker was found in '$TERMUX_GLIBC_ROOT/lib'." >&2
+            echo "Reinstall with 'pkg install --reinstall glibc-runner', or set GLIBC_ROOT if your glibc lives elsewhere." >&2
+        fi
+        echo "To start now without Bun, use Node.js instead: bash start-termux-node.sh" >&2
         exit 1
     fi
 }
@@ -240,9 +265,9 @@ install_termux_bun_manager() {
     ensure_download_tool
 
     if have_command curl; then
-        curl -fsSL "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
+        curl -fsSL "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" GLIBC_ROOT="$TERMUX_GLIBC_ROOT" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
     else
-        wget -qO- "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
+        wget -qO- "$TERMUX_BUN_MANAGER_URL" | BUN_INSTALL="$BUN_INSTALL_DIR" GLIBC_ROOT="$TERMUX_GLIBC_ROOT" bash -s install --source "$TERMUX_BUN_SOURCE_DIR"
     fi
 }
 
@@ -306,12 +331,16 @@ repair_termux_bun() {
         return 0
     fi
 
+    # Provision glibc first. bun-termux bails out early when the dynamic linker
+    # is missing, so delegating this to it turns a fixable glibc problem into an
+    # opaque wrapper failure.
+    install_termux_glibc_runner
+
     if install_termux_bun_manager; then
         refresh_known_paths
         have_working_termux_bun && return 0
     fi
 
-    install_termux_glibc_runner
     configure_termux_bun_wrapper || return 1
     refresh_known_paths
     have_working_bun
@@ -419,21 +448,14 @@ install_bun() {
         exit 1
     fi
 
+    # Everything below is the non-Termux path; the branch above always returns or exits.
     if have_working_bun; then
-        return
-    fi
-
-    if repair_termux_bun; then
         return
     fi
 
     echo "Bun was not found. Installing it automatically..."
 
     ensure_download_tool
-
-    if is_termux; then
-        install_termux_glibc_runner
-    fi
 
     if have_command curl; then
         curl -fsSL https://bun.sh/install | bash
@@ -443,17 +465,8 @@ install_bun() {
 
     refresh_known_paths
 
-    if is_termux; then
-        configure_termux_bun_wrapper || true
-        refresh_known_paths
-    fi
-
     if ! have_working_bun; then
         echo "Bun installation finished, but 'bun' is still unavailable in this session." >&2
-        if is_termux; then
-            echo "Termux needs Bun to run through glibc-runner. The launcher tried to install and wire that up automatically." >&2
-            echo "If it still fails, verify 'pkg install glibc-repo glibc-runner' works in this Termux session, then rerun the launcher." >&2
-        fi
         echo "Install Bun manually from https://bun.sh/" >&2
         exit 1
     fi
