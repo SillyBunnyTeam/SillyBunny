@@ -11164,7 +11164,10 @@ export async function openCharacterChat(file_name) {
         $('#selected_chat_pole').val(previousChatName);
         return;
     }
-    await updateRemoteChatName(this_chid, file_name);
+    // SillyBunny: reopening the chat that is already recorded has nothing to persist.
+    if (file_name !== previousChatName) {
+        await updateRemoteChatName(this_chid, file_name);
+    }
 }
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
@@ -15888,17 +15891,18 @@ export async function updateRemoteChatName(characterId, newName) {
     if (!character) {
         throw new Error(`Character not found for ID: ${characterId}`);
     }
-    const mergeRequest = {
-        avatar: character.avatar,
-        chat: newName,
-    };
-    const mergeResponse = await fetch('/api/characters/merge-attributes', {
+    // SillyBunny: the last opened chat lives in a sidecar, not the card, so
+    // switching chats no longer rewrites the character file.
+    const response = await fetch('/api/characters/last-chat', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify(mergeRequest),
+        body: JSON.stringify({
+            avatar: character.avatar,
+            chat: newName,
+        }),
     });
-    if (!mergeResponse.ok) {
-        throw new Error(`Failed to save character chat name: ${mergeResponse.statusText}`);
+    if (!response.ok) {
+        throw new Error(`Failed to save character chat name: ${response.statusText}`);
     }
     character.chat = newName;
 }

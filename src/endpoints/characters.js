@@ -26,6 +26,7 @@ import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
+import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
 import {
     clearChatRecoveryState,
     createCharacterChatTarget,
@@ -349,9 +350,16 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
     _.unset(update, 'json_data');
     _.unset(character, 'json_data');
 
+    const beforeMerge = structuredClone(character);
     character = deepMerge(character, update);
     applyUnsetSentinels(character, update);
     deleteUnsetSentinels(character);
+
+    // SillyBunny: writing re-encodes the whole PNG and drops the character caches,
+    // so a merge that changed nothing must not touch the file.
+    if (_.isEqual(character, beforeMerge)) {
+        return { ok: true, unchanged: true };
+    }
 
     const validator = new TavernCardValidator(character);
     if (!validator.validate()) {
@@ -1228,6 +1236,9 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         if (rawOldData === undefined) throw new Error('Failed to read character file');
 
         const oldData = getCharaCardV2(JSON.parse(rawOldData), request.user.directories);
+        // SillyBunny: carry the sidecar's last opened chat onto the new avatar name,
+        // falling back to the card for installs that predate the sidecar.
+        prepareEntityLastChatMove(dateAddedRoot, oldAvatarName, newAvatarName, oldData?.chat);
         _.set(oldData, 'data.name', newName);
         _.set(oldData, 'name', newName);
         const newData = JSON.stringify(oldData);
@@ -1271,6 +1282,7 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
                 try {
                     fs.rmSync(newAvatarPath, { force: true });
                     removeEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
+                    removeEntityLastChat(dateAddedRoot, newAvatarName);
                 } catch (rollbackError) {
                     console.error('Could not clean up date-added metadata after a failed character rename.', rollbackError);
                 }
@@ -1522,6 +1534,29 @@ router.post('/merge-attributes', getFileNameValidationFunction('avatar'), async 
     }
 });
 
+// SillyBunny: recording which chat a character last had open must not rewrite the
+// card. Upstream routes this through /merge-attributes, which re-encodes the PNG
+// on every chat switch and resets the file's timestamps.
+router.post('/last-chat', getFileNameValidationFunction('avatar'), async function (request, response) {
+    try {
+        const avatar = request.body?.avatar;
+        if (typeof avatar !== 'string' || !avatar) {
+            return response.status(400).send({ message: 'No avatar provided.' });
+        }
+
+        const chatName = request.body?.chat;
+        if (chatName !== undefined && chatName !== null && typeof chatName !== 'string') {
+            return response.status(400).send({ message: 'Invalid chat name provided.' });
+        }
+
+        setEntityLastChat(getEntityDateAddedRoot(request.user.directories), avatar, chatName ?? '');
+        return response.sendStatus(200);
+    } catch (exception) {
+        console.error('Could not save the last opened chat.', exception);
+        return response.status(500).send({ message: 'Unexpected error while saving the last opened chat.' });
+    }
+});
+
 router.post('/delete', validateAvatarUrlMiddleware, async function (request, response) {
     if (!request.body || !request.body.avatar_url) {
         return response.sendStatus(400);
@@ -1597,6 +1632,11 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         );
     } catch (metadataError) {
         console.error('Could not remove date-added metadata after character deletion.', metadataError);
+    }
+    try {
+        removeEntityLastChat(getEntityDateAddedRoot(request.user.directories), request.body.avatar_url);
+    } catch (metadataError) {
+        console.error('Could not remove last-chat metadata after character deletion.', metadataError);
     }
     invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
 
@@ -1678,8 +1718,12 @@ router.post('/all', async function (request, response) {
             fileStat: fileStats.get(file),
         }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
+        // SillyBunny: the sidecar owns the last opened chat; the card's own value is
+        // only a fallback for installs that predate it.
+        const lastChatByFile = readEntityLastChats(getEntityDateAddedRoot(request.user.directories));
         for (const character of data) {
             character.date_added = dateAddedByFile.get(character.avatar);
+            character.chat = lastChatByFile.get(character.avatar) ?? character.chat;
         }
         return response.send(data);
     } catch (err) {
@@ -1718,6 +1762,8 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
         if (data.date_added === undefined) {
             return response.sendStatus(404);
         }
+        // SillyBunny: see the sidecar overlay in POST /all.
+        data.chat = getEntityLastChat(getEntityDateAddedRoot(request.user.directories), item) ?? data.chat;
 
         return response.send(data);
     } catch (err) {
