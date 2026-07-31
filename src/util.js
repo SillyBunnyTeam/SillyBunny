@@ -2071,8 +2071,9 @@ export function flattenSchema(schema, api) {
  * @param {string} filePath
  * @param {string|Buffer} data
  * @param {import('node:fs').WriteFileOptions} [options]
+ * @param {{preserveFileIdentity?: boolean}} [writeOptions]
  */
-export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined) {
+export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false } = {}) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     const retryDelaysMs = [50, 125, 250];
@@ -2100,6 +2101,29 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
     //Ensure the directory exists.
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // SillyBunny: existing character cards must keep their filesystem identity and creation metadata.
+    if (preserveFileIdentity) {
+        const dataLength = typeof data === 'string'
+            ? Buffer.byteLength(data, typeof options === 'string' ? options : options?.encoding || 'utf8')
+            : data.byteLength;
+        const writeInPlace = () => {
+            const fileDescriptor = fs.openSync(filePath, 'r+');
+            try {
+                fs.writeFileSync(fileDescriptor, data, options);
+                fs.ftruncateSync(fileDescriptor, dataLength);
+                fs.fsyncSync(fileDescriptor);
+            } finally {
+                fs.closeSync(fileDescriptor);
+            }
+        };
+
+        if (runWithWindowsRetries(writeInPlace)) {
+            return;
+        }
+
+        throw lastError;
     }
 
     if (runWithWindowsRetries(() => writeFileAtomicSync(filePath, data, options))) {

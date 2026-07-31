@@ -39,6 +39,60 @@ afterEach(() => {
 });
 
 describe('tryWriteFileSync atomic fallback', () => {
+    test('writes directly when the target must keep its filesystem identity', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'before', 'utf8');
+        const inodeBefore = fs.statSync(filePath).ino;
+        mockWritableTarget();
+        const writeFileSpy = jest.spyOn(fs, 'writeFileSync');
+        const renameSpy = jest.spyOn(fs, 'renameSync');
+
+        tryWriteFileSync(filePath, 'after', 'utf8', { preserveFileIdentity: true });
+
+        expect(writeFileSpy).toHaveBeenCalledTimes(1);
+        expect(writeFileSpy.mock.calls[0].slice(1)).toEqual(['after', 'utf8']);
+        expect(renameSpy).not.toHaveBeenCalled();
+        expect(fs.statSync(filePath).ino).toBe(inodeBefore);
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('after');
+    });
+
+    test('retries identity-preserving writes without replacing the target', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'before', 'utf8');
+        mockWritableTarget();
+        const openSync = fs.openSync.bind(fs);
+        let failures = 0;
+        const openSpy = jest.spyOn(fs, 'openSync').mockImplementation((target, flags) => {
+            if (target === filePath && failures++ < 2) {
+                throw createWindowsFileLockError('EBUSY');
+            }
+            return openSync(target, flags);
+        });
+        const renameSpy = jest.spyOn(fs, 'renameSync');
+
+        tryWriteFileSync(filePath, 'after', 'utf8', { preserveFileIdentity: true });
+
+        expect(openSpy).toHaveBeenCalledTimes(3);
+        expect(renameSpy).not.toHaveBeenCalled();
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('after');
+    });
+
+    test('does not replace the target when direct retries are exhausted', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'before', 'utf8');
+        mockWritableTarget();
+        jest.spyOn(fs, 'openSync').mockImplementation(() => {
+            throw createWindowsFileLockError('EPERM');
+        });
+        const renameSpy = jest.spyOn(fs, 'renameSync');
+        const copyFileSpy = jest.spyOn(fs, 'copyFileSync');
+
+        expect(() => tryWriteFileSync(filePath, 'after', 'utf8', { preserveFileIdentity: true })).toThrow('EPERM');
+
+        expect(renameSpy).not.toHaveBeenCalled();
+        expect(copyFileSpy).not.toHaveBeenCalled();
+    });
+
     test('replaces the target via a temp file when atomic writes keep failing on Windows', () => {
         const filePath = createTargetPath();
         mockWritableTarget();
