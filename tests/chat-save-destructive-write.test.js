@@ -145,6 +145,31 @@ describe('destructive chat save rejection', () => {
         expect(countRows(fs.readFileSync(activePath, 'utf8'))).toBe(10);
     });
 
+    test('an unchanged save leaves the chat file and its recovery snapshot untouched', async () => {
+        const { latestPath } = getChatRecoveryPaths(recoveryTarget);
+        const unchanged = [header({ integrity: 'disk-integrity' }), ...populatedChat(8).slice(1)];
+        const serialized = serialize(unchanged);
+        fs.writeFileSync(activePath, serialized, 'utf8');
+        const beforeActive = fs.statSync(activePath);
+
+        // The first save has nothing to change, so it only fills in the snapshot.
+        await expect(save(unchanged)).resolves.toEqual({ integrity: 'disk-integrity' });
+        const afterActive = fs.statSync(activePath);
+        const beforeSnapshot = fs.statSync(latestPath);
+
+        // Writes rename a temp file over the target, so a surviving inode is the real assertion.
+        expect(afterActive.ino).toBe(beforeActive.ino);
+        expect(afterActive.mtimeMs).toBe(beforeActive.mtimeMs);
+        expect(fs.readFileSync(activePath, 'utf8')).toBe(serialized);
+        expect(fs.readFileSync(latestPath, 'utf8')).toBe(serialized);
+
+        // A repeat open has nothing left to write anywhere.
+        await expect(save(unchanged)).resolves.toEqual({ integrity: 'disk-integrity' });
+        expect(fs.statSync(activePath).ino).toBe(beforeActive.ino);
+        expect(fs.statSync(latestPath).ino).toBe(beforeSnapshot.ino);
+        expect(fs.readdirSync(backupDirectory).filter(f => f.startsWith('chat_pre_write_'))).toHaveLength(0);
+    });
+
     test('a refused save does not consume the pre-write backup ring', async () => {
         fs.writeFileSync(activePath, serialize(populatedChat(8)), 'utf8');
         const preWriteCount = () => fs.readdirSync(backupDirectory).filter(f => f.startsWith('chat_pre_write_')).length;

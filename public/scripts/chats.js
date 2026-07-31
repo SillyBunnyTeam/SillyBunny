@@ -1783,7 +1783,9 @@ function ensureAttachmentsExist() {
  * @returns {FileAttachment[]} List of attachments
  */
 export function getDataBankAttachments(includeDisabled = false) {
-    ensureAttachmentsExist();
+    // SillyBunny: reading must not create chat_metadata.attachments. Every reader below already
+    // falls back to an empty list, and an empty array written here dirties a chat just by looking
+    // at it, which costs a full chat-file rewrite on the next save.
     const globalAttachments = extension_settings.attachments ?? [];
     const chatAttachments = chat_metadata.attachments ?? [];
     const characterAttachments = extension_settings.character_attachments?.[characters[this_chid]?.avatar] ?? [];
@@ -1798,8 +1800,7 @@ export function getDataBankAttachments(includeDisabled = false) {
  * @returns {FileAttachment[]} List of attachments
  */
 export function getDataBankAttachmentsForSource(source, includeDisabled = true) {
-    ensureAttachmentsExist();
-
+    // SillyBunny: see getDataBankAttachments. Reading is not a reason to write to chat_metadata.
     function getBySource() {
         switch (source) {
             case ATTACHMENT_SOURCE.GLOBAL:

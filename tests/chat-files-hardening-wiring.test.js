@@ -47,7 +47,7 @@ describe('chat file hardening wiring', () => {
             readSource('../src/endpoints/groups.js'),
         ]);
 
-        expect(source).toContain('writeLatestChatSnapshot(recoveryTarget, jsonlData);');
+        expect(source).toContain('writeLatestChatSnapshot(recoveryTarget, persistedChatData);');
         expect(source).toContain('loadActiveChatWithRecovery(target)');
         expect(source).toContain('rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget)');
         expect(source).toContain('markChatDeleted(recoveryTarget)');

@@ -415,9 +415,19 @@ function isTombstoned(target) {
     return true;
 }
 
+function isStoredSnapshotCurrent(latestPath, data) {
+    const existing = readRegularFile(latestPath);
+    return existing.status === 'ok' && toBuffer(existing.data).equals(toBuffer(data));
+}
+
 function storeValidSnapshot(target, parsed) {
     const { latestPath, tombstonePath } = getChatRecoveryPaths(target);
-    atomicWriteRecoveryFile(target, latestPath, parsed.data);
+    // SillyBunny: every chat load refreshes this snapshot, so an unchanged one would mean a disk
+    // write on each open. Only the redundant write is dropped; clearing the tombstone and pruning
+    // still run, because skipping those would leave a recoverable chat looking deleted.
+    if (!isStoredSnapshotCurrent(latestPath, parsed.data)) {
+        atomicWriteRecoveryFile(target, latestPath, parsed.data);
+    }
     removeRegularFile(tombstonePath);
     pruneRecoveryStates(target);
 }

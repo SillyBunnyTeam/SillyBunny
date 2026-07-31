@@ -224,6 +224,45 @@ describe('snapshot and recovery operations', () => {
         expect(isChatRecoverable(target)).toBe(true);
     });
 
+    test('reuses an identical snapshot instead of rewriting it', () => {
+        const target = characterTarget();
+        const serialized = chatData('steady');
+        const paths = getChatRecoveryPaths(target);
+        writeActive(target, serialized);
+
+        loadActiveChatWithRecovery(target);
+        const before = fs.statSync(paths.latestPath);
+
+        loadActiveChatWithRecovery(target);
+        const after = fs.statSync(paths.latestPath);
+
+        // Snapshots are written by renaming a temp file over the target, so a surviving inode is
+        // what proves a repeat chat open did not touch the sidecar.
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(fs.readFileSync(paths.latestPath)).toEqual(serialized);
+    });
+
+    test('clears a stale tombstone even when the snapshot is already current', () => {
+        const target = characterTarget();
+        const serialized = chatData('survived-deletion');
+        const paths = getChatRecoveryPaths(target);
+        writeActive(target, serialized);
+
+        // A deletion that stored its snapshot but failed to remove the active file leaves a
+        // tombstone over a live chat. Skipping the whole snapshot step would strand it.
+        markChatDeleted(target);
+        expect(fs.existsSync(paths.tombstonePath)).toBe(true);
+        const before = fs.statSync(paths.latestPath);
+
+        expect(loadActiveChatWithRecovery(target)).toMatchObject({ status: 'ok', source: 'active' });
+
+        expect(fs.existsSync(paths.tombstonePath)).toBe(false);
+        expect(isChatRecoverable(target)).toBe(true);
+        expect(fs.readFileSync(paths.latestPath)).toEqual(serialized);
+        expect(fs.statSync(paths.latestPath).ino).toBe(before.ino);
+    });
+
     test('valid active data seeds the latest snapshot on load', () => {
         const target = characterTarget();
         const serialized = chatData('active');

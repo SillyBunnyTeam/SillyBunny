@@ -128,6 +128,12 @@ function normalizeSerializedChatForBackupComparison(data) {
     }
 }
 
+function getSerializedChatIntegrity(serializedChat) {
+    const [firstLine] = String(serializedChat ?? '').split('\n', 1);
+    const integrity = tryParse(firstLine)?.chat_metadata?.integrity;
+    return typeof integrity === 'string' && integrity ? integrity : '';
+}
+
 function getLatestBackupFilePath(directory, prefix) {
     const backupFiles = fs.readdirSync(directory)
         .filter(fileName => fileName.startsWith(prefix))
@@ -871,6 +877,12 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
         ...savedChatSizeDetails,
     });
 
+    // SillyBunny: set when the payload matches the file byte for byte apart from the rotating
+    // integrity slug. The save then keeps the bytes already on disk, so the recovery snapshot and the
+    // regular backup below mirror the file rather than a payload that was never written.
+    let unchangedChatData = null;
+    let unchangedIntegrity;
+
     if (fs.existsSync(filePath)) {
         const currentChatData = tryReadFileSync(filePath);
 
@@ -890,35 +902,55 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
                 throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
             }
 
-            backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
+            // SillyBunny: a save that changes nothing must not touch the file. Writes go through an
+            // atomic temp-and-rename, so replacing a chat with its own contents swaps the inode and
+            // resets the file's creation date for no gain. The integrity slug is excluded from the
+            // comparison because it is rotated on every save, which would otherwise mask every match.
+            // A file with no slug yet is left to write normally so that it gains one.
+            const existingIntegrity = getSerializedChatIntegrity(currentChatData);
+            if (existingIntegrity && normalizeSerializedChatForBackupComparison(jsonlData) === normalizeSerializedChatForBackupComparison(currentChatData)) {
+                unchangedChatData = currentChatData;
+                unchangedIntegrity = existingIntegrity;
+            } else {
+                backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
 
-            if (destructiveReason) {
-                console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
-            }
+                if (destructiveReason) {
+                    console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
+                }
 
-            if (skipIntegrityCheck) {
-                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
+                if (skipIntegrityCheck) {
+                    backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
+                }
             }
         }
     }
+
+    // SillyBunny: the regular backup still runs for an unchanged save. An agent run defers every
+    // backup and closes with one non-deferred save, which can land unchanged; skipping it there would
+    // leave the whole run without a backup. isDuplicateRegularChatBackup collapses the steady state.
+    const persistedChatData = unchangedChatData ?? jsonlData;
 
     if (isBackupEnabled && recoveryTarget) {
         // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
         // Destructive payloads are rejected above, so this cannot mirror a chat-destroying write.
         try {
-            writeLatestChatSnapshot(recoveryTarget, jsonlData);
+            writeLatestChatSnapshot(recoveryTarget, persistedChatData);
         } catch (error) {
             // Recovery storage is supplementary and must not prevent the authoritative chat write.
             console.warn('Failed to write the exact chat recovery snapshot; continuing with the active chat save.', error);
         }
     }
-    tryWriteFileSync(filePath, jsonlData);
+    if (unchangedChatData === null) {
+        tryWriteFileSync(filePath, jsonlData);
+    } else {
+        logBackupEvent('chat-save-skipped', { handle, chat: cardName, reason: 'unchanged', force: Boolean(skipIntegrityCheck), ...savedChatSizeDetails });
+    }
     if (!deferBackup) {
-        getBackupFunction(handle)(backupDirectory, cardName, jsonlData, CHAT_BACKUPS_PREFIX, handle);
+        getBackupFunction(handle)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
     } else {
         logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
-    return { integrity: nextIntegrity };
+    return { integrity: unchangedIntegrity ?? nextIntegrity };
 }
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {

@@ -155,7 +155,9 @@ describe('chat integrity rotation', () => {
         await fs.mkdir(backupDir);
         jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
 
-        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'same chat').map(JSON.stringify).join('\n'));
+        // The seeded chat differs from the first save so that save writes for real. The second save
+        // repeats its content and only rotates the slug, which is the duplicate this test is about.
+        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'seeded chat').map(JSON.stringify).join('\n'));
         const firstResult = await trySaveChat(
             chatWithIntegrity('valid-integrity', 'same chat'),
             chatFile,
@@ -270,6 +272,204 @@ describe('chat integrity rotation', () => {
         expect(postSaveBackups).toHaveLength(1);
         expect(preWriteBackups).toHaveLength(3);
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
+    });
+
+    test('leaves an unchanged chat file untouched and returns the integrity already on disk', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-save-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithIntegrity('disk-integrity', 'unchanged chat').map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, onDisk);
+        const before = await fs.stat(chatFile);
+
+        const result = await trySaveChat(
+            chatWithIntegrity('disk-integrity', 'unchanged chat'),
+            chatFile,
+            false,
+            'unchanged-save-user',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+        const after = await fs.stat(chatFile);
+
+        expect(result).toEqual({ integrity: 'disk-integrity' });
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+        // Writes rename a temp file over the target, so a surviving inode proves nothing was written.
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+
+        const backupFiles = await fs.readdir(backupDir);
+        expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
+    });
+
+    test('keeps a concurrent writer valid after an unchanged save', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-cas-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        await fs.writeFile(chatFile, chatWithIntegrity('shared-integrity', 'shared chat').map(JSON.stringify).join('\n'));
+
+        // Both tabs hold 'shared-integrity'. The first saves nothing, so the second must still be valid.
+        const noopResult = await trySaveChat(
+            chatWithIntegrity('shared-integrity', 'shared chat'),
+            chatFile,
+            false,
+            'cas-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(noopResult).toEqual({ integrity: 'shared-integrity' });
+
+        const editResult = await trySaveChat(
+            chatWithIntegrity('shared-integrity', 'edited by the second tab'),
+            chatFile,
+            false,
+            'cas-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(editResult.integrity).toEqual(expect.any(String));
+        expect(editResult.integrity).not.toBe('shared-integrity');
+
+        // The first tab is stale now that the content really changed.
+        await expect(trySaveChat(
+            chatWithIntegrity('shared-integrity', 'edited by the first tab'),
+            chatFile,
+            false,
+            'cas-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+    });
+
+    test('still rejects a stale writer whose payload matches the file', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-stale-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        await fs.writeFile(chatFile, chatWithIntegrity('current-integrity', 'same chat').map(JSON.stringify).join('\n'));
+
+        // The integrity check runs before the content comparison, so identical content cannot bypass it.
+        await expect(trySaveChat(
+            chatWithIntegrity('stale-integrity', 'same chat'),
+            chatFile,
+            false,
+            'stale-writer-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+    });
+
+    test('skips a forced overwrite that would rewrite identical content', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-forced-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = chatWithIntegrity('disk-integrity', 'forced but identical').map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, onDisk);
+        const before = await fs.stat(chatFile);
+
+        const result = await trySaveChat(
+            chatWithIntegrity('stale-integrity', 'forced but identical'),
+            chatFile,
+            true,
+            'forced-unchanged-user',
+            'Test Card',
+            backupDir,
+        );
+        jest.runOnlyPendingTimers();
+        const after = await fs.stat(chatFile);
+
+        // Forcing an overwrite of the same bytes only costs the file its identity, so it is skipped
+        // and the forcing client is resynced with the slug that is really on disk.
+        expect(result).toEqual({ integrity: 'disk-integrity' });
+        expect(after.ino).toBe(before.ino);
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+
+        const backupFiles = await fs.readdir(backupDir);
+        expect(backupFiles.filter(fileName => fileName.startsWith('chat_forced_overwrite_test_card_'))).toHaveLength(0);
+        expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
+    });
+
+    test('writes an otherwise unchanged chat that has no integrity slug yet', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-legacy-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        await fs.writeFile(chatFile, chatWithIntegrity(undefined, 'legacy chat').map(JSON.stringify).join('\n'));
+
+        // A legacy chat has to be written once so that it gains a slug, and is silent from then on.
+        const result = await trySaveChat(
+            chatWithIntegrity(undefined, 'legacy chat'),
+            chatFile,
+            false,
+            'legacy-chat-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(result.integrity).toEqual(expect.any(String));
+        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
+
+        const repeatResult = await trySaveChat(
+            chatWithIntegrity(result.integrity, 'legacy chat'),
+            chatFile,
+            false,
+            'legacy-chat-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(repeatResult).toEqual({ integrity: result.integrity });
+    });
+
+    test('keeps the regular backup when a deferred session ends on an unchanged save', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-deferred-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+        jest.setSystemTime(new Date('2026-06-06T12:34:56.000Z'));
+
+        await fs.writeFile(chatFile, chatWithIntegrity('valid-integrity', 'before the run').map(JSON.stringify).join('\n'));
+
+        const deferredResult = await trySaveChat(
+            chatWithIntegrity('valid-integrity', 'agent run output'),
+            chatFile,
+            false,
+            'deferred-unchanged-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true },
+        );
+
+        // The run closes with a non-deferred save of content it already wrote. Skipping the backup
+        // there would leave the whole run with none.
+        const finalResult = await trySaveChat(
+            chatWithIntegrity(deferredResult.integrity, 'agent run output'),
+            chatFile,
+            false,
+            'deferred-unchanged-user',
+            'Test Card',
+            backupDir,
+        );
+        expect(finalResult).toEqual({ integrity: deferredResult.integrity });
+        jest.runOnlyPendingTimers();
+
+        const backupFiles = await fs.readdir(backupDir);
+        const postSaveBackups = backupFiles.filter(fileName => fileName.startsWith('chat_test_card_'));
+        expect(postSaveBackups).toHaveLength(1);
+        await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('agent run output');
     });
 
     test('refreshes exact recovery snapshots for deferred saves and restores missing active files', async () => {
