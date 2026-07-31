@@ -40,6 +40,16 @@ function chatWithMessages(integrity, messages) {
     ];
 }
 
+function noncanonicalChat(integrity) {
+    const payload = chatWithIntegrity(integrity, 'café');
+    payload[0].chat_metadata.layout = { alpha: 1, beta: 2 };
+
+    return {
+        payload,
+        serialized: `\r\n{ "unknown_header": true, "character_name": "Original", "chat_metadata": { "layout": { "beta": 2, "alpha": 1 }, "integrity": ${JSON.stringify(integrity)} }, "user_name": "Original" }\r\n\r\n{"mes":"caf\\u00e9","send_date":"2026-06-06T00:00:00.000Z","is_user":true,"name":"User"}\r\n`,
+    };
+}
+
 async function readHeader(filePath) {
     const content = await fs.readFile(filePath, 'utf8');
     return JSON.parse(content.split('\n')[0]);
@@ -274,19 +284,19 @@ describe('chat integrity rotation', () => {
         await expect(fs.readFile(path.join(backupDir, postSaveBackups[0]), 'utf8')).resolves.toContain('final post-processed chat');
     });
 
-    test('leaves an unchanged chat file untouched and returns the integrity already on disk', async () => {
+    test('leaves a semantically unchanged noncanonical chat untouched and returns its disk integrity', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-save-'));
         const chatFile = path.join(tempDir, 'chat.jsonl');
         const backupDir = path.join(tempDir, 'backups');
         await fs.mkdir(backupDir);
 
-        const onDisk = chatWithIntegrity('disk-integrity', 'unchanged chat').map(JSON.stringify).join('\n');
-        await fs.writeFile(chatFile, onDisk);
+        const { payload, serialized } = noncanonicalChat('disk-integrity');
+        await fs.writeFile(chatFile, serialized);
         const before = await fs.stat(chatFile);
 
         const result = await trySaveChat(
-            chatWithIntegrity('disk-integrity', 'unchanged chat'),
+            payload,
             chatFile,
             false,
             'unchanged-save-user',
@@ -297,10 +307,11 @@ describe('chat integrity rotation', () => {
         const after = await fs.stat(chatFile);
 
         expect(result).toEqual({ integrity: 'disk-integrity' });
-        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(serialized);
         // Writes rename a temp file over the target, so a surviving inode proves nothing was written.
         expect(after.ino).toBe(before.ino);
         expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
 
         const backupFiles = await fs.readdir(backupDir);
         expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
@@ -355,17 +366,66 @@ describe('chat integrity rotation', () => {
         const backupDir = path.join(tempDir, 'backups');
         await fs.mkdir(backupDir);
 
-        await fs.writeFile(chatFile, chatWithIntegrity('current-integrity', 'same chat').map(JSON.stringify).join('\n'));
+        const { payload, serialized } = noncanonicalChat('current-integrity');
+        payload[0].chat_metadata.integrity = 'stale-integrity';
+        await fs.writeFile(chatFile, serialized);
 
         // The integrity check runs before the content comparison, so identical content cannot bypass it.
         await expect(trySaveChat(
-            chatWithIntegrity('stale-integrity', 'same chat'),
+            payload,
             chatFile,
             false,
             'stale-writer-user',
             'Test Card',
             backupDir,
         )).rejects.toThrow(/integrity/i);
+    });
+
+    test('still rejects a stale writer when the existing chat body is corrupt', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-corrupt-stale-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const header = chatWithIntegrity('current-integrity', 'unused')[0];
+        const onDisk = `\r\n${JSON.stringify(header)}\r\n{"truncated":`;
+        await fs.writeFile(chatFile, onDisk);
+
+        await expect(trySaveChat(
+            chatWithIntegrity('stale-integrity', 'replacement'),
+            chatFile,
+            false,
+            'corrupt-stale-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
+    });
+
+    test('still rejects a stale writer when the existing chat starts with a byte-order mark', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-bom-stale-'));
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        const backupDir = path.join(tempDir, 'backups');
+        await fs.mkdir(backupDir);
+
+        const onDisk = `\uFEFF${chatWithIntegrity('current-integrity', 'current chat').map(JSON.stringify).join('\r\n')}`;
+        await fs.writeFile(chatFile, onDisk);
+
+        await expect(trySaveChat(
+            chatWithIntegrity('stale-integrity', 'replacement'),
+            chatFile,
+            false,
+            'bom-stale-user',
+            'Test Card',
+            backupDir,
+        )).rejects.toThrow(/integrity/i);
+
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+        await expect(fs.readdir(backupDir)).resolves.toHaveLength(0);
     });
 
     test('skips a forced overwrite that would rewrite identical content', async () => {
@@ -401,36 +461,48 @@ describe('chat integrity rotation', () => {
         expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
     });
 
-    test('writes an otherwise unchanged chat that has no integrity slug yet', async () => {
+    test('keeps an unchanged legacy chat slugless until its first genuine edit', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-legacy-'));
         const chatFile = path.join(tempDir, 'chat.jsonl');
         const backupDir = path.join(tempDir, 'backups');
         await fs.mkdir(backupDir);
 
-        await fs.writeFile(chatFile, chatWithIntegrity(undefined, 'legacy chat').map(JSON.stringify).join('\n'));
+        const payload = chatWithIntegrity(undefined, 'legacy chat');
+        const onDisk = `\n${JSON.stringify({ name: 'Legacy Chat', unknown_header: true })}\r\n${JSON.stringify(payload[1])}\r\n`;
+        await fs.writeFile(chatFile, onDisk);
+        const before = await fs.stat(chatFile);
 
-        // A legacy chat has to be written once so that it gains a slug, and is silent from then on.
         const result = await trySaveChat(
-            chatWithIntegrity(undefined, 'legacy chat'),
+            payload,
             chatFile,
             false,
             'legacy-chat-user',
             'Test Card',
             backupDir,
+            { deferBackup: true },
         );
-        expect(result.integrity).toEqual(expect.any(String));
-        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
+        const after = await fs.stat(chatFile);
 
-        const repeatResult = await trySaveChat(
-            chatWithIntegrity(result.integrity, 'legacy chat'),
+        expect(result).toEqual({ integrity: '' });
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(onDisk);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(await fs.readdir(backupDir)).toHaveLength(0);
+
+        const editResult = await trySaveChat(
+            chatWithIntegrity(undefined, 'edited legacy chat'),
             chatFile,
             false,
             'legacy-chat-user',
             'Test Card',
             backupDir,
+            { deferBackup: true },
         );
-        expect(repeatResult).toEqual({ integrity: result.integrity });
+
+        expect(editResult.integrity).toEqual(expect.any(String));
+        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(editResult.integrity);
     });
 
     test('keeps the regular backup when a deferred session ends on an unchanged save', async () => {

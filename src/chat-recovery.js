@@ -122,10 +122,10 @@ function toBuffer(data) {
     throw new TypeError('Chat JSONL data must be a string, Buffer, or Uint8Array.');
 }
 
-function parseChatJsonl(data) {
+export function parseChatJsonl(data) {
     let serialized;
     try {
-        serialized = utf8Decoder.decode(data);
+        serialized = utf8Decoder.decode(toBuffer(data));
     } catch {
         return corruptResult('invalid-utf8', data);
     }

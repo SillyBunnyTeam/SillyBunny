@@ -92,6 +92,57 @@ describe('chat recovery endpoint fallbacks', () => {
         );
     });
 
+    test('keeps a noncanonical character chat file untouched on a semantic no-op save', async () => {
+        const owner = 'Test Card';
+        const fileName = 'No-op Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        const payload = createChatPayload('character-integrity', 'café');
+        payload[0].chat_metadata.layout = { alpha: 1, beta: 2 };
+        const onDisk = '\r\n{ "unknown_header": true, "chat_metadata": { "layout": { "beta": 2, "alpha": 1 }, "integrity": "character-integrity" }, "user_name": "Original" }\r\n\r\n{"mes":"caf\\u00e9","name":"Character"}\r\n';
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(chatPath, onDisk);
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: payload,
+            deferBackup: true,
+        });
+        const after = fs.statSync(chatPath);
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true, integrity: 'character-integrity' });
+        expect(fs.readFileSync(chatPath, 'utf8')).toBe(onDisk);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+    });
+
+    test('keeps an unchanged legacy group chat file untouched and slugless', async () => {
+        const chatId = 'No-op Group';
+        const chatPath = path.join(directories.groupChats, `${chatId}.jsonl`);
+        const payload = createChatPayload(undefined, 'legacy group');
+        const onDisk = `\n${JSON.stringify({ name: 'Legacy Group', unknown_header: true })}\r\n${JSON.stringify(payload[1])}\r\n`;
+        fs.writeFileSync(chatPath, onDisk);
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/group/save', {
+            id: chatId,
+            chat: payload,
+            deferBackup: true,
+        });
+        const after = fs.statSync(chatPath);
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true, integrity: '' });
+        expect(fs.readFileSync(chatPath, 'utf8')).toBe(onDisk);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+    });
+
     test('renames a character chat when recovery storage is unavailable', async () => {
         const chatDirectory = path.join(directories.chats, 'Test Card');
         const sourcePath = path.join(chatDirectory, 'Old Chat.jsonl');
@@ -380,5 +431,16 @@ describe('chat recovery endpoint fallbacks', () => {
             JSON.stringify({ chat_metadata: {}, user_name: 'User', character_name: 'Character' }),
             JSON.stringify({ name: 'Character', mes: message }),
         ].join('\n');
+    }
+
+    function createChatPayload(integrity, message) {
+        return [
+            {
+                chat_metadata: { integrity },
+                user_name: 'unused',
+                character_name: 'unused',
+            },
+            { name: 'Character', mes: message },
+        ];
     }
 });

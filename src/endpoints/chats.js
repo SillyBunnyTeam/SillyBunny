@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import process from 'node:process';
+import { isDeepStrictEqual } from 'node:util';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
@@ -17,6 +18,7 @@ import {
     isRecognizedChatHeader,
     loadActiveChatWithRecovery,
     markChatDeleted,
+    parseChatJsonl,
     readChatJsonlStrict,
     rekeyChatRecoveryState,
     runChatRecoveryBestEffort,
@@ -34,7 +36,6 @@ import {
     tryWriteFileSync,
     tryReadFileSync,
     tryDeleteFile,
-    readFirstLine,
     isPathUnderParent,
     uuidv4,
 } from '../util.js';
@@ -129,9 +130,37 @@ function normalizeSerializedChatForBackupComparison(data) {
 }
 
 function getSerializedChatIntegrity(serializedChat) {
-    const [firstLine] = String(serializedChat ?? '').split('\n', 1);
-    const integrity = tryParse(firstLine)?.chat_metadata?.integrity;
-    return typeof integrity === 'string' && integrity ? integrity : '';
+    const headerLine = String(serializedChat ?? '').split('\n').find(line => line.trim());
+    if (!headerLine) {
+        return '';
+    }
+
+    try {
+        const integrity = JSON.parse(headerLine.replace(/^\uFEFF/, ''))?.chat_metadata?.integrity;
+        return typeof integrity === 'string' && integrity ? integrity : '';
+    } catch {
+        return '';
+    }
+}
+
+function getChatSaveComparisonRecords(data) {
+    const parsedChat = parseChatJsonl(String(data ?? ''));
+    if (parsedChat.status !== 'ok') {
+        return null;
+    }
+
+    const [header, ...messages] = parsedChat.records;
+    const chatMetadata = { ...header.chat_metadata };
+    delete chatMetadata.integrity;
+
+    // SillyBunny: chat loads retain chat_metadata but discard and recreate the outer header envelope.
+    return [{ chat_metadata: chatMetadata }, ...messages];
+}
+
+function isSameChatSaveContent(left, right) {
+    const leftRecords = getChatSaveComparisonRecords(left);
+    const rightRecords = getChatSaveComparisonRecords(right);
+    return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);
 }
 
 function getLatestBackupFilePath(directory, prefix) {
@@ -571,18 +600,20 @@ function importRisuChat(userName, characterName, jsonData) {
  * Checks if the chat being saved has the same integrity as the one being loaded.
  * @param {string} filePath Path to the chat file
  * @param {string} integritySlug Integrity slug
- * @returns {Promise<boolean>} Whether the chat is intact
+ * @returns {boolean} Whether the chat is intact
  */
-async function checkChatIntegrity(filePath, integritySlug) {
+function checkChatIntegrity(filePath, integritySlug) {
     // If the chat file doesn't exist, assume it's intact
     if (!fs.existsSync(filePath)) {
         return true;
     }
 
-    // Parse the first line of the chat file as JSON
-    const firstLine = await readFirstLine(filePath);
-    const jsonData = tryParse(firstLine);
-    const chatIntegrity = jsonData?.chat_metadata?.integrity;
+    // Read the first logical header independently so a corrupt body cannot hide a valid integrity slug.
+    const serializedChat = tryReadFileSync(filePath);
+    if (serializedChat === null) {
+        return false;
+    }
+    const chatIntegrity = getSerializedChatIntegrity(serializedChat);
 
     // If the chat has no integrity metadata, assume it's intact
     if (!chatIntegrity) {
@@ -856,7 +887,7 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;
 
-    if (chatIntegritySlug && !await checkChatIntegrity(filePath, chatIntegritySlug)) {
+    if (chatIntegritySlug && !checkChatIntegrity(filePath, chatIntegritySlug)) {
         throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
     }
 
@@ -877,9 +908,9 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
         ...savedChatSizeDetails,
     });
 
-    // SillyBunny: set when the payload matches the file byte for byte apart from the rotating
-    // integrity slug. The save then keeps the bytes already on disk, so the recovery snapshot and the
-    // regular backup below mirror the file rather than a payload that was never written.
+    // SillyBunny: set when the payload represents the same loaded chat apart from the rotating
+    // integrity slug and the discarded outer header envelope. The save then keeps the exact bytes
+    // already on disk, so the recovery snapshot and regular backup mirror the authoritative file.
     let unchangedChatData = null;
     let unchangedIntegrity;
 
@@ -902,13 +933,11 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
                 throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
             }
 
-            // SillyBunny: a save that changes nothing must not touch the file. Writes go through an
-            // atomic temp-and-rename, so replacing a chat with its own contents swaps the inode and
-            // resets the file's creation date for no gain. The integrity slug is excluded from the
-            // comparison because it is rotated on every save, which would otherwise mask every match.
-            // A file with no slug yet is left to write normally so that it gains one.
+            // SillyBunny: compare parsed records because loading canonicalizes legacy JSONL formatting.
+            // Replacing equivalent content through atomic temp-and-rename would swap the file identity
+            // for no gain. Legacy chats remain slugless until their first genuine content change.
             const existingIntegrity = getSerializedChatIntegrity(currentChatData);
-            if (existingIntegrity && normalizeSerializedChatForBackupComparison(jsonlData) === normalizeSerializedChatForBackupComparison(currentChatData)) {
+            if (isSameChatSaveContent(jsonlData, currentChatData)) {
                 unchangedChatData = currentChatData;
                 unchangedIntegrity = existingIntegrity;
             } else {

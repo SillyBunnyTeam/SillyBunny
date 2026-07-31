@@ -13,6 +13,7 @@ import {
     isChatRecoverable,
     loadActiveChatWithRecovery,
     markChatDeleted,
+    parseChatJsonl,
     readChatJsonlStrict,
     rekeyChatRecoveryState,
     reverseChatRecoveryRekey,
@@ -80,6 +81,11 @@ describe('readChatJsonlStrict', () => {
                 unknown_message: 17,
             },
         ]);
+
+        expect(parseChatJsonl(serialized.toString('utf8'))).toMatchObject({
+            status: 'ok',
+            records: result.records,
+        });
     });
 
     test('distinguishes missing files', () => {
