@@ -913,8 +913,13 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     // already on disk, so the recovery snapshot and regular backup mirror the authoritative file.
     let unchangedChatData = null;
     let unchangedIntegrity;
+    let preserveFileIdentity = false;
+    let expectedFileIdentity;
 
     if (fs.existsSync(filePath)) {
+        const activeFileStats = fs.lstatSync(filePath, { bigint: true });
+        preserveFileIdentity = activeFileStats.isFile();
+        expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
         const currentChatData = tryReadFileSync(filePath);
 
         // SillyBunny: an existing chat that cannot be read can be neither checked nor backed up, so never overwrite it blind.
@@ -958,19 +963,34 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     // backup and closes with one non-deferred save, which can land unchanged; skipping it there would
     // leave the whole run without a backup. isDuplicateRegularChatBackup collapses the steady state.
     const persistedChatData = unchangedChatData ?? jsonlData;
+    let hasRecoverySnapshot = false;
 
     if (isBackupEnabled && recoveryTarget) {
         // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
         // Destructive payloads are rejected above, so this cannot mirror a chat-destroying write.
         try {
-            writeLatestChatSnapshot(recoveryTarget, persistedChatData);
+            const snapshot = writeLatestChatSnapshot(recoveryTarget, persistedChatData);
+            hasRecoverySnapshot = snapshot.stored === true;
         } catch (error) {
             // Recovery storage is supplementary and must not prevent the authoritative chat write.
             console.warn('Failed to write the exact chat recovery snapshot; continuing with the active chat save.', error);
         }
     }
     if (unchangedChatData === null) {
-        tryWriteFileSync(filePath, jsonlData);
+        // SillyBunny: existing chats can carry creation metadata and alternate data streams.
+        // In-place writes require an exact recovery snapshot and stay invalid until fully flushed.
+        const canSafelyPreserveFileIdentity = preserveFileIdentity && hasRecoverySnapshot;
+        tryWriteFileSync(filePath, jsonlData, 'utf8', {
+            preserveFileIdentity: canSafelyPreserveFileIdentity,
+            expectedFileIdentity,
+            invalidateBeforeWrite: canSafelyPreserveFileIdentity,
+        });
+        logBackupEvent('chat-save-written', {
+            handle,
+            chat: cardName,
+            mode: canSafelyPreserveFileIdentity ? 'in-place' : 'atomic',
+            ...savedChatSizeDetails,
+        });
     } else {
         logBackupEvent('chat-save-skipped', { handle, chat: cardName, reason: 'unchanged', force: Boolean(skipIntegrityCheck), ...savedChatSizeDetails });
     }

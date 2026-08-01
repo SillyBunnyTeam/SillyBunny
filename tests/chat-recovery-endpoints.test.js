@@ -92,6 +92,26 @@ describe('chat recovery endpoint fallbacks', () => {
         );
     });
 
+    test('creates a new character chat through the normal save route', async () => {
+        const owner = 'Test Card';
+        const fileName = 'New Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        fs.mkdirSync(chatDirectory, { recursive: true });
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: createChatPayload(undefined, 'new chat'),
+            deferBackup: true,
+        });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(fs.readFileSync(chatPath, 'utf8')).toContain('"mes":"new chat"');
+    });
+
     test('keeps a noncanonical character chat file untouched on a semantic no-op save', async () => {
         const owner = 'Test Card';
         const fileName = 'No-op Character.jsonl';
@@ -120,6 +140,38 @@ describe('chat recovery endpoint fallbacks', () => {
         expect(after.birthtimeMs).toBe(before.birthtimeMs);
     });
 
+    test('updates an existing character chat without replacing its filesystem identity', async () => {
+        const owner = 'Test Card';
+        const fileName = 'Changed Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        const oldIntegrity = 'character-integrity';
+        const oldPayload = createChatPayload(oldIntegrity, 'unchanged message');
+        const updatedPayload = createChatPayload(oldIntegrity, 'unchanged message');
+        updatedPayload[0].chat_metadata.dialogue_colors_overrides = { message: { verified: true } };
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(chatPath, oldPayload.map(JSON.stringify).join('\n'));
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: updatedPayload,
+            deferBackup: true,
+        });
+        const body = await response.json();
+        const after = fs.statSync(chatPath);
+        const saved = fs.readFileSync(chatPath, 'utf8');
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(body.integrity).not.toBe(oldIntegrity);
+        expect(after.ino).toBe(before.ino);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(saved).toContain('"dialogue_colors_overrides"');
+        expect(saved).toContain('"mes":"unchanged message"');
+    });
+
     test('keeps an unchanged legacy group chat file untouched and slugless', async () => {
         const chatId = 'No-op Group';
         const chatPath = path.join(directories.groupChats, `${chatId}.jsonl`);
@@ -141,6 +193,34 @@ describe('chat recovery endpoint fallbacks', () => {
         expect(after.ino).toBe(before.ino);
         expect(after.mtimeMs).toBe(before.mtimeMs);
         expect(after.birthtimeMs).toBe(before.birthtimeMs);
+    });
+
+    test('updates an existing group chat without replacing its filesystem identity', async () => {
+        const chatId = 'Changed Group';
+        const chatPath = path.join(directories.groupChats, `${chatId}.jsonl`);
+        const oldIntegrity = 'group-integrity';
+        const oldPayload = createChatPayload(oldIntegrity, 'unchanged group message');
+        const updatedPayload = createChatPayload(oldIntegrity, 'unchanged group message');
+        updatedPayload[0].chat_metadata.extension_state = { updated: true };
+        fs.writeFileSync(chatPath, oldPayload.map(JSON.stringify).join('\n'));
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/group/save', {
+            id: chatId,
+            chat: updatedPayload,
+            deferBackup: true,
+        });
+        const body = await response.json();
+        const after = fs.statSync(chatPath);
+        const saved = fs.readFileSync(chatPath, 'utf8');
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(body.integrity).not.toBe(oldIntegrity);
+        expect(after.ino).toBe(before.ino);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(saved).toContain('"extension_state":{"updated":true}');
+        expect(saved).toContain('"mes":"unchanged group message"');
     });
 
     test('renames a character chat when recovery storage is unavailable', async () => {

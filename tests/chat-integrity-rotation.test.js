@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -317,6 +318,87 @@ describe('chat integrity rotation', () => {
         expect(backupFiles.filter(fileName => fileName.startsWith('chat_pre_write_test_card_'))).toHaveLength(0);
     });
 
+    test('preserves an existing chat file identity during a genuine shorter save', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const { createCharacterChatTarget } = await import('../src/chat-recovery.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-identity-save-'));
+        const chatsDirectory = path.join(tempDir, 'chats');
+        const backupDir = path.join(tempDir, 'backups');
+        const owner = 'Test Card';
+        const fileName = 'chat.jsonl';
+        const chatFile = path.join(chatsDirectory, owner, fileName);
+        await fs.mkdir(path.dirname(chatFile), { recursive: true });
+        await fs.mkdir(backupDir);
+        const recoveryTarget = createCharacterChatTarget({ chatsDirectory, backupDirectory: backupDir, owner, filename: fileName });
+
+        const oldIntegrity = 'existing-integrity';
+        const onDisk = chatWithIntegrity(oldIntegrity, 'a much longer message that must be truncated completely').map(JSON.stringify).join('\n');
+        await fs.writeFile(chatFile, onDisk);
+        const before = await fs.stat(chatFile);
+
+        const result = await trySaveChat(
+            chatWithIntegrity(oldIntegrity, 'short'),
+            chatFile,
+            false,
+            'identity-save-user',
+            'Test Card',
+            backupDir,
+            { deferBackup: true, recoveryTarget },
+        );
+        const after = await fs.stat(chatFile);
+        const saved = await fs.readFile(chatFile, 'utf8');
+
+        expect(result.integrity).toEqual(expect.any(String));
+        expect(result.integrity).not.toBe(oldIntegrity);
+        expect(after.ino).toBe(before.ino);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(after.size).toBeLessThan(before.size);
+        expect(saved).toContain('"mes":"short"');
+        expect(saved).not.toContain('truncated completely');
+        expect((await readHeader(chatFile)).chat_metadata.integrity).toBe(result.integrity);
+
+        const preWriteBackups = (await fs.readdir(backupDir)).filter(fileName => fileName.startsWith('chat_pre_write_test_card_'));
+        expect(preWriteBackups).toHaveLength(1);
+        await expect(fs.readFile(path.join(backupDir, preWriteBackups[0]), 'utf8')).resolves.toBe(onDisk);
+    });
+
+    test('recovers the complete new chat after an interrupted identity-preserving write', async () => {
+        const { trySaveChat } = await import('../src/endpoints/chats.js');
+        const { createCharacterChatTarget, getChatRecoveryPaths, loadActiveChatWithRecovery } = await import('../src/chat-recovery.js');
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-interrupted-save-'));
+        const chatsDirectory = path.join(tempDir, 'chats');
+        const backupDir = path.join(tempDir, 'backups');
+        const owner = 'Test Card';
+        const fileName = 'chat.jsonl';
+        const chatFile = path.join(chatsDirectory, owner, fileName);
+        await fs.mkdir(path.dirname(chatFile), { recursive: true });
+        await fs.mkdir(backupDir);
+        const recoveryTarget = createCharacterChatTarget({ chatsDirectory, backupDirectory: backupDir, owner, filename: fileName });
+        await fs.writeFile(chatFile, chatWithIntegrity('existing-integrity', 'before').map(JSON.stringify).join('\n'));
+        const truncateSpy = jest.spyOn(fsSync, 'ftruncateSync').mockImplementationOnce(() => {
+            throw Object.assign(new Error('I/O failure'), { code: 'EIO' });
+        });
+
+        await expect(trySaveChat(
+            chatWithIntegrity('existing-integrity', 'complete new chat'),
+            chatFile,
+            false,
+            'interrupted-save-user',
+            owner,
+            backupDir,
+            { deferBackup: true, recoveryTarget },
+        )).rejects.toThrow('I/O failure');
+        const interrupted = await fs.readFile(chatFile, 'utf8');
+        expect(() => JSON.parse(interrupted.split('\n')[0])).toThrow();
+        const expectedSnapshot = await fs.readFile(getChatRecoveryPaths(recoveryTarget).latestPath, 'utf8');
+
+        truncateSpy.mockRestore();
+        const recovered = loadActiveChatWithRecovery(recoveryTarget);
+        expect(recovered.recovered).toBe(true);
+        expect(recovered.records[1].mes).toBe('complete new chat');
+        await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(expectedSnapshot);
+    });
+
     test('keeps a concurrent writer valid after an unchanged save', async () => {
         const { trySaveChat } = await import('../src/endpoints/chats.js');
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-chat-unchanged-cas-'));
@@ -620,6 +702,7 @@ describe('chat integrity rotation', () => {
         expect(chatsSource).toContain('console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : \'\'}`));');
         expect(chatsSource).toContain('chat-backup-written');
         expect(chatsSource).toContain('chat-backup-skipped');
+        expect(chatsSource).toContain('chat-save-written');
         expect(chatsSource).toContain('reason: \'deferred\'');
         expect(chatsSource).toContain('reason: \'duplicate\'');
         expect(settingsSource).toContain('settings-autosave-requested');

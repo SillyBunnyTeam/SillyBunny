@@ -440,7 +440,8 @@ export function writeLatestChatSnapshot(target, data) {
     }
 
     storeValidSnapshot(normalizedTarget, parsed);
-    return parsed;
+    const { latestPath } = getChatRecoveryPaths(normalizedTarget);
+    return { ...parsed, stored: isStoredSnapshotCurrent(latestPath, parsed.data) };
 }
 
 export function seedLatestChatSnapshot(target) {

@@ -230,6 +230,15 @@ describe('snapshot and recovery operations', () => {
         expect(isChatRecoverable(target)).toBe(true);
     });
 
+    test('reports when a zero-state limit immediately prunes the written snapshot', () => {
+        const target = characterTarget('zero-state-character', 'chat.jsonl', 0);
+        const result = writeLatestChatSnapshot(target, chatData('not retained'));
+        const { latestPath } = getChatRecoveryPaths(target);
+
+        expect(result.stored).toBe(false);
+        expect(fs.existsSync(latestPath)).toBe(false);
+    });
+
     test('reuses an identical snapshot instead of rewriting it', () => {
         const target = characterTarget();
         const serialized = chatData('steady');

@@ -2071,8 +2071,9 @@ export function flattenSchema(schema, api) {
  * @param {string} filePath
  * @param {string|Buffer} data
  * @param {import('node:fs').WriteFileOptions} [options]
+ * @param {{preserveFileIdentity?: boolean, expectedFileIdentity?: {dev: bigint, ino: bigint}, invalidateBeforeWrite?: boolean}} [writeOptions]
  */
-export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined) {
+export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false, expectedFileIdentity = undefined, invalidateBeforeWrite = false } = {}) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     const retryDelaysMs = [50, 125, 250];
@@ -2100,6 +2101,80 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
     //Ensure the directory exists.
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
+    }
+
+    // SillyBunny: some existing user data carries filesystem metadata that replacement would discard.
+    if (preserveFileIdentity) {
+        const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
+        const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
+        const dataLength = dataBuffer.byteLength;
+        const writeAll = (fileDescriptor, buffer, position) => {
+            let offset = 0;
+            while (offset < buffer.byteLength) {
+                const bytesWritten = fs.writeSync(fileDescriptor, buffer, offset, buffer.byteLength - offset, position + offset);
+                if (bytesWritten === 0) {
+                    throw new Error(`Could not finish writing ${filePath}.`);
+                }
+                offset += bytesWritten;
+            }
+        };
+        const writeInPlace = () => {
+            const fileDescriptor = fs.openSync(filePath, 'r+');
+            let operationFailed = false;
+            try {
+                const descriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+                const pathStats = fs.lstatSync(filePath, { bigint: true });
+                const matchesExpectedIdentity = !expectedFileIdentity
+                    || (descriptorStats.dev === expectedFileIdentity.dev && descriptorStats.ino === expectedFileIdentity.ino);
+                if (!descriptorStats.isFile() || !pathStats.isFile()
+                    || descriptorStats.dev !== pathStats.dev || descriptorStats.ino !== pathStats.ino
+                    || !matchesExpectedIdentity) {
+                    throw Object.assign(new Error(`Refused to overwrite a replaced file: ${filePath}`), { code: 'ESTALE' });
+                }
+
+                if (invalidateBeforeWrite && dataLength > 0) {
+                    // Make an interrupted JSONL update fail parsing until its complete body is durable.
+                    writeAll(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]), 0);
+                    fs.fsyncSync(fileDescriptor);
+                    writeAll(fileDescriptor, dataBuffer.subarray(1), 1);
+                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    fs.fsyncSync(fileDescriptor);
+                    writeAll(fileDescriptor, dataBuffer.subarray(0, 1), 0);
+                    try {
+                        fs.fsyncSync(fileDescriptor);
+                    } catch (error) {
+                        try {
+                            writeAll(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]), 0);
+                            fs.fsyncSync(fileDescriptor);
+                        } catch {
+                            // The original flush error is more useful; recovery still has the exact snapshot.
+                        }
+                        throw error;
+                    }
+                } else {
+                    fs.writeFileSync(fileDescriptor, data, options);
+                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    fs.fsyncSync(fileDescriptor);
+                }
+            } catch (error) {
+                operationFailed = true;
+                throw error;
+            } finally {
+                try {
+                    fs.closeSync(fileDescriptor);
+                } catch (error) {
+                    if (!operationFailed) {
+                        console.warn(`Failed to close ${filePath} after its data was flushed.`, error?.code);
+                    }
+                }
+            }
+        };
+
+        if (runWithWindowsRetries(writeInPlace)) {
+            return;
+        }
+
+        throw lastError;
     }
 
     if (runWithWindowsRetries(() => writeFileAtomicSync(filePath, data, options))) {
