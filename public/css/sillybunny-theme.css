@@ -156,6 +156,15 @@
     color: var(--sb-selection-fg);
 }
 
+/* style.css paints the inline code chip with var(--black70a) over var(--white70a),
+   but themes treat both as free aliases and several repoint them at the same
+   accent, which collapses the chip and its text to one colour and hides the text.
+   Derive the chip from the page tint those aliases are supposed to track, so the
+   ink always keeps a surface. Themes that style code explicitly still win. */
+code {
+    background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
+}
+
 a,
 button,
 [role="button"],
