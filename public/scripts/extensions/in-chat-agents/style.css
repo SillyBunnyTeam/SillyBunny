@@ -2663,6 +2663,15 @@ dialog.ica--textarea-fullscreen-backdrop::backdrop {
     font-size: 0.85em;
 }
 
+.ica--update-all-list {
+    margin: 10px 0 0;
+    padding-inline-start: 20px;
+    max-height: 40vh;
+    overflow-y: auto;
+    text-align: start;
+    font-size: calc(var(--mainFontSize) * 0.9);
+}
+
 .ica--tool-list {
     display: flex;
     flex-direction: column;
