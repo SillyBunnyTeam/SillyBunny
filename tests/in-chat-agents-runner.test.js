@@ -1871,11 +1871,133 @@ describe('in-chat agent post-processing runner', () => {
         const reputationPrompt = extensionPrompts['inchat_agent_companion_reputation-companion'].value;
         const eventPrompt = extensionPrompts['inchat_agent_companion_event-companion'].value;
 
-        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.');
+        expect(reputationPrompt).toContain('HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: [REP|...], [/REP], [EVENT|...], [/EVENT] (or variations of them). Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. Never repeat an "[... - auxiliary notes]" label. Produce your normal story reply only - never inline tracker blocks of your own.');
         expect(eventPrompt).not.toContain('HARD STOP');
         expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
         expect(reputationPrompt).toContain('[REP|Guild|Warm|Trusted]');
         expect(eventPrompt).toContain('[EVENT|Plot|Ambush at the gate|Tonight]');
+    });
+
+    test('builds bare-tag examples for delimiter-free companion trackers', async () => {
+        const cyoaCompanion = createCompanionAgent({
+            id: 'cyoa-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [cyoaCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
+            status: 'done',
+            content: '[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_cyoa-companion'].value;
+
+        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).not.toContain('[CHOICES|...]');
+    });
+
+    test('does not treat inline skill-check brackets as tracker tags', async () => {
+        const cyoaCompanion = createCompanionAgent({
+            id: 'skill-check-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [cyoaCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
+            status: 'done',
+            content: '[CHOICES]\n1. **[Speech 42/100]** Talk them down.\n2. **[STEALTH 80/100]** Slip away.\n[/CHOICES]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        const injected = extensionPrompts['inchat_agent_companion_skill-check-companion'].value;
+
+        // The tag list stays [CHOICES] only; the mid-line skill brackets in the note body are not tags.
+        expect(injected).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(injected).not.toContain('[/STEALTH]');
+        expect(injected).not.toContain('[SPEECH');
+    });
+
+    test('injects a standalone echo guard for retained-history companions without feedback', async () => {
+        const cyoaCompanion = createCompanionAgent({
+            id: 'retained-cyoa-companion',
+            companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
+        });
+        enabledAgents = [cyoaCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
+            status: 'done',
+            content: '[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        const guard = extensionPrompts.inchat_agent_companion_tracker_echo_guard;
+
+        expect(guard.value).toContain('do not emit any of: [CHOICES], [/CHOICES] (');
+        expect(guard.depth).toBe(0);
+        expect(guard.role).toBe(0);
+    });
+
+    test('clears the standalone echo guard when retained tracker notes disappear', async () => {
+        const cyoaCompanion = createCompanionAgent({
+            id: 'retained-cyoa-companion',
+            companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
+        });
+        enabledAgents = [cyoaCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, cyoaCompanion, {
+            status: 'done',
+            content: '[CHOICES]\n1. Push the door.\n[/CHOICES]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard.value).toContain('[CHOICES]');
+
+        chat.length = 0;
+        companionRunner.injectCompanionFeedbackPrompts([cyoaCompanion]);
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard.value).toBe('');
+    });
+
+    test('folds retained tracker tags into the guard a feedback block already hosts', async () => {
+        const feedbackCompanion = createCompanionAgent({
+            id: 'rep-feedback-companion',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        const retainedCompanion = createCompanionAgent({
+            id: 'retained-cyoa-companion',
+            companion: { includeInChatHistory: true, feedback: { enabled: false, depth: 1 } },
+        });
+        enabledAgents = [feedbackCompanion, retainedCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const reply = { mes: 'Reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(reply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(reply, feedbackCompanion, {
+            status: 'done',
+            content: '[REP|Guild|Warm|Rising]\ncause: helped\n[/REP]',
+        });
+        companionRunner.setCompanionResult(reply, retainedCompanion, {
+            status: 'done',
+            content: '[CHOICES]\n1. Push the door.\n[/CHOICES]',
+        });
+
+        companionRunner.injectCompanionFeedbackPrompts(enabledAgents);
+
+        expect(extensionPrompts.inchat_agent_companion_tracker_echo_guard).toBeUndefined();
+        expect(extensionPrompts['inchat_agent_companion_rep-feedback-companion'].value)
+            .toContain('do not emit any of: [REP|...], [/REP], [CHOICES], [/CHOICES] (');
     });
 
     test('does not guard tracker tags owned by active inline trackers', async () => {
@@ -1933,11 +2055,107 @@ describe('in-chat agent post-processing runner', () => {
         expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['STATUS'], enabledAgents)).toBe(response);
     });
 
-    test('leaves malformed auxiliary echoes intact to avoid deleting adjacent prose', async () => {
+    test('leaves unbounded auxiliary echoes intact to avoid deleting adjacent prose', async () => {
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
         const response = 'Story before.\n\n[PARALLEL|District|Complication]\nUnclosed tracker\nStory after.';
 
         expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['PARALLEL'])).toBe(response);
+    });
+
+    test('strips complete bare-tag auxiliary echoes', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[CHOICES]\n1. Push the door.\n2. Wait.\n[/CHOICES]';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['CHOICES'])).toBe('Story.');
+    });
+
+    test('strips a trailing unclosed piped echo', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[REP|Guild|Warm|Rising]\ncause: The party defended the caravan.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP'])).toBe('Story.');
+    });
+
+    test('strips a trailing unclosed bare-tag echo', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[CHOICES]\n1. Push the door.\n2. Wait.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['CHOICES'])).toBe('Story.');
+    });
+
+    test('bounds an unclosed echo at the next tracker block', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[REP|Guild|Warm|Rising]\ncause: helped\n\n[CHOICES]\n1. a\n[/CHOICES]';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP', 'CHOICES'])).toBe('Story.');
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP'])).toBe('Story.\n\n[CHOICES]\n1. a\n[/CHOICES]');
+    });
+
+    test('preserves active inline tracker blocks that follow an unclosed echo', async () => {
+        usePreExtractTracker();
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[REP|Guild|Warm|Rising]\ncause: helped\n\n[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP', 'STATUS'], enabledAgents))
+            .toBe('Story.\n\n[STATUS|Hero|Ready|Mild]\nStable.\n[/STATUS]');
+    });
+
+    test('removes a stray auxiliary notes label with no matching block', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'Story.\n\n[Reputation Tracker - auxiliary notes]\n\nMore story.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, [])).toBe('Story.\n\nMore story.');
+    });
+
+    test('returns untouched text when no block and no label match', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = '  Story with padding.  \n\n\n';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, [])).toBe(response);
+    });
+
+    test('strips an unclosed CYOA echo carrying skill-check brackets', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = [
+            'The guard shifted his weight, one hand drifting toward his belt.',
+            '',
+            '[CHOICES]',
+            '1. **[Speech 42/100]** Talk him down before this escalates.',
+            '2. **[Stealth 80/100]** Slip into the alley while he is distracted.',
+        ].join('\n');
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP', 'CHOICES']))
+            .toBe('The guard shifted his weight, one hand drifting toward his belt.');
+    });
+
+    test('strips a labelled unclosed tracker echo alongside a closed one', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = [
+            'She laughed, and it was not a kind sound.',
+            '',
+            '[Reputation Tracker - auxiliary notes]',
+            '[REP|Faculty|Reckless but useful|🔄 MIXED]',
+            'cause: You solved the problem the wrong way, publicly.',
+            '',
+            '[CHOICES]',
+            '1. Apologize.',
+            '[/CHOICES]',
+        ].join('\n');
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP', 'CHOICES']))
+            .toBe('She laughed, and it was not a kind sound.');
+    });
+
+    test('leaves ordinary prose brackets alone', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = [
+            'The sign read [CLOSED] in faded paint.',
+            '',
+            'She checked the box marked [X] and slid the form back across the desk.',
+            'The manifest listed it as [Cargo 12/40], whatever that meant.',
+        ].join('\n');
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, ['REP', 'CHOICES'])).toBe(response);
     });
 
     test('removes echoed retained Companion trackers before post-processing the reply', async () => {
@@ -1945,14 +2163,18 @@ describe('in-chat agent post-processing runner', () => {
             id: 'parallel-tracker',
             companion: { includeInChatHistory: true },
         });
-        enabledAgents = [tracker];
+        const cyoaTracker = createCompanionAgent({
+            id: 'cyoa-tracker',
+            companion: { includeInChatHistory: true },
+        });
+        enabledAgents = [tracker, cyoaTracker];
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
         const { initAgentRunner, registerCompanionRuntime } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
         registerCompanionRuntime({ stripAuxiliaryTrackerEchoes: companionRunner.stripAuxiliaryTrackerEchoes });
         initAgentRunner();
         const priorReply = { mes: 'Prior reply', name: 'Assistant', is_user: false, is_system: false, extra: {} };
         const generatedReply = {
-            mes: 'Narrative reply.\n\n[PARALLEL|District|Complication]\nEchoed state.\n[/PARALLEL]',
+            mes: 'Narrative reply.\n\n[PARALLEL|District|Complication]\nEchoed state.\n[/PARALLEL]\n\n[CHOICES]\n1. a\n2. b',
             name: 'Assistant',
             is_user: false,
             is_system: false,
@@ -1962,6 +2184,10 @@ describe('in-chat agent post-processing runner', () => {
         companionRunner.setCompanionResult(priorReply, tracker, {
             status: 'done',
             content: '[PARALLEL|District|Complication]\nSource state.\n[/PARALLEL]',
+        });
+        companionRunner.setCompanionResult(priorReply, cyoaTracker, {
+            status: 'done',
+            content: '[CHOICES]\n1. a\n2. b\n[/CHOICES]',
         });
         expect(companionRunner.stripAuxiliaryTrackerEchoes(generatedReply.mes)).toBe('Narrative reply.');
 
