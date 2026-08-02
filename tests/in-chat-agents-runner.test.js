@@ -2026,6 +2026,52 @@ describe('in-chat agent post-processing runner', () => {
         expect(injected).not.toContain('[STATUS|...]');
     });
 
+    test('feeds the last real tracker block forward across a no-change turn', async () => {
+        const statusCompanion = createCompanionAgent({
+            id: 'status-companion',
+            category: 'tracker',
+            companion: { feedback: { enabled: true, depth: 1 } },
+        });
+        enabledAgents = [statusCompanion];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const firstReply = { mes: 'Reply one', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const quietReply = { mes: 'Reply two', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(firstReply, quietReply, { mes: 'Continue.', name: 'User', is_user: true, is_system: false, extra: {} });
+        companionRunner.setCompanionResult(firstReply, statusCompanion, {
+            status: 'done',
+            content: '[STATUS|Hero|Poisoned|Moderate]\nNeeds antidote.\n[/STATUS]',
+        });
+        companionRunner.setCompanionResult(quietReply, statusCompanion, { status: 'done', content: 'tracker-none' });
+
+        companionRunner.injectCompanionFeedbackPrompts(enabledAgents);
+        const injected = extensionPrompts['inchat_agent_companion_status-companion'].value;
+
+        // Depth is 1, so a sentinel that counted as a result would push the real state out of the
+        // window and the model would lose the tracker entirely on the next turn.
+        expect(injected).toContain('[STATUS|Hero|Poisoned|Moderate]');
+        expect(injected).not.toContain('tracker-none');
+    });
+
+    test('keeps empty-output sentinels out of retained chat history', async () => {
+        const { selectCompanionChatHistory, getCompanionChatHistoryContributions } =
+            await import('../public/scripts/extensions/in-chat-agents/companion/companion-shared.js');
+        const message = {
+            is_user: false,
+            is_system: false,
+            mes: 'Reply',
+            extra: {
+                inChatAgentCompanionResults: {
+                    'quiet-agent': { status: 'done', includeInChatHistory: true, content: 'tracker-none', agentName: 'Status' },
+                    'noisy-agent': { status: 'done', includeInChatHistory: true, content: 'Real note.', agentName: 'Notes' },
+                },
+            },
+        };
+
+        expect([...selectCompanionChatHistory([message]).get(message)]).toEqual(['noisy-agent']);
+        expect(getCompanionChatHistoryContributions(message).map(entry => entry.content)).toEqual(['Real note.']);
+    });
+
     test('removes complete auxiliary tracker echoes while preserving unrelated blocks', async () => {
         const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
         const response = [
@@ -2045,6 +2091,23 @@ describe('in-chat agent post-processing runner', () => {
             '- Keep this unrelated block',
             '[/CHOICES]',
         ].join('\n\n'));
+    });
+
+    test('strips a stray empty-output sentinel line left in an inline reply', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        // An inline tracker injects its prompt into the main generation, so the main model can end
+        // up writing the sentinel into the story instead of a block. Nothing else removes it.
+        expect(companionRunner.stripAuxiliaryTrackerEchoes('Story before.\n\ntracker-none\n\nStory after.', []))
+            .toBe('Story before.\n\nStory after.');
+        expect(companionRunner.stripAuxiliaryTrackerEchoes('Story.\n  phone-none  ', [])).toBe('Story.');
+    });
+
+    test('leaves prose that merely mentions a sentinel untouched', async () => {
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+        const response = 'She typed tracker-none into the console and waited.';
+
+        expect(companionRunner.stripAuxiliaryTrackerEchoes(response, [])).toBe(response);
     });
 
     test('preserves auxiliary tracker tags owned by active inline trackers', async () => {

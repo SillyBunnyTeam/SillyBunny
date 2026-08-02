@@ -281,6 +281,42 @@ describe('in-chat agent bundled templates', () => {
         }
     });
 
+    test('teaches the empty-output sentinel to conditional trackers only', () => {
+        // Trackers that report a change report nothing on a quiet turn, which the companion layer
+        // renders as literally nothing. Templates that emit output every scene are excluded, since a
+        // sentinel there would give the model permission to skip work it is supposed to do.
+        const sentinelTemplates = [
+            'achievements-tracker.json',
+            'event-tracker.json',
+            'item-tracker.json',
+            'npc-profiles.json',
+            'relationship-tracker.json',
+            'reputation-tracker.json',
+            'scene-tracker.json',
+            'secrets-tracker.json',
+            'status-tracker.json',
+            'time-tracker.json',
+        ];
+        const alwaysEmittingTemplates = [
+            'parallel-tracker.json',
+            'world-detail.json',
+            'cyoa-choices.json',
+            'cyoa-choices-skill-checks.json',
+            'direction-menu.json',
+        ];
+        const catalog = readTemplate('index.json');
+
+        for (const filename of sentinelTemplates) {
+            const template = readTemplate(filename);
+            expect(template.prompt).toContain('tracker-none');
+            expect(findCatalogTemplate(catalog, template.id).prompt).toContain('tracker-none');
+        }
+
+        for (const filename of alwaysEmittingTemplates) {
+            expect(readTemplate(filename).prompt).not.toContain('tracker-none');
+        }
+    });
+
     test('keeps tracker templates from including the system prompt by default', () => {
         const catalog = readTemplate('index.json');
 

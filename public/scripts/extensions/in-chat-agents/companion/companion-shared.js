@@ -38,7 +38,25 @@ export const CHATROOM_STYLE_VALUES = new Set([
 
 export const CHATROOM_REPLY_MAX_CHARS = 2000;
 
-export const MESSAGE_INBOX_EMPTY_OUTPUTS = new Set(['phone-none', 'PHONE_NONE']);
+// SillyBunny: an agent with nothing to report returns one of these instead of prose or an empty
+// string, so "nothing happened" is a deliberate answer rather than a failed run. Suppression keys
+// off the content alone, which means custom agents opt in purely by teaching their prompt a
+// sentinel - no template allowlist to maintain.
+export const EMPTY_OUTPUT_SENTINELS = new Set(['phone-none', 'PHONE_NONE', 'tracker-none', 'TRACKER_NONE']);
+
+export function isEmptyOutputSentinel(content = '') {
+    return EMPTY_OUTPUT_SENTINELS.has(String(content ?? '').trim());
+}
+
+/**
+ * Whether a result should render as nothing at all rather than as a note.
+ * @param {string} agentId
+ * @param {object} [result]
+ * @returns {boolean}
+ */
+export function isSuppressedCompanionResult(agentId, result = {}) {
+    return isEmptyOutputSentinel(result?.content);
+}
 
 export const CHAT_ONLY_INPUT_MAX_CHARS = 2000;
 export const CHAT_ONLY_TRANSCRIPT_MAX_CHARS = 12000;
@@ -148,12 +166,13 @@ function getActiveCompanionResults(message) {
     return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
 }
 
-function isRetainedCompanionResult(result) {
+export function isRetainedCompanionResult(result) {
     return Boolean(
         result
         && result.status === 'done'
         && result.includeInChatHistory === true
-        && String(result.content ?? '').trim(),
+        && String(result.content ?? '').trim()
+        && !isEmptyOutputSentinel(result.content),
     );
 }
 

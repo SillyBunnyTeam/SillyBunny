@@ -20,22 +20,12 @@ import {
 import { resolveCompanionContentMacros } from './companion-macros.js';
 import { isConversationModeActive, openCompanionPanel } from './companion-panel.js';
 import {
-    MESSAGE_INBOX_EMPTY_OUTPUTS,
-    isMessageInboxAgent,
+    isSuppressedCompanionResult,
     isValidCompanionMessage,
 } from './companion-shared.js';
 
 const RECENT_NOTES_LIMIT = 20;
 const NOTE_SNIPPET_LENGTH = 120;
-
-function isSuppressedDashboardResult(agentId, result = {}) {
-    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
-        return false;
-    }
-
-    const agent = getAgentById(agentId);
-    return isMessageInboxAgent(agent);
-}
 
 /**
  * Behavior owned by index.js (editor, list rendering, conversion flow) arrives through this seam
@@ -119,7 +109,7 @@ function getLatestDashboardResult(agentId) {
         }
 
         const result = getCompanionResults(message)[agentId];
-        if (result && typeof result === 'object' && !isSuppressedDashboardResult(agentId, result)) {
+        if (result && typeof result === 'object' && !isSuppressedCompanionResult(agentId, result)) {
             return result;
         }
     }
@@ -189,7 +179,7 @@ export function collectRecentNoteEntries(limit = RECENT_NOTES_LIMIT) {
                 break;
             }
 
-            if (!result || typeof result !== 'object' || result.status !== 'done' || isSuppressedDashboardResult(agentId, result)) {
+            if (!result || typeof result !== 'object' || result.status !== 'done' || isSuppressedCompanionResult(agentId, result)) {
                 continue;
             }
 

@@ -48,6 +48,7 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    isEmptyOutputSentinel,
     isValidCompanionMessage,
     normalizePlotCompassObjective,
 } from './companion-shared.js';
@@ -711,8 +712,11 @@ export function collectRecentCompanionResults(agentId, { beforeMessageIndex = ch
             continue;
         }
 
+        // Sentinel results are skipped rather than counted, so the scan keeps walking back to the
+        // last turn that carried real content. A tracker that reported no change therefore keeps
+        // feeding its previous block forward instead of dropping out of the feedback window.
         const result = getCompanionResults(message)[agentId];
-        if (result?.status === 'done' && normalizeText(result.content) && !(excludeChatHistory && result.includeInChatHistory === true)) {
+        if (result?.status === 'done' && normalizeText(result.content) && !isEmptyOutputSentinel(result.content) && !(excludeChatHistory && result.includeInChatHistory === true)) {
             results.push({
                 messageIndex: index,
                 ...result,
@@ -1003,6 +1007,15 @@ const AUXILIARY_LABEL_LINE_SOURCE = String.raw`^\s*\[[^\]\n]+ - auxiliary notes\
 const AUXILIARY_LABEL_LINE_PROBE = new RegExp(AUXILIARY_LABEL_LINE_SOURCE, 'im');
 const AUXILIARY_LABEL_LINE_PATTERN = new RegExp(AUXILIARY_LABEL_LINE_SOURCE, 'gim');
 
+// SillyBunny: tracker prompts teach the empty-output sentinel, and the same prompt is injected into
+// the MAIN generation when the tracker runs inline. Inline 'extract' post-processing copies matched
+// blocks into chat metadata without removing anything from the reply, so a main model that follows
+// the instruction would leave the sentinel sitting in the story text. Only a line that is nothing
+// but the sentinel is removed; prose that merely contains the word is left alone.
+const EMPTY_OUTPUT_SENTINEL_LINE_SOURCE = String.raw`^[^\S\n]*(?:phone-none|tracker-none)[^\S\n]*$`;
+const EMPTY_OUTPUT_SENTINEL_LINE_PROBE = new RegExp(EMPTY_OUTPUT_SENTINEL_LINE_SOURCE, 'im');
+const EMPTY_OUTPUT_SENTINEL_LINE_PATTERN = new RegExp(EMPTY_OUTPUT_SENTINEL_LINE_SOURCE, 'gim');
+
 function mergeTrackerRanges(ranges) {
     const merged = [];
 
@@ -1053,7 +1066,7 @@ export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags
 
     // The label line survives on its own when the model echoes the header but not a full block, so
     // it has to be probed independently of the block ranges.
-    if (ranges.length === 0 && !AUXILIARY_LABEL_LINE_PROBE.test(source)) {
+    if (ranges.length === 0 && !AUXILIARY_LABEL_LINE_PROBE.test(source) && !EMPTY_OUTPUT_SENTINEL_LINE_PROBE.test(source)) {
         return source;
     }
 
@@ -1064,6 +1077,7 @@ export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags
 
     return cleaned
         .replace(AUXILIARY_LABEL_LINE_PATTERN, '')
+        .replace(EMPTY_OUTPUT_SENTINEL_LINE_PATTERN, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
@@ -1512,6 +1526,9 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
         if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision) {
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
+        // An empty-output sentinel yields no payload here, which is deliberate: repair is the manual
+        // fix for a malformed block, so "nothing changed" must roll back to the stored tracker state
+        // rather than overwrite it with a sentinel that renders as nothing.
         if (repair && agent.category === 'tracker') {
             const payload = normalizeCompanionTrackerRepairPayload(agent, content).payload;
             if (!payload) {
