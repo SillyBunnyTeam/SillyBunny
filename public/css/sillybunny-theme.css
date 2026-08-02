@@ -120,6 +120,12 @@
     --sb-editing-border: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 48%, var(--sb-shell-border));
     --sb-on-accent: rgb(0, 0, 0);
     --sb-on-solid-accent: var(--sb-on-accent);
+    /* Tint the page surface rather than paint over it, so the theme's own body
+       colour stays legible on top in both light and dark themes. The accent is
+       derived from the text colours, so a heavier mix eats contrast: 20% keeps
+       every theme that relies on this above 4.5:1 while staying clearly visible. */
+    --sb-selection-bg: color-mix(in srgb, var(--sb-accent) 20%, var(--SmartThemeBlurTintColor));
+    --sb-selection-fg: var(--SmartThemeBodyColor);
     --sb-warning-fg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 72%, var(--SmartThemeBodyColor) 28%);
     --sb-warning-bg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 12%, var(--SmartThemeBlurTintColor) 88%);
     --sb-warning-border: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 42%, var(--SmartThemeBorderColor) 58%);
@@ -139,6 +145,15 @@
     --sb-page-overlay-opacity: 1;
     --sb-composer-surface-opacity: 1;
     --sb-message-radius: 22px;
+}
+
+/* Baseline only: theme custom_css is injected last, so themes that declare their
+   own ::selection still win. This covers the themes that declare none, which
+   otherwise fall back to the OS highlight colour with the text colour untouched,
+   which leaves code/kbd chips unreadable because they set their own ink. */
+::selection {
+    background-color: var(--sb-selection-bg);
+    color: var(--sb-selection-fg);
 }
 
 a,
