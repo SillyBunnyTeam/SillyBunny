@@ -48,6 +48,17 @@ export async function runSupervisor({
 
     process.on('SIGINT', () => forwardSignal('SIGINT'));
     process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+    // Windows delivers SIGHUP/SIGBREAK when the console window is closed or
+    // Ctrl+Break is pressed, and it does not kill child processes with their
+    // parent. Without this the server survives as an invisible process that
+    // keeps holding the listen port.
+    process.on('SIGHUP', () => forwardSignal('SIGHUP'));
+    process.on('SIGBREAK', () => forwardSignal('SIGBREAK'));
+    process.on('exit', () => {
+        if (child && child.exitCode === null) {
+            child.kill();
+        }
+    });
 
     let isFirstLaunch = true;
     for (;;) {

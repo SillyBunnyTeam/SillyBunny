@@ -26,6 +26,7 @@ import { getServerBootId } from './server-boot-marker.js';
 import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
+import { closeListeningServers } from './server-listen.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -500,6 +501,10 @@ async function preSetupTasks() {
     const exitProcess = async (exitCode = 0) => {
         if (isExiting) return;
         isExiting = true;
+        // Release the listen ports first. An in-app restart relaunches
+        // immediately, and process teardown alone can leave the port
+        // encumbered long enough for the next boot to fail on EADDRINUSE.
+        await closeListeningServers();
         await statsOnExit();
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();

@@ -30,18 +30,20 @@ function createSpawnPlan(exits) {
     return { children, spawnFn };
 }
 
+const TRACKED_EVENTS = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK', 'exit'];
+
 describe('server supervisor', () => {
     const savedListeners = new Map();
 
     beforeEach(() => {
-        for (const signal of ['SIGINT', 'SIGTERM']) {
+        for (const signal of TRACKED_EVENTS) {
             savedListeners.set(signal, process.listeners(signal));
             process.removeAllListeners(signal);
         }
     });
 
     afterEach(() => {
-        for (const signal of ['SIGINT', 'SIGTERM']) {
+        for (const signal of TRACKED_EVENTS) {
             process.removeAllListeners(signal);
             for (const listener of savedListeners.get(signal) ?? []) {
                 process.on(signal, listener);
@@ -120,5 +122,50 @@ describe('server supervisor', () => {
 
         expect(spawnFn).toHaveBeenCalledTimes(1);
         expect(exitFn).toHaveBeenCalledWith(RESTART_EXIT_CODE);
+    });
+
+    // Windows raises these when the console window is closed or Ctrl+Break is
+    // pressed, and it does not kill children with their parent.
+    test.each(['SIGHUP', 'SIGBREAK'])('forwards %s so the console close does not orphan the server', async (signal) => {
+        const { children, spawnFn } = createSpawnPlan(['manual']);
+        const exitFn = jest.fn();
+
+        const run = runSupervisor({ argv: ['node', 'server.js'], execArgv: [], spawnFn, exitFn });
+        await new Promise(resolve => setImmediate(resolve));
+
+        process.emit(signal);
+        expect(children[0].kill).toHaveBeenCalledWith(signal);
+
+        children[0].exitCode = RESTART_EXIT_CODE;
+        children[0].emit('exit', RESTART_EXIT_CODE, null);
+        await run;
+
+        expect(spawnFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('kills a running child when the supervisor itself exits', async () => {
+        const { children, spawnFn } = createSpawnPlan(['manual']);
+        const exitFn = jest.fn();
+
+        const run = runSupervisor({ argv: ['node', 'server.js'], execArgv: [], spawnFn, exitFn });
+        await new Promise(resolve => setImmediate(resolve));
+
+        process.emit('exit', 0);
+        expect(children[0].kill).toHaveBeenCalledTimes(1);
+
+        children[0].exitCode = 0;
+        children[0].emit('exit', 0, null);
+        await run;
+    });
+
+    test('does not kill a child that already exited', async () => {
+        const { children, spawnFn } = createSpawnPlan([[0, null]]);
+        const exitFn = jest.fn();
+
+        await runSupervisor({ argv: ['node', 'server.js'], execArgv: [], spawnFn, exitFn });
+
+        process.emit('exit', 0);
+
+        expect(children[0].kill).not.toHaveBeenCalled();
     });
 });
