@@ -36,6 +36,8 @@ You can still send a pull request for `main` in the following scenarios:
 - Updating GitHub Actions.
 - Hotfixing a critical bug. (Note: Hotfixes merged into release must also be backported to staging to prevent regression in the next update)
 
+**Maintainers: Self-merges are allowed for the following PR prefixes: `fix`, `chore`, `docs`, within reason. `feat` and `sync` require review from another maintainer. Never commit directly to the `staging` or `main` repositories unless they're `doc` changes.**
+
 #### PR Structure
 
 When submitting a PR, follow this template:
