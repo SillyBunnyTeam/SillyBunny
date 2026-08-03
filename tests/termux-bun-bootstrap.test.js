@@ -111,12 +111,18 @@ function resolveBash() {
 
     for (const candidate of [...new Set(candidates.filter(Boolean))]) {
         try {
-            const stdout = execFileSync(candidate, [probePath], {
+            const executable = process.platform === 'win32' || path.isAbsolute(candidate)
+                ? candidate
+                : execFileSync(candidate, ['-lc', 'command -v -- "$0"', candidate], {
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore'],
+                }).trim();
+            const stdout = execFileSync(executable, [probePath], {
                 encoding: 'utf8',
                 stdio: ['ignore', 'pipe', 'ignore'],
             });
             if (stdout.trim() === 'ready') {
-                return candidate;
+                return executable;
             }
         } catch {
             // Try the next bash candidate.
@@ -173,6 +179,10 @@ function glibcReady({ grun, linker }) {
 }
 
 describeShell('install-prerequisites.sh termux_glibc_ready', () => {
+    test('resolves bash before fixtures narrow PATH', () => {
+        expect(path.isAbsolute(bashPath)).toBe(true);
+    });
+
     test('reports ready only when grun and the dynamic linker are both present', () => {
         expect(glibcReady({ grun: true, linker: true })).toBe('ready');
     });
