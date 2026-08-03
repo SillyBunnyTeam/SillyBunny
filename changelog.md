@@ -165,6 +165,7 @@ lorum ipsum
 - PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
 - PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
 - PR #704 (2026-07-30) `fix(ios): fix iOS crash startup logs not being detailed enough`
+- PR #705 (2026-08-03) `fix(termux): fix the ordering of what is installed first on start-termux-bun.sh`
 - PR #708 (2026-08-03) `fix: chats no longer constantly resave when opening them`
 - PR #709 (2026-08-03) `fix: character metadata is preserved`
 - PR #711 (2026-08-03) `fix(server): port now closes if it's unused`
