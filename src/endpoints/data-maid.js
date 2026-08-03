@@ -5,7 +5,7 @@ import express from 'express';
 import mime from 'mime-types';
 import { getSettingsBackupFilePrefix } from './settings.js';
 import { CHAT_BACKUPS_PREFIX } from './chats.js';
-import { isPathUnderParent, tryParse } from '../util.js';
+import { isPathUnderParent, recoverFileWriteSync, tryParse } from '../util.js';
 import { SETTINGS_FILE } from '../constants.js';
 
 const sha256 = str => crypto.createHash('sha256').update(str).digest('hex');
@@ -753,6 +753,11 @@ router.get('/view', async (req, res) => {
         }
 
         const pathToFile = fileEntry.path;
+        const isDirectCharacterCard = path.dirname(path.resolve(pathToFile)) === path.resolve(req.user.directories.characters)
+            && path.extname(pathToFile).toLowerCase() === '.png';
+        if (isDirectCharacterCard) {
+            recoverFileWriteSync(pathToFile);
+        }
         const fileExists = fs.existsSync(pathToFile);
 
         if (!fileExists) {

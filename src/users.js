@@ -17,7 +17,7 @@ import sanitize from 'sanitize-filename';
 import ipMatching from 'ip-matching';
 
 import { USER_DIRECTORY_TEMPLATE, DEFAULT_USER, PUBLIC_DIRECTORIES, SETTINGS_FILE, UPLOADS_DIRECTORY } from './constants.js';
-import { getConfigValue, color, delay, generateTimestamp, invalidateFirefoxCache, isPathUnderParent, setPermissionsSync } from './util.js';
+import { getConfigValue, color, delay, generateTimestamp, invalidateFirefoxCache, isPathUnderParent, recoverFileWriteSync, setPermissionsSync } from './util.js';
 import { allowKeysExposure, readSecret, writeSecret, SECRETS_FILE } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
 import { serverDirectory } from './server-directory.js';
@@ -1084,9 +1084,10 @@ export async function loginPageMiddleware(request, response) {
 /**
  * Creates a route handler for serving files from a specific directory.
  * @param {(req: import('express').Request) => string} directoryFn A function that returns the directory path to serve files from
+ * @param {{recoverInterruptedWrites?: boolean}} [options] Route options
  * @returns {import('express').RequestHandler}
  */
-function createRouteHandler(directoryFn) {
+function createRouteHandler(directoryFn, { recoverInterruptedWrites = false } = {}) {
     return async (req, res) => {
         try {
             const directory = directoryFn(req);
@@ -1094,6 +1095,11 @@ function createRouteHandler(directoryFn) {
             const fullPath = path.join(directory, filePath);
             if (!isPathUnderParent(directory, path.resolve(fullPath))) {
                 return res.sendStatus(403);
+            }
+            const isDirectPng = path.dirname(path.resolve(fullPath)) === path.resolve(directory)
+                && path.extname(fullPath).toLowerCase() === '.png';
+            if (recoverInterruptedWrites && isDirectPng) {
+                recoverFileWriteSync(fullPath);
             }
             const exists = fs.existsSync(fullPath);
             if (!exists) {
@@ -1235,7 +1241,7 @@ export async function getAllEnabledUsers() {
  */
 export const router = express.Router();
 router.use('/backgrounds/*', createRouteHandler(req => req.user.directories.backgrounds));
-router.use('/characters/*', createRouteHandler(req => req.user.directories.characters));
+router.use('/characters/*', createRouteHandler(req => req.user.directories.characters, { recoverInterruptedWrites: true }));
 router.use('/User%20Avatars/*', createRouteHandler(req => req.user.directories.avatars));
 router.use('/assets/*', createRouteHandler(req => req.user.directories.assets));
 router.use('/user/images/*', createRouteHandler(req => req.user.directories.userImages));

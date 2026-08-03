@@ -12,6 +12,7 @@ jest.unstable_mockModule('../src/util.js', () => ({
     },
     getConfigValue: jest.fn((_key, defaultValue) => defaultValue),
     isValidUrl: jest.fn(() => false),
+    recoverFileWriteSync: jest.fn(),
     setPermissionsSync: jest.fn(),
 }));
 

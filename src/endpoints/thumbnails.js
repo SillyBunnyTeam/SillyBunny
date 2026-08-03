@@ -7,7 +7,7 @@ import { Jimp, JimpMime } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { imageSize as sizeOf } from 'image-size';
 
-import { getConfigValue, invalidateFirefoxCache } from '../util.js';
+import { getConfigValue, invalidateFirefoxCache, recoverFileWriteSync } from '../util.js';
 import {
     getThumbnailResolution,
     getThumbnailMobileResolution,
@@ -217,6 +217,10 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
 
     try {
         const pathToOriginalFile = path.join(originalFolder, file);
+
+        if (type === 'avatar' && path.extname(pathToOriginalFile).toLowerCase() === '.png') {
+            recoverFileWriteSync(pathToOriginalFile);
+        }
 
         // Check if thumbnail already exists and return it if not forcing regeneration
         if (!forceGenerate && fs.existsSync(pathToCachedFile)) {
