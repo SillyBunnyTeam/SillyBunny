@@ -32,6 +32,7 @@
 ## Workflow Notes
 
 - PR targets must go to `staging` by default; `main` is only for documentation, GitHub Actions, or critical hotfixes that must be backported to staging.
+- Self-merges are allowed for the following PR prefixes: `fix`, `chore`, `docs`, within reason. `feat` and `sync` require review from another maintainer. **Never commit directly to the `staging` or `main` repositories without a PR, unless they're `doc` changes.**
 - Prefer complete, focused PRs: use small PRs for isolated bug fixes and one cohesive larger PR for a feature or design decision; avoid tiny micro PRs that do not close a problem end to end.
 - Do not write PR descriptions for the user. PR descriptions must be manually written without AI assistance; you may prepare branches, commits, and a ready-to-open PR link, but ask the end user to provide the PR title/body before submission.
 - Keep upstream SillyTavern syncs separate from feature/fix work. Use `docs/upstream-sync.md` before preparing or reviewing an upstream sync.
