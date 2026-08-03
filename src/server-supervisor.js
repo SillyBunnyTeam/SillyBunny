@@ -5,6 +5,8 @@ import process from 'node:process';
 export const RESTART_EXIT_CODE = 75;
 export const SUPERVISED_ENV = 'SILLYBUNNY_SUPERVISED';
 export const LAUNCHER_ENV = 'SILLYBUNNY_LAUNCHER';
+export const SUPERVISOR_SHUTDOWN_MESSAGE = 'sillybunny:shutdown';
+export const SUPERVISOR_FORCE_KILL_TIMEOUT_MS = 5000;
 
 /**
  * Whether this process should act as a supervisor instead of booting the server.
@@ -38,16 +40,49 @@ export async function runSupervisor({
 } = {}) {
     let child = null;
     let shuttingDown = false;
+    let forceKillTimer = null;
 
-    const forwardSignal = (signal) => {
-        shuttingDown = true;
+    const forceStopChild = () => {
         if (child && child.exitCode === null) {
-            child.kill(signal);
+            child.kill('SIGKILL');
         }
     };
 
-    process.on('SIGINT', () => forwardSignal('SIGINT'));
-    process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+    const requestShutdown = () => {
+        shuttingDown = true;
+        if (!child || child.exitCode !== null) {
+            return;
+        }
+
+        forceKillTimer ??= setTimeout(forceStopChild, SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+        forceKillTimer.unref?.();
+
+        if (typeof child.send === 'function' && child.connected !== false) {
+            try {
+                child.send(SUPERVISOR_SHUTDOWN_MESSAGE, error => error && forceStopChild());
+                return;
+            } catch {
+                // Fall through to the force-stop fallback.
+            }
+        }
+
+        forceStopChild();
+    };
+
+    process.on('SIGINT', requestShutdown);
+    process.on('SIGTERM', requestShutdown);
+    // Windows delivers SIGHUP/SIGBREAK when the console window is closed or
+    // Ctrl+Break is pressed, and it does not kill child processes with their
+    // parent. Without this the server survives as an invisible process that
+    // keeps holding the listen port.
+    process.on('SIGHUP', requestShutdown);
+    process.on('SIGBREAK', requestShutdown);
+    process.on('exit', () => {
+        if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+        }
+        forceStopChild();
+    });
 
     let isFirstLaunch = true;
     for (;;) {
@@ -57,8 +92,12 @@ export async function runSupervisor({
         }
 
         try {
-            child = spawnFn(argv[0], [...execArgv, ...argv.slice(1)], { stdio: 'inherit', env });
+            child = spawnFn(argv[0], [...execArgv, ...argv.slice(1)], { stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env });
             const [code, signal] = await once(child, 'exit');
+            if (forceKillTimer) {
+                clearTimeout(forceKillTimer);
+                forceKillTimer = null;
+            }
 
             if (code === RESTART_EXIT_CODE && !shuttingDown) {
                 console.info('[SillyBunny] Restarting server...');
