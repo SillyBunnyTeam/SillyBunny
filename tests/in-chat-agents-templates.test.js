@@ -235,11 +235,14 @@ describe('in-chat agent bundled templates', () => {
     });
 
     test('keeps draft companion template versions at v1', () => {
+        // Memory Shard shipped a full prompt rewrite, so it carries a real version bump to hand
+        // installed copies the update pill. Everything else is still a v1 draft.
+        const bumpedCompanionVersions = new Map([['memory-shard-companion.json', 2]]);
         const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
 
         for (const filename of companionFilenames) {
             const template = readTemplate(filename);
-            expect(template.version).toBe(1);
+            expect(template.version).toBe(bumpedCompanionVersions.get(filename) ?? 1);
         }
     });
 
@@ -278,6 +281,42 @@ describe('in-chat agent bundled templates', () => {
             expect(template.prompt).toContain('repair task');
             expect(template.prompt).not.toContain('End EVERY');
             expect(template.prompt).not.toContain('EXACT');
+        }
+    });
+
+    test('teaches the empty-output sentinel to conditional trackers only', () => {
+        // Trackers that report a change report nothing on a quiet turn, which the companion layer
+        // renders as literally nothing. Templates that emit output every scene are excluded, since a
+        // sentinel there would give the model permission to skip work it is supposed to do.
+        const sentinelTemplates = [
+            'achievements-tracker.json',
+            'event-tracker.json',
+            'item-tracker.json',
+            'npc-profiles.json',
+            'relationship-tracker.json',
+            'reputation-tracker.json',
+            'scene-tracker.json',
+            'secrets-tracker.json',
+            'status-tracker.json',
+            'time-tracker.json',
+        ];
+        const alwaysEmittingTemplates = [
+            'parallel-tracker.json',
+            'world-detail.json',
+            'cyoa-choices.json',
+            'cyoa-choices-skill-checks.json',
+            'direction-menu.json',
+        ];
+        const catalog = readTemplate('index.json');
+
+        for (const filename of sentinelTemplates) {
+            const template = readTemplate(filename);
+            expect(template.prompt).toContain('tracker-none');
+            expect(findCatalogTemplate(catalog, template.id).prompt).toContain('tracker-none');
+        }
+
+        for (const filename of alwaysEmittingTemplates) {
+            expect(readTemplate(filename).prompt).not.toContain('tracker-none');
         }
     });
 
@@ -368,7 +407,15 @@ describe('in-chat agent bundled templates', () => {
             includeHistory: true,
             feedback: { enabled: true, depth: 1 },
             maxTokens: 64000,
+            // Every shard stays in context, including ones whose host message the shard's own
+            // "hide story above this shard" button has since hidden.
+            includeInChatHistory: true,
+            includeAllChatHistory: true,
+            keepInChatHistoryWhenHostHidden: true,
         }));
+        expect(memoryShard.prompt).toContain('# MEMORY SHARD: [ID]-[NEXT NUM]');
+        expect(memoryShard.prompt).toContain('# CONSOLIDATED MEMORY SHARD: [ID]-MASTER');
+        expect(memoryShard.prompt).toContain('## Shard Reference Key');
         expect(chatroom.companion).toEqual(expect.objectContaining({
             trigger: 'auto',
             displayMode: 'panel',

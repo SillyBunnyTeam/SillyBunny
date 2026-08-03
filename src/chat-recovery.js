@@ -4,7 +4,8 @@ import path from 'node:path';
 import { TextDecoder } from 'node:util';
 
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
+import { acquireChatFileLock } from './chat-file-lock.js';
+import { fsyncDirectorySync, recoverFileWriteSync, tryWriteFileSync } from './util.js';
 
 export const CHAT_RECOVERY_DIRECTORY = '_chat_recovery';
 export const CHAT_RECOVERY_QUARANTINE_LIMIT = 3;
@@ -13,6 +14,11 @@ const GROUP_CHAT_OWNER = 'shared';
 const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 const rekeyTransactions = new WeakMap();
+
+function acquireRecoveryStateLock(target) {
+    assertRecoveryDirectory(target, { create: true });
+    return acquireChatFileLock(path.join(target.recoveryDirectory, '.sillybunny-recovery-state'));
+}
 
 function isPlainObject(value) {
     if (value === null || typeof value !== 'object') {
@@ -168,6 +174,7 @@ export function parseChatJsonl(data) {
 }
 
 export function readChatJsonlStrict(filePath) {
+    recoverFileWriteSync(filePath);
     const rawResult = readRegularFile(filePath);
     if (rawResult.status !== 'ok') {
         return {
@@ -339,7 +346,7 @@ function assertWritableRegularPath(filePath) {
 function atomicWriteRecoveryFile(target, filePath, data) {
     assertRecoveryDirectory(target, { create: true });
     assertWritableRegularPath(filePath);
-    writeFileAtomicSync(filePath, data);
+    tryWriteFileSync(filePath, data, undefined, { durable: true });
 }
 
 function removeRegularFile(filePath) {
@@ -349,6 +356,7 @@ function removeRegularFile(filePath) {
             throw new Error(`Unsafe chat recovery file: ${filePath}`);
         }
         fs.unlinkSync(filePath);
+        fsyncDirectorySync(path.dirname(filePath));
         return true;
     } catch (error) {
         if (error?.code === 'ENOENT') {
@@ -422,14 +430,19 @@ function isStoredSnapshotCurrent(latestPath, data) {
 
 function storeValidSnapshot(target, parsed) {
     const { latestPath, tombstonePath } = getChatRecoveryPaths(target);
-    // SillyBunny: every chat load refreshes this snapshot, so an unchanged one would mean a disk
-    // write on each open. Only the redundant write is dropped; clearing the tombstone and pruning
-    // still run, because skipping those would leave a recoverable chat looking deleted.
-    if (!isStoredSnapshotCurrent(latestPath, parsed.data)) {
-        atomicWriteRecoveryFile(target, latestPath, parsed.data);
+    const release = acquireRecoveryStateLock(target);
+    try {
+        // SillyBunny: every chat load refreshes this snapshot, so an unchanged one would mean a disk
+        // write on each open. Only the redundant write is dropped; clearing the tombstone and pruning
+        // still run, because skipping those would leave a recoverable chat looking deleted.
+        if (!isStoredSnapshotCurrent(latestPath, parsed.data)) {
+            atomicWriteRecoveryFile(target, latestPath, parsed.data);
+        }
+        removeRegularFile(tombstonePath);
+        pruneRecoveryStates(target);
+    } finally {
+        release();
     }
-    removeRegularFile(tombstonePath);
-    pruneRecoveryStates(target);
 }
 
 export function writeLatestChatSnapshot(target, data) {
@@ -442,6 +455,24 @@ export function writeLatestChatSnapshot(target, data) {
     storeValidSnapshot(normalizedTarget, parsed);
     const { latestPath } = getChatRecoveryPaths(normalizedTarget);
     return { ...parsed, stored: isStoredSnapshotCurrent(latestPath, parsed.data) };
+}
+
+export function removeLatestChatSnapshotIfMatches(target, expectedData) {
+    const normalizedTarget = normalizeChatRecoveryTarget(target);
+    if (!assertRecoveryDirectory(normalizedTarget)) {
+        return false;
+    }
+
+    const { latestPath } = getChatRecoveryPaths(normalizedTarget);
+    const release = acquireRecoveryStateLock(normalizedTarget);
+    try {
+        if (!isStoredSnapshotCurrent(latestPath, expectedData)) {
+            return false;
+        }
+        return removeRegularFile(latestPath);
+    } finally {
+        release();
+    }
 }
 
 export function seedLatestChatSnapshot(target) {
@@ -484,19 +515,24 @@ function captureRecoveryFile(filePath) {
 
 function quarantineCorruptChat(target, data) {
     const { quarantinePaths } = getChatRecoveryPaths(target);
-    const previous = quarantinePaths.map(captureRecoveryFile);
+    const release = acquireRecoveryStateLock(target);
+    try {
+        const previous = quarantinePaths.map(captureRecoveryFile);
 
-    for (let index = quarantinePaths.length - 1; index > 0; index--) {
-        const priorData = previous[index - 1];
-        if (priorData === null) {
-            removeRegularFile(quarantinePaths[index]);
-        } else {
-            atomicWriteRecoveryFile(target, quarantinePaths[index], priorData);
+        for (let index = quarantinePaths.length - 1; index > 0; index--) {
+            const priorData = previous[index - 1];
+            if (priorData === null) {
+                removeRegularFile(quarantinePaths[index]);
+            } else {
+                atomicWriteRecoveryFile(target, quarantinePaths[index], priorData);
+            }
         }
+        atomicWriteRecoveryFile(target, quarantinePaths[0], data);
+        pruneRecoveryStates(target);
+        return quarantinePaths[0];
+    } finally {
+        release();
     }
-    atomicWriteRecoveryFile(target, quarantinePaths[0], data);
-    pruneRecoveryStates(target);
-    return quarantinePaths[0];
 }
 
 function ensureActiveDirectory(target) {
@@ -508,7 +544,7 @@ function ensureActiveDirectory(target) {
 function atomicRestoreActive(target, data) {
     ensureActiveDirectory(target);
     assertWritableRegularPath(target.activePath);
-    writeFileAtomicSync(target.activePath, data);
+    tryWriteFileSync(target.activePath, data, undefined, { durable: true });
 }
 
 export function loadActiveChatWithRecovery(target) {
@@ -609,8 +645,13 @@ export function markChatDeleted(target) {
     }
 
     const { tombstonePath } = getChatRecoveryPaths(normalizedTarget);
-    atomicWriteRecoveryFile(normalizedTarget, tombstonePath, Buffer.from(`${normalizedTarget.id}\n`, 'utf8'));
-    pruneRecoveryStates(normalizedTarget);
+    const release = acquireRecoveryStateLock(normalizedTarget);
+    try {
+        atomicWriteRecoveryFile(normalizedTarget, tombstonePath, Buffer.from(`${normalizedTarget.id}\n`, 'utf8'));
+        pruneRecoveryStates(normalizedTarget);
+    } finally {
+        release();
+    }
     return {
         status: 'marked',
         active,
@@ -635,13 +676,18 @@ export function clearChatRecoveryState(target) {
         return { status: 'missing', cleared: 0 };
     }
 
-    let cleared = 0;
-    for (const filePath of getRecoveryStatePaths(normalizedTarget)) {
-        if (removeRegularFile(filePath)) {
-            cleared++;
+    const release = acquireRecoveryStateLock(normalizedTarget);
+    try {
+        let cleared = 0;
+        for (const filePath of getRecoveryStatePaths(normalizedTarget)) {
+            if (removeRegularFile(filePath)) {
+                cleared++;
+            }
         }
+        return { status: 'cleared', cleared };
+    } finally {
+        release();
     }
-    return { status: 'cleared', cleared };
 }
 
 function captureRecoveryState(target) {
@@ -695,28 +741,33 @@ export function rekeyChatRecoveryState(sourceTarget, destinationTarget) {
         return token;
     }
 
-    const sourceState = captureRecoveryState(source);
-    const destinationState = captureRecoveryState(destination);
-    const emptyState = sourceState.map(() => null);
-
+    const release = acquireRecoveryStateLock(source);
     try {
-        applyRecoveryState(destination, sourceState);
-        applyRecoveryState(source, emptyState);
-    } catch (error) {
-        rollbackRecoveryStates(source, destination, sourceState, destinationState, error);
-    }
+        const sourceState = captureRecoveryState(source);
+        const destinationState = captureRecoveryState(destination);
+        const emptyState = sourceState.map(() => null);
 
-    rekeyTransactions.set(token, {
-        used: false,
-        noop: false,
-        source,
-        destination,
-        sourceState,
-        destinationState,
-        expectedSourceState: emptyState,
-        expectedDestinationState: sourceState,
-    });
-    return token;
+        try {
+            applyRecoveryState(destination, sourceState);
+            applyRecoveryState(source, emptyState);
+        } catch (error) {
+            rollbackRecoveryStates(source, destination, sourceState, destinationState, error);
+        }
+
+        rekeyTransactions.set(token, {
+            used: false,
+            noop: false,
+            source,
+            destination,
+            sourceState,
+            destinationState,
+            expectedSourceState: emptyState,
+            expectedDestinationState: sourceState,
+        });
+        return token;
+    } finally {
+        release();
+    }
 }
 
 export function reverseChatRecoveryRekey(token) {
@@ -729,24 +780,29 @@ export function reverseChatRecoveryRekey(token) {
         return;
     }
 
-    const currentSourceState = captureRecoveryState(transaction.source);
-    const currentDestinationState = captureRecoveryState(transaction.destination);
-    if (!recoveryStatesEqual(currentSourceState, transaction.expectedSourceState)
-        || !recoveryStatesEqual(currentDestinationState, transaction.expectedDestinationState)) {
-        throw new Error('Chat recovery state changed after rekey; refusing to overwrite it.');
-    }
-
+    const release = acquireRecoveryStateLock(transaction.source);
     try {
-        applyRecoveryState(transaction.source, transaction.sourceState);
-        applyRecoveryState(transaction.destination, transaction.destinationState);
-    } catch (error) {
-        rollbackRecoveryStates(
-            transaction.source,
-            transaction.destination,
-            currentSourceState,
-            currentDestinationState,
-            error,
-        );
+        const currentSourceState = captureRecoveryState(transaction.source);
+        const currentDestinationState = captureRecoveryState(transaction.destination);
+        if (!recoveryStatesEqual(currentSourceState, transaction.expectedSourceState)
+            || !recoveryStatesEqual(currentDestinationState, transaction.expectedDestinationState)) {
+            throw new Error('Chat recovery state changed after rekey; refusing to overwrite it.');
+        }
+
+        try {
+            applyRecoveryState(transaction.source, transaction.sourceState);
+            applyRecoveryState(transaction.destination, transaction.destinationState);
+        } catch (error) {
+            rollbackRecoveryStates(
+                transaction.source,
+                transaction.destination,
+                currentSourceState,
+                currentDestinationState,
+                error,
+            );
+        }
+        transaction.used = true;
+    } finally {
+        release();
     }
-    transaction.used = true;
 }

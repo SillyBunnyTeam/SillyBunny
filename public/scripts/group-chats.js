@@ -16,7 +16,6 @@ import {
     localizePagination,
     renderPaginationDropdown,
     paginationDropdownChangeHandler,
-    waitUntilCondition,
     uuidv4,
 } from './utils.js';
 import { RA_CountCharTokens, humanizedDateTime, dragElement, favsToHotswap, getMessageTimeStamp } from './RossAscends-mods.js';
@@ -66,7 +65,6 @@ import {
     system_avatar,
     getRequestHeaders,
     refreshCsrfToken,
-    isChatSaving,
     setExternalAbortController,
     baseChatReplace,
     createLazyFields,
@@ -1125,6 +1123,21 @@ function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = f
 
     groupChatSaveQueue = saveTask.catch(() => {});
     return saveTask;
+}
+
+/**
+ * Waits for saves already queued on the serial group chat save queue to settle.
+ * SillyBunny: group saves run on their own queue, so navigation has to drain it separately.
+ * @returns {Promise<void>}
+ */
+export async function waitForQueuedGroupChatSaves() {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const queue = groupChatSaveQueue;
+        await queue.catch(() => {});
+        if (queue === groupChatSaveQueue) {
+            return;
+        }
+    }
 }
 
 async function saveGroupChatImmediately({ groupId, shouldSaveGroup, force = false, throwOnError = false, chatId, chatData, metadata, deferBackup = false, allowShrink = false }) {
@@ -2617,11 +2630,6 @@ function updateFavButtonState(state) {
  * @returns {Promise<boolean>} Whether the group was opened
  */
 export async function openGroupById(groupId, { switchMenu = true } = {}) {
-    if (isChatSaving) {
-        toastr.info(t`Please wait until the chat is saved before switching characters.`, t`Your chat is still saving...`);
-        return false;
-    }
-
     if (!groups.find(x => x.id === groupId)) {
         console.log('Group not found', groupId);
         return false;
@@ -2887,7 +2895,6 @@ export async function getGroupPastChats(groupId) {
  * @returns {Promise<void>}
  */
 export async function openGroupChat(groupId, chatId) {
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     const group = groups.find(x => x.id === groupId);
 
     if (!group || !group.chats.includes(chatId)) {

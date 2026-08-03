@@ -125,6 +125,13 @@ describe('destructive chat save rejection', () => {
         expect(fs.statSync(activePath).isDirectory()).toBe(true);
     });
 
+    test('allowShrink does not authorize overwriting an unreadable chat', async () => {
+        fs.mkdirSync(activePath);
+
+        await expect(save(populatedChat(1), { allowShrink: true })).rejects.toMatchObject({ reason: 'unreadable' });
+        expect(fs.statSync(activePath).isDirectory()).toBe(true);
+    });
+
     test('still allows a destructive save when the client forces it', async () => {
         fs.writeFileSync(activePath, serialize(populatedChat(8)), 'utf8');
 

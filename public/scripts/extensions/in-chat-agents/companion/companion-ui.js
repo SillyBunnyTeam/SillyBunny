@@ -27,7 +27,6 @@ import {
     CHAT_ONLY_INPUT_MAX_CHARS,
     CHATROOM_REPLY_MAX_CHARS,
     CHATROOM_STYLE_VALUES,
-    MESSAGE_INBOX_EMPTY_OUTPUTS,
     PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
     appendChatOnlyUserMessage,
     isAssistantMessage,
@@ -35,6 +34,7 @@ import {
     isChatroomAgent,
     isMessageInboxAgent,
     isPlotCompassAgent,
+    isSuppressedCompanionResult,
     isValidCompanionMessage,
     normalizeChatOnlyInput,
     normalizeChatroomReply,
@@ -291,13 +291,7 @@ export function isSilentCompanionAgent(agent = {}) {
     return isMessageInboxAgent(agent);
 }
 
-export function isSuppressedCompanionResult(agentId, result = {}) {
-    if (!MESSAGE_INBOX_EMPTY_OUTPUTS.has(String(result?.content ?? '').trim())) {
-        return false;
-    }
-
-    return isMessageInboxAgent(getAgentById(agentId));
-}
+export { isSuppressedCompanionResult };
 
 function getRenderableCompanionEntries(message) {
     return Object.entries(getCompanionResults(message))

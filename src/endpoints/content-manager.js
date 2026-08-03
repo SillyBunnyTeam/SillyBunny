@@ -9,7 +9,7 @@ import fetch from 'node-fetch';
 import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
-import { getConfigValue, color, setPermissionsSync, isValidUrl } from '../util.js';
+import { getConfigValue, color, recoverFileWriteSync, setPermissionsSync, isValidUrl } from '../util.js';
 import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
@@ -739,6 +739,9 @@ export function getContentOfType(type, format, scope = CONTENT_SCOPE.USER) {
         }
         try {
             const filePath = path.join(item.folder, item.filename);
+            if (item.type === CONTENT_TYPES.CHARACTER && path.extname(filePath).toLowerCase() === '.png') {
+                recoverFileWriteSync(filePath);
+            }
             const fileContent = fs.readFileSync(filePath);
             switch (format) {
                 case 'json':

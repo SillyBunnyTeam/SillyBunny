@@ -9,7 +9,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const startShSource = readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
 const startBatSource = readFileSync(path.join(repoRoot, 'Start.bat'), 'utf8');
 const startNodeBatSource = readFileSync(path.join(repoRoot, 'Start-Node.bat'), 'utf8');
+const dockerfileSource = readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
 const dockerEntrypointSource = readFileSync(path.join(repoRoot, 'docker', 'docker-entrypoint.sh'), 'utf8');
+const prChecksSource = readFileSync(path.join(repoRoot, '.github', 'workflows', 'pr-checks.yml'), 'utf8');
+const releaseE2ESource = readFileSync(path.join(repoRoot, '.github', 'workflows', 'release-e2e.yml'), 'utf8');
 const prMetadataSource = readFileSync(path.join(repoRoot, '.github', 'workflows', 'pr-metadata.yml'), 'utf8');
 const serverGlobalSource = readFileSync(path.join(repoRoot, 'src', 'server-global.js'), 'utf8');
 const serverSource = readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
@@ -216,11 +219,15 @@ describe('launcher parity', () => {
         expect(packageJson.scripts['start:node']).toBe('node --no-warnings server.js');
     });
 
-    test('declares the supported Node engine and focused Node counterparts', () => {
+    test('pins runtimes that support supervised Windows shutdown', () => {
         expect(packageJson.engines).toEqual({
-            bun: '>= 1.3.0',
+            bun: '>= 1.3.14',
             node: '>= 20',
         });
+        expect(packageJson.packageManager).toBe('bun@1.3.14');
+        expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.3\.14-alpine$/m);
+        expect(prChecksSource).toContain('bun-version: 1.3.14');
+        expect(releaseE2ESource).toContain('bun-version: 1.3.14');
         expect(packageJson.scripts['debug:node']).toBe('node --inspect server.js');
         expect(packageJson.scripts['start:global:node']).toBe('node --no-warnings server.js --global');
         expect(packageJson.scripts['start:no-csrf:node']).toBe('node --no-warnings server.js --disableCsrf');

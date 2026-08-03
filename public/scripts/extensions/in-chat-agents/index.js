@@ -890,12 +890,20 @@ function buildAgentOrderPill(agent) {
     return `<span class="ica--card-pill ica--card-pill--order" title="Lower numbers run earlier when Append Agents Execution is set to Sequential."><i class="fa-solid fa-sort-numeric-down fa-xs"></i> Order ${escapeHtml(getAgentOrderValue(agent))}</span>`;
 }
 
-function buildAgentVersionPill(agent) {
+function hasTemplateUpdate(agent) {
     const sourceTemplate = findSourceTemplateForAgent(agent);
-    const agentVersion = getAgentVersionValue(agent);
-    const templateVersion = getTemplateVersionValue(sourceTemplate);
+    return Boolean(sourceTemplate && getTemplateVersionValue(sourceTemplate) > getAgentVersionValue(agent));
+}
 
-    if (sourceTemplate && templateVersion > agentVersion) {
+function getAgentsWithTemplateUpdates() {
+    return getAgents().filter(hasTemplateUpdate);
+}
+
+function buildAgentVersionPill(agent) {
+    const agentVersion = getAgentVersionValue(agent);
+
+    if (hasTemplateUpdate(agent)) {
+        const templateVersion = getTemplateVersionValue(findSourceTemplateForAgent(agent));
         return `<button type="button" class="ica--card-pill ica--card-pill--version ica--card-pill--version-update" title="A newer template is available.">v${escapeHtml(agentVersion)} &rarr; v${escapeHtml(templateVersion)}</button>`;
     }
 
@@ -1312,6 +1320,51 @@ async function updateAgentFromSourceTemplate(agent) {
     await saveAgent(buildUpdatedAgentFromTemplate(agent, template));
     renderAgentList();
     toastr.success(`Updated "${template.name}" to v${templateVersion}.`);
+}
+
+async function updateAllAgentsFromSourceTemplates() {
+    const outdatedAgents = getAgentsWithTemplateUpdates();
+    if (outdatedAgents.length === 0) {
+        toastr.info('Every bundled agent is already on its latest template.');
+        return;
+    }
+
+    const names = outdatedAgents
+        .map(agent => {
+            const template = findSourceTemplateForAgent(agent);
+            return `<li>${escapeHtml(agent.name || template.name)} — v${escapeHtml(getAgentVersionValue(agent))} &rarr; v${escapeHtml(getTemplateVersionValue(template))}</li>`;
+        })
+        .join('');
+    const result = await new Popup(
+        `Update ${outdatedAgents.length} agent(s) to their latest templates? Enabled state, quick toggle pin, order, and profile overrides will be kept.<ul class="ica--update-all-list">${names}</ul>`,
+        POPUP_TYPE.CONFIRM,
+    ).show();
+
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return;
+    }
+
+    let updated = 0;
+    for (const agent of outdatedAgents) {
+        const template = findSourceTemplateForAgent(agent);
+        if (!template) {
+            continue;
+        }
+        await saveAgent(buildUpdatedAgentFromTemplate(agent, template));
+        updated++;
+    }
+
+    syncToolAgentRegistrations();
+    renderAgentList();
+    toastr.success(`Updated ${updated} agent(s) to their latest templates.`);
+}
+
+function updateUpdateAllButtonVisibility() {
+    const outdatedCount = getAgentsWithTemplateUpdates().length;
+    const button = $('#ica--updateAllAgents');
+    button.toggle(outdatedCount > 0);
+    button.find('span').text(`Update All (${outdatedCount})`);
+    button.attr('title', `Update ${outdatedCount} agent(s) whose bundled template has a newer version`);
 }
 
 function buildAgentFromSnapshot(snapshot) {
@@ -2686,6 +2739,7 @@ function renderAgentList() {
 
     restoreAgentListScrollState(scrollState);
     updateFixTrackersButtonVisibility();
+    updateUpdateAllButtonVisibility();
     updateCompanionButtonVisibility();
     updateCompanionPanelHandleVisibility();
 }
@@ -5734,6 +5788,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         toastr.info(enabled ? 'In-Chat Agents enabled.' : 'In-Chat Agents disabled.');
     });
     $('#ica--addAgent').on('click', () => openEditor());
+    $('#ica--updateAllAgents').on('click', () => updateAllAgentsFromSourceTemplates());
     $('#ica--companionsDashboard').on('click', () => openCompanionDashboard());
     $('#ica--convertAllTrackers').on('click', async () => {
         const inlineTrackers = getAgents().filter(agent => agent.category === 'tracker' && !isCompanionAgent(agent) && !isPathfinderAgent(agent));

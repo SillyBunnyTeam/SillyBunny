@@ -17,7 +17,7 @@ const {
     markChatDeleted,
     writeLatestChatSnapshot,
 } = await import('../src/chat-recovery.js');
-const { router: chatsRouter } = await import('../src/endpoints/chats.js');
+const { router: chatsRouter, trySaveChat } = await import('../src/endpoints/chats.js');
 const { router: charactersRouter } = await import('../src/endpoints/characters.js');
 const { router: groupsRouter } = await import('../src/endpoints/groups.js');
 
@@ -237,16 +237,85 @@ describe('chat recovery endpoint fallbacks', () => {
             original_file: 'Old Chat.jsonl',
             renamed_file: 'Renamed Chat.jsonl',
             is_group: false,
+            chat_id_hash: 123,
         });
 
         expect(response.status).toBe(200);
         await expect(response.json()).resolves.toMatchObject({ ok: true, sanitizedFileName: 'Renamed Chat' });
         expect(fs.existsSync(sourcePath)).toBe(false);
         expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename me');
+        expect(JSON.parse(fs.readFileSync(destinationPath, 'utf8').split('\n')[0]).chat_metadata.chat_id_hash).toBe(123);
         expect(consoleWarn).toHaveBeenCalledWith(
             'Failed to prepare chat recovery state; continuing with chat rename.',
             expect.any(Error),
         );
+    });
+
+    test('keeps a legacy branch main-chat seed instead of persisting a filename-derived hash', async () => {
+        const chatDirectory = path.join(directories.chats, 'Test Card');
+        const sourcePath = path.join(chatDirectory, 'Old Branch.jsonl');
+        const destinationPath = path.join(chatDirectory, 'Renamed Branch.jsonl');
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(sourcePath, [
+            JSON.stringify({ chat_metadata: { main_chat: 'Root Chat' }, user_name: 'User', character_name: 'Character' }),
+            JSON.stringify({ name: 'Character', mes: 'branch message' }),
+        ].join('\n'));
+
+        const response = await postJson('/api/chats/rename', {
+            avatar_url: 'Test Card.png',
+            original_file: 'Old Branch.jsonl',
+            renamed_file: 'Renamed Branch.jsonl',
+            is_group: false,
+            chat_id_hash: 123,
+        });
+
+        expect(response.status).toBe(200);
+        const metadata = JSON.parse(fs.readFileSync(destinationPath, 'utf8').split('\n')[0]).chat_metadata;
+        expect(metadata.main_chat).toBe('Root Chat');
+        expect(metadata).not.toHaveProperty('chat_id_hash');
+    });
+
+    test('does not overwrite a destination chat created by a cooperating save during rename', async () => {
+        const owner = 'Test Card';
+        const chatDirectory = path.join(directories.chats, owner);
+        const sourcePath = path.join(chatDirectory, 'Old Chat.jsonl');
+        const destinationPath = path.join(chatDirectory, 'Renamed Chat.jsonl');
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(sourcePath, createChatData('rename source'));
+        const sourceIdentity = fs.statSync(sourcePath, { bigint: true });
+        const writeSync = fs.writeSync.bind(fs);
+        let destinationSave;
+
+        jest.spyOn(fs, 'writeSync').mockImplementation((descriptor, ...args) => {
+            const stats = fs.fstatSync(descriptor, { bigint: true });
+            if (!destinationSave && stats.dev === sourceIdentity.dev && stats.ino === sourceIdentity.ino) {
+                destinationSave = trySaveChat(
+                    createChatPayload(undefined, 'destination winner'),
+                    destinationPath,
+                    false,
+                    'rename-race-user',
+                    owner,
+                    directories.backups,
+                    { deferBackup: true },
+                );
+                destinationSave.catch(() => {});
+            }
+            return writeSync(descriptor, ...args);
+        });
+
+        const response = await postJson('/api/chats/rename', {
+            avatar_url: `${owner}.png`,
+            original_file: 'Old Chat.jsonl',
+            renamed_file: 'Renamed Chat.jsonl',
+            is_group: false,
+            chat_id_hash: 123,
+        });
+
+        expect(response.status).toBe(200);
+        expect(destinationSave).toBeDefined();
+        await expect(destinationSave).rejects.toMatchObject({ code: 'ELOCKED' });
+        expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename source');
+        expect(fs.readFileSync(destinationPath, 'utf8')).not.toContain('destination winner');
     });
 
     test('invalidates stale recovery state when a sidecar rekey fails after rename', async () => {

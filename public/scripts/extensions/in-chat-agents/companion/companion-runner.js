@@ -1,6 +1,8 @@
 import {
     chat,
     chat_metadata,
+    extension_prompt_roles,
+    extension_prompt_types,
     getCurrentChatId,
     normalizeContentText,
     saveChatDebounced,
@@ -46,6 +48,7 @@ import {
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
     isAssistantMessage,
+    isEmptyOutputSentinel,
     isValidCompanionMessage,
     normalizePlotCompassObjective,
 } from './companion-shared.js';
@@ -709,8 +712,11 @@ export function collectRecentCompanionResults(agentId, { beforeMessageIndex = ch
             continue;
         }
 
+        // Sentinel results are skipped rather than counted, so the scan keeps walking back to the
+        // last turn that carried real content. A tracker that reported no change therefore keeps
+        // feeding its previous block forward instead of dropping out of the feedback window.
         const result = getCompanionResults(message)[agentId];
-        if (result?.status === 'done' && normalizeText(result.content) && !(excludeChatHistory && result.includeInChatHistory === true)) {
+        if (result?.status === 'done' && normalizeText(result.content) && !isEmptyOutputSentinel(result.content) && !(excludeChatHistory && result.includeInChatHistory === true)) {
             results.push({
                 messageIndex: index,
                 ...result,
@@ -815,18 +821,48 @@ const COMPANION_TASK_ANCHOR = `[Task]\nUse the conversation above only as read-o
 // trackers (author's notes / world info) are NOT routed through this path and stay unaffected.
 // Detection is dynamic so custom tracker tags are covered automatically. The guard is prepended
 // to one tracker feedback block, preserving its proximity to the format without repeating it.
-const COMPANION_TRACKER_TAG_PATTERN = /\[([A-Z][A-Z0-9_]*)(?::[^|\]\n]+)?\|/g;
-let activeFeedbackTrackerTags = new Set();
+// Delimited openers are unambiguous and may sit anywhere on a line: [REP|...], [NPC:MAJOR|...].
+const COMPANION_TRACKER_PIPED_TAG_PATTERN = /\[([A-Z][A-Z0-9_]*)(?::[^|\]\n]+)?\|/g;
+// Bare tags ([CHOICES], [DIRECTIONS], [LEVEL_UP]) carry no delimiter, so they only count when they
+// own their whole line, and only from two characters up. That keeps CYOA skill-check bodies out of
+// the tag set: **[Skill 42/100]** and [Speech 42/100] are mid-line and mixed case, and a markdown
+// checkbox [X] is one character.
+const COMPANION_TRACKER_BARE_TAG_PATTERN = /^[ \t>*_]*\[\/?([A-Z][A-Z0-9_]+)(?::[^|\]\n]+)?\][ \t*_]*$/gm;
+// Any line that opens or closes a bracket tag terminates the block before it.
+const COMPANION_TRACKER_BOUNDARY_LINE_PATTERN = /^[ \t]*\[\/?[A-Z][A-Z0-9_]*(?::[^|\]\n]+)?[|\]]/;
+const COMPANION_TRACKER_ECHO_GUARD_KEY = 'inchat_agent_companion_tracker_echo_guard';
+let activeFeedbackTrackerShapes = new Map();
+let standaloneTrackerGuardInjected = false;
+
+/**
+ * Maps each detected tracker tag to the bracket shape it was written with, so the echo guard can
+ * quote the exact form the model is likely to copy. Piped wins when both forms appear, because a
+ * [REP|...] opener with a [/REP] closer must be advertised as piped.
+ * @param {string} text
+ * @returns {Map<string, 'bare'|'piped'>}
+ */
+function extractTrackerTagShapes(text) {
+    const shapes = new Map();
+    if (!text) {
+        return shapes;
+    }
+
+    const source = normalizeText(text);
+    for (const match of source.matchAll(COMPANION_TRACKER_PIPED_TAG_PATTERN)) {
+        shapes.set(match[1].toUpperCase(), 'piped');
+    }
+    for (const match of source.matchAll(COMPANION_TRACKER_BARE_TAG_PATTERN)) {
+        const tag = match[1].toUpperCase();
+        if (!shapes.has(tag)) {
+            shapes.set(tag, 'bare');
+        }
+    }
+
+    return shapes;
+}
 
 function extractTrackerTags(text) {
-    if (!text) {
-        return [];
-    }
-    const tags = new Set();
-    for (const match of text.matchAll(COMPANION_TRACKER_TAG_PATTERN)) {
-        tags.add(match[1].toUpperCase());
-    }
-    return [...tags];
+    return [...extractTrackerTagShapes(text).keys()];
 }
 
 function getActiveInlineTrackerTags(activeAgents = []) {
@@ -849,27 +885,156 @@ function getActiveInlineTrackerTags(activeAgents = []) {
     return tags;
 }
 
-function buildTrackerEchoGuard(tags) {
-    const examples = tags.flatMap(tag => [`[${tag}|...]`, `[/${tag}]`]).join(', ');
-    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference information to inform the scene. Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. Specifically, do not emit any of: ' + examples + ' (or variations of them). Produce your normal story reply only - never inline tracker blocks of your own.';
+function formatTrackerTagExamples(shapes) {
+    return [...shapes]
+        .flatMap(([tag, shape]) => [shape === 'bare' ? `[${tag}]` : `[${tag}|...]`, `[/${tag}]`])
+        .join(', ');
+}
+
+function buildTrackerEchoGuard(shapes) {
+    return 'HARD STOP for your reply: the bracket-format tracker notes above are read-only reference. '
+        + 'A separate side-channel agent writes them and re-attaches them automatically after your reply, so any copy you write is a duplicate the user has to delete by hand. '
+        + 'Do NOT reproduce, paraphrase, update, restate, or wrap any reply content in those tracker formats. '
+        + 'Specifically, do not emit any of: ' + formatTrackerTagExamples(shapes) + ' (or variations of them). '
+        + 'Partial, renamed, and unclosed versions count too: an opening tag with no closing tag is still a violation. '
+        + 'Never repeat an "[... - auxiliary notes]" label. '
+        + 'Produce your normal story reply only - never inline tracker blocks of your own.';
+}
+
+function collectRetainedTrackerTagShapes({ excludeMessage = null } = {}) {
+    const shapes = new Map();
+
+    for (const message of chat) {
+        if (message === excludeMessage) {
+            continue;
+        }
+        for (const result of Object.values(getCompanionResults(message))) {
+            if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
+            for (const [tag, shape] of extractTrackerTagShapes(result.content)) {
+                if (!shapes.has(tag) || shape === 'piped') {
+                    shapes.set(tag, shape);
+                }
+            }
+        }
+    }
+
+    return shapes;
 }
 
 function getAuxiliaryTrackerTags() {
-    const tags = new Set(activeFeedbackTrackerTags);
+    const tags = new Set(activeFeedbackTrackerShapes.keys());
 
-    for (const message of chat) {
-        for (const result of Object.values(getCompanionResults(message))) {
-            if (result?.status !== 'done' || result.includeInChatHistory !== true) continue;
-            extractTrackerTags(result.content).forEach(tag => tags.add(tag));
-        }
+    for (const tag of collectRetainedTrackerTagShapes().keys()) {
+        tags.add(tag);
     }
 
     return tags;
 }
 
+const TRACKER_BODY_LINE_PATTERNS = [
+    /^\s*$/,                                        // spacer inside a block
+    /^\s*\d+[.)][ \t]+\S/,                          // 1. numbered option
+    /^\s*[A-Za-z][.)][ \t]+\S/,                     // A. lettered option
+    /^\s*[-*+•‣◦][ \t]+\S/,                         // bullet
+    /^\s*\|.*\|\s*$/,                               // table row
+    /^\s*[-=|:+\s]{3,}$/,                           // table rule
+    /^\s*#{1,6}[ \t]+\S/,                           // markdown heading
+    /^\s*\*\*[^*\n]+\*\*/,                          // **Bold label** lead
+    /^\s*[A-Z][A-Z0-9 _&'/-]{1,39}$/,               // CORE ATTRIBUTES style heading
+    /^\s*[A-Za-z][\w '/&()-]{0,29}:(?:\s|$)/,       // cause:/Level:/Skill Growth: field
+];
+// `Mira: "You did well."` satisfies the field-label shape, so quote-led values are vetoed first.
+const TRACKER_DIALOGUE_LINE_PATTERN = /^\s*[^:\n]{1,40}:\s*["'‘“]/;
+
+function isTrackerBodyLine(line) {
+    return !TRACKER_DIALOGUE_LINE_PATTERN.test(line)
+        && TRACKER_BODY_LINE_PATTERNS.some(pattern => pattern.test(line));
+}
+
 /**
- * Removes complete tracker blocks echoed from Companion auxiliary context.
- * Unclosed blocks remain intact rather than risking removal of adjacent story prose.
+ * Bounds an unclosed auxiliary block. It must start its own line, and every line from there must be
+ * list/label/table/heading shaped all the way to the next bracket-tag line or the end of the reply.
+ * A single sentence-shaped line aborts the whole removal, so a mid-message echo trailed by story
+ * prose is left alone rather than partially cut. Unquoted script-format dialogue directly under an
+ * echoed opener (`Mira: You did well.`) is the accepted residual risk: it matches the field-label
+ * shape, and excluding it would also exclude `cause: ...`, the most common real body line.
+ * @param {string} source
+ * @param {number} start index of the '[' that opens the block
+ * @returns {number} exclusive end offset, or -1 when the block cannot be bounded safely
+ */
+function boundUnclosedTrackerBlock(source, start) {
+    const lineStart = source.lastIndexOf('\n', start - 1) + 1;
+    if (source.slice(lineStart, start).trim() !== '') {
+        return -1;
+    }
+
+    const lineBreak = source.indexOf('\n', start);
+    const openerLineEnd = lineBreak < 0 ? source.length : lineBreak;
+    const openerLine = source.slice(start, openerLineEnd);
+    // A tag cut off mid-bracket at the very end of the reply is garbage whatever its shape.
+    const isTruncatedOpener = lineBreak < 0 && !openerLine.includes(']');
+    if (!/^\[[^\]\n]*\]\s*$/.test(openerLine) && !isTruncatedOpener) {
+        return -1;
+    }
+    if (isTruncatedOpener || openerLine.startsWith('[/')) {
+        return openerLineEnd;
+    }
+
+    let end = openerLineEnd;
+    let cursor = lineBreak < 0 ? source.length : lineBreak + 1;
+
+    while (cursor < source.length) {
+        const nextBreak = source.indexOf('\n', cursor);
+        const lineEnd = nextBreak < 0 ? source.length : nextBreak;
+        const line = source.slice(cursor, lineEnd);
+
+        if (COMPANION_TRACKER_BOUNDARY_LINE_PATTERN.test(line)) {
+            break;
+        }
+        if (!isTrackerBodyLine(line)) {
+            return -1;
+        }
+        if (line.trim() !== '') {
+            end = lineEnd;
+        }
+        cursor = nextBreak < 0 ? source.length : nextBreak + 1;
+    }
+
+    return end;
+}
+
+const AUXILIARY_LABEL_LINE_SOURCE = String.raw`^\s*\[[^\]\n]+ - auxiliary notes\]\s*$`;
+const AUXILIARY_LABEL_LINE_PROBE = new RegExp(AUXILIARY_LABEL_LINE_SOURCE, 'im');
+const AUXILIARY_LABEL_LINE_PATTERN = new RegExp(AUXILIARY_LABEL_LINE_SOURCE, 'gim');
+
+// SillyBunny: tracker prompts teach the empty-output sentinel, and the same prompt is injected into
+// the MAIN generation when the tracker runs inline. Inline 'extract' post-processing copies matched
+// blocks into chat metadata without removing anything from the reply, so a main model that follows
+// the instruction would leave the sentinel sitting in the story text. Only a line that is nothing
+// but the sentinel is removed; prose that merely contains the word is left alone.
+const EMPTY_OUTPUT_SENTINEL_LINE_SOURCE = String.raw`^[^\S\n]*(?:phone-none|tracker-none)[^\S\n]*$`;
+const EMPTY_OUTPUT_SENTINEL_LINE_PROBE = new RegExp(EMPTY_OUTPUT_SENTINEL_LINE_SOURCE, 'im');
+const EMPTY_OUTPUT_SENTINEL_LINE_PATTERN = new RegExp(EMPTY_OUTPUT_SENTINEL_LINE_SOURCE, 'gim');
+
+function mergeTrackerRanges(ranges) {
+    const merged = [];
+
+    for (const range of [...ranges].sort((left, right) => left.start - right.start)) {
+        const last = merged.at(-1);
+        if (last && range.start <= last.end) {
+            last.end = Math.max(last.end, range.end);
+            continue;
+        }
+        merged.push({ ...range });
+    }
+
+    return merged.reverse();
+}
+
+/**
+ * Removes tracker blocks echoed from Companion auxiliary context. Complete blocks come straight from
+ * findTrackerBlocks; unclosed ones are removed only when boundUnclosedTrackerBlock can bound them
+ * without touching story prose.
  * @param {string} text
  * @param {Iterable<string>} tags
  * @param {object[]} activeAgents
@@ -889,21 +1054,30 @@ export function stripAuxiliaryTrackerEchoes(text, tags = getAuxiliaryTrackerTags
         for (const block of findTrackerBlocks(source, normalizedTag)) {
             if (block.complete) {
                 ranges.push({ start: block.start, end: block.end });
+                continue;
+            }
+
+            const end = boundUnclosedTrackerBlock(source, block.start);
+            if (end > block.start) {
+                ranges.push({ start: block.start, end });
             }
         }
     }
 
-    if (ranges.length === 0) {
+    // The label line survives on its own when the model echoes the header but not a full block, so
+    // it has to be probed independently of the block ranges.
+    if (ranges.length === 0 && !AUXILIARY_LABEL_LINE_PROBE.test(source) && !EMPTY_OUTPUT_SENTINEL_LINE_PROBE.test(source)) {
         return source;
     }
 
     let cleaned = source;
-    for (const range of ranges.sort((left, right) => right.start - left.start)) {
+    for (const range of mergeTrackerRanges(ranges)) {
         cleaned = cleaned.slice(0, range.start) + cleaned.slice(range.end);
     }
 
     return cleaned
-        .replace(/^\s*\[[^\]\n]+ - auxiliary notes\]\s*$/gim, '')
+        .replace(AUXILIARY_LABEL_LINE_PATTERN, '')
+        .replace(EMPTY_OUTPUT_SENTINEL_LINE_PATTERN, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
@@ -1352,6 +1526,9 @@ async function runSingleCompanionAgent(agent, messageIndex, generationType, canc
         if (!isTargetCurrent() || getAgentGenerationCancelRevision() !== cancelRevision) {
             throw new DOMException('Companion run cancelled.', 'AbortError');
         }
+        // An empty-output sentinel yields no payload here, which is deliberate: repair is the manual
+        // fix for a malformed block, so "nothing changed" must roll back to the stored tracker state
+        // rather than overwrite it with a sentinel that renders as nothing.
         if (repair && agent.category === 'tracker') {
             const payload = normalizeCompanionTrackerRepairPayload(agent, content).payload;
             if (!payload) {
@@ -1751,9 +1928,9 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
     const excludedIndex = excludeMessage ? chat.indexOf(excludeMessage) : -1;
     const beforeMessageIndex = excludedIndex >= 0 ? excludedIndex : chat.length;
     const inlineTrackerTags = getActiveInlineTrackerTags(activeAgents);
-    const feedbackTrackerTags = new Set();
+    const feedbackTrackerShapes = new Map();
     const feedbackPrompts = [];
-    activeFeedbackTrackerTags = feedbackTrackerTags;
+    activeFeedbackTrackerShapes = feedbackTrackerShapes;
 
     for (const agent of activeAgents) {
         if (!isCompanionAgent(agent)) {
@@ -1782,15 +1959,25 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             continue;
         }
 
-        const trackerTags = extractTrackerTags(body).filter(tag => !inlineTrackerTags.has(tag));
-        trackerTags.forEach(tag => feedbackTrackerTags.add(tag));
+        const blockShapes = extractTrackerTagShapes(body);
+        const trackerTags = [...blockShapes.keys()].filter(tag => !inlineTrackerTags.has(tag));
+        trackerTags.forEach(tag => feedbackTrackerShapes.set(tag, blockShapes.get(tag)));
         feedbackPrompts.push({ agent, body, trackerTags });
+    }
+
+    // Retained-history companions inject their blocks as prior assistant turns, which is stronger
+    // mimicry pressure than a feedback block, so they need the guard even with feedback disabled.
+    const guardShapes = new Map(feedbackTrackerShapes);
+    for (const [tag, shape] of collectRetainedTrackerTagShapes({ excludeMessage })) {
+        if (!inlineTrackerTags.has(tag) && !guardShapes.has(tag)) {
+            guardShapes.set(tag, shape);
+        }
     }
 
     let trackerGuardInjected = false;
     for (const { agent, body, trackerTags } of feedbackPrompts) {
         const echoGuard = trackerTags.length > 0 && !trackerGuardInjected
-            ? buildTrackerEchoGuard([...feedbackTrackerTags]) + '\n\n'
+            ? buildTrackerEchoGuard(guardShapes) + '\n\n'
             : '';
         trackerGuardInjected ||= trackerTags.length > 0;
         const label = `[${String(agent.name ?? 'Companion').trim()} - auxiliary notes]`;
@@ -1805,6 +1992,24 @@ export function injectCompanionFeedbackPrompts(activeAgents = [], { excludeMessa
             null,
             agent.name,
         );
+    }
+
+    // Depth 0 IN_CHAT lands after the retained assistant turns that carry the tracker blocks, which
+    // is the recency slot the model weighs hardest. Nothing clears companion prompt keys between
+    // generations, so the fallback clears itself once the tags stop appearing.
+    if (guardShapes.size > 0 && !trackerGuardInjected) {
+        setExtensionPrompt(
+            COMPANION_TRACKER_ECHO_GUARD_KEY,
+            buildTrackerEchoGuard(guardShapes),
+            extension_prompt_types.IN_CHAT,
+            0,
+            false,
+            extension_prompt_roles.SYSTEM,
+        );
+        standaloneTrackerGuardInjected = true;
+    } else if (standaloneTrackerGuardInjected) {
+        setExtensionPrompt(COMPANION_TRACKER_ECHO_GUARD_KEY, '');
+        standaloneTrackerGuardInjected = false;
     }
 }
 

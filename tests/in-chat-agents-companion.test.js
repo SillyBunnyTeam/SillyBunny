@@ -420,7 +420,7 @@ describe('companion card ui', () => {
         expect(isHiddenCompanionResult('companion-tracker', {})).toBe(true);
     });
 
-    test('suppresses no-message Message Inbox results', async () => {
+    test('suppresses empty-output sentinel results for any companion', async () => {
         agents.push({
             id: 'message-inbox',
             name: 'Message Inbox',
@@ -433,7 +433,18 @@ describe('companion card ui', () => {
         expect(isSuppressedCompanionResult('message-inbox', emptyResult)).toBe(true);
         expect(isHiddenCompanionResult('message-inbox', emptyResult)).toBe(true);
         expect(formatCompanionContent('message-inbox', emptyResult)).toBe('');
-        expect(isSuppressedCompanionResult('companion-tracker', emptyResult)).toBe(false);
+
+        // Suppression keys off the content, so a tracker sentinel goes silent the same way and a
+        // custom agent opts in purely by teaching its prompt one of the sentinels.
+        const quietTracker = { content: 'tracker-none', format: 'markdown', displayMode: 'panel' };
+        expect(isSuppressedCompanionResult('companion-tracker', quietTracker)).toBe(true);
+        expect(formatCompanionContent('companion-tracker', quietTracker)).toBe('');
+        expect(isSuppressedCompanionResult('companion-tracker', emptyResult)).toBe(true);
+
+        // Real output, and prose that merely mentions the token, still render.
+        expect(isSuppressedCompanionResult('companion-tracker', { content: '[STATUS|Ava|Tired|MILD]\nnote: travel\n[/STATUS]' })).toBe(false);
+        expect(isSuppressedCompanionResult('companion-tracker', { content: 'tracker-none was returned earlier' })).toBe(false);
+        expect(isSuppressedCompanionResult('companion-tracker', { content: '' })).toBe(false);
     });
 
     test('cleans uuid suffixes from companion agent display names', async () => {

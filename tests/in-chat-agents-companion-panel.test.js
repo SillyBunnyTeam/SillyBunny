@@ -106,11 +106,8 @@ describe('companion tracker panel', () => {
             formatCompanionContent: jest.fn((agentId, result) => `<formatted>${result.content}</formatted>`),
             insertChoiceIntoMessageInput: jest.fn(() => true),
             isSilentCompanionAgent: jest.fn(agent => String(agent?.sourceTemplateId ?? agent?.id ?? '') === 'tpl-message-inbox-companion'),
-            isSuppressedCompanionResult: jest.fn((agentId, result) => {
-                const agent = agents.find(agent => agent.id === agentId);
-                return ['PHONE_NONE', 'phone-none'].includes(String(result?.content ?? '').trim())
-                    && String(agent?.sourceTemplateId ?? agent?.id ?? '') === 'tpl-message-inbox-companion';
-            }),
+            isSuppressedCompanionResult: jest.fn((agentId, result) =>
+                ['PHONE_NONE', 'phone-none', 'TRACKER_NONE', 'tracker-none'].includes(String(result?.content ?? '').trim())),
         }));
 
         return await import('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js');
