@@ -3,6 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import extract from 'png-chunks-extract';
@@ -18,6 +19,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const originalWorkingDirectory = process.cwd();
 const diskCacheEnvironmentKey = 'SILLYTAVERN_PERFORMANCE_USEDISKCACHE';
 const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
+const describeWindows = process.platform === 'win32' ? describe : describe.skip;
 process.env[diskCacheEnvironmentKey] = 'false';
 process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
@@ -114,6 +116,37 @@ describe('character card metadata preservation', () => {
         expect(cardChunks[0].card.spec).toBe('chara_card_v2');
         expect(cardChunks[1].card.spec).toBe('chara_card_v3');
         expect(cardChunks.every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    describeWindows('Windows card metadata', () => {
+        test('preserves NTFS metadata through a case-only card path alias', async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            jest.spyOn(console, 'info').mockImplementation(() => {});
+            await createAlice();
+            const originalPath = path.join(directories.characters, 'Alice.png');
+            const uppercasePath = path.join(directories.characters, 'Alice.PNG');
+            fs.renameSync(originalPath, uppercasePath);
+            addAncillaryChunks(uppercasePath);
+            const alternateStreamPath = `${uppercasePath}:sillybunny-metadata-test`;
+            fs.writeFileSync(alternateStreamPath, 'preserve this stream', 'utf8');
+            const cardBefore = fs.readFileSync(uppercasePath);
+            const statBefore = fs.statSync(uppercasePath, { bigint: true });
+
+            const response = await postJson('/api/characters/merge-attributes', {
+                avatar: 'Alice.PNG',
+                creator: 'Somebody',
+            });
+
+            expect(response.status).toBe(200);
+            const cardAfter = fs.readFileSync(uppercasePath);
+            const statAfter = fs.statSync(uppercasePath, { bigint: true });
+            expect(nonCardChunks(cardAfter)).toEqual(nonCardChunks(cardBefore));
+            expect(statAfter.dev).toBe(statBefore.dev);
+            expect(statAfter.ino).toBe(statBefore.ino);
+            expect(statAfter.birthtimeNs).toBe(statBefore.birthtimeNs);
+            expect(fs.readFileSync(alternateStreamPath, 'utf8')).toBe('preserve this stream');
+            expect(decodeCardChunks(cardAfter).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+        });
     });
 
     test('leaves the card untouched when a full editor save changes nothing', async () => {

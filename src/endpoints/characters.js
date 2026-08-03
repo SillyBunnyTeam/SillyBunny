@@ -51,13 +51,26 @@ const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
 const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-const getPngFileStem = fileName => path.extname(fileName) === '.png'
+const getPngFileStem = fileName => path.extname(fileName).toLowerCase() === '.png'
     ? fileName.slice(0, -path.extname(fileName).length)
     : fileName;
 const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+const isSameFile = (firstPath, secondPath) => {
+    if (path.resolve(firstPath) === path.resolve(secondPath)) {
+        return true;
+    }
+
+    try {
+        const firstStats = fs.statSync(firstPath, { bigint: true });
+        const secondStats = fs.statSync(secondPath, { bigint: true });
+        return firstStats.dev === secondStats.dev && firstStats.ino !== 0n && firstStats.ino === secondStats.ino;
+    } catch {
+        return false;
+    }
+};
 
 class DiskCache {
     /**
@@ -272,7 +285,7 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
             try {
                 let rawImage;
                 // SillyBunny: metadata-only card edits must not rebuild an existing PNG through Jimp.
-                const editsExistingCard = typeof inputFile === 'string' && path.resolve(inputFile) === path.resolve(outputImagePath);
+                const editsExistingCard = typeof inputFile === 'string' && isSameFile(inputFile, outputImagePath);
                 if (editsExistingCard && (crop === undefined || crop === null)) {
                     rawImage = await fsPromises.readFile(inputFile);
                     if (isPngBuffer(rawImage)) {
