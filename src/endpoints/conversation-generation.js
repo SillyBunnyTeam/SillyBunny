@@ -10,6 +10,7 @@ import { EventEmitter } from 'node:events';
 import sanitize from 'sanitize-filename';
 
 import { parse as parseCharacterCard } from '../character-card-parser.js';
+import { recoverFileWriteSync } from '../util.js';
 import { handleChatCompletionsGenerate } from './backends/chat-completions.js';
 import { handleTextCompletionsGenerate } from './backends/text-completions.js';
 import {
@@ -80,6 +81,7 @@ export async function getCharacterData(request, avatar, { allowOverride = true }
             return normalizeCharacterData({}, avatar);
         }
 
+        recoverFileWriteSync(avatarPath);
         const cardText = await parseCharacterCard(avatarPath, 'png');
         return normalizeCharacterData(JSON.parse(cardText), avatar);
     } catch (error) {

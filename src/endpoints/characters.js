@@ -14,7 +14,7 @@ import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
-import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, sanitizeSafeCharacterReplacements, tryWriteFileSync } from '../util.js';
+import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, tryWriteFileSync } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
@@ -51,6 +51,9 @@ const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
 const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+const getPngFileStem = fileName => path.extname(fileName) === '.png'
+    ? fileName.slice(0, -path.extname(fileName).length)
+    : fileName;
 const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
@@ -200,6 +203,7 @@ function getCacheKey(inputFile) {
  * @returns {Promise<string | undefined>} - Character card data
  */
 async function readCharacterData(inputFile, inputFormat = 'png') {
+    recoverFileWriteSync(inputFile);
     const cacheKey = getCacheKey(inputFile);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
@@ -243,6 +247,22 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
     try {
         const outputImageName = `${outputFile}.png`;
         const outputImagePath = path.join(request.user.directories.characters, outputImageName);
+        const fileExists = fs.existsSync(outputImagePath);
+        let expectedFileIdentity;
+        let shouldPreserveFileIdentity = preserveFileIdentity;
+        let shouldReplaceFileOnly = false;
+
+        if (preserveFileIdentity && !fileExists) {
+            throw new Error(`Character card does not exist: ${outputImageName}`);
+        }
+
+        if (preserveFileIdentity) {
+            recoverFileWriteSync(outputImagePath);
+            const activeFileStats = fs.lstatSync(outputImagePath, { bigint: true });
+            shouldPreserveFileIdentity = activeFileStats.isFile() && activeFileStats.nlink === 1n;
+            shouldReplaceFileOnly = !activeFileStats.isFile() || activeFileStats.nlink !== 1n;
+            expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
+        }
 
         /**
          * Read the image, resize, and save it as a PNG into the buffer.
@@ -280,15 +300,12 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
         // Get the chunks
         const outputImage = write(inputImage, data);
         const operationTime = Date.now();
-        const fileExists = fs.existsSync(outputImagePath);
         const migrationFallback = fileExists ? getCharacterDateAddedFallback(fs.statSync(outputImagePath)) : operationTime;
 
-        if (preserveFileIdentity && !fileExists) {
-            throw new Error(`Character card does not exist: ${outputImageName}`);
-        }
-
-        if (preserveFileIdentity && fs.readFileSync(outputImagePath).equals(outputImage)) {
-            return true;
+        if (preserveFileIdentity) {
+            if (fs.readFileSync(outputImagePath).equals(outputImage)) {
+                return true;
+            }
         }
 
         // Reset the cache only when the card actually changed.
@@ -308,7 +325,11 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
         if (fileExists) {
             ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, migrationFallback, operationTime);
         }
-        tryWriteFileSync(outputImagePath, outputImage, undefined, { preserveFileIdentity });
+        tryWriteFileSync(outputImagePath, outputImage, undefined, {
+            preserveFileIdentity: shouldPreserveFileIdentity,
+            expectedFileIdentity,
+            replaceFileOnly: shouldReplaceFileOnly,
+        });
         if (!fileExists) {
             try {
                 if (preserveDateAdded) {
@@ -373,6 +394,7 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
 
     const update = structuredClone(updateData);
     _.unset(update, 'json_data');
+    _.unset(update, 'avatar');
     _.unset(character, 'json_data');
 
     const beforeMerge = structuredClone(character);
@@ -391,7 +413,7 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
         return { ok: false, error: validator.lastValidationError ?? 'Validation failed' };
     }
 
-    const targetImg = avatar.replace('.png', '');
+    const targetImg = getPngFileStem(avatar);
     const writeSucceeded = await writeCharacterData(avatarPath, JSON.stringify(character), targetImg, request, undefined, { preserveFileIdentity: true });
     if (!writeSucceeded) {
         return { ok: false, error: 'Failed to write character data.' };
@@ -1359,7 +1381,7 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
     char.chat = request.body.chat;
     char.create_date = request.body.create_date;
     char = JSON.stringify(char);
-    let targetFile = (request.body.avatar_url).replace('.png', '');
+    let targetFile = getPngFileStem(request.body.avatar_url);
 
     try {
         let writeSucceeded;
@@ -1405,7 +1427,7 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
         }
 
         const crop = tryParse(request.query.crop);
-        const fileName = request.body.avatar_url.replace('.png', '');
+        const fileName = getPngFileStem(request.body.avatar_url);
         const writeSucceeded = await writeCharacterData(uploadPath, data, fileName, request, crop, { preserveFileIdentity: true });
 
         // Remove uploaded temp file
@@ -1464,7 +1486,7 @@ router.post('/edit-attribute', validateAvatarUrlMiddleware, async function (requ
         char[request.body.field] = request.body.value;
         char.data[request.body.field] = request.body.value;
         let newCharJSON = JSON.stringify(char);
-        const targetFile = (request.body.avatar_url).replace('.png', '');
+        const targetFile = getPngFileStem(request.body.avatar_url);
         const writeSucceeded = await writeCharacterData(avatarPath, newCharJSON, targetFile, request, undefined, { preserveFileIdentity: true });
         if (!writeSucceeded) throw new Error('Failed to write character data.');
         return response.sendStatus(200);
@@ -1593,11 +1615,17 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     }
 
     const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+    try {
+        recoverFileWriteSync(avatarPath);
+    } catch (error) {
+        console.error('Could not recover character before deletion.', error);
+        return response.sendStatus(500);
+    }
     if (!fs.existsSync(avatarPath)) {
         return response.sendStatus(400);
     }
 
-    let dir_name = (request.body.avatar_url.replace('.png', ''));
+    let dir_name = request.body.avatar_url.replace('.png', '');
 
     if (!dir_name.length) {
         console.error('Malicious dirname prevented');
@@ -1721,6 +1749,7 @@ router.post('/regenerate-thumbnail', validateAvatarUrlMiddleware, async function
  */
 router.post('/all', async function (request, response) {
     try {
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
         const fileStats = new Map();
@@ -1897,6 +1926,10 @@ router.post('/import', async function (request, response) {
     const format = request.body.file_type;
     const preservedFileName = getPreservedName(request);
 
+    if (preservedFileName) {
+        recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+    }
+
     const formatImportFunctions = {
         'yaml': importFromYaml,
         'yml': importFromYaml,
@@ -1970,6 +2003,7 @@ router.post('/duplicate', validateAvatarUrlMiddleware, async function (request, 
         const operationTime = Date.now();
         const dateAddedRoot = getEntityDateAddedRoot(request.user.directories);
         const newAvatarName = path.basename(newFilename);
+        recoverFileWriteSync(filename);
         fs.copyFileSync(filename, newFilename, fs.constants.COPYFILE_EXCL);
         try {
             createEntityDateAdded(dateAddedRoot, 'characters', newAvatarName, operationTime);
@@ -1998,6 +2032,7 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
 
         switch (request.body.format) {
             case 'png': {
+                recoverFileWriteSync(filename);
                 const rawBuffer = await fsPromises.readFile(filename);
                 const rawData = read(rawBuffer);
                 const mutatedData = mutateJsonString(rawData, unsetPrivateFields);

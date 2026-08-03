@@ -68,6 +68,7 @@ import {
     removeColorFormatting,
     getSeparator,
     safeReadFileSync,
+    recoverFileWritesInDirectorySync,
     setupLogLevel,
     setWindowTitle,
     getConfigValue,
@@ -482,6 +483,9 @@ async function preSetupTasks() {
     console.log();
 
     startupDirectories = await getUserDirectoriesList();
+    for (const directories of startupDirectories) {
+        recoverFileWritesInDirectorySync(directories.characters);
+    }
     await migrateGroupChatsMetadataFormat(startupDirectories);
     await migratePublicOverrides();
     await checkForNewContent(startupDirectories, PRESET_CONTENT_TYPES);

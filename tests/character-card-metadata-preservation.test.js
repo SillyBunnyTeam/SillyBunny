@@ -140,9 +140,142 @@ describe('character card metadata preservation', () => {
         expect(statAfter.mtimeMs).toBe(statBefore.mtimeMs);
     });
 
-    function saveCharacter(character) {
+    test('does not persist the routing-only avatar field during a merge', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createAlice();
+        const cardPath = path.join(directories.characters, 'Alice.png');
+        const cardBefore = fs.readFileSync(cardPath);
+        const statBefore = fs.statSync(cardPath);
+
+        await delay();
+        const response = await postJson('/api/characters/merge-attributes', { avatar: 'Alice.png' });
+
+        expect(response.status).toBe(200);
+        expect(fs.readFileSync(cardPath).equals(cardBefore)).toBe(true);
+        expect(fs.statSync(cardPath).mtimeMs).toBe(statBefore.mtimeMs);
+    });
+
+    test('updates the original card when its filename stem contains .png', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createCharacter('Alice.png.backup');
+        const cardPath = path.join(directories.characters, 'Alice.png.backup.png');
+
+        const response = await postJson('/api/characters/merge-attributes', {
+            avatar: 'Alice.png.backup.png',
+            creator: 'Somebody',
+        });
+
+        expect(response.status).toBe(200);
+        expect(fs.existsSync(cardPath)).toBe(true);
+        expect(fs.existsSync(path.join(directories.characters, 'Alice.backup.png.png'))).toBe(false);
+        expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    test('replaces only the selected path when a card has a hard-link alias', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createAlice();
+        const cardPath = path.join(directories.characters, 'Alice.png');
+        const aliasPath = path.join(directories.characters, 'Alice-alias.png');
+        fs.linkSync(cardPath, aliasPath);
+        const aliasBefore = fs.readFileSync(aliasPath);
+
+        const response = await postJson('/api/characters/merge-attributes', {
+            avatar: 'Alice.png',
+            creator: 'Somebody',
+        });
+
+        expect(response.status).toBe(200);
+        expect(fs.readFileSync(aliasPath).equals(aliasBefore)).toBe(true);
+        expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+        expect(fs.statSync(cardPath).ino).not.toBe(fs.statSync(aliasPath).ino);
+    });
+
+    test('keeps dotted filename stems on full and single-attribute edits', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        const avatar = 'Alice.png.backup.png';
+        await createCharacter('Alice.png.backup');
+        const character = await getCharacter(avatar);
+
+        expect((await saveCharacter(character, avatar)).status).toBe(200);
+        const attributeResponse = await postJson('/api/characters/edit-attribute', {
+            avatar_url: avatar,
+            ch_name: character.name,
+            field: 'creator',
+            value: 'Somebody',
+        });
+
+        expect(attributeResponse.status).toBe(200);
+        expect(fs.existsSync(path.join(directories.characters, avatar))).toBe(true);
+        expect(fs.existsSync(path.join(directories.characters, 'Alice.backup.png.png'))).toBe(false);
+        expect(decodeCardChunks(fs.readFileSync(path.join(directories.characters, avatar))).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    test('does not alias a non-PNG filename onto another card', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        await createAlice();
+        const alicePath = path.join(directories.characters, 'Alice.png');
+        const aliceBefore = fs.readFileSync(alicePath);
+        fs.copyFileSync(alicePath, path.join(directories.characters, 'Alice.jpg'));
+
+        const response = await postJson('/api/characters/merge-attributes', {
+            avatar: 'Alice.jpg',
+            creator: 'Somebody',
+        });
+
+        expect(response.status).toBe(400);
+        expect(fs.readFileSync(alicePath).equals(aliceBefore)).toBe(true);
+    });
+
+    test('replaces a symlinked card path without modifying its target', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createAlice();
+        const cardPath = path.join(directories.characters, 'Alice.png');
+        const outsidePath = path.join(tempRoot, 'outside.png');
+        fs.copyFileSync(cardPath, outsidePath);
+        const outsideBefore = fs.readFileSync(outsidePath);
+        fs.unlinkSync(cardPath);
+        fs.symlinkSync(outsidePath, cardPath);
+
+        const response = await postJson('/api/characters/merge-attributes', {
+            avatar: 'Alice.png',
+            creator: 'Somebody',
+        });
+
+        expect(response.status).toBe(200);
+        expect(fs.lstatSync(cardPath).isSymbolicLink()).toBe(false);
+        expect(fs.readFileSync(outsidePath).equals(outsideBefore)).toBe(true);
+        expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    test('deletes chats under the existing dotted-card owner name', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        const avatar = 'Alice.png.backup.png';
+        await createCharacter('Alice.png.backup');
+        const chatDirectory = path.join(directories.chats, 'Alice.backup.png');
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(path.join(chatDirectory, 'chat.jsonl'), '{}\n');
+
+        const response = await postJson('/api/characters/delete', {
+            avatar_url: avatar,
+            delete_chats: true,
+        });
+
+        expect(response.status).toBe(200);
+        expect(fs.existsSync(path.join(directories.characters, avatar))).toBe(false);
+        expect(fs.existsSync(chatDirectory)).toBe(false);
+    });
+
+    function saveCharacter(character, avatarUrl = 'Alice.png') {
         return postJson('/api/characters/edit', {
-            avatar_url: 'Alice.png',
+            avatar_url: avatarUrl,
             ch_name: character.name,
             description: character.description,
             personality: character.personality,
@@ -169,9 +302,13 @@ describe('character card metadata preservation', () => {
     }
 
     async function createAlice() {
+        return createCharacter('Alice');
+    }
+
+    async function createCharacter(name) {
         const response = await postJson('/api/characters/create', {
-            ch_name: 'Alice',
-            file_name: 'Alice',
+            ch_name: name,
+            file_name: name,
         });
         expect(response.status).toBe(200);
     }

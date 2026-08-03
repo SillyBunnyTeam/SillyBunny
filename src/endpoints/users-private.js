@@ -12,7 +12,7 @@ import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArc
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { SECRETS_FILE } from './secrets.js';
-import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath } from '../util.js';
+import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath, recoverFileWritesInDirectorySync } from '../util.js';
 import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
 import { ENTITY_LAST_CHAT_FILE, importEntityLastChat } from '../entity-last-chat.js';
 
@@ -837,6 +837,7 @@ router.post('/import-sillytavern/folder', async (request, response) => {
             return response.status(400).json({ error: 'That folder is already the current SillyBunny account.' });
         }
 
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot);
         await checkForNewContent([request.user.directories]);
 
@@ -878,6 +879,7 @@ router.post('/import-sillytavern/zip', async (request, response) => {
             return response.status(400).json({ error: 'A SillyTavern backup ZIP is required.' });
         }
 
+        recoverFileWritesInDirectorySync(request.user.directories.characters);
         const importedFiles = await importZipContents(uploadedZipPath, request.user.directories.root);
         await checkForNewContent([request.user.directories]);
 

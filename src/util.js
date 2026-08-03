@@ -2066,14 +2066,238 @@ export function flattenSchema(schema, api) {
     return flattenedSchema;
 }
 
+const FILE_WRITE_RECOVERY_SUFFIX = '.sillybunny-write-recovery';
+
+function getFileWriteRecoveryPath(filePath) {
+    return `${filePath}${FILE_WRITE_RECOVERY_SUFFIX}`;
+}
+
+function hashFileWriteData(data) {
+    return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function fsyncDirectorySync(directory) {
+    if (process.platform === 'win32') {
+        return;
+    }
+
+    const directoryDescriptor = fs.openSync(directory, 'r');
+    try {
+        try {
+            fs.fsyncSync(directoryDescriptor);
+        } catch (error) {
+            if (!['EBADF', 'EINVAL', 'ENOTSUP'].includes(error?.code)) {
+                throw error;
+            }
+        }
+    } finally {
+        fs.closeSync(directoryDescriptor);
+    }
+}
+
+function writeAllSync(fileDescriptor, data, position = 0) {
+    let offset = 0;
+    while (offset < data.byteLength) {
+        const bytesWritten = fs.writeSync(fileDescriptor, data, offset, data.byteLength - offset, position + offset);
+        if (bytesWritten === 0) {
+            throw new Error('Could not finish writing the file.');
+        }
+        offset += bytesWritten;
+    }
+}
+
+function removeFileWriteRecovery(recoveryPath) {
+    const retryDelaysMs = process.platform === 'win32' ? [0, 50, 125, 250] : [0];
+    for (const delayMs of retryDelaysMs) {
+        if (delayMs) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
+        try {
+            fs.unlinkSync(recoveryPath);
+            fsyncDirectorySync(path.dirname(recoveryPath));
+            return;
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return;
+            }
+            const isRetryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
+            if (!isRetryable || delayMs === retryDelaysMs.at(-1)) {
+                throw Object.assign(new Error(`Failed to remove completed write recovery file ${recoveryPath}.`, { cause: error }), { code: 'ERECOVERYCLEANUP' });
+            }
+        }
+    }
+}
+
+function finishDurableWriteSync(filePath) {
+    const retryDelaysMs = process.platform === 'win32' ? [0, 50, 125, 250] : [0];
+    for (const delayMs of retryDelaysMs) {
+        if (delayMs) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
+        try {
+            const fileDescriptor = fs.openSync(filePath, 'r+');
+            try {
+                fs.fsyncSync(fileDescriptor);
+            } finally {
+                fs.closeSync(fileDescriptor);
+            }
+            fsyncDirectorySync(path.dirname(filePath));
+            return;
+        } catch (error) {
+            const isRetryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
+            if (!isRetryable || delayMs === retryDelaysMs.at(-1)) {
+                throw error;
+            }
+        }
+    }
+}
+
+/**
+ * Restores a file left partially updated by an interrupted identity-preserving write.
+ * @param {string} filePath
+ * @returns {boolean} Whether the original bytes were restored.
+ */
+function recoverFileWriteOnceSync(filePath) {
+    const recoveryPath = getFileWriteRecoveryPath(filePath);
+    if (!fs.existsSync(recoveryPath)) {
+        return false;
+    }
+
+    const record = JSON.parse(fs.readFileSync(recoveryPath, 'utf8'));
+    const originalData = Buffer.from(record.originalData, 'base64');
+    if (record.version !== 1 || hashFileWriteData(originalData) !== record.originalHash) {
+        throw new Error(`Invalid write recovery file: ${recoveryPath}`);
+    }
+
+    if (!fs.existsSync(filePath)) {
+        const restoreTempPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.restore`;
+        let restoreTempCreated = false;
+        try {
+            const restoreDescriptor = fs.openSync(restoreTempPath, 'wx');
+            restoreTempCreated = true;
+            try {
+                writeAllSync(restoreDescriptor, originalData);
+                fs.ftruncateSync(restoreDescriptor, originalData.byteLength);
+                fs.fsyncSync(restoreDescriptor);
+            } finally {
+                fs.closeSync(restoreDescriptor);
+            }
+            try {
+                fs.linkSync(restoreTempPath, filePath);
+            } catch (error) {
+                if (error?.code === 'EEXIST') {
+                    return recoverFileWriteOnceSync(filePath);
+                }
+                throw error;
+            }
+            fsyncDirectorySync(path.dirname(filePath));
+            removeFileWriteRecovery(recoveryPath);
+            return true;
+        } finally {
+            if (restoreTempCreated) {
+                try {
+                    fs.unlinkSync(restoreTempPath);
+                } catch (error) {
+                    if (error?.code !== 'ENOENT') {
+                        console.warn(`Failed to clean up recovery temp file for ${filePath}.`, error?.code);
+                    }
+                }
+            }
+        }
+    }
+
+    const currentData = fs.readFileSync(filePath);
+    const currentHash = hashFileWriteData(currentData);
+    if (currentHash === record.originalHash || currentHash === record.nextHash) {
+        removeFileWriteRecovery(recoveryPath);
+        return false;
+    }
+
+    const pathStats = fs.lstatSync(filePath, { bigint: true });
+    if (String(pathStats.dev) !== record.dev || String(pathStats.ino) !== record.ino) {
+        throw Object.assign(new Error(`Refused to recover a replaced file: ${filePath}`), { code: 'ESTALE' });
+    }
+    if (!pathStats.isFile() || pathStats.nlink !== 1n) {
+        throw Object.assign(new Error(`Refused to recover a hard-linked file: ${filePath}`), { code: 'EMLINK' });
+    }
+
+    const fileDescriptor = fs.openSync(filePath, 'r+');
+    try {
+        const descriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+        if (descriptorStats.dev !== pathStats.dev || descriptorStats.ino !== pathStats.ino || descriptorStats.nlink !== 1n) {
+            throw Object.assign(new Error(`Refused to recover a replaced file: ${filePath}`), { code: 'ESTALE' });
+        }
+        writeAllSync(fileDescriptor, originalData);
+        fs.ftruncateSync(fileDescriptor, originalData.byteLength);
+        fs.fsyncSync(fileDescriptor);
+
+        const finalDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+        const finalPathStats = fs.lstatSync(filePath, { bigint: true });
+        if (finalDescriptorStats.dev !== finalPathStats.dev || finalDescriptorStats.ino !== finalPathStats.ino
+            || finalDescriptorStats.nlink !== 1n || finalPathStats.nlink !== 1n) {
+            removeFileWriteRecovery(recoveryPath);
+            throw Object.assign(new Error(`Refused to finish recovering a replaced file: ${filePath}`), { code: 'ESTALE' });
+        }
+    } finally {
+        fs.closeSync(fileDescriptor);
+    }
+
+    removeFileWriteRecovery(recoveryPath);
+    return true;
+}
+
+/**
+ * Restores a file left partially updated by an interrupted identity-preserving write.
+ * @param {string} filePath
+ * @returns {boolean} Whether the original bytes were restored.
+ */
+export function recoverFileWriteSync(filePath) {
+    const retryDelaysMs = process.platform === 'win32' ? [0, 50, 125, 250] : [0];
+    for (const delayMs of retryDelaysMs) {
+        if (delayMs) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
+        try {
+            return recoverFileWriteOnceSync(filePath);
+        } catch (error) {
+            const isRetryable = ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
+            if (!isRetryable || delayMs === retryDelaysMs.at(-1)) {
+                throw error;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Recovers every interrupted identity-preserving write in a directory.
+ * @param {string} directory
+ * @returns {number} Number of files restored.
+ */
+export function recoverFileWritesInDirectorySync(directory) {
+    if (!fs.existsSync(directory)) {
+        return 0;
+    }
+
+    let restored = 0;
+    for (const fileName of fs.readdirSync(directory)) {
+        if (!fileName.endsWith(FILE_WRITE_RECOVERY_SUFFIX)) {
+            continue;
+        }
+        const filePath = path.join(directory, fileName.slice(0, -FILE_WRITE_RECOVERY_SUFFIX.length));
+        restored += recoverFileWriteSync(filePath) ? 1 : 0;
+    }
+    return restored;
+}
+
 /**
  * Writes to a file, creating it's parent directories if needed.
  * @param {string} filePath
  * @param {string|Buffer} data
  * @param {import('node:fs').WriteFileOptions} [options]
- * @param {{preserveFileIdentity?: boolean}} [writeOptions]
+ * @param {{preserveFileIdentity?: boolean, expectedFileIdentity?: {dev: bigint, ino: bigint}, invalidateBeforeWrite?: boolean, replaceFileOnly?: boolean, durable?: boolean}} [writeOptions]
  */
-export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false } = {}) {
+export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false, expectedFileIdentity = undefined, invalidateBeforeWrite = false, replaceFileOnly = false, durable = false } = {}) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     const retryDelaysMs = [50, 125, 250];
@@ -2103,19 +2327,102 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
         fs.mkdirSync(directory, { recursive: true });
     }
 
-    // SillyBunny: existing character cards must keep their filesystem identity and creation metadata.
+    // SillyBunny: some existing user data carries filesystem metadata that replacement would discard.
     if (preserveFileIdentity) {
-        const dataLength = typeof data === 'string'
-            ? Buffer.byteLength(data, typeof options === 'string' ? options : options?.encoding || 'utf8')
-            : data.byteLength;
+        if (!invalidateBeforeWrite) {
+            recoverFileWriteSync(filePath);
+        }
+
+        const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
+        const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
+        const dataLength = dataBuffer.byteLength;
         const writeInPlace = () => {
             const fileDescriptor = fs.openSync(filePath, 'r+');
+            let operationFailed = false;
+            let recoveryPath;
+            let originalData;
+            let targetMutated = false;
             try {
-                fs.writeFileSync(fileDescriptor, data, options);
-                fs.ftruncateSync(fileDescriptor, dataLength);
-                fs.fsyncSync(fileDescriptor);
+                const descriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+                const pathStats = fs.lstatSync(filePath, { bigint: true });
+                const matchesExpectedIdentity = !expectedFileIdentity
+                    || (descriptorStats.dev === expectedFileIdentity.dev && descriptorStats.ino === expectedFileIdentity.ino);
+                if (!descriptorStats.isFile() || !pathStats.isFile()
+                    || descriptorStats.dev !== pathStats.dev || descriptorStats.ino !== pathStats.ino
+                    || !matchesExpectedIdentity) {
+                    throw Object.assign(new Error(`Refused to overwrite a replaced file: ${filePath}`), { code: 'ESTALE' });
+                }
+                if (descriptorStats.nlink !== 1n || pathStats.nlink !== 1n) {
+                    throw Object.assign(new Error(`Refused to overwrite a hard-linked file: ${filePath}`), { code: 'EMLINK' });
+                }
+
+                originalData = Buffer.alloc(Number(descriptorStats.size));
+                let offset = 0;
+                while (offset < originalData.byteLength) {
+                    const bytesRead = fs.readSync(fileDescriptor, originalData, offset, originalData.byteLength - offset, offset);
+                    if (bytesRead === 0) break;
+                    offset += bytesRead;
+                }
+
+                if (invalidateBeforeWrite && dataLength > 0) {
+                    targetMutated = true;
+                    writeAllSync(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]));
+                    fs.fsyncSync(fileDescriptor);
+                    writeAllSync(fileDescriptor, dataBuffer.subarray(1), 1);
+                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    fs.fsyncSync(fileDescriptor);
+                    writeAllSync(fileDescriptor, dataBuffer.subarray(0, 1));
+                    fs.fsyncSync(fileDescriptor);
+                } else {
+                    recoveryPath = getFileWriteRecoveryPath(filePath);
+                    writeFileAtomicSync(recoveryPath, JSON.stringify({
+                        version: 1,
+                        dev: String(descriptorStats.dev),
+                        ino: String(descriptorStats.ino),
+                        originalHash: hashFileWriteData(originalData),
+                        nextHash: hashFileWriteData(dataBuffer),
+                        originalData: originalData.toString('base64'),
+                    }), 'utf8');
+                    fsyncDirectorySync(path.dirname(recoveryPath));
+
+                    targetMutated = true;
+                    writeAllSync(fileDescriptor, dataBuffer);
+                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    fs.fsyncSync(fileDescriptor);
+                }
+
+                const finalDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+                const finalPathStats = fs.lstatSync(filePath, { bigint: true });
+                if (finalDescriptorStats.dev !== finalPathStats.dev || finalDescriptorStats.ino !== finalPathStats.ino
+                    || finalDescriptorStats.nlink !== 1n || finalPathStats.nlink !== 1n) {
+                    throw Object.assign(new Error(`Refused to finish writing a replaced or hard-linked file: ${filePath}`), { code: 'ESTALE' });
+                }
+            } catch (error) {
+                operationFailed = true;
+                const shouldRestoreOriginal = targetMutated && (recoveryPath || ['EMLINK', 'ESTALE'].includes(error?.code));
+                if (shouldRestoreOriginal && originalData) {
+                    try {
+                        writeAllSync(fileDescriptor, originalData);
+                        fs.ftruncateSync(fileDescriptor, originalData.byteLength);
+                        fs.fsyncSync(fileDescriptor);
+                        removeFileWriteRecovery(recoveryPath);
+                    } catch (rollbackError) {
+                        throw new AggregateError([error, rollbackError], `Failed to write and restore ${filePath}.`);
+                    }
+                }
+                throw error;
             } finally {
-                fs.closeSync(fileDescriptor);
+                try {
+                    fs.closeSync(fileDescriptor);
+                } catch (error) {
+                    if (!operationFailed) {
+                        console.warn(`Failed to close ${filePath} after its data was flushed.`, error?.code);
+                    }
+                }
+            }
+
+            if (recoveryPath) {
+                removeFileWriteRecovery(recoveryPath);
             }
         };
 
@@ -2126,7 +2433,65 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
         throw lastError;
     }
 
+    const assertExpectedPathIdentity = () => {
+        if (!expectedFileIdentity) {
+            return;
+        }
+        const stats = fs.lstatSync(filePath, { bigint: true });
+        if (stats.dev !== expectedFileIdentity.dev || stats.ino !== expectedFileIdentity.ino) {
+            throw Object.assign(new Error(`Refused to replace a changed file: ${filePath}`), { code: 'ESTALE' });
+        }
+    };
+
+    if (replaceFileOnly) {
+        const tempFilePaths = new Set();
+        let tempFilePath;
+        try {
+            assertExpectedPathIdentity();
+            if (!runWithWindowsRetries(() => {
+                const candidatePath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+                const targetStats = fs.lstatSync(filePath, { bigint: true });
+                const tempDescriptor = fs.openSync(candidatePath, 'wx', Number(targetStats.mode & 0o777n));
+                tempFilePaths.add(candidatePath);
+                try {
+                    const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
+                    const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
+                    writeAllSync(tempDescriptor, dataBuffer);
+                    fs.ftruncateSync(tempDescriptor, dataBuffer.byteLength);
+                    fs.fsyncSync(tempDescriptor);
+                } finally {
+                    fs.closeSync(tempDescriptor);
+                }
+                tempFilePath = candidatePath;
+            })) {
+                throw lastError;
+            }
+            assertExpectedPathIdentity();
+            if (!runWithWindowsRetries(() => {
+                assertExpectedPathIdentity();
+                fs.renameSync(tempFilePath, filePath);
+            })) {
+                throw lastError;
+            }
+            fsyncDirectorySync(directory);
+            return;
+        } finally {
+            for (const createdTempPath of tempFilePaths) {
+                try {
+                    fs.unlinkSync(createdTempPath);
+                } catch (error) {
+                    if (error?.code !== 'ENOENT') {
+                        console.warn(`Failed to clean up temp write file for ${filePath}.`, error?.code);
+                    }
+                }
+            }
+        }
+    }
+
     if (runWithWindowsRetries(() => writeFileAtomicSync(filePath, data, options))) {
+        if (durable) {
+            finishDurableWriteSync(filePath);
+        }
         return;
     }
 
@@ -2152,16 +2517,25 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
         }
 
         if (runWithWindowsRetries(() => fs.renameSync(tempFilePath, filePath))) {
+            if (durable) {
+                finishDurableWriteSync(filePath);
+            }
             return;
         }
 
         console.warn(`Temp file rename failed for ${filePath}. Falling back to a copy replacement.`, lastError?.code);
         if (runWithWindowsRetries(() => fs.copyFileSync(tempFilePath, filePath))) {
+            if (durable) {
+                finishDurableWriteSync(filePath);
+            }
             return;
         }
 
         console.warn(`Temp file copy failed for ${filePath}. Falling back to a direct write.`, lastError?.code);
         if (runWithWindowsRetries(() => fs.writeFileSync(filePath, data, options))) {
+            if (durable) {
+                finishDurableWriteSync(filePath);
+            }
             return;
         }
 

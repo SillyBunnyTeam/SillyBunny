@@ -144,7 +144,7 @@ function updateStore(userRoot, entityType, callback) {
         const result = callback(scope);
 
         if (state.writable && before !== JSON.stringify(state.store)) {
-            tryWriteFileSync(state.filePath, `${JSON.stringify(state.store, null, 4)}\n`, 'utf8');
+            tryWriteFileSync(state.filePath, `${JSON.stringify(state.store, null, 4)}\n`, 'utf8', { durable: true });
         }
 
         return result;
@@ -326,6 +326,6 @@ export function importEntityDateAdded(userRoot, value) {
             importedScope.initialized ||= currentScope.initialized;
         }
 
-        tryWriteFileSync(state.filePath, `${JSON.stringify(importedStore, null, 4)}\n`, 'utf8');
+        tryWriteFileSync(state.filePath, `${JSON.stringify(importedStore, null, 4)}\n`, 'utf8', { durable: true });
     });
 }
