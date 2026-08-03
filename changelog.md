@@ -165,6 +165,7 @@ lorum ipsum
 - PR #702 (2026-07-28) `chore: prepare v1.7 pre-release cleanup`
 - PR #703 (2026-07-29) `feat: reuse Start Reply With for Kimi K3 partial prefill`
 - PR #704 (2026-07-30) `fix(ios): fix iOS crash startup logs not being detailed enough`
+- PR #709 (2026-08-03) `fix: character metadata is preserved`
 
 ## v1.6.5
 
