@@ -304,7 +304,8 @@ export class ServerStartup {
             },
         });
 
-        if (useIPv6) {
+        const startIPv6 = (async () => {
+            if (!useIPv6) return;
             try {
                 await listen(this.cliArgs.getIPv6ListenUrl(), 6);
             } catch (error) {
@@ -318,9 +319,10 @@ export class ServerStartup {
                 v6Failed = true;
                 v6Error = error;
             }
-        }
+        })();
 
-        if (useIPv4) {
+        const startIPv4 = (async () => {
+            if (!useIPv4) return;
             try {
                 await listen(this.cliArgs.getIPv4ListenUrl(), 4);
             } catch (error) {
@@ -334,7 +336,9 @@ export class ServerStartup {
                 v4Failed = true;
                 v4Error = error;
             }
-        }
+        })();
+
+        await Promise.all([startIPv6, startIPv4]);
 
         return [v6Failed, v4Failed, v6Error, v4Error];
     }

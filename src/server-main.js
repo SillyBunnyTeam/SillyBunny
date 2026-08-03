@@ -27,6 +27,7 @@ import { serverEvents, EVENT_NAMES } from './server-events.js';
 import { loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
 import { closeListeningServers } from './server-listen.js';
+import { SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -520,6 +521,28 @@ async function preSetupTasks() {
     // SillyBunny: signal handlers pass signal names, but process.exit needs numeric codes in Bun.
     process.on('SIGINT', () => exitProcess(0));
     process.on('SIGTERM', () => exitProcess(0));
+    process.on('SIGHUP', () => exitProcess(0));
+    if (process.platform === 'win32') {
+        process.on('SIGBREAK', () => exitProcess(0));
+    }
+    if (process.env[SUPERVISED_ENV] === '1') {
+        const exitAfterSupervisorDisconnect = () => {
+            const forceExitTimer = setTimeout(() => process.exit(1), SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+            forceExitTimer.unref?.();
+            return exitProcess(0);
+        };
+
+        if (process.connected === false) {
+            await exitAfterSupervisorDisconnect();
+        } else {
+            process.on('message', (message) => {
+                if (message === SUPERVISOR_SHUTDOWN_MESSAGE) {
+                    exitProcess(0);
+                }
+            });
+            process.on('disconnect', exitAfterSupervisorDisconnect);
+        }
+    }
     process.on('uncaughtException', (err) => {
         // SillyBunny: ignore expected stream disconnects from cancelled generations.
         if (isBenignStreamAbort(err)) {

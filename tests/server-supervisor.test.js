@@ -2,13 +2,21 @@ import { EventEmitter } from 'node:events';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { RESTART_EXIT_CODE, runSupervisor, shouldSupervise } from '../src/server-supervisor.js';
+import {
+    RESTART_EXIT_CODE,
+    runSupervisor,
+    shouldSupervise,
+    SUPERVISOR_FORCE_KILL_TIMEOUT_MS,
+    SUPERVISOR_SHUTDOWN_MESSAGE,
+} from '../src/server-supervisor.js';
 
 class FakeChild extends EventEmitter {
     constructor() {
         super();
+        this.connected = true;
         this.exitCode = null;
         this.kill = jest.fn();
+        this.send = jest.fn((_message, callback) => callback?.());
     }
 }
 
@@ -43,6 +51,7 @@ describe('server supervisor', () => {
     });
 
     afterEach(() => {
+        jest.useRealTimers();
         for (const signal of TRACKED_EVENTS) {
             process.removeAllListeners(signal);
             for (const listener of savedListeners.get(signal) ?? []) {
@@ -68,7 +77,7 @@ describe('server supervisor', () => {
         const [command, args, options] = spawnFn.mock.calls[0];
         expect(command).toBe('bun');
         expect(args).toEqual(['--smol', 'server.js', '--listen']);
-        expect(options.stdio).toBe('inherit');
+        expect(options.stdio).toEqual(['inherit', 'inherit', 'inherit', 'ipc']);
         expect(options.env.SILLYBUNNY_SUPERVISED).toBe('1');
         expect(options.env.SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH).toBeUndefined();
         expect(exitFn).toHaveBeenCalledWith(0);
@@ -106,7 +115,7 @@ describe('server supervisor', () => {
         expect(exitFn).toHaveBeenCalledWith(1);
     });
 
-    test('forwards termination signals to the child and does not respawn afterwards', async () => {
+    test('requests graceful child shutdown over IPC and does not respawn afterwards', async () => {
         const { children, spawnFn } = createSpawnPlan(['manual']);
         const exitFn = jest.fn();
 
@@ -114,7 +123,8 @@ describe('server supervisor', () => {
         await new Promise(resolve => setImmediate(resolve));
 
         process.emit('SIGTERM');
-        expect(children[0].kill).toHaveBeenCalledWith('SIGTERM');
+        expect(children[0].send).toHaveBeenCalledWith(SUPERVISOR_SHUTDOWN_MESSAGE, expect.any(Function));
+        expect(children[0].kill).not.toHaveBeenCalled();
 
         children[0].exitCode = RESTART_EXIT_CODE;
         children[0].emit('exit', RESTART_EXIT_CODE, null);
@@ -126,7 +136,7 @@ describe('server supervisor', () => {
 
     // Windows raises these when the console window is closed or Ctrl+Break is
     // pressed, and it does not kill children with their parent.
-    test.each(['SIGHUP', 'SIGBREAK'])('forwards %s so the console close does not orphan the server', async (signal) => {
+    test.each(['SIGHUP', 'SIGBREAK'])('requests graceful shutdown on %s so the console close does not orphan the server', async (signal) => {
         const { children, spawnFn } = createSpawnPlan(['manual']);
         const exitFn = jest.fn();
 
@@ -134,13 +144,46 @@ describe('server supervisor', () => {
         await new Promise(resolve => setImmediate(resolve));
 
         process.emit(signal);
-        expect(children[0].kill).toHaveBeenCalledWith(signal);
+        expect(children[0].send).toHaveBeenCalledWith(SUPERVISOR_SHUTDOWN_MESSAGE, expect.any(Function));
+        expect(children[0].kill).not.toHaveBeenCalled();
 
         children[0].exitCode = RESTART_EXIT_CODE;
         children[0].emit('exit', RESTART_EXIT_CODE, null);
         await run;
 
         expect(spawnFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('force-kills the child only when the IPC shutdown request fails', async () => {
+        const { children, spawnFn } = createSpawnPlan(['manual']);
+        const exitFn = jest.fn();
+        const run = runSupervisor({ argv: ['bun', 'server.js'], execArgv: [], spawnFn, exitFn });
+        await new Promise(resolve => setImmediate(resolve));
+        children[0].send.mockImplementation((_message, callback) => callback(new Error('IPC closed')));
+
+        process.emit('SIGHUP');
+
+        expect(children[0].kill).toHaveBeenCalledWith('SIGKILL');
+        children[0].exitCode = 0;
+        children[0].emit('exit', 0, null);
+        await run;
+    });
+
+    test('force-kills the child when graceful shutdown exceeds the timeout', async () => {
+        jest.useFakeTimers();
+        const { children, spawnFn } = createSpawnPlan(['manual']);
+        const exitFn = jest.fn();
+        const run = runSupervisor({ argv: ['node', 'server.js'], execArgv: [], spawnFn, exitFn });
+
+        process.emit('SIGTERM');
+        expect(children[0].kill).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+        expect(children[0].kill).toHaveBeenCalledWith('SIGKILL');
+
+        children[0].exitCode = null;
+        children[0].emit('exit', null, 'SIGKILL');
+        await run;
     });
 
     test('kills a running child when the supervisor itself exits', async () => {
@@ -151,7 +194,7 @@ describe('server supervisor', () => {
         await new Promise(resolve => setImmediate(resolve));
 
         process.emit('exit', 0);
-        expect(children[0].kill).toHaveBeenCalledTimes(1);
+        expect(children[0].kill).toHaveBeenCalledWith('SIGKILL');
 
         children[0].exitCode = 0;
         children[0].emit('exit', 0, null);

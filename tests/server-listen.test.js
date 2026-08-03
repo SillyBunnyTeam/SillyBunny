@@ -186,6 +186,12 @@ describe('server wiring', () => {
         expect(source).toContain('await closeListeningServers();');
         // The ports must be released before the slower teardown work runs.
         expect(source.indexOf('await closeListeningServers();')).toBeLessThan(source.indexOf('await statsOnExit();'));
+        expect(source).toContain('if (process.connected === false)');
+        expect(source).toContain('await exitAfterSupervisorDisconnect();');
+        expect(source).toContain('process.on(\'message\', (message) =>');
+        expect(source).toContain('process.on(\'disconnect\', exitAfterSupervisorDisconnect);');
+        expect(source).toContain('process.on(\'SIGHUP\', () => exitProcess(0));');
+        expect(source).toContain('process.on(\'SIGBREAK\', () => exitProcess(0));');
     });
 
     test('startup tracks its listeners and retries an occupied port', () => {
@@ -195,5 +201,6 @@ describe('server wiring', () => {
         expect(source).toContain('retryOnAddressInUse(() => createFunc(url, ipVersion)');
         expect(source).not.toContain('await createFunc(this.cliArgs.getIPv6ListenUrl(), 6);');
         expect(source).not.toContain('await createFunc(this.cliArgs.getIPv4ListenUrl(), 4);');
+        expect(source).toContain('await Promise.all([startIPv6, startIPv4]);');
     });
 });
