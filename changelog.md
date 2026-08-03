@@ -169,6 +169,7 @@ lorum ipsum
 - PR #708 (2026-08-03) `fix: chats no longer constantly resave when opening them`
 - PR #709 (2026-08-03) `fix: character metadata is preserved`
 - PR #711 (2026-08-03) `fix(server): port now closes if it's unused`
+- PR #712 (2026-08-03) `fix: character card metadata fixes (windows edition)`
 
 ## v1.6.5
 
