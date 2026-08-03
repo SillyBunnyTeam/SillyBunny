@@ -104,6 +104,34 @@ describe('tryWriteFileSync atomic fallback', () => {
         expect(fs.readdirSync(tempRoot)).toEqual([path.basename(filePath)]);
     });
 
+    test('does not truncate when writing already produced the target size', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'before', 'utf8');
+        mockWritableTarget();
+        const truncateSpy = jest.spyOn(fs, 'ftruncateSync').mockImplementation(() => {
+            throw createWindowsFileLockError('EBUSY');
+        });
+
+        expect(() => tryWriteFileSync(filePath, 'after-is-longer', 'utf8', { preserveFileIdentity: true })).not.toThrow();
+
+        expect(truncateSpy).not.toHaveBeenCalled();
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('after-is-longer');
+    });
+
+    test('restores a shorter write when Windows keeps truncation locked', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'original-card-content', 'utf8');
+        mockWritableTarget();
+        jest.spyOn(fs, 'ftruncateSync').mockImplementation(() => {
+            throw createWindowsFileLockError('EBUSY');
+        });
+
+        expect(() => tryWriteFileSync(filePath, 'short', 'utf8', { preserveFileIdentity: true })).toThrow('EBUSY');
+
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('original-card-content');
+        expect(fs.readdirSync(tempRoot)).toEqual([path.basename(filePath)]);
+    });
+
     test('recovers the original bytes from a durable interrupted-write record', () => {
         const filePath = createTargetPath();
         fs.writeFileSync(filePath, 'original-card-content', 'utf8');

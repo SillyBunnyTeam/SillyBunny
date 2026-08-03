@@ -51,13 +51,26 @@ const EXTENSION_UNSET_VALUE = '__@@UNSET@@__';
 const forbiddenAvatarRegExp = path.sep === '/' ? /[/\x00]/ : /[/\x00\\]/;
 const CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE = 'allow_empty_definition_save';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-const getPngFileStem = fileName => path.extname(fileName) === '.png'
-    ? fileName.slice(0, -path.extname(fileName).length)
-    : fileName;
+const getPngFileName = fileName => path.extname(fileName).toLowerCase() === '.png'
+    ? fileName
+    : `${fileName}.png`;
 const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.characters);
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+const isSameFile = (firstPath, secondPath) => {
+    if (path.resolve(firstPath) === path.resolve(secondPath)) {
+        return true;
+    }
+
+    try {
+        const firstStats = fs.statSync(firstPath, { bigint: true });
+        const secondStats = fs.statSync(secondPath, { bigint: true });
+        return firstStats.dev === secondStats.dev && firstStats.ino !== 0n && firstStats.ino === secondStats.ino;
+    } catch {
+        return false;
+    }
+};
 
 class DiskCache {
     /**
@@ -237,7 +250,7 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
  * Writes the character card to the specified image file.
  * @param {string|Buffer} inputFile - Path to the image file or image buffer
  * @param {string} data - Character card data
- * @param {string} outputFile - Target image file name
+ * @param {string} outputFile - Target image file name, with or without a PNG extension
  * @param {import('express').Request} request - Express request obejct
  * @param {Crop|undefined} crop - Crop parameters
  * @param {{preserveDateAdded?: boolean, preserveFileIdentity?: boolean}} [writeOptions]
@@ -245,7 +258,7 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
  */
 async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined, { preserveDateAdded = false, preserveFileIdentity = false } = {}) {
     try {
-        const outputImageName = `${outputFile}.png`;
+        const outputImageName = getPngFileName(outputFile);
         const outputImagePath = path.join(request.user.directories.characters, outputImageName);
         const fileExists = fs.existsSync(outputImagePath);
         let expectedFileIdentity;
@@ -272,7 +285,7 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
             try {
                 let rawImage;
                 // SillyBunny: metadata-only card edits must not rebuild an existing PNG through Jimp.
-                const editsExistingCard = typeof inputFile === 'string' && path.resolve(inputFile) === path.resolve(outputImagePath);
+                const editsExistingCard = typeof inputFile === 'string' && isSameFile(inputFile, outputImagePath);
                 if (editsExistingCard && (crop === undefined || crop === null)) {
                     rawImage = await fsPromises.readFile(inputFile);
                     if (isPngBuffer(rawImage)) {
@@ -413,8 +426,7 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
         return { ok: false, error: validator.lastValidationError ?? 'Validation failed' };
     }
 
-    const targetImg = getPngFileStem(avatar);
-    const writeSucceeded = await writeCharacterData(avatarPath, JSON.stringify(character), targetImg, request, undefined, { preserveFileIdentity: true });
+    const writeSucceeded = await writeCharacterData(avatarPath, JSON.stringify(character), avatar, request, undefined, { preserveFileIdentity: true });
     if (!writeSucceeded) {
         return { ok: false, error: 'Failed to write character data.' };
     }
@@ -1381,7 +1393,7 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
     char.chat = request.body.chat;
     char.create_date = request.body.create_date;
     char = JSON.stringify(char);
-    let targetFile = getPngFileStem(request.body.avatar_url);
+    const targetFile = request.body.avatar_url;
 
     try {
         let writeSucceeded;
@@ -1427,7 +1439,7 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
         }
 
         const crop = tryParse(request.query.crop);
-        const fileName = getPngFileStem(request.body.avatar_url);
+        const fileName = request.body.avatar_url;
         const writeSucceeded = await writeCharacterData(uploadPath, data, fileName, request, crop, { preserveFileIdentity: true });
 
         // Remove uploaded temp file
@@ -1486,7 +1498,7 @@ router.post('/edit-attribute', validateAvatarUrlMiddleware, async function (requ
         char[request.body.field] = request.body.value;
         char.data[request.body.field] = request.body.value;
         let newCharJSON = JSON.stringify(char);
-        const targetFile = getPngFileStem(request.body.avatar_url);
+        const targetFile = request.body.avatar_url;
         const writeSucceeded = await writeCharacterData(avatarPath, newCharJSON, targetFile, request, undefined, { preserveFileIdentity: true });
         if (!writeSucceeded) throw new Error('Failed to write character data.');
         return response.sendStatus(200);

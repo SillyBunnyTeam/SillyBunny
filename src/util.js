@@ -2106,6 +2106,13 @@ function writeAllSync(fileDescriptor, data, position = 0) {
     }
 }
 
+function resizeFileSync(fileDescriptor, size) {
+    // Windows can reject SetEndOfFile on a mapped file even when its size already matches.
+    if (fs.fstatSync(fileDescriptor, { bigint: true }).size !== BigInt(size)) {
+        fs.ftruncateSync(fileDescriptor, size);
+    }
+}
+
 function removeFileWriteRecovery(recoveryPath) {
     const retryDelaysMs = process.platform === 'win32' ? [0, 50, 125, 250] : [0];
     for (const delayMs of retryDelaysMs) {
@@ -2177,7 +2184,7 @@ function recoverFileWriteOnceSync(filePath) {
             restoreTempCreated = true;
             try {
                 writeAllSync(restoreDescriptor, originalData);
-                fs.ftruncateSync(restoreDescriptor, originalData.byteLength);
+                resizeFileSync(restoreDescriptor, originalData.byteLength);
                 fs.fsyncSync(restoreDescriptor);
             } finally {
                 fs.closeSync(restoreDescriptor);
@@ -2228,7 +2235,7 @@ function recoverFileWriteOnceSync(filePath) {
             throw Object.assign(new Error(`Refused to recover a replaced file: ${filePath}`), { code: 'ESTALE' });
         }
         writeAllSync(fileDescriptor, originalData);
-        fs.ftruncateSync(fileDescriptor, originalData.byteLength);
+        resizeFileSync(fileDescriptor, originalData.byteLength);
         fs.fsyncSync(fileDescriptor);
 
         const finalDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
@@ -2422,7 +2429,7 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     writeAllSync(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]));
                     fs.fsyncSync(fileDescriptor);
                     writeAllSync(fileDescriptor, dataBuffer.subarray(1), 1);
-                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    resizeFileSync(fileDescriptor, dataLength);
                     fs.fsyncSync(fileDescriptor);
                     writeAllSync(fileDescriptor, dataBuffer.subarray(0, 1));
                     try {
@@ -2450,7 +2457,7 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
 
                     targetMutated = true;
                     writeAllSync(fileDescriptor, dataBuffer);
-                    fs.ftruncateSync(fileDescriptor, dataLength);
+                    resizeFileSync(fileDescriptor, dataLength);
                     fs.fsyncSync(fileDescriptor);
                 }
 
@@ -2466,7 +2473,7 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                 if (shouldRestoreOriginal && originalData) {
                     try {
                         writeAllSync(fileDescriptor, originalData);
-                        fs.ftruncateSync(fileDescriptor, originalData.byteLength);
+                        resizeFileSync(fileDescriptor, originalData.byteLength);
                         fs.fsyncSync(fileDescriptor);
                         if (recoveryPath) {
                             removeFileWriteRecovery(recoveryPath);
@@ -2529,7 +2536,7 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
                     const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
                     writeAllSync(tempDescriptor, dataBuffer);
-                    fs.ftruncateSync(tempDescriptor, dataBuffer.byteLength);
+                    resizeFileSync(tempDescriptor, dataBuffer.byteLength);
                     fs.fsyncSync(tempDescriptor);
                 } finally {
                     fs.closeSync(tempDescriptor);
