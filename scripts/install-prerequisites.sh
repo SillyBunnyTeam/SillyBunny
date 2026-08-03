@@ -233,9 +233,20 @@ install_termux_glibc_runner() {
         pkg update -y || true
         if ! pkg install -y glibc-repo || ! pkg install -y glibc-runner; then
             echo "Termux could not install the glibc packages Bun depends on." >&2
-            echo "Run 'pkg update && pkg install glibc-repo glibc-runner' manually to see why, then rerun this launcher." >&2
+            echo "Run 'pkg update && pkg install -y glibc-repo && pkg install -y glibc-runner' manually to see why, then rerun this launcher." >&2
             echo "To start now without Bun, use Node.js instead: bash start-termux-node.sh" >&2
             exit 1
+        fi
+
+        refresh_known_paths
+        if ! termux_glibc_ready; then
+            echo "The glibc packages are registered but incomplete. Reinstalling their runtime files..."
+            if ! pkg install -y --reinstall glibc glibc-runner; then
+                echo "Termux could not repair the glibc runtime Bun depends on." >&2
+                echo "Run 'pkg install -y --reinstall glibc glibc-runner' manually to see why, then rerun this launcher." >&2
+                echo "To start now without Bun, use Node.js instead: bash start-termux-node.sh" >&2
+                exit 1
+            fi
         fi
     else
         install_linux_packages glibc-repo
@@ -249,7 +260,7 @@ install_termux_glibc_runner() {
             echo "'grun' is unavailable on PATH." >&2
         else
             echo "'grun' resolves, but no glibc dynamic linker was found in '$TERMUX_GLIBC_ROOT/lib'." >&2
-            echo "Reinstall with 'pkg install --reinstall glibc-runner', or set GLIBC_ROOT if your glibc lives elsewhere." >&2
+            echo "Reinstall with 'pkg install -y --reinstall glibc glibc-runner', or set GLIBC_ROOT if your glibc lives elsewhere." >&2
         fi
         echo "To start now without Bun, use Node.js instead: bash start-termux-node.sh" >&2
         exit 1

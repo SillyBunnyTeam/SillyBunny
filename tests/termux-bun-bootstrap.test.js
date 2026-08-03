@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const prerequisitesSource = readFileSync(path.join(repoRoot, 'scripts', 'install-prerequisites.sh'), 'utf8');
+const readmeSource = readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
 
 /**
  * Lifts a top-level shell function out of install-prerequisites.sh so it can be
@@ -28,6 +29,7 @@ function extractShellFunction(source, name) {
 
 const harnessDir = mkdtempSync(path.join(tmpdir(), 'sb-termux-bun-'));
 const harnessPath = path.join(harnessDir, 'harness.sh');
+const repairHarnessPath = path.join(harnessDir, 'repair-harness.sh');
 const fakeBinDir = path.join(harnessDir, 'fakebin');
 
 mkdirSync(fakeBinDir, { recursive: true });
@@ -43,6 +45,27 @@ writeFileSync(harnessPath, [
     extractShellFunction(prerequisitesSource, 'termux_glibc_runner_path'),
     extractShellFunction(prerequisitesSource, 'termux_glibc_ready'),
     'if termux_glibc_ready; then echo ready; else echo not-ready; fi',
+    '',
+].join('\n\n'));
+
+writeFileSync(repairHarnessPath, [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'ready=0',
+    'pkg_calls=()',
+    'is_termux() { return 0; }',
+    'have_command() { [[ "$1" == pkg ]]; }',
+    'refresh_known_paths() { :; }',
+    'termux_glibc_runner_path() { return 0; }',
+    'termux_glibc_ready() { (( ready == 1 )); }',
+    'pkg() {',
+    '    pkg_calls+=("$*")',
+    '    if [[ "$*" == *"--reinstall glibc glibc-runner"* ]]; then ready=1; fi',
+    '    return 0',
+    '}',
+    extractShellFunction(prerequisitesSource, 'install_termux_glibc_runner'),
+    'install_termux_glibc_runner >/dev/null 2>&1',
+    'printf "%s\\n" "${pkg_calls[@]}"',
     '',
 ].join('\n\n'));
 
@@ -66,20 +89,52 @@ afterAll(() => {
  */
 function resolveBash() {
     const probePath = path.join(harnessDir, 'probe.sh');
-    writeFileSync(probePath, 'set -euo pipefail\nprintf %s "$BASH"\n');
+    writeFileSync(probePath, 'set -euo pipefail\nprintf ready\n');
+    const candidates = [];
 
-    try {
-        const stdout = execFileSync('bash', [probePath], {
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        return stdout.trim() || null;
-    } catch {
-        return null;
+    if (process.platform === 'win32') {
+        try {
+            const gitExecPath = execFileSync('git', ['--exec-path'], { encoding: 'utf8' }).trim();
+            candidates.push(path.resolve(gitExecPath, '..', '..', '..', 'bin', 'bash.exe'));
+        } catch {
+            // Git is optional for this test probe.
+        }
+        try {
+            candidates.push(...execFileSync('where.exe', ['bash'], { encoding: 'utf8' }).split(/\r?\n/));
+        } catch {
+            // Fall through to the generic candidates below.
+        }
+    } else {
+        candidates.push(process.env.BASH);
     }
+    candidates.push('bash');
+
+    for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+        try {
+            const stdout = execFileSync(candidate, [probePath], {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            });
+            if (stdout.trim() === 'ready') {
+                return candidate;
+            }
+        } catch {
+            // Try the next bash candidate.
+        }
+    }
+
+    return null;
 }
 
 const bashPath = resolveBash();
+
+function toBashPath(filePath) {
+    if (process.platform !== 'win32' || !bashPath) {
+        return filePath;
+    }
+
+    return execFileSync(bashPath, ['-lc', 'cygpath -u "$1"', 'bash', filePath], { encoding: 'utf8' }).trim();
+}
 
 // CI runs unit tests on ubuntu-latest, so this only spares Windows contributors
 // a wall of failures that say nothing about the bootstrap. The source-level
@@ -109,9 +164,9 @@ function glibcReady({ grun, linker }) {
     // bash builtin, so nothing here depends on PATH being populated.
     const env = {
         ...process.env,
-        PATH: grun ? fakeBinDir : '',
-        TERMUX_PREFIX: path.join(glibcRoot, 'no-such-prefix'),
-        TERMUX_GLIBC_ROOT: glibcRoot,
+        PATH: grun ? toBashPath(fakeBinDir) : '',
+        TERMUX_PREFIX: toBashPath(path.join(glibcRoot, 'no-such-prefix')),
+        TERMUX_GLIBC_ROOT: toBashPath(glibcRoot),
     };
 
     return execFileSync(bashPath, [harnessPath], { env, encoding: 'utf8' }).trim();
@@ -175,8 +230,8 @@ describe('install-prerequisites.sh Termux Bun bootstrap wiring', () => {
         const glibcRunner = extractShellFunction(prerequisitesSource, 'install_termux_glibc_runner');
         const fallbackHints = glibcRunner.match(/bash start-termux-node\.sh/g) ?? [];
 
-        // One per failure exit: the package install failure and the final probe.
-        expect(fallbackHints).toHaveLength(2);
+        // One per failure exit: package install, package repair and the final probe.
+        expect(fallbackHints).toHaveLength(3);
     });
 
     test('a stale package index is refreshed before installing glibc', () => {
@@ -186,6 +241,23 @@ describe('install-prerequisites.sh Termux Bun bootstrap wiring', () => {
 
         expect(updateStep).toBeGreaterThanOrEqual(0);
         expect(installStep).toBeGreaterThan(updateStep);
+    });
+
+    test('repairs a half-installed glibc instead of repeating no-op installs', () => {
+        expect(bashPath).not.toBeNull();
+        const calls = execFileSync(bashPath, [repairHarnessPath], { encoding: 'utf8' }).trim().split(/\r?\n/);
+
+        expect(calls).toEqual([
+            'update -y',
+            'install -y glibc-repo',
+            'install -y glibc-runner',
+            'install -y --reinstall glibc glibc-runner',
+        ]);
+    });
+
+    test('documents the repository and runner installs as separate transactions', () => {
+        expect(readmeSource).toContain('pkg update && pkg install -y glibc-repo && pkg install -y glibc-runner');
+        expect(readmeSource).not.toContain('pkg install glibc-repo glibc-runner');
     });
 
     // install_bun's is_termux branch always returns or exits, so any further
