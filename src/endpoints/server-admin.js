@@ -21,6 +21,15 @@ import {
 } from '../server-admin-git.js';
 import { getServerLogSnapshot } from '../server-log-buffer.js';
 import { getLatestZipReleaseStatus, stageZipReleaseUpdate } from '../server-admin-zip-update.js';
+import {
+    discardStagedServerPluginRelease,
+    getServerPluginUpdateCapabilities,
+    stageServerPluginRelease,
+} from '../server-plugin-manager.js';
+import {
+    cancelServerPluginUpdateHandoff,
+    prepareServerPluginUpdateHandoff,
+} from '../server-plugin-update-ipc.js';
 import { serverDirectory } from '../server-directory.js';
 import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
@@ -31,6 +40,9 @@ import { getServerBootId } from '../server-boot-marker.js';
 import {
     LAUNCHER_ENV as RESTART_LAUNCHER_ENV,
     RESTART_EXIT_CODE,
+    SERVER_PLUGIN_PREPARE_LEASE_MS,
+    SERVER_PLUGIN_UPDATE_EXIT_CODE,
+    SUPERVISOR_RELOAD_EXIT_CODE,
     SUPERVISED_ENV as RESTART_SUPERVISED_ENV,
 } from '../server-supervisor.js';
 
@@ -360,8 +372,8 @@ function getZipUpdatePayload(stagedUpdate) {
         version: stagedUpdate.version,
         assetName: stagedUpdate.assetName,
         command: [process.argv[0], ...process.argv.slice(1)],
-        // Clear the supervision markers so the relaunched server.js starts a
-        // fresh supervisor instead of expecting a loop that no longer exists.
+        // Clear inherited supervision markers so the helper's replacement
+        // process starts a fresh supervisor after the old process tree exits.
         envPatch: {
             SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1',
             [RESTART_SUPERVISED_ENV]: '',
@@ -373,11 +385,30 @@ function getZipUpdatePayload(stagedUpdate) {
     return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }
 
+function getServerPluginUpdatePayload(stagedUpdate) {
+    return {
+        transactionId: stagedUpdate.transactionId,
+        pluginsRoot: stagedUpdate.pluginsRoot,
+        directoryName: stagedUpdate.directoryName,
+        stagingRoot: stagedUpdate.stagingRoot,
+        releaseRoot: stagedUpdate.releaseRoot,
+        pluginPath: stagedUpdate.pluginPath,
+        lockPath: stagedUpdate.lockPath,
+        journalPath: stagedUpdate.journalPath,
+        targetVersion: stagedUpdate.targetVersion,
+        tag: stagedUpdate.tag,
+        commit: stagedUpdate.commit,
+        preservePaths: stagedUpdate.preservePaths,
+        expectedPluginId: stagedUpdate.expectedPluginId,
+        releaseDigest: stagedUpdate.releaseDigest,
+    };
+}
+
 function isManagedRestart() {
     return process.env[RESTART_LAUNCHER_ENV] === '1' || process.env[RESTART_SUPERVISED_ENV] === '1';
 }
 
-function scheduleRestart(response) {
+function scheduleRestart(response, { reloadSupervisor = false } = {}) {
     // Either a launcher script (Start.bat/start.sh) or the server.js
     // supervisor watches for the restart exit code. Direct launches are
     // supervised since server.js became self-supervising, so exiting with the
@@ -388,8 +419,13 @@ function scheduleRestart(response) {
 
     response.once('finish', () => {
         setTimeout(() => {
-            console.info(`Restart requested; exiting with code ${RESTART_EXIT_CODE} for relaunch.`);
-            requestGracefulExit(RESTART_EXIT_CODE);
+            const canReloadSupervisor = process.env[RESTART_LAUNCHER_ENV] === '1';
+            const exitCode = reloadSupervisor && canReloadSupervisor ? SUPERVISOR_RELOAD_EXIT_CODE : RESTART_EXIT_CODE;
+            if (reloadSupervisor && !canReloadSupervisor) {
+                console.warn('No outer launcher detected; restarting the server child, but a top-level restart is required to load updated supervisor code.');
+            }
+            console.info(`Restart requested; exiting with code ${exitCode} for relaunch.`);
+            requestGracefulExit(exitCode);
         }, RESTART_RESPONSE_DELAY_MS);
     });
 }
@@ -415,6 +451,71 @@ function scheduleZipUpdate(response, stagedUpdate) {
             requestGracefulExit(0);
         }, RESTART_RESPONSE_DELAY_MS);
     });
+}
+
+export async function scheduleServerPluginUpdate(response, stagedUpdate, {
+    prepareHandoff = prepareServerPluginUpdateHandoff,
+    cancelHandoff = cancelServerPluginUpdateHandoff,
+    discardStaged = discardStagedServerPluginRelease,
+    requestExit = requestGracefulExit,
+    restartDelayMs = RESTART_RESPONSE_DELAY_MS,
+} = {}) {
+    const payload = getServerPluginUpdatePayload(stagedUpdate);
+    const discardAfterLease = () => {
+        const timer = setTimeout(() => {
+            try {
+                discardStaged(stagedUpdate);
+            } catch (error) {
+                console.error('Failed to clean up an unacknowledged server plugin update.', error);
+            }
+        }, SERVER_PLUGIN_PREPARE_LEASE_MS + 1000);
+        timer.unref?.();
+    };
+
+    try {
+        await prepareHandoff(payload);
+    } catch (error) {
+        try {
+            await cancelHandoff(payload);
+        } catch (cancelError) {
+            console.error('Failed to resolve an unacknowledged server plugin update handoff.', cancelError);
+            discardAfterLease();
+        }
+        error.serverPluginHandoffManaged = true;
+        throw error;
+    }
+    let completed = false;
+    let cancelled = false;
+
+    const cancel = async () => {
+        if (completed || cancelled) {
+            return;
+        }
+        cancelled = true;
+        try {
+            await cancelHandoff(payload);
+        } catch (error) {
+            console.error('Failed to cancel server plugin update handoff.', error);
+            discardAfterLease();
+        }
+    };
+
+    if (response.destroyed) {
+        await cancel();
+        const error = new Error('Client disconnected before the server plugin update was accepted.');
+        error.serverPluginHandoffManaged = true;
+        throw error;
+    }
+
+    response.once('finish', () => {
+        completed = true;
+        setTimeout(() => {
+            console.info(`Server plugin ${stagedUpdate.directoryName} update staged; shutting down for safe replacement.`);
+            requestExit(SERVER_PLUGIN_UPDATE_EXIT_CODE);
+        }, restartDelayMs);
+    });
+    response.once('close', () => void cancel());
+    return cancel;
 }
 
 async function restoreAutoStash(git, { reason = 'after update failure' } = {}) {
@@ -820,6 +921,86 @@ router.post('/logs', requireAdminMiddleware, async (request, response) => {
     }
 });
 
+router.get('/server-plugins/capabilities', requireAdminMiddleware, (_request, response) => {
+    const capabilities = getServerPluginUpdateCapabilities();
+    const serverPluginsEnabled = getConfigValue('enableServerPlugins', false, 'boolean');
+
+    response.json({
+        ...capabilities,
+        available: capabilities.available && serverPluginsEnabled,
+        serverPluginsEnabled,
+        serverBootId: getServerBootId(),
+    });
+});
+
+router.post('/server-plugins/apply-release', requireAdminMiddleware, async (request, response) => {
+    let stagedUpdate = null;
+    let cancelHandoff = null;
+
+    try {
+        if (!getConfigValue('enableServerPlugins', false, 'boolean')) {
+            return response.status(409).json({
+                error: 'Server plugins are disabled in config.yaml.',
+                code: 'server_plugins_disabled',
+            });
+        }
+
+        const capabilities = getServerPluginUpdateCapabilities();
+        if (!capabilities.available) {
+            return response.status(503).json({
+                error: capabilities.safeRestart
+                    ? 'Git and npm are required for automatic server plugin updates.'
+                    : 'This SillyBunny process is not managed by the built-in supervisor.',
+                code: capabilities.safeRestart ? 'tooling_unavailable' : 'safe_restart_unavailable',
+            });
+        }
+
+        stagedUpdate = await stageServerPluginRelease({
+            pluginsRoot: path.join(serverDirectory, 'plugins'),
+            directoryName: request.body?.directoryName,
+            targetVersion: request.body?.targetVersion,
+        });
+
+        if (stagedUpdate.action === 'unchanged') {
+            scheduleRestart(response);
+            return response.status(202).json({
+                ok: true,
+                action: 'restart',
+                restarting: true,
+                currentVersion: stagedUpdate.currentVersion,
+                targetVersion: stagedUpdate.targetVersion,
+                serverBootId: getServerBootId(),
+                message: `Server plugin v${stagedUpdate.targetVersion} is installed. Restarting SillyBunny to activate it.`,
+            });
+        }
+
+        cancelHandoff = await scheduleServerPluginUpdate(response, stagedUpdate);
+
+        return response.status(202).json({
+            ok: true,
+            action: 'updated',
+            restarting: true,
+            currentVersion: stagedUpdate.currentVersion,
+            targetVersion: stagedUpdate.targetVersion,
+            tag: stagedUpdate.tag,
+            commit: stagedUpdate.commit,
+            serverBootId: getServerBootId(),
+            message: `Server plugin ${stagedUpdate.tag} staged. Restarting SillyBunny to replace it safely.`,
+        });
+    } catch (error) {
+        if (cancelHandoff) {
+            await cancelHandoff();
+        } else if (!error.serverPluginHandoffManaged) {
+            discardStagedServerPluginRelease(stagedUpdate);
+        }
+        console.error('Failed to apply server plugin release.', error);
+        return response.status(error.status || 500).json({
+            error: error.message || 'Failed to apply server plugin release.',
+            code: error.code || 'server_plugin_update_failed',
+        });
+    }
+});
+
 router.post('/restart', requireAdminMiddleware, async (_request, response) => {
     try {
         scheduleRestart(response);
@@ -971,7 +1152,7 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
         const nextRepository = await getRepositoryStatus();
         const nextVersion = await getVersion();
 
-        scheduleRestart(response);
+        scheduleRestart(response, { reloadSupervisor: true });
 
         response.status(202).json({
             updated: true,
@@ -1104,7 +1285,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         }
 
         // Schedule restart
-        scheduleRestart(response);
+        scheduleRestart(response, { reloadSupervisor: true });
 
         response.status(202).json({
             ok: true,

@@ -24,9 +24,10 @@ import { serverDirectory } from './server-directory.js';
 import { getServerBootId } from './server-boot-marker.js';
 
 import { serverEvents, EVENT_NAMES } from './server-events.js';
-import { loadPlugins } from './plugin-loader.js';
+import { getLoadedServerPlugins, loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
 import { closeListeningServers } from './server-listen.js';
+import { notifyServerStartup } from './server-plugin-update-ipc.js';
 import { SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
 import {
     initUserStorage,
@@ -703,6 +704,7 @@ async function postSetupTasks(result) {
 
     setupLogLevel();
     serverEvents.emit(EVENT_NAMES.SERVER_STARTED, { url: browserLaunchUrl });
+    notifyServerStartup(getLoadedServerPlugins());
     void runDeferredStartupTasks();
 }
 
