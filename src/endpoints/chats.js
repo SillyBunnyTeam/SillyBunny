@@ -1,13 +1,16 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import readline from 'node:readline';
 import process from 'node:process';
+import { isDeepStrictEqual } from 'node:util';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import _ from 'lodash';
 
+import { acquireChatFileLock, acquireChatFileLocks } from '../chat-file-lock.js';
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
 import {
@@ -17,7 +20,9 @@ import {
     isRecognizedChatHeader,
     loadActiveChatWithRecovery,
     markChatDeleted,
+    parseChatJsonl,
     readChatJsonlStrict,
+    removeLatestChatSnapshotIfMatches,
     rekeyChatRecoveryState,
     runChatRecoveryBestEffort,
     seedLatestChatSnapshot,
@@ -31,10 +36,10 @@ import {
     removeOldBackups,
     formatBytes,
     color,
+    recoverFileWriteSync,
     tryWriteFileSync,
     tryReadFileSync,
     tryDeleteFile,
-    readFirstLine,
     isPathUnderParent,
     uuidv4,
 } from '../util.js';
@@ -126,6 +131,154 @@ function normalizeSerializedChatForBackupComparison(data) {
     } catch {
         return serialized;
     }
+}
+
+function getSerializedChatIntegrity(serializedChat) {
+    const headerLine = String(serializedChat ?? '').split('\n').find(line => line.trim());
+    if (!headerLine) {
+        return '';
+    }
+
+    try {
+        const integrity = JSON.parse(headerLine.replace(/^\uFEFF/, ''))?.chat_metadata?.integrity;
+        return typeof integrity === 'string' && integrity ? integrity : '';
+    } catch {
+        return '';
+    }
+}
+
+function normalizeChatMessageExtraForComparison(extra) {
+    if (!isPlainObject(extra)) {
+        return extra;
+    }
+
+    const normalized = JSON.parse(JSON.stringify(extra));
+    if (Object.hasOwn(normalized, 'file')) {
+        normalized.files = Array.isArray(normalized.files) ? normalized.files : [];
+        if (normalized.file) {
+            normalized.files.push(normalized.file);
+        }
+        delete normalized.file;
+    }
+    if (Array.isArray(normalized.image_swipes)) {
+        normalized.media = Array.isArray(normalized.media) ? normalized.media : [];
+        for (const imageUrl of normalized.image_swipes) {
+            if (typeof imageUrl === 'string' && imageUrl) {
+                normalized.media_display = 'gallery';
+                normalized.media.push({ type: 'image', url: imageUrl });
+            }
+        }
+        delete normalized.image_swipes;
+    }
+    if (Object.hasOwn(normalized, 'image')) {
+        normalized.media = Array.isArray(normalized.media) ? normalized.media : [];
+        const imageUrl = normalized.image;
+        if (typeof imageUrl === 'string' && imageUrl) {
+            normalized.media.push({ type: 'image', url: imageUrl });
+        }
+        if (normalized.media_display === 'gallery') {
+            const selectedIndex = normalized.media.findIndex(media => media.url === imageUrl);
+            if (selectedIndex > -1) {
+                normalized.media_index = selectedIndex;
+            }
+        }
+        normalized.media = normalized.media.filter((media, index, allMedia) => index === allMedia.findIndex(other => other.url === media.url));
+        delete normalized.image;
+    }
+    if (Object.hasOwn(normalized, 'video')) {
+        normalized.media = Array.isArray(normalized.media) ? normalized.media : [];
+        if (typeof normalized.video === 'string' && normalized.video) {
+            normalized.media.push({ type: 'video', url: normalized.video });
+        }
+        delete normalized.video;
+    }
+    return normalized;
+}
+
+function normalizeChatMessageForComparison(message, chatMetadata, messageCount) {
+    // Reparse JSONL data so retained and synthesized nested values share one realm for strict comparison.
+    const normalized = JSON.parse(JSON.stringify(message));
+    normalized.extra = normalizeChatMessageExtraForComparison(normalized.extra);
+    if (normalized.is_user || normalized.extra?.isSmallSys) {
+        return normalized;
+    }
+
+    if (!Array.isArray(normalized.swipes)) {
+        normalized.swipes = [normalized.mes ?? ''];
+    }
+    if (typeof normalized.swipe_id !== 'number') {
+        normalized.swipe_id = 0;
+    }
+    const createSwipeInfo = () => {
+        const info = { extra: {} };
+        for (const key of ['send_date', 'gen_started', 'gen_finished']) {
+            if (normalized[key] !== undefined) {
+                info[key] = normalized[key];
+            }
+        }
+        return info;
+    };
+    if (!Array.isArray(normalized.swipe_info)) {
+        normalized.swipe_info = normalized.swipes.map(createSwipeInfo);
+    }
+    for (let index = 0; index < normalized.swipes.length; index++) {
+        if (typeof normalized.swipes[index] !== 'string') {
+            normalized.swipes[index] = '';
+        }
+        if (!isPlainObject(normalized.swipe_info[index])) {
+            normalized.swipe_info[index] = createSwipeInfo();
+        }
+    }
+
+    const activeSwipe = normalized.swipe_id;
+    if (typeof normalized.swipes[activeSwipe] === 'string' && isPlainObject(normalized.swipe_info[activeSwipe])) {
+        if (chatMetadata.tainted || messageCount > 1) {
+            normalized.swipes[activeSwipe] = normalized.mes;
+        }
+        const swipeInfo = normalized.swipe_info[activeSwipe];
+        for (const key of ['send_date', 'gen_started', 'gen_finished']) {
+            if (normalized[key] === undefined) {
+                delete swipeInfo[key];
+            } else {
+                swipeInfo[key] = normalized[key];
+            }
+        }
+        if (normalized.extra === undefined) {
+            delete swipeInfo.extra;
+        } else {
+            swipeInfo.extra = JSON.parse(JSON.stringify(normalized.extra));
+        }
+    }
+    return normalized;
+}
+
+function getChatSaveComparisonRecords(data, { ignoreDerivedMetadata = true } = {}) {
+    const parsedChat = parseChatJsonl(String(data ?? ''));
+    if (parsedChat.status !== 'ok') {
+        return null;
+    }
+
+    const [header, ...messages] = parsedChat.records;
+    const chatMetadata = { ...header.chat_metadata };
+    delete chatMetadata.integrity;
+    if (ignoreDerivedMetadata) {
+        delete chatMetadata.chat_id_hash;
+        if (isPlainObject(chatMetadata.variables) && Object.keys(chatMetadata.variables).length === 0) {
+            delete chatMetadata.variables;
+        }
+    }
+
+    // SillyBunny: chat loads retain chat_metadata but discard and recreate the outer header envelope.
+    return [
+        { chat_metadata: chatMetadata },
+        ...messages.map(message => normalizeChatMessageForComparison(message, chatMetadata, messages.length)),
+    ];
+}
+
+function isSameChatSaveContent(left, right, options = {}) {
+    const leftRecords = getChatSaveComparisonRecords(left, options);
+    const rightRecords = getChatSaveComparisonRecords(right, options);
+    return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);
 }
 
 function getLatestBackupFilePath(directory, prefix) {
@@ -561,31 +714,76 @@ function importRisuChat(userName, characterName, jsonData) {
     return chat.map(obj => JSON.stringify(obj)).join('\n');
 }
 
-/**
- * Checks if the chat being saved has the same integrity as the one being loaded.
- * @param {string} filePath Path to the chat file
- * @param {string} integritySlug Integrity slug
- * @returns {Promise<boolean>} Whether the chat is intact
- */
-async function checkChatIntegrity(filePath, integritySlug) {
-    // If the chat file doesn't exist, assume it's intact
-    if (!fs.existsSync(filePath)) {
-        return true;
+function readChatFileSnapshot(filePath) {
+    let initialPathStats;
+    try {
+        initialPathStats = fs.lstatSync(filePath, { bigint: true });
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+    if (!initialPathStats.isFile() && !initialPathStats.isSymbolicLink()) {
+        throw Object.assign(new Error(`Chat path is not a regular file: ${filePath}`), { code: 'EINVAL' });
     }
 
-    // Parse the first line of the chat file as JSON
-    const firstLine = await readFirstLine(filePath);
-    const jsonData = tryParse(firstLine);
-    const chatIntegrity = jsonData?.chat_metadata?.integrity;
+    const fileDescriptor = fs.openSync(filePath, 'r');
+    try {
+        const initialDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+        if (!initialDescriptorStats.isFile() || initialDescriptorStats.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+            throw Object.assign(new Error(`Chat file cannot be read safely: ${filePath}`), { code: 'EINVAL' });
+        }
+        const data = Buffer.alloc(Number(initialDescriptorStats.size));
+        let offset = 0;
+        while (offset < data.byteLength) {
+            const bytesRead = fs.readSync(fileDescriptor, data, offset, data.byteLength - offset, offset);
+            if (bytesRead === 0) break;
+            offset += bytesRead;
+        }
 
-    // If the chat has no integrity metadata, assume it's intact
-    if (!chatIntegrity) {
-        console.debug(`File "${filePath}" does not have integrity metadata matching "${integritySlug}". The integrity validation has been skipped.`);
-        return true;
+        const finalDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
+        const finalPathStats = fs.lstatSync(filePath, { bigint: true });
+        const pathChanged = finalPathStats.dev !== initialPathStats.dev || finalPathStats.ino !== initialPathStats.ino;
+        const descriptorChanged = finalDescriptorStats.dev !== initialDescriptorStats.dev
+            || finalDescriptorStats.ino !== initialDescriptorStats.ino
+            || finalDescriptorStats.size !== initialDescriptorStats.size
+            || finalDescriptorStats.mtimeNs !== initialDescriptorStats.mtimeNs
+            || finalDescriptorStats.ctimeNs !== initialDescriptorStats.ctimeNs;
+        const regularPathChangedTarget = initialPathStats.isFile()
+            && (initialDescriptorStats.dev !== initialPathStats.dev || initialDescriptorStats.ino !== initialPathStats.ino);
+        if (pathChanged || descriptorChanged || regularPathChangedTarget || offset !== data.byteLength) {
+            throw Object.assign(new Error(`Chat file changed while it was being read: ${filePath}`), { code: 'ESTALE' });
+        }
+
+        return {
+            data: data.toString('utf8'),
+            hash: crypto.createHash('sha256').update(data).digest('hex'),
+            pathStats: initialPathStats,
+            descriptorStats: initialDescriptorStats,
+        };
+    } finally {
+        fs.closeSync(fileDescriptor);
     }
+}
 
-    // Check if the integrity matches
-    return chatIntegrity === integritySlug;
+function assertChatFileSnapshotCurrent(filePath, expectedSnapshot) {
+    const currentSnapshot = readChatFileSnapshot(filePath);
+    if (!currentSnapshot
+        || currentSnapshot.pathStats.dev !== expectedSnapshot.pathStats.dev
+        || currentSnapshot.pathStats.ino !== expectedSnapshot.pathStats.ino
+        || currentSnapshot.hash !== expectedSnapshot.hash) {
+        throw Object.assign(new Error(`Chat file changed after it was checked: ${filePath}`), { code: 'ESTALE' });
+    }
+}
+
+function repairRejectedChatRecoverySnapshot(recoveryTarget, rejectedSnapshotData) {
+    runChatRecoveryBestEffort(() => {
+        const refreshedSnapshot = seedLatestChatSnapshot(recoveryTarget);
+        if (!refreshedSnapshot.seeded) {
+            removeLatestChatSnapshotIfMatches(recoveryTarget, rejectedSnapshotData);
+        }
+    }, 'Failed to reconcile chat recovery after a rejected save.');
 }
 
 /**
@@ -841,18 +1039,25 @@ function sendChatLoadResponse(response, target, { allowCreate = false } = {}) {
  * @param {boolean} [options.deferBackup] Skip the regular chat backup for this save.
  * @param {object} [options.recoveryTarget] Exact chat recovery target.
  * @param {boolean} [options.allowShrink] The client is deliberately removing messages, so allow a smaller chat.
+ * @param {boolean} [options.persistDerivedMetadata] Persist metadata normally ignored during load-only saves.
  */
-export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null, allowShrink = false } = {}) {
+export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, options = {}) {
     if (!isValidChatSavePayload(chatData)) {
         throw new InvalidChatDataError('Invalid chat save payload. Expected a non-empty chat array with a metadata header.');
     }
 
-    const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
-    const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;
-
-    if (chatIntegritySlug && !await checkChatIntegrity(filePath, chatIntegritySlug)) {
-        throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
+    const release = acquireChatFileLock(filePath);
+    try {
+        return trySaveChatLocked(chatData, filePath, skipIntegrityCheck, handle, cardName, backupDirectory, options);
+    } finally {
+        release();
     }
+}
+
+function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, recoveryTarget = null, allowShrink = false, persistDerivedMetadata = false } = {}) {
+    const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
+    const incomingIntegrity = chatData?.[0]?.chat_metadata?.integrity;
+    const chatIntegritySlug = doIntegrityCheck && typeof incomingIntegrity === 'string' ? incomingIntegrity : '';
 
     const nextIntegrity = uuidv4();
     const savedChatData = Array.isArray(chatData)
@@ -871,13 +1076,58 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
         ...savedChatSizeDetails,
     });
 
-    if (fs.existsSync(filePath)) {
-        const currentChatData = tryReadFileSync(filePath);
+    // SillyBunny: set when the payload represents the same loaded chat apart from the rotating
+    // integrity slug and the discarded outer header envelope. The save then keeps the exact bytes
+    // already on disk, so the recovery snapshot and regular backup mirror the authoritative file.
+    let unchangedChatData = null;
+    let unchangedIntegrity;
+    let preserveFileIdentity = false;
+    let replaceFileOnly = false;
+    let expectedFileIdentity;
+    let expectedFileHash;
+    let currentSnapshot = null;
+    let existingFile = false;
 
-        // SillyBunny: an existing chat that cannot be read can be neither checked nor backed up, so never overwrite it blind.
-        // An empty file reads back as '' rather than null, so this only catches a genuine read failure.
-        if (currentChatData === null && !skipIntegrityCheck && !allowShrink) {
+    try {
+        recoverFileWriteSync(filePath);
+        existingFile = fs.existsSync(filePath);
+        if (existingFile) {
+            currentSnapshot = readChatFileSnapshot(filePath);
+        }
+    } catch (error) {
+        if (error?.code === 'ESTALE') {
+            throw new IntegrityMismatchError(`Chat changed while it was being checked: "${filePath}".`, { cause: error });
+        }
+        if (!skipIntegrityCheck) {
             throw new DestructiveChatSaveError('unreadable', `Refused a chat save for "${cardName}": the existing chat file could not be read, so it cannot be backed up before being replaced.`);
+        }
+        existingFile = fs.existsSync(filePath);
+    }
+
+    if (existingFile) {
+        if (currentSnapshot) {
+            const activeFileStats = currentSnapshot.pathStats;
+            const descriptorMatchesPath = currentSnapshot.descriptorStats.dev === activeFileStats.dev
+                && currentSnapshot.descriptorStats.ino === activeFileStats.ino;
+            preserveFileIdentity = activeFileStats.isFile() && activeFileStats.nlink === 1n && descriptorMatchesPath;
+            replaceFileOnly = !preserveFileIdentity;
+            expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
+            expectedFileHash = currentSnapshot.hash;
+        } else {
+            const activeFileStats = fs.lstatSync(filePath, { bigint: true });
+            replaceFileOnly = true;
+            expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
+        }
+
+        // An existing chat that cannot be read can be neither checked nor backed up, so never overwrite it blind.
+        if (!currentSnapshot && !skipIntegrityCheck) {
+            throw new DestructiveChatSaveError('unreadable', `Refused a chat save for "${cardName}": the existing chat file could not be read, so it cannot be backed up before being replaced.`);
+        }
+
+        const currentChatData = currentSnapshot?.data ?? null;
+        const existingIntegrity = currentChatData === null ? '' : getSerializedChatIntegrity(currentChatData);
+        if (doIntegrityCheck && existingIntegrity && existingIntegrity !== chatIntegritySlug) {
+            throw new IntegrityMismatchError(`Chat integrity check failed for "${filePath}". The expected integrity slug was "${chatIntegritySlug}".`);
         }
 
         if (currentChatData) {
@@ -890,35 +1140,88 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
                 throw new DestructiveChatSaveError(destructiveReason, `Refused a destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
             }
 
-            backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
+            // SillyBunny: compare parsed records because loading canonicalizes legacy JSONL formatting.
+            // Replacing equivalent content through atomic temp-and-rename would swap the file identity
+            // for no gain. Legacy chats remain slugless until their first genuine content change.
+            if (isSameChatSaveContent(jsonlData, currentChatData, { ignoreDerivedMetadata: !persistDerivedMetadata })) {
+                unchangedChatData = currentChatData;
+                unchangedIntegrity = existingIntegrity;
+            } else {
+                backupChatPreWrite(backupDirectory, cardName, currentChatData, handle);
 
-            if (destructiveReason) {
-                console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
-            }
+                if (destructiveReason) {
+                    console.warn(`Forced destructive chat save for "${cardName}" (${destructiveReason}): incoming payload has ${savedChatData.length} JSONL rows, existing file has ${existingLines} rows.`);
+                }
 
-            if (skipIntegrityCheck) {
-                backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
+                if (skipIntegrityCheck) {
+                    backupChat(backupDirectory, cardName, currentChatData, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX, handle);
+                }
             }
         }
     }
+
+    // SillyBunny: the regular backup still runs for an unchanged save. An agent run defers every
+    // backup and closes with one non-deferred save, which can land unchanged; skipping it there would
+    // leave the whole run without a backup. isDuplicateRegularChatBackup collapses the steady state.
+    const persistedChatData = unchangedChatData ?? jsonlData;
+    let hasRecoverySnapshot = false;
 
     if (isBackupEnabled && recoveryTarget) {
         // SillyBunny: exact snapshots are immediate and are not subject to history backup throttling.
         // Destructive payloads are rejected above, so this cannot mirror a chat-destroying write.
         try {
-            writeLatestChatSnapshot(recoveryTarget, jsonlData);
+            const snapshot = writeLatestChatSnapshot(recoveryTarget, persistedChatData);
+            hasRecoverySnapshot = snapshot.stored === true;
         } catch (error) {
             // Recovery storage is supplementary and must not prevent the authoritative chat write.
             console.warn('Failed to write the exact chat recovery snapshot; continuing with the active chat save.', error);
         }
     }
-    tryWriteFileSync(filePath, jsonlData);
+    if (unchangedChatData !== null && currentSnapshot) {
+        try {
+            assertChatFileSnapshotCurrent(filePath, currentSnapshot);
+        } catch (error) {
+            if (hasRecoverySnapshot && recoveryTarget) {
+                repairRejectedChatRecoverySnapshot(recoveryTarget, persistedChatData);
+            }
+            throw new IntegrityMismatchError(`Chat changed after it was checked: "${filePath}".`, { cause: error });
+        }
+    }
+    if (unchangedChatData === null) {
+        try {
+            tryWriteFileSync(filePath, jsonlData, 'utf8', {
+                preserveFileIdentity,
+                expectedFileIdentity,
+                expectedFileHash,
+                expectedFileAbsent: !existingFile,
+                invalidateBeforeWrite: preserveFileIdentity && hasRecoverySnapshot,
+                replaceFileOnly,
+                durable: !existingFile,
+            });
+        } catch (error) {
+            if (['EMLINK', 'ESTALE'].includes(error?.code)) {
+                if (hasRecoverySnapshot && recoveryTarget) {
+                    repairRejectedChatRecoverySnapshot(recoveryTarget, persistedChatData);
+                }
+                throw new IntegrityMismatchError(`Chat changed after it was checked: "${filePath}".`, { cause: error });
+            }
+            throw error;
+        }
+        logBackupEvent('chat-save-written', {
+            handle,
+            chat: cardName,
+            mode: preserveFileIdentity ? 'in-place' : replaceFileOnly ? 'replace' : 'atomic',
+            ...savedChatSizeDetails,
+        });
+    } else {
+        logBackupEvent('chat-save-skipped', { handle, chat: cardName, reason: 'unchanged', force: Boolean(skipIntegrityCheck), ...savedChatSizeDetails });
+    }
     if (!deferBackup) {
-        getBackupFunction(handle)(backupDirectory, cardName, jsonlData, CHAT_BACKUPS_PREFIX, handle);
+        getBackupFunction(handle)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle);
     } else {
         logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
-    return { integrity: nextIntegrity };
+    return { integrity: unchangedIntegrity ?? nextIntegrity };
 }
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {
@@ -1022,40 +1325,70 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         console.debug('Old chat name', pathToOriginalFile);
         console.debug('New chat name', pathToRenamedFile);
 
-        if (!fs.existsSync(pathToOriginalFile) || fs.existsSync(pathToRenamedFile)) {
-            console.error('Either Source or Destination files are not available');
-            return response.status(400).send({ error: true });
-        }
+        const releaseRenameLocks = acquireChatFileLocks([pathToOriginalFile, pathToRenamedFile]);
+        try {
+            if (!fs.existsSync(pathToOriginalFile) || fs.existsSync(pathToRenamedFile)) {
+                console.error('Either Source or Destination files are not available');
+                return response.status(400).send({ error: true });
+            }
 
-        const sourceRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, originalFileName);
-        const destinationRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, renamedFileName);
-        if (isBackupEnabled) {
-            runChatRecoveryBestEffort(
-                () => seedLatestChatSnapshot(sourceRecoveryTarget),
-                'Failed to prepare chat recovery state; continuing with chat rename.',
-            );
-        }
-
-        // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
-        const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
-        if (isBackupEnabled) {
-            const rekeyResult = runChatRecoveryBestEffort(
-                () => rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget),
-                'Failed to move chat recovery state; continuing with renamed chat.',
-            );
-            if (!rekeyResult.ok) {
+            const sourceRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, originalFileName);
+            const destinationRecoveryTarget = createChatRecoveryTarget(request, request.body.is_group, renamedFileName);
+            const requestedChatIdHash = request.body.chat_id_hash;
+            if (Number.isSafeInteger(requestedChatIdHash)) {
+                const sourceChat = readChatJsonlStrict(pathToOriginalFile);
+                const storedChatIdHash = sourceChat.records?.[0]?.chat_metadata?.chat_id_hash;
+                const storedMainChat = sourceChat.records?.[0]?.chat_metadata?.main_chat;
+                const hasStableMainChat = typeof storedMainChat === 'string' && storedMainChat.trim().length > 0;
+                if (sourceChat.status === 'ok' && !Number.isSafeInteger(storedChatIdHash) && !hasStableMainChat) {
+                    sourceChat.records[0] = {
+                        ...sourceChat.records[0],
+                        chat_metadata: {
+                            ...(sourceChat.records[0].chat_metadata || {}),
+                            chat_id_hash: requestedChatIdHash,
+                        },
+                    };
+                    trySaveChatLocked(
+                        sourceChat.records,
+                        pathToOriginalFile,
+                        false,
+                        request.user.profile.handle,
+                        path.parse(originalFileName).name,
+                        request.user.directories.backups,
+                        { deferBackup: true, recoveryTarget: sourceRecoveryTarget, persistDerivedMetadata: true },
+                    );
+                }
+            }
+            if (isBackupEnabled) {
                 runChatRecoveryBestEffort(
-                    () => clearChatRecoveryState(sourceRecoveryTarget),
-                    'Failed to clear source chat recovery state after rename.',
-                );
-                runChatRecoveryBestEffort(
-                    () => clearChatRecoveryState(destinationRecoveryTarget),
-                    'Failed to clear destination chat recovery state after rename.',
+                    () => seedLatestChatSnapshot(sourceRecoveryTarget),
+                    'Failed to prepare chat recovery state; continuing with chat rename.',
                 );
             }
+
+            // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
+            const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
+            if (isBackupEnabled) {
+                const rekeyResult = runChatRecoveryBestEffort(
+                    () => rekeyChatRecoveryState(sourceRecoveryTarget, destinationRecoveryTarget),
+                    'Failed to move chat recovery state; continuing with renamed chat.',
+                );
+                if (!rekeyResult.ok) {
+                    runChatRecoveryBestEffort(
+                        () => clearChatRecoveryState(sourceRecoveryTarget),
+                        'Failed to clear source chat recovery state after rename.',
+                    );
+                    runChatRecoveryBestEffort(
+                        () => clearChatRecoveryState(destinationRecoveryTarget),
+                        'Failed to clear destination chat recovery state after rename.',
+                    );
+                }
+            }
+            console.info(`Successfully renamed chat file (${renameResult.method}).`);
+            return response.send({ ok: true, sanitizedFileName });
+        } finally {
+            releaseRenameLocks();
         }
-        console.info(`Successfully renamed chat file (${renameResult.method}).`);
-        return response.send({ ok: true, sanitizedFileName });
     } catch (error) {
         console.error('Error renaming chat file:', error);
         return response.status(500).send({ error: true });

@@ -774,11 +774,8 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     // SillyBunny: initialize empty, untainted group chats even when the chat id was created before this load.
     const freshChat = !metadata.tainted && (!Array.isArray(data) || !data.length);
 
-    // Add integrity slug if missing
-    if (!metadata.integrity) {
-        metadata.integrity = uuidv4();
-    }
-
+    // SillyBunny: no integrity slug means the server treats the file as intact and mints one on the
+    // first real save. Stamping one in on load only dirtied legacy chats into a needless rewrite.
     await loadItemizedPrompts(getCurrentChatId());
 
     let freshGroupGreetingMessageId = -1;

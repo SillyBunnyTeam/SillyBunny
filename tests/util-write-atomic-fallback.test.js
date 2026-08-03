@@ -153,6 +153,82 @@ describe('tryWriteFileSync atomic fallback', () => {
         expect(fs.readFileSync(filePath, 'utf8')).toBe('replacement');
     });
 
+    test('refuses an identity-preserving write after the checked bytes change in place', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, 'checked bytes', 'utf8');
+        const checked = fs.statSync(filePath, { bigint: true });
+        const expectedFileHash = crypto.createHash('sha256').update('checked bytes').digest('hex');
+        fs.writeFileSync(filePath, 'concurrent bytes', 'utf8');
+
+        expect(() => tryWriteFileSync(filePath, 'requested bytes', 'utf8', {
+            preserveFileIdentity: true,
+            expectedFileIdentity: { dev: checked.dev, ino: checked.ino },
+            expectedFileHash,
+        })).toThrow(/changed file/i);
+
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('concurrent bytes');
+    });
+
+    test('does not delete a file that replaces an exclusive create in progress', () => {
+        const filePath = createTargetPath();
+        const displacedPath = `${filePath}.displaced`;
+        const writeSync = fs.writeSync.bind(fs);
+        let replaced = false;
+        jest.spyOn(fs, 'writeSync').mockImplementation((descriptor, ...args) => {
+            if (!replaced) {
+                replaced = true;
+                fs.renameSync(filePath, displacedPath);
+                fs.writeFileSync(filePath, 'concurrent bytes', 'utf8');
+            }
+            return writeSync(descriptor, ...args);
+        });
+
+        expect(() => tryWriteFileSync(filePath, 'requested bytes', 'utf8', {
+            expectedFileAbsent: true,
+        })).toThrow(/changed file/i);
+
+        expect(fs.readFileSync(filePath, 'utf8')).toBe('concurrent bytes');
+    });
+
+    test('keeps an interrupted guarded write invalid for recovery', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, '{"old":true}\n', 'utf8');
+        const checked = fs.statSync(filePath, { bigint: true });
+        jest.spyOn(fs, 'ftruncateSync').mockImplementationOnce(() => {
+            throw Object.assign(new Error('I/O failure'), { code: 'EIO' });
+        });
+
+        expect(() => tryWriteFileSync(filePath, '{"new":true}\n', 'utf8', {
+            preserveFileIdentity: true,
+            expectedFileIdentity: { dev: checked.dev, ino: checked.ino },
+            invalidateBeforeWrite: true,
+        })).toThrow('I/O failure');
+
+        expect(() => JSON.parse(fs.readFileSync(filePath, 'utf8').split('\n')[0])).toThrow();
+    });
+
+    test('re-invalidates a guarded write when its final flush fails', () => {
+        const filePath = createTargetPath();
+        fs.writeFileSync(filePath, '{"old":true}\n', 'utf8');
+        const checked = fs.statSync(filePath, { bigint: true });
+        const fsyncSync = fs.fsyncSync.bind(fs);
+        let flushes = 0;
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fileDescriptor) => {
+            if (++flushes === 3) {
+                throw Object.assign(new Error('final flush failed'), { code: 'EIO' });
+            }
+            return fsyncSync(fileDescriptor);
+        });
+
+        expect(() => tryWriteFileSync(filePath, '{"new":true}\n', 'utf8', {
+            preserveFileIdentity: true,
+            expectedFileIdentity: { dev: checked.dev, ino: checked.ino },
+            invalidateBeforeWrite: true,
+        })).toThrow('final flush failed');
+
+        expect(() => JSON.parse(fs.readFileSync(filePath, 'utf8').split('\n')[0])).toThrow();
+    });
+
     test('never copies through a hard link when replacement renames stay locked', () => {
         const filePath = createTargetPath();
         const aliasPath = path.join(tempRoot, 'alias.jsonl');

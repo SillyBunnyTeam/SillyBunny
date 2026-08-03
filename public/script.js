@@ -195,7 +195,6 @@ import {
     copyText,
     escapeHtml,
     saveBase64AsFile,
-    uuidv4,
     equalsIgnoreCaseAndAccents,
     localizePagination,
     renderPaginationDropdown,
@@ -210,6 +209,7 @@ import {
     createTimeout,
     loadFileToDocument,
     getSanitizedFilename,
+    getStringHash,
 } from './scripts/utils.js';
 import {
     TOOLING_UI_HYDRATION_STATUS,
@@ -249,7 +249,7 @@ import {
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
-import { NOTE_MODULE_NAME, initAuthorsNote, metadata_keys, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
+import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, initAuthorsNote, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
@@ -5467,7 +5467,7 @@ function addPersonaDescriptionExtensionPrompt() {
             ? `${power_user.persona_description}\n${originalAN}`
             : `${originalAN}\n${power_user.persona_description}`;
 
-        setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, chat_metadata[metadata_keys.position], chat_metadata[metadata_keys.depth], extension_settings.note.allowWIScan, chat_metadata[metadata_keys.role]);
+        setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());
     }
 
     if (power_user.persona_description_position === persona_description_positions.AT_DEPTH) {
@@ -11084,9 +11084,9 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
             chat.splice(0, chat.length);
             chat_metadata = {};
         }
-        if (!chat_metadata.integrity) {
-            chat_metadata.integrity = uuidv4();
-        }
+        // SillyBunny: a chat with no integrity slug is treated as intact by the server, which mints
+        // one on the first real save. Stamping one in here only dirtied legacy chats on load, and a
+        // dirty chat is one that gets rewritten to disk for no reason.
         await getChatResult({ emitCreated: resolvedChat.created, switchMenu });
         eventSource.emit(event_types.CHAT_LOADED, { detail: { id: this_chid, character: characters[this_chid] } });
 
@@ -15766,6 +15766,10 @@ export async function renameGroupOrCharacterChat({ characterId, groupId, oldFile
             : (selected_group === null || selected_group === undefined)
                 && String(this_chid) === String(characterId)
                 && currentChatBaseName === getChatBaseName(oldFileName);
+        const derivedChatIdHash = getStringHash(wasActiveTarget ? (chat_metadata.main_chat ?? currentChatId) : getChatBaseName(oldFileName));
+        body.chat_id_hash = Number.isSafeInteger(chat_metadata.chat_id_hash) && wasActiveTarget
+            ? chat_metadata.chat_id_hash
+            : derivedChatIdHash;
         if (wasActiveTarget) {
             const didFlush = await flushPendingChatSaves();
             if (!didFlush) {

@@ -17,7 +17,7 @@ const {
     markChatDeleted,
     writeLatestChatSnapshot,
 } = await import('../src/chat-recovery.js');
-const { router: chatsRouter } = await import('../src/endpoints/chats.js');
+const { router: chatsRouter, trySaveChat } = await import('../src/endpoints/chats.js');
 const { router: charactersRouter } = await import('../src/endpoints/characters.js');
 const { router: groupsRouter } = await import('../src/endpoints/groups.js');
 
@@ -92,6 +92,137 @@ describe('chat recovery endpoint fallbacks', () => {
         );
     });
 
+    test('creates a new character chat through the normal save route', async () => {
+        const owner = 'Test Card';
+        const fileName = 'New Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        fs.mkdirSync(chatDirectory, { recursive: true });
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: createChatPayload(undefined, 'new chat'),
+            deferBackup: true,
+        });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(fs.readFileSync(chatPath, 'utf8')).toContain('"mes":"new chat"');
+    });
+
+    test('keeps a noncanonical character chat file untouched on a semantic no-op save', async () => {
+        const owner = 'Test Card';
+        const fileName = 'No-op Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        const payload = createChatPayload('character-integrity', 'café');
+        payload[0].chat_metadata.layout = { alpha: 1, beta: 2 };
+        const onDisk = '\r\n{ "unknown_header": true, "chat_metadata": { "layout": { "beta": 2, "alpha": 1 }, "integrity": "character-integrity" }, "user_name": "Original" }\r\n\r\n{"mes":"caf\\u00e9","name":"Character"}\r\n';
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(chatPath, onDisk);
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: payload,
+            deferBackup: true,
+        });
+        const after = fs.statSync(chatPath);
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true, integrity: 'character-integrity' });
+        expect(fs.readFileSync(chatPath, 'utf8')).toBe(onDisk);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+    });
+
+    test('updates an existing character chat without replacing its filesystem identity', async () => {
+        const owner = 'Test Card';
+        const fileName = 'Changed Character.jsonl';
+        const chatDirectory = path.join(directories.chats, owner);
+        const chatPath = path.join(chatDirectory, fileName);
+        const oldIntegrity = 'character-integrity';
+        const oldPayload = createChatPayload(oldIntegrity, 'unchanged message');
+        const updatedPayload = createChatPayload(oldIntegrity, 'unchanged message');
+        updatedPayload[0].chat_metadata.dialogue_colors_overrides = { message: { verified: true } };
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(chatPath, oldPayload.map(JSON.stringify).join('\n'));
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/save', {
+            avatar_url: `${owner}.png`,
+            file_name: path.parse(fileName).name,
+            chat: updatedPayload,
+            deferBackup: true,
+        });
+        const body = await response.json();
+        const after = fs.statSync(chatPath);
+        const saved = fs.readFileSync(chatPath, 'utf8');
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(body.integrity).not.toBe(oldIntegrity);
+        expect(after.ino).toBe(before.ino);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(saved).toContain('"dialogue_colors_overrides"');
+        expect(saved).toContain('"mes":"unchanged message"');
+    });
+
+    test('keeps an unchanged legacy group chat file untouched and slugless', async () => {
+        const chatId = 'No-op Group';
+        const chatPath = path.join(directories.groupChats, `${chatId}.jsonl`);
+        const payload = createChatPayload(undefined, 'legacy group');
+        const onDisk = `\n${JSON.stringify({ name: 'Legacy Group', unknown_header: true })}\r\n${JSON.stringify(payload[1])}\r\n`;
+        fs.writeFileSync(chatPath, onDisk);
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/group/save', {
+            id: chatId,
+            chat: payload,
+            deferBackup: true,
+        });
+        const after = fs.statSync(chatPath);
+
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({ ok: true, integrity: '' });
+        expect(fs.readFileSync(chatPath, 'utf8')).toBe(onDisk);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+    });
+
+    test('updates an existing group chat without replacing its filesystem identity', async () => {
+        const chatId = 'Changed Group';
+        const chatPath = path.join(directories.groupChats, `${chatId}.jsonl`);
+        const oldIntegrity = 'group-integrity';
+        const oldPayload = createChatPayload(oldIntegrity, 'unchanged group message');
+        const updatedPayload = createChatPayload(oldIntegrity, 'unchanged group message');
+        updatedPayload[0].chat_metadata.extension_state = { updated: true };
+        fs.writeFileSync(chatPath, oldPayload.map(JSON.stringify).join('\n'));
+        const before = fs.statSync(chatPath);
+
+        const response = await postJson('/api/chats/group/save', {
+            id: chatId,
+            chat: updatedPayload,
+            deferBackup: true,
+        });
+        const body = await response.json();
+        const after = fs.statSync(chatPath);
+        const saved = fs.readFileSync(chatPath, 'utf8');
+
+        expect(response.status).toBe(200);
+        expect(body).toEqual({ ok: true, integrity: expect.any(String) });
+        expect(body.integrity).not.toBe(oldIntegrity);
+        expect(after.ino).toBe(before.ino);
+        expect(after.birthtimeMs).toBe(before.birthtimeMs);
+        expect(saved).toContain('"extension_state":{"updated":true}');
+        expect(saved).toContain('"mes":"unchanged group message"');
+    });
+
     test('renames a character chat when recovery storage is unavailable', async () => {
         const chatDirectory = path.join(directories.chats, 'Test Card');
         const sourcePath = path.join(chatDirectory, 'Old Chat.jsonl');
@@ -106,16 +237,85 @@ describe('chat recovery endpoint fallbacks', () => {
             original_file: 'Old Chat.jsonl',
             renamed_file: 'Renamed Chat.jsonl',
             is_group: false,
+            chat_id_hash: 123,
         });
 
         expect(response.status).toBe(200);
         await expect(response.json()).resolves.toMatchObject({ ok: true, sanitizedFileName: 'Renamed Chat' });
         expect(fs.existsSync(sourcePath)).toBe(false);
         expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename me');
+        expect(JSON.parse(fs.readFileSync(destinationPath, 'utf8').split('\n')[0]).chat_metadata.chat_id_hash).toBe(123);
         expect(consoleWarn).toHaveBeenCalledWith(
             'Failed to prepare chat recovery state; continuing with chat rename.',
             expect.any(Error),
         );
+    });
+
+    test('keeps a legacy branch main-chat seed instead of persisting a filename-derived hash', async () => {
+        const chatDirectory = path.join(directories.chats, 'Test Card');
+        const sourcePath = path.join(chatDirectory, 'Old Branch.jsonl');
+        const destinationPath = path.join(chatDirectory, 'Renamed Branch.jsonl');
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(sourcePath, [
+            JSON.stringify({ chat_metadata: { main_chat: 'Root Chat' }, user_name: 'User', character_name: 'Character' }),
+            JSON.stringify({ name: 'Character', mes: 'branch message' }),
+        ].join('\n'));
+
+        const response = await postJson('/api/chats/rename', {
+            avatar_url: 'Test Card.png',
+            original_file: 'Old Branch.jsonl',
+            renamed_file: 'Renamed Branch.jsonl',
+            is_group: false,
+            chat_id_hash: 123,
+        });
+
+        expect(response.status).toBe(200);
+        const metadata = JSON.parse(fs.readFileSync(destinationPath, 'utf8').split('\n')[0]).chat_metadata;
+        expect(metadata.main_chat).toBe('Root Chat');
+        expect(metadata).not.toHaveProperty('chat_id_hash');
+    });
+
+    test('does not overwrite a destination chat created by a cooperating save during rename', async () => {
+        const owner = 'Test Card';
+        const chatDirectory = path.join(directories.chats, owner);
+        const sourcePath = path.join(chatDirectory, 'Old Chat.jsonl');
+        const destinationPath = path.join(chatDirectory, 'Renamed Chat.jsonl');
+        fs.mkdirSync(chatDirectory, { recursive: true });
+        fs.writeFileSync(sourcePath, createChatData('rename source'));
+        const sourceIdentity = fs.statSync(sourcePath, { bigint: true });
+        const writeSync = fs.writeSync.bind(fs);
+        let destinationSave;
+
+        jest.spyOn(fs, 'writeSync').mockImplementation((descriptor, ...args) => {
+            const stats = fs.fstatSync(descriptor, { bigint: true });
+            if (!destinationSave && stats.dev === sourceIdentity.dev && stats.ino === sourceIdentity.ino) {
+                destinationSave = trySaveChat(
+                    createChatPayload(undefined, 'destination winner'),
+                    destinationPath,
+                    false,
+                    'rename-race-user',
+                    owner,
+                    directories.backups,
+                    { deferBackup: true },
+                );
+                destinationSave.catch(() => {});
+            }
+            return writeSync(descriptor, ...args);
+        });
+
+        const response = await postJson('/api/chats/rename', {
+            avatar_url: `${owner}.png`,
+            original_file: 'Old Chat.jsonl',
+            renamed_file: 'Renamed Chat.jsonl',
+            is_group: false,
+            chat_id_hash: 123,
+        });
+
+        expect(response.status).toBe(200);
+        expect(destinationSave).toBeDefined();
+        await expect(destinationSave).rejects.toMatchObject({ code: 'ELOCKED' });
+        expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename source');
+        expect(fs.readFileSync(destinationPath, 'utf8')).not.toContain('destination winner');
     });
 
     test('invalidates stale recovery state when a sidecar rekey fails after rename', async () => {
@@ -380,5 +580,16 @@ describe('chat recovery endpoint fallbacks', () => {
             JSON.stringify({ chat_metadata: {}, user_name: 'User', character_name: 'Character' }),
             JSON.stringify({ name: 'Character', mes: message }),
         ].join('\n');
+    }
+
+    function createChatPayload(integrity, message) {
+        return [
+            {
+                chat_metadata: { integrity },
+                user_name: 'unused',
+                character_name: 'unused',
+            },
+            { name: 'Character', mes: message },
+        ];
     }
 });

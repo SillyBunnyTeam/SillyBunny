@@ -2076,7 +2076,7 @@ function hashFileWriteData(data) {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
-function fsyncDirectorySync(directory) {
+export function fsyncDirectorySync(directory) {
     if (process.platform === 'win32') {
         return;
     }
@@ -2295,9 +2295,9 @@ export function recoverFileWritesInDirectorySync(directory) {
  * @param {string} filePath
  * @param {string|Buffer} data
  * @param {import('node:fs').WriteFileOptions} [options]
- * @param {{preserveFileIdentity?: boolean, expectedFileIdentity?: {dev: bigint, ino: bigint}, invalidateBeforeWrite?: boolean, replaceFileOnly?: boolean, durable?: boolean}} [writeOptions]
+ * @param {{preserveFileIdentity?: boolean, expectedFileIdentity?: {dev: bigint, ino: bigint}, expectedFileHash?: string, expectedFileAbsent?: boolean, invalidateBeforeWrite?: boolean, replaceFileOnly?: boolean, durable?: boolean}} [writeOptions]
  */
-export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false, expectedFileIdentity = undefined, invalidateBeforeWrite = false, replaceFileOnly = false, durable = false } = {}) {
+export function tryWriteFileSync(filePath, data, options = typeof data === 'string' ? 'utf8' : undefined, { preserveFileIdentity = false, expectedFileIdentity = undefined, expectedFileHash = undefined, expectedFileAbsent = false, invalidateBeforeWrite = false, replaceFileOnly = false, durable = false } = {}) {
     const isRetryableWindowsWriteError = (error) => process.platform === 'win32' && ['EACCES', 'EBUSY', 'EPERM'].includes(error?.code);
     const sleepSync = (delayMs) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     const retryDelaysMs = [50, 125, 250];
@@ -2325,6 +2325,56 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
     //Ensure the directory exists.
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
+    }
+
+    if (expectedFileAbsent) {
+        const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
+        const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
+        let fileDescriptor;
+        let createdIdentity;
+        try {
+            fileDescriptor = fs.openSync(filePath, 'wx', typeof options === 'object' ? options?.mode : undefined);
+            const createdStats = fs.fstatSync(fileDescriptor, { bigint: true });
+            createdIdentity = { dev: createdStats.dev, ino: createdStats.ino };
+            writeAllSync(fileDescriptor, dataBuffer);
+            fs.ftruncateSync(fileDescriptor, dataBuffer.byteLength);
+            if (durable) {
+                fs.fsyncSync(fileDescriptor);
+            }
+            const finalPathStats = fs.lstatSync(filePath, { bigint: true });
+            if (finalPathStats.dev !== createdIdentity.dev || finalPathStats.ino !== createdIdentity.ino) {
+                throw Object.assign(new Error(`Refused to finish creating a changed file: ${filePath}`), { code: 'ESTALE' });
+            }
+        } catch (error) {
+            if (fileDescriptor !== undefined) {
+                try {
+                    fs.closeSync(fileDescriptor);
+                } catch {
+                    // Preserve the original write error.
+                }
+                fileDescriptor = undefined;
+                try {
+                    const pathStats = fs.lstatSync(filePath, { bigint: true });
+                    if (createdIdentity && pathStats.dev === createdIdentity.dev && pathStats.ino === createdIdentity.ino) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch {
+                    // A later recovery attempt can handle a partial file that could not be removed.
+                }
+            }
+            if (error?.code === 'EEXIST') {
+                throw Object.assign(new Error(`Refused to create a file that appeared after it was checked: ${filePath}`, { cause: error }), { code: 'ESTALE' });
+            }
+            throw error;
+        } finally {
+            if (fileDescriptor !== undefined) {
+                fs.closeSync(fileDescriptor);
+            }
+        }
+        if (durable) {
+            fsyncDirectorySync(directory);
+        }
+        return;
     }
 
     // SillyBunny: some existing user data carries filesystem metadata that replacement would discard.
@@ -2363,6 +2413,9 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     if (bytesRead === 0) break;
                     offset += bytesRead;
                 }
+                if (expectedFileHash && hashFileWriteData(originalData) !== expectedFileHash) {
+                    throw Object.assign(new Error(`Refused to overwrite a changed file: ${filePath}`), { code: 'ESTALE' });
+                }
 
                 if (invalidateBeforeWrite && dataLength > 0) {
                     targetMutated = true;
@@ -2372,7 +2425,17 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     fs.ftruncateSync(fileDescriptor, dataLength);
                     fs.fsyncSync(fileDescriptor);
                     writeAllSync(fileDescriptor, dataBuffer.subarray(0, 1));
-                    fs.fsyncSync(fileDescriptor);
+                    try {
+                        fs.fsyncSync(fileDescriptor);
+                    } catch (error) {
+                        try {
+                            writeAllSync(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]));
+                            fs.fsyncSync(fileDescriptor);
+                        } catch {
+                            // The original flush error is more useful; recovery still has the exact snapshot.
+                        }
+                        throw error;
+                    }
                 } else {
                     recoveryPath = getFileWriteRecoveryPath(filePath);
                     writeFileAtomicSync(recoveryPath, JSON.stringify({
@@ -2405,7 +2468,9 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                         writeAllSync(fileDescriptor, originalData);
                         fs.ftruncateSync(fileDescriptor, originalData.byteLength);
                         fs.fsyncSync(fileDescriptor);
-                        removeFileWriteRecovery(recoveryPath);
+                        if (recoveryPath) {
+                            removeFileWriteRecovery(recoveryPath);
+                        }
                     } catch (rollbackError) {
                         throw new AggregateError([error, rollbackError], `Failed to write and restore ${filePath}.`);
                     }
@@ -2420,7 +2485,6 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
                     }
                 }
             }
-
             if (recoveryPath) {
                 removeFileWriteRecovery(recoveryPath);
             }
@@ -2433,13 +2497,21 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
         throw lastError;
     }
 
-    const assertExpectedPathIdentity = () => {
-        if (!expectedFileIdentity) {
+    const assertExpectedPathState = () => {
+        if (!expectedFileIdentity && !expectedFileHash) {
             return;
         }
-        const stats = fs.lstatSync(filePath, { bigint: true });
-        if (stats.dev !== expectedFileIdentity.dev || stats.ino !== expectedFileIdentity.ino) {
+        const initialStats = fs.lstatSync(filePath, { bigint: true });
+        if (expectedFileIdentity && (initialStats.dev !== expectedFileIdentity.dev || initialStats.ino !== expectedFileIdentity.ino)) {
             throw Object.assign(new Error(`Refused to replace a changed file: ${filePath}`), { code: 'ESTALE' });
+        }
+        if (expectedFileHash) {
+            const currentData = fs.readFileSync(filePath);
+            const finalStats = fs.lstatSync(filePath, { bigint: true });
+            if (finalStats.dev !== initialStats.dev || finalStats.ino !== initialStats.ino
+                || hashFileWriteData(currentData) !== expectedFileHash) {
+                throw Object.assign(new Error(`Refused to replace a changed file: ${filePath}`), { code: 'ESTALE' });
+            }
         }
     };
 
@@ -2447,7 +2519,7 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
         const tempFilePaths = new Set();
         let tempFilePath;
         try {
-            assertExpectedPathIdentity();
+            assertExpectedPathState();
             if (!runWithWindowsRetries(() => {
                 const candidatePath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
                 const targetStats = fs.lstatSync(filePath, { bigint: true });
@@ -2466,9 +2538,9 @@ export function tryWriteFileSync(filePath, data, options = typeof data === 'stri
             })) {
                 throw lastError;
             }
-            assertExpectedPathIdentity();
+            assertExpectedPathState();
             if (!runWithWindowsRetries(() => {
-                assertExpectedPathIdentity();
+                assertExpectedPathState();
                 fs.renameSync(tempFilePath, filePath);
             })) {
                 throw lastError;
