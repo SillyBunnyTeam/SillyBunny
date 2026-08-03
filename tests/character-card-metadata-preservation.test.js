@@ -20,6 +20,7 @@ const originalWorkingDirectory = process.cwd();
 const diskCacheEnvironmentKey = 'SILLYTAVERN_PERFORMANCE_USEDISKCACHE';
 const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
 const describeWindows = process.platform === 'win32' ? describe : describe.skip;
+const describeCaseSensitive = process.platform === 'win32' ? describe.skip : describe;
 process.env[diskCacheEnvironmentKey] = 'false';
 process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
@@ -204,6 +205,31 @@ describe('character card metadata preservation', () => {
         expect(fs.existsSync(cardPath)).toBe(true);
         expect(fs.existsSync(path.join(directories.characters, 'Alice.backup.png.png'))).toBe(false);
         expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
+    });
+
+    describeCaseSensitive('case-sensitive card filenames', () => {
+        test('updates the exact requested card when PNG filenames differ only by case', async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            jest.spyOn(console, 'info').mockImplementation(() => {});
+            await createAlice();
+            const lowercasePath = path.join(directories.characters, 'Alice.png');
+            const uppercasePath = path.join(directories.characters, 'Alice.PNG');
+            fs.copyFileSync(lowercasePath, uppercasePath);
+
+            const lowercaseResponse = await postJson('/api/characters/merge-attributes', {
+                avatar: 'Alice.png',
+                creator: 'Lowercase',
+            });
+            expect(lowercaseResponse.status).toBe(200);
+
+            const uppercaseResponse = await postJson('/api/characters/merge-attributes', {
+                avatar: 'Alice.PNG',
+                creator: 'Uppercase',
+            });
+            expect(uppercaseResponse.status).toBe(200);
+            expect(decodeCardChunks(fs.readFileSync(lowercasePath)).every(chunk => chunk.card.creator === 'Lowercase')).toBe(true);
+            expect(decodeCardChunks(fs.readFileSync(uppercasePath)).every(chunk => chunk.card.creator === 'Uppercase')).toBe(true);
+        });
     });
 
     test('replaces only the selected path when a card has a hard-link alias', async () => {
