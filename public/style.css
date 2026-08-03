@@ -1,7 +1,7 @@
 @charset "UTF-8";
 
 @import url(css/animations.css);
-@import url(css/popup.css);
+@import url(css/popup.css?v=20260803a);
 @import url(css/promptmanager.css?v=20260507a);
 @import url(css/loader.css);
 @import url(css/character-group-overlay.css);
@@ -4149,6 +4149,13 @@ grammarly-extension {
 #dialogue_popup_controls {
     margin-top: 10px;
     display: flex;
+
+    /* SillyBunny: same clipping as '.popup-controls' -- '#dialogue_popup_holder' hides overflow,
+       so the row wraps rather than spilling past it, and the padding keeps the focus ring visible. */
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    padding: 6px;
     align-self: center;
     gap: 20px;
 }
