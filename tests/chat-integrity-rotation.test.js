@@ -558,6 +558,37 @@ describe('chat integrity rotation', () => {
         expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
     });
 
+    test('navigation waits for in-flight saves instead of refusing to switch chats', async () => {
+        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+        const selectCharacterBody = scriptSource.slice(
+            scriptSource.indexOf('export async function selectCharacterById(id, { switchMenu = true } = {})'),
+            scriptSource.indexOf('function getBackBlock()'),
+        );
+        const openGroupBody = groupChatSource.slice(
+            groupChatSource.indexOf('export async function openGroupById(groupId, { switchMenu = true } = {})'),
+            groupChatSource.indexOf('async function openCharacterDefinition(characterSelect)'),
+        );
+        const flushForNavigationBody = scriptSource.slice(
+            scriptSource.indexOf('export async function flushPendingChatSavesForNavigation()'),
+            scriptSource.indexOf('export async function flushPendingChatSaves('),
+        );
+
+        expect(selectCharacterBody).not.toContain('if (isChatSaving)');
+        expect(selectCharacterBody).toContain('await flushPendingChatSavesForNavigation()');
+        expect(openGroupBody).not.toContain('if (isChatSaving)');
+        expect(openGroupBody).toContain('await flushPendingChatSavesForNavigation()');
+
+        expect(scriptSource).not.toContain('waitUntilCondition(() => !isChatSaving');
+        expect(groupChatSource).not.toContain('waitUntilCondition(() => !isChatSaving');
+
+        expect(scriptSource).toContain('async function waitForQueuedChatSaves()');
+        expect(groupChatSource).toContain('export async function waitForQueuedGroupChatSaves()');
+        expect(flushForNavigationBody).toContain('await flushPendingChatSaves({ silent: true })');
+        expect(flushForNavigationBody).toContain('await waitForQueuedChatSaves();');
+        expect(flushForNavigationBody).toContain('await waitForQueuedGroupChatSaves();');
+    });
+
     test('retries group chat load requests after stale CSRF before integrity metadata is initialized', async () => {
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
         const loadGroupChatBody = groupChatSource.slice(

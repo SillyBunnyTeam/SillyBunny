@@ -83,6 +83,7 @@ import {
     getGroupCharacterCardsLazy,
     getGroupDepthPrompts,
     deleteGroupChatByName,
+    waitForQueuedGroupChatSaves,
 } from './scripts/group-chats.js';
 
 import {
@@ -1289,8 +1290,9 @@ export function resultCheckStatus() {
 /**
  * Switches the currently selected character to the one with the given ID. (character index, not the character key!)
  *
- * If the character ID doesn't exist, if the chat is being saved, or if a group is being generated, this function does nothing.
+ * If the character ID doesn't exist or if a group is being generated, this function does nothing.
  * If the character is different from the currently selected one, it will clear the chat and reset any selected character or group.
+ * Pending and in-flight chat saves are awaited before the switch, not treated as a reason to refuse it.
  * @param {number} id The ID of the character to switch to.
  * @param {object} [options] Options for the switch.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
@@ -1298,11 +1300,6 @@ export function resultCheckStatus() {
  */
 export async function selectCharacterById(id, { switchMenu = true } = {}) {
     if (characters[id] === undefined) {
-        return false;
-    }
-
-    if (isChatSaving) {
-        toastr.info(t`Please wait until the chat is saved before switching characters.`, t`Your chat is still saving...`);
         return false;
     }
 
@@ -10460,24 +10457,44 @@ function hasPendingChatSave() {
     return chatSaveTimeout !== null || chatSavePromise !== null;
 }
 
+/**
+ * Waits for saves already queued on the serial chat save queue to settle.
+ * SillyBunny: hasPendingChatSave() only sees the debounce timer, so queued saves need a separate drain.
+ * @returns {Promise<void>}
+ */
+async function waitForQueuedChatSaves() {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const queue = chatSaveQueue;
+        await queue.catch(() => {});
+        if (queue === chatSaveQueue) {
+            return;
+        }
+    }
+}
+
 export async function flushPendingChatSavesForNavigation() {
-    if (!hasPendingChatSave()) {
-        return true;
+    if (hasPendingChatSave()) {
+        // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
+        const didFlush = await flushPendingChatSaves({ silent: true });
+        if (!didFlush) {
+            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
+            return false;
+        }
     }
 
-    // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
-    const didFlush = await flushPendingChatSaves();
-    if (!didFlush) {
-        toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
-    }
-    return didFlush;
+    // SillyBunny: let queued saves land instead of refusing to navigate while one is in flight.
+    await waitForQueuedChatSaves();
+    await waitForQueuedGroupChatSaves();
+    return true;
 }
 
 /**
  * Flushes any pending chat save, waits for in-flight saves, and saves the current chat immediately.
+ * @param {object} [options] Flush options.
+ * @param {boolean} [options.silent=false] Suppress the progress and success toasts. Failures are still reported.
  * @returns {Promise<boolean>} Whether the chat save completed successfully.
  */
-export async function flushPendingChatSaves() {
+export async function flushPendingChatSaves({ silent = false } = {}) {
     const chatId = getCurrentChatId();
 
     if (!chatId) {
@@ -10494,7 +10511,9 @@ export async function flushPendingChatSaves() {
         }
     }
 
-    toastr.info(t`Saving chat...`, t`Saving chat`);
+    if (!silent) {
+        toastr.info(t`Saving chat...`, t`Saving chat`);
+    }
 
     try {
         setChatSaveActive(true);
@@ -10509,7 +10528,9 @@ export async function flushPendingChatSaves() {
 
         saveTokenCache();
         await saveItemizedPrompts(chatId);
-        toastr.success(t`Chat saved successfully.`, t`Chat saved`);
+        if (!silent) {
+            toastr.success(t`Chat saved successfully.`, t`Chat saved`);
+        }
         return true;
     } catch (error) {
         console.error('Error flushing pending chat saves', error);
@@ -11153,7 +11174,6 @@ export async function openCharacterChat(file_name) {
         return;
     }
 
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
     const previousChatName = characters[this_chid].chat;
     characters[this_chid].chat = file_name;
@@ -15678,8 +15698,6 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         return;
     }
 
-    //Fix it; New chat doesn't create while open create character menu
-    await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
 
     chat_file_for_del = getCurrentChatDetails()?.sessionName;
@@ -15860,7 +15878,6 @@ export async function closeCurrentChat() {
             return false;
         }
 
-        await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
         await clearChat({ clearData: true });
         resetSelectedGroup();
         setCharacterId(undefined);
