@@ -2102,6 +2102,25 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         white-space: nowrap;
     }
 
+    /* No-favorites hint (RossAscends-mods.js injects a <small> from no_favs).
+       The rail reserves 136px for the mode toggle and close button, so this line
+       is shrunk below its text width; the inherited justify-content: center then
+       overflows it evenly and clips both ends ("avorite ... Hot"). Pin it to the
+       start and ellipsize so it reads from the first word. */
+    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
+        justify-content: flex-start;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small > span {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > .avatar {
         flex: 0 0 32px !important;
     }
