@@ -42,10 +42,14 @@ function getMediaQueryPxValues(cssSource) {
 // chrome adjustment sheet is budgeted from introduction.
 // sillybunny-theme.css raised 158 -> 161: the mobile character list needs to
 // override upstream !important avatar alignment rules for missing avatars.
+// sillybunny-tabs.css raised 386 -> 389: the favourites bar fix re-shows the
+// bar on the character tabs with display:flex !important and
+// visibility:visible !important to beat the JS inline hide, and pins
+// #HotSwapWrapper padding:0 !important against the base flex-container rules.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 685,
     'sillybunny-paper-theme.css': 55,
-    'sillybunny-tabs.css': 386,
+    'sillybunny-tabs.css': 389,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 161,
 });
