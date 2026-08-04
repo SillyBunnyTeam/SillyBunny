@@ -1,5 +1,13 @@
 # In-Chat Agents Glossary
 
+## Core Terms
+
+**In-Chat Agents (ICA)** is the extension that runs optional processing around normal chat generation. An **agent** is a stored prompt and configuration that defines its activation conditions, execution stage, model connection, context sources, and output handling.
+
+**Main model** is the model used for the normal chat generation. Inline agents can add to its input or process its output. Companion agents run separate model requests and store their results without directly replacing the main response.
+
+**Context** is the assembled input for a model request. For the main generation, it can contain the system prompt, character and persona data, World Info, Author's Note, recent chat messages, and injected agent prompts. Companion and intercept requests assemble their own context for their specific processing stage.
+
 ## Main Agents Panel
 
 The main Agents panel is used to install, enable, search, organize, import, export, and edit agents.
