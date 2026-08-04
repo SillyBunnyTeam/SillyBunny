@@ -2236,10 +2236,17 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     line-height: 1.35;
 }
 
+/* Upstream tags.css clamps .tags.tags_inline to max-height: 66% with
+   overflow: hidden, which suits its own list metrics but slices the bottom off
+   every pill in the fork's grid row (a 22px "ST Default" tag rendered at 15px).
+   The mobile shell already opts out; do the same here so the desktop drawer
+   shows whole tags. */
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
     grid-column: 1 / -1;
     grid-row: 3;
     min-width: 0;
+    max-height: none;
+    overflow: visible;
 }
 
 #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
