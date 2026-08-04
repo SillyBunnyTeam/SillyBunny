@@ -36,11 +36,11 @@ import {
     MEMORY_SHARD_TEMPLATE_ID,
     PLOT_COMPASS_OBJECTIVE_MAX_CHARS,
     appendChatOnlyUserMessage,
+    holdsReadableCompanionResults,
     isAssistantMessage,
     isChatOnlyAgent,
     isChatroomAgent,
     isPlotCompassAgent,
-    isValidCompanionMessage,
     normalizeChatOnlyInput,
     normalizeChatroomReply,
     normalizePlotCompassObjective,
@@ -439,7 +439,9 @@ export function collectPanelAgentStates() {
 
     for (let messageIndex = chat.length - 1; messageIndex >= 0; messageIndex--) {
         const message = chat[messageIndex];
-        if (!isValidCompanionMessage(message)) {
+        // Notes on hidden hosts stay listed: "hide story above this shard" hides every earlier
+        // shard's message, and skipping them here wiped those shards out of the panel entirely.
+        if (!holdsReadableCompanionResults(message)) {
             continue;
         }
 
@@ -467,7 +469,7 @@ export function collectPanelAgentStates() {
                 byAgentId.set(agentId, state);
             }
 
-            const entry = { messageIndex, result };
+            const entry = { messageIndex, result, hostHidden: Boolean(message.is_system) };
             if (!state.latest) {
                 state.latest = entry;
             } else if (state.history.length < PANEL_HISTORY_LIMIT) {
@@ -598,6 +600,13 @@ function buildPanelEntryControls(state) {
     ].filter(Boolean).join('');
 }
 
+/** Marks a note whose host message is hidden from prompts - the note itself still counts. */
+function buildAbsorbedPillHtml(entry) {
+    return entry?.hostHidden
+        ? '<span class="ica--card-pill ica--card-pill--absorbed" title="This message is hidden from prompts. The note itself is kept.">Absorbed</span>'
+        : '';
+}
+
 function buildPanelAgentSection(state) {
     const agentId = state.agentId ?? state.agent?.id ?? '';
     const latest = state.latest;
@@ -638,9 +647,10 @@ function buildPanelAgentSection(state) {
             <details class="ica--tpanel-history">
                 <summary>Previous states (${state.history.length})</summary>
                 ${state.history.map(entry => `
-                    <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}">
+                    <div class="ica--tpanel-history-entry" data-message-index="${entry.messageIndex}" data-host-hidden="${Boolean(entry.hostHidden)}">
                         <div class="ica--tpanel-history-head">
                             <span>Message #${entry.messageIndex}</span>
+                            ${buildAbsorbedPillHtml(entry)}
                             ${buildCompanionTokenUsagePillsHtml(entry.result)}
                             <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
@@ -651,18 +661,25 @@ function buildPanelAgentSection(state) {
         `
         : '';
 
+    // A hidden host cannot be re-run: runSingleCompanionAgent rejects system messages, so the
+    // rerun controls would silently do nothing. Editing the stored text and jumping still work.
+    const rerunButtons = latest.hostHidden
+        ? ''
+        : `
+                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>`;
+
     return `
-        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}">
+        <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}" data-host-hidden="${Boolean(latest.hostHidden)}">
             <div class="ica--tpanel-agent-head">
                 <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                 <span class="ica--tpanel-agent-when">#${latest.messageIndex}</span>
+                ${buildAbsorbedPillHtml(latest)}
                 ${buildCompanionTokenUsagePillsHtml(latest.result)}
                 <span class="ica--tpanel-agent-actions">
                     ${dragHandleButton}
                     ${hiddenButton}
-                    ${runLatestButton}
-                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
-                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>
+                    ${runLatestButton}${rerunButtons}
                     <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
                     <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
@@ -676,11 +693,22 @@ function buildPanelAgentSection(state) {
     `;
 }
 
+function countVisibleStoryAbove(messageIndex) {
+    return chat.slice(0, messageIndex).filter(message => message && !message.is_system).length;
+}
+
 /** The memory shard can replace the history it summarizes: offer hiding everything above it. */
 function buildCompactionButton(state) {
     const isMemoryShard = state.agent?.sourceTemplateId === MEMORY_SHARD_TEMPLATE_ID
         || /memory shard/i.test(String(state.agent?.name ?? state.latest?.result?.agentName ?? ''));
     if (!isMemoryShard || !state.latest || state.latest.messageIndex < 1 || state.latest.result?.status !== 'done') {
+        return '';
+    }
+
+    // Nothing left to absorb: either the shard's own host sits inside an already-hidden range,
+    // or a previous compaction already hid everything above it. Offering the button again would
+    // re-hide hidden messages and report a count of work it did not do.
+    if (state.latest.hostHidden || countVisibleStoryAbove(state.latest.messageIndex) === 0) {
         return '';
     }
 
@@ -992,7 +1020,10 @@ async function handlePanelAction(event) {
 
         const inputField = section.find('[data-role="plot-compass-objective"]');
         const objective = normalizePlotCompassObjective(inputField.val());
-        const runIndex = Number.isInteger(messageIndex) ? messageIndex : getLatestAssistantIndex();
+        // The section can be anchored to a hidden host now that hidden hosts keep their notes;
+        // a companion cannot run on one, so fall back to the newest visible reply.
+        const canRunOnSection = Number.isInteger(messageIndex) && !chat[messageIndex]?.is_system;
+        const runIndex = canRunOnSection ? messageIndex : getLatestAssistantIndex();
         if (runIndex < 0) {
             toastr.warning('No assistant reply yet to plan from.');
             return;
@@ -1015,6 +1046,12 @@ async function handlePanelAction(event) {
     }
 
     if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
+        const hideCount = countVisibleStoryAbove(messageIndex);
+        if (hideCount === 0) {
+            toastr.info('Everything above this shard is already hidden from prompts.');
+            return;
+        }
+
         const result = await new Popup(
             `Exclude messages #0–#${messageIndex - 1} from prompts? The shard carries that history from here on; messages stay visible in the chat and can be unhidden later.`,
             POPUP_TYPE.CONFIRM,
@@ -1024,7 +1061,7 @@ async function handlePanelAction(event) {
         }
 
         await hideChatMessageRange(0, messageIndex - 1, false);
-        toastr.success(`Hid ${messageIndex} message(s) from prompts.`);
+        toastr.success(`Hid ${hideCount} message(s) from prompts.`);
         if (panelOpen) {
             renderPanel();
         }

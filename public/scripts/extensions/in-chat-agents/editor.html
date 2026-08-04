@@ -184,7 +184,7 @@
                 </select>
             </label>
             <label>Context Messages
-                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" max="50" value="10" />
+                <input type="number" id="ica--editor-companion-contextMessages" class="text_pole" min="1" value="10" />
             </label>
             <label title="Only auto-run once the chat reaches roughly this many tokens. 0 runs always.">Min Context Tokens
                 <input type="number" id="ica--editor-companion-minContextTokens" class="text_pole" min="0" max="200000" step="1000" value="0" />
@@ -209,7 +209,7 @@
         </div>
         <div class="ica--editor-row" id="ica--companion-chat-history-row">
             <label>Notes to keep
-                <input type="number" id="ica--editor-companion-chatHistoryDepth" class="text_pole" min="1" max="50" value="1" />
+                <input type="number" id="ica--editor-companion-chatHistoryDepth" class="text_pole" min="1" value="1" />
             </label>
             <div class="ica--regex-note">Keeps this agent's most recent notes in the AI's context. Only notes that finished generating are counted.</div>
             <label class="checkbox_label"><input type="checkbox" id="ica--editor-companion-includeAllChatHistory" /><span>Keep all notes instead</span></label>

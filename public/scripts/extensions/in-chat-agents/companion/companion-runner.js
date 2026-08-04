@@ -47,6 +47,7 @@ import {
     DIRECTORS_COMMENTARY_TEMPLATE_ID,
     PLOT_COMPASS_TEMPLATE_ID,
     getCompanionReferenceIds,
+    holdsReadableCompanionResults,
     isAssistantMessage,
     isEmptyOutputSentinel,
     isValidCompanionMessage,
@@ -708,7 +709,10 @@ export function collectRecentCompanionResults(agentId, { beforeMessageIndex = ch
 
     for (let index = Math.min(beforeMessageIndex - 1, chat.length - 1); index >= 0 && results.length < maxDepth; index--) {
         const message = chat[index];
-        if (!isAssistantMessage(message)) {
+        // Hidden hosts still count: "hide story above this shard" turns every earlier shard's
+        // message into a system note, and dropping those here left the shard with no prior
+        // shards to consolidate and trackers with no last known state.
+        if (!holdsReadableCompanionResults(message, { allowUserMessage: false })) {
             continue;
         }
 

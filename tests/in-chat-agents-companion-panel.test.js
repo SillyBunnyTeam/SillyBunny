@@ -390,6 +390,69 @@ describe('companion tracker panel', () => {
         expect(panel.buildPanelHtml()).not.toContain('data-action="panel-hide-before"');
     });
 
+    test('keeps earlier shards listed after their host messages are hidden', async () => {
+        agents = [
+            { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true },
+        ];
+        const panel = await importPanel();
+
+        const olderShardHost = { is_user: false, is_system: false, mes: 'reply the first shard absorbed' };
+        const filler = { is_user: true, is_system: false, mes: 'keep going' };
+        const newerShardHost = { is_user: false, is_system: false, mes: 'latest reply' };
+        chat.push(olderShardHost, filler, newerShardHost);
+        companionResultsByMessage.set(olderShardHost, {
+            'memory-shard': { status: 'done', content: '# MEMORY SHARD: A-1', agentName: 'Memory Shard' },
+        });
+        companionResultsByMessage.set(newerShardHost, {
+            'memory-shard': { status: 'done', content: '# MEMORY SHARD: A-2', agentName: 'Memory Shard' },
+        });
+
+        expect(panel.buildPanelHtml()).toContain('Previous states (1)');
+
+        // "Hide story above this shard" only flips is_system on the absorbed range.
+        olderShardHost.is_system = true;
+        filler.is_system = true;
+
+        const html = panel.buildPanelHtml();
+        expect(html).toContain('Previous states (1)');
+        expect(html).toMatch(/ica--tpanel-history-entry[\s\S]*?data-message-index="0"/);
+        expect(html).toContain('# MEMORY SHARD: A-1');
+        expect(html).toContain('ica--card-pill--absorbed');
+        // The newest shard is still on a visible host, so it keeps its rerun controls.
+        expect(html).toContain('data-action="panel-regenerate"');
+        // Everything above the newest shard is already hidden, so there is nothing left to absorb.
+        expect(html).not.toContain('data-action="panel-hide-before"');
+    });
+
+    test('drops rerun controls and compaction once the newest note sits on a hidden host', async () => {
+        agents = [
+            { id: 'memory-shard', name: 'Memory Shard', sourceTemplateId: 'tpl-memory-shard-companion', execution: 'companion', enabled: true },
+        ];
+        const panel = await importPanel();
+
+        const filler = { is_user: true, is_system: false, mes: 'opening' };
+        const shardHost = { is_user: false, is_system: false, mes: 'absorbed reply' };
+        chat.push(filler, shardHost);
+        companionResultsByMessage.set(shardHost, {
+            'memory-shard': { status: 'done', content: '# MEMORY SHARD: A-1', agentName: 'Memory Shard' },
+        });
+
+        expect(panel.buildPanelHtml()).toContain('data-action="panel-regenerate"');
+
+        shardHost.is_system = true;
+
+        const html = panel.buildPanelHtml();
+        // The note survives, but it cannot be re-run and cannot compact a range it sits inside.
+        expect(html).toContain('# MEMORY SHARD: A-1');
+        expect(html).toContain('data-host-hidden="true"');
+        expect(html).not.toContain('data-action="panel-regenerate"');
+        expect(html).not.toContain('data-action="panel-fix"');
+        expect(html).not.toContain('data-action="panel-hide-before"');
+        // Editing the stored text and jumping to the message still work.
+        expect(html).toContain('data-action="panel-edit-note"');
+        expect(html).toContain('data-action="panel-jump"');
+    });
+
     test('shows the panel empty state when nothing is enabled or stored', async () => {
         const panel = await importPanel();
 
