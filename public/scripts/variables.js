@@ -13,6 +13,7 @@ import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { slashCommandReturnHelper } from './slash-commands/SlashCommandReturnHelper.js';
 import { SlashCommandScope } from './slash-commands/SlashCommandScope.js';
 import { isFalseBoolean, convertValueType, isTrueBoolean } from './utils.js';
+import { booleanOperandToString, isNumericOperand, isNumericZero, readVariableValue } from './slash-commands/SlashCommandRuntimeUtils.js';
 
 /** @typedef {import('./slash-commands/SlashCommandParser.js').NamedArguments} NamedArguments */
 /** @typedef {import('./slash-commands/SlashCommand.js').UnnamedArguments} UnnamedArguments */
@@ -42,7 +43,7 @@ export function getLocalVariable(name, args = {}) {
         }
     }
 
-    return (localVariable?.trim?.() === '' || isNaN(Number(localVariable))) ? (localVariable || '') : Number(localVariable);
+    return readVariableValue(localVariable);
 }
 
 export function setLocalVariable(name, value, args = {}) {
@@ -99,7 +100,7 @@ export function getGlobalVariable(name, args = {}) {
         }
     }
 
-    return (globalVariable?.trim?.() === '' || isNaN(Number(globalVariable))) ? (globalVariable || '') : Number(globalVariable);
+    return readVariableValue(globalVariable);
 }
 
 export function setGlobalVariable(name, value, args = {}) {
@@ -504,6 +505,10 @@ export function evalBoolean(rule, a, b) {
                 const resultOnTruthy = rule !== 'not';
                 if (isTrueBoolean(String(a))) return resultOnTruthy;
                 if (isFalseBoolean(String(a))) return !resultOnTruthy;
+                // Variable reads preserve numeric text such as "00" so formatted
+                // values survive round-trips. Keep upstream truthiness for those
+                // values: every numeric spelling of zero was previously read as 0.
+                if (isNumericZero(a)) return !resultOnTruthy;
                 return a ? resultOnTruthy : !resultOnTruthy;
             }
             default:
@@ -514,7 +519,11 @@ export function evalBoolean(rule, a, b) {
     // If no rule was provided, we are implicitly using 'eq', as defined for the slash commands
     rule ??= 'eq';
 
-    if (typeof a === 'number' && typeof b === 'number') {
+    // SillyBunny: upstream tests `typeof === 'number'` here, which relied on the variable
+    // readers coercing on the way out. They no longer do that for values whose text would
+    // change (see readVariableValue), so a padded '007' would reach the string switch and
+    // throw for gt/gte/lt/lte. Accept numeric-looking strings so the comparison still runs.
+    if (isNumericOperand(a) && isNumericOperand(b)) {
         // only do numeric comparison if both operands are numbers
         const aNumber = Number(a);
         const bNumber = Number(b);
@@ -542,9 +551,11 @@ export function evalBoolean(rule, a, b) {
         }
     }
 
-    // otherwise do case-insensitive string comparsion, stringify non-strings
-    let aString = (typeof a === 'string') ? a.toLowerCase() : JSON.stringify(a).toLowerCase();
-    let bString = (typeof b === 'string') ? b.toLowerCase() : JSON.stringify(b).toLowerCase();
+    // Otherwise do case-insensitive string comparison. Numeric-looking strings
+    // must use their canonical numeric spelling, as upstream readers returned
+    // numbers before readVariableValue started preserving formatted text.
+    const aString = booleanOperandToString(a);
+    const bString = booleanOperandToString(b);
 
     switch (rule) {
         case 'in':
