@@ -98,6 +98,8 @@ export class SlashCommandScope {
                 return v ?? '';
             } else {
                 const value = this.variables[key];
+                // SillyBunny preserves formatted numeric text for scoped variables;
+                // the shared reader keeps this fork-specific behavior in one place.
                 return readVariableValue(value);
             }
         }

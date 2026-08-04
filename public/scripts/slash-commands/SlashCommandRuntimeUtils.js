@@ -18,8 +18,9 @@ export function isTrueBoolean(arg) {
  * value is fine; only the read loses the text. Converting only when the number renders
  * back to the same characters keeps every genuinely numeric value behaving as before.
  *
- * Lives in this leaf module because both readers need it and variables.js imports
- * SlashCommandScope.js, so a shared helper in either of those would be circular.
+ * Lives in this leaf module because getLocalVariable, getGlobalVariable, and
+ * SlashCommandScope.getVariable all need it, while variables.js imports
+ * SlashCommandScope.js. A shared helper in either of those would be circular.
  *
  * @param {any} value Raw stored value.
  * @returns {any} The number, or the value unchanged.
