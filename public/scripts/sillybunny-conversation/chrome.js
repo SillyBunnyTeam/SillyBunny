@@ -1039,6 +1039,9 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
+    if (branchId && targetAvatar && !getConversationBranches(targetAvatar, { groupId: targetGroupId }).some(branch => branch.id === String(branchId))) {
+        return false;
+    }
     const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
     const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
@@ -1095,6 +1098,10 @@ export function openConversationWorkspaceFromWelcome() {
     }
 
     return true;
+}
+
+export function getRoleplayAvatarForWelcome() {
+    return conversationState.conversationSelectedAvatar || getRoleplayCurrentCharacter()?.avatar || null;
 }
 
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {

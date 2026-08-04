@@ -571,7 +571,7 @@ function hasExtensionHook(extensionName, hookName) {
  * @param {string} externalId External ID of the extension (excluding or including the leading 'third-party/')
  * @returns {string} Type of the extension (global, local, system, or empty string if not found)
  */
-function getExtensionType(externalId) {
+export function getExtensionType(externalId) {
     const id = Object.keys(extensionTypes).find(id => id === externalId || (id.startsWith('third-party') && id.endsWith(externalId)));
     return id ? extensionTypes[id] : '';
 }
@@ -2040,6 +2040,9 @@ async function moveExtension(extensionName, source, destination) {
  */
 export async function deleteExtension(extensionName, shouldClean = false) {
     const fullExtensionName = getFullExtensionName(extensionName);
+    const apiExtensionName = fullExtensionName.startsWith('third-party/')
+        ? fullExtensionName.slice('third-party/'.length)
+        : extensionName;
     if (shouldClean) {
         await callExtensionHook(fullExtensionName, 'clean');
     }
@@ -2047,21 +2050,27 @@ export async function deleteExtension(extensionName, shouldClean = false) {
     await callExtensionHook(fullExtensionName, 'delete');
 
     try {
-        await fetch('/api/extensions/delete', {
+        const response = await fetch('/api/extensions/delete', {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                extensionName,
+                extensionName: apiExtensionName,
                 global: getExtensionType(extensionName) === 'global',
             }),
         });
+        if (!response.ok) {
+            throw new Error(`Extension deletion failed with status ${response.status}.`);
+        }
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Extension deletion failed:', error);
+        toastr.error(t`Failed to delete extension ${extensionName}.`);
+        return false;
     }
 
     await saveSettings();
     toastr.success(t`Extension ${extensionName} deleted`);
     delay(1000).then(() => location.reload());
+    return true;
 }
 
 /**

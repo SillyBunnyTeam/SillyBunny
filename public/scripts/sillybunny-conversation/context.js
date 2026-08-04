@@ -985,12 +985,13 @@ export function renameConversationBranch(avatar, branchId, name, { groupId = get
     const characterStore = getConversationThreadStore(avatar, { create: false, groupId });
     const branch = characterStore?.branches?.[branchId];
     if (!branch || !String(name || '').trim()) {
-        return;
+        return false;
     }
 
     branch.name = String(name).trim();
     branch.updatedAt = Date.now();
     persistConversationStore();
+    return true;
 }
 
 function createConversationResetBranch(characterStore, name, branchId) {
@@ -1022,6 +1023,15 @@ export function deleteConversationBranch(avatar, branchId, { groupId = getConver
     }
     persistConversationStore();
     return true;
+}
+
+export function deleteConversationWelcomeBranch(avatar, branchId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const reset = Boolean(threadStore?.branches?.[branchId]) && Object.keys(threadStore.branches).length <= 1;
+    return {
+        deleted: deleteConversationBranch(avatar, branchId, { groupId, personaId }),
+        reset,
+    };
 }
 
 export function resetCharacterConversationBranches(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
