@@ -2061,8 +2061,8 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         align-items: center;
         width: 100%;
         min-width: 0;
-        min-height: 50px;
-        max-height: 50px;
+        min-height: 58px;
+        max-height: 58px;
         margin: 0;
         padding: 7px var(--sb-shell-panel-padding-inline);
         border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);

@@ -2319,16 +2319,22 @@ body.sb-shell-resizing * {
     display: none !important;
 }
 
+#right-nav-panel.openDrawer:is([data-menu-type="characters"], [data-menu-type="world-info"], [data-menu-type="persona"]) > #CharListButtonAndHotSwaps {
+    display: flex !important;
+    visibility: visible !important;
+}
+
 #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
     display: contents;
 }
 
 #right-nav-panel #CharListButtonAndHotSwaps {
-    /* Natural height: the favorites label sits above the avatar strip, and the
-       old 52px clamp clipped the strip's bottom edge */
-    min-height: 52px;
+    /* Reserve space for the favorites label, gap, and avatar strip together. */
+    flex: 0 0 auto;
+    min-height: 70px;
     max-height: none;
     padding: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline);
+    box-sizing: border-box;
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
     overflow: hidden;
 }
@@ -2337,9 +2343,10 @@ body.sb-shell-resizing * {
     /* Deliberate two-row layout (label divider, then avatar strip); previously
        the strip only ended up below the label as a flex-wrap accident */
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
     gap: 5px;
     margin: 0 !important;
+    padding: 0 !important;
     min-height: 0;
     overflow: hidden;
 }
@@ -2509,8 +2516,11 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
 }
 
 #right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
-    content: none;
-    display: none;
+    content: 'Create New Chat Group';
+    font-family: var(--mainFontFamily);
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-title);
+    line-height: var(--sb-line-compact);
 }
 
 #right-nav-panel .sb-character-create-bar #rm_print_characters_pagination {
