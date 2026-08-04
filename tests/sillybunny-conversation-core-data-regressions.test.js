@@ -35,6 +35,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 
 const {
     deleteConversationBranch,
+    deleteConversationWelcomeBranch,
     getConversationGroupThreadAnchor,
     getConversationStore,
     normalizeGroupConversationSettings,
@@ -205,5 +206,24 @@ describe('Conversation core persisted data regressions', () => {
         resetCharacterConversationBranches('char.png', { groupId: '', personaId: 'persona-a.png' });
         expect(threadStore.branches.main.memorySummary).toBe('Durable memory');
         expect(getConversationStore().characters['persona:persona-a.png:char.png'].memorySummary).toBe('Durable memory');
+    });
+
+    test('reports when deleting a welcome branch resets the sole thread', () => {
+        const threadStore = {
+            activeBranchId: 'only',
+            branches: {
+                only: { id: 'only', messages: [{ id: 'old-message' }] },
+            },
+            settings: {},
+        };
+        extensionSettings.sillybunny_conversation = createStore({
+            characters: { 'persona:persona-a.png:char.png': threadStore },
+        });
+
+        expect(deleteConversationWelcomeBranch('char.png', 'only', { personaId: 'persona-a.png' })).toEqual({
+            deleted: true,
+            reset: true,
+        });
+        expect(threadStore.branches.only.messages).toEqual([]);
     });
 });

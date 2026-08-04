@@ -221,6 +221,8 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
             is_agent: false,
             is_conversation: true,
             recent_chat_type: 'conversation',
+            conversation_branch_id: branchId,
+            conversation_branch_name: branchName,
             hidden: false,
             pinned: false,
         });

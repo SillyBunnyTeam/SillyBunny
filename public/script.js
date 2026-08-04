@@ -1882,7 +1882,7 @@ async function delChat(chatfile) {
  * Deletes a character chat by its name.
  * @param {string} characterId Character ID to delete chat for
  * @param {string} fileName Name of the chat file to delete (without .jsonl extension)
- * @returns {Promise<void>} A promise that resolves when the chat is deleted.
+ * @returns {Promise<boolean>} Whether the chat was deleted.
  */
 export async function deleteCharacterChatByName(characterId, fileName) {
     // Make sure all the data is loaded.
@@ -1892,7 +1892,7 @@ export async function deleteCharacterChatByName(characterId, fileName) {
     const character = characters[characterId];
     if (!character) {
         console.warn(`Character with ID ${characterId} not found.`);
-        return;
+        return false;
     }
 
     const response = await fetch('/api/chats/delete', {
@@ -1906,7 +1906,7 @@ export async function deleteCharacterChatByName(characterId, fileName) {
 
     if (!response.ok) {
         console.error('Failed to delete chat for character.');
-        return;
+        return false;
     }
 
     if (fileName === character.chat) {
@@ -1922,6 +1922,8 @@ export async function deleteCharacterChatByName(characterId, fileName) {
     }
 
     await eventSource.emit(event_types.CHAT_DELETED, fileName);
+    // SillyBunny: Home only clears pinned state after a confirmed deletion.
+    return true;
 }
 
 export async function replaceCurrentChat() {

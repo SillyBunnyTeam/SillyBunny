@@ -1,7 +1,7 @@
 <div class="welcomePanel {{#if welcomePanelCompact}}welcomePanel--compact{{/if}}{{#if welcomePanelListOnly}} welcomePanel--listOnly{{/if}}" data-active-deck-view="{{activeDeckView}}" data-home-panel-mode="{{welcomePanelMode}}">
-    <div class="welcomeHero">
+    <section class="welcomeHero" aria-labelledby="welcome-home-title">
         <div class="welcomeHeroCopy">
-            <div class="welcomeHeroEyebrow">Home</div>
+            <h1 id="welcome-home-title" class="welcomeHeroEyebrow">Home</h1>
             <div class="welcomeHeaderTitle">
                 <img src="img/sillybunny-pixel-logo-og.png" alt="SillyBunny badge" data-i18n="[alt]SillyBunny badge" class="welcomeHeaderLogo" data-sb-frontend-icon="true">
                 <div class="welcomeHeroTitleGroup">
@@ -36,11 +36,11 @@
                         <span>Open a quick, throwaway session for testing without any extra setup.</span>
                     </span>
                 </button>
-                <button class="menu_button menu_button_icon welcomeActionCard welcomeActionButton openLaunchpad" data-action="open-launchpad">
-                    <i class="fa-solid fa-compass"></i>
+                <button class="menu_button menu_button_icon welcomeActionCard welcomeActionButton" data-action="open-characters-menu">
+                    <i class="fa-solid fa-id-card"></i>
                     <span class="welcomeActionMeta">
-                        <strong>Open/Close Launchpad</strong>
-                        <span>View the Launchpad to browse our curated selection of tutorials, assistants, and recommended add-ons.</span>
+                        <strong>Open Characters</strong>
+                        <span>Open the character menu to directly interact with your character cards in roleplay or conversation modes.</span>
                     </span>
                 </button>
                 <button class="menu_button menu_button_icon welcomeActionCard welcomeAssistantButton welcomeActionButton" data-action="open-assistant" data-assistant-id="guide">
@@ -57,26 +57,26 @@
                         <span>Chat with Assistant Nahida, our alternative assistant, for a more gentle and philosophical lens!</span>
                     </span>
                 </button>
-                <button class="menu_button menu_button_icon welcomeActionCard welcomeActionButton" data-action="open-characters-menu">
-                    <i class="fa-solid fa-id-card"></i>
+                <button class="menu_button menu_button_icon welcomeActionCard welcomeActionButton" data-action="open-tab" data-action-value="left:agents">
+                    <i class="fa-solid fa-robot"></i>
                     <span class="welcomeActionMeta">
-                        <strong>Open Characters</strong>
-                        <span>Open the character menu for directly interacting with your character cards.</span>
+                        <strong>Open Agents</strong>
+                        <span>Open the agents menu to configure and set up your pre, sidecar, and post generation agents that go alongside the main chat.</span>
                     </span>
                 </button>
             </div>
             <div class="welcomeShortcuts" aria-label="Home shortcuts">
-                <button class="menu_button menu_button_icon welcomeShortcut open_characters_library">
-                    <i class="fa-solid fa-image-portrait"></i>
-                    <span data-i18n="Sample characters">Sample characters</span>
-                </button>
                 <button class="menu_button menu_button_icon welcomeShortcut external_import_button">
                     <i class="fa-solid fa-cloud-arrow-down"></i>
-                    <span data-i18n="Import Character">Import character</span>
+                    <span data-i18n="Import Characters">Import Characters</span>
+                </button>
+                <button class="menu_button menu_button_icon welcomeShortcut welcomeActionButton" data-action="open-tab" data-action-value="left:presets">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Presets</span>
                 </button>
                 <button class="menu_button menu_button_icon welcomeShortcut welcomeActionButton" data-action="open-tab" data-action-value="left:api">
                     <i class="fa-solid fa-plug"></i>
-                    <span>Open API</span>
+                    <span>API</span>
                 </button>
                 <button class="menu_button menu_button_icon welcomeShortcut welcomeActionButton" data-action="open-tab" data-action-value="right:extensions">
                     <i class="fa-solid fa-cubes"></i>
@@ -93,23 +93,7 @@
             </div>
         </div>
 
-        <div class="welcomeHeroMedia">
-            <div class="welcomeHeroScene">
-                <span class="welcomeHeroSpark welcomeHeroSpark--1"></span>
-                <span class="welcomeHeroSpark welcomeHeroSpark--2"></span>
-                <span class="welcomeHeroSpark welcomeHeroSpark--3"></span>
-                <span class="welcomeHeroSpark welcomeHeroSpark--4"></span>
-                <span class="welcomeHeroRing welcomeHeroRing--1"></span>
-                <span class="welcomeHeroRing welcomeHeroRing--2"></span>
-                <div class="welcomeHeroMascot" role="img" aria-label="Animated SillyBunny bunny mascot">
-                    <img src="img/sillybunny-bunny-frame-1.svg" alt="" class="welcomeHeroFrame welcomeHeroFrame--1">
-                    <img src="img/sillybunny-bunny-frame-2.svg" alt="" class="welcomeHeroFrame welcomeHeroFrame--2">
-                    <img src="img/sillybunny-bunny-frame-3.svg" alt="" class="welcomeHeroFrame welcomeHeroFrame--3">
-                    <img src="img/sillybunny-bunny-frame-4.svg" alt="" class="welcomeHeroFrame welcomeHeroFrame--4">
-                </div>
-            </div>
-        </div>
-    </div>
+    </section>
     <div class="welcomePanelToggles">
         <div class="welcomePanelModeControls welcomePanelModeControls--listOnly welcomePanelPersistentControls" aria-label="Home panel display">
             <button class="menu_button menu_button_icon welcomePanelModeToggle welcomePanelModeToggle--full" title="Show full Home panel" aria-label="Show full Home panel" aria-pressed="{{#if welcomePanelFull}}true{{else}}false{{/if}}" data-i18n="[title]Show full Home panel;[aria-label]Show full Home panel" data-welcome-panel-mode-target="full">
@@ -125,30 +109,18 @@
                 <span>List Only</span>
             </button>
         </div>
-        <div class="welcomePanelVisibilityControls">
-            <button class="mes_button showRecentChats" title="Show recent chats" data-i18n="[title]Show recent chats">
-                <i class="fa-solid fa-list-ul fa-fw"></i>
-            </button>
-            <button class="mes_button hideRecentChats" title="Hide recent chats" data-i18n="[title]Hide recent chats">
-                <i class="fa-solid fa-xmark fa-fw"></i>
-            </button>
-        </div>
     </div>
-    <div class="welcomeDeck{{#if deckCollapsed}} is-collapsed{{/if}}" data-collapsed="{{#if deckCollapsed}}true{{else}}false{{/if}}">
-        <div class="welcomeGuidePanel welcomeDeckIntro">
+    <section class="welcomeGuidePanel welcomeDeck" aria-labelledby="welcome-launchpad-title">
+        <div class="welcomeDeckIntro">
             <div class="welcomeGuideHeader welcomeDeckIntroHeader">
                 <div class="welcomeGuideTitleBlock">
-                    <div class="welcomeHeroEyebrow">Launchpad</div>
+                    <h2 id="welcome-launchpad-title" class="welcomeHeroEyebrow">Launchpad</h2>
                     <h3>Getting Acquainted With Silly Bunny</h3>
                 </div>
-                <button class="menu_button menu_button_icon welcomeActionButton welcomeDeckToggle" data-action="close-guide" title="Close Launchpad" aria-expanded="{{#unless deckCollapsed}}true{{else}}false{{/unless}}">
-                    <i class="fa-solid fa-xmark"></i>
-                    <span>Close</span>
-                </button>
             </div>
-            <div class="welcomeDeckTabs">
+            <div class="welcomeDeckTabs" role="tablist" aria-label="Launchpad views">
                 {{#each deckTabs}}
-                    <button class="menu_button menu_button_icon welcomeDeckTab {{#if active}}is-active{{/if}}" data-deck-target="{{id}}">
+                    <button id="welcome-deck-tab-{{id}}" class="menu_button menu_button_icon welcomeDeckTab {{#if active}}is-active{{/if}}" role="tab" aria-selected="{{#if active}}true{{else}}false{{/if}}" aria-controls="welcome-deck-panel-{{id}}" tabindex="{{#if active}}0{{else}}-1{{/if}}" data-deck-target="{{id}}">
                         <i class="fa-solid {{icon}}"></i>
                         <span class="welcomeDeckTabMeta">
                             <strong>{{title}}</strong>
@@ -160,22 +132,22 @@
         </div>
 
         <div class="welcomeDeckFrame">
-            <div class="welcomeGuidePanel welcomeDeckPanel welcomeTourPanel{{#unless tutorialExpanded}} tutorialCollapsed{{/unless}}{{#if deckTourActive}} is-active{{/if}}" data-deck-panel="tour" data-tutorial-expanded="{{#if tutorialExpanded}}true{{else}}false{{/if}}" data-tutorial-index="{{tutorialIndex}}">
+            <div id="welcome-deck-panel-tour" class="welcomeDeckPanel welcomeTourPanel{{#unless tutorialExpanded}} tutorialCollapsed{{/unless}}{{#if deckTourActive}} is-active{{/if}}" role="tabpanel" aria-labelledby="welcome-deck-tab-tour"{{#unless deckTourActive}} hidden aria-hidden="true"{{/unless}} data-deck-panel="tour" data-tutorial-expanded="{{#if tutorialExpanded}}true{{else}}false{{/if}}" data-tutorial-index="{{tutorialIndex}}">
                 <div class="welcomeGuideHeader welcomeTourHeader">
                     <div class="welcomeGuideTitleBlock">
-                        <div class="welcomeHeroEyebrow">SillyBunny Tutorial</div>
-                        <h3>SillyBunny in five gentle steps</h3>
-                        <p>New to SillyBunny? This tutorial explains how to get started in five steps.</p>
+                        <div class="welcomeHeroEyebrow">Starting Tutorial</div>
+                        <h3>SillyBunny in five easy steps</h3>
+                        <p>If you're unsure what to do or how to get started, go through these five steps to get acquainted with our program.</p>
                     </div>
                     <div class="welcomeGuideMascot">
-                        <img src="img/sillybunny-guide-bunny.png" alt="Pixel-art bunny guide" class="welcomeGuideMascotImage">
+                        <img src="img/sillybunny-guide-bunny.png" alt="Pixel-art bunny guide" class="welcomeGuideMascotImage" width="256" height="256" loading="lazy" decoding="async">
                         <div class="welcomeGuideBubble">Don't worry; we all start somewhere!</div>
                     </div>
                 </div>
 
-                <div class="welcomeTourProgress">
+                <div class="welcomeTourProgress" role="group" aria-label="Tutorial steps">
                     {{#each tutorialSteps}}
-                        <button class="menu_button menu_button_icon welcomeTourProgressButton {{#if active}}is-active{{/if}}" data-step-target="{{@index}}">
+                        <button class="menu_button menu_button_icon welcomeTourProgressButton {{#if active}}is-active{{/if}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}"{{#if active}} aria-current="step"{{/if}} data-step-target="{{@index}}">
                             <span class="welcomeTourProgressNumber">{{stepNumber}}</span>
                             <span class="welcomeTourProgressLabel">{{title}}</span>
                         </button>
@@ -184,7 +156,7 @@
 
                 <div class="welcomeTourSteps">
                     {{#each tutorialSteps}}
-                        <section class="welcomeGuideCard welcomeTourStep {{#if active}}is-active{{/if}}" data-step-index="{{@index}}">
+                        <section class="welcomeGuideCard welcomeTourStep {{#if active}}is-active{{/if}}"{{#unless active}} hidden aria-hidden="true"{{/unless}} data-step-index="{{@index}}">
                             <div class="welcomeTourStepHeader">
                                 <span class="welcomeTourStepCount">Step {{stepNumber}}</span>
                                 <strong>{{title}}</strong>
@@ -193,17 +165,14 @@
                             {{#if hint}}
                                 <div class="welcomeTourHint">{{hint}}</div>
                             {{/if}}
-                            <div class="welcomeChipRow" data-chip-columns="{{chipColumnCount}}">
-                                {{#each chips}}
-                                    <span class="welcomeChip">{{this}}</span>
+                            <div class="welcomeTourActions">
+                                {{#each actions}}
+                                    <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{type}}" data-action-value="{{value}}"{{#if assistantId}} data-assistant-id="{{assistantId}}"{{/if}}>
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                        <span>{{label}}</span>
+                                    </button>
                                 {{/each}}
                             </div>
-                            {{#if actionLabel}}
-                                <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{actionType}}" data-action-value="{{actionValue}}">
-                                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
-                                    <span>{{actionLabel}}</span>
-                                </button>
-                            {{/if}}
                         </section>
                     {{/each}}
                 </div>
@@ -220,10 +189,10 @@
                 </div>
             </div>
 
-            <div class="welcomeGuidePanel welcomeDeckPanel welcomeBasicsPanel{{#if deckBasicsActive}} is-active{{/if}}" data-deck-panel="basics">
+            <div id="welcome-deck-panel-basics" class="welcomeDeckPanel welcomeBasicsPanel{{#if deckBasicsActive}} is-active{{/if}}" role="tabpanel" aria-labelledby="welcome-deck-tab-basics"{{#unless deckBasicsActive}} hidden aria-hidden="true"{{/unless}} data-deck-panel="basics">
                 <div class="welcomeGuideHeader">
                     <div class="welcomeGuideTitleBlock">
-                        <div class="welcomeHeroEyebrow">Graphical Shell</div>
+                        <div class="welcomeHeroEyebrow">UI Handbook</div>
                         <h3>SillyBunny Shell 101</h3>
                         <p>Refer to the documentation below for more information on SillyBunny's graphical shell. We've designed it to be intuitive and simple to use and understand.</p>
                     </div>
@@ -236,23 +205,20 @@
                                 <strong>{{title}}</strong>
                             </div>
                             <p>{{body}}</p>
-                            <div class="welcomeChipRow" style="--welcome-chip-columns: {{chipColumnCount}};">
-                                {{#each chips}}
-                                    <span class="welcomeChip">{{this}}</span>
+                            <div class="welcomeGuideActions">
+                                {{#each actions}}
+                                    <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{type}}" data-action-value="{{value}}"{{#if assistantId}} data-assistant-id="{{assistantId}}"{{/if}}{{#if isSearchTrigger}} data-sb-universal-search-trigger="true"{{/if}}>
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                        <span>{{label}}</span>
+                                    </button>
                                 {{/each}}
                             </div>
-                            {{#if actionLabel}}
-                                <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{actionType}}" data-action-value="{{actionValue}}"{{#if isSearchTrigger}} data-sb-universal-search-trigger="true"{{/if}}>
-                                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
-                                    <span>{{actionLabel}}</span>
-                                </button>
-                            {{/if}}
                         </article>
                     {{/each}}
                 </div>
             </div>
 
-            <div class="welcomeGuidePanel welcomeDeckPanel welcomeAssistantGuidePanel{{#if deckGuideActive}} is-active{{/if}}" data-deck-panel="guide">
+            <div id="welcome-deck-panel-guide" class="welcomeDeckPanel welcomeAssistantGuidePanel{{#if deckGuideActive}} is-active{{/if}}" role="tabpanel" aria-labelledby="welcome-deck-tab-guide"{{#unless deckGuideActive}} hidden aria-hidden="true"{{/unless}} data-deck-panel="guide">
                 <div class="welcomeGuideHeader">
                     <div class="welcomeGuideTitleBlock">
                         <div class="welcomeHeroEyebrow">Bundled Assistants</div>
@@ -265,7 +231,7 @@
                         <article class="welcomeGuideCard welcomeBundledAssistantCard">
                             <div class="welcomeBundledAssistantHeader">
                                 <div class="welcomeAssistantGuideMedia">
-                                    <img src="{{portrait}}" alt="{{portraitAlt}}" class="welcomeAssistantGuideImage">
+                                    <img src="{{portrait}}" alt="{{portraitAlt}}" class="welcomeAssistantGuideImage" width="256" height="256" loading="lazy" decoding="async">
                                 </div>
                                 <div class="welcomeBundledAssistantCopy">
                                     <div class="welcomeGuideCardHeader">
@@ -276,10 +242,11 @@
                                     <span class="welcomeBundledAssistantCredit">{{credit}}</span>
                                 </div>
                             </div>
-                            <div class="welcomeChipRow" data-chip-columns="{{chipColumnCount}}">
-                                {{#each chips}}
-                                    <span class="welcomeChip">{{this}}</span>
-                                {{/each}}
+                            <div class="welcomePromptActions">
+                                <button class="menu_button menu_button_icon welcomeAssistantButton welcomeActionButton" data-action="open-assistant" data-assistant-id="{{id}}">
+                                    <i class="fa-solid {{actionIcon}}"></i>
+                                    <span>{{actionLabel}}</span>
+                                </button>
                             </div>
                             {{#if hasQuestions}}
                                 <div class="welcomeChipRow welcomeBundledAssistantQuestions">
@@ -291,23 +258,17 @@
                                     {{/each}}
                                 </div>
                             {{/if}}
-                            <div class="welcomePromptActions">
-                                <button class="menu_button menu_button_icon welcomeAssistantButton welcomeActionButton" data-action="open-assistant" data-assistant-id="{{id}}">
-                                    <i class="fa-solid {{actionIcon}}"></i>
-                                    <span>{{actionLabel}}</span>
-                                </button>
-                            </div>
                         </article>
                     {{/each}}
                 </div>
             </div>
 
-            <div class="welcomeGuidePanel welcomeDeckPanel welcomeStarterPackPanel{{#if deckStarterActive}} is-active{{/if}}" data-deck-panel="starter">
+            <div id="welcome-deck-panel-starter" class="welcomeDeckPanel welcomeStarterPackPanel{{#if deckStarterActive}} is-active{{/if}}" role="tabpanel" aria-labelledby="welcome-deck-tab-starter"{{#unless deckStarterActive}} hidden aria-hidden="true"{{/unless}} data-deck-panel="starter">
                 <div class="welcomeGuideHeader">
                     <div class="welcomeGuideTitleBlock">
                         <div class="welcomeHeroEyebrow">Bundled Add-ons</div>
                         <h3>Pre-installed</h3>
-                        <p>These presets and extensions ship with SillyBunny and are ready to use.</p>
+                        <p>Pre-bundled presets from SillyBunny's main dev team. You don't have to do anything; these are all included by default!</p>
                     </div>
                 </div>
                 <div class="welcomeGuideGrid welcomeStarterPackGrid">
@@ -321,11 +282,6 @@
                                 <span class="welcomeStatusBadge welcomeStatusBadge--{{statusTone}}">{{statusLabel}}</span>
                             </div>
                             <p>{{body}}</p>
-                            <div class="welcomeChipRow" data-chip-columns="{{chipColumnCount}}">
-                                {{#each chips}}
-                                    <span class="welcomeChip">{{this}}</span>
-                                {{/each}}
-                            </div>
                             <div class="welcomeStarterPackActions">
                                 <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{actionType}}" data-action-value="{{actionValue}}">
                                     <i class="fa-solid {{#if actionIcon}}{{actionIcon}}{{else}}fa-wand-magic-sparkles{{/if}}"></i>
@@ -337,18 +293,24 @@
                                         <span>{{secondaryActionLabel}}</span>
                                     </button>
                                 {{/if}}
+                                {{#if tertiaryActionLabel}}
+                                    <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{tertiaryActionType}}" data-action-value="{{tertiaryActionValue}}">
+                                        <i class="fa-solid {{#if tertiaryActionIcon}}{{tertiaryActionIcon}}{{else}}fa-arrow-up-right-from-square{{/if}}"></i>
+                                        <span>{{tertiaryActionLabel}}</span>
+                                    </button>
+                                {{/if}}
                             </div>
                         </article>
                     {{/each}}
                 </div>
                 <div class="welcomeGuideHeader" style="margin-top: 16px;">
                     <div class="welcomeGuideTitleBlock">
-                        <h3>Optional installs</h3>
-                        <p>These curated add-ons are not installed by default. Install them if you want extra functionality.</p>
+                        <h3>Official extensions</h3>
+                        <p>A list of optional add-ons developed by the SillyBunny team. These slot into SillyBunny perfectly and are fully tested and supported.</p>
                     </div>
                 </div>
                 <div class="welcomeGuideGrid welcomeStarterPackGrid">
-                    {{#each starterPackItems.optional}}
+                    {{#each starterPackItems.optionalOfficial}}
                         <article class="welcomeGuideCard welcomeStarterPackCard" data-launchpad-extension="{{actionValue}}">
                             <div class="welcomeStarterPackHeader">
                                 <div class="welcomeGuideCardHeader">
@@ -358,11 +320,38 @@
                                 <span class="welcomeStatusBadge welcomeStatusBadge--{{statusTone}}">{{statusLabel}}</span>
                             </div>
                             <p>{{body}}</p>
-                            <div class="welcomeChipRow" data-chip-columns="{{chipColumnCount}}">
-                                {{#each chips}}
-                                    <span class="welcomeChip">{{this}}</span>
-                                {{/each}}
+                            <div class="welcomeStarterPackActions">
+                                <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{actionType}}" data-action-value="{{actionValue}}">
+                                    <i class="fa-solid {{#if actionIcon}}{{actionIcon}}{{else}}fa-wand-magic-sparkles{{/if}}"></i>
+                                    <span>{{actionLabel}}</span>
+                                </button>
+                                {{#if secondaryActionLabel}}
+                                    <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{secondaryActionType}}" data-action-value="{{secondaryActionValue}}">
+                                        <i class="fa-solid {{#if secondaryActionIcon}}{{secondaryActionIcon}}{{else}}fa-arrow-up-right-from-square{{/if}}"></i>
+                                        <span>{{secondaryActionLabel}}</span>
+                                    </button>
+                                {{/if}}
                             </div>
+                        </article>
+                    {{/each}}
+                </div>
+                <div class="welcomeGuideHeader welcomeStarterPackCategoryHeader">
+                    <div class="welcomeGuideTitleBlock">
+                        <h3>Unofficial extensions</h3>
+                        <p>A curated list of useful, unofficial extensions that we strongly recommend. Please note that these third-party, and thus are not developed by the SillyBunny team.</p>
+                    </div>
+                </div>
+                <div class="welcomeGuideGrid welcomeStarterPackGrid">
+                    {{#each starterPackItems.optionalUnofficial}}
+                        <article class="welcomeGuideCard welcomeStarterPackCard" data-launchpad-extension="{{actionValue}}">
+                            <div class="welcomeStarterPackHeader">
+                                <div class="welcomeGuideCardHeader">
+                                    <i class="fa-solid {{icon}}"></i>
+                                    <strong>{{title}}</strong>
+                                </div>
+                                <span class="welcomeStatusBadge welcomeStatusBadge--{{statusTone}}">{{statusLabel}}</span>
+                            </div>
+                            <p>{{body}}</p>
                             <div class="welcomeStarterPackActions">
                                 <button class="menu_button menu_button_icon welcomeActionButton" data-action="{{actionType}}" data-action-value="{{actionValue}}">
                                     <i class="fa-solid {{#if actionIcon}}{{actionIcon}}{{else}}fa-wand-magic-sparkles{{/if}}"></i>
@@ -380,23 +369,17 @@
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="welcomeRecentShell">
+    <section class="welcomeRecentShell" aria-labelledby="welcome-recent-title">
         <div class="welcomeHeader">
             <div class="welcomeHeaderText">
-                <div class="welcomeRecentTitleRow">
-                    <div class="recentChatsTitle" data-i18n="Recent Chats">
-                        Recent Chats
-                    </div>
-                    <button type="button" class="menu_button menu_button_icon welcomeRecentConversationButton welcomeActionButton" data-action="open-conversation" title="Open Conversation Mode" aria-label="Open Conversation Mode">
-                        <i class="fa-solid fa-comments" aria-hidden="true"></i>
-                        <span>Open Conversation</span>
-                    </button>
-                </div>
+                <h2 id="welcome-recent-title" class="recentChatsTitle" data-i18n="Recent Chats">
+                    Recent Chats
+                </h2>
                 <p>Quickly jump back into your most recent conversations.</p>
             </div>
-            <div class="welcomeRecentTabs" role="tablist" aria-label="Recent chat type filter">
+            <div class="welcomeRecentTabs" role="group" aria-label="Recent chat type filter">
                 <button type="button" class="welcomeRecentTab active" data-recent-chat-filter="all" aria-pressed="true" data-i18n="All">All</button>
                 <button type="button" class="welcomeRecentTab" data-recent-chat-filter="individual" aria-pressed="false" data-i18n="Individual">Individual</button>
                 <button type="button" class="welcomeRecentTab" data-recent-chat-filter="group" aria-pressed="false" data-i18n="Groups">Groups</button>
@@ -405,7 +388,7 @@
             </div>
         </div>
         <div class="welcomeRecent">
-            <div class="recentChatList">
+            <div id="welcome-recent-chat-list" class="recentChatList">
             {{#if empty}}
                 <div class="noRecentChat">
                     <i class="fa-solid fa-comment-dots"></i>
@@ -424,14 +407,15 @@
                 </div>
             {{#each chats}}
                 {{#with this}}
-                <div class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{else}}individual{{/if}} {{#if is_agent}}agent{{/if}} {{#if is_conversation}}conversation{{/if}}" data-recent-chat-type="{{recent_chat_type}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}">
+                <article class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{else}}individual{{/if}} {{#if is_agent}}agent{{/if}} {{#if is_conversation}}conversation{{/if}}" data-recent-chat-type="{{recent_chat_type}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}" data-conversation-branch-id="{{conversation_branch_id}}" data-conversation-branch-name="{{conversation_branch_name}}">
+                    <button type="button" class="recentChatOpen"><span class="sr-only">{{char_name}} &ndash; {{chat_name}}</span></button>
                     {{#if pinned}}
                         <div class="recentChatPinned">
                             <i class="fa-solid fa-thumbtack fa-fw fa-xs" title="Pinned chat" data-i18n="[title]Pinned chat"></i>
                         </div>
                     {{/if}}
                     <div class="avatar" title="[Character] {{char_name}}&#10;File: {{avatar}}">
-                        <img src="{{char_thumbnail}}" alt="{{char_name}}">
+                        <img src="{{char_thumbnail}}" alt="{{char_name}}" width="64" height="64" loading="lazy" decoding="async">
                     </div>
                     <div class="recentChatInfo">
                         <div class="chatNameContainer">
@@ -442,13 +426,13 @@
                             </div>
                             <small class="chatDate" title="{{date_long}}">{{date_short}}</small>
                             <div class="chatActions">
-                                <button class="menu_button menu_button_icon pinChat {{#if pinned}}active{{/if}}" title="Pin chat" data-i18n="[title]Pin chat">
+                                <button class="menu_button menu_button_icon pinChat {{#if pinned}}active{{/if}}" title="{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}" aria-label="{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}" aria-pressed="{{#if pinned}}true{{else}}false{{/if}}">
                                     <i class="fa-solid fa-thumbtack fa-fw"></i>
                                 </button>
-                                <button class="menu_button menu_button_icon renameChat" title="Rename chat" data-i18n="[title]Rename chat">
+                                <button class="menu_button menu_button_icon renameChat" title="Rename chat" aria-label="Rename chat" data-i18n="[title]Rename chat;[aria-label]Rename chat">
                                     <i class="fa-solid fa-pen-to-square fa-fw"></i>
                                 </button>
-                                <button class="menu_button menu_button_icon deleteChat" title="Delete chat" data-i18n="[title]Delete chat">
+                                <button class="menu_button menu_button_icon deleteChat" title="Delete chat" aria-label="Delete chat" data-i18n="[title]Delete chat;[aria-label]Delete chat">
                                     <i class="fa-solid fa-trash fa-fw"></i>
                                 </button>
                             </div>
@@ -466,15 +450,15 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </article>
                 {{/with}}
             {{/each}}
             {{#if more}}
-                <button class="menu_button menu_button_icon showMoreChats">
+                <button class="menu_button menu_button_icon showMoreChats" aria-controls="welcome-recent-chat-list" aria-expanded="false">
                     <small class="fa-solid fa-chevron-down fa-fw fa-1x"></small>
                 </button>
             {{/if}}
             </div>
         </div>
-    </div>
+    </section>
 </div>
