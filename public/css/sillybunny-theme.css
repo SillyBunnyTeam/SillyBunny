@@ -939,7 +939,8 @@ h3:not(.popup h3):not(#chat h3) {
      * -- matched this rule and had its label squashed out of a 38px box. A genuinely icon-only
      * button still lands exactly on the square, because its content never reaches the minimum.
      * The hardcoded :not() exclusions on the selectors above are older, per-case patches for the
-     * same over-match.
+     * same over-match. Horizontal padding stays at zero so an oversized svg or img child cannot
+     * push a genuinely icon-only control wider than it is tall.
      */
     width: auto;
     inline-size: auto;
@@ -956,7 +957,7 @@ h3:not(.popup h3):not(#chat h3) {
     justify-content: center;
     gap: 6px;
     flex: 0 0 auto;
-    padding: 0 10px !important;
+    padding: 0 !important;
     margin: 0;
     border-radius: var(--sb-icon-control-radius);
     box-sizing: border-box;

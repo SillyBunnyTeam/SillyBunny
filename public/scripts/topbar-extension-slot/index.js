@@ -169,36 +169,28 @@ export function resolveTopbarAdoptionPlan({ nodes = [], slotChildKeys = [] } = {
  * @returns {{moveKeys: string[], removeKeys: string[]}} Keys to move and stale keys to drop.
  */
 export function resolveCharacterBadgeMirrorPlan({ iconBadges = [], hostBadges = [] } = {}) {
-    const moveKeys = [];
-    const newest = new Map();
+    const adoptable = iconBadges.filter(badge => resolveTopbarNodeAdoption(badge).shouldAdopt);
+    const adoptableKeys = new Set(adoptable.map(badge => String(badge?.key ?? '')));
+    const winnerBySignature = new Map();
     const removeKeys = [];
 
-    for (const badge of hostBadges) {
+    // Host badges first, then the ones on the native icon, so a freshly appended badge always
+    // wins over whatever is already mirrored. Only the winner is moved: an earlier duplicate
+    // appearing in the same batch must not end up in both lists, or the executor would remove
+    // it and then immediately re-append it.
+    for (const badge of [...hostBadges, ...adoptable]) {
         const signature = String(badge?.signature ?? '');
         const key = String(badge?.key ?? '');
+        const previous = winnerBySignature.get(signature);
 
-        if (newest.has(signature)) {
-            removeKeys.push(newest.get(signature));
+        if (previous !== undefined) {
+            removeKeys.push(previous);
         }
 
-        newest.set(signature, key);
+        winnerBySignature.set(signature, key);
     }
 
-    for (const badge of iconBadges) {
-        if (!resolveTopbarNodeAdoption(badge).shouldAdopt) {
-            continue;
-        }
-
-        const signature = String(badge?.signature ?? '');
-        const key = String(badge?.key ?? '');
-
-        if (newest.has(signature)) {
-            removeKeys.push(newest.get(signature));
-        }
-
-        newest.set(signature, key);
-        moveKeys.push(key);
-    }
+    const moveKeys = Array.from(winnerBySignature.values()).filter(key => adoptableKeys.has(key));
 
     return { moveKeys, removeKeys };
 }

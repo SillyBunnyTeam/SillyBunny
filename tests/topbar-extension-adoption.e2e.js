@@ -1,4 +1,4 @@
-/* global document, window */
+/* global document, HTMLElement, window */
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
@@ -12,14 +12,30 @@ test.describe.configure({ mode: 'serial' });
 
 const IPHONE_VIEWPORT = { width: 390, height: 844 };
 
-// Bundled extensions raise their own first-run surfaces after the chat settles, and a full-screen
-// overlay owns every elementFromPoint hit. Quick Image Gen's wizard is a plain div rather than a
-// <dialog>, so dismissOpenDialogIfPresent alone does not clear it.
+// Extensions raise first-run surfaces after the chat settles, and a full-screen overlay owns
+// every elementFromPoint hit. Several are plain divs rather than <dialog>, so
+// dismissOpenDialogIfPresent alone does not clear them, and which ones appear depends on what is
+// installed. Clear them by shape rather than by name so this pack does not have to track them.
 async function openBarForTest(page) {
     await openQuietChatForSmoke(page);
     await dismissOpenDialogIfPresent(page);
     await page.evaluate(() => {
-        document.querySelectorAll('.qig-popup, #toast-container .toast').forEach(overlay => overlay.remove());
+        const shellIds = new Set(['top-bar', 'top-settings-holder', 'sheld', 'left-nav-panel', 'right-nav-panel', 'user-settings-block']);
+        const viewportArea = window.innerWidth * window.innerHeight;
+
+        for (const node of Array.from(document.body.children)) {
+            if (!(node instanceof HTMLElement) || shellIds.has(node.id) || node.id.startsWith('sb-')) {
+                continue;
+            }
+
+            const rect = node.getBoundingClientRect();
+
+            if (window.getComputedStyle(node).position === 'fixed' && rect.width * rect.height > viewportArea * 0.3) {
+                node.remove();
+            }
+        }
+
+        document.querySelectorAll('#toast-container .toast').forEach(toast => toast.remove());
     });
     await waitForAnimationFrames(page, 2);
 }

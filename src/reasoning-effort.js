@@ -21,9 +21,9 @@ export const REASONING_EFFORT = {
 
 /**
  * Normalizes a reasoning effort value to the casing every provider table expects.
- * Unrecognized values are still returned (lowercased) rather than dropped: several
- * OpenAI-compatible endpoints take vocabulary of their own, and the backend forwards those
- * deliberately.
+ * Only canonical values are case-folded. An unrecognized value belongs to a custom endpoint
+ * whose vocabulary this fork does not own, and JSON enums are case-sensitive, so it is passed
+ * on with its original casing rather than lowercased into something the provider may reject.
  * @param {unknown} value Raw reasoning effort.
  * @returns {string} Normalized value, or an empty string when there is nothing usable.
  */
@@ -32,7 +32,15 @@ export function normalizeReasoningEffort(value) {
         return '';
     }
 
-    return value.trim().toLowerCase();
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+        return '';
+    }
+
+    const canonical = trimmed.toLowerCase();
+
+    return isKnownReasoningEffort(canonical) ? canonical : trimmed;
 }
 
 /**
@@ -48,8 +56,7 @@ export function isKnownReasoningEffort(value) {
 
 /**
  * Normalizes `reasoning_effort` on an outgoing chat completion request body, in place.
- * Never adds the field when it is absent and never removes it, so this is a superset of the
- * previous behavior for every value that already worked.
+ * Never adds the field when it is absent, and never touches a non-string value.
  * @param {any} requestBody Chat completion request body.
  * @returns {void}
  */
@@ -65,11 +72,18 @@ export function applyReasoningEffortNormalization(requestBody) {
     const original = requestBody.reasoning_effort;
     const normalized = normalizeReasoningEffort(original);
 
+    if (!normalized) {
+        // Several provider branches assign this key unconditionally, so an empty string would
+        // ship as `"reasoning_effort": ""`. Removing it lets those branches omit the field.
+        delete requestBody.reasoning_effort;
+        return;
+    }
+
     if (normalized !== original) {
         console.debug(`[ReasoningEffort] normalized ${JSON.stringify(original)} to ${JSON.stringify(normalized)}`);
     }
 
-    if (normalized && !isKnownReasoningEffort(normalized)) {
+    if (!isKnownReasoningEffort(normalized)) {
         console.warn(`[ReasoningEffort] forwarding unrecognized value ${JSON.stringify(normalized)}; provider may reject it.`);
     }
 

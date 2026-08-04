@@ -153,6 +153,49 @@ describe('character badge mirror plan', () => {
         expect(plan.removeKeys).toEqual(['badge:host-0']);
     });
 
+    test('moves only the newest when duplicates arrive in the same batch', () => {
+        // Two setup passes before the queued sync land both badges on the native icon at once.
+        // Listing the older one in both moveKeys and removeKeys would have the executor remove
+        // it and then immediately append it again, leaving two badges on the button.
+        const plan = resolveCharacterBadgeMirrorPlan({
+            iconBadges: [
+                badge('badge:0', 'charlib-chevron-badge'),
+                badge('badge:1', 'charlib-chevron-badge'),
+            ],
+            hostBadges: [],
+        });
+
+        expect(plan.moveKeys).toEqual(['badge:1']);
+        expect(plan.removeKeys).toEqual(['badge:0']);
+    });
+
+    test('never lists a key in both moveKeys and removeKeys', () => {
+        const plan = resolveCharacterBadgeMirrorPlan({
+            iconBadges: [
+                badge('badge:0', 'charlib-chevron-badge'),
+                badge('badge:1', 'charlib-chevron-badge'),
+                badge('badge:2', 'other-badge'),
+            ],
+            hostBadges: [badge('badge:host-0', 'charlib-chevron-badge')],
+        });
+
+        expect(plan.moveKeys.filter(key => plan.removeKeys.includes(key))).toEqual([]);
+        expect(plan.moveKeys).toEqual(['badge:1', 'badge:2']);
+    });
+
+    test('drops a stale duplicate already mirrored on the proxy button', () => {
+        const plan = resolveCharacterBadgeMirrorPlan({
+            iconBadges: [],
+            hostBadges: [
+                badge('badge:host-0', 'charlib-chevron-badge'),
+                badge('badge:host-1', 'charlib-chevron-badge'),
+            ],
+        });
+
+        expect(plan.moveKeys).toEqual([]);
+        expect(plan.removeKeys).toEqual(['badge:host-0']);
+    });
+
     test('keeps badges with different signatures side by side', () => {
         const plan = resolveCharacterBadgeMirrorPlan({
             iconBadges: [badge('badge:0', 'charlib-chevron-badge'), badge('badge:1', 'other-badge')],

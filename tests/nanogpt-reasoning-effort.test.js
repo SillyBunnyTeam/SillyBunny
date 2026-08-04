@@ -37,6 +37,8 @@ describe('reasoning effort on outgoing chat completions', () => {
         secretManager.writeSecret(SECRET_KEYS.NANOGPT, 'nanogpt-test-key');
         secretManager.writeSecret(SECRET_KEYS.OPENROUTER, 'openrouter-test-key');
         secretManager.writeSecret(SECRET_KEYS.PERPLEXITY, 'perplexity-test-key');
+        secretManager.writeSecret(SECRET_KEYS.POLLINATIONS, 'pollinations-test-key');
+        secretManager.writeSecret(SECRET_KEYS.COMETAPI, 'cometapi-test-key');
 
         const app = express();
         app.use(express.json());
@@ -94,13 +96,16 @@ describe('reasoning effort on outgoing chat completions', () => {
         });
     }
 
+    // NanoGPT documents none < minimal < low < medium < high < xhigh, the same number of rungs
+    // as this fork's min < low < medium < high < xhigh < max, so the ladder maps one-to-one and
+    // Maximum reaches NanoGPT's real ceiling rather than stopping a rung short at high.
     test.each([
         ['min', 'none'],
         ['low', 'minimal'],
         ['medium', 'low'],
         ['high', 'medium'],
-        ['max', 'high'],
         ['xhigh', 'high'],
+        ['max', 'xhigh'],
     ])('NanoGPT sends %s as %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
 
@@ -125,11 +130,16 @@ describe('reasoning effort on outgoing chat completions', () => {
         expect(Object.hasOwn(capturedBody, 'reasoning')).toBe(false);
     });
 
-    test.each(['XHigh', ' Max ', 'MAX'])('NanoGPT normalizes %p before the table lookup', async (effort) => {
+    test.each([
+        ['XHigh', 'high'],
+        [' xhigh ', 'high'],
+        [' Max ', 'xhigh'],
+        ['MAX', 'xhigh'],
+    ])('NanoGPT normalizes %p before the table lookup and sends %s', async (effort, expected) => {
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.NANOGPT, { reasoning_effort: effort });
 
         expect(response.status).toBe(200);
-        expect(capturedBody.reasoning).toEqual({ effort: 'high' });
+        expect(capturedBody.reasoning).toEqual({ effort: expected });
     });
 
     test('OpenRouter receives a lowercased effort instead of the raw value', async () => {
@@ -148,15 +158,30 @@ describe('reasoning effort on outgoing chat completions', () => {
         expect(capturedBody.reasoning_effort).toBe('high');
     });
 
-    test('an unrecognized value still reaches an OpenAI-compatible endpoint', async () => {
-        // Several proxies take vocabulary of their own; dropping unknowns would regress them.
+    test('an unrecognized value reaches an OpenAI-compatible endpoint with its casing intact', async () => {
+        // Several proxies take vocabulary of their own. Dropping unknowns would regress them, and
+        // case-folding one would too, since JSON enum values are case-sensitive.
         const response = await makeRequest(CHAT_COMPLETION_SOURCES.CUSTOM, {
-            reasoning_effort: 'Minimal',
+            reasoning_effort: 'UltraFast',
             custom_url: 'https://custom.test/v1',
             model: 'gpt-5',
         });
 
         expect(response.status).toBe(200);
-        expect(capturedBody.reasoning_effort).toBe('minimal');
+        expect(capturedBody.reasoning_effort).toBe('UltraFast');
+    });
+
+    // Two representatives of the branches that assign this key unconditionally (CometAPI and
+    // Chutes are the others). A value that trims to nothing has to be removed from the body
+    // rather than blanked, or they ship `"reasoning_effort": ""`. The removal happens once at
+    // the shared entry point, so these two cover the whole class.
+    test.each([
+        ['Perplexity', CHAT_COMPLETION_SOURCES.PERPLEXITY],
+        ['Pollinations', CHAT_COMPLETION_SOURCES.POLLINATIONS],
+    ])('%s omits the field entirely for a whitespace-only effort', async (_name, source) => {
+        const response = await makeRequest(source, { reasoning_effort: '   ' });
+
+        expect(response.status).toBe(200);
+        expect(Object.hasOwn(capturedBody, 'reasoning_effort')).toBe(false);
     });
 });

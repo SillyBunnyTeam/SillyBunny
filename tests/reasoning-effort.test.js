@@ -34,10 +34,12 @@ describe('normalizeReasoningEffort', () => {
         expect(normalizeReasoningEffort('')).toBe('');
     });
 
-    test('preserves unrecognized values instead of dropping them', () => {
-        // OpenAI-compatible proxies take vocabulary of their own; the backend forwards it.
+    test('preserves unrecognized values, casing and all', () => {
+        // OpenAI-compatible proxies take vocabulary of their own and JSON enums are
+        // case-sensitive, so case-folding an unknown value could break a working setup.
         expect(normalizeReasoningEffort('minimal')).toBe('minimal');
-        expect(normalizeReasoningEffort('Ultra')).toBe('ultra');
+        expect(normalizeReasoningEffort('UltraFast')).toBe('UltraFast');
+        expect(normalizeReasoningEffort('  UltraFast  ')).toBe('UltraFast');
     });
 
     test('returns an empty string for anything that is not a string', () => {
@@ -90,13 +92,25 @@ describe('applyReasoningEffortNormalization', () => {
         expect(body.reasoning_effort).toBe(42);
     });
 
-    test('keeps an unrecognized value rather than deleting it', () => {
-        const body = { reasoning_effort: 'Ultra' };
+    test('keeps an unrecognized value, with its casing, rather than deleting it', () => {
+        const body = { reasoning_effort: 'UltraFast' };
         applyReasoningEffortNormalization(body);
 
         expect(Object.hasOwn(body, 'reasoning_effort')).toBe(true);
-        expect(body.reasoning_effort).toBe('ultra');
+        expect(body.reasoning_effort).toBe('UltraFast');
     });
+
+    for (const [label, value] of [['spaces', '   '], ['empty', ''], ['tab and newline', '\t\n']]) {
+        test(`removes the field for a ${label} value rather than blanking it`, () => {
+            // Provider branches that assign the key unconditionally would otherwise emit
+            // `"reasoning_effort": ""`, which is not a legal value anywhere.
+            const body = { reasoning_effort: value, model: 'test' };
+            applyReasoningEffortNormalization(body);
+
+            expect(Object.hasOwn(body, 'reasoning_effort')).toBe(false);
+            expect(body.model).toBe('test');
+        });
+    }
 
     test('tolerates a missing or non-object body', () => {
         expect(() => applyReasoningEffortNormalization(null)).not.toThrow();
