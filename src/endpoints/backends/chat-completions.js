@@ -60,6 +60,7 @@ import {
     cachingSystemPromptForOpenRouter,
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
+import { applyReasoningEffortNormalization } from '../../reasoning-effort.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -2815,6 +2816,12 @@ export async function handleChatCompletionsGenerate(request, response) {
     try {
         if (!request.body) return response.status(400).send({ error: true });
 
+        // SillyBunny divergence: normalize here, before the source switch, so every provider
+        // branch below inherits it. Extensions and hand-edited connection profiles can supply a
+        // reasoning effort the frontend never validated, and the pass-through sources forward it
+        // to the provider verbatim.
+        applyReasoningEffortNormalization(request.body);
+
         console.log(`[ChatCompletions] generate: type=${request.body.type} source=${request.body.chat_completion_source} model=${request.body.model} stream=${request.body.stream}`);
 
         const postProcessingType = request.body.custom_prompt_post_processing;
@@ -3066,9 +3073,11 @@ export async function handleChatCompletionsGenerate(request, response) {
             if (request.body.repetition_penalty !== undefined) {
                 bodyParams['repetition_penalty'] = request.body.repetition_penalty;
             }
-            if (request.body.reasoning_effort) {
-                const effort = NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort];
-                bodyParams['reasoning'] = { effort: effort };
+            // SillyBunny divergence: gate on the map rather than on the raw value being truthy.
+            // 'none' and 'auto' are truthy but have no NanoGPT equivalent, so upstream sent a
+            // bare `"reasoning": {}` for them -- and for anything else it could not translate.
+            if (Object.hasOwn(NANOGPT_REASONING_EFFORT_MAP, request.body.reasoning_effort)) {
+                bodyParams['reasoning'] = { effort: NANOGPT_REASONING_EFFORT_MAP[request.body.reasoning_effort] };
             }
 
             const isClaude = /(?:^|\/)claude[-_]/.test(request.body.model);

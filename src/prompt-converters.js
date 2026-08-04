@@ -1,19 +1,10 @@
 import crypto from 'node:crypto';
+// SillyBunny divergence: the effort vocabulary moved to its own leaf module so the
+// chat-completions backend can normalize incoming values against the same source of truth.
+import { REASONING_EFFORT } from './reasoning-effort.js';
 import { getConfigValue, tryParse } from './util.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
-
-const REASONING_EFFORT = {
-    // 'auto' kept for backward-compat: backend may receive it from non-migrated external callers
-    auto: 'auto',
-    none: 'none',
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    min: 'min',
-    max: 'max',
-    xhigh: 'xhigh',
-};
 
 export const PROMPT_PROCESSING_TYPE = {
     NONE: '',
