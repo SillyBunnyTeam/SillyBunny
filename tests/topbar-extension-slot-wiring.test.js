@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+const paperThemeCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-paper-theme.css'), 'utf8');
 const settingsTabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-settings-tabs.js'), 'utf8');
 
 function getFunctionSource(source, name) {
@@ -52,8 +53,8 @@ function getFunctionSource(source, name) {
     throw new Error(`Unable to find function source for ${name}`);
 }
 
-function getCssRule(css, selector) {
-    const start = css.indexOf(selector);
+function getCssRule(css, selector, fromIndex = 0) {
+    const start = css.indexOf(selector, fromIndex);
     expect(start).toBeGreaterThanOrEqual(0);
     const end = css.indexOf('}', start);
     expect(end).toBeGreaterThan(start);
@@ -172,10 +173,53 @@ describe('top-bar extension slot styling', () => {
         expect(tabsCss.match(/--sb-host-topbar-block-size:/g)).toHaveLength(1);
     });
 
-    test('sizes adopted buttons to the phone target size', () => {
-        expect(mobileShellCss).toContain('#sb-topbar-extension-slot .drawer-icon,');
-        expect(getCssRule(mobileShellCss, '#sb-topbar-extension-slot .drawer-icon,'))
-            .toContain('var(--sb-mobile-toggle-size)');
+    test('lets adopted buttons grow while preserving their target minimum size', () => {
+        const desktopRule = getCssRule(tabsCss, '#sb-topbar-extension-slot .drawer-icon,');
+
+        for (const declaration of [
+            'width: auto;',
+            'inline-size: auto;',
+            'height: var(--sb-proxy-button-height);',
+            'min-width: var(--sb-proxy-button-height);',
+            'min-inline-size: var(--sb-proxy-button-height);',
+            'min-height: var(--sb-proxy-button-height);',
+            'padding: 0;',
+            'margin: 0;',
+        ]) {
+            expect(desktopRule).toContain(declaration);
+        }
+
+        const sharedRuleStart = tabsCss.indexOf('#sb-topbar-extension-slot .drawer-icon,');
+        const labelRule = getCssRule(
+            tabsCss,
+            '#sb-topbar-extension-slot .menu_button,',
+            tabsCss.indexOf('}', sharedRuleStart) + 1,
+        );
+
+        expect(labelRule).toContain('max-width: none;');
+        expect(labelRule).toContain('max-inline-size: min(12rem, 45vw);');
+        expect(labelRule).toContain('white-space: nowrap;');
+        expect(labelRule).toContain('overflow: hidden;');
+
+        const mobileRule = getCssRule(mobileShellCss, '#sb-topbar-extension-slot .drawer-icon,');
+
+        for (const declaration of [
+            'width: auto;',
+            'inline-size: auto;',
+            'height: var(--sb-mobile-toggle-size);',
+            'min-width: var(--sb-mobile-toggle-size);',
+            'min-inline-size: var(--sb-mobile-toggle-size);',
+            'min-height: var(--sb-mobile-toggle-size);',
+        ]) {
+            expect(mobileRule).toContain(declaration);
+        }
+
+        expect(mobileRule).toContain('#sb-topbar-extension-slot .menu_button,');
+
+        // The phone-only paper theme uses !important for its square chrome. Its selector must
+        // leave adopted controls to the slot contract, or normal slot declarations can never win.
+        expect(paperThemeCss).toContain('#top-bar .menu_button:not(#sb-topbar-extension-slot .menu_button),');
+        expect(paperThemeCss).toContain('#topBar .menu_button:not(#sb-topbar-extension-slot .menu_button)');
     });
 
     test('adds no !important declarations to the new top-bar blocks', () => {

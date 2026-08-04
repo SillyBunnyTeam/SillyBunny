@@ -1534,12 +1534,25 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 #sb-topbar-extension-slot .drawer-icon,
-#sb-topbar-extension-slot .menu_button {
-    width: var(--sb-proxy-button-height);
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .drawer-icon,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    width: auto;
+    inline-size: auto;
     height: var(--sb-proxy-button-height);
+    min-height: var(--sb-proxy-button-height);
     min-width: var(--sb-proxy-button-height);
+    min-inline-size: var(--sb-proxy-button-height);
     padding: 0;
     margin: 0;
+}
+
+#sb-topbar-extension-slot .menu_button,
+#top-bar #sb-topbar-extension-slot .menu_button {
+    max-width: none;
+    max-inline-size: min(12rem, 45vw);
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 /* .sb-proxy-button clips itself with overflow:hidden, which would eat a mirrored badge. */

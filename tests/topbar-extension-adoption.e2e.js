@@ -170,6 +170,68 @@ test.describe('third-party top-bar button adoption', () => {
         expect(await page.evaluate(() => window.__sbPlainClicks)).toBe(1);
     });
 
+    test('lets a bare text-node label expand an adopted menu button on a phone', async ({ page }) => {
+        await page.setViewportSize(IPHONE_VIEWPORT);
+        await openBarForTest(page);
+
+        await page.evaluate(() => {
+            const button = document.createElement('button');
+            button.id = 'sb-e2e-bare-text-menu-button';
+            button.type = 'button';
+            button.className = 'menu_button';
+            button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Copilot';
+            document.getElementById('top-settings-holder').appendChild(button);
+        });
+        await waitForAnimationFrames(page, 3);
+
+        const button = await page.evaluate(() => {
+            const element = document.getElementById('sb-e2e-bare-text-menu-button');
+            const slot = document.getElementById('sb-topbar-extension-slot');
+            return {
+                adopted: Boolean(slot && slot.contains(element)),
+                width: element.getBoundingClientRect().width,
+                height: element.getBoundingClientRect().height,
+                contentFits: element.scrollWidth <= element.clientWidth
+                    && element.scrollHeight <= element.clientHeight,
+            };
+        });
+
+        expect(button.adopted).toBe(true);
+        expect(button.width).toBeGreaterThan(button.height);
+        expect(button.contentFits).toBe(true);
+    });
+
+    test('lets a span label expand an adopted menu button on a phone', async ({ page }) => {
+        await page.setViewportSize(IPHONE_VIEWPORT);
+        await openBarForTest(page);
+
+        await page.evaluate(() => {
+            const button = document.createElement('button');
+            button.id = 'sb-e2e-span-text-menu-button';
+            button.type = 'button';
+            button.className = 'menu_button';
+            button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>Copilot</span>';
+            document.getElementById('top-settings-holder').appendChild(button);
+        });
+        await waitForAnimationFrames(page, 3);
+
+        const button = await page.evaluate(() => {
+            const element = document.getElementById('sb-e2e-span-text-menu-button');
+            const slot = document.getElementById('sb-topbar-extension-slot');
+            return {
+                adopted: Boolean(slot && slot.contains(element)),
+                width: element.getBoundingClientRect().width,
+                height: element.getBoundingClientRect().height,
+                contentFits: element.scrollWidth <= element.clientWidth
+                    && element.scrollHeight <= element.clientHeight,
+            };
+        });
+
+        expect(button.adopted).toBe(true);
+        expect(button.width).toBeGreaterThan(button.height);
+        expect(button.contentFits).toBe(true);
+    });
+
     test('keeps a third-party composer button visible on a phone', async ({ page }) => {
         await page.setViewportSize(IPHONE_VIEWPORT);
         await openBarForTest(page);

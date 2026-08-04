@@ -1324,17 +1324,23 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-height: var(--sb-mobile-toggle-size);
     }
 
-    /* Adopted third-party buttons follow the same target size as everything else in the bar.
+    /* Adopted third-party buttons keep the same minimum target size as the rest of the bar.
+       Icon-only controls stay square while text-bearing controls can grow to fit their label.
        This sheet loads after sillybunny-tabs.css, so the equal-specificity tie goes here. */
     #sb-topbar-extension-slot .drawer-icon,
-    #sb-topbar-extension-slot .menu_button {
-        width: var(--sb-mobile-toggle-size);
+    #sb-topbar-extension-slot .menu_button,
+    #top-bar #sb-topbar-extension-slot .drawer-icon,
+    #top-bar #sb-topbar-extension-slot .menu_button {
+        width: auto;
+        inline-size: auto;
         height: var(--sb-mobile-toggle-size);
+        min-height: var(--sb-mobile-toggle-size);
         min-width: var(--sb-mobile-toggle-size);
+        min-inline-size: var(--sb-mobile-toggle-size);
     }
 
     /* Visibility and seam handling live in sillybunny-tabs.css; the phone bar only shortens
-       the rule to match its smaller squares. */
+       the icon-only target to match its smaller squares. */
     .sb-topbar-cluster-divider {
         height: calc(var(--sb-mobile-toggle-size) * 0.5);
     }
