@@ -164,6 +164,17 @@ export function init() {
         const personaId = detail?.personaId || getConversationPersonaId();
         void selectConversationThread(avatar, { branchId, groupId, personaId, showToast: detail?.showToast !== false });
     });
+    window.addEventListener('sb:roleplay-character-selected', (event) => {
+        if (!conversationState.conversationWorkspaceOpen) {
+            return;
+        }
+
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        const avatar = detail?.avatar || '';
+        if (avatar) {
+            void selectConversationThread(avatar, { showToast: false });
+        }
+    });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
     window.addEventListener('beforeunload', stopConversationAutoWorker);

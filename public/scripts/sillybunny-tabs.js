@@ -24,7 +24,7 @@ import {
 } from './topbar-extension-slot/index.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
-import { flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced } from '../script.js';
+import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -8549,7 +8549,10 @@ function setCharacterShellMode(mode) {
 
     if (isConversationMode) {
         window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
-            detail: { showToast: false },
+            detail: {
+                avatar: characters[this_chid]?.avatar || '',
+                showToast: false,
+            },
         }));
     } else {
         window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
