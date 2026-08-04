@@ -1429,13 +1429,13 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomeStarterPackActions .welcomeActionButton {
-    flex: 1 1 0;
+    flex: 1 1 9em;
     align-self: auto;
     width: auto;
-    min-width: 0;
+    min-width: min(100%, 9em);
     max-width: none;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 .welcomeActionButton.is-pending {
