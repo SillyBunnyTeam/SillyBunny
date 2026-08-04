@@ -173,6 +173,7 @@ lorum ipsum
 - PR #725 (2026-08-04) `fix(ica): fix memory shard completely hiding the previous shard`
 - PR #729 (2026-08-04) `fix: fix CharacterLibrary and ST-CoPilot incompatibilities`
 - PR #731 (2026-08-04) `fix(characters): align favourites bar across tabs`
+- PR #732 (2026-08-04) `feat(home): rework home screen for v1.7.0 release`
 
 ## v1.6.5
 
