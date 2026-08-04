@@ -145,6 +145,22 @@ export function isValidCompanionMessage(message) {
     return Boolean(message && !message.is_system);
 }
 
+/**
+ * Whether stored companion results on this message should still be listed and fed back.
+ *
+ * Hiding is a prompt-side decision: `is_system` drops the story text from context, but the
+ * notes an agent wrote about that story still exist. Memory Shard depends on this - its own
+ * "hide story above this shard" button hides every earlier shard's host message, so gating on
+ * `is_system` here would erase every previous shard from the panel and from the shard's own
+ * prior-notes window. Context selection keeps using isValidCompanionMessage / isAssistantMessage.
+ * @param {object} message
+ * @param {{ allowUserMessage?: boolean }} [options]
+ * @returns {boolean}
+ */
+export function holdsReadableCompanionResults(message, { allowUserMessage = true } = {}) {
+    return Boolean(message && (allowUserMessage || !message.is_user));
+}
+
 export function normalizeCompanionMacroSyntax(content = '') {
     return String(content ?? '')
         .replace(ESCAPED_MACRO_OPEN_RE, '{{')
@@ -228,7 +244,7 @@ export function selectCompanionChatHistory(messages = [], { policyMessages = mes
     const selections = new Map();
     for (const [agentId, candidates] of candidatesByAgent) {
         const policy = policyByAgent.get(agentId) ?? candidates.at(-1)?.result ?? {};
-        const depth = Math.max(1, Math.min(50, Math.floor(Number(policy.chatHistoryDepth) || 1)));
+        const depth = Math.max(1, Math.floor(Number(policy.chatHistoryDepth) || 1));
         const selected = policy.includeAllChatHistory === false
             ? candidates.slice(-depth)
             : candidates;

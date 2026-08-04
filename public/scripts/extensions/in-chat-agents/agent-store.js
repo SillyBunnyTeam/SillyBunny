@@ -998,7 +998,9 @@ export function normalizeCompanionConfig(raw = {}) {
         rawPrompt: Boolean(rawConfig.rawPrompt),
         inlinePhase: ['pre', 'post', 'both'].includes(String(rawConfig.inlinePhase)) ? String(rawConfig.inlinePhase) : '',
         minContextTokens: clampNumber(rawConfig.minContextTokens, defaults.minContextTokens, 0, 200000),
-        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, 50),
+        // SillyBunny: no upper bound. These are "how far back to look" dials, and a hard ceiling
+        // silently rewrote whatever the user saved (200 came back as 50) with no way to tell.
+        contextMessages: clampNumber(rawConfig.contextMessages, defaults.contextMessages, 1, Infinity),
         includeCharacterCard: rawConfig.includeCharacterCard === undefined ? defaults.includeCharacterCard : Boolean(rawConfig.includeCharacterCard),
         includePersona: rawConfig.includePersona === undefined ? defaults.includePersona : Boolean(rawConfig.includePersona),
         includeWorldInfo: rawConfig.includeWorldInfo === undefined ? defaults.includeWorldInfo : Boolean(rawConfig.includeWorldInfo),
@@ -1006,7 +1008,7 @@ export function normalizeCompanionConfig(raw = {}) {
         includeSystemPrompt: rawConfig.includeSystemPrompt === undefined ? defaults.includeSystemPrompt : Boolean(rawConfig.includeSystemPrompt),
         includeHistory: rawConfig.includeHistory === undefined ? defaults.includeHistory : Boolean(rawConfig.includeHistory),
         includeInChatHistory: Boolean(rawConfig.includeInChatHistory),
-        chatHistoryDepth: clampNumber(rawConfig.chatHistoryDepth, defaults.chatHistoryDepth, 1, 50),
+        chatHistoryDepth: clampNumber(rawConfig.chatHistoryDepth, defaults.chatHistoryDepth, 1, Infinity),
         includeAllChatHistory: rawConfig.includeAllChatHistory === undefined ? defaults.includeAllChatHistory : Boolean(rawConfig.includeAllChatHistory),
         keepInChatHistoryWhenHostHidden: Boolean(rawConfig.keepInChatHistoryWhenHostHidden),
         historyDepth: clampNumber(rawConfig.historyDepth, defaults.historyDepth, 1, 10),

@@ -101,6 +101,10 @@ function createReleaseRepository({ markerSymlinkTarget = '' } = {}) {
     runGit(sourcePath, 'remote', 'add', 'origin', repositoryUrl);
     runGit(sourcePath, 'push', 'origin', 'main', '--tags');
     runGit(root, 'clone', '--branch', 'v1.0.0', '--single-branch', repositoryUrl, pluginPath);
+    // The clone inherits nothing from sourcePath, so tests that commit into it need their own
+    // identity: CI runners have no global user.name/user.email and git refuses to author there.
+    runGit(pluginPath, 'config', 'user.name', 'SillyBunny Tests');
+    runGit(pluginPath, 'config', 'user.email', 'tests@example.invalid');
     fs.writeFileSync(path.join(pluginPath, '.cursor-key'), 'persistent-secret\n', { mode: 0o600 });
 
     return { root, pluginsRoot, pluginPath, repositoryUrl };

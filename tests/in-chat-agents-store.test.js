@@ -417,13 +417,15 @@ describe('in-chat agent scoped enabled state', () => {
             trigger: 'manual',
             displayMode: 'hidden',
             format: 'html',
-            contextMessages: 50,
+            // Context Messages and Notes to keep have no upper bound: they are look-back dials,
+            // and a ceiling silently rewrote whatever the user saved.
+            contextMessages: 999,
             includeCharacterCard: true,
             includePersona: true,
             includeWorldInfo: true,
             includeHistory: true,
             includeInChatHistory: true,
-            chatHistoryDepth: 50,
+            chatHistoryDepth: 999,
             includeAllChatHistory: false,
             keepInChatHistoryWhenHostHidden: true,
             historyDepth: 1,
@@ -449,6 +451,24 @@ describe('in-chat agent scoped enabled state', () => {
             feedback: { depth: 'never' },
             maxTokens: 'never',
         })).toEqual(store.createDefaultCompanionConfig());
+
+        // The reported case: 200 survives a save/load round trip instead of snapping back to 50.
+        expect(store.normalizeCompanionConfig({
+            contextMessages: 200,
+            chatHistoryDepth: 200,
+        })).toEqual(expect.objectContaining({
+            contextMessages: 200,
+            chatHistoryDepth: 200,
+        }));
+
+        // The lower bound still holds.
+        expect(store.normalizeCompanionConfig({
+            contextMessages: 0,
+            chatHistoryDepth: -5,
+        })).toEqual(expect.objectContaining({
+            contextMessages: 1,
+            chatHistoryDepth: 1,
+        }));
     });
 
     test('normalizes category and execution independently for companion agents', async () => {

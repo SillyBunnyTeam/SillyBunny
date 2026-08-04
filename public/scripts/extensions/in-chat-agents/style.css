@@ -641,6 +641,13 @@ button.ica--card-pill--version-update {
     font-weight: 700;
 }
 
+/* The note's host message is hidden from prompts; the note itself is still live. */
+.ica--card-pill--absorbed {
+    background: color-mix(in srgb, var(--SmartThemeBorderColor, #555) 28%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor, #555) 62%, transparent);
+    opacity: 0.6;
+}
+
 @keyframes ica--version-pulse {
     0%, 100% {
         box-shadow: 0 0 0 0 color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 0%, transparent);

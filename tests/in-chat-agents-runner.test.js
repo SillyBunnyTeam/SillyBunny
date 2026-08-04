@@ -2434,6 +2434,33 @@ describe('in-chat agent post-processing runner', () => {
         ]);
     });
 
+    test('keeps notes on hidden hosts in the prior-notes window so shards can consolidate', async () => {
+        const shard = createCompanionAgent({
+            id: 'memory-shard',
+            name: 'Memory Shard',
+            companion: { includeHistory: true, historyDepth: 3, contextMessages: 1 },
+        });
+        enabledAgents = [shard];
+        const companionRunner = await import('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js');
+
+        const olderShardHost = { mes: 'Absorbed reply.', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        const latestReply = { mes: 'Fresh visible reply.', name: 'Assistant', is_user: false, is_system: false, extra: {} };
+        chat.push(olderShardHost, latestReply);
+        companionRunner.setCompanionResult(olderShardHost, shard, { status: 'done', content: '# MEMORY SHARD: A-1' });
+
+        // "Hide story above this shard" only flips is_system; the shard note itself is untouched.
+        olderShardHost.is_system = true;
+
+        const prompt = (await companionRunner.buildCompanionPromptMessages(shard, 1))[1].content;
+
+        // The earlier shard is still available to consolidate against...
+        expect(prompt).toContain('Your previous notes');
+        expect(prompt).toContain('# MEMORY SHARD: A-1');
+        // ...while the story it absorbed stays out of the conversation window.
+        expect(prompt).not.toContain('Absorbed reply.');
+        expect(prompt).toContain('Fresh visible reply.');
+    });
+
     test('appends the repair instruction on fix runs', async () => {
         const fixCompanion = createCompanionAgent({ id: 'fix-companion' });
         enabledAgents = [fixCompanion];
