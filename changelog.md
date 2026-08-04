@@ -170,6 +170,7 @@ lorum ipsum
 - PR #709 (2026-08-03) `fix: character metadata is preserved`
 - PR #711 (2026-08-03) `fix(server): port now closes if it's unused`
 - PR #712 (2026-08-03) `fix: character card metadata fixes (windows edition)`
+- PR #725 (2026-08-04) `fix(ica): fix memory shard completely hiding the previous shard`
 
 ## v1.6.5
 
