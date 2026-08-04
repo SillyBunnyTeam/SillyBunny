@@ -603,7 +603,7 @@ function buildPanelEntryControls(state) {
 /** Marks a note whose host message is hidden from prompts - the note itself still counts. */
 function buildAbsorbedPillHtml(entry) {
     return entry?.hostHidden
-        ? '<span class="ica--card-pill ica--card-pill--absorbed" title="This message is hidden from chat history, but this note will remain in this particular agent\'s history.">Absorbed</span>'
+        ? '<span class="ica--card-pill ica--card-pill--absorbed" title="The messages associated with this note are hidden from chat history, but this note remains as context seen by the LLM.">Absorbed</span>'
         : '';
 }
 
