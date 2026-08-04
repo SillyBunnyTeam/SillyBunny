@@ -1,8 +1,13 @@
 import { describe, expect, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
     booleanOperandToString,
+    isNumericOperand,
     isNumericZero,
+    isTrueBoolean,
     readVariableValue,
 } from '../public/scripts/slash-commands/SlashCommandRuntimeUtils.js';
 
@@ -145,5 +150,76 @@ describe('boolean callers retain upstream semantics', () => {
         expect(booleanOperandToString(readVariableValue('0.50'))).toBe('0.5');
         expect(booleanOperandToString(readVariableValue('+Infinity'))).toBe('null');
         expect(booleanOperandToString('Needle')).toBe('needle');
+    });
+});
+
+// The helpers above only prove the pieces behave; they say nothing about evalBoolean
+// actually calling them. variables.js and utils.js both import script.js, so neither can
+// be imported here. Lift the two functions out as source and run them for real, the same
+// way the *-wiring tests reach logic stranded inside script.js.
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function getFunctionSource(source, name) {
+    const start = source.indexOf(`function ${name}(`);
+    expect(start).toBeGreaterThanOrEqual(0);
+
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+
+    for (let index = bodyStart; index < source.length; index++) {
+        if (source[index] === '{') {
+            depth++;
+        } else if (source[index] === '}') {
+            depth--;
+            if (depth === 0) {
+                return source.slice(start, index + 1);
+            }
+        }
+    }
+
+    throw new Error(`Unable to find function source for ${name}`);
+}
+
+const isFalseBoolean = new Function(`${getFunctionSource(
+    readFileSync(path.join(repoRoot, 'public', 'scripts', 'utils.js'), 'utf8'), 'isFalseBoolean',
+)}; return isFalseBoolean;`)();
+
+const evalBoolean = new Function(
+    'isTrueBoolean', 'isFalseBoolean', 'isNumericOperand', 'isNumericZero', 'booleanOperandToString',
+    `${getFunctionSource(
+        readFileSync(path.join(repoRoot, 'public', 'scripts', 'variables.js'), 'utf8'), 'evalBoolean',
+    )}; return evalBoolean;`,
+)(isTrueBoolean, isFalseBoolean, isNumericOperand, isNumericZero, booleanOperandToString);
+
+describe('evalBoolean is wired to those helpers', () => {
+    test('every numeric spelling of zero is still falsy', () => {
+        for (const stored of ['00', '-0', '+0', '0.0', '0e0', '0x0', '-00.0']) {
+            expect(evalBoolean(undefined, readVariableValue(stored), undefined)).toBe(false);
+            expect(evalBoolean('not', readVariableValue(stored), undefined)).toBe(true);
+        }
+    });
+
+    test('padded non-zero values stay truthy, so the zero guard does not overreach', () => {
+        for (const stored of ['007', '01', '0.50']) {
+            expect(evalBoolean(undefined, readVariableValue(stored), undefined)).toBe(true);
+            expect(evalBoolean('not', readVariableValue(stored), undefined)).toBe(false);
+        }
+    });
+
+    test('containment compares the canonical spelling, not the padding', () => {
+        // '007'.includes('0') was true while the reader preserved the text and the string
+        // branch did not canonicalise. Upstream read 7 and answered false.
+        expect(evalBoolean('in', readVariableValue('007'), 0)).toBe(false);
+        expect(evalBoolean('nin', readVariableValue('007'), 0)).toBe(true);
+        expect(evalBoolean('in', readVariableValue('1e3'), 100)).toBe(true);
+        expect(evalBoolean('eq', readVariableValue('0.50'), 'half')).toBe(false);
+    });
+
+    test('preserved text still takes the numeric branch instead of throwing', () => {
+        expect(evalBoolean('gt', readVariableValue('007'), 5)).toBe(true);
+        expect(evalBoolean('lte', readVariableValue('0.50'), 0.5)).toBe(true);
+        expect(evalBoolean('eq', readVariableValue('0.50'), 0.5)).toBe(true);
+        expect(evalBoolean('neq', readVariableValue('00'), 0)).toBe(false);
+        expect(() => evalBoolean('gt', readVariableValue('abc'), 5)).toThrow();
     });
 });
