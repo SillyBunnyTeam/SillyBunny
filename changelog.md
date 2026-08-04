@@ -172,6 +172,7 @@ lorum ipsum
 - PR #712 (2026-08-03) `fix: character card metadata fixes (windows edition)`
 - PR #725 (2026-08-04) `fix(ica): fix memory shard completely hiding the previous shard`
 - PR #729 (2026-08-04) `fix: fix CharacterLibrary and ST-CoPilot incompatibilities`
+- PR #731 (2026-08-04) `fix(characters): align favourites bar across tabs`
 
 ## v1.6.5
 
