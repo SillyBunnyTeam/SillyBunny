@@ -2056,7 +2056,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi">
+                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi,deepseek">
                                         <div class="flex-container oneline-dropdown" title="Constrains effort on reasoning for reasoning models.&#10;Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response." data-i18n="[title]Constrains effort on reasoning for reasoning models.">
                                             <label for="openai_reasoning_effort">
                                                 <span data-i18n="Reasoning Effort">Reasoning Effort</span>
@@ -2088,6 +2088,9 @@
                                                 <span data-i18n="Allocates a portion of the response length for thinking (Flash 2.5/Pro 2.5) (min: 0/128 tokens, low: 10%, medium: 25%, high: 50%, max: 24576/32768 tokens). Auto lets the model decide.">
                                                     Allocates a portion of the response length for thinking (Flash 2.5/Pro 2.5) (min: 0/128 tokens, low: 10%, medium: 25%, high: 50%, max: 24576/32768 tokens). Auto lets the model decide.
                                                 </span>
+                                            </div>
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="deepseek" data-i18n="DeepSeek only accepts low, high, and max reasoning efforts. Medium and xhigh alias to high. Minimum aliases to low.">
+                                                DeepSeek only accepts low, high, and max reasoning efforts. Medium and xhigh alias to high. Minimum aliases to low.
                                             </div>
                                         </div>
                                     </div>
@@ -3660,8 +3663,8 @@
                             <div>
                                 <h4 data-i18n="DeepSeek Model">DeepSeek Model</h4>
                                 <select id="model_deepseek_select">
-                                    <option value="deepseek-chat">deepseek-chat</option>
-                                    <option value="deepseek-reasoner">deepseek-reasoner</option>
+                                    <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                                    <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                                 </select>
                             </div>
                         </div>

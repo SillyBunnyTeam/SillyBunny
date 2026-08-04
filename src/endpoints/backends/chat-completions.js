@@ -1185,6 +1185,11 @@ async function sendDeepSeekRequest(request, response) {
             bodyParams['logprobs'] = true;
         }
 
+        // DeepSeek accepts low/high/max and aliases medium/xhigh to high itself; min has no DeepSeek meaning.
+        if (isThinkingModel && request.body.reasoning_effort && !['auto', 'none'].includes(request.body.reasoning_effort)) {
+            bodyParams['reasoning_effort'] = request.body.reasoning_effort === 'min' ? 'low' : request.body.reasoning_effort;
+        }
+
         if (Array.isArray(request.body.tools) && request.body.tools.length > 0) {
             bodyParams['tools'] = request.body.tools;
             bodyParams['tool_choice'] = request.body.tool_choice;
