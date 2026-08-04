@@ -585,7 +585,11 @@ describe('chat integrity rotation', () => {
         await fs.mkdir(path.dirname(chatFile), { recursive: true });
         await fs.mkdir(backupDir);
         const recoveryTarget = createCharacterChatTarget({ chatsDirectory, backupDirectory: backupDir, owner, filename: fileName });
-        await fs.writeFile(chatFile, chatWithIntegrity('existing-integrity', 'before').map(JSON.stringify).join('\n'));
+        // The saved chat has to shrink for the write to reach a resize at all: resizeFileSync
+        // skips ftruncateSync when writing already produced the target size, so an existing chat
+        // shorter than the new one never enters the step this test interrupts.
+        const existingMessage = 'before, and long enough that saving the new chat shrinks the file';
+        await fs.writeFile(chatFile, chatWithIntegrity('existing-integrity', existingMessage).map(JSON.stringify).join('\n'));
         const truncateSpy = jest.spyOn(fsSync, 'ftruncateSync').mockImplementationOnce(() => {
             throw Object.assign(new Error('I/O failure'), { code: 'EIO' });
         });

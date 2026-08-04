@@ -220,7 +220,10 @@ describe('tryWriteFileSync atomic fallback', () => {
 
     test('keeps an interrupted guarded write invalid for recovery', () => {
         const filePath = createTargetPath();
-        fs.writeFileSync(filePath, '{"old":true}\n', 'utf8');
+        // The new bytes have to be shorter than the old ones for the write to reach a resize at
+        // all: resizeFileSync skips ftruncateSync when writing already produced the target size,
+        // which the sibling test above pins. A same-size payload never enters the failing step.
+        fs.writeFileSync(filePath, '{"old":true,"padding":"shrunk away by the new write"}\n', 'utf8');
         const checked = fs.statSync(filePath, { bigint: true });
         jest.spyOn(fs, 'ftruncateSync').mockImplementationOnce(() => {
             throw Object.assign(new Error('I/O failure'), { code: 'EIO' });
